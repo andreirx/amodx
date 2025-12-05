@@ -77,7 +77,7 @@ export const ContentItemSchema = z.object({
     version: z.number(),
     status: ContentStatus,
     title: z.string(),
-    blocks: z.array(ContentBlockSchema),
+    blocks: z.array(z.any()),
     accessPolicy: AccessPolicySchema.default({ type: "Public", currency: "USD" }),
     author: z.string(), // UserID
     createdAt: z.string(),

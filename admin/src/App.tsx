@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { getCurrentUser } from 'aws-amplify/auth';
 import LoginPage from "@/pages/Login";
 import ContentList from "@/pages/ContentList";
+import ContentEditor from "@/pages/ContentEditor";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -36,6 +37,14 @@ export default function App() {
                     element={
                         <ProtectedRoute>
                             <ContentList />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/content/:id"
+                    element={
+                        <ProtectedRoute>
+                            <ContentEditor />
                         </ProtectedRoute>
                     }
                 />

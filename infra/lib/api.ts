@@ -75,6 +75,41 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ListContentIntegration', listContentFunction),
         });
 
+
+        // --- NEW: Get Content Function ---
+        const getContentFunction = new nodejs.NodejsFunction(this, 'GetContentFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/content/get.ts'),
+            handler: 'handler',
+            environment: { TABLE_NAME: props.table.tableName },
+            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        });
+
+        props.table.grantReadData(getContentFunction);
+
+        this.httpApi.addRoutes({
+            path: '/content/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetContentIntegration', getContentFunction),
+        });
+
+        // --- NEW: Update Content Function ---
+        const updateContentFunction = new nodejs.NodejsFunction(this, 'UpdateContentFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/content/update.ts'),
+            handler: 'handler',
+            environment: { TABLE_NAME: props.table.tableName },
+            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        });
+
+        props.table.grantWriteData(updateContentFunction);
+
+        this.httpApi.addRoutes({
+            path: '/content/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateContentIntegration', updateContentFunction),
+        });
+
         // 8. Output the URL
         new cdk.CfnOutput(this, 'ApiUrl', { value: this.httpApi.url || '' });
     }

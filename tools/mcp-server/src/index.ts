@@ -4,6 +4,23 @@ import { z } from "zod";
 import axios from "axios";
 import dotenv from "dotenv";
 
+// --- HELPER: Markdown-ish to Tiptap JSON ---
+// Claude gives us text. We wrap it in paragraph blocks.
+function textToBlocks(text: string) {
+    const lines = text.split('\n').filter(line => line.trim() !== '');
+    return lines.map(line => {
+        // Simple detection for Headings (Markdown style)
+        if (line.startsWith('# ')) {
+            return { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: line.replace('# ', '') }] };
+        }
+        if (line.startsWith('## ')) {
+            return { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: line.replace('## ', '') }] };
+        }
+        // Default to paragraph
+        return { type: 'paragraph', content: [{ type: 'text', text: line }] };
+    });
+}
+
 // Load environment variables from a local .env file (if running standalone)
 dotenv.config();
 
@@ -30,7 +47,7 @@ server.tool(
             const response = await axios.get(`${API_URL}/content`);
             // Format for Claude
             const summary = response.data.items.map((item: any) =>
-                `- [${item.status}] ${item.title} (ID: ${item.id})`
+                `- [${item.status}] ${item.title} (ID: ${item.nodeId})`
             ).join("\n");
 
             return {
@@ -61,7 +78,7 @@ server.tool(
             });
 
             return {
-                content: [{ type: "text", text: `Success! Created page "${title}" (ID: ${response.data.id})` }],
+                content: [{ type: "text", text: `Success! Created page "${title}" (ID: ${response.data.nodeId})` }],
             };
         } catch (error: any) {
             return {
@@ -71,6 +88,44 @@ server.tool(
         }
     }
 );
+
+// Tool 3: Update Page Content
+server.tool(
+    "update_page",
+    {
+        id: z.string().describe("The UUID of the page/content to update"),
+        title: z.string().optional(),
+        content: z.string().describe("The content to write (Markdown style supported)"),
+        status: z.enum(["Draft", "Published"]).optional(),
+    },
+    async ({ id, title, content, status }) => {
+        try {
+            // 1. Convert text to Tiptap JSON blocks
+            const blocks = textToBlocks(content);
+
+            // 2. Call the API
+            // Note: We need to fetch the current title if not provided,
+            // but for MVP we might just require it or send partial updates if backend supports it.
+            // Our backend 'update.ts' supports partial updates!
+
+            const payload: any = { blocks };
+            if (title) payload.title = title;
+            if (status) payload.status = status;
+
+            await axios.put(`${API_URL}/content/${id}`, payload);
+
+            return {
+                content: [{ type: "text", text: `Success! Updated page ${id}.` }],
+            };
+        } catch (error: any) {
+            return {
+                content: [{ type: "text", text: `Error updating page: ${error.message}` }],
+                isError: true,
+            };
+        }
+    }
+);
+
 
 // Start the server via Stdio (Standard Input/Output)
 async function main() {

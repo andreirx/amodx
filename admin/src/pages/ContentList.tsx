@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import type {ContentItem} from "@amodx/shared"; // Shared types!
+import { useNavigate } from "react-router-dom";
+
 // Shared types!
 import {
     Table,
@@ -17,6 +19,8 @@ export default function ContentList() {
     const [items, setItems] = useState<ContentItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+
+    const navigate = useNavigate();
 
     useEffect(() => {
         loadContent();
@@ -85,7 +89,13 @@ export default function ContentList() {
                                 <TableCell>{item.status}</TableCell>
                                 <TableCell>Page</TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="sm">Edit</Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => navigate(`/content/${item.nodeId}`)} // Use nodeId, not the version ID
+                                    >
+                                        Edit
+                                    </Button>
                                 </TableCell>
                             </TableRow>
                         ))}
