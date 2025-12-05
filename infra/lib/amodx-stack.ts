@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { AmodxDatabase } from './database';
 import { AmodxAuth } from './auth';
+import { AmodxApi } from './api';
 
 export class AmodxStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -12,6 +13,11 @@ export class AmodxStack extends cdk.Stack {
 
     // 2. Auth
     const auth = new AmodxAuth(this, 'Auth');
+
+    // Wire up the API
+    new AmodxApi(this, 'Api', {
+      table: db.table,
+    });
 
     // Outputs (We will need these later for the Frontend!)
     new cdk.CfnOutput(this, 'TableName', { value: db.table.tableName });

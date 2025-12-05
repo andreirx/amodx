@@ -132,11 +132,25 @@ export type WorkItem = z.infer<typeof WorkItemSchema>;
 // 7. INFRASTRUCTURE & SETTINGS
 // ==========================================
 
+export const TenantStatus = z.enum(["LIVE", "SUSPENDED", "OFF"]);
+export const UserRole = z.enum(["GLOBAL_ADMIN", "CLIENT_ADMIN", "EDITOR"]);
+
 export const TenantConfigSchema = z.object({
-    id: z.string(),
-    domain: z.string(),
+    id: z.string(), // e.g., "client-bob"
+    domain: z.string(), // e.g., "dental-pros.com"
     name: z.string(),
+
+    // THE NEW STATE MACHINE
+    status: TenantStatus.default("LIVE"),
+
     plan: z.enum(["Free", "Pro", "Agency"]),
+
+    // Infrastructure tracking (as discussed before)
+    resources: z.object({
+        distributionId: z.string().optional(),
+        certificateArn: z.string().optional(),
+        bucketFolder: z.string().optional(),
+    }).optional(),
 
     // Visual Theme Config
     theme: z.object({
@@ -146,7 +160,6 @@ export const TenantConfigSchema = z.object({
         fontBody: z.string().default("Inter"),
     }),
 
-    // Feature Flags / Integrations status
     integrations: z.object({
         stripe: z.boolean().default(false),
         mailerlite: z.boolean().default(false),
@@ -155,3 +168,18 @@ export const TenantConfigSchema = z.object({
 });
 
 export type TenantConfig = z.infer<typeof TenantConfigSchema>;
+
+// USER PROFILE SCHEMA (Stored in DynamoDB, linked to Cognito ID)
+export const UserProfileSchema = z.object({
+    id: z.string(), // Matches Cognito SUB
+    email: z.string(),
+
+    // Multi-tenancy linkage
+    tenantId: z.string(), // "SYSTEM" for you, "client-bob" for Bob
+    role: UserRole,
+
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+});
+
+export type UserProfile = z.infer<typeof UserProfileSchema>;

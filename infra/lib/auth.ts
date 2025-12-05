@@ -18,6 +18,10 @@ export class AmodxAuth extends Construct {
                 minLength: 8,
                 requireSymbols: false,
             },
+            customAttributes: {
+                'tenant_id': new cognito.StringAttribute({ mutable: true }),
+                'role': new cognito.StringAttribute({ mutable: true }),
+            },
         });
 
         // 2. The Client (What the Admin UI uses to talk to Cognito)
