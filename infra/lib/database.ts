@@ -1,0 +1,40 @@
+import * as cdk from 'aws-cdk-lib';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import { Construct } from 'constructs';
+
+export class AmodxDatabase extends Construct {
+    public readonly table: dynamodb.Table;
+
+    constructor(scope: Construct, id: string) {
+        super(scope, id);
+
+        this.table = new dynamodb.Table(scope, 'AmodxTable', {
+            partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // Serverless pricing
+            removalPolicy: cdk.RemovalPolicy.DESTROY, // For Dev: deletes table if stack is destroyed
+            pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+        });
+
+        // 1. GSI for Routing (Find Tenant by Domain)
+        this.table.addGlobalSecondaryIndex({
+            indexName: 'GSI_Domain',
+            partitionKey: { name: 'Domain', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'PK', type: dynamodb.AttributeType.STRING }, // Returns TenantID
+        });
+
+        // 2. GSI for Listing by Type (e.g. "Get all Blog Posts")
+        this.table.addGlobalSecondaryIndex({
+            indexName: 'GSI_Type',
+            partitionKey: { name: 'Type', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'CreatedAt', type: dynamodb.AttributeType.STRING },
+        });
+
+        // 3. GSI for Work Items (Inbox)
+        this.table.addGlobalSecondaryIndex({
+            indexName: 'GSI_Status',
+            partitionKey: { name: 'Status', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'ScheduledFor', type: dynamodb.AttributeType.STRING },
+        });
+    }
+}
