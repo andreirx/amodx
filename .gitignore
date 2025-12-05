@@ -1,0 +1,9 @@
+node_modules
+dist
+cdk.out
+.DS_Store
+.env
+coverage
+test-report.xml
+.idea
+*.iml
