@@ -20,7 +20,7 @@ export class AmodxApi extends Construct {
         // 1. Create the HTTP API (Faster/Cheaper than REST API)
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
             corsPreflight: {
-                allowOrigins: ['*'], // For development. Lock down in prod.
+                allowOrigins: ['*'], // For development. TODO Lock down in prod.
                 allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PUT, apigw.CorsHttpMethod.DELETE],
                 allowHeaders: ['Content-Type', 'Authorization'],
             },
@@ -50,7 +50,32 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('CreateContentIntegration', createContentFunction),
         });
 
-        // 5. Output the URL
+        // 5. Define the List Function
+        const listContentFunction = new nodejs.NodejsFunction(this, 'ListContentFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/content/list.ts'),
+            handler: 'handler',
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+            bundling: {
+                minify: true,
+                sourceMap: true,
+                externalModules: ['@aws-sdk/*'],
+            },
+        });
+
+        // 6. Grant Read Permissions
+        props.table.grantReadData(listContentFunction);
+
+        // 7. Add Route (GET /content)
+        this.httpApi.addRoutes({
+            path: '/content',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListContentIntegration', listContentFunction),
+        });
+
+        // 8. Output the URL
         new cdk.CfnOutput(this, 'ApiUrl', { value: this.httpApi.url || '' });
     }
 }
