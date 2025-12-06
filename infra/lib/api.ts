@@ -78,7 +78,7 @@ export class AmodxApi extends Construct {
 
         // --- NEW: Get Content Function ---
         const getContentFunction = new nodejs.NodejsFunction(this, 'GetContentFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
+            runtime: lambda.Runtime.NODEJS_22_X,
             entry: path.join(__dirname, '../../backend/src/content/get.ts'),
             handler: 'handler',
             environment: { TABLE_NAME: props.table.tableName },
@@ -95,7 +95,7 @@ export class AmodxApi extends Construct {
 
         // --- NEW: Update Content Function ---
         const updateContentFunction = new nodejs.NodejsFunction(this, 'UpdateContentFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
+            runtime: lambda.Runtime.NODEJS_22_X,
             entry: path.join(__dirname, '../../backend/src/content/update.ts'),
             handler: 'handler',
             environment: { TABLE_NAME: props.table.tableName },
@@ -103,6 +103,58 @@ export class AmodxApi extends Construct {
         });
 
         props.table.grantWriteData(updateContentFunction);
+
+        // --- CONTEXT API (Strategy & Personas) ---
+
+        // 8. Define Create Context Function
+        const createContextFunction = new nodejs.NodejsFunction(this, 'CreateContextFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/context/create.ts'),
+            handler: 'handler',
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+            bundling: {
+                minify: true,
+                sourceMap: true,
+                externalModules: ['@aws-sdk/*'],
+            },
+        });
+
+        // 9. Grant Permissions
+        props.table.grantWriteData(createContextFunction);
+
+        // 10. Add Route (POST /context)
+        this.httpApi.addRoutes({
+            path: '/context',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateContextIntegration', createContextFunction),
+        });
+
+        // 11. Define List Context Function
+        const listContextFunction = new nodejs.NodejsFunction(this, 'ListContextFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/context/list.ts'),
+            handler: 'handler',
+            environment: {
+                TABLE_NAME: props.table.tableName,
+            },
+            bundling: {
+                minify: true,
+                sourceMap: true,
+                externalModules: ['@aws-sdk/*'],
+            },
+        });
+
+        // 12. Grant Permissions
+        props.table.grantReadData(listContextFunction);
+
+        // 13. Add Route (GET /context)
+        this.httpApi.addRoutes({
+            path: '/context',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListContextIntegration', listContextFunction),
+        });
 
         this.httpApi.addRoutes({
             path: '/content/{id}',

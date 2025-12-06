@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { getCurrentUser } from 'aws-amplify/auth';
 import LoginPage from "@/pages/Login";
+import StrategyBoard from "@/pages/StrategyBoard";
 import ContentList from "@/pages/ContentList";
 import ContentEditor from "@/pages/ContentEditor";
+import AdminLayout from "@/components/layout/AdminLayout"; // <--- Import
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -32,22 +34,21 @@ export default function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<LoginPage />} />
+
+                {/* Wrap all internal pages with the Admin Layout */}
                 <Route
-                    path="/"
                     element={
                         <ProtectedRoute>
-                            <ContentList />
+                            <AdminLayout />
                         </ProtectedRoute>
                     }
-                />
-                <Route
-                    path="/content/:id"
-                    element={
-                        <ProtectedRoute>
-                            <ContentEditor />
-                        </ProtectedRoute>
-                    }
-                />
+                >
+                    <Route path="/" element={<ContentList />} />
+                    <Route path="/content/:id" element={<ContentEditor />} />
+                    <Route path="/strategy" element={<StrategyBoard />} />
+                    {/* Add Settings later */}
+                </Route>
+
             </Routes>
         </BrowserRouter>
     );

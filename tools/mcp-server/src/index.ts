@@ -38,6 +38,31 @@ const server = new McpServer({
     version: "1.0.0",
 });
 
+server.tool(
+    "get_schema",
+    {},
+    async () => {
+        return {
+            content: [{
+                type: "text",
+                text: `
+CORE DATA MODEL:
+
+1. ContentItem (Pages/Posts):
+   - id (UUID), nodeId (Permanent), title, status (Draft/Published)
+   - blocks: JSON Array (Tiptap format)
+
+2. ContextItem (Strategy/Persona):
+   - id, type (Strategy|Persona|PainPoint), name, data (Text)
+
+3. WorkItem (Tasks):
+   - id, type (SocialPost|Research), status (Draft/Pending/Approved)
+        `
+            }],
+        };
+    }
+);
+
 // Tool 1: List Content
 server.tool(
     "list_content",
