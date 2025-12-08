@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import type {ContentItem} from "@amodx/shared"; // Shared types!
+import type { ContentItem } from "@amodx/shared";
 import { useNavigate } from "react-router-dom";
-
-// Shared types!
 import {
     Table,
     TableBody,
@@ -13,12 +11,26 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Loader2 } from "lucide-react";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function ContentList() {
     const [items, setItems] = useState<ContentItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+
+    // New State for Dialog
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [newTitle, setNewTitle] = useState("");
+    const [isCreating, setIsCreating] = useState(false);
 
     const navigate = useNavigate();
 
@@ -28,7 +40,6 @@ export default function ContentList() {
 
     async function loadContent() {
         try {
-            // Calls GET /content via our helper
             const data = await apiRequest("/content");
             setItems(data.items);
         } catch (err: any) {
@@ -39,20 +50,24 @@ export default function ContentList() {
     }
 
     async function createPage() {
+        if (!newTitle.trim()) return;
         try {
-            setLoading(true);
+            setIsCreating(true);
             await apiRequest("/content", {
                 method: "POST",
                 body: JSON.stringify({
-                    title: "New Untitled Page",
+                    title: newTitle,
                     status: "Draft",
                     blocks: []
                 })
             });
+            setNewTitle("");
+            setIsDialogOpen(false);
             await loadContent(); // Refresh list
         } catch (err: any) {
             alert("Failed to create: " + err.message);
-            setLoading(false);
+        } finally {
+            setIsCreating(false);
         }
     }
 
@@ -62,9 +77,38 @@ export default function ContentList() {
         <div className="p-8 max-w-5xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold tracking-tight">Content</h1>
-                <Button onClick={createPage}>
-                    <Plus className="mr-2 h-4 w-4" /> Create Page
-                </Button>
+
+                {/* CREATE DIALOG */}
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button><Plus className="mr-2 h-4 w-4" /> Create Page</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Create New Page</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label>Page Title</Label>
+                                <Input
+                                    placeholder="e.g. Services"
+                                    value={newTitle}
+                                    onChange={(e) => setNewTitle(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && createPage()}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Slug will be generated automatically:
+                                    <span className="font-mono ml-1">
+                    /{newTitle.toLowerCase().replace(/ /g, "-").replace(/[^\w-]/g, "")}
+                  </span>
+                                </p>
+                            </div>
+                            <Button onClick={createPage} disabled={isCreating} className="w-full">
+                                {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Create"}
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
 
             {error && <div className="text-red-500 p-4 border border-red-200 rounded">{error}</div>}
@@ -92,7 +136,7 @@ export default function ContentList() {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => navigate(`/content/${item.nodeId}`)} // Use nodeId, not the version ID
+                                        onClick={() => navigate(`/content/${item.nodeId}`)}
                                     >
                                         Edit
                                     </Button>
