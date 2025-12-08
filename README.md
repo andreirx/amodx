@@ -14,50 +14,47 @@ Agencies today trade time for pixel-pushing. AMODX allows them to sell reusable,
 
 *   **The Problem:** The "Frankenstein Stack." Maintaining fragile monoliths (WordPress) is unscalable, insecure, and labor-intensive.
 *   **The Solution:** A "Newsroom" approach. While competitors (Wix, Webflow) act as the Printing Press (displaying content), AMODX acts as the **Newsroom**—managing strategy, research, drafting, and distribution automatically.
-*   **The Philosophy:** "Flushing the Gunk." We eliminate the manual labor of marketing operations and the technical debt of server maintenance, allowing for pure business logic execution.
+*   **The Philosophy:** "Flushing the Gunk." We eliminate the manual labor of marketing operations and the technical debt of server maintenance.
 
 ---
 
 ## 🏗 System Architecture (The Six Domains)
 
-AMODX is not just a CMS; it is a distributed system divided into six specific domains.
-
 ### 1. The Brain (Context Engine)
-*   **Location:** `backend/src/context`, DynamoDB
-*   **Function:** Stores "Strategy," "Personas," "Pain Points," and "Funnels" (structured data, not just text blocks).
-*   **Value:** This data is fed to LLMs so they generate content aligned with business goals, rather than generic fluff.
+*   **Backend:** `backend/src/context` (Lambda + DynamoDB)
+*   **Function:** Stores "Strategy," "Personas," and "Funnels" as structured data.
+*   **Value:** This context is fed to LLMs so they generate content aligned with business goals, not generic fluff.
 
 ### 2. The Cockpit (Admin UI)
-*   **Location:** `admin/` (React 19, Vite, Tailwind v4, Shadcn)
+*   **Frontend:** `admin/` (React 19, Vite, Tailwind v4, Shadcn)
+*   **Hosting:** AWS S3 + CloudFront (Global CDN).
 *   **Function:** The mission control for the Agency Owner.
 *   **Features:**
-    *   **Human-in-the-Loop (HITL):** A "Draft & Approve" workflow for AI agents.
     *   **Mobile-First:** Fully responsive design allows owners to approve work from their phone.
     *   **Strategy Board:** Visual management of personas and offers.
+    *   **Content Editor:** Rich-text block editor with SEO-friendly slug management.
 
 ### 3. The Face (Public Renderer)
-*   **Location:** `renderer/` (Next.js 16, OpenNext, AWS Lambda)
+*   **Frontend:** `renderer/` (Next.js 16, OpenNext, AWS Lambda)
 *   **Function:** A headless rendering engine that displays the public sites.
 *   **Features:**
-    *   **AI-Native SEO:** Automatically generates `/llms.txt` and Schema.org data, making the site preferred by AI crawlers (Perplexity, SearchGPT).
-    *   **Dynamic Theming:** Injects CSS variables at runtime, allowing branding changes without code recompilation.
+    *   **AI-Native SEO:** Automatically generates `/llms.txt` and Schema.org data.
+    *   **Dynamic Theming:** Injects CSS variables at runtime based on Tenant Configuration.
     *   **Multi-Tenancy:** Resolves content based on the domain name headers.
 
 ### 4. The Bridge (MCP Server)
-*   **Location:** `tools/mcp-server/`
-*   **Function:** ImmVplements the **Model Context Protocol**.
+*   **Tool:** `tools/mcp-server/`
+*   **Function:** Implements the **Model Context Protocol**.
 *   **Value:** Allows local LLMs (Claude Desktop, Cursor) to control the cloud infrastructure directly. You can chat with your business: *"Check inventory and write a promo tweet based on our Q1 strategy."*
 
 ### 5. The Agents (Execution Layer)
-*   **Location:** `backend/src/agents` (Lambda)
-*   **Function:** Autonomous workers.
+*   **Backend:** `backend/src/agents` (Lambda)
 *   **Capabilities:**
-    *   **Researcher:** Scans Reddit/X for trends to validate ideas.
+    *   **Researcher:** Scans internet for trends to validate ideas (via Perplexity).
     *   **Poster:** Automates distribution to social platforms upon human approval.
 
 ### 6. The Gatekeeper (Access & Auth)
-*   **Location:** `infra/lib/auth.ts`, Cognito
-*   **Function:** Native "Paywalls" and "Client Portals."
+*   **Infra:** Cognito User Pools + Lambda Authorizers.
 *   **Value:** Access control is a first-class citizen. Content is locked at the edge/API level, not via a PHP plugin.
 
 ---
@@ -84,39 +81,39 @@ amodx/
 
 ### Prerequisites
 *   Node.js v20+
-*   AWS CLI (configured with `aws configure`)
-*   An AWS Account
+*   AWS CLI (configured)
+*   AWS Account
 
 ### 1. Installation
-Install dependencies for all workspaces:
 ```bash
 npm install
 ```
 
 ### 2. Infrastructure Deployment
-Deploy the serverless stack (DynamoDB, Cognito, API Gateway, Lambdas) to your AWS account.
+Deploy the serverless stack (Database, API, Admin Hosting).
 ```bash
 cd infra
 npx cdk deploy
 ```
-*Note the outputs (API URL, User Pool ID) after deployment.*
+*Note the Admin URL output (e.g., `https://d123.cloudfront.net`).*
 
-### 3. Running Locally
+### 3. Running Locally (Hybrid Mode)
 
 **The Admin Panel:**
 ```bash
 cd admin
-# Create .env.local with VITE_API_URL and VITE_USER_POOL_ID from step 2
 npm run dev
+# Uses .env.local to connect to Real AWS Backend
 ```
 
 **The Renderer:**
 ```bash
 cd renderer
 npm run dev
+# Connects to Real AWS Database via AWS SDK
 ```
 
-### 4. Connecting Claude (MCP)
+### 4. Connecting Claude (AI Bridge)
 To enable the "Chat with your Business" feature:
 ```bash
 cd tools/mcp-server
@@ -133,20 +130,9 @@ Restart Claude Desktop to see the `amodx` tools available.
 *   **IaC:** AWS CDK (TypeScript)
 *   **Frontend:** React 19, Tailwind CSS v4, Shadcn/UI
 *   **Renderer:** Next.js 16 (App Router), OpenNext
-*   **Validation:** Zod
 *   **AI:** Vercel AI SDK, Model Context Protocol (MCP)
 
 ---
-
----
-
-## 🤝 Community & Contributing
-
-AMODX is Open Source. We believe in "Infrastructure as Code" owned by the creator, not the platform.
-
-*   **GitHub:** https://github.com/andreirx/amodx
-
-We welcome contributions! Whether it's a new MCP Tool, a React Component for the Renderer, or a documentation fix.
 
 ## 📜 License
 

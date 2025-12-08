@@ -1,0 +1,91 @@
+# AMODX System Architecture Specification (v1.4)
+
+**Project Name:** AMODX (Agency Management On Demand Extreme)
+**Vision:** A Serverless, AI-Native Operating System for Agencies. It replaces WordPress + Zapier with a unified platform where Strategy (Context) drives Execution (Content/Agents).
+
+---
+
+## 1. Module: `packages/shared` (The Contract)
+**Status:** ✅ Implemented.
+**Purpose:** Single source of truth for Types, Zod Schemas, and Enums.
+**Structure:** Consolidated into `src/index.ts`.
+
+### Core Data Models
+*   **`TenantConfig`**: Defines Site Settings, Theming (JSON), and enabled Modules (CRM, Inventory).
+*   **`UserProfile`**: Defines User Identity, Role (`GLOBAL_ADMIN`, `CLIENT_ADMIN`), and Tenant association.
+*   **`ContentItem`**: Defines Pages/Posts structure. Includes `slug` (denormalized) and `blocks` (Tiptap JSON).
+*   **`AccessPolicy`**: Defines Gating Logic (`LoginRequired`, `Purchase`).
+*   **`ContextItem`**: Defines Strategy/Persona data for AI Context.
+*   **`WorkItem`**: Defines HITL tasks (Drafts, Research Jobs).
+
+---
+
+## 2. Module: `infra` (The Factory)
+**Status:** ✅ Implemented.
+**Purpose:** AWS CDK code provisioning the serverless environment.
+
+*   **`lib/database.ts`**: DynamoDB Single-Table Design (`PK`, `SK`). GSIs for Domain, Type, and Status.
+*   **`lib/auth.ts`**: Cognito User Pool with custom attributes (`tenant_id`, `role`).
+*   **`lib/api.ts`**: API Gateway (HTTP API). Routes: `/content`, `/context`, `/settings`.
+*   **`lib/admin-hosting.ts`**: S3 + CloudFront hosting for the Admin SPA. Includes `ConfigGenerator` for runtime environment injection.
+*   **`lib/renderer-hosting.ts`** (Planned): OpenNext/SST construct for Next.js Lambda.
+
+---
+
+## 3. Module: `backend` (The Brain)
+**Status:** 🔄 In Progress.
+**Purpose:** Node.js/TypeScript logic running on Lambda.
+
+*   **`src/content/`**:
+    *   **`create.ts`**: Transactional write (Content + Route).
+    *   **`update.ts`**: Transactional update. Handles Slug changes (Delete old Route -> Create new Route + Redirect).
+    *   **`get.ts`**: Fetches by Node ID.
+    *   **`list.ts`**: Queries Content by Site.
+*   **`src/tenant/`**:
+    *   **`settings.ts`**: Get/Update Tenant Configuration (Theme, Domain).
+*   **`src/context/`**:
+    *   **`create.ts` / `list.ts`**: Manage Strategy items.
+*   **`src/agents/` (Planned)**: `researcher.ts` (Perplexity integration).
+
+---
+
+## 4. Module: `admin` (The Cockpit)
+**Status:** ✅ Live on AWS (S3/CloudFront).
+**Purpose:** React 19 + Vite + Tailwind v4 + Shadcn.
+**Features:**
+*   **Responsive Layout:** Sidebar (Desktop) / Drawer (Mobile).
+*   **Auth:** Cognito Integration via Amplify (New Password Flow supported).
+*   **Content Editor:** Tiptap Block Editor with Title/Slug separation.
+*   **Strategy Board:** Kanban-style view for Personas/Offers.
+*   **Settings:** Site Name & Theme Color configuration.
+
+---
+
+## 5. Module: `renderer` (The Face)
+**Status:** 🔄 Localhost Working (Live Deploy Pending).
+**Purpose:** Next.js 15 (OpenNext) application for public sites.
+
+*   **Architecture:** React Server Components (RSC) fetching directly from DynamoDB.
+*   **Router:** Middleware identifies Tenant via Host Header.
+*   **Data Access:** `lib/dynamo.ts` resolves `Domain -> Tenant` and `Slug -> Route -> Content`.
+*   **Theming:** `ThemeInjector` writes CSS variables to `<style>` tag, overriding Tailwind defaults.
+
+---
+
+## 6. Module: `tools/mcp-server` (The Bridge)
+**Status:** ✅ Implemented.
+**Purpose:** Local Node.js script connecting Claude Desktop to AWS API.
+
+*   **Capabilities:**
+    *   `list_content` / `create_page` / `update_page` / `read_page`
+    *   `list_context` / `create_context`
+    *   `update_settings`
+    *   `get_schema`
+*   **Automation:** `npm run setup <API_URL>` auto-configures Claude Desktop.
+
+---
+
+## 7. Integrations & Payment Strategy
+*   **Payment:** Stripe Secret Keys stored in AWS Secrets Manager.
+*   **Research:** Perplexity API (Sonar) via Lambda.
+*   **Email:** Amazon SES (Transactional) + WorkMail (Inboxes).
