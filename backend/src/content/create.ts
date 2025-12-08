@@ -38,6 +38,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                             ...input,
                             id: contentId,
                             nodeId: nodeId,
+                            slug: slug,
                             version: 1,
                             createdAt: now,
                             author: "Admin",

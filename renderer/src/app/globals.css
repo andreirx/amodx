@@ -1,3 +1,17 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+    --color-primary: var(--primary);
+    --font-heading: var(--font-heading);
+    --font-body: var(--font-body);
+}
+
+/* We don't need defaults here anymore if the Injector works,
+   but keeping them as a fallback is safe. */
+@layer base {
+    :root {
+        --primary: #000000;
+        --font-heading: system-ui, sans-serif;
+        --font-body: system-ui, sans-serif;
+    }
+}

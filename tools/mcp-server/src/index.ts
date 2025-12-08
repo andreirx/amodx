@@ -151,6 +151,104 @@ server.tool(
     }
 );
 
+// Tool 4: List Strategy Context
+server.tool(
+    "list_context",
+    {},
+    async () => {
+        try {
+            const response = await axios.get(`${API_URL}/context`);
+            const summary = response.data.items.map((item: any) =>
+                `- [${item.type}] ${item.name}: ${item.data.substring(0, 100)}... (ID: ${item.id})`
+            ).join("\n");
+
+            return {
+                content: [{ type: "text", text: `Strategic Context:\n${summary}` }],
+            };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// Tool 5: Create Context
+server.tool(
+    "create_context",
+    {
+        type: z.enum(["Strategy", "Persona", "PainPoint", "Offer"]),
+        name: z.string(),
+        data: z.string(),
+    },
+    async (args) => {
+        try {
+            const response = await axios.post(`${API_URL}/context`, args);
+            return {
+                content: [{ type: "text", text: `Success! Created context "${args.name}" (ID: ${response.data.id})` }],
+            };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// Tool 6: Update Site Settings
+server.tool(
+    "update_settings",
+    {
+        name: z.string().optional(),
+        domain: z.string().optional(),
+        primaryColor: z.string().optional(),
+    },
+    async ({ name, domain, primaryColor }) => {
+        try {
+            const payload: any = {};
+            if (name) payload.name = name;
+            if (domain) payload.domain = domain;
+            if (primaryColor) payload.theme = { primaryColor };
+
+            await axios.put(`${API_URL}/settings`, payload);
+            return {
+                content: [{ type: "text", text: `Settings updated successfully.` }],
+            };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// Tool 7: Read Page Content (For Auditing)
+server.tool(
+    "read_page",
+    {
+        id: z.string().describe("The UUID of the page (from list_content)"),
+    },
+    async ({ id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content/${id}`);
+            const item = response.data;
+
+            // Convert Blocks to Readable Text for Claude
+            let displayText = `Title: ${item.title}\nSlug: ${item.slug}\nStatus: ${item.status}\n\nContent:\n`;
+
+            if (item.blocks && Array.isArray(item.blocks)) {
+                displayText += item.blocks.map((b: any) => {
+                    if (b.type === 'heading') return `\n# ${b.content?.[0]?.text || ''}\n`;
+                    if (b.type === 'paragraph') return `${b.content?.[0]?.text || ''}\n`;
+                    return `[Block: ${b.type}]`;
+                }).join("");
+            }
+
+            return {
+                content: [{ type: "text", text: displayText }],
+            };
+        } catch (error: any) {
+            return {
+                content: [{ type: "text", text: `Error reading page: ${error.message}` }],
+                isError: true,
+            };
+        }
+    }
+);
 
 // Start the server via Stdio (Standard Input/Output)
 async function main() {

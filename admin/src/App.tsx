@@ -5,7 +5,8 @@ import LoginPage from "@/pages/Login";
 import StrategyBoard from "@/pages/StrategyBoard";
 import ContentList from "@/pages/ContentList";
 import ContentEditor from "@/pages/ContentEditor";
-import AdminLayout from "@/components/layout/AdminLayout"; // <--- Import
+import SettingsPage from "@/pages/Settings";
+import AdminLayout from "@/components/layout/AdminLayout";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -46,7 +47,7 @@ export default function App() {
                     <Route path="/" element={<ContentList />} />
                     <Route path="/content/:id" element={<ContentEditor />} />
                     <Route path="/strategy" element={<StrategyBoard />} />
-                    {/* Add Settings later */}
+                    <Route path="/settings" element={<SettingsPage />} />
                 </Route>
 
             </Routes>

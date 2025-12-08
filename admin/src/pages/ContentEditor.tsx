@@ -18,6 +18,7 @@ export default function ContentEditor() {
     const [title, setTitle] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [slug, setSlug] = useState("");
 
     useEffect(() => {
         if (id) loadContent(id);
@@ -29,6 +30,7 @@ export default function ContentEditor() {
             setContent(data);
             setBlocks(data.blocks || []);
             setTitle(data.title);
+            setSlug(data.slug || "");
         } catch (err) {
             console.error(err);
             alert("Failed to load content");
@@ -45,12 +47,13 @@ export default function ContentEditor() {
                 method: "PUT",
                 body: JSON.stringify({
                     title: title,
+                    slug: slug,
                     status: content?.status,
                     blocks: blocks
                 })
             });
             // Refresh local state
-            const updated = { ...content, title } as ContentItem;
+            const updated = { ...content, title, slug } as ContentItem;
             setContent(updated);
         } catch (err: any) {
             alert("Failed to save: " + err.message);
@@ -101,6 +104,24 @@ export default function ContentEditor() {
                         className="text-3xl font-bold h-auto py-2 border-transparent hover:border-input focus:border-input transition-colors px-0"
                         placeholder="Untitled Page"
                     />
+                </div>
+
+                {/* SLUG field */}
+                <div className="space-y-2">
+                    <Label htmlFor="slug" className="text-muted-foreground">URL Slug</Label>
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">/</span>
+                        <Input
+                            id="slug"
+                            value={slug.replace(/^\//, '')} // Remove leading slash for display
+                            onChange={(e) => setSlug(e.target.value)}
+                            className="font-mono"
+                            placeholder="my-page-url"
+                        />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Changing this will set up a redirect from the old URL.
+                    </p>
                 </div>
 
                 {/* Editor Area */}

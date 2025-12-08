@@ -24,21 +24,11 @@ export type TenantConfig = {
 export type ContentItem = {
     title: string;
     blocks: any[];
+    redirect?: string;
 };
 
 // 1. Resolve Domain -> Tenant Config
 export async function getTenantConfig(domain: string): Promise<TenantConfig | null> {
-    // Mock for localhost development
-    if (domain.includes("localhost")) {
-        console.log(" [Router] Localhost detected, forcing DEMO tenant.");
-        return {
-            id: "DEMO", // <--- MUST MATCH BACKEND 'create.ts'
-            name: "Local Dev Site",
-            domain: "localhost",
-            theme: { primaryColor: "#000000", fontHeading: "Inter", fontBody: "Inter" }
-        };
-    }
-
     // Real Production Lookup
     if (!process.env.TABLE_NAME) {
         console.error(" [CRITICAL] TABLE_NAME env var is missing!");
@@ -55,14 +45,21 @@ export async function getTenantConfig(domain: string): Promise<TenantConfig | nu
         });
 
         const response = await docClient.send(command);
+        console.log("DYNAMO RAW RESPONSE:", JSON.stringify(response.Items, null, 2));
         if (!response.Items || response.Items.length === 0) return null;
 
         const item = response.Items[0];
+        // SAFETY CHECK: Ensure theme is an object
+        let theme = item.theme;
+        if (typeof theme === 'string') {
+            try { theme = JSON.parse(theme); } catch (e) { theme = {}; }
+        }
+
         return {
-            id: item.PK.replace("SYSTEM", "").replace("SITE#", ""),
+            id: item.PK.replace("SYSTEM", "").replace("SITE#", "").replace("TENANT#", ""),
             name: item.name || "Untitled Site",
             domain: item.Domain,
-            theme: item.theme || { primaryColor: "#000000" }
+            theme: theme || { primaryColor: "#000000" }
         };
     } catch (error) {
         console.error("DynamoDB Tenant Error:", error);
@@ -82,7 +79,7 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
         const routeRes = await docClient.send(new GetCommand({
             TableName: tableName,
             Key: {
-                PK: `SITE#${tenantId}`, // <--- ALIGNED WITH BACKEND
+                PK: `SITE#${tenantId}`,
                 SK: `ROUTE#${slug}`
             }
         }));
@@ -92,6 +89,16 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
             return null;
         }
 
+        // --- Handle Redirects ---
+        if (routeRes.Item.IsRedirect && routeRes.Item.RedirectTo) {
+            console.log(` [Content] Redirect found: ${slug} -> ${routeRes.Item.RedirectTo}`);
+            return {
+                title: "",
+                blocks: [],
+                redirect: routeRes.Item.RedirectTo // Return the destination
+            };
+        }
+
         const nodeId = routeRes.Item.TargetNode; // e.g. "NODE#123"
         console.log(` [Content] Found Node: ${nodeId}. Fetching Content...`);
 
@@ -99,7 +106,7 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
         const contentRes = await docClient.send(new GetCommand({
             TableName: tableName,
             Key: {
-                PK: `SITE#${tenantId}`, // <--- ALIGNED WITH BACKEND
+                PK: `SITE#${tenantId}`,
                 SK: `CONTENT#${nodeId.replace("NODE#", "")}#LATEST`
             }
         }));

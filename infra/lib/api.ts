@@ -102,7 +102,7 @@ export class AmodxApi extends Construct {
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         });
 
-        props.table.grantWriteData(updateContentFunction);
+        props.table.grantReadWriteData(updateContentFunction);
 
         // --- CONTEXT API (Strategy & Personas) ---
 
@@ -160,6 +160,39 @@ export class AmodxApi extends Construct {
             path: '/content/{id}',
             methods: [apigw.HttpMethod.PUT],
             integration: new integrations.HttpLambdaIntegration('UpdateContentIntegration', updateContentFunction),
+        });
+
+
+        // --- SETTINGS API ---
+        const getSettingsFunc = new nodejs.NodejsFunction(this, 'GetSettingsFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/tenant/settings.ts'),
+            handler: 'getHandler', // Note the export name
+            environment: { TABLE_NAME: props.table.tableName },
+            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        });
+
+        const updateSettingsFunc = new nodejs.NodejsFunction(this, 'UpdateSettingsFunc', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            entry: path.join(__dirname, '../../backend/src/tenant/settings.ts'),
+            handler: 'updateHandler', // Note the export name
+            environment: { TABLE_NAME: props.table.tableName },
+            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        });
+
+        props.table.grantReadData(getSettingsFunc);
+        props.table.grantReadWriteData(updateSettingsFunc);
+
+        this.httpApi.addRoutes({
+            path: '/settings',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetSettingsInt', getSettingsFunc),
+        });
+
+        this.httpApi.addRoutes({
+            path: '/settings',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateSettingsInt', updateSettingsFunc),
         });
 
         // 8. Output the URL

@@ -2,19 +2,15 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-    const url = request.nextUrl;
+    // Get the host (e.g. "localhost:3000" or "dental-pros.com")
     const hostname = request.headers.get('host') || '';
 
-    // Handle localhost for development
-    // If we are on localhost:3000, we pretend we are "client-a.com"
-    const currentHost = hostname.includes('localhost')
-        ? 'localhost.local' // or a specific test domain
-        : hostname;
+    // STRIP PORT: The DB stores "localhost", not "localhost:3000".
+    // We standardise this so the lookup works.
+    const cleanHost = hostname.split(':')[0];
 
-    // We add the hostname to the headers so the Server Components
-    // can read it easily without hacking around.
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-amodx-host', currentHost);
+    requestHeaders.set('x-amodx-host', cleanHost);
 
     return NextResponse.next({
         request: {
@@ -23,7 +19,6 @@ export function middleware(request: NextRequest) {
     });
 }
 
-// Only run on main routes, exclude static files/images
 export const config = {
     matcher: [
         '/((?!api|_next/static|_next/image|favicon.ico).*)',

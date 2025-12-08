@@ -126,9 +126,17 @@ export default function ContentList() {
                     <TableBody>
                         {items.map((item) => (
                             <TableRow key={item.id}>
-                                <TableCell className="font-medium flex items-center gap-2">
-                                    <FileText className="h-4 w-4 text-muted-foreground" />
-                                    {item.title}
+                                <TableCell className="font-medium">
+                                    <div className="flex flex-col">
+                                        <span className="flex items-center gap-2">
+                                          <FileText className="h-4 w-4 text-muted-foreground" />
+                                            {item.title}
+                                        </span>
+                                        {/* Show the Slug */}
+                                        <span className="text-xs text-muted-foreground ml-6 font-mono">
+                                            {item.slug || ". . . . . ."}
+                                        </span>
+                                    </div>
                                 </TableCell>
                                 <TableCell>{item.status}</TableCell>
                                 <TableCell>Page</TableCell>
