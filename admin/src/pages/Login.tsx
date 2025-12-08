@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { signIn, type SignInInput } from 'aws-amplify/auth'; // <--- NEW IMPORT
+import { signIn, confirmSignIn } from 'aws-amplify/auth'; // Import confirmSignIn
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,15 +14,21 @@ import {
 } from "@/components/ui/card"
 
 export default function LoginPage() {
-    const [isLoading, setIsLoading] = useState(false)
-    const [email, setEmail] = useState("")
-    const [password, setPassword] = useState("")
-    const [error, setError] = useState("")
+    const [isLoading, setIsLoading] = useState(false);
+    const [step, setStep] = useState<'LOGIN' | 'NEW_PASSWORD'>('LOGIN');
 
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault()
-        setIsLoading(true)
-        setError("")
+    // Form State
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [error, setError] = useState("");
+
+    const navigate = useNavigate();
+
+    async function handleLogin(e: React.FormEvent) {
+        e.preventDefault();
+        setIsLoading(true);
+        setError("");
 
         try {
             const { isSignedIn, nextStep } = await signIn({
@@ -30,17 +37,36 @@ export default function LoginPage() {
             });
 
             if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
-                // In a real app, you'd show a "New Password" input field here.
-                // For MVP, we alert the user.
-                alert("First login! You need to set a new password. We will implement this screen next.");
+                setStep('NEW_PASSWORD');
             } else if (isSignedIn) {
-                alert("Login Successful! Welcome to AMODX.");
+                navigate("/");
             }
         } catch (err: any) {
             console.error(err);
             setError(err.message || "Failed to login");
         } finally {
-            setIsLoading(false)
+            setIsLoading(false);
+        }
+    }
+
+    async function handleNewPassword(e: React.FormEvent) {
+        e.preventDefault();
+        setIsLoading(true);
+        setError("");
+
+        try {
+            const { isSignedIn } = await confirmSignIn({
+                challengeResponse: newPassword
+            });
+
+            if (isSignedIn) {
+                navigate("/");
+            }
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message || "Failed to set new password");
+        } finally {
+            setIsLoading(false);
         }
     }
 
@@ -48,47 +74,81 @@ export default function LoginPage() {
         <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-900 p-4">
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-4xl font-serif text-cyan-600 font-medium text-center">AMODX</CardTitle>
+                    <CardTitle className="text-4xl font-serif text-cyan-600 font-medium text-center">
+                        AMODX
+                    </CardTitle>
                     <CardDescription className="text-center">
-                        Enter your credentials to access the cockpit
+                        {step === 'LOGIN'
+                            ? "Enter your credentials to access the cockpit"
+                            : "Please set a new secure password"}
                     </CardDescription>
                 </CardHeader>
-                <form onSubmit={handleSubmit}>
-                    <CardContent className="space-y-4">
-                        {error && (
-                            <div className="p-3 text-sm text-white bg-red-500 rounded-md">
-                                {error}
+
+                {step === 'LOGIN' ? (
+                    <form onSubmit={handleLogin}>
+                        <CardContent className="space-y-4">
+                            {error && (
+                                <div className="p-3 text-sm text-white bg-red-500 rounded-md">
+                                    {error}
+                                </div>
+                            )}
+                            <div className="space-y-2">
+                                <Label htmlFor="email">Email</Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    placeholder="admin@agency.com"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
                             </div>
-                        )}
-                        <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
-                            <Input
-                                id="email"
-                                type="email"
-                                placeholder="admin@agency.com"
-                                required
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                required
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
-                    </CardContent>
-                    <CardFooter>
-                        <Button className="w-full" type="submit" disabled={isLoading}>
-                            {isLoading ? "Signing in..." : "Sign in"}
-                        </Button>
-                    </CardFooter>
-                </form>
+                            <div className="space-y-2">
+                                <Label htmlFor="password">Password</Label>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button className="w-full" type="submit" disabled={isLoading}>
+                                {isLoading ? "Signing in..." : "Sign in"}
+                            </Button>
+                        </CardFooter>
+                    </form>
+                ) : (
+                    <form onSubmit={handleNewPassword}>
+                        <CardContent className="space-y-4">
+                            {error && (
+                                <div className="p-3 text-sm text-white bg-red-500 rounded-md">
+                                    {error}
+                                </div>
+                            )}
+                            <div className="space-y-2">
+                                <Label htmlFor="new-password">New Password</Label>
+                                <Input
+                                    id="new-password"
+                                    type="password"
+                                    required
+                                    minLength={8}
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    placeholder="Must be at least 8 characters"
+                                />
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button className="w-full" type="submit" disabled={isLoading}>
+                                {isLoading ? "Setting Password..." : "Set Password & Login"}
+                            </Button>
+                        </CardFooter>
+                    </form>
+                )}
             </Card>
         </div>
-    )
+    );
 }

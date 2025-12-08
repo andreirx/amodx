@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import type { ContextItem, ContextType } from "@amodx/shared";
+import type { ContextItem } from "@amodx/shared";
 import { Button } from "@/components/ui/button";
 import { Plus, Target, User, Lightbulb, MessageSquare } from "lucide-react";
 import {
     Card,
     CardContent,
-    CardDescription,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";

@@ -11,7 +11,7 @@ import {
     Undo,
     Redo
 } from "lucide-react";
-import { Link as LinkIcon, Unlink } from "lucide-react"; // Rename import to avoid collision
+import { Link as LinkIcon } from "lucide-react"; // Rename import to avoid collision
 import { cn } from "@/lib/utils";
 
 interface ToolbarProps {
