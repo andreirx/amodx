@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-    // Get the host (e.g. "localhost:3000" or "dental-pros.com")
-    const hostname = request.headers.get('host') || '';
+    // Priority order:
+    // 1. x-forwarded-host (set by CloudFront Function - contains original viewer host)
+    // 2. host (fallback for local dev)
+    const forwardedHost = request.headers.get('x-forwarded-host');
+    const originalHost = request.headers.get('host') || '';
+
+    const hostname = forwardedHost || originalHost;
 
     // STRIP PORT: The DB stores "localhost", not "localhost:3000".
-    // We standardise this so the lookup works.
     const cleanHost = hostname.split(':')[0];
 
     const requestHeaders = new Headers(request.headers);

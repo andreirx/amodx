@@ -4,6 +4,7 @@ import { AmodxDatabase } from './database';
 import { AmodxAuth } from './auth';
 import { AmodxApi } from './api';
 import { AdminHosting } from './admin-hosting';
+import { RendererHosting } from './renderer-hosting';
 
 export class AmodxStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -16,7 +17,9 @@ export class AmodxStack extends cdk.Stack {
     const auth = new AmodxAuth(this, 'Auth');
 
     // Wire up the API
-    const api = new AmodxApi(this, 'Api', { table: db.table });
+    const api = new AmodxApi(this, 'Api', {
+      table: db.table
+    });
 
     // --- DEPLOY ADMIN ---
     new AdminHosting(this, 'AdminHosting', {
@@ -24,6 +27,11 @@ export class AmodxStack extends cdk.Stack {
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.userPoolClient.userPoolClientId,
       region: this.region,
+    });
+
+    // --- DEPLOY RENDERER ---
+    new RendererHosting(this, 'RendererHosting', {
+      table: db.table
     });
 
     // Outputs (We will need these later for the Frontend!)

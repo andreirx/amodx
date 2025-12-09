@@ -7,3 +7,8 @@ coverage
 test-report.xml
 .idea
 *.iml
+
+# Build artifacts
+.open-next/
+.next/
+out/

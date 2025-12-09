@@ -40,8 +40,12 @@ export async function getTenantConfig(domain: string): Promise<TenantConfig | nu
             TableName: process.env.TABLE_NAME,
             IndexName: "GSI_Domain",
             KeyConditionExpression: "#d = :d",
+            FilterExpression: "begins_with(SK, :tenant)",
             ExpressionAttributeNames: { "#d": "Domain" },
-            ExpressionAttributeValues: { ":d": domain },
+            ExpressionAttributeValues: {
+                ":d": domain,
+                ":tenant": "TENANT#"
+            },
         });
 
         const response = await docClient.send(command);
@@ -49,14 +53,18 @@ export async function getTenantConfig(domain: string): Promise<TenantConfig | nu
         if (!response.Items || response.Items.length === 0) return null;
 
         const item = response.Items[0];
+
         // SAFETY CHECK: Ensure theme is an object
         let theme = item.theme;
         if (typeof theme === 'string') {
             try { theme = JSON.parse(theme); } catch (e) { theme = {}; }
         }
 
+        // Extract tenant ID from the 'id' field, fallback to SK parsing
+        const tenantId = item.id || item.SK?.replace("TENANT#", "") || "";
+
         return {
-            id: item.PK.replace("SYSTEM", "").replace("SITE#", "").replace("TENANT#", ""),
+            id: tenantId,
             name: item.name || "Untitled Site",
             domain: item.Domain,
             theme: theme || { primaryColor: "#000000" }
