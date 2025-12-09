@@ -16,6 +16,10 @@ Agencies today trade time for pixel-pushing. AMODX allows them to sell reusable,
 *   **The Solution:** A "Newsroom" approach. While competitors (Wix, Webflow) act as the Printing Press (displaying content), AMODX acts as the **Newsroom**—managing strategy, research, drafting, and distribution automatically.
 *   **The Philosophy:** "Flushing the Gunk." We eliminate the manual labor of marketing operations and the technical debt of server maintenance.
 
+One deployment is for one agency.
+One agency manages multiple sites ("tenants").
+Wordpress feature parity out of the box (plus the SEO plugins, redirects, capturing emails, ...).
+
 ---
 
 ## 🏗 System Architecture (The Six Domains)

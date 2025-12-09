@@ -1,4 +1,4 @@
-# AMODX System Architecture Specification (v1.4)
+# AMODX System Architecture Specification (currently DEMO - one tenant and SSR renderer)
 
 **Project Name:** AMODX (Agency Management On Demand Extreme)
 **Vision:** A Serverless, AI-Native Operating System for Agencies. It replaces WordPress + Zapier with a unified platform where Strategy (Context) drives Execution (Content/Agents).
@@ -50,7 +50,7 @@
 ---
 
 ## 4. Module: `admin` (The Cockpit)
-**Status:** ✅ Live on AWS (S3/CloudFront).
+**Status:** one per tenant ✅ V1 Live on AWS (S3/CloudFront).
 **Purpose:** React 19 + Vite + Tailwind v4 + Shadcn.
 **Features:**
 *   **Responsive Layout:** Sidebar (Desktop) / Drawer (Mobile).
@@ -62,13 +62,47 @@
 ---
 
 ## 5. Module: `renderer` (The Face)
-**Status:** 🔄 Localhost Working (Live Deploy Pending).
+**Status:** one per tenant ✅ V1 Live on AWS (S3/CloudFront).
 **Purpose:** Next.js 15 (OpenNext) application for public sites.
 
 *   **Architecture:** React Server Components (RSC) fetching directly from DynamoDB.
 *   **Router:** Middleware identifies Tenant via Host Header.
 *   **Data Access:** `lib/dynamo.ts` resolves `Domain -> Tenant` and `Slug -> Route -> Content`.
 *   **Theming:** `ThemeInjector` writes CSS variables to `<style>` tag, overriding Tailwind defaults.
+
+**Problem:** Uses a lambda to render each page on the fly. Cold start is SLOW.
+Plan migrating to warm caching:
+
+Architecture: Next.js Incremental Static Regeneration (ISR) with On-Demand Revalidation.
+
+The Rules:
+
+1. Default State: All pages are cached at the CloudFront/Next.js layer.
+2. Cache Duration: 1 Year (effectively infinite).
+3. The Trigger: We use revalidateTag (a Next.js feature).
+
+Scenario A: You edit the "About" Page
+
+1. Action: You click "Save" in Admin.
+2. Backend: Updates DynamoDB.
+3. Backend: Sends signal to Renderer: POST /api/revalidate { tag: "tenant-123", path: "/about" }.
+4. Next.js: Marks /tenant-123/about as "Stale".
+5. Cost: 0 Lambda executions so far.
+6. First Visitor: Requests /about.
+   * Next.js serves the Stale (Old) version instantly (so user waits 0ms).
+   * In the background, Next.js spins up One Lambda to regenerate the HTML.
+7. Second Visitor: Gets the New version from cache.
+
+Scenario B: You change the Theme (Primary Color)
+1. Action: You update Settings in Admin.
+2. Backend: Updates DynamoDB.
+3. Backend: Sends signal: POST /api/revalidate { tag: "tenant-123-layout" }.
+4. Effect: All pages sharing the Root Layout for this tenant are marked Stale.
+5. Lambda Triggers:
+   * The Lambda runs once per page as they are visited.
+   * If you have 100 pages, and 100 people visit 100 different pages, the Lambda runs 100 times.
+   * Optimization: This is negligible cost. 100 executions is ~$0.0002.
+
 
 ---
 
