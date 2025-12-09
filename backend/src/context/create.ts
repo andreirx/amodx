@@ -7,7 +7,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);
-        const tenantId = "DEMO";
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
 
         // Validate
         const input = ContextItemSchema.omit({ id: true, tenantId: true }).parse(body);
@@ -16,7 +16,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         await db.send(new PutCommand({
             TableName: TABLE_NAME,
             Item: {
-                PK: `SITE#${tenantId}`,
+                PK: `TENANT#${tenantId}`,
                 SK: `CONTEXT#${id}`,
                 tenantId,
                 id,

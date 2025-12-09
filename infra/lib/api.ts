@@ -17,170 +17,157 @@ export class AmodxApi extends Construct {
     constructor(scope: Construct, id: string, props: AmodxApiProps) {
         super(scope, id);
 
-        // 1. Create the HTTP API (Faster/Cheaper than REST API)
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
             corsPreflight: {
-                allowOrigins: ['*'], // For development. TODO Lock down in prod.
+                allowOrigins: ['*'],
                 allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PUT, apigw.CorsHttpMethod.DELETE],
-                allowHeaders: ['Content-Type', 'Authorization'],
+                allowHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
             },
         });
 
-        // 2. Define the Lambda Function
-        const createContentFunction = new nodejs.NodejsFunction(this, 'CreateContentFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X, // Use latest LTS
-            entry: path.join(__dirname, '../../backend/src/content/create.ts'), // Point to source
+        // --- SHARED PROPS ---
+        const nodeProps = {
+            runtime: lambda.Runtime.NODEJS_22_X, // Bumped to 22
+            environment: { TABLE_NAME: props.table.tableName },
+            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        };
+
+        // =========================================================
+        // 1. CONTENT API
+        // =========================================================
+        const createContentFunc = new nodejs.NodejsFunction(this, 'CreateContentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/content/create.ts'),
             handler: 'handler',
-            environment: {
-                TABLE_NAME: props.table.tableName,
-            },
-            bundling: {
-                minify: true,
-                sourceMap: true,
-            },
         });
+        props.table.grantWriteData(createContentFunc);
 
-        // 3. Grant Permissions (Lambda needs to write to DB)
-        props.table.grantWriteData(createContentFunction);
+        const listContentFunc = new nodejs.NodejsFunction(this, 'ListContentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/content/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listContentFunc);
 
-        // 4. Add Route to API Gateway
+        const getContentFunc = new nodejs.NodejsFunction(this, 'GetContentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/content/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getContentFunc);
+
+        const updateContentFunc = new nodejs.NodejsFunction(this, 'UpdateContentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/content/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateContentFunc);
+
         this.httpApi.addRoutes({
             path: '/content',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('CreateContentIntegration', createContentFunction),
+            integration: new integrations.HttpLambdaIntegration('CreateContentInt', createContentFunc),
         });
-
-        // 5. Define the List Function
-        const listContentFunction = new nodejs.NodejsFunction(this, 'ListContentFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            entry: path.join(__dirname, '../../backend/src/content/list.ts'),
-            handler: 'handler',
-            environment: {
-                TABLE_NAME: props.table.tableName,
-            },
-            bundling: {
-                minify: true,
-                sourceMap: true,
-                externalModules: ['@aws-sdk/*'],
-            },
-        });
-
-        // 6. Grant Read Permissions
-        props.table.grantReadData(listContentFunction);
-
-        // 7. Add Route (GET /content)
         this.httpApi.addRoutes({
             path: '/content',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListContentIntegration', listContentFunction),
+            integration: new integrations.HttpLambdaIntegration('ListContentInt', listContentFunc),
         });
-
-
-        // --- NEW: Get Content Function ---
-        const getContentFunction = new nodejs.NodejsFunction(this, 'GetContentFunc', {
-            runtime: lambda.Runtime.NODEJS_22_X,
-            entry: path.join(__dirname, '../../backend/src/content/get.ts'),
-            handler: 'handler',
-            environment: { TABLE_NAME: props.table.tableName },
-            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
-        });
-
-        props.table.grantReadData(getContentFunction);
-
         this.httpApi.addRoutes({
             path: '/content/{id}',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('GetContentIntegration', getContentFunction),
+            integration: new integrations.HttpLambdaIntegration('GetContentInt', getContentFunc),
         });
-
-        // --- NEW: Update Content Function ---
-        const updateContentFunction = new nodejs.NodejsFunction(this, 'UpdateContentFunc', {
-            runtime: lambda.Runtime.NODEJS_22_X,
-            entry: path.join(__dirname, '../../backend/src/content/update.ts'),
-            handler: 'handler',
-            environment: { TABLE_NAME: props.table.tableName },
-            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
-        });
-
-        props.table.grantReadWriteData(updateContentFunction);
-
-        // --- CONTEXT API (Strategy & Personas) ---
-
-        // 8. Define Create Context Function
-        const createContextFunction = new nodejs.NodejsFunction(this, 'CreateContextFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            entry: path.join(__dirname, '../../backend/src/context/create.ts'),
-            handler: 'handler',
-            environment: {
-                TABLE_NAME: props.table.tableName,
-            },
-            bundling: {
-                minify: true,
-                sourceMap: true,
-                externalModules: ['@aws-sdk/*'],
-            },
-        });
-
-        // 9. Grant Permissions
-        props.table.grantWriteData(createContextFunction);
-
-        // 10. Add Route (POST /context)
-        this.httpApi.addRoutes({
-            path: '/context',
-            methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('CreateContextIntegration', createContextFunction),
-        });
-
-        // 11. Define List Context Function
-        const listContextFunction = new nodejs.NodejsFunction(this, 'ListContextFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            entry: path.join(__dirname, '../../backend/src/context/list.ts'),
-            handler: 'handler',
-            environment: {
-                TABLE_NAME: props.table.tableName,
-            },
-            bundling: {
-                minify: true,
-                sourceMap: true,
-                externalModules: ['@aws-sdk/*'],
-            },
-        });
-
-        // 12. Grant Permissions
-        props.table.grantReadData(listContextFunction);
-
-        // 13. Add Route (GET /context)
-        this.httpApi.addRoutes({
-            path: '/context',
-            methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListContextIntegration', listContextFunction),
-        });
-
         this.httpApi.addRoutes({
             path: '/content/{id}',
             methods: [apigw.HttpMethod.PUT],
-            integration: new integrations.HttpLambdaIntegration('UpdateContentIntegration', updateContentFunction),
+            integration: new integrations.HttpLambdaIntegration('UpdateContentInt', updateContentFunc),
         });
 
+        // =========================================================
+        // 2. CONTEXT API (Strategy)
+        // =========================================================
+        const createContextFunc = new nodejs.NodejsFunction(this, 'CreateContextFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/context/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createContextFunc);
 
-        // --- SETTINGS API ---
-        const getSettingsFunc = new nodejs.NodejsFunction(this, 'GetSettingsFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            entry: path.join(__dirname, '../../backend/src/tenant/settings.ts'),
-            handler: 'getHandler', // Note the export name
+        const listContextFunc = new nodejs.NodejsFunction(this, 'ListContextFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/context/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listContextFunc);
+
+        // MISSING: Update/Delete Context - Adding placeholders or actual implementations
+        // Note: You need to create these files in backend/src/context/
+        const updateContextFunc = new nodejs.NodejsFunction(this, 'UpdateContextFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/context/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateContextFunc);
+
+        const deleteContextFunc = new nodejs.NodejsFunction(this, 'DeleteContextFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/context/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(deleteContextFunc);
+
+        const getContextFunc = new nodejs.NodejsFunction(this, 'GetContextFunc', {
+            runtime: lambda.Runtime.NODEJS_22_X,
+            entry: path.join(__dirname, '../../backend/src/context/get.ts'),
+            handler: 'handler',
             environment: { TABLE_NAME: props.table.tableName },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         });
+        props.table.grantReadData(getContextFunc);
+
+
+        this.httpApi.addRoutes({
+            path: '/context',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateContextInt', createContextFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/context',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListContextInt', listContextFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/context/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateContextInt', updateContextFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/context/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteContextInt', deleteContextFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/context/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetContextInt', getContextFunc),
+        });
+
+        // =========================================================
+        // 3. SETTINGS & TENANTS API
+        // =========================================================
+        const getSettingsFunc = new nodejs.NodejsFunction(this, 'GetSettingsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/tenant/settings.ts'),
+            handler: 'getHandler',
+        });
+        props.table.grantReadData(getSettingsFunc);
 
         const updateSettingsFunc = new nodejs.NodejsFunction(this, 'UpdateSettingsFunc', {
-            runtime: lambda.Runtime.NODEJS_20_X,
+            ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/tenant/settings.ts'),
-            handler: 'updateHandler', // Note the export name
-            environment: { TABLE_NAME: props.table.tableName },
-            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+            handler: 'updateHandler',
         });
-
-        props.table.grantReadData(getSettingsFunc);
         props.table.grantReadWriteData(updateSettingsFunc);
 
         this.httpApi.addRoutes({
@@ -188,14 +175,38 @@ export class AmodxApi extends Construct {
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('GetSettingsInt', getSettingsFunc),
         });
-
         this.httpApi.addRoutes({
             path: '/settings',
             methods: [apigw.HttpMethod.PUT],
             integration: new integrations.HttpLambdaIntegration('UpdateSettingsInt', updateSettingsFunc),
         });
 
-        // 8. Output the URL
+        // Tenant Management (Create New Site, List Sites)
+        const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/tenant/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createTenantFunc);
+
+        const listTenantFunc = new nodejs.NodejsFunction(this, 'ListTenantFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/tenant/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listTenantFunc);
+
+        this.httpApi.addRoutes({
+            path: '/tenants',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateTenantInt', createTenantFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/tenants',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListTenantInt', listTenantFunc),
+        });
+
         new cdk.CfnOutput(this, 'ApiUrl', { value: this.httpApi.url || '' });
     }
 }

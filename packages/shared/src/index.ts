@@ -136,6 +136,33 @@ export type WorkItem = z.infer<typeof WorkItemSchema>;
 export const TenantStatus = z.enum(["LIVE", "SUSPENDED", "OFF"]);
 export const UserRole = z.enum(["GLOBAL_ADMIN", "CLIENT_ADMIN", "EDITOR"]);
 
+// Expanded Theme Config
+export const ThemeSchema = z.object({
+    mode: z.enum(["light", "dark"]).default("light"),
+
+    // Colors
+    primaryColor: z.string().default("#000000"),
+    secondaryColor: z.string().default("#ffffff"),
+    backgroundColor: z.string().default("#ffffff"),
+    surfaceColor: z.string().default("#f4f4f5"), // Cards/Sidebars
+
+    // Typography (We will load these from Google Fonts in the Renderer)
+    fontHeading: z.string().default("Inter"),
+    fontBody: z.string().default("Inter"),
+
+    // UI Roundness
+    radius: z.string().default("0.5rem"),
+});
+
+// Expanded Integrations
+export const IntegrationsSchema = z.object({
+    googleAnalyticsId: z.string().optional(), // G-XXXXXXXX
+    googleSearchConsoleId: z.string().optional(), // Verification Code
+    stripePublicKey: z.string().optional(),
+    mailerlite: z.boolean().default(false),
+    perplexity: z.boolean().default(false),
+});
+
 export const TenantConfigSchema = z.object({
     id: z.string(), // e.g., "client-bob"
     domain: z.string(), // e.g., "dental-pros.com"
@@ -153,19 +180,25 @@ export const TenantConfigSchema = z.object({
         bucketFolder: z.string().optional(),
     }).optional(),
 
-    // Visual Theme Config
-    theme: z.object({
-        mode: z.enum(["light", "dark"]).default("light"),
-        primaryColor: z.string().default("#000000"),
-        fontHeading: z.string().default("Inter"),
-        fontBody: z.string().default("Inter"),
+    theme: ThemeSchema.default({
+        mode: "light",
+        primaryColor: "#000000",
+        secondaryColor: "#ffffff",
+        backgroundColor: "#ffffff",
+        surfaceColor: "#f4f4f5",
+        fontHeading: "Inter",
+        fontBody: "Inter",
+        radius: "0.5rem"
+    }),
+    integrations: IntegrationsSchema.default({
+        googleAnalyticsId: "",
+        googleSearchConsoleId: "",
+        stripePublicKey: "",
+        mailerlite: false,
+        perplexity: false,
     }),
 
-    integrations: z.object({
-        stripe: z.boolean().default(false),
-        mailerlite: z.boolean().default(false),
-        perplexity: z.boolean().default(false),
-    }),
+    createdAt: z.string(),
 });
 
 export type TenantConfig = z.infer<typeof TenantConfigSchema>;

@@ -7,6 +7,7 @@ import ContentList from "@/pages/ContentList";
 import ContentEditor from "@/pages/ContentEditor";
 import SettingsPage from "@/pages/Settings";
 import AdminLayout from "@/components/layout/AdminLayout";
+import { TenantProvider } from "@/context/TenantContext";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -40,7 +41,10 @@ export default function App() {
                 <Route
                     element={
                         <ProtectedRoute>
-                            <AdminLayout />
+                            {/* Provider lives inside Auth protection */}
+                            <TenantProvider>
+                                <AdminLayout />
+                            </TenantProvider>
                         </ProtectedRoute>
                     }
                 >

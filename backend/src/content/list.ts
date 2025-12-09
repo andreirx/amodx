@@ -4,47 +4,44 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
-        // For MVP: Tenant is "DEMO". Later: event.requestContext.authorizer.jwt.claims.tenant_id
-        const tenantId = "DEMO";
+        // 1. Get Tenant ID from Header (Client Admin Panel sends this)
+        const tenantId = event.headers['x-tenant-id'];
+        if (!tenantId) return { statusCode: 400, body: "Missing x-tenant-id header" };
 
-        // We want to list "Pages".
-        // Since our Single Table stores everything, we rely on the GSI_Type
-        // PK = Type ("Page"), SK = CreatedAt (for sorting)
-        // Wait, our GSI definition in infra was:
-        // PartitionKey: Type, SortKey: CreatedAt
-        // BUT we need to filter by Tenant!
+        const type = event.queryStringParameters?.type || "Content"; // "Content" or "Redirect"
 
-        // Correction: We cannot query *Just* Type='Page' globally, that would show EVERY client's pages.
-        // We must Query by PK (Site) and Filter by Type, OR use a composite GSI.
+        if (type === "Redirect") {
+            // Query for Routes that are Redirects
+            // Strategy: Query PK=TENANT#..., SK begins_with ROUTE#
+            // Filter where IsRedirect = true
+            const result = await db.send(new QueryCommand({
+                TableName: TABLE_NAME,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": "ROUTE#"
+                }
+            }));
 
-        // OPTIMIZED QUERY STRATEGY:
-        // Query the Main Table.
-        // PK = SITE#DEMO
-        // SK begins_with "CONTENT#"
-        // This retrieves all content for this site. Efficient.
+            const redirects = result.Items?.filter(i => i.IsRedirect === true) || [];
+            return { statusCode: 200, body: JSON.stringify({ items: redirects }) };
+        }
 
+        // Default: List Content
         const result = await db.send(new QueryCommand({
             TableName: TABLE_NAME,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: {
-                ":pk": `SITE#${tenantId}`,
+                ":pk": `TENANT#${tenantId}`,
                 ":sk": "CONTENT#"
             }
         }));
 
-        // Filter for only the "LATEST" versions to avoid showing history duplicates
         const items = result.Items?.filter(item => item.SK.includes("#LATEST")) || [];
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ items }),
-        };
+        return { statusCode: 200, body: JSON.stringify({ items }) };
 
     } catch (error: any) {
         console.error(error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: error.message }),
-        };
+        return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };

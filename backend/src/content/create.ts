@@ -9,8 +9,11 @@ const toSlug = (str: string) => "/" + str.toLowerCase().trim().replace(/[^\w\s-]
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         if (!event.body) return { statusCode: 400, body: "Missing body" };
+        // 1. Resolve Tenant
+        // For MVP, if header is missing, default to DEMO (Backwards compat)
+        // In Prod, we will return 401 if missing.
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
         const body = JSON.parse(event.body);
-        const tenantId = "DEMO";
 
         // Validate Input
         const input = ContentItemSchema.omit({
@@ -33,7 +36,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                     Put: {
                         TableName: TABLE_NAME,
                         Item: {
-                            PK: `SITE#${tenantId}`,
+                            PK: `TENANT#${tenantId}`,
                             SK: `CONTENT#${nodeId}#LATEST`,
                             ...input,
                             id: contentId,
@@ -52,11 +55,11 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                     Put: {
                         TableName: TABLE_NAME,
                         Item: {
-                            PK: `SITE#${tenantId}`,
+                            PK: `TENANT#${tenantId}`,
                             SK: `ROUTE#${slug}`,
                             TargetNode: `NODE#${nodeId}`, // Points to the content
                             Type: "Route",
-                            Domain: "localhost", // For GSI Lookup
+                            Domain: "localhost", // This field is actually less important now that Middleware rewrites, but kept for GSI if needed
                             CreatedAt: now
                         },
                         // Fail if route already exists (prevent overwrite)
@@ -72,7 +75,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 message: "Page Created",
                 id: contentId,
                 nodeId: nodeId,
-                slug: slug
+                slug: slug,
+                tenantId // Return this for debugging
             }),
         };
 

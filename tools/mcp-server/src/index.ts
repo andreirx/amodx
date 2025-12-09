@@ -4,39 +4,244 @@ import { z } from "zod";
 import axios from "axios";
 import dotenv from "dotenv";
 
-// --- HELPER: Markdown-ish to Tiptap JSON ---
-// Claude gives us text. We wrap it in paragraph blocks.
+dotenv.config();
+
+// Helper: Markdown to Tiptap
 function textToBlocks(text: string) {
     const lines = text.split('\n').filter(line => line.trim() !== '');
     return lines.map(line => {
-        // Simple detection for Headings (Markdown style)
         if (line.startsWith('# ')) {
             return { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: line.replace('# ', '') }] };
         }
         if (line.startsWith('## ')) {
             return { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: line.replace('## ', '') }] };
         }
-        // Default to paragraph
         return { type: 'paragraph', content: [{ type: 'text', text: line }] };
     });
 }
 
-// Load environment variables from a local .env file (if running standalone)
-dotenv.config();
-
-// 1. Get Config from Environment
 const API_URL = process.env.AMODX_API_URL;
-
 if (!API_URL) {
     console.error("Error: AMODX_API_URL environment variable is missing.");
     process.exit(1);
 }
 
-// Create the server instance
 const server = new McpServer({
     name: "AMODX-Bridge",
-    version: "1.0.0",
+    version: "1.1.0",
 });
+
+// --- TENANT TOOLS ---
+
+server.tool(
+    "list_tenants",
+    {},
+    async () => {
+        try {
+            const response = await axios.get(`${API_URL}/tenants`);
+            const summary = response.data.items.map((t: any) =>
+                `- ${t.name} (ID: ${t.id}, Domain: ${t.domain})`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Available Sites:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "create_tenant",
+    {
+        name: z.string().describe("Name of the new website/client"),
+        domain: z.string().optional().describe("Custom domain (optional)"),
+    },
+    async ({ name, domain }) => {
+        try {
+            const response = await axios.post(`${API_URL}/tenants`, { name, domain });
+            return { content: [{ type: "text", text: `Success! Created site "${name}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// --- CONTENT TOOLS ---
+
+server.tool(
+    "list_content",
+    {
+        tenant_id: z.string().describe("The Site ID to list content for"),
+    },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content`, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            const summary = response.data.items.map((item: any) =>
+                `- [${item.status}] ${item.title} (Slug: ${item.slug}, ID: ${item.nodeId})`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Content for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "create_page",
+    {
+        tenant_id: z.string(),
+        title: z.string(),
+        status: z.enum(["Draft", "Published"]).default("Draft"),
+    },
+    async ({ tenant_id, title, status }) => {
+        try {
+            const response = await axios.post(`${API_URL}/content`, {
+                title,
+                status,
+                blocks: []
+            }, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            return { content: [{ type: "text", text: `Created page "${title}" (ID: ${response.data.nodeId})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "read_page",
+    {
+        tenant_id: z.string(),
+        id: z.string().describe("The UUID of the page/content node"),
+    },
+    async ({ tenant_id, id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content/${id}`, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            const item = response.data;
+            let displayText = `Title: ${item.title}\nSlug: ${item.slug}\n\n`;
+            if (item.blocks) {
+                displayText += JSON.stringify(item.blocks, null, 2);
+            }
+            return { content: [{ type: "text", text: displayText }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "update_page",
+    {
+        tenant_id: z.string(),
+        id: z.string(),
+        title: z.string().optional(),
+        content: z.string().describe("Markdown content to convert to blocks"),
+        status: z.enum(["Draft", "Published"]).optional(),
+    },
+    async ({ tenant_id, id, title, content, status }) => {
+        try {
+            const blocks = textToBlocks(content);
+            const payload: any = { blocks };
+            if (title) payload.title = title;
+            if (status) payload.status = status;
+
+            await axios.put(`${API_URL}/content/${id}`, payload, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            return { content: [{ type: "text", text: `Updated page ${id}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// --- CONTEXT TOOLS (Strategy) ---
+
+server.tool(
+    "list_context",
+    {
+        tenant_id: z.string(),
+    },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/context`, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            const summary = response.data.items.map((item: any) =>
+                `- [${item.type}] ${item.name}: ${item.data.substring(0, 50)}... (ID: ${item.id})`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Context for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "create_context",
+    {
+        tenant_id: z.string(),
+        type: z.enum(["Strategy", "Persona", "PainPoint", "Offer", "BrandVoice"]),
+        name: z.string(),
+        data: z.string(),
+    },
+    async (args) => {
+        try {
+            const response = await axios.post(`${API_URL}/context`, args, {
+                headers: { 'x-tenant-id': args.tenant_id }
+            });
+            return { content: [{ type: "text", text: `Created context "${args.name}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "read_context",
+    {
+        tenant_id: z.string(),
+        id: z.string().describe("The UUID of the context item"),
+    },
+    async ({ tenant_id, id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/context/${id}`, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            return { content: [{ type: "text", text: `Context Item:\n${JSON.stringify(response.data, null, 2)}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool(
+    "update_context",
+    {
+        tenant_id: z.string(),
+        id: z.string(),
+        name: z.string().optional(),
+        data: z.string().optional(),
+    },
+    async ({ tenant_id, id, name, data }) => {
+        try {
+            const payload: any = {};
+            if (name) payload.name = name;
+            if (data) payload.data = data;
+
+            await axios.put(`${API_URL}/context/${id}`, payload, {
+                headers: { 'x-tenant-id': tenant_id }
+            });
+            return { content: [{ type: "text", text: `Updated context ${id}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
 
 server.tool(
     "get_schema",
@@ -45,212 +250,16 @@ server.tool(
         return {
             content: [{
                 type: "text",
-                text: `
-CORE DATA MODEL:
-
-1. ContentItem (Pages/Posts):
-   - id (UUID), nodeId (Permanent), title, status (Draft/Published)
-   - blocks: JSON Array (Tiptap format)
-
-2. ContextItem (Strategy/Persona):
-   - id, type (Strategy|Persona|PainPoint), name, data (Text)
-
-3. WorkItem (Tasks):
-   - id, type (SocialPost|Research), status (Draft/Pending/Approved)
-        `
+                text: `AMODX Schema: 
+- Content: Page/Post/Folder
+- Context: Strategy/Persona/PainPoint
+- Tenant: Site Configuration
+Use 'list_tenants' first to find the ID to work with.`
             }],
         };
     }
 );
 
-// Tool 1: List Content
-server.tool(
-    "list_content",
-    {},
-    async () => {
-        try {
-            const response = await axios.get(`${API_URL}/content`);
-            // Format for Claude
-            const summary = response.data.items.map((item: any) =>
-                `- [${item.status}] ${item.title} (ID: ${item.nodeId})`
-            ).join("\n");
-
-            return {
-                content: [{ type: "text", text: `Current Content:\n${summary}` }],
-            };
-        } catch (error: any) {
-            return {
-                content: [{ type: "text", text: `Error: ${error.message}` }],
-                isError: true,
-            };
-        }
-    }
-);
-
-// Tool 2: Create Page
-server.tool(
-    "create_page",
-    {
-        title: z.string(),
-        status: z.enum(["Draft", "Published"]).default("Draft"),
-    },
-    async ({ title, status }) => {
-        try {
-            const response = await axios.post(`${API_URL}/content`, {
-                title,
-                status,
-                blocks: [] // Empty content for now
-            });
-
-            return {
-                content: [{ type: "text", text: `Success! Created page "${title}" (ID: ${response.data.nodeId})` }],
-            };
-        } catch (error: any) {
-            return {
-                content: [{ type: "text", text: `Error creating page: ${error.message}` }],
-                isError: true,
-            };
-        }
-    }
-);
-
-// Tool 3: Update Page Content
-server.tool(
-    "update_page",
-    {
-        id: z.string().describe("The UUID of the page/content to update"),
-        title: z.string().optional(),
-        content: z.string().describe("The content to write (Markdown style supported)"),
-        status: z.enum(["Draft", "Published"]).optional(),
-    },
-    async ({ id, title, content, status }) => {
-        try {
-            // 1. Convert text to Tiptap JSON blocks
-            const blocks = textToBlocks(content);
-
-            // 2. Call the API
-            // Note: We need to fetch the current title if not provided,
-            // but for MVP we might just require it or send partial updates if backend supports it.
-            // Our backend 'update.ts' supports partial updates!
-
-            const payload: any = { blocks };
-            if (title) payload.title = title;
-            if (status) payload.status = status;
-
-            await axios.put(`${API_URL}/content/${id}`, payload);
-
-            return {
-                content: [{ type: "text", text: `Success! Updated page ${id}.` }],
-            };
-        } catch (error: any) {
-            return {
-                content: [{ type: "text", text: `Error updating page: ${error.message}` }],
-                isError: true,
-            };
-        }
-    }
-);
-
-// Tool 4: List Strategy Context
-server.tool(
-    "list_context",
-    {},
-    async () => {
-        try {
-            const response = await axios.get(`${API_URL}/context`);
-            const summary = response.data.items.map((item: any) =>
-                `- [${item.type}] ${item.name}: ${item.data.substring(0, 100)}... (ID: ${item.id})`
-            ).join("\n");
-
-            return {
-                content: [{ type: "text", text: `Strategic Context:\n${summary}` }],
-            };
-        } catch (error: any) {
-            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
-        }
-    }
-);
-
-// Tool 5: Create Context
-server.tool(
-    "create_context",
-    {
-        type: z.enum(["Strategy", "Persona", "PainPoint", "Offer"]),
-        name: z.string(),
-        data: z.string(),
-    },
-    async (args) => {
-        try {
-            const response = await axios.post(`${API_URL}/context`, args);
-            return {
-                content: [{ type: "text", text: `Success! Created context "${args.name}" (ID: ${response.data.id})` }],
-            };
-        } catch (error: any) {
-            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
-        }
-    }
-);
-
-// Tool 6: Update Site Settings
-server.tool(
-    "update_settings",
-    {
-        name: z.string().optional(),
-        domain: z.string().optional(),
-        primaryColor: z.string().optional(),
-    },
-    async ({ name, domain, primaryColor }) => {
-        try {
-            const payload: any = {};
-            if (name) payload.name = name;
-            if (domain) payload.domain = domain;
-            if (primaryColor) payload.theme = { primaryColor };
-
-            await axios.put(`${API_URL}/settings`, payload);
-            return {
-                content: [{ type: "text", text: `Settings updated successfully.` }],
-            };
-        } catch (error: any) {
-            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
-        }
-    }
-);
-
-// Tool 7: Read Page Content (For Auditing)
-server.tool(
-    "read_page",
-    {
-        id: z.string().describe("The UUID of the page (from list_content)"),
-    },
-    async ({ id }) => {
-        try {
-            const response = await axios.get(`${API_URL}/content/${id}`);
-            const item = response.data;
-
-            // Convert Blocks to Readable Text for Claude
-            let displayText = `Title: ${item.title}\nSlug: ${item.slug}\nStatus: ${item.status}\n\nContent:\n`;
-
-            if (item.blocks && Array.isArray(item.blocks)) {
-                displayText += item.blocks.map((b: any) => {
-                    if (b.type === 'heading') return `\n# ${b.content?.[0]?.text || ''}\n`;
-                    if (b.type === 'paragraph') return `${b.content?.[0]?.text || ''}\n`;
-                    return `[Block: ${b.type}]`;
-                }).join("");
-            }
-
-            return {
-                content: [{ type: "text", text: displayText }],
-            };
-        } catch (error: any) {
-            return {
-                content: [{ type: "text", text: `Error reading page: ${error.message}` }],
-                isError: true,
-            };
-        }
-    }
-);
-
-// Start the server via Stdio (Standard Input/Output)
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);

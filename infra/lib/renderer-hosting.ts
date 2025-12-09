@@ -44,7 +44,7 @@ export class RendererHosting extends Construct {
 
         // 3. The Server Lambda
         const serverFunction = new lambda.Function(this, 'RendererServer', {
-            runtime: lambda.Runtime.NODEJS_20_X,
+            runtime: lambda.Runtime.NODEJS_22_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(openNextPath, 'server-functions/default')),
             architecture: lambda.Architecture.ARM_64,
