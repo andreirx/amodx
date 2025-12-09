@@ -4,12 +4,12 @@ import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
-        const tenantId = "DEMO";
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
         const result = await db.send(new QueryCommand({
             TableName: TABLE_NAME,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: {
-                ":pk": `SITE#${tenantId}`,
+                ":pk": `TENANT#${tenantId}`,
                 ":sk": "CONTEXT#"
             }
         }));

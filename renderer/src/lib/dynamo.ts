@@ -80,14 +80,14 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return null;
 
-    console.log(` [Content] Looking up Route: SITE#${tenantId} / ROUTE#${slug}`);
+    console.log(` [Content] Looking up Route: TENANT#${tenantId} / ROUTE#${slug}`);
 
     try {
         // Step A: Find the Route (Slug -> NodeID)
         const routeRes = await docClient.send(new GetCommand({
             TableName: tableName,
             Key: {
-                PK: `SITE#${tenantId}`,
+                PK: `TENANT#${tenantId}`,
                 SK: `ROUTE#${slug}`
             }
         }));
@@ -114,7 +114,7 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
         const contentRes = await docClient.send(new GetCommand({
             TableName: tableName,
             Key: {
-                PK: `SITE#${tenantId}`,
+                PK: `TENANT#${tenantId}`,
                 SK: `CONTENT#${nodeId.replace("NODE#", "")}#LATEST`
             }
         }));

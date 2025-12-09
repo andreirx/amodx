@@ -3,21 +3,22 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { TenantConfigSchema } from "@amodx/shared";
 
-const TENANT_ID = "DEMO"; // Hardcoded for now
-
-export const getHandler: APIGatewayProxyHandlerV2 = async () => {
+export const getHandler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
+        // Resolve ID from header or path, OR hardcode to DEMO for safety if missing
+        // For settings, usually we want the settings OF the current tenant.
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
             Key: {
                 PK: "SYSTEM",
-                SK: `TENANT#${TENANT_ID}`
+                SK: `TENANT#${tenantId}`
             }
         }));
 
         // Return default if not exists
         const config = result.Item || {
-            id: TENANT_ID,
+            id: tenantId,
             domain: "localhost",
             name: "My Agency Site",
             status: "LIVE",
@@ -33,13 +34,14 @@ export const getHandler: APIGatewayProxyHandlerV2 = async () => {
 
 export const updateHandler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);
 
         // 1. Fetch Current State Directly (Don't reuse getHandler to avoid response wrapping confusion)
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: { PK: "SYSTEM", SK: `TENANT#${TENANT_ID}` }
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
         }));
 
         const current = result.Item || {};
@@ -55,7 +57,7 @@ export const updateHandler: APIGatewayProxyHandlerV2 = async (event) => {
             TableName: TABLE_NAME,
             Item: {
                 PK: "SYSTEM",
-                SK: `TENANT#${TENANT_ID}`,
+                SK: `TENANT#${tenantId}`,
                 ...merged,
                 Domain: merged.domain // Ensure GSI key is set
             }

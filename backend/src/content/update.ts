@@ -8,7 +8,7 @@ const toSlug = (str: string) => "/" + str.toLowerCase().trim().replace(/[^\w\s-]
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
-        const tenantId = "DEMO";
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
         const nodeId = event.pathParameters?.id;
 
         if (!nodeId || !event.body) {
@@ -25,7 +25,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         // 1. Fetch Current Page (To see if slug changed)
         const currentRes = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `SITE#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` }
+            Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` }
         }));
         const current = currentRes.Item;
 
@@ -56,7 +56,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         Put: {
                             TableName: TABLE_NAME,
                             Item: {
-                                PK: `SITE#${tenantId}`,
+                                PK: `TENANT#${tenantId}`,
                                 SK: `ROUTE#${oldSlug}`,
                                 Type: "Route",
                                 IsRedirect: true,        // <--- Flag
@@ -71,7 +71,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         Put: {
                             TableName: TABLE_NAME,
                             Item: {
-                                PK: `SITE#${tenantId}`,
+                                PK: `TENANT#${tenantId}`,
                                 SK: `ROUTE#${newSlug}`,
                                 TargetNode: `NODE#${nodeId}`,
                                 Type: "Route",
@@ -85,7 +85,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         // 3. UPDATE CONTENT
                         Update: {
                             TableName: TABLE_NAME,
-                            Key: { PK: `SITE#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
+                            Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
                             UpdateExpression: "SET title = :t, blocks = :b, #s = :s, slug = :sl, updatedAt = :u",
                             ExpressionAttributeNames: { "#s": "status" },
                             ExpressionAttributeValues: {
@@ -103,7 +103,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             // Simple Update (No slug change)
             await db.send(new UpdateCommand({
                 TableName: TABLE_NAME,
-                Key: { PK: `SITE#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
+                Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
                 UpdateExpression: "SET title = :t, blocks = :b, #s = :s, updatedAt = :u",
                 ExpressionAttributeNames: { "#s": "status" },
                 ExpressionAttributeValues: {
