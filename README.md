@@ -31,36 +31,38 @@ This is the killer feature. Because AMODX runs on an open protocol (MCP), you ca
 
 ## 🚀 Getting Started
 
-**Prerequisites:** An AWS Account.
+### 1. Setup Your Environment
+If this is your first time using AWS tools, read the **[Installation Guide](INSTALL.md)** to configure your access keys.
 
-### 1. Deploy Your Infrastructure
+### 2. Deploy Your Infrastructure
 You don't need to be a cloud architect. Run one command to provision your entire agency backend (Database, API, Hosting).
 
 ```bash
-cd amodx/infra
+npm install
+cd infra
 npx cdk deploy
 ```
 
 *The terminal will output your **Admin URL**. Save this.*
 
-### 2. Access Your Command Center
+### 3. Access Your Command Center
 1.  Open the **Admin URL**.
 2.  Log in with the credentials created in AWS Cognito.
 3.  **Create your first Client Site** via the Sidebar or the AI Assistant.
 
-### 3. Connect Your AI (Claude)
+### 4. Connect Your AI (Claude)
 To enable the "Chat with your Business" feature:
 
 1.  Ensure you have [Claude Desktop](https://claude.ai/download) installed.
 2.  Run the setup script:
     ```bash
-    cd amodx/tools/mcp-server
+    cd tools/mcp-server
     npm run build
     npm run setup <YOUR_API_GATEWAY_URL>
     ```
 3.  Restart Claude. You will see the `amodx` tools enabled.
 
-### 4. Go Live
+### 5. Go Live
 To launch a client site:
 1.  Go to **Settings** in your Admin Panel.
 2.  Copy the **Production Domain** (CloudFront URL).
