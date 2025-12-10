@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { AmodxDatabase } from './database';
 import { AmodxAuth } from './auth';
@@ -10,15 +11,27 @@ export class AmodxStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // 1. Database
-    const db = new AmodxDatabase(this, 'Database');
+    // 1. Create Secret (Auto-generated if not exists)
+    // This creates a secret in AWS Secrets Manager with a generated password
+    const masterKeySecret = new secretsmanager.Secret(this, 'AmodxMasterKey', {
+      description: 'Master API Key for AMODX MCP Tools',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'apiKey',
+        excludePunctuation: true,
+        includeSpace: false,
+      },
+    });
 
-    // 2. Auth
+    const db = new AmodxDatabase(this, 'Database');
     const auth = new AmodxAuth(this, 'Auth');
 
-    // 3. API
+    // Pass Secret to API
     const api = new AmodxApi(this, 'Api', {
-      table: db.table
+      table: db.table,
+      userPoolId: auth.userPool.userPoolId,
+      userPoolClientId: auth.userPoolClient.userPoolClientId,
+      masterKeySecret: masterKeySecret,
     });
 
     // 4. Renderer (Must be created BEFORE Admin to get the URL)
@@ -43,5 +56,7 @@ export class AmodxStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: auth.userPoolClient.userPoolClientId });
     new cdk.CfnOutput(this, 'Region', { value: this.region });
     new cdk.CfnOutput(this, 'RendererUrl', { value: rendererUrl });
+    // Output the Secret Name (Safe) so our script can find it
+    new cdk.CfnOutput(this, 'MasterKeySecretName', { value: masterKeySecret.secretName });
   }
 }

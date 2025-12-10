@@ -6,9 +6,15 @@ import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'; // Import Secrets Manager
+// Import the Authorizer and the ResponseType Enum
+import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 
 interface AmodxApiProps {
     table: dynamodb.Table;
+    userPoolId: string;
+    userPoolClientId: string;
+    masterKeySecret: secretsmanager.ISecret;
 }
 
 export class AmodxApi extends Construct {
@@ -17,17 +23,43 @@ export class AmodxApi extends Construct {
     constructor(scope: Construct, id: string, props: AmodxApiProps) {
         super(scope, id);
 
+        // 1. Authorizer Lambda
+        const authorizerFunc = new nodejs.NodejsFunction(this, 'AuthorizerFunc', {
+            runtime: lambda.Runtime.NODEJS_22_X,
+            entry: path.join(__dirname, '../../backend/src/auth/authorizer.ts'),
+            handler: 'handler',
+            environment: {
+                USER_POOL_ID: props.userPoolId,
+                USER_POOL_CLIENT_ID: props.userPoolClientId,
+                MASTER_KEY_SECRET_NAME: props.masterKeySecret.secretName,
+            },
+            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        });
+
+        // Grant Lambda permission to read the secret
+        props.masterKeySecret.grantRead(authorizerFunc);
+
+        // 2. Define Authorizer
+        // FIXED: Used HttpLambdaResponseType
+        const authorizer = new HttpLambdaAuthorizer('AmodxAuthorizer', authorizerFunc, {
+            responseTypes: [HttpLambdaResponseType.SIMPLE],
+            resultsCacheTtl: cdk.Duration.minutes(0), // Set to 0 for debugging, 5 for prod
+            identitySource: ['$request.header.Authorization', '$request.header.x-api-key'],
+        });
+
+        // 3. HTTP API
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
+            defaultAuthorizer: authorizer,
             corsPreflight: {
-                allowOrigins: ['*'],
+                allowOrigins: ['*'], // Temporary wildcard until Custom Domains
                 allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PUT, apigw.CorsHttpMethod.DELETE],
-                allowHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+                allowHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-api-key'],
             },
         });
 
         // --- SHARED PROPS ---
         const nodeProps = {
-            runtime: lambda.Runtime.NODEJS_22_X, // Bumped to 22
+            runtime: lambda.Runtime.NODEJS_22_X,
             environment: { TABLE_NAME: props.table.tableName },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         };

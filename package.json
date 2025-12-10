@@ -18,6 +18,8 @@
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
+    "@aws-sdk/client-cloudformation": "^3.948.0",
+    "@aws-sdk/client-secrets-manager": "^3.948.0",
     "@types/node": "^24.10.1"
   }
 }

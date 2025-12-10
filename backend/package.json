@@ -10,9 +10,11 @@
   },
   "author": "andreirx",
   "dependencies": {
+    "@amodx/shared": "*",
     "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-secrets-manager": "^3.948.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
-    "@amodx/shared": "*"
+    "aws-jwt-verify": "^5.1.1"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",
