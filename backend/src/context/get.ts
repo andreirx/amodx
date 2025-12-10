@@ -1,8 +1,11 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { AuthorizerContext } from "../auth/context.js";
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+
+export const handler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'] || "DEMO";
         const id = event.pathParameters?.id;
@@ -11,10 +14,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: {
-                PK: `TENANT#${tenantId}`,
-                SK: `CONTEXT#${id}`
-            }
+            Key: { PK: `TENANT#${tenantId}`, SK: `CONTEXT#${id}` }
         }));
 
         if (!result.Item) return { statusCode: 404, body: "Context not found" };

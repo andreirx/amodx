@@ -1,21 +1,30 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import {
+    APIGatewayProxyHandlerV2WithLambdaAuthorizer
+} from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb"; // <--- Using Transactions
+import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { ContentItemSchema } from "@amodx/shared";
+import { AuthorizerContext } from "../auth/context.js"; // Import your context definition
 
-// Helper: Simple slug generator
+// Typed Handler
+type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+
 const toSlug = (str: string) => "/" + str.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+export const handler: AmodxHandler = async (event) => {
     try {
-        if (!event.body) return { statusCode: 400, body: "Missing body" };
-        // 1. Resolve Tenant
-        // For MVP, if header is missing, default to DEMO (Backwards compat)
-        // In Prod, we will return 401 if missing.
+        // 1. Get User Info from Authorizer
+        // This is guaranteed to exist because the Authorizer ran first
+        const auth = event.requestContext.authorizer.lambda;
+        const userId = auth.sub;
+        const authorName = auth.email || "Robot";
+
+        // 2. Resolve Tenant
         const tenantId = event.headers['x-tenant-id'] || "DEMO";
+
+        if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);
 
-        // Validate Input
         const input = ContentItemSchema.omit({
             id: true, createdAt: true, author: true, nodeId: true, version: true
         }).parse(body);
@@ -23,16 +32,11 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         const nodeId = crypto.randomUUID();
         const contentId = crypto.randomUUID();
         const now = new Date().toISOString();
-
-        // 1. Generate Slug
-        // In a real app, you might let the user define this or check for collisions.
         const slug = toSlug(input.title);
 
-        // 2. Atomic Transaction
         await db.send(new TransactWriteCommand({
             TransactItems: [
                 {
-                    // A. Create the Content Record
                     Put: {
                         TableName: TABLE_NAME,
                         Item: {
@@ -44,25 +48,23 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                             slug: slug,
                             version: 1,
                             createdAt: now,
-                            author: "Admin",
+                            author: userId,
+                            authorEmail: authorName,
                             Type: "Page",
                         }
                     }
                 },
                 {
-                    // B. Create the Route Record
-                    // This is what the Renderer looks up!
                     Put: {
                         TableName: TABLE_NAME,
                         Item: {
                             PK: `TENANT#${tenantId}`,
                             SK: `ROUTE#${slug}`,
-                            TargetNode: `NODE#${nodeId}`, // Points to the content
+                            TargetNode: `NODE#${nodeId}`,
                             Type: "Route",
-                            Domain: "localhost", // This field is actually less important now that Middleware rewrites, but kept for GSI if needed
+                            Domain: "localhost",
                             CreatedAt: now
                         },
-                        // Fail if route already exists (prevent overwrite)
                         ConditionExpression: "attribute_not_exists(SK)"
                     }
                 }
@@ -76,13 +78,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 id: contentId,
                 nodeId: nodeId,
                 slug: slug,
-                tenantId // Return this for debugging
+                tenantId
             }),
         };
 
     } catch (error: any) {
         console.error(error);
-        // Handle Route Collision
         if (error.name === "TransactionCanceledException") {
             return { statusCode: 409, body: JSON.stringify({ error: "Page with this title/slug already exists" }) };
         }

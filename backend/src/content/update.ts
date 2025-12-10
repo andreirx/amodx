@@ -1,14 +1,15 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { UpdateCommand, TransactWriteCommand, GetCommand, DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { UpdateCommand, TransactWriteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { ContentItemSchema } from "@amodx/shared";
+import { AuthorizerContext } from "../auth/context.js";
 
-// Helper for slug generation
-const toSlug = (str: string) => "/" + str.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+export const handler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const auth = event.requestContext.authorizer.lambda;
         const nodeId = event.pathParameters?.id;
 
         if (!nodeId || !event.body) {
@@ -16,13 +17,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         const body = JSON.parse(event.body);
-
-        // We allow passing 'slug' in the body now
         const input = ContentItemSchema.pick({
             title: true, blocks: true, status: true, slug: true
         }).partial().parse(body);
 
-        // 1. Fetch Current Page (To see if slug changed)
         const currentRes = await db.send(new GetCommand({
             TableName: TABLE_NAME,
             Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` }
@@ -32,42 +30,33 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         if (!current) return { statusCode: 404, body: "Content not found" };
 
         const oldSlug = current.slug;
-
-        // Only update slug if explicitly provided in input.
-        // Never auto-generate from title during an update.
         const rawNewSlug = input.slug ?? oldSlug;
         const newSlug = rawNewSlug.startsWith("/") ? rawNewSlug : "/" + rawNewSlug;
-
         const slugChanged = newSlug !== oldSlug;
 
-        // 2. Prepare Update Logic
         const timestamp = new Date().toISOString();
-
-        // If slug changed, we need a Transaction:
-        // - Delete Old Route
-        // - Create New Route
-        // - Update Content
+        const userId = auth.sub;
 
         if (slugChanged) {
             await db.send(new TransactWriteCommand({
                 TransactItems: [
                     {
-                        // 1. OLD ROUTE: Become a Redirect
+                        // 1. OLD ROUTE -> Redirect
                         Put: {
                             TableName: TABLE_NAME,
                             Item: {
                                 PK: `TENANT#${tenantId}`,
                                 SK: `ROUTE#${oldSlug}`,
                                 Type: "Route",
-                                IsRedirect: true,        // <--- Flag
-                                RedirectTo: newSlug,     // <--- Destination
-                                CreatedAt: timestamp
+                                IsRedirect: true,
+                                RedirectTo: newSlug,
+                                CreatedAt: timestamp,
+                                UpdatedBy: userId
                             }
-                            // We overwrite whatever was there
                         }
                     },
                     {
-                        // 2. NEW ROUTE: Point to Node
+                        // 2. NEW ROUTE
                         Put: {
                             TableName: TABLE_NAME,
                             Item: {
@@ -76,7 +65,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                                 TargetNode: `NODE#${nodeId}`,
                                 Type: "Route",
                                 Domain: "localhost",
-                                CreatedAt: timestamp
+                                CreatedAt: timestamp,
+                                CreatedBy: userId
                             },
                             ConditionExpression: "attribute_not_exists(SK)"
                         }
@@ -86,31 +76,32 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         Update: {
                             TableName: TABLE_NAME,
                             Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
-                            UpdateExpression: "SET title = :t, blocks = :b, #s = :s, slug = :sl, updatedAt = :u",
+                            UpdateExpression: "SET title = :t, blocks = :b, #s = :s, slug = :sl, updatedAt = :u, updatedBy = :ub",
                             ExpressionAttributeNames: { "#s": "status" },
                             ExpressionAttributeValues: {
                                 ":t": input.title || current.title,
                                 ":b": input.blocks || current.blocks,
                                 ":s": input.status || current.status,
                                 ":sl": newSlug,
-                                ":u": timestamp
+                                ":u": timestamp,
+                                ":ub": userId
                             }
                         }
                     }
                 ]
             }));
         } else {
-            // Simple Update (No slug change)
             await db.send(new UpdateCommand({
                 TableName: TABLE_NAME,
                 Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
-                UpdateExpression: "SET title = :t, blocks = :b, #s = :s, updatedAt = :u",
+                UpdateExpression: "SET title = :t, blocks = :b, #s = :s, updatedAt = :u, updatedBy = :ub",
                 ExpressionAttributeNames: { "#s": "status" },
                 ExpressionAttributeValues: {
                     ":t": input.title || current.title,
                     ":b": input.blocks || current.blocks,
                     ":s": input.status || current.status,
-                    ":u": timestamp
+                    ":u": timestamp,
+                    ":ub": userId
                 }
             }));
         }

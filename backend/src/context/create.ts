@@ -1,15 +1,22 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import {
+    APIGatewayProxyHandlerV2WithLambdaAuthorizer
+} from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ContextItemSchema } from "@amodx/shared";
+import { AuthorizerContext } from "../auth/context.js";
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+
+export const handler: AmodxHandler = async (event) => {
     try {
         if (!event.body) return { statusCode: 400, body: "Missing body" };
-        const body = JSON.parse(event.body);
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
 
-        // Validate
+        // Identity & Scope
+        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const auth = event.requestContext.authorizer.lambda;
+
+        const body = JSON.parse(event.body);
         const input = ContextItemSchema.omit({ id: true, tenantId: true }).parse(body);
         const id = crypto.randomUUID();
 
@@ -20,6 +27,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 SK: `CONTEXT#${id}`,
                 tenantId,
                 id,
+                createdBy: auth.sub,
+                createdAt: new Date().toISOString(),
                 ...input
             },
         }));
