@@ -1,4 +1,4 @@
-import { fetchAuthSession } from 'aws-amplify/auth';
+import { fetchAuthSession, signOut } from 'aws-amplify/auth';
 
 const getConfig = (key: string) => {
     // @ts-ignore
@@ -7,26 +7,42 @@ const getConfig = (key: string) => {
 
 export async function apiRequest(path: string, options: RequestInit = {}) {
     const API_URL = getConfig('VITE_API_URL');
-    if (!API_URL) throw new Error("VITE_API_URL missing");
+    if (!API_URL) {
+        throw new Error("Configuration Error: VITE_API_URL is missing.");
+    }
 
     const session = await fetchAuthSession();
     const token = session.tokens?.idToken?.toString();
-
-    // NEW: Get current tenant
     const currentTenantId = localStorage.getItem("AMODX_TENANT_ID");
 
     const headers = new Headers(options.headers);
     headers.set("Content-Type", "application/json");
+
+    // 1. Auth Token (Real)
     if (token) headers.set("Authorization", `Bearer ${token}`);
 
-    // NEW: Inject Header
-    if (currentTenantId) {
-        headers.set("x-tenant-id", currentTenantId);
-    }
+    // 2. Dummy API Key (To satisfy API Gateway identitySource check)
+    headers.set("x-api-key", "web-client");
 
-    const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+    // 3. Tenant Context
+    if (currentTenantId) headers.set("x-tenant-id", currentTenantId);
+
+    const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+    });
 
     if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+            console.warn(`[API] Auth Error ${response.status}. Redirecting to login.`);
+            localStorage.removeItem("AMODX_TENANT_ID");
+            try { await signOut(); } catch (e) { /* ignore */ }
+            if (window.location.pathname !== "/login") {
+                window.location.href = "/login";
+            }
+            throw new Error("Session expired. Please login again.");
+        }
+
         let errorMessage = response.statusText;
         try {
             const errorBody = await response.json();

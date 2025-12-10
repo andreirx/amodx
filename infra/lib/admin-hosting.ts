@@ -22,46 +22,52 @@ export class AdminHosting extends Construct {
     constructor(scope: Construct, id: string, props: AdminHostingProps) {
         super(scope, id);
 
-        // 1. Build the React App (Local Build)
-        // We must pass the ENV variables during build time so Vite bakes them in.
+        // 1. Build Admin
         console.log("Building Admin Panel...");
         try {
             execSync('npm run build', {
                 cwd: path.join(__dirname, '../../admin'),
                 stdio: 'inherit',
-                env: {
-                    ...process.env,
-                }
+                env: { ...process.env }
             });
         } catch (e) {
             console.error("Failed to build Admin Panel");
             throw e;
         }
 
-        // 2. Create S3 Bucket (Private, encrypted)
+        // 2. S3 Bucket
         const bucket = new s3.Bucket(this, 'AdminBucket', {
             accessControl: s3.BucketAccessControl.PRIVATE,
-            removalPolicy: cdk.RemovalPolicy.DESTROY, // For dev
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
             autoDeleteObjects: true,
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // Secure
         });
 
-        // 3. Create CloudFront Distribution
+        // 3. CloudFront Distribution
+        // Explicitly use S3BucketOrigin with OAC logic implied or manual if needed
         this.distribution = new cloudfront.Distribution(this, 'AdminDistribution', {
             defaultBehavior: {
-                origin: new origins.S3Origin(bucket),
+                origin: origins.S3BucketOrigin.withOriginAccessControl(bucket), // <--- USE THIS STATIC METHOD
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+                cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
             },
             defaultRootObject: 'index.html',
             errorResponses: [
                 {
                     httpStatus: 404,
                     responseHttpStatus: 200,
-                    responsePagePath: '/index.html', // Required for SPA Routing (React Router)
+                    responsePagePath: '/index.html',
+                },
+                {
+                    httpStatus: 403, // Catch 403s from S3 and serve app (for client-side routing)
+                    responseHttpStatus: 200,
+                    responsePagePath: '/index.html',
                 },
             ],
         });
 
-        // 4. Upload Assets (WITHOUT config.json)
+        // 4. Upload Assets
         new s3deploy.BucketDeployment(this, 'DeployAdmin', {
             sources: [s3deploy.Source.asset(path.join(__dirname, '../../admin/dist'))],
             destinationBucket: bucket,
@@ -70,7 +76,7 @@ export class AdminHosting extends Construct {
             prune: false,
         });
 
-        // 5. Generate Runtime Config (The Fix)
+        // 5. Config
         new ConfigGenerator(this, 'RuntimeConfig', {
             bucket: bucket,
             config: {

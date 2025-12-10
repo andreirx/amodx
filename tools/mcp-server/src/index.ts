@@ -6,7 +6,26 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Helper: Markdown to Tiptap
+const API_KEY = process.env.AMODX_API_KEY;
+const API_URL = process.env.AMODX_API_URL;
+
+if (!API_URL || !API_KEY) {
+    console.error("Error: AMODX_API_URL or AMODX_API_KEY is missing in .env");
+    process.exit(1);
+}
+
+// HELPER: Standard Headers
+// Injects the API Key (Real Auth) and a Dummy Bearer Token (To satisfy API Gateway checks)
+const getHeaders = (tenantId?: string) => {
+    const h: any = {
+        'x-api-key': API_KEY,
+        'Authorization': 'Bearer robot',
+    };
+    if (tenantId) h['x-tenant-id'] = tenantId;
+    return h;
+};
+
+// Helper: Markdown to Tiptap Blocks
 function textToBlocks(text: string) {
     const lines = text.split('\n').filter(line => line.trim() !== '');
     return lines.map(line => {
@@ -20,15 +39,9 @@ function textToBlocks(text: string) {
     });
 }
 
-const API_URL = process.env.AMODX_API_URL;
-if (!API_URL) {
-    console.error("Error: AMODX_API_URL environment variable is missing.");
-    process.exit(1);
-}
-
 const server = new McpServer({
     name: "AMODX-Bridge",
-    version: "1.1.0",
+    version: "1.2.0",
 });
 
 // --- TENANT TOOLS ---
@@ -38,7 +51,9 @@ server.tool(
     {},
     async () => {
         try {
-            const response = await axios.get(`${API_URL}/tenants`);
+            const response = await axios.get(`${API_URL}/tenants`, {
+                headers: getHeaders() // No tenant ID needed here
+            });
             const summary = response.data.items.map((t: any) =>
                 `- ${t.name} (ID: ${t.id}, Domain: ${t.domain})`
             ).join("\n");
@@ -57,7 +72,9 @@ server.tool(
     },
     async ({ name, domain }) => {
         try {
-            const response = await axios.post(`${API_URL}/tenants`, { name, domain });
+            const response = await axios.post(`${API_URL}/tenants`, { name, domain }, {
+                headers: getHeaders()
+            });
             return { content: [{ type: "text", text: `Success! Created site "${name}" (ID: ${response.data.id})` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
@@ -75,7 +92,7 @@ server.tool(
     async ({ tenant_id }) => {
         try {
             const response = await axios.get(`${API_URL}/content`, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED: Passing tenant_id
             });
             const summary = response.data.items.map((item: any) =>
                 `- [${item.status}] ${item.title} (Slug: ${item.slug}, ID: ${item.nodeId})`
@@ -101,7 +118,7 @@ server.tool(
                 status,
                 blocks: []
             }, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED
             });
             return { content: [{ type: "text", text: `Created page "${title}" (ID: ${response.data.nodeId})` }] };
         } catch (error: any) {
@@ -119,7 +136,7 @@ server.tool(
     async ({ tenant_id, id }) => {
         try {
             const response = await axios.get(`${API_URL}/content/${id}`, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED
             });
             const item = response.data;
             let displayText = `Title: ${item.title}\nSlug: ${item.slug}\n\n`;
@@ -150,7 +167,7 @@ server.tool(
             if (status) payload.status = status;
 
             await axios.put(`${API_URL}/content/${id}`, payload, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED
             });
             return { content: [{ type: "text", text: `Updated page ${id}` }] };
         } catch (error: any) {
@@ -169,7 +186,7 @@ server.tool(
     async ({ tenant_id }) => {
         try {
             const response = await axios.get(`${API_URL}/context`, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED
             });
             const summary = response.data.items.map((item: any) =>
                 `- [${item.type}] ${item.name}: ${item.data.substring(0, 50)}... (ID: ${item.id})`
@@ -192,7 +209,7 @@ server.tool(
     async (args) => {
         try {
             const response = await axios.post(`${API_URL}/context`, args, {
-                headers: { 'x-tenant-id': args.tenant_id }
+                headers: getHeaders(args.tenant_id) // <--- FIXED (Using args.tenant_id)
             });
             return { content: [{ type: "text", text: `Created context "${args.name}" (ID: ${response.data.id})` }] };
         } catch (error: any) {
@@ -210,7 +227,7 @@ server.tool(
     async ({ tenant_id, id }) => {
         try {
             const response = await axios.get(`${API_URL}/context/${id}`, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED
             });
             return { content: [{ type: "text", text: `Context Item:\n${JSON.stringify(response.data, null, 2)}` }] };
         } catch (error: any) {
@@ -234,7 +251,7 @@ server.tool(
             if (data) payload.data = data;
 
             await axios.put(`${API_URL}/context/${id}`, payload, {
-                headers: { 'x-tenant-id': tenant_id }
+                headers: getHeaders(tenant_id) // <--- FIXED
             });
             return { content: [{ type: "text", text: `Updated context ${id}` }] };
         } catch (error: any) {
