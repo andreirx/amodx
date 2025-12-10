@@ -1,33 +1,22 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { useTenant } from "@/context/TenantContext";
 import type { ContextItem } from "@amodx/shared";
 import { Button } from "@/components/ui/button";
-import { Plus, Target, User, Lightbulb, MessageSquare } from "lucide-react";
+import { Plus, Target, User, Lightbulb, MessageSquare, Loader2, AlertCircle } from "lucide-react";
 import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
+    Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 
-// Map types to Icons for visual flair
 const TYPE_ICONS: Record<string, any> = {
     Strategy: Target,
     Persona: User,
@@ -37,8 +26,10 @@ const TYPE_ICONS: Record<string, any> = {
 };
 
 export default function StrategyBoard() {
+    const { currentTenant } = useTenant();
     const [items, setItems] = useState<ContextItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null); // <--- NEW
     const [isOpen, setIsOpen] = useState(false);
 
     // Form State
@@ -47,21 +38,27 @@ export default function StrategyBoard() {
     const [newItemData, setNewItemData] = useState("");
 
     useEffect(() => {
-        loadContext();
-    }, []);
+        if (currentTenant) {
+            loadContext();
+        }
+    }, [currentTenant?.id]);
 
     async function loadContext() {
+        setLoading(true);
+        setError(null);
         try {
             const res = await apiRequest("/context");
             setItems(res.items);
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
+            setError(e.message || "Failed to load context");
         } finally {
             setLoading(false);
         }
     }
 
     async function handleCreate() {
+        setError(null);
         try {
             await apiRequest("/context", {
                 method: "POST",
@@ -74,23 +71,35 @@ export default function StrategyBoard() {
             setIsOpen(false);
             setNewItemName("");
             setNewItemData("");
-            loadContext(); // Refresh
+            loadContext();
         } catch (e: any) {
-            alert(e.message);
+            setError(e.message || "Failed to create context");
         }
     }
 
-    // Group items by type for the board layout
+    // --- GUARD CLAUSE ---
+    if (!currentTenant) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-muted-foreground">
+                <div className="p-4 bg-muted/20 rounded-full mb-4">
+                    <Target className="h-8 w-8 opacity-50" />
+                </div>
+                <h2 className="text-xl font-semibold mb-2">No Site Selected</h2>
+                <p>Select a site to manage strategy and personas.</p>
+            </div>
+        );
+    }
+
+    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+
+    // Group items by type
     const grouped = items.reduce((acc, item) => {
         if (!acc[item.type]) acc[item.type] = [];
         acc[item.type].push(item);
         return acc;
     }, {} as Record<string, ContextItem[]>);
 
-    // Define the columns we want to show
     const columns = ["Strategy", "Persona", "PainPoint", "Offer"];
-
-    if (loading) return <div className="p-8">Loading Strategy...</div>;
 
     return (
         <div className="p-8 space-y-6">
@@ -108,6 +117,14 @@ export default function StrategyBoard() {
                         <DialogHeader>
                             <DialogTitle>Add New Context</DialogTitle>
                         </DialogHeader>
+
+                        {/* ERROR INSIDE DIALOG */}
+                        {error && (
+                            <div className="bg-red-50 text-red-600 px-3 py-2 rounded text-sm mb-2">
+                                {error}
+                            </div>
+                        )}
+
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
                                 <Label>Type</Label>
@@ -144,7 +161,14 @@ export default function StrategyBoard() {
                 </Dialog>
             </div>
 
-            {/* The Board Grid */}
+            {/* ERROR BANNER MAIN PAGE */}
+            {error && !isOpen && (
+                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 shrink-0" />
+                    <p className="text-sm font-medium">{error}</p>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {columns.map((col) => {
                     const Icon = TYPE_ICONS[col] || Target;

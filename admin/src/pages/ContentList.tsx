@@ -11,7 +11,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, Loader2 } from "lucide-react";
+import {Plus, FileText, Loader2, LayoutDashboard} from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -22,7 +22,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { useTenant } from "@/context/TenantContext";
+
 export default function ContentList() {
+    const { currentTenant } = useTenant();
     const [items, setItems] = useState<ContentItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -35,8 +38,11 @@ export default function ContentList() {
     const navigate = useNavigate();
 
     useEffect(() => {
-        loadContent();
-    }, []);
+        if (currentTenant) {
+            setLoading(true);
+            loadContent();
+        }
+    }, [currentTenant?.id]); // Only trigger if tenant exists
 
     async function loadContent() {
         try {
@@ -71,7 +77,20 @@ export default function ContentList() {
         }
     }
 
-    if (loading && items.length === 0) return <div className="p-8">Loading...</div>;
+    // 1. Guard Clause
+    if (!currentTenant) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-muted-foreground">
+                <div className="p-4 bg-muted/20 rounded-full mb-4">
+                    <LayoutDashboard className="h-8 w-8 opacity-50" />
+                </div>
+                <h2 className="text-xl font-semibold mb-2">No Site Selected</h2>
+                <p>Please select or create a site in the sidebar to manage content.</p>
+            </div>
+        );
+    }
+
+    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
         <div className="p-8 max-w-5xl mx-auto space-y-6">

@@ -1,12 +1,12 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import React from 'react';
 
-// Simple UI components to avoid dependency hell in plugins
-const Input = ({ label, value, onChange, placeholder }: any) => (
-    <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</label>
+// Minimalist Input with Label
+const Field = ({ label, value, onChange, placeholder }: any) => (
+    <div className="flex-1 min-w-[200px]">
+        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">{label}</label>
         <input
-            className="flex h-9 w-full rounded-md border border-gray-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-950"
+            className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-colors"
             value={value}
             onChange={e => onChange(e.target.value)}
             placeholder={placeholder}
@@ -14,42 +14,51 @@ const Input = ({ label, value, onChange, placeholder }: any) => (
     </div>
 );
 
-const Select = ({ label, value, onChange, options }: any) => (
-    <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</label>
-        <select
-            className="flex h-9 w-full rounded-md border border-gray-200 bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-950"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-        >
-            {options.map((o: string) => <option key={o} value={o}>{o}</option>)}
-        </select>
+// Style Selector
+const StyleSelect = ({ value, onChange }: any) => (
+    <div>
+        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Style</label>
+        <div className="flex gap-1 bg-gray-50 p-1 rounded border border-gray-200">
+            {['center', 'split', 'minimal'].map((s) => (
+                <button
+                    key={s}
+                    onClick={() => onChange(s)}
+                    className={`px-3 py-1 text-xs rounded font-medium transition-all ${
+                        value === s
+                            ? 'bg-white shadow-sm text-blue-600'
+                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    }`}
+                >
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+            ))}
+        </div>
     </div>
 );
 
 export function HeroEditor(props: any) {
     const { headline, subheadline, ctaText, ctaLink, style } = props.node.attrs;
-    const update = (field: string, value: string) => props.updateAttributes({ [field]: value });
+    const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     return (
-        <NodeViewWrapper className="my-8 border border-gray-200 rounded-lg p-6 bg-white shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-mono font-bold">HERO BLOCK</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Headline" value={headline} onChange={(v: string) => update('headline', v)} />
-                <Select
-                    label="Style"
-                    value={style}
-                    onChange={(v: string) => update('style', v)}
-                    options={["center", "split", "minimal"]}
-                />
-                <div className="md:col-span-2">
-                    <Input label="Subheadline" value={subheadline} onChange={(v: string) => update('subheadline', v)} />
+        <NodeViewWrapper className="my-6">
+            <div className="border-l-4 border-blue-500 bg-white shadow-sm rounded-r-lg p-5">
+                <div className="flex justify-between items-start mb-4">
+                    <span className="text-xs font-bold text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">Hero Section</span>
+                    <StyleSelect value={style} onChange={(v: string) => update('style', v)} />
                 </div>
-                <Input label="Button Text" value={ctaText} onChange={(v: string) => update('ctaText', v)} />
-                <Input label="Button Link" value={ctaLink} onChange={(v: string) => update('ctaLink', v)} />
+
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-4">
+                        <Field label="Headline" value={headline} onChange={(v: string) => update('headline', v)} placeholder="Big Headline" />
+                        <Field label="Subheadline" value={subheadline} onChange={(v: string) => update('subheadline', v)} placeholder="Description text" />
+                    </div>
+
+                    <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <Field label="Button Text" value={ctaText} onChange={(v: string) => update('ctaText', v)} placeholder="e.g. Get Started" />
+                        <Field label="Button Link" value={ctaLink} onChange={(v: string) => update('ctaLink', v)} placeholder="/contact" />
+                    </div>
+                </div>
             </div>
         </NodeViewWrapper>
     );

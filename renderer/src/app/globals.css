@@ -1,17 +1,50 @@
 @import "tailwindcss";
 
+/*
+   CRITICAL: Tell Tailwind to scan the plugins folder for classes.
+   Relative path from: renderer/src/app/globals.css -> packages/plugins
+*/
+@source "../../../packages/plugins";
+
 @theme {
+    /* 1. Map Colors from ThemeInjector */
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
     --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    /* 2. Map Fonts */
     --font-heading: var(--font-heading);
     --font-body: var(--font-body);
+
+    /* 3. Map Radius */
+    --radius: var(--radius);
 }
 
-/* We don't need defaults here anymore if the Injector works,
-   but keeping them as a fallback is safe. */
+/* 4. Apply Defaults */
 @layer base {
-    :root {
-        --primary: #000000;
-        --font-heading: system-ui, sans-serif;
-        --font-body: system-ui, sans-serif;
+    body {
+        @apply bg-background text-foreground font-body antialiased;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        @apply font-heading;
     }
 }

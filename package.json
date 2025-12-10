@@ -11,7 +11,8 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npm run build --workspaces"
   },
   "dependencies": {
     "autoprefixer": "^10.4.22",

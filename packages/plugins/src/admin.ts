@@ -1,6 +1,11 @@
 import { HeroPlugin } from './hero';
+import { PricingPlugin } from './pricing';
+import { PluginDefinition } from './types';
 
-const REGISTRY = [HeroPlugin];
+const REGISTRY: PluginDefinition[] = [
+    HeroPlugin,
+    PricingPlugin,
+];
 
 export const getExtensions = () => REGISTRY.map(p => p.editorExtension);
 

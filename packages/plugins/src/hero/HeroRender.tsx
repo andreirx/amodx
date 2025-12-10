@@ -8,12 +8,12 @@ function cn(...inputs: ClassValue[]) {
 
 export function HeroRender({ attrs }: { attrs: any }) {
     const {
-        headline = "Welcome",
-        subheadline,
-        ctaText,
+        headline = "Welcome to AMODX",
+        subheadline = "The operating system for modern agencies.",
+        ctaText = "Get Started",
         ctaLink = "#",
         style = "center"
-    } = attrs;
+    } = attrs || {};
 
     if (style === "minimal") {
         return (
