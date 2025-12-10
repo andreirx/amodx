@@ -48,6 +48,10 @@ export const updateHandler: APIGatewayProxyHandlerV2 = async (event) => {
 
         // 2. Merge (Cleanly)
         const merged = { ...current, ...body };
+        // SYNC GSI: Ensure 'Domain' matches 'domain'
+        if (merged.domain) {
+            merged.Domain = merged.domain;
+        }
 
         // 3. Cleanup (Remove any previous error pollution)
         delete merged.error;

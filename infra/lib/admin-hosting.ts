@@ -13,6 +13,7 @@ interface AdminHostingProps {
     userPoolId: string;
     userPoolClientId: string;
     region: string;
+    rendererUrl: string;
 }
 
 export class AdminHosting extends Construct {
@@ -77,6 +78,7 @@ export class AdminHosting extends Construct {
                 VITE_USER_POOL_ID: props.userPoolId,
                 VITE_USER_POOL_CLIENT_ID: props.userPoolClientId,
                 VITE_REGION: props.region,
+                VITE_RENDERER_URL: props.rendererUrl,
             }
         });
 

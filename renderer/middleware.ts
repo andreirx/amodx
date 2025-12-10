@@ -2,24 +2,40 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-    // 1. Determine Hostname
-    const forwardedHost = request.headers.get('x-forwarded-host');
-    const host = forwardedHost || request.headers.get('host') || '';
-    const cleanHost = host.split(':')[0]; // Remove port
-
-    // 2. Skip Internal Paths
     const path = request.nextUrl.pathname;
+
+    // 1. Skip Internals
     if (
         path.startsWith('/_next') ||
         path.startsWith('/api') ||
         path.startsWith('/static') ||
-        cleanHost === 'localhost' // In dev, we might treat localhost as "DEMO" or handled by page logic
+        path.includes('.')
     ) {
         return NextResponse.next();
     }
 
-    // 3. Rewrite: /about -> /client-domain.com/about
-    // This allows [siteId] to capture "client-domain.com"
+    // 2. PREVIEW MODE
+    // matches /_site/client-id/page
+    if (path.startsWith('/_site/')) {
+        const parts = path.split('/');
+        // parts[0] = "", parts[1] = "_site", parts[2] = "client-id"
+        if (parts.length >= 3) {
+            const tenantId = parts[2];
+            const restOfPath = "/" + parts.slice(3).join("/"); // "/page" or "/"
+
+            // Rewrite to: /client-id/page
+            // This maps to [siteId]=client-id
+            const url = request.nextUrl.clone();
+            url.pathname = `/${tenantId}${restOfPath}`;
+            return NextResponse.rewrite(url);
+        }
+    }
+
+    // 3. PRODUCTION MODE
+    const forwardedHost = request.headers.get('x-forwarded-host');
+    const host = forwardedHost || request.headers.get('host') || '';
+    const cleanHost = host.split(':')[0];
+
     const url = request.nextUrl.clone();
     url.pathname = `/${cleanHost}${path}`;
 
