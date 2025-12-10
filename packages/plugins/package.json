@@ -1,0 +1,50 @@
+{
+  "name": "@amodx/plugins",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "default": "./dist/render.js"
+    },
+    "./admin": {
+      "types": "./dist/admin.d.ts",
+      "default": "./dist/admin.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "render": ["dist/render.d.ts"],
+      "admin": ["dist/admin.d.ts"]
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@amodx/shared": "*",
+    "zod": "^3.24.0",
+    "lucide-react": "^0.470.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@tiptap/react": "^2.11.0",
+    "@tiptap/core": "^2.11.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/react": "^19.0.0",
+    "@tiptap/react": "^2.11.0",
+    "@tiptap/core": "^2.11.0"
+  }
+}

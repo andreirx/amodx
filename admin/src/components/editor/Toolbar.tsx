@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Link as LinkIcon } from "lucide-react"; // Rename import to avoid collision
 import { cn } from "@/lib/utils";
+import { getPluginList } from "@amodx/plugins/admin";
 
 interface ToolbarProps {
     editor: Editor | null;
@@ -20,6 +21,8 @@ interface ToolbarProps {
 
 export function Toolbar({ editor }: ToolbarProps) {
     if (!editor) return null;
+
+    const plugins = getPluginList(); // Get list of available blocks
 
     return (
         <div className="border-b bg-transparent p-2 flex flex-wrap gap-1 sticky top-0 z-10">
@@ -136,6 +139,22 @@ export function Toolbar({ editor }: ToolbarProps) {
             >
                 <Redo className="h-4 w-4"/>
             </Button>
+
+            <div className="w-px h-6 bg-border mx-1 self-center"/>
+
+            {/* DYNAMIC PLUGIN BUTTONS */}
+            {plugins.map((plugin) => (
+                <Button
+                    key={plugin.key}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => editor.chain().focus().insertContent({ type: plugin.key }).run()}
+                    className="text-purple-500 hover:text-purple-600 hover:bg-purple-50"
+                    title={`Insert ${plugin.label}`}
+                >
+                    <plugin.icon className="h-4 w-4" />
+                </Button>
+            ))}
         </div>
     );
 }

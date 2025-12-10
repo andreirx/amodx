@@ -1,103 +1,148 @@
 # AMODX Developer Guide
 
-This document is for engineers contributing to the AMODX core platform. If you are an Agency Owner looking to deploy, see [README.md](README.md).
+This document is for engineers contributing to the AMODX core platform.
 
 ---
 
 ## 🏗 System Architecture
 
-AMODX is a monorepo managed by NPM Workspaces. It runs on a fully serverless AWS stack using **Incremental Static Regeneration (ISR)** for high performance.
+AMODX is a monorepo managed by NPM Workspaces.
 
 ### The Six Domains
 
 1.  **The Brain (Context Engine):** `backend/src/context`
-    *   Stores strategy and personas in DynamoDB.
-    *   Single-Table Design (`PK: TENANT#...`).
 2.  **The Cockpit (Admin UI):** `admin/`
-    *   React 19 + Vite + Tailwind v4.
-    *   Hosted on S3 + CloudFront.
 3.  **The Face (ISR Renderer):** `renderer/`
-    *   Next.js 16 (OpenNext) running on Lambda.
-    *   **Architecture:** Middleware rewrites incoming domains (`client.com`) to internal paths (`/client-id/home`).
-    *   **Warm Cache:** Content updates trigger `revalidatePath`, ensuring instant updates without full rebuilds.
 4.  **The Bridge (MCP Server):** `tools/mcp-server/`
-    *   Implements the Model Context Protocol.
-    *   Connects local LLMs to the remote AWS API.
-5.  **The Agents:** `backend/src/agents`
-    *   Background workers for research and posting.
-6.  **The Gatekeeper:** `infra/lib/auth.ts`
-    *   Cognito User Pools + Lambda Authorizers.
+5.  **The Gatekeeper:** `infra/lib/auth.ts`
+6.  **The Plugins (Block Registry):** `packages/plugins`
+    *   **Architecture:** Uses **Split Entry Points** to separate CMS logic from Frontend logic.
+    *   `src/admin.ts`: Exports Tiptap extensions (Node Views) for the Admin.
+    *   `src/render.ts`: Exports React Components for the Renderer.
+    *   *Why?* This prevents the Next.js server build from crashing on Tiptap dependencies.
 
 ---
 
-## 🛠 Tech Stack
-
-*   **IaC:** AWS CDK (TypeScript)
-*   **Backend:** AWS Lambda (Node.js 22), DynamoDB, API Gateway (HTTP).
-*   **Frontend:** React, Shadcn/UI, Lucide Icons.
-*   **Rendering:** Next.js App Router, OpenNext.
-*   **AI:** Vercel AI SDK, MCP.
-
----
-
-## 💻 Local Development (Hybrid Mode)
-
-We do not run the full stack locally (too complex to mock AWS services). Instead, we run the **Frontends locally** connected to the **Real AWS Backend**.
+## 💻 Local Development
 
 ### 1. Initial Setup
 ```bash
 npm install
+npm run build -w @amodx/shared
+npm run build -w @amodx/plugins
 ```
 
 ### 2. Deploy Backend
-You must deploy the infrastructure at least once to get the API endpoints.
 ```bash
 cd infra
 npx cdk deploy
-```
-*Keep the output values handy.*
-
-### 3. Setup Admin Panel (Local)
-Create `admin/.env.local` with your deployment outputs:
-```env
-VITE_API_URL=https://xyz.execute-api.us-east-1.amazonaws.com/
-VITE_USER_POOL_ID=us-east-1_xxxxxx
-VITE_USER_POOL_CLIENT_ID=xxxxxx
-VITE_RENDERER_URL=https://d111.cloudfront.net
+npm run post-deploy # Generates local .env files from AWS outputs
 ```
 
-Run the dev server:
+### 3. Run Admin & Renderer
+Open two terminals:
 ```bash
-cd admin
-npm run dev
+# Terminal 1: Admin Panel
+cd admin && npm run dev
+
+# Terminal 2: Public Renderer
+cd renderer && npm run dev
 ```
 
-### 4. Setup Renderer (Local Preview)
-The local renderer needs access to DynamoDB. Ensure your local AWS CLI is configured (`aws configure`) with credentials that have access to the table.
-
-Run the dev server:
+### 4. Watch Mode (For Plugin Dev)
+If you are building a new block, run the watch script so changes compile immediately:
 ```bash
-cd renderer
-npm run dev
-```
-*Note: Local renderer simulates multi-tenancy via URL rewrites. Access sites via `http://localhost:3000/_site/[TENANT_ID]/home`.*
-
-### 5. Developing the MCP Server
-To test AI tools locally without redeploying:
-```bash
-cd tools/mcp-server
-# Build and link to Claude manually or use the setup script
-npm run build
-npm run setup <YOUR_API_URL>
+# Terminal 3
+cd packages/plugins
+npm run watch
 ```
 
 ---
 
-## 🧪 Testing
+## 🧩 How to Create a New Plugin (UI Block)
 
-*   **Unit Tests:** `npm test` (Jest)
-*   **Integration:** Manually verify flows via the Admin Panel.
-*   **Cache Verification:** Check `x-nextjs-cache` headers on the Renderer.
+To add a new block (e.g., "Pricing Table", "FAQ", "Testimonial"), follow this strict workflow:
+
+### Step 1: Create the Folder
+Create `packages/plugins/src/pricing/`.
+
+### Step 2: Define Schema
+Create `schema.ts`. This defines the data saved to DynamoDB.
+```typescript
+import { z } from 'zod';
+export const PricingSchema = z.object({
+    title: z.string().default("Our Plans"),
+    price: z.string().default("$99"),
+});
+```
+
+### Step 3: Create Renderer Component
+Create `PricingRender.tsx`. **CRITICAL:** Do not import `@tiptap/*` here.
+```tsx
+export function PricingRender({ attrs }: { attrs: any }) {
+    return <div className="p-4 border">{attrs.title} - {attrs.price}</div>;
+}
+```
+
+### Step 4: Create Editor Component
+Create `PricingEditor.tsx`. This uses Tiptap Node Views.
+```tsx
+import { NodeViewWrapper } from '@tiptap/react';
+export function PricingEditor(props: any) {
+    const { title } = props.node.attrs;
+    return (
+        <NodeViewWrapper>
+            <input value={title} onChange={e => props.updateAttributes({ title: e.target.value })} />
+        </NodeViewWrapper>
+    );
+}
+```
+
+### Step 5: Bundle the Plugin
+Create `index.ts` in the folder to wrap the Tiptap extension.
+```typescript
+import { Node, mergeAttributes } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { CreditCard } from 'lucide-react'; // Icon
+import { PricingEditor } from './PricingEditor';
+import { PricingRender } from './PricingRender';
+import { PricingSchema } from './schema';
+
+export const PricingPlugin = {
+    key: 'pricing',
+    label: 'Pricing Table',
+    icon: CreditCard,
+    schema: PricingSchema,
+    editorExtension: Node.create({
+        name: 'pricing',
+        group: 'block',
+        atom: true,
+        addAttributes() { return { title: { default: 'Plans' }, price: { default: '0' } } },
+        parseHTML() { return [{ tag: 'app-pricing' }]; },
+        renderHTML({ HTMLAttributes }) { return ['app-pricing', mergeAttributes(HTMLAttributes)]; },
+        addNodeView() { return ReactNodeViewRenderer(PricingEditor); },
+    }),
+    renderComponent: PricingRender
+};
+```
+
+### Step 6: Register (The Split)
+You must register the plugin in **two** places:
+
+1.  **For Admin:** Edit `packages/plugins/src/admin.ts`:
+    ```typescript
+    import { PricingPlugin } from './pricing';
+    const REGISTRY = [HeroPlugin, PricingPlugin]; // Add here
+    ```
+
+2.  **For Renderer:** Edit `packages/plugins/src/render.ts`:
+    ```typescript
+    import { PricingRender } from './pricing/PricingRender';
+    export const RENDER_MAP = {
+        'hero': HeroRender,
+        'pricing': PricingRender // Add here
+    };
+    ```
 
 ---
 
@@ -105,12 +150,17 @@ npm run setup <YOUR_API_URL>
 
 ```text
 amodx/
-├── admin/                 # SPA Dashboard
-├── backend/               # Lambda Functions (Business Logic)
-├── infra/                 # AWS CDK (Deployment Logic)
+├── admin/                 # React SPA (Vite)
+├── backend/               # Lambda Functions
+├── infra/                 # AWS CDK
 ├── packages/
-│   └── shared/            # Zod Schemas & Types (The Contract)
-├── renderer/              # Next.js Public Site Engine
+│   ├── shared/            # Types
+│   └── plugins/           # UI Block Registry
+│       ├── src/
+│       │   ├── admin.ts   # Entry point for Admin
+│       │   ├── render.ts  # Entry point for Renderer
+│       │   └── hero/      # Example Block
+├── renderer/              # Next.js App Router (ISR)
 └── tools/
     └── mcp-server/        # AI Interface
 ```

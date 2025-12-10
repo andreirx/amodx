@@ -2,7 +2,9 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
+import { getExtensions } from "@amodx/plugins/admin";
 import { Toolbar } from "./Toolbar";
+import type {AnyExtension} from "@tiptap/core";
 
 interface BlockEditorProps {
     initialContent?: any;
@@ -22,6 +24,7 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
                 autolink: true,
                 defaultProtocol: 'https',
             }),
+            ...(getExtensions() as AnyExtension[]),
         ],
         // If we have blocks, wrap them in a 'doc' object for Tiptap
         content: initialContent && initialContent.length > 0
