@@ -16,28 +16,32 @@ export class AmodxStack extends cdk.Stack {
     // 2. Auth
     const auth = new AmodxAuth(this, 'Auth');
 
-    // Wire up the API
+    // 3. API
     const api = new AmodxApi(this, 'Api', {
       table: db.table
     });
 
-    // --- DEPLOY ADMIN ---
+    // 4. Renderer (Must be created BEFORE Admin to get the URL)
+    const renderer = new RendererHosting(this, 'RendererHosting', {
+      table: db.table
+    });
+
+    const rendererUrl = `https://${renderer.distribution.distributionDomainName}`;
+
+    // 5. Admin Panel (Receives Renderer URL)
     new AdminHosting(this, 'AdminHosting', {
       apiUrl: api.httpApi.url!,
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.userPoolClient.userPoolClientId,
       region: this.region,
+      rendererUrl: rendererUrl,
     });
 
-    // --- DEPLOY RENDERER ---
-    new RendererHosting(this, 'RendererHosting', {
-      table: db.table
-    });
-
-    // Outputs (We will need these later for the Frontend!)
+    // Outputs
     new cdk.CfnOutput(this, 'TableName', { value: db.table.tableName });
     new cdk.CfnOutput(this, 'UserPoolId', { value: auth.userPool.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: auth.userPoolClient.userPoolClientId });
     new cdk.CfnOutput(this, 'Region', { value: this.region });
+    new cdk.CfnOutput(this, 'RendererUrl', { value: rendererUrl });
   }
 }
