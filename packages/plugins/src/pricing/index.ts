@@ -8,27 +8,61 @@ import { PluginDefinition } from '../types';
 
 export const PricingPlugin: PluginDefinition = {
     key: 'pricing',
-    label: 'Pricing Table',
+    label: 'Pricing Section',
     icon: CreditCard,
     schema: PricingSchema,
+
     editorExtension: Node.create({
         name: 'pricing',
         group: 'block',
-        atom: true,
+        atom: true, // It's a single unit
+
         addAttributes() {
             return {
-                title: { default: 'Founder Plan' },
-                price: { default: '$299' },
-                interval: { default: 'lifetime' },
-                features: { default: 'Source Code\nCommunity Access' },
-                buttonText: { default: 'Buy Now' },
-                buttonLink: { default: '#' },
-                recommended: { default: false },
+                headline: {
+                    default: 'Simple Pricing',
+                },
+                subheadline: {
+                    default: 'Choose the plan that fits your needs.',
+                },
+                // CRITICAL FIX: Define the 'plans' attribute with a default array
+                plans: {
+                    default: [
+                        {
+                            id: '1',
+                            title: 'Starter',
+                            price: '$29',
+                            interval: 'mo',
+                            features: 'Feature 1\nFeature 2',
+                            buttonText: 'Start',
+                            highlight: false
+                        },
+                        {
+                            id: '2',
+                            title: 'Pro',
+                            price: '$99',
+                            interval: 'mo',
+                            features: 'Everything in Starter\nPriority Support',
+                            buttonText: 'Go Pro',
+                            highlight: true
+                        }
+                    ],
+                },
             };
         },
-        parseHTML() { return [{ tag: 'app-pricing' }]; },
-        renderHTML({ HTMLAttributes }) { return ['app-pricing', mergeAttributes(HTMLAttributes)]; },
-        addNodeView() { return ReactNodeViewRenderer(PricingEditor); },
+
+        parseHTML() {
+            return [{ tag: 'app-pricing' }];
+        },
+
+        renderHTML({ HTMLAttributes }) {
+            return ['app-pricing', mergeAttributes(HTMLAttributes)];
+        },
+
+        addNodeView() {
+            return ReactNodeViewRenderer(PricingEditor);
+        },
     }),
+
     renderComponent: PricingRender
 };

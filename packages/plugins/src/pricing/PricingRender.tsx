@@ -2,39 +2,53 @@ import React from "react";
 import { Check } from "lucide-react";
 
 export function PricingRender({ attrs }: { attrs: any }) {
-    const features = (attrs.features || "").split("\n").filter((f: string) => f.trim() !== "");
+    const plans = attrs.plans || [];
 
     return (
-        <div className={`p-8 rounded-2xl border ${attrs.recommended ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border bg-card'} max-w-sm mx-auto`}>
-            <div className="mb-6">
-                <h3 className="text-lg font-semibold text-muted-foreground">{attrs.title}</h3>
-                <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-4xl font-bold tracking-tight">{attrs.price}</span>
-                    <span className="text-sm font-medium text-muted-foreground">/{attrs.interval}</span>
-                </div>
+        <section className="py-20">
+            <div className="text-center mb-12">
+                <h2 className="text-4xl font-bold tracking-tight mb-4">{attrs.headline}</h2>
+                <p className="text-xl text-muted-foreground">{attrs.subheadline}</p>
             </div>
 
-            <div className="space-y-4 mb-8">
-                {features.map((feat: string, i: number) => (
-                    <div key={i} className="flex items-start gap-3">
-                        <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-                            <Check className="h-3 w-3 text-primary" />
+            {/* GRID LAYOUT - This makes them side-by-side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto px-4">
+                {plans.map((plan: any) => (
+                    <div
+                        key={plan.id}
+                        className={`flex flex-col p-8 rounded-2xl border ${
+                            plan.highlight
+                                ? 'border-primary bg-primary/5 ring-1 ring-primary shadow-lg scale-105'
+                                : 'border-border bg-card'
+                        }`}
+                    >
+                        <div className="mb-6">
+                            <h3 className="text-lg font-semibold">{plan.title}</h3>
+                            <div className="mt-2 flex items-baseline gap-1">
+                                <span className="text-4xl font-bold">{plan.price}</span>
+                                <span className="text-sm text-muted-foreground">/{plan.interval}</span>
+                            </div>
                         </div>
-                        <span className="text-sm text-foreground">{feat}</span>
+
+                        <div className="space-y-4 mb-8 flex-1">
+                            {plan.features.split('\n').map((feat: string, i: number) => (
+                                <div key={i} className="flex items-start gap-3">
+                                    <Check className="h-5 w-5 text-primary shrink-0" />
+                                    <span className="text-sm">{feat}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button className={`w-full py-3 rounded-lg text-sm font-semibold transition-all ${
+                            plan.highlight
+                                ? 'bg-primary text-primary-foreground hover:opacity-90'
+                                : 'bg-secondary text-secondary-foreground hover:opacity-80'
+                        }`}>
+                            {plan.buttonText}
+                        </button>
                     </div>
                 ))}
             </div>
-
-            <a
-                href={attrs.buttonLink}
-                className={`w-full inline-flex items-center justify-center rounded-lg py-3 text-sm font-semibold transition-all ${
-                    attrs.recommended
-                        ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-md'
-                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }`}
-            >
-                {attrs.buttonText}
-            </a>
-        </div>
+        </section>
     );
 }
