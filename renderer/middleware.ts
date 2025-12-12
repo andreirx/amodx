@@ -4,12 +4,17 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
 
+    // Define SEO files that must be handled dynamically
+    const isSeoFile = path.endsWith('/robots.txt') ||
+        path.endsWith('/sitemap.xml') ||
+        path.endsWith('/llms.txt');
+
     // 1. Skip Internals
     if (
         path.startsWith('/_next') ||
         path.startsWith('/api') ||
         path.startsWith('/static') ||
-        path.includes('.')
+        (path.includes('.') && !isSeoFile)
     ) {
         return NextResponse.next();
     }

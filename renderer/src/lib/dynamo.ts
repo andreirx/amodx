@@ -1,30 +1,21 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { TenantConfig, ContentItem } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
 
-export type TenantConfig = {
-    id: string;
-    name: string;
-    domain: string;
-    theme: any;
-};
+// Define a Result Type that handles both cases
+export type ContentResult = ContentItem | { redirect: string };
 
-export type ContentItem = {
-    title: string;
-    blocks: any[];
-    redirect?: string;
-};
-
-// 1. Resolve Tenant (Domain OR ID)
+// 1. Resolve Tenant
 export async function getTenantConfig(identifier: string): Promise<TenantConfig | null> {
     if (!process.env.TABLE_NAME) return null;
 
     try {
         console.log(`[Dynamo] Lookup config for: ${identifier}`);
 
-        // STRATEGY 1: Try GSI (Domain Lookup) - Most common for public access
+        // Try GSI (Domain)
         const gsiRes = await docClient.send(new QueryCommand({
             TableName: process.env.TABLE_NAME,
             IndexName: "GSI_Domain",
@@ -38,23 +29,17 @@ export async function getTenantConfig(identifier: string): Promise<TenantConfig 
             return mapTenant(gsiRes.Items[0]);
         }
 
-        // STRATEGY 2: Try Primary Key (ID Lookup) - For Preview Mode /_site/[ID]
-        // We assume 'identifier' might be a Tenant ID
+        // Try PK (ID)
         const pkRes = await docClient.send(new GetCommand({
             TableName: process.env.TABLE_NAME,
-            Key: {
-                PK: "SYSTEM",
-                SK: `TENANT#${identifier}`
-            }
+            Key: { PK: "SYSTEM", SK: `TENANT#${identifier}` }
         }));
 
         if (pkRes.Item) {
             return mapTenant(pkRes.Item);
         }
 
-        console.warn(`[Dynamo] Tenant not found for: ${identifier}`);
         return null;
-
     } catch (error) {
         console.error("DynamoDB Tenant Error:", error);
         return null;
@@ -69,18 +54,21 @@ function mapTenant(item: any): TenantConfig {
     return {
         id: item.id,
         name: item.name || "Untitled Site",
-        domain: item.Domain || item.domain, // Handle case sensitivity
-        theme: theme || { primaryColor: "#000000" }
-    };
+        domain: item.Domain || item.domain,
+        status: item.status || "LIVE",
+        plan: item.plan || "Pro",
+        theme: theme || {},
+        integrations: item.integrations || {},
+        createdAt: item.createdAt || new Date().toISOString()
+    } as TenantConfig;
 }
 
-// 2. Fetch Content (Same as before, simplified for brevity)
-export async function getContentBySlug(tenantId: string, slug: string): Promise<ContentItem | null> {
+// 2. Fetch Content (Returns Union Type)
+export async function getContentBySlug(tenantId: string, slug: string): Promise<ContentResult | null> {
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return null;
 
     try {
-        // Find Route
         const routeRes = await docClient.send(new GetCommand({
             TableName: tableName,
             Key: { PK: `TENANT#${tenantId}`, SK: `ROUTE#${slug}` }
@@ -88,11 +76,11 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
 
         if (!routeRes.Item) return null;
 
+        // Handle Redirects
         if (routeRes.Item.IsRedirect) {
-            return { title: "", blocks: [], redirect: routeRes.Item.RedirectTo };
+            return { redirect: routeRes.Item.RedirectTo };
         }
 
-        // Find Content
         const nodeId = routeRes.Item.TargetNode;
         const contentRes = await docClient.send(new GetCommand({
             TableName: tableName,
@@ -101,10 +89,7 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
 
         if (!contentRes.Item) return null;
 
-        return {
-            title: contentRes.Item.title,
-            blocks: contentRes.Item.blocks || []
-        };
+        return contentRes.Item as ContentItem;
     } catch (error) {
         console.error("DynamoDB Content Error:", error);
         return null;

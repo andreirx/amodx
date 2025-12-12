@@ -78,6 +78,12 @@ export const ContentItemSchema = z.object({
     status: ContentStatus,
     title: z.string(),
     slug: z.string().optional(),
+
+    // SEO FIELDS
+    seoTitle: z.string().optional(),
+    seoDescription: z.string().optional(),
+    featuredImage: z.string().optional(), // URL
+
     blocks: z.array(z.any()),
     accessPolicy: AccessPolicySchema.default({ type: "Public", currency: "USD" }),
     author: z.string(), // UserID

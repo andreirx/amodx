@@ -8,6 +8,32 @@ import { Label } from "@/components/ui/label";
 import { Save, ArrowLeft, Loader2 } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 
+import { Settings as SettingsIcon } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+
+// Helper to extract text from Tiptap JSON
+const extractText = (blocks: any[]): string => {
+    let text = "";
+    const traverse = (node: any) => {
+        if (node.type === 'text') text += node.text + " ";
+        if (node.content) node.content.forEach(traverse);
+    };
+    blocks.forEach(traverse);
+    return text.substring(0, 160).trim();
+};
+
+// Helper to find first image
+const findImage = (blocks: any[]): string => {
+    let src = "";
+    const traverse = (node: any) => {
+        if (src) return;
+        if (node.type === 'image' && node.attrs?.src) src = node.attrs.src;
+        if (node.content) node.content.forEach(traverse);
+    };
+    blocks.forEach(traverse);
+    return src;
+};
 
 export default function ContentEditor() {
     const { id } = useParams();
@@ -20,6 +46,15 @@ export default function ContentEditor() {
     const [saving, setSaving] = useState(false);
     const [slug, setSlug] = useState("");
 
+    // State for metadata
+    const [seoTitle, setSeoTitle] = useState("");
+    const [seoDesc, setSeoDesc] = useState("");
+    const [featuredImg, setFeaturedImg] = useState("");
+
+    // Track if user manually touched SEO fields
+    const [manualSeo, setManualSeo] = useState(false);
+
+
     useEffect(() => {
         if (id) loadContent(id);
     }, [id]);
@@ -31,6 +66,14 @@ export default function ContentEditor() {
             setBlocks(data.blocks || []);
             setTitle(data.title);
             setSlug(data.slug || "");
+
+            // Load existing SEO
+            setSeoTitle(data.seoTitle || "");
+            setSeoDesc(data.seoDescription || "");
+            setFeaturedImg(data.featuredImage || "");
+
+            // If they exist, assume manual override
+            if (data.seoTitle || data.seoDescription) setManualSeo(true);
         } catch (err) {
             console.error(err);
             alert("Failed to load content");
@@ -41,6 +84,18 @@ export default function ContentEditor() {
 
     async function save() {
         if (!id) return;
+
+        // SMART SEO GENERATION
+        let finalSeoTitle = seoTitle;
+        let finalSeoDesc = seoDesc;
+        let finalImg = featuredImg;
+
+        if (!manualSeo) {
+            if (!finalSeoTitle) finalSeoTitle = title;
+            if (!finalSeoDesc) finalSeoDesc = extractText(blocks);
+            if (!finalImg) finalImg = findImage(blocks);
+        }
+
         try {
             setSaving(true);
             await apiRequest(`/content/${id}`, {
@@ -49,12 +104,15 @@ export default function ContentEditor() {
                     title: title,
                     slug: slug,
                     status: content?.status,
-                    blocks: blocks
+                    blocks: blocks,
+                    // Send SEO Data
+                    seoTitle: finalSeoTitle,
+                    seoDescription: finalSeoDesc,
+                    featuredImage: finalImg
                 })
             });
-            // Refresh local state
-            const updated = { ...content, title, slug } as ContentItem;
-            setContent(updated);
+            // RELOAD FROM SERVER (Cleaner than manual object merging)
+            await loadContent(id);
         } catch (err: any) {
             alert("Failed to save: " + err.message);
         } finally {
@@ -81,8 +139,61 @@ export default function ContentEditor() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* SEO SHEET */}
+                    <Sheet>
+                        <SheetTrigger asChild>
+                            <Button variant="outline" size="sm">
+                                <SettingsIcon className="mr-2 h-4 w-4"/>
+                                Metadata
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent>
+                            <SheetHeader>
+                                <SheetTitle>SEO & Social</SheetTitle>
+                            </SheetHeader>
+                            <div className="space-y-6 py-6">
+                                <div className="space-y-2">
+                                    <Label>SEO Title</Label>
+                                    <Input
+                                        value={seoTitle}
+                                        onChange={e => {
+                                            setSeoTitle(e.target.value);
+                                            setManualSeo(true);
+                                        }}
+                                        placeholder={title}
+                                    />
+                                    <p className="text-xs text-muted-foreground">Defaults to page title.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Meta Description</Label>
+                                    <Textarea
+                                        value={seoDesc}
+                                        onChange={e => {
+                                            setSeoDesc(e.target.value);
+                                            setManualSeo(true);
+                                        }}
+                                        rows={4}
+                                        placeholder="Auto-generated from content..."
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Featured Image URL</Label>
+                                    <Input
+                                        value={featuredImg}
+                                        onChange={e => {
+                                            setFeaturedImg(e.target.value);
+                                            setManualSeo(true);
+                                        }}
+                                    />
+                                    {/* You could add the upload logic here too if you want */}
+                                </div>
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+
                     <Button onClick={save} disabled={saving}>
-                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> :
+                            <Save className="mr-2 h-4 w-4"/>}
                         Save Changes
                     </Button>
                 </div>

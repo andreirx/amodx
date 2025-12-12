@@ -5,6 +5,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { execSync } from 'child_process';
@@ -12,6 +13,7 @@ import { execSync } from 'child_process';
 interface RendererHostingProps {
     table: dynamodb.Table;
     apiUrl: string;
+    masterKeySecret: secretsmanager.ISecret;
 }
 
 export class RendererHosting extends Construct {
@@ -58,8 +60,10 @@ export class RendererHosting extends Construct {
                 CACHE_BUCKET_NAME: assetBucket.bucketName,
                 CACHE_BUCKET_KEY_PREFIX: '_cache',
                 CACHE_BUCKET_REGION: cdk.Stack.of(this).region,
+                AMODX_API_KEY_SECRET: props.masterKeySecret.secretName
             },
         });
+        props.masterKeySecret.grantRead(serverFunction);
 
         // Grant Permissions
         props.table.grantReadData(serverFunction);

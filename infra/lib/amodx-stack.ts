@@ -45,6 +45,7 @@ export class AmodxStack extends cdk.Stack {
     const renderer = new RendererHosting(this, 'RendererHosting', {
       table: db.table,
       apiUrl: api.httpApi.url!,
+      masterKeySecret: masterKeySecret,
     });
 
     const rendererUrl = `https://${renderer.distribution.distributionDomainName}`;
