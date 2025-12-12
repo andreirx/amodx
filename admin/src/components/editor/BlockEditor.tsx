@@ -4,7 +4,8 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import { getExtensions } from "@amodx/plugins/admin";
 import { Toolbar } from "./Toolbar";
-import type {AnyExtension} from "@tiptap/core";
+import type { AnyExtension } from "@tiptap/core";
+import { apiRequest } from "@/lib/api";
 
 interface BlockEditorProps {
     initialContent?: any;
@@ -12,35 +13,56 @@ interface BlockEditorProps {
 }
 
 export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
+
+    // THE UPLOAD FUNCTION
+    const uploadFile = async (file: File): Promise<string> => {
+        try {
+            const res = await apiRequest('/assets', {
+                method: 'POST',
+                body: JSON.stringify({
+                    filename: file.name,
+                    contentType: file.type,
+                    size: file.size
+                })
+            });
+
+            await fetch(res.uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': file.type }
+            });
+
+            return res.publicUrl;
+        } catch (e) {
+            console.error("Upload Error", e);
+            throw e;
+        }
+    };
+
     const editor = useEditor({
         extensions: [
             StarterKit,
-            Placeholder.configure({
-                placeholder: "Write something amazing...",
-
-            }),
-            Link.configure({
-                openOnClick: false, // Better for editing
-                autolink: true,
-                defaultProtocol: 'https',
-            }),
+            Placeholder.configure({ placeholder: "Write something amazing..." }),
+            Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
             ...(getExtensions() as AnyExtension[]),
         ],
-        // If we have blocks, wrap them in a 'doc' object for Tiptap
         content: initialContent && initialContent.length > 0
             ? { type: "doc", content: initialContent }
             : undefined,
         editorProps: {
             attributes: {
-                // Tailwind classes for the editor canvas
                 class: "prose prose-zinc dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4",
             },
         },
+        // FIX: Cast storage to any to allow injection
+        onBeforeCreate({ editor }) {
+            const storage = editor.storage as any;
+            if (storage.image) {
+                storage.image.uploadFn = uploadFile;
+            }
+        },
         onUpdate: ({ editor }) => {
-            // Extract the JSON tree
-            const json = editor.getJSON();
-            // Pass the 'content' array back up (ignoring the root 'doc' wrapper)
-            onChange(json.content || []);
+            onChange(editor.getJSON().content || []);
         },
     });
 

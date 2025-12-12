@@ -11,6 +11,7 @@ import { execSync } from 'child_process';
 
 interface RendererHostingProps {
     table: dynamodb.Table;
+    apiUrl: string;
 }
 
 export class RendererHosting extends Construct {
@@ -53,6 +54,7 @@ export class RendererHosting extends Construct {
             environment: {
                 NODE_ENV: 'production',
                 TABLE_NAME: props.table.tableName,
+                API_URL: props.apiUrl,
                 CACHE_BUCKET_NAME: assetBucket.bucketName,
                 CACHE_BUCKET_KEY_PREFIX: '_cache',
                 CACHE_BUCKET_REGION: cdk.Stack.of(this).region,

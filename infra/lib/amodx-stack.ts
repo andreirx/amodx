@@ -6,6 +6,7 @@ import { AmodxAuth } from './auth';
 import { AmodxApi } from './api';
 import { AdminHosting } from './admin-hosting';
 import { RendererHosting } from './renderer-hosting';
+import { AmodxUploads } from './uploads';
 
 export class AmodxStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -23,6 +24,8 @@ export class AmodxStack extends cdk.Stack {
       },
     });
 
+    const uploads = new AmodxUploads(this, 'Uploads');
+
     const db = new AmodxDatabase(this, 'Database');
     const auth = new AmodxAuth(this, 'Auth');
 
@@ -32,11 +35,16 @@ export class AmodxStack extends cdk.Stack {
       userPoolId: auth.userPool.userPoolId,
       userPoolClientId: auth.userPoolClient.userPoolClientId,
       masterKeySecret: masterKeySecret,
+
+      // NEW PROPS
+      uploadsBucket: uploads.bucket,
+      uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
     });
 
     // 4. Renderer (Must be created BEFORE Admin to get the URL)
     const renderer = new RendererHosting(this, 'RendererHosting', {
-      table: db.table
+      table: db.table,
+      apiUrl: api.httpApi.url!,
     });
 
     const rendererUrl = `https://${renderer.distribution.distributionDomainName}`;

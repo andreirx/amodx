@@ -217,3 +217,57 @@ export const UserProfileSchema = z.object({
 });
 
 export type UserProfile = z.infer<typeof UserProfileSchema>;
+
+// --- MEDIA ASSETS ---
+// We don't just dump files in S3. We track them.
+export const AssetSchema = z.object({
+    id: z.string(), // UUID
+    tenantId: z.string(),
+    fileName: z.string(),
+    fileType: z.string(), // mime type
+    size: z.number(),
+    s3Key: z.string(),
+    publicUrl: z.string(), // The CloudFront URL
+    uploadedBy: z.string(), // User ID
+    createdAt: z.string(),
+});
+export type Asset = z.infer<typeof AssetSchema>;
+
+// --- CRM / LEADS ---
+// People who gave us an email but don't have a login
+export const LeadSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    email: z.string().email(),
+    name: z.string().optional(),
+    source: z.string().optional(), // e.g. "Footer Form", "Hero CTA"
+    status: z.enum(["New", "Contacted", "Converted", "Archived"]).default("New"),
+    data: z.record(z.string(), z.any()).optional(), // Custom form fields
+    createdAt: z.string(),
+});
+export type Lead = z.infer<typeof LeadSchema>;
+
+// --- TENANT MEMBERS (End Users) ---
+// People who log in to the Client Site (not the Agency Admin)
+export const TenantMemberSchema = z.object({
+    id: z.string(), // Cognito SUB from the "End User Pool"
+    tenantId: z.string(),
+    email: z.string(),
+    role: z.enum(["Member", "Subscriber", "VIP"]).default("Member"),
+    createdAt: z.string(),
+});
+export type TenantMember = z.infer<typeof TenantMemberSchema>;
+
+// --- AUDIT LOG ---
+// The "Black Box" of the system
+export const AuditLogSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    actorId: z.string(), // Who did it
+    action: z.string(), // "CREATE_PAGE", "UPDATE_SETTINGS"
+    resourceId: z.string().optional(),
+    details: z.any().optional(), // Snapshot of change
+    timestamp: z.string(),
+    ipAddress: z.string().optional(),
+});
+export type AuditLog = z.infer<typeof AuditLogSchema>;

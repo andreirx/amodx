@@ -64,6 +64,10 @@ export const handler = async (
         };
     }
 
+    if (event.routeKey === "POST /leads") {
+        return { isAuthorized: true, context: { sub: "anonymous" } };
+    }
+
     // 3. CHECK: Cognito Token
     const authHeader = headers['authorization'] || headers['Authorization'];
     if (!authHeader) {

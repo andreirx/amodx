@@ -34,7 +34,7 @@ export default async function SiteLayout({
 
     return (
         <div className="site-wrapper flex flex-col min-h-screen">
-            <ThemeInjector theme={config.theme} />
+            <ThemeInjector theme={config.theme} tenantId={config.id} />
 
             <Navbar siteName={config.name} />
 

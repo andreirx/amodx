@@ -2,7 +2,7 @@
 
 import React from "react";
 
-export function ThemeInjector({ theme }: { theme?: Record<string, string> }) {
+export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: string }) {
     if (!theme) return null;
 
     const {
@@ -73,10 +73,14 @@ export function ThemeInjector({ theme }: { theme?: Record<string, string> }) {
 
     return (
         <>
-            <link rel="preconnect" href="https://fonts.googleapis.com" />
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-            <link href={fontUrl} rel="stylesheet" />
-            <style dangerouslySetInnerHTML={{ __html: css }} />
+            <script dangerouslySetInnerHTML={{
+                __html: `window.AMODX_TENANT_ID = "${tenantId || ''}";`
+            }}/>
+
+            <link rel="preconnect" href="https://fonts.googleapis.com"/>
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous"/>
+            <link href={fontUrl} rel="stylesheet"/>
+            <style dangerouslySetInnerHTML={{__html: css}}/>
         </>
     );
 }

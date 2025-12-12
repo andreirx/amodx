@@ -7,6 +7,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'; // Import Secrets Manager
+import * as s3 from 'aws-cdk-lib/aws-s3';
 // Import the Authorizer and the ResponseType Enum
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 
@@ -15,6 +16,8 @@ interface AmodxApiProps {
     userPoolId: string;
     userPoolClientId: string;
     masterKeySecret: secretsmanager.ISecret;
+    uploadsBucket: s3.IBucket; // The private bucket
+    uploadsCdnUrl: string;     // The public URL
 }
 
 export class AmodxApi extends Construct {
@@ -133,8 +136,6 @@ export class AmodxApi extends Construct {
         });
         props.table.grantReadData(listContextFunc);
 
-        // MISSING: Update/Delete Context - Adding placeholders or actual implementations
-        // Note: You need to create these files in backend/src/context/
         const updateContextFunc = new nodejs.NodejsFunction(this, 'UpdateContextFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/context/update.ts'),
@@ -237,6 +238,43 @@ export class AmodxApi extends Construct {
             path: '/tenants',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('ListTenantInt', listTenantFunc),
+        });
+
+        // A. ASSETS API
+        const createAssetFunc = new nodejs.NodejsFunction(this, 'CreateAssetFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/assets/create.ts'),
+            handler: 'handler',
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                UPLOADS_BUCKET: props.uploadsBucket.bucketName,
+                UPLOADS_CDN_URL: props.uploadsCdnUrl,
+            }
+        });
+        props.table.grantWriteData(createAssetFunc);
+        props.uploadsBucket.grantPut(createAssetFunc);
+
+        this.httpApi.addRoutes({
+            path: '/assets',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateAssetInt', createAssetFunc),
+        });
+
+        // B. LEADS API (CRM)
+        const createLeadFunc = new nodejs.NodejsFunction(this, 'CreateLeadFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/leads/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createLeadFunc);
+
+        this.httpApi.addRoutes({
+            path: '/leads',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
+            // TODO: This route might need to be "Open" or protected only by API Key,
+            // because anonymous visitors submit forms.
+            // We will handle that in the Authorizer (allow if path == /leads?)
         });
 
         new cdk.CfnOutput(this, 'ApiUrl', { value: this.httpApi.url || '' });
