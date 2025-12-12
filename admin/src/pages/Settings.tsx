@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Loader2, ExternalLink, Copy, Palette, Type, MousePointerClick, AlertCircle } from "lucide-react";
+import { Loader2, ExternalLink, Copy, Palette, Type, MousePointerClick, AlertCircle, Mail } from "lucide-react";
 
 // Get Renderer URL from Env (Injected by CDK)
 const RENDERER_URL = (import.meta.env.VITE_RENDERER_URL || "").replace(/\/$/, "");
@@ -16,7 +16,7 @@ export default function SettingsPage() {
     const [config, setConfig] = useState<Partial<TenantConfig>>({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null); // <--- NEW
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (currentTenant) {
@@ -54,7 +54,6 @@ export default function SettingsPage() {
         }
     }
 
-    // Guard Clause
     if (!currentTenant) {
         return (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-muted-foreground">
@@ -73,6 +72,13 @@ export default function SettingsPage() {
         }));
     };
 
+    const updateIntegration = (key: string, val: any) => {
+        setConfig(prev => ({
+            ...prev,
+            integrations: { ...prev.integrations!, [key]: val }
+        }));
+    };
+
     const previewUrl = `${RENDERER_URL}/_site/${config.id}`;
 
     return (
@@ -88,7 +94,6 @@ export default function SettingsPage() {
                 </Button>
             </div>
 
-            {/* ERROR BANNER */}
             {error && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-md flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 shrink-0" />
@@ -98,8 +103,10 @@ export default function SettingsPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                {/* LEFT COLUMN: Identity */}
+                {/* LEFT COLUMN */}
                 <div className="lg:col-span-2 space-y-8">
+
+                    {/* 1. IDENTITY */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Site Identity</CardTitle>
@@ -138,7 +145,30 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Typography & Interface Cards ... (Keep existing code) */}
+                    {/* 2. NOTIFICATIONS (NEW) */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Mail className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Notifications</CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-2">
+                                <Label>Contact Email</Label>
+                                <Input
+                                    value={config.integrations?.contactEmail || ""}
+                                    onChange={e => updateIntegration("contactEmail", e.target.value)}
+                                    placeholder="owner@client-site.com"
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                    Form submissions will be sent here. If empty, they go to the agency admin.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* 3. TYPOGRAPHY */}
                     <Card>
                         <CardHeader className="pb-4">
                             <div className="flex items-center gap-2">
@@ -160,6 +190,7 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {/* 4. INTERFACE */}
                     <Card>
                         <CardHeader className="pb-4">
                             <div className="flex items-center gap-2">
@@ -192,7 +223,7 @@ export default function SettingsPage() {
                     </Card>
                 </div>
 
-                {/* RIGHT COLUMN: Colors (Keep existing code) */}
+                {/* RIGHT COLUMN: Colors */}
                 <div className="lg:col-span-1">
                     <Card className="h-full">
                         <CardHeader className="pb-4">

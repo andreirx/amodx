@@ -64,7 +64,7 @@ export const handler = async (
         };
     }
 
-    if (event.routeKey === "POST /leads") {
+    if (event.routeKey === "POST /leads" || event.routeKey === "POST /contact") {
         return { isAuthorized: true, context: { sub: "anonymous" } };
     }
 

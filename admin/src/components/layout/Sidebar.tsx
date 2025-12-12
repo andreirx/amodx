@@ -10,6 +10,7 @@ import { apiRequest } from "@/lib/api";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2
 } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -38,6 +39,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     const navItems = [
         { name: "Content", href: "/", icon: LayoutDashboard },
         { name: "Strategy", href: "/strategy", icon: Target },
+        { name: "Media", href: "/media", icon: ImageIcon },
         { name: "Settings", href: "/settings", icon: Settings },
     ];
 

@@ -1,9 +1,12 @@
 import React from 'react';
 import { HeroRender } from './hero/HeroRender';
 import { PricingRender } from './pricing/PricingRender';
+import { ImageRender } from './image/ImageRender';
+import { ContactRender } from './contact/ContactRender';
 
-// The Map used by the Next.js Renderer
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
     'pricing': PricingRender,
+    'image': ImageRender,
+    'contact': ContactRender,
 };

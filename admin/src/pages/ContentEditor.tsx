@@ -66,21 +66,18 @@ export default function ContentEditor() {
     if (!content) return <div className="p-8">Content not found</div>;
 
     return (
-        <div className="flex flex-col h-screen bg-background text-foreground">
-            {/* Header / Toolbar */}
-            <header className="flex items-center justify-between px-6 py-3 border-b bg-card">
+        <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden"> {/* No global scroll */}
+
+            {/* 1. Global Header (Back, Status, Save) */}
+            <header className="flex-none flex items-center justify-between px-6 py-3 border-b bg-card z-20">
+                {/* ... (Existing Header Code) ... */}
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-              {content.status}
-            </span>
-                        <span className="text-sm font-medium text-muted-foreground">
-              Last saved: {new Date(content.createdAt).toLocaleDateString()}
-                            {/* Note: In real app we'd use updatedAt */}
-            </span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{content.status}</span>
+                        <span className="text-sm font-medium text-muted-foreground">Last saved: ...</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -91,48 +88,48 @@ export default function ContentEditor() {
                 </div>
             </header>
 
-            {/* Main Edit Area */}
-            <main className="flex-1 overflow-auto p-8 max-w-4xl mx-auto w-full space-y-8">
+            {/* 2. Page Metadata (Title/Slug) - Scrollable or Fixed? Let's make it fixed/collapsible ideally, but for now just part of the scroll flow */}
 
-                {/* Title Field */}
-                <div className="space-y-2">
-                    <Label htmlFor="title" className="text-muted-foreground">Page Title</Label>
-                    <Input
-                        id="title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="text-3xl font-bold h-auto py-2 border-transparent hover:border-input focus:border-input transition-colors px-0"
-                        placeholder="Untitled Page"
-                    />
-                </div>
+            <main className="flex-1 flex flex-col min-h-0"> {/* min-h-0 allows flex child to scroll */}
 
-                {/* SLUG field */}
-                <div className="space-y-2">
-                    <Label htmlFor="slug" className="text-muted-foreground">URL Slug</Label>
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">/</span>
-                        <Input
-                            id="slug"
-                            value={slug.replace(/^\//, '')} // Remove leading slash for display
-                            onChange={(e) => setSlug(e.target.value)}
-                            className="font-mono"
-                            placeholder="my-page-url"
+                {/* Scrollable Container */}
+                <div className="flex-1 overflow-y-auto">
+                    <div className="max-w-4xl mx-auto w-full p-8 pb-32"> {/* Added padding bottom */}
+
+                        {/* Meta Fields */}
+                        <div className="space-y-6 mb-8">
+                            <div className="space-y-2">
+                                <Label className="text-muted-foreground">Page Title</Label>
+                                <Input
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    className="text-4xl font-black h-auto py-2 border-transparent hover:border-input focus:border-input px-0 bg-transparent shadow-none rounded-none border-b focus-visible:ring-0"
+                                    placeholder="Untitled Page"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>URL:</span>
+                                <span className="font-mono bg-muted/50 px-2 py-0.5 rounded">/</span>
+                                <Input
+                                    value={slug.replace(/^\//, '')}
+                                    onChange={(e) => setSlug(e.target.value)}
+                                    className="font-mono h-auto py-0.5 px-1 w-auto min-w-[200px] border-transparent hover:border-input focus:border-input bg-transparent shadow-none"
+                                    placeholder="slug"
+                                />
+                            </div>
+                        </div>
+
+                        {/*
+                           THE EDITOR
+                           We remove the internal scroll from BlockEditor and let the Page scroll.
+                           BUT we make the Toolbar Sticky relative to this Main container.
+                        */}
+                        <BlockEditor
+                            initialContent={blocks}
+                            onChange={(newBlocks) => setBlocks(newBlocks)}
                         />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                        Changing this will set up a redirect from the old URL.
-                    </p>
                 </div>
-
-                {/* Editor Area */}
-                <div className="space-y-2">
-                    <Label className="text-muted-foreground">Content</Label>
-                    <BlockEditor
-                        initialContent={blocks}
-                        onChange={(newBlocks) => setBlocks(newBlocks)}
-                    />
-                </div>
-
             </main>
         </div>
     );

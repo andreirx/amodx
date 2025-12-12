@@ -1,20 +1,25 @@
 import React from "react";
 import { RENDER_MAP } from "@amodx/plugins/render";
 
-// --- 1. CORE TEXT COMPONENTS (Your Original Code) ---
+// --- RECURSIVE HELPER ---
+const RenderChildren = ({ content }: { content: any[] }) => {
+    if (!content) return null;
+    return <RenderBlocks blocks={content} />;
+};
 
+// --- CORE COMPONENTS ---
 const Paragraph = ({ content }: any) => {
     if (!content) return <p className="mb-4 h-4" />;
     return (
-        <p className="mb-4 text-lg leading-relaxed text-gray-700">
+        <p className="mb-4 leading-7 text-foreground/90">
             {content.map((c: any, i: number) => {
                 if (c.type === "text") {
-                    let text = c.text;
+                    let text: React.ReactNode = c.text;
                     if (c.marks) {
                         c.marks.forEach((m: any) => {
-                            if (m.type === "bold") text = <strong key={i}>{text}</strong>;
-                            if (m.type === "italic") text = <em key={i}>{text}</em>;
-                            if (m.type === "link") text = <a href={m.attrs.href} key={i} className="text-blue-600 underline">{text}</a>;
+                            if (m.type === "bold") text = <strong key={i} className="font-bold">{text}</strong>;
+                            if (m.type === "italic") text = <em key={i} className="italic">{text}</em>;
+                            if (m.type === "link") text = <a href={m.attrs.href} key={i} className="text-primary underline underline-offset-4 hover:opacity-80">{text}</a>;
                         });
                     }
                     return <span key={i}>{text}</span>;
@@ -27,49 +32,48 @@ const Paragraph = ({ content }: any) => {
 
 const Heading = ({ content, attrs }: any) => {
     const text = content?.map((c: any) => c.text).join("") || "";
-    if (attrs?.level === 1) return <h1 className="text-4xl font-black mb-6 mt-10 text-foreground tracking-tight">{text}</h1>;
-    if (attrs?.level === 2) return <h2 className="text-3xl font-bold mb-4 mt-8 text-foreground tracking-tight">{text}</h2>;
-    return <h3 className="text-2xl font-semibold mb-3 mt-6 text-foreground">{text}</h3>;
+    if (attrs?.level === 1) return <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mb-6 mt-10">{text}</h1>;
+    if (attrs?.level === 2) return <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0 mb-4 mt-8">{text}</h2>;
+    if (attrs?.level === 3) return <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight mb-3 mt-6">{text}</h3>;
+    return <h4 className="scroll-m-20 text-xl font-semibold tracking-tight mb-2 mt-4">{text}</h4>;
 };
 
-// --- 2. THE REGISTRY ---
-// Combine Core Text blocks with Dynamic Plugin blocks
-const COMPONENTS: Record<string, React.FC<any>> = {
+// NEW: Lists & Quotes
+const BulletList = ({ content }: any) => <ul className="my-6 ml-6 list-disc [&>li]:mt-2"><RenderChildren content={content} /></ul>;
+const OrderedList = ({ content }: any) => <ol className="my-6 ml-6 list-decimal [&>li]:mt-2"><RenderChildren content={content} /></ol>;
+const ListItem = ({ content }: any) => <li><RenderChildren content={content} /></li>;
+const Blockquote = ({ content }: any) => <blockquote className="mt-6 border-l-2 border-primary pl-6 italic text-muted-foreground"><RenderChildren content={content} /></blockquote>;
+const HorizontalRule = () => <hr className="my-8 border-border" />;
+
+const CORE_COMPONENTS: Record<string, React.FC<any>> = {
     paragraph: Paragraph,
     heading: Heading,
-    ...RENDER_MAP
+    bulletList: BulletList,
+    orderedList: OrderedList,
+    listItem: ListItem,
+    blockquote: Blockquote,
+    horizontalRule: HorizontalRule,
+    ...RENDER_MAP // Plugins
 };
 
-// --- 3. THE RENDERER ---
 export function RenderBlocks({ blocks }: { blocks: any[] }) {
     if (!blocks || !Array.isArray(blocks)) return null;
 
     return (
-        <div className="flex flex-col">
-            {/* Note: We removed the global 'prose' wrapper here */}
-
+        <>
             {blocks.map((block, index) => {
-                const Component = COMPONENTS[block.type];
-
+                const Component = CORE_COMPONENTS[block.type];
                 if (!Component) {
                     console.warn(`Unknown block type: ${block.type}`);
                     return null;
                 }
 
-                // CASE A: Text Blocks -> Wrap in Prose for typography
-                if (block.type === 'paragraph' || block.type === 'heading') {
-                    return (
-                        <div key={index} className="prose prose-zinc dark:prose-invert max-w-4xl mx-auto w-full px-6">
-                            <Component {...block} />
-                        </div>
-                    );
-                }
+                // If it's a structural block (Hero, Pricing), render full width
+                // If it's text, we constrain it slightly inside the component logic above or via global layout
+                // Since we removed 'prose', the Tailwind classes in Paragraph/Heading handle typography now.
 
-                // CASE B: Structural Blocks (Hero) -> Render Full Width
-                // We pass {...block} which includes { attrs: {...} }
-                // The Plugin component expects { attrs } props, so this matches.
                 return <Component key={index} {...block} />;
             })}
-        </div>
+        </>
     );
 }

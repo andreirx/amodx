@@ -1,35 +1,42 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import { UploadCloud, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Loader2, Minimize2, Maximize2, MoveHorizontal } from 'lucide-react';
 import React, { useState } from 'react';
 
-// UI Helpers (Inlined to keep plugin isolated)
 const Input = ({ value, onChange, placeholder, className = "" }: any) => (
     <input
         className={`w-full bg-transparent border-b border-gray-200 py-1 text-sm focus:border-blue-500 outline-none transition-colors ${className}`}
-        value={value}
+        value={value || ""}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
     />
 );
 
+const ToolbarButton = ({ active, onClick, icon: Icon, title }: any) => (
+    <button
+        onClick={onClick}
+        className={`p-1.5 rounded-md transition-colors ${active ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+        title={title}
+    >
+        <Icon className="w-4 h-4" />
+    </button>
+);
+
 export function ImageEditor(props: any) {
-    const { src, alt, caption } = props.node.attrs;
+    const { src, alt, caption, width } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
+
+    const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     const handleUpload = async (file: File) => {
         setUploading(true);
         try {
-            // DEPENDENCY INJECTION: Ask the editor instance to handle the upload
-            // The Admin App configures this function.
             const uploadFn = props.editor.storage.image?.uploadFn;
-
             if (!uploadFn) {
                 alert("Upload function not configured in Editor");
                 return;
             }
-
             const publicUrl = await uploadFn(file);
-            props.updateAttributes({ src: publicUrl });
+            update('src', publicUrl);
         } catch (e: any) {
             console.error(e);
             alert("Upload failed: " + e.message);
@@ -44,13 +51,34 @@ export function ImageEditor(props: any) {
 
     return (
         <NodeViewWrapper className="my-6">
-            <div className="group relative rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+            <div className={`group relative rounded-lg border border-gray-200 bg-gray-50 overflow-hidden transition-all ${width === 'centered' ? 'max-w-md mx-auto' : ''}`}>
+
+                {/* TOOLBAR (Floating on Hover) */}
+                <div className="absolute top-2 right-2 flex items-center gap-1 bg-white border border-gray-200 shadow-sm rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <ToolbarButton
+                        active={width === 'centered'}
+                        onClick={() => update('width', 'centered')}
+                        icon={Minimize2}
+                        title="Centered"
+                    />
+                    <ToolbarButton
+                        active={width === 'wide'}
+                        onClick={() => update('width', 'wide')}
+                        icon={MoveHorizontal}
+                        title="Wide"
+                    />
+                    <ToolbarButton
+                        active={width === 'full'}
+                        onClick={() => update('width', 'full')}
+                        icon={Maximize2}
+                        title="Full Width"
+                    />
+                </div>
 
                 {src ? (
                     <div className="relative">
-                        <img src={src} alt={alt} className="w-full h-auto max-h-[500px] object-contain bg-white" />
+                        <img src={src} alt={alt} className="w-full h-auto object-cover bg-white" />
 
-                        {/* Overlay Controls */}
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                             <label className="cursor-pointer bg-white text-gray-900 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 shadow-sm">
                                 Change Image
@@ -75,20 +103,17 @@ export function ImageEditor(props: any) {
                 <div className="p-3 bg-white border-t border-gray-100 space-y-2">
                     <Input
                         value={caption}
-                        onChange={(v: string) => props.updateAttributes({ caption: v })}
+                        onChange={(v: string) => update('caption', v)}
                         placeholder="Write a caption (optional)"
                         className="text-center font-medium text-gray-700"
                     />
-                    <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="pt-1">
                         <Input
                             value={alt}
-                            onChange={(v: string) => props.updateAttributes({ alt: v })}
-                            placeholder="Alt Text (SEO)"
+                            onChange={(v: string) => update('alt', v)}
+                            placeholder="Alt Text (Required for SEO)"
                             className="text-xs text-gray-500"
                         />
-                        <div className="text-xs text-gray-400 flex items-center justify-end">
-                            {props.node.attrs.width === 'full' ? 'Full Width' : 'Centered'}
-                        </div>
                     </div>
                 </div>
             </div>

@@ -67,9 +67,18 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
     });
 
     return (
-        <div className="border rounded-md bg-card shadow-sm overflow-hidden flex flex-col min-h-[500px]">
-            <Toolbar editor={editor} />
-            <div className="flex-1 overflow-y-auto">
+        <div className="group flex flex-col relative min-h-[500px]">
+            {/*
+                Sticky Toolbar
+                - 'sticky': Sticks to the nearest scrolling ancestor (the <main> div in ContentEditor).
+                - 'top-0': Sticks to the top.
+                - 'z-10': Stays above text.
+            */}
+            <div className="sticky top-0 z-10 mx-auto w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 py-2 transition-all">
+                <Toolbar editor={editor} />
+            </div>
+
+            <div className="flex-1 cursor-text">
                 <EditorContent editor={editor} />
             </div>
         </div>

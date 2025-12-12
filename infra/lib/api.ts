@@ -6,8 +6,10 @@ import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 import * as path from 'path';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'; // Import Secrets Manager
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as iam from 'aws-cdk-lib/aws-iam';
+
 // Import the Authorizer and the ResponseType Enum
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 
@@ -43,10 +45,9 @@ export class AmodxApi extends Construct {
         props.masterKeySecret.grantRead(authorizerFunc);
 
         // 2. Define Authorizer
-        // FIXED: Used HttpLambdaResponseType
         const authorizer = new HttpLambdaAuthorizer('AmodxAuthorizer', authorizerFunc, {
             responseTypes: [HttpLambdaResponseType.SIMPLE],
-            resultsCacheTtl: cdk.Duration.minutes(0), // Set to 0 for debugging, 5 for prod
+            resultsCacheTtl: cdk.Duration.minutes(0),
             identitySource: ['$request.header.Authorization', '$request.header.x-api-key'],
         });
 
@@ -54,7 +55,7 @@ export class AmodxApi extends Construct {
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
             defaultAuthorizer: authorizer,
             corsPreflight: {
-                allowOrigins: ['*'], // Temporary wildcard until Custom Domains
+                allowOrigins: ['*'],
                 allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PUT, apigw.CorsHttpMethod.DELETE],
                 allowHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-api-key'],
             },
@@ -214,6 +215,31 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('UpdateSettingsInt', updateSettingsFunc),
         });
 
+        // CONTACT EMAIL API
+        const contactFunc = new nodejs.NodejsFunction(this, 'ContactFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/contact/send.ts'),
+            handler: 'handler',
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                SES_FROM_EMAIL: "contact@bijuterie.software",
+            }
+        });
+
+        // Grant SES Send Permission
+        contactFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+            resources: ['*'],
+        }));
+        props.table.grantReadData(contactFunc);
+
+        this.httpApi.addRoutes({
+            path: '/contact',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('ContactInt', contactFunc),
+        });
+
+
         // Tenant Management (Create New Site, List Sites)
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {
             ...nodeProps,
@@ -240,7 +266,7 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ListTenantInt', listTenantFunc),
         });
 
-        // A. ASSETS API
+        // A. ASSETS API (Upload & List)
         const createAssetFunc = new nodejs.NodejsFunction(this, 'CreateAssetFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/assets/create.ts'),
@@ -254,10 +280,24 @@ export class AmodxApi extends Construct {
         props.table.grantWriteData(createAssetFunc);
         props.uploadsBucket.grantPut(createAssetFunc);
 
+        // NEW: List Assets
+        const listAssetFunc = new nodejs.NodejsFunction(this, 'ListAssetFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/assets/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listAssetFunc);
+
         this.httpApi.addRoutes({
             path: '/assets',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('CreateAssetInt', createAssetFunc),
+        });
+
+        this.httpApi.addRoutes({
+            path: '/assets',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListAssetInt', listAssetFunc),
         });
 
         // B. LEADS API (CRM)
@@ -272,9 +312,6 @@ export class AmodxApi extends Construct {
             path: '/leads',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
-            // TODO: This route might need to be "Open" or protected only by API Key,
-            // because anonymous visitors submit forms.
-            // We will handle that in the Authorizer (allow if path == /leads?)
         });
 
         new cdk.CfnOutput(this, 'ApiUrl', { value: this.httpApi.url || '' });

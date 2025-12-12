@@ -156,6 +156,7 @@ export const ThemeSchema = z.object({
 
 // Expanded Integrations
 export const IntegrationsSchema = z.object({
+    contactEmail: z.string().email().optional(),
     googleAnalyticsId: z.string().optional(), // G-XXXXXXXX
     googleSearchConsoleId: z.string().optional(), // Verification Code
     stripePublicKey: z.string().optional(),

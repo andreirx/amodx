@@ -8,6 +8,7 @@ import ContentEditor from "@/pages/ContentEditor";
 import SettingsPage from "@/pages/Settings";
 import AdminLayout from "@/components/layout/AdminLayout";
 import { TenantProvider } from "@/context/TenantContext";
+import MediaLibrary from "@/pages/MediaLibrary";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -51,6 +52,7 @@ export default function App() {
                     <Route path="/" element={<ContentList />} />
                     <Route path="/content/:id" element={<ContentEditor />} />
                     <Route path="/strategy" element={<StrategyBoard />} />
+                    <Route path="/media" element={<MediaLibrary />} />
                     <Route path="/settings" element={<SettingsPage />} />
                 </Route>
 

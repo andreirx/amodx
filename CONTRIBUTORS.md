@@ -18,21 +18,43 @@ This document is for engineers contributing to the AMODX core platform.
 
 ## 🔐 Authentication & Security
 
-The Backend API is protected by a **Lambda Authorizer**. Every request must have one of these headers:
+The Backend API is protected by a **Lambda Authorizer**. Every request must have specific headers depending on the actor.
 
-1.  **Human Access (Admin Panel):**
-    *   Header: `Authorization: Bearer <Cognito_JWT>`
-    *   Header: `x-api-key: web-client` (Dummy key to pass gateway check)
-    *   Context: `x-tenant-id: <Tenant_ID>` (For multi-tenancy)
+### 1. Actor: Agency Admin (Human)
+*   **Interface:** Admin Panel
+*   **Auth:** Cognito User Pool (AdminPool)
+*   **Headers:**
+    *   `Authorization: Bearer <JWT>`
+    *   `x-api-key: web-client` (Bypasses Master Key check, falls back to Cognito)
+    *   `x-tenant-id: <TenantID>` (Context)
 
-2.  **Robot Access (MCP / Renderer):**
-    *   Header: `x-api-key: <MASTER_KEY>` (From Secrets Manager)
-    *   Header: `Authorization: Bearer robot` (Dummy token)
+### 2. Actor: AI / Renderer (Robot)
+*   **Interface:** MCP Server / Next.js Server Side
+*   **Auth:** Master API Key (Secrets Manager)
+*   **Headers:**
+    *   `x-api-key: <MASTER_KEY>`
+    *   `Authorization: Bearer robot` (Dummy token to pass Gateway validation)
+    *   `x-tenant-id: <TenantID>`
 
-### Global Context (Frontend)
-The Renderer injects the Tenant ID into the window scope for client-side components (like Forms).
-*   Access: `window.AMODX_TENANT_ID`
-*   Injected by: `renderer/src/components/ThemeInjector.tsx`
+### 3. Actor: Tenant Visitor (Public)
+*   **Interface:** Public Website (Contact Forms)
+*   **Auth:** None (Public Routes)
+*   **Headers:**
+    *   `x-tenant-id: <TenantID>` (Injected via Window Context)
+
+---
+
+## 🎨 Frontend Architecture
+
+### The Plugin System (Blocks)
+We use a split-entry architecture to prevent Next.js from crashing on Tiptap dependencies.
+*   `packages/plugins/src/admin.ts`: Exports Editor components (Tiptap).
+*   `packages/plugins/src/render.ts`: Exports React components (Standard DOM).
+
+### Global Context Injection
+The Renderer injects the Tenant ID into the browser scope so hydrated components (like Contact Forms) know where to send data without prop drilling.
+*   **Source:** `renderer/src/components/ThemeInjector.tsx`
+*   **Variable:** `window.AMODX_TENANT_ID`
 
 ---
 
@@ -71,6 +93,14 @@ cd admin && npm run dev
 
 # Terminal 2: Renderer (Preview Mode)
 cd renderer && npm run dev
+```
+
+### 4. Watch Mode
+If modifying plugins/shared types:
+```bash
+# Terminal 3
+cd packages/plugins
+npm run watch
 ```
 
 ---

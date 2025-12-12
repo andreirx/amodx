@@ -65,6 +65,7 @@
 
 ## 7. Roadmap (The Dogfood Protocol)
 1.  **Migrate to Plugins:** (Done).
-2.  **Build Core Blocks:** Pricing, FAQ, Features.
+2.  **Build Core Blocks:** Hero, Image, Pricing, Contact (done), still TODO: Lead Magnet, Features, CTA.
 3.  **SEO Module:** `llms.txt` generation.
-4.  **Launch:** Deploy `amodx.com` on this stack.
+4.  **Separate** admin users (can edit pages, content) and tenant users (can post comments, access some restricted resources).
+5.  **Launch:** Deploy `amodx.com` on this stack.
