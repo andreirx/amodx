@@ -1,62 +1,140 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import React from 'react';
+import { LayoutTemplate, Type, Link as LinkIcon, Image as ImageIcon, Upload } from 'lucide-react';
+import React, { useState } from 'react';
 
-// Minimalist Input with Label
-const Field = ({ label, value, onChange, placeholder }: any) => (
-    <div className="flex-1 min-w-[200px]">
-        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">{label}</label>
-        <input
-            className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-colors"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            placeholder={placeholder}
-        />
+// --- LOCAL UI HELPERS (No Shadcn dependency) ---
+
+const Label = ({ children, icon: Icon }: any) => (
+    <div className="flex items-center gap-2 mb-1.5">
+        {Icon && <Icon className="w-3 h-3 text-indigo-500" />}
+        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{children}</label>
     </div>
 );
 
-// Style Selector
-const StyleSelect = ({ value, onChange }: any) => (
-    <div>
-        <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Style</label>
-        <div className="flex gap-1 bg-gray-50 p-1 rounded border border-gray-200">
-            {['center', 'split', 'minimal'].map((s) => (
-                <button
-                    key={s}
-                    onClick={() => onChange(s)}
-                    className={`px-3 py-1 text-xs rounded font-medium transition-all ${
-                        value === s
-                            ? 'bg-white shadow-sm text-blue-600'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                    }`}
-                >
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-            ))}
-        </div>
-    </div>
+const Input = ({ value, onChange, placeholder, className = "" }: any) => (
+    <input
+        className={`flex h-9 w-full rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm transition-all focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none placeholder:text-gray-400 ${className}`}
+        value={value || ""}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+    />
 );
+
+const Select = ({ value, onChange, options }: any) => (
+    <select
+        className="h-8 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-indigo-500 cursor-pointer"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+    >
+        {options.map((o: string) => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
+    </select>
+);
+
+// --- COMPONENT ---
 
 export function HeroEditor(props: any) {
-    const { headline, subheadline, ctaText, ctaLink, style } = props.node.attrs;
+    const { headline, subheadline, ctaText, ctaLink, style, imageSrc } = props.node.attrs;
+    const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
+    const handleUpload = async (file: File) => {
+        setUploading(true);
+        try {
+            const uploadFn = props.editor.storage.image?.uploadFn;
+            if (uploadFn) {
+                const url = await uploadFn(file);
+                update('imageSrc', url);
+            } else {
+                alert("Uploader not wired");
+            }
+        } catch (e) { console.error(e); }
+        finally { setUploading(false); }
+    };
+
     return (
-        <NodeViewWrapper className="my-6">
-            <div className="border-l-4 border-blue-500 bg-white shadow-sm rounded-r-lg p-5">
-                <div className="flex justify-between items-start mb-4">
-                    <span className="text-xs font-bold text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">Hero Section</span>
-                    <StyleSelect value={style} onChange={(v: string) => update('style', v)} />
+        <NodeViewWrapper className="my-8 group">
+            <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md">
+
+                {/* Header Bar */}
+                <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-2">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-50 text-indigo-600">
+                            <LayoutTemplate className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-700">Hero Section</span>
+                    </div>
+                    <Select
+                        value={style}
+                        onChange={(v: string) => update('style', v)}
+                        options={["center", "split", "minimal"]}
+                    />
                 </div>
 
-                <div className="space-y-4">
-                    <div className="flex flex-wrap gap-4">
-                        <Field label="Headline" value={headline} onChange={(v: string) => update('headline', v)} placeholder="Big Headline" />
-                        <Field label="Subheadline" value={subheadline} onChange={(v: string) => update('subheadline', v)} placeholder="Description text" />
+                {/* Content Area */}
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Left: Text Inputs */}
+                    <div className="space-y-5">
+                        <div>
+                            <Label icon={Type}>Content</Label>
+                            <div className="space-y-2">
+                                <Input
+                                    value={headline}
+                                    onChange={(v: string) => update('headline', v)}
+                                    className="font-bold text-base text-gray-900"
+                                    placeholder="Headline"
+                                />
+                                <Input
+                                    value={subheadline}
+                                    onChange={(v: string) => update('subheadline', v)}
+                                    placeholder="Subheadline"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                            <div>
+                                <Label>Button Text</Label>
+                                <Input value={ctaText} onChange={(v: string) => update('ctaText', v)} placeholder="Click Me" />
+                            </div>
+                            <div>
+                                <Label icon={LinkIcon}>Link</Label>
+                                <Input value={ctaLink} onChange={(v: string) => update('ctaLink', v)} placeholder="/path" className="font-mono text-xs" />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <Field label="Button Text" value={ctaText} onChange={(v: string) => update('ctaText', v)} placeholder="e.g. Get Started" />
-                        <Field label="Button Link" value={ctaLink} onChange={(v: string) => update('ctaLink', v)} placeholder="/contact" />
+                    {/* Right: Image Uploader */}
+                    <div className="border-l pl-6 border-dashed border-gray-200">
+                        <Label icon={ImageIcon}>Hero Image</Label>
+                        <div className="mt-2 relative aspect-video bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-indigo-300 hover:bg-indigo-50/10 transition-colors group/upload overflow-hidden">
+
+                            {imageSrc ? (
+                                <>
+                                    <img src={imageSrc} className="w-full h-full object-cover" alt="Hero" />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/upload:opacity-100 flex items-center justify-center transition-opacity">
+                                        <p className="text-white text-xs font-medium cursor-pointer">Change Image</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {uploading ? (
+                                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent" />
+                                    ) : (
+                                        <>
+                                            <Upload className="w-6 h-6 mb-2 opacity-50" />
+                                            <span className="text-xs">Upload Image</span>
+                                        </>
+                                    )}
+                                </>
+                            )}
+
+                            <input
+                                type="file"
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                                accept="image/*"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

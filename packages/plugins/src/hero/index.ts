@@ -23,6 +23,7 @@ export const HeroPlugin: PluginDefinition = {
                 ctaText: { default: 'Get Started' },
                 ctaLink: { default: '#' },
                 style: { default: 'center' },
+                imageSrc: { default: null },
             };
         },
         parseHTML() { return [{ tag: 'app-hero' }]; },

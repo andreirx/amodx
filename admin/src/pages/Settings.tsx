@@ -7,9 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Loader2, ExternalLink, Copy, Palette, Type, MousePointerClick, AlertCircle, Mail } from "lucide-react";
+import { uploadFile } from "@/lib/upload";
+import { Plus, Trash2, Upload } from "lucide-react";
 
-// Get Renderer URL from Env (Injected by CDK)
-const RENDERER_URL = (import.meta.env.VITE_RENDERER_URL || "").replace(/\/$/, "");
+// HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
+const getRendererUrl = () => {
+    // @ts-ignore
+    const url = window.AMODX_CONFIG?.VITE_RENDERER_URL || import.meta.env.VITE_RENDERER_URL || "";
+    return url.replace(/\/$/, "");
+};
 
 export default function SettingsPage() {
     const { currentTenant } = useTenant();
@@ -17,6 +23,9 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Get the URL dynamically so it works in Prod and Local
+    const rendererUrl = getRendererUrl();
 
     useEffect(() => {
         if (currentTenant) {
@@ -54,16 +63,22 @@ export default function SettingsPage() {
         }
     }
 
-    if (!currentTenant) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-muted-foreground">
-                <Palette className="h-10 w-10 mb-4 opacity-20" />
-                <p>Select a site to configure settings.</p>
-            </div>
-        );
-    }
+    // Helper for array fields (Nav Links)
+    const addLink = (field: 'navLinks' | 'footerLinks') => {
+        const current = config[field] || [];
+        setConfig({ ...config, [field]: [...current, { label: "New Link", href: "/" }] });
+    };
 
-    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+    const updateLink = (field: 'navLinks' | 'footerLinks', index: number, key: 'label' | 'href', val: string) => {
+        const current = [...(config[field] || [])];
+        current[index] = { ...current[index], [key]: val };
+        setConfig({ ...config, [field]: current });
+    };
+
+    const removeLink = (field: 'navLinks' | 'footerLinks', index: number) => {
+        const current = (config[field] || []).filter((_, i) => i !== index);
+        setConfig({ ...config, [field]: current });
+    };
 
     const updateTheme = (key: string, val: string) => {
         setConfig(prev => ({
@@ -79,7 +94,33 @@ export default function SettingsPage() {
         }));
     };
 
-    const previewUrl = `${RENDERER_URL}/_site/${config.id}`;
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) {
+            setLoading(true);
+            try {
+                const url = await uploadFile(e.target.files[0]);
+                setConfig({ ...config, logo: url });
+            } catch (err) {
+                alert("Upload failed");
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    // Guard Clause
+    if (!currentTenant) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-muted-foreground">
+                <Palette className="h-10 w-10 mb-4 opacity-20" />
+                <p>Select a site to configure settings.</p>
+            </div>
+        );
+    }
+
+    if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+
+    const previewUrl = rendererUrl && config.id ? `${rendererUrl}/_site/${config.id}` : "#";
 
     return (
         <div className="p-8 max-w-5xl mx-auto space-y-8 pb-20">
@@ -106,28 +147,55 @@ export default function SettingsPage() {
                 {/* LEFT COLUMN */}
                 <div className="lg:col-span-2 space-y-8">
 
-                    {/* 1. IDENTITY */}
+                    {/* IDENTITY & LOGO */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Site Identity</CardTitle>
                             <CardDescription>Technical details and domains</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                        <CardContent className="space-y-6">
+                            <div className="flex gap-6 items-start">
+                                {/* Logo Upload */}
                                 <div className="space-y-2">
-                                    <Label>Site Name</Label>
-                                    <Input value={config.name || ""} onChange={e => setConfig({ ...config, name: e.target.value })} />
+                                    <Label>Logo</Label>
+                                    <div className="relative w-32 h-32 bg-muted/30 border-2 border-dashed border-muted-foreground/20 rounded-lg flex flex-col items-center justify-center hover:bg-muted/50 transition-colors overflow-hidden group">
+                                        {config.logo ? (
+                                            <>
+                                                <img src={config.logo} alt="Logo" className="w-full h-full object-contain p-2" />
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <label className="cursor-pointer text-white text-xs font-medium p-2">
+                                                        Change
+                                                        <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                                    </label>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
+                                                <Upload className="h-6 w-6 text-muted-foreground mb-2" />
+                                                <span className="text-xs text-muted-foreground">Upload</span>
+                                                <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                            </label>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Tenant ID</Label>
-                                    <div className="flex gap-2">
-                                        <Input value={config.id || ""} disabled className="bg-muted font-mono" />
-                                        <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(config.id!)}>
-                                            <Copy className="h-4 w-4" />
-                                        </Button>
+
+                                <div className="flex-1 space-y-4">
+                                    <div className="space-y-2">
+                                        <Label>Site Name</Label>
+                                        <Input value={config.name || ""} onChange={e => setConfig({ ...config, name: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Tenant ID</Label>
+                                        <div className="flex gap-2">
+                                            <Input value={config.id || ""} disabled className="bg-muted font-mono" />
+                                            <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(config.id!)}>
+                                                <Copy className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+
                             <div className="space-y-2">
                                 <Label>Production Domain</Label>
                                 <Input
@@ -136,8 +204,12 @@ export default function SettingsPage() {
                                     placeholder="client.com"
                                 />
                             </div>
+
                             <div className="p-3 bg-secondary/50 rounded-md flex items-center justify-between">
-                                <div className="text-xs font-mono text-muted-foreground truncate max-w-md">{previewUrl}</div>
+                                <div className="space-y-0.5">
+                                    <div className="text-xs text-muted-foreground">Preview Link</div>
+                                    <div className="text-xs font-mono truncate max-w-md select-all">{previewUrl}</div>
+                                </div>
                                 <Button variant="ghost" size="sm" asChild className="h-8">
                                     <a href={previewUrl} target="_blank" rel="noreferrer">Open <ExternalLink className="ml-2 h-3 w-3" /></a>
                                 </Button>
@@ -145,7 +217,7 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* 2. NOTIFICATIONS (NEW) */}
+                    {/* NOTIFICATIONS */}
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
@@ -168,29 +240,29 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* 3. TYPOGRAPHY */}
+                    {/* NAVIGATION */}
                     <Card>
-                        <CardHeader className="pb-4">
-                            <div className="flex items-center gap-2">
-                                <Type className="h-5 w-5 text-muted-foreground" />
-                                <CardTitle>Typography</CardTitle>
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <CardTitle>Navigation Menu</CardTitle>
+                                <Button variant="outline" size="sm" onClick={() => addLink('navLinks')}>
+                                    <Plus className="h-4 w-4 mr-2" /> Add Link
+                                </Button>
                             </div>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Heading Font (Google Fonts)</Label>
-                                    <Input placeholder="Inter" value={config.theme?.fontHeading || ""} onChange={e => updateTheme("fontHeading", e.target.value)} />
+                        <CardContent className="space-y-3">
+                            {(config.navLinks || []).map((link, i) => (
+                                <div key={i} className="flex gap-2">
+                                    <Input value={link.label} onChange={e => updateLink('navLinks', i, 'label', e.target.value)} placeholder="Label" className="flex-1" />
+                                    <Input value={link.href} onChange={e => updateLink('navLinks', i, 'href', e.target.value)} placeholder="/path" className="flex-1" />
+                                    <Button variant="ghost" size="icon" onClick={() => removeLink('navLinks', i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Body Font (Google Fonts)</Label>
-                                    <Input placeholder="Inter" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
-                                </div>
-                            </div>
+                            ))}
+                            {(config.navLinks?.length === 0) && <p className="text-sm text-muted-foreground italic">No links added.</p>}
                         </CardContent>
                     </Card>
 
-                    {/* 4. INTERFACE */}
+                    {/* INTERFACE */}
                     <Card>
                         <CardHeader className="pb-4">
                             <div className="flex items-center gap-2">
@@ -225,6 +297,28 @@ export default function SettingsPage() {
 
                 {/* RIGHT COLUMN: Colors */}
                 <div className="lg:col-span-1">
+                    {/* TYPOGRAPHY */}
+                    <Card className="space-y-6">
+                        <CardHeader className="pb-4">
+                            <div className="flex items-center gap-2">
+                                <Type className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Typography</CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex-1 space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Heading Font (Google Fonts)</Label>
+                                    <Input placeholder="Inter" value={config.theme?.fontHeading || ""} onChange={e => updateTheme("fontHeading", e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Body Font (Google Fonts)</Label>
+                                    <Input placeholder="Inter" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     <Card className="h-full">
                         <CardHeader className="pb-4">
                             <div className="flex items-center gap-2">

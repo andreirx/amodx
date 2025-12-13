@@ -5,7 +5,7 @@ import Link from "@tiptap/extension-link";
 import { getExtensions } from "@amodx/plugins/admin";
 import { Toolbar } from "./Toolbar";
 import type { AnyExtension } from "@tiptap/core";
-import { apiRequest } from "@/lib/api";
+import { uploadFile } from "@/lib/upload";
 
 interface BlockEditorProps {
     initialContent?: any;
@@ -13,31 +13,6 @@ interface BlockEditorProps {
 }
 
 export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
-
-    // THE UPLOAD FUNCTION
-    const uploadFile = async (file: File): Promise<string> => {
-        try {
-            const res = await apiRequest('/assets', {
-                method: 'POST',
-                body: JSON.stringify({
-                    filename: file.name,
-                    contentType: file.type,
-                    size: file.size
-                })
-            });
-
-            await fetch(res.uploadUrl, {
-                method: 'PUT',
-                body: file,
-                headers: { 'Content-Type': file.type }
-            });
-
-            return res.publicUrl;
-        } catch (e) {
-            console.error("Upload Error", e);
-            throw e;
-        }
-    };
 
     const editor = useEditor({
         extensions: [

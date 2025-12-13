@@ -1,16 +1,23 @@
 # AMODX: The Agency Operating System
 
-> **Turn your agency into a software company.**
+> It's time to move past WordPress.
 
-AMODX is a **Serverless Command Center** that allows you to manage hundreds of client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard**.
+AMODX is a **Serverless Command Center** that allows you to manage hundreds of client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard.**
+
+* Clean, secure, and modern.
+* Extremely cheap to run: AWS Lambdas, Cognito, DynamoDB, EventBridge, S3.
+* AI first: capture context in the platform and hook up Claude to the MCP server to generate content.
 
 **One Deployment = One Agency.** You manage infinite client sites ("Tenants") from a single dashboard.
+
+This is not for everyone. It's for you if you are technically inclined, you appreciate precision and you want to iterate fast - and don't want headaches.
 
 ---
 
 ## ⚡ The Philosophy: "The Notion for Agencies"
 
-Most agencies are stuck in "Implementation Gunk" - managing plugins, fixing CSS, and updating PHP.
+Most agencies are stuck in "Implementation Gunk" - managing plugins, fixing CSS, and updating PHP. And now copy pasting between client notes, AI, and block editors.
+
 AMODX changes the game:
 
 1.  **Don't Paint Pixels, Stack Blocks:**

@@ -10,6 +10,12 @@ export const AccessType = z.enum(["Public", "LoginRequired", "Group", "Purchase"
 export const WorkItemStatus = z.enum(["Draft", "PendingApproval", "Scheduled", "Completed", "Failed"]);
 export const ContextType = z.enum(["Strategy", "Persona", "PainPoint", "BrandVoice", "Offer"]);
 
+// Helper for Navigation
+export const LinkSchema = z.object({
+    label: z.string(),
+    href: z.string(),
+});
+
 // ==========================================
 // 2. ACCESS CONTROL (The Gatekeeper)
 // ==========================================
@@ -175,6 +181,12 @@ export const TenantConfigSchema = z.object({
     domain: z.string(), // e.g., "dental-pros.com"
     name: z.string(),
 
+    // NEW: Assets & Nav
+    logo: z.string().optional(),
+    icon: z.string().optional(), // Favicon
+    navLinks: z.array(LinkSchema).default([]),
+    footerLinks: z.array(LinkSchema).default([]),
+
     // THE NEW STATE MACHINE
     status: TenantStatus.default("LIVE"),
 
@@ -203,6 +215,7 @@ export const TenantConfigSchema = z.object({
         stripePublicKey: "",
         mailerlite: false,
         perplexity: false,
+        contactEmail: ""
     }),
 
     createdAt: z.string(),

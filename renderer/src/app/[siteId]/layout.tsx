@@ -36,11 +36,30 @@ export default async function SiteLayout({
         <div className="site-wrapper flex flex-col min-h-screen">
             <ThemeInjector theme={config.theme} tenantId={config.id} />
 
-            <Navbar siteName={config.name} />
+            {/* Favicon Injection */}
+            {config.icon && <link rel="icon" href={config.icon} />}
+
+            <Navbar
+                siteName={config.name}
+                logo={config.logo}
+                links={config.navLinks}
+            />
 
             <div className="flex-1">
                 {children}
             </div>
+
+            {/* Footer */}
+            <footer className="border-t py-12 bg-muted/30">
+                <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-sm text-muted-foreground">
+                    <p>© {new Date().getFullYear()} {config.name}</p>
+                    <div className="flex gap-4">
+                        {(config.footerLinks || []).map((link, i) => (
+                            <a key={i} href={link.href} className="hover:text-foreground">{link.label}</a>
+                        ))}
+                    </div>
+                </div>
+            </footer>
         </div>
     );
 }
