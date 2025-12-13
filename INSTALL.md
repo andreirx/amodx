@@ -85,5 +85,5 @@ To use Claude Desktop with your infrastructure:
 ```bash
 cd tools/mcp-server
 npm run build
-npm run setup <YOUR_API_GATEWAY_URL>
+npm run setup
 ```
