@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Loader2, ExternalLink, Copy, Palette, Type, MousePointerClick, AlertCircle, Mail } from "lucide-react";
+import { Loader2, ExternalLink, Palette, Type, MousePointerClick, AlertCircle, Mail } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload } from "lucide-react";
 
@@ -94,6 +94,13 @@ export default function SettingsPage() {
         }));
     };
 
+    const updateHeader = (key: string, val: boolean) => {
+        setConfig(prev => ({
+            ...prev,
+            header: { ...prev.header!, [key]: val }
+        }));
+    };
+
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
             setLoading(true);
@@ -158,49 +165,87 @@ export default function SettingsPage() {
                                 {/* Logo Upload */}
                                 <div className="space-y-2">
                                     <Label>Logo</Label>
-                                    <div className="relative w-32 h-32 bg-muted/30 border-2 border-dashed border-muted-foreground/20 rounded-lg flex flex-col items-center justify-center hover:bg-muted/50 transition-colors overflow-hidden group">
+                                    <div
+                                        className="relative w-32 h-32 bg-muted/30 border-2 border-dashed border-muted-foreground/20 rounded-lg flex flex-col items-center justify-center hover:bg-muted/50 transition-colors overflow-hidden group">
                                         {config.logo ? (
                                             <>
-                                                <img src={config.logo} alt="Logo" className="w-full h-full object-contain p-2" />
-                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <label className="cursor-pointer text-white text-xs font-medium p-2">
+                                                <img src={config.logo} alt="Logo"
+                                                     className="w-full h-full object-contain p-2"/>
+                                                <div
+                                                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <label
+                                                        className="cursor-pointer text-white text-xs font-medium p-2">
                                                         Change
-                                                        <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                                        <input type="file" className="hidden" accept="image/*"
+                                                               onChange={handleLogoUpload}/>
                                                     </label>
                                                 </div>
                                             </>
                                         ) : (
-                                            <label className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
-                                                <Upload className="h-6 w-6 text-muted-foreground mb-2" />
+                                            <label
+                                                className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
+                                                <Upload className="h-6 w-6 text-muted-foreground mb-2"/>
                                                 <span className="text-xs text-muted-foreground">Upload</span>
-                                                <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                                <input type="file" className="hidden" accept="image/*"
+                                                       onChange={handleLogoUpload}/>
                                             </label>
                                         )}
+                                    </div>
+                                    {/* NEW: Header Toggles */}
+                                    <div className="flex flex-col gap-2 mt-2">
+                                        <label
+                                            className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={config.header?.showLogo ?? true}
+                                                onChange={e => updateHeader('showLogo', e.target.checked)}
+                                                className="rounded border-gray-300"
+                                            />
+                                            Show in Header
+                                        </label>
                                     </div>
                                 </div>
 
                                 <div className="flex-1 space-y-4">
                                     <div className="space-y-2">
                                         <Label>Site Name</Label>
-                                        <Input value={config.name || ""} onChange={e => setConfig({ ...config, name: e.target.value })} />
+                                        <Input value={config.name || ""}
+                                               onChange={e => setConfig({...config, name: e.target.value})}/>
+                                        <label
+                                            className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={config.header?.showTitle ?? true}
+                                                onChange={e => updateHeader('showTitle', e.target.checked)}
+                                                className="rounded border-gray-300"
+                                            />
+                                            Show Name in Header
+                                        </label>
                                     </div>
+
+                                    {/* NEW: Description */}
                                     <div className="space-y-2">
-                                        <Label>Tenant ID</Label>
-                                        <div className="flex gap-2">
-                                            <Input value={config.id || ""} disabled className="bg-muted font-mono" />
-                                            <Button variant="outline" size="icon" onClick={() => navigator.clipboard.writeText(config.id!)}>
-                                                <Copy className="h-4 w-4" />
-                                            </Button>
-                                        </div>
+                                        <Label>Site Description</Label>
+                                        <textarea
+                                            className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                            value={config.description || ""}
+                                            onChange={e => setConfig({...config, description: e.target.value})}
+                                            placeholder="Used for SEO meta tags and AI crawlers (llms.txt)."
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Production Domain</Label>
+                                        <Input value={config.domain || ""}
+                                               onChange={e => setConfig({...config, domain: e.target.value})}/>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="space-y-2">
                                 <Label>Production Domain</Label>
                                 <Input
                                     value={config.domain || ""}
-                                    onChange={e => setConfig({ ...config, domain: e.target.value })}
+                                    onChange={e => setConfig({...config, domain: e.target.value})}
                                     placeholder="client.com"
                                 />
                             </div>
@@ -211,7 +256,8 @@ export default function SettingsPage() {
                                     <div className="text-xs font-mono truncate max-w-md select-all">{previewUrl}</div>
                                 </div>
                                 <Button variant="ghost" size="sm" asChild className="h-8">
-                                    <a href={previewUrl} target="_blank" rel="noreferrer">Open <ExternalLink className="ml-2 h-3 w-3" /></a>
+                                    <a href={previewUrl} target="_blank" rel="noreferrer">Open <ExternalLink
+                                        className="ml-2 h-3 w-3"/></a>
                                 </Button>
                             </div>
                         </CardContent>
@@ -221,7 +267,7 @@ export default function SettingsPage() {
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
-                                <Mail className="h-5 w-5 text-muted-foreground" />
+                                <Mail className="h-5 w-5 text-muted-foreground"/>
                                 <CardTitle>Notifications</CardTitle>
                             </div>
                         </CardHeader>
@@ -246,15 +292,19 @@ export default function SettingsPage() {
                             <div className="flex items-center justify-between">
                                 <CardTitle>Navigation Menu</CardTitle>
                                 <Button variant="outline" size="sm" onClick={() => addLink('navLinks')}>
-                                    <Plus className="h-4 w-4 mr-2" /> Add Link
+                                    <Plus className="h-4 w-4 mr-2"/> Add Link
                                 </Button>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {(config.navLinks || []).map((link, i) => (
                                 <div key={i} className="flex gap-2">
-                                    <Input value={link.label} onChange={e => updateLink('navLinks', i, 'label', e.target.value)} placeholder="Label" className="flex-1" />
-                                    <Input value={link.href} onChange={e => updateLink('navLinks', i, 'href', e.target.value)} placeholder="/path" className="flex-1" />
+                                    <Input value={link.label}
+                                           onChange={e => updateLink('navLinks', i, 'label', e.target.value)}
+                                           placeholder="Label" className="flex-1"/>
+                                    <Input value={link.href}
+                                           onChange={e => updateLink('navLinks', i, 'href', e.target.value)}
+                                           placeholder="/path" className="flex-1"/>
                                     <Button variant="ghost" size="icon" onClick={() => removeLink('navLinks', i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                 </div>
                             ))}

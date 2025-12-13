@@ -176,10 +176,20 @@ export const IntegrationsSchema = z.object({
     perplexity: z.boolean().default(false),
 });
 
+// New Header Config
+export const HeaderConfigSchema = z.object({
+    showLogo: z.boolean().default(true),
+    showTitle: z.boolean().default(true),
+});
+
 export const TenantConfigSchema = z.object({
     id: z.string(), // e.g., "client-bob"
     domain: z.string(), // e.g., "dental-pros.com"
     name: z.string(),
+
+    // NEW FIELDS
+    description: z.string().optional(), // SEO Meta + llms.txt intro
+    header: HeaderConfigSchema.default({ showLogo: true, showTitle: true }),
 
     // NEW: Assets & Nav
     logo: z.string().optional(),

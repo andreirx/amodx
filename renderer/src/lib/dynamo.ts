@@ -46,17 +46,36 @@ export async function getTenantConfig(identifier: string): Promise<TenantConfig 
     }
 }
 
+
 function mapTenant(item: any): TenantConfig {
     let theme = item.theme;
     if (typeof theme === 'string') {
         try { theme = JSON.parse(theme); } catch (e) { theme = {}; }
     }
+
+    // Parse links if stored as JSON string, or use as-is if object
+    // DynamoDB might store arrays as Lists ("L"), which the DocumentClient unmarshalls to Arrays.
+    // If they were saved as JSON strings (unlikely with DocumentClient but possible), parse them.
+    // Based on your CSV, "navLinks" is a List of Maps: [{"M":{...}}].
+    // DocumentClient handles this automatically.
+
+    // Ensure header config defaults exist
+    const header = item.header || { showLogo: true, showTitle: true };
+
     return {
         id: item.id,
         name: item.name || "Untitled Site",
         domain: item.Domain || item.domain,
+        description: item.description || undefined,
         status: item.status || "LIVE",
         plan: item.plan || "Pro",
+
+        logo: item.logo || undefined,
+        icon: item.icon || undefined,
+        header: header,
+        navLinks: item.navLinks || [],
+        footerLinks: item.footerLinks || [],
+
         theme: theme || {},
         integrations: item.integrations || {},
         createdAt: item.createdAt || new Date().toISOString()

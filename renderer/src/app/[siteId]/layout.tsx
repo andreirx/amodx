@@ -43,6 +43,8 @@ export default async function SiteLayout({
                 siteName={config.name}
                 logo={config.logo}
                 links={config.navLinks}
+                showLogo={config.header?.showLogo}
+                showTitle={config.header?.showTitle}
             />
 
             <div className="flex-1">

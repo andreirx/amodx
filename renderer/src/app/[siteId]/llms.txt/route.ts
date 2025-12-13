@@ -31,7 +31,13 @@ export async function GET(
     const { items } = await res.json();
 
     let text = `# ${config.name}\n\n`;
-    text += `${config.name} is a website about...\n\n`; // Could pull from description
+
+    // NEW: Use the actual description
+    if (config.description) {
+        text += `${config.description}\n\n`;
+    } else {
+        text += `A website for ${config.name}.\n\n`;
+    }
     text += `## Site Structure\n\n`;
 
     items
