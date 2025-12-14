@@ -2,6 +2,8 @@
 
 > It's time to move past WordPress.
 
+![AMODX Architecture](WP-vs-AMODX.jpg)
+
 AMODX is a **Serverless Command Center** that allows you to manage hundreds of client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard.**
 
 * Clean, secure, and modern.

@@ -159,8 +159,8 @@ export const ThemeSchema = z.object({
     surfaceColor: z.string().default("#f4f4f5"), // Cards/Sidebars
 
     // Typography (We will load these from Google Fonts in the Renderer)
-    fontHeading: z.string().default("Inter"),
-    fontBody: z.string().default("Inter"),
+    fontHeading: z.string().default("Playfair Display"),
+    fontBody: z.string().default("Raleway"),
 
     // UI Roundness
     radius: z.string().default("0.5rem"),
@@ -215,8 +215,8 @@ export const TenantConfigSchema = z.object({
         secondaryColor: "#ffffff",
         backgroundColor: "#ffffff",
         surfaceColor: "#f4f4f5",
-        fontHeading: "Inter",
-        fontBody: "Inter",
+        fontHeading: "Playfair Display",
+        fontBody: "Raleway",
         radius: "0.5rem"
     }),
     integrations: IntegrationsSchema.default({

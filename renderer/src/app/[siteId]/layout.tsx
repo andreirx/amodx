@@ -1,22 +1,36 @@
 import { getTenantConfig } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { Navbar } from "@/components/Navbar";
+import { Metadata } from "next";
 
-// ISR: Cache layout for 1 hour
 export const revalidate = 3600;
 
-export default async function SiteLayout({
-                                             children,
-                                             params,
-                                         }: {
+type Props = {
     children: React.ReactNode;
     params: Promise<{ siteId: string }>;
-}) {
-    const { siteId } = await params;
+};
 
-    // Fetch Config
-    // If siteId is "localhost", middleware passed it through.
-    // Ideally you have a Tenant with domain "localhost" in DB for dev.
+// NEW: Global Metadata (Favicon & Title Template)
+export async function generateMetadata({ params }: { params: Promise<{ siteId: string }> }): Promise<Metadata> {
+    const { siteId } = await params;
+    const config = await getTenantConfig(siteId);
+
+    if (!config) return {};
+
+    return {
+        title: {
+            template: `%s | ${config.name}`,
+            default: config.name, // "My Site"
+        },
+        icons: {
+            // Logic: Specific Icon -> Logo -> Default
+            icon: config.icon || config.logo || '/favicon.ico',
+        },
+    };
+}
+
+export default async function SiteLayout({ children, params }: Props) {
+    const { siteId } = await params;
     const config = await getTenantConfig(siteId);
 
     if (!config) {
@@ -36,8 +50,7 @@ export default async function SiteLayout({
         <div className="site-wrapper flex flex-col min-h-screen">
             <ThemeInjector theme={config.theme} tenantId={config.id} />
 
-            {/* Favicon Injection */}
-            {config.icon && <link rel="icon" href={config.icon} />}
+            {/* REMOVED: Manual <link rel="icon"> tag. Metadata API handles it now. */}
 
             <Navbar
                 siteName={config.name}
@@ -51,7 +64,6 @@ export default async function SiteLayout({
                 {children}
             </div>
 
-            {/* Footer */}
             <footer className="border-t py-12 bg-muted/30">
                 <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-sm text-muted-foreground">
                     <p>© {new Date().getFullYear()} {config.name}</p>

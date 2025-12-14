@@ -1,8 +1,12 @@
 # AMODX System Architecture Specification (v2.1 - The Block Protocol)
 
 **Project Name:** AMODX (Agency Management On Demand Extreme)
+
 **Vision:** A Serverless, AI-Native Operating System for Agencies. One Deployment = Infinite Sites.
+
 **Philosophy:** "Notion for Agencies." We do not paint pixels; we assemble structured **Blocks**.
+
+![AMODX Architecture](Diagram-AMODX.jpg)
 
 ---
 
