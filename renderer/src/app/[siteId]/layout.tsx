@@ -1,6 +1,7 @@
 import { getTenantConfig } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { Navbar } from "@/components/Navbar";
+import { Analytics } from "@/components/Analytics";
 import { Metadata } from "next";
 
 export const revalidate = 3600;
@@ -50,7 +51,11 @@ export default async function SiteLayout({ children, params }: Props) {
         <div className="site-wrapper flex flex-col min-h-screen">
             <ThemeInjector theme={config.theme} tenantId={config.id} />
 
-            {/* REMOVED: Manual <link rel="icon"> tag. Metadata API handles it now. */}
+            {/* ANALYTICS INJECTION */}
+            <Analytics config={{
+                gaId: config.integrations?.googleAnalyticsId,
+                analytics: config.integrations?.analytics
+            }} />
 
             <Navbar
                 siteName={config.name}

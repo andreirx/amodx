@@ -160,7 +160,7 @@ export const ThemeSchema = z.object({
 
     // Typography (We will load these from Google Fonts in the Renderer)
     fontHeading: z.string().default("Playfair Display"),
-    fontBody: z.string().default("Raleway"),
+    fontBody: z.string().default("Lato"),
 
     // UI Roundness
     radius: z.string().default("0.5rem"),
@@ -169,8 +169,18 @@ export const ThemeSchema = z.object({
 // Expanded Integrations
 export const IntegrationsSchema = z.object({
     contactEmail: z.string().email().optional(),
+
     googleAnalyticsId: z.string().optional(), // G-XXXXXXXX
     googleSearchConsoleId: z.string().optional(), // Verification Code
+
+    // Privacy Friendly (Umami/Plausible)
+    // We store the script URL and the Website ID
+    analytics: z.object({
+        provider: z.enum(["none", "umami", "plausible", "custom"]).default("none"),
+        url: z.string().optional(), // e.g. "https://analytics.myagency.com/script.js"
+        websiteId: z.string().optional(), // UUID for Umami
+    }).default({ provider: "none" }),
+
     stripePublicKey: z.string().optional(),
     mailerlite: z.boolean().default(false),
     perplexity: z.boolean().default(false),
@@ -216,13 +226,14 @@ export const TenantConfigSchema = z.object({
         backgroundColor: "#ffffff",
         surfaceColor: "#f4f4f5",
         fontHeading: "Playfair Display",
-        fontBody: "Raleway",
+        fontBody: "Lato",
         radius: "0.5rem"
     }),
     integrations: IntegrationsSchema.default({
         googleAnalyticsId: "",
         googleSearchConsoleId: "",
         stripePublicKey: "",
+        analytics: { provider: "none" },
         mailerlite: false,
         perplexity: false,
         contactEmail: ""

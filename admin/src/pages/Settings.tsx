@@ -312,6 +312,80 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {/* ANALYTICS CARD */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Analytics</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+
+                            {/* Google */}
+                            <div className="space-y-2">
+                                <Label>Google Analytics ID (G-XXXX)</Label>
+                                <Input
+                                    value={config.integrations?.googleAnalyticsId || ""}
+                                    onChange={e => updateIntegration("googleAnalyticsId", e.target.value)}
+                                    placeholder="G-..."
+                                />
+                            </div>
+
+                            <div className="h-px bg-border my-4" />
+
+                            {/* Alternative Provider */}
+                            <div className="space-y-2">
+                                <Label>Privacy-First Analytics</Label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                                    value={config.integrations?.analytics?.provider || "none"}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            analytics: { ...config.integrations?.analytics, provider: e.target.value as any }
+                                        }
+                                    })}
+                                >
+                                    <option value="none">None</option>
+                                    <option value="umami">Umami (Self-Hosted/Cloud)</option>
+                                    <option value="plausible">Plausible</option>
+                                </select>
+                            </div>
+
+                            {config.integrations?.analytics?.provider === 'umami' && (
+                                <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+                                    <div className="space-y-2">
+                                        <Label>Script URL</Label>
+                                        <Input
+                                            placeholder="https://stats.agency.com/script.js"
+                                            value={config.integrations?.analytics?.url || ""}
+                                            onChange={e => setConfig({
+                                                ...config,
+                                                integrations: {
+                                                    ...config.integrations!,
+                                                    analytics: { ...config.integrations?.analytics!, url: e.target.value }
+                                                }
+                                            })}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Website ID (UUID)</Label>
+                                        <Input
+                                            placeholder="xxxxx-xxxx-xxxx"
+                                            value={config.integrations?.analytics?.websiteId || ""}
+                                            onChange={e => setConfig({
+                                                ...config,
+                                                integrations: {
+                                                    ...config.integrations!,
+                                                    analytics: { ...config.integrations?.analytics!, websiteId: e.target.value }
+                                                }
+                                            })}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
                     {/* INTERFACE */}
                     <Card>
                         <CardHeader className="pb-4">
@@ -330,7 +404,7 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Mode</Label>
+                                    <Label>Mode (TODO: implement it)</Label>
                                     <select
                                         className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                                         value={config.theme?.mode || "light"}
