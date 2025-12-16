@@ -1,5 +1,9 @@
 {
   "acknowledged-issue-numbers": [
     34892
-  ]
+  ],
+  "hosted-zone:account=324037297014:domainName=amodx.net:region=eu-central-1": {
+    "Id": "/hostedzone/Z0715186T0698HWGEQUS",
+    "Name": "amodx.net."
+  }
 }

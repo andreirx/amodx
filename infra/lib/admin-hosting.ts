@@ -3,6 +3,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { execSync } from 'child_process';
@@ -14,6 +15,8 @@ interface AdminHostingProps {
     userPoolClientId: string;
     region: string;
     rendererUrl: string;
+    certificate?: acm.ICertificate;
+    domainName?: string;
 }
 
 export class AdminHosting extends Construct {
@@ -52,6 +55,9 @@ export class AdminHosting extends Construct {
                 allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
             },
+            domainNames: props.domainName ? [props.domainName] : undefined,
+            certificate: props.certificate,
+
             defaultRootObject: 'index.html',
             errorResponses: [
                 {

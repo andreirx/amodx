@@ -19,8 +19,13 @@ async function main() {
     const getOutput = (keyPart: string) => outputs.find(o => o.OutputKey?.includes(keyPart))?.OutputValue;
 
     const apiUrl = getOutput("ApiApiUrl");
-    const userPoolId = getOutput("UserPoolId");
-    const clientId = getOutput("UserPoolClientId");
+
+    const adminPoolId = getOutput("AdminPoolId");
+    const adminClientId = getOutput("AdminClientId");
+
+    const publicPoolId = getOutput("PublicPoolId");
+    const publicClientId = getOutput("PublicClientId");
+
     const rendererUrl = getOutput("RendererHostingRendererUrl");
     const secretName = getOutput("MasterKeySecretName");
 
@@ -38,8 +43,8 @@ async function main() {
     // 3. Write Admin .env.local
     const adminEnv = `
 VITE_API_URL=${apiUrl}
-VITE_USER_POOL_ID=${userPoolId}
-VITE_USER_POOL_CLIENT_ID=${clientId}
+VITE_USER_POOL_ID=${adminPoolId}
+VITE_USER_POOL_CLIENT_ID=${adminClientId}
 VITE_RENDERER_URL=${rendererUrl}
 VITE_REGION=${REGION}
 `.trim();
@@ -51,7 +56,10 @@ VITE_REGION=${REGION}
     const rendererEnv = `
 TABLE_NAME=${getOutput("TableName")}
 AWS_REGION=${REGION}
+NEXT_PUBLIC_USER_POOL_ID=${publicPoolId}
+NEXT_PUBLIC_USER_POOL_CLIENT_ID=${publicClientId}
 `.trim();
+
     fs.writeFileSync(path.join(__dirname, "../renderer/.env.local"), rendererEnv);
     console.log("✅ Updated renderer/.env.local");
 

@@ -3,36 +3,54 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import { Construct } from 'constructs';
 
 export class AmodxAuth extends Construct {
-    public readonly userPool: cognito.UserPool;
-    public readonly userPoolClient: cognito.UserPoolClient;
+    public readonly adminPool: cognito.UserPool;
+    public readonly adminClient: cognito.UserPoolClient;
+
+    public readonly publicPool: cognito.UserPool;
+    public readonly publicClient: cognito.UserPoolClient;
 
     constructor(scope: Construct, id: string) {
         super(scope, id);
 
-        // 1. The User Pool (Directory of Users)
-        this.userPool = new cognito.UserPool(scope, 'AmodxUserPool', {
-            selfSignUpEnabled: false, // You invite Agency Owners manually
+        // ==========================================
+        // 1. ADMIN POOL (Agency Owners)
+        // ==========================================
+        this.adminPool = new cognito.UserPool(scope, 'AmodxAdminPool', {
+            userPoolName: 'amodx-admin-pool',
+            selfSignUpEnabled: false, // Strict Invite Only
             signInAliases: { email: true },
             autoVerify: { email: true },
-            passwordPolicy: {
-                minLength: 8,
-                requireSymbols: false,
-            },
-            customAttributes: {
-                'tenant_id': new cognito.StringAttribute({ mutable: true }),
-                'role': new cognito.StringAttribute({ mutable: true }),
-            },
+            passwordPolicy: { minLength: 8, requireSymbols: false },
         });
 
-        // 2. The Client (What the Admin UI uses to talk to Cognito)
-        this.userPoolClient = this.userPool.addClient('AmodxAdminClient', {
-            oAuth: {
-                flows: {
-                    implicitCodeGrant: true, // For SPA
-                },
+        this.adminClient = this.adminPool.addClient('AmodxAdminClient', {
+            userPoolClientName: 'amodx-admin-client',
+            generateSecret: false,
+            authFlows: { userSrp: true },
+        });
+
+        // ==========================================
+        // 2. PUBLIC POOL (Tenant Visitors)
+        // ==========================================
+        this.publicPool = new cognito.UserPool(scope, 'AmodxPublicPool', {
+            userPoolName: 'amodx-public-pool',
+            selfSignUpEnabled: true, // Allow visitors to register
+            signInAliases: { email: true, username: true }, // We will use custom usernames
+            autoVerify: { email: true },
+            passwordPolicy: { minLength: 6, requireSymbols: false },
+            // We need custom attributes to know WHICH tenant they belong to
+            customAttributes: {
+                'tenant_id': new cognito.StringAttribute({ mutable: true }),
             },
+            removalPolicy: cdk.RemovalPolicy.DESTROY, // Change to RETAIN for prod
+        });
+
+        this.publicClient = this.publicPool.addClient('AmodxPublicClient', {
+            userPoolClientName: 'amodx-public-client',
+            generateSecret: false, // NextAuth runs client-side/edge compatible
             authFlows: {
                 userSrp: true,
+                custom: true,
             },
         });
     }

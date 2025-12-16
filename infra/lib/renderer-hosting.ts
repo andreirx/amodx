@@ -6,6 +6,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { execSync } from 'child_process';
@@ -14,6 +15,8 @@ interface RendererHostingProps {
     table: dynamodb.Table;
     apiUrl: string;
     masterKeySecret: secretsmanager.ISecret;
+    certificate?: acm.ICertificate;
+    domainNames?: string[];
 }
 
 export class RendererHosting extends Construct {
@@ -114,6 +117,8 @@ function handler(event) {
                     eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,  // <-- Runs before origin
                 }],
             },
+            domainNames: props.domainNames,
+            certificate: props.certificate,
             additionalBehaviors: {
                 '_next/static/*': {
                     origin: origins.S3BucketOrigin.withOriginAccessControl(assetBucket),
