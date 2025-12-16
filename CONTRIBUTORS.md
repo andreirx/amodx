@@ -78,20 +78,19 @@ npm run build -w @amodx/shared
 npm run build -w @amodx/plugins
 ```
 
-### 2. Connect to Cloud
-You must deploy the backend first to get APIs and Secrets.
+### 2. Deploy Backend
 ```bash
 cd infra
 npx cdk deploy
 npm run post-deploy # <--- GENERATES .env.local FILES AUTOMATICALLY
 ```
 
-### 3. Run Servers
+### 3. Run Admin & Renderer
 ```bash
-# Terminal 1: Admin
+# Terminal 1
 cd admin && npm run dev
 
-# Terminal 2: Renderer (Preview Mode)
+# Terminal 2
 cd renderer && npm run dev
 ```
 

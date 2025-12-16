@@ -13,15 +13,14 @@ import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 
-// NEW PROPS INTERFACE
 interface AmodxStackProps extends cdk.StackProps {
   config: {
     domains: {
-      root: string;
+      root?: string; // Optional now
       tenants?: string[];
       globalCertArn?: string;
     };
-    [key: string]: any; // Allow other config fields
+    [key: string]: any;
   };
 }
 
@@ -33,57 +32,49 @@ export class AmodxStack extends cdk.Stack {
     const tenantDomains = props.config.domains.tenants || [];
     const globalCertArn = props.config.domains.globalCertArn;
 
-    // 0. DOMAINS & CERTIFICATES STRATEGY
+    // 0. DOMAINS STRATEGY
     let globalCertificate: acm.ICertificate | undefined;
     let regionalCertificate: acm.ICertificate | undefined;
     let domains: AmodxDomains | undefined;
 
-    // Case A: We have a Root Domain (e.g. amodx.net)
+    // A. Handle Root Domain (The Agency Domain)
     if (rootDomain) {
       domains = new AmodxDomains(this, 'Domains', {
         domainName: rootDomain,
       });
-
-      // Regional Cert (EU-Central-1) for API Gateway
-      // We always create this via the Construct because it's cheap/easy and specific to the stack region
+      // API Gateway uses Regional Cert (eu-central-1)
       regionalCertificate = domains.regionalCertificate;
-
-      // Global Cert (US-East-1) for CloudFront
-      if (globalCertArn) {
-        // Option 1: Use the Massive Cert managed by our script
-        globalCertificate = acm.Certificate.fromCertificateArn(this, 'GlobalCert', globalCertArn);
-      } else {
-        // Option 2 (Fallback): Use the internal one (Only covers root + wildcard)
-        globalCertificate = domains.globalCertificate;
-      }
     }
 
-    // Combine all domains for CloudFront
-    // If we have a custom cert ARN, we assume it covers tenants.
-    // If we rely on fallback, we only support root + wildcard.
-    const allDomains = rootDomain
-        ? [rootDomain, `*.${rootDomain}`, ...(globalCertArn ? tenantDomains : [])]
-        : undefined;
+    // B. Handle Global Cert (CloudFront)
+    // This covers Root (if exists) AND Tenants
+    if (globalCertArn) {
+      // Use the Massive Cert managed by script
+      globalCertificate = acm.Certificate.fromCertificateArn(this, 'GlobalCert', globalCertArn);
+    } else if (domains) {
+      // Fallback: Use internal cert (Only covers root + wildcard)
+      globalCertificate = domains.globalCertificate;
+    }
 
+    // C. Compile Domain List for CloudFront
+    const allDomains: string[] = [];
+    if (rootDomain) {
+      allDomains.push(rootDomain, `*.${rootDomain}`);
+    }
+    // Only add tenants if we have a valid cert that (presumably) covers them
+    if (globalCertArn && tenantDomains.length > 0) {
+      allDomains.push(...tenantDomains);
+    }
 
-    // 1. Secrets & Data
-    const masterKeySecret = new secretsmanager.Secret(this, 'AmodxMasterKey', {
-      description: 'Master API Key',
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({}),
-        generateStringKey: 'apiKey',
-        excludePunctuation: true,
-        includeSpace: false,
-      },
-    });
-
+    // ... (Secrets, Uploads, DB, Auth) ... (Keep existing code)
+    const masterKeySecret = new secretsmanager.Secret(this, 'AmodxMasterKey', { /*...*/ });
     const uploads = new AmodxUploads(this, 'Uploads');
     const db = new AmodxDatabase(this, 'Database');
     const auth = new AmodxAuth(this, 'Auth');
 
-    // 2. API Domain Setup
+    // 2. API Domain Setup (Only if Root Domain exists)
     let apiDomain: apigw.DomainName | undefined;
-    if (domains && regionalCertificate) {
+    if (domains && regionalCertificate && rootDomain) {
       apiDomain = new apigw.DomainName(this, 'ApiDomain', {
         domainName: `api.${rootDomain}`,
         certificate: regionalCertificate,
@@ -100,13 +91,11 @@ export class AmodxStack extends cdk.Stack {
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
     });
 
-    // Wire API DNS
     if (apiDomain && domains) {
       new apigw.ApiMapping(this, 'ApiMapping', {
         api: api.httpApi,
         domainName: apiDomain,
       });
-
       new route53.ARecord(this, 'ApiRecord', {
         zone: domains.zone,
         recordName: 'api',
@@ -120,28 +109,15 @@ export class AmodxStack extends cdk.Stack {
       apiUrl: api.httpApi.url!,
       masterKeySecret: masterKeySecret,
       certificate: globalCertificate,
-      domainNames: allDomains,
+      domainNames: allDomains.length > 0 ? allDomains : undefined, // <--- FIX: Pass tenants even if root is missing
     });
 
-    // Wire Renderer DNS
-    if (domains) {
+    // Wire DNS for Root (Agency) Domain only
+    // Tenants manage their own DNS to point to this distribution
+    if (domains && rootDomain) {
       const target = route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(renderer.distribution));
-
-      // Root: amodx.net
-      new route53.ARecord(this, 'RendererApexRecord', {
-        zone: domains.zone,
-        target: target,
-      });
-
-      // Wildcard: *.amodx.net
-      new route53.ARecord(this, 'RendererWildcardRecord', {
-        zone: domains.zone,
-        recordName: '*',
-        target: target,
-      });
-
-      // NOTE: We CANNOT create DNS records for Tenant Custom Domains (client.com) here.
-      // Those are in external Hosted Zones. The client manages them.
+      new route53.ARecord(this, 'RendererApexRecord', { zone: domains.zone, target });
+      new route53.ARecord(this, 'RendererWildcardRecord', { zone: domains.zone, recordName: '*', target });
     }
 
     const rendererUrl = rootDomain ? `https://${rootDomain}` : `https://${renderer.distribution.distributionDomainName}`;
@@ -157,14 +133,14 @@ export class AmodxStack extends cdk.Stack {
       domainName: rootDomain ? `admin.${rootDomain}` : undefined,
     });
 
-    // Wire Admin DNS
-    if (domains) {
+    if (domains && rootDomain) {
       new route53.ARecord(this, 'AdminRecord', {
         zone: domains.zone,
         recordName: 'admin',
         target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(admin.distribution)),
       });
     }
+
 
     // Outputs
     new cdk.CfnOutput(this, 'TableName', { value: db.table.tableName });
