@@ -11,25 +11,60 @@ import { AmodxDomains } from './domains';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 
+// NEW PROPS INTERFACE
 interface AmodxStackProps extends cdk.StackProps {
-  domainName?: string;
-  stackName?: string;
+  config: {
+    domains: {
+      root: string;
+      tenants?: string[];
+      globalCertArn?: string;
+    };
+    [key: string]: any; // Allow other config fields
+  };
 }
 
 export class AmodxStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: AmodxStackProps) {
+  constructor(scope: Construct, id: string, props: AmodxStackProps) {
     super(scope, id, props);
 
-    const domainName = props?.domainName;
+    const rootDomain = props.config.domains.root;
+    const tenantDomains = props.config.domains.tenants || [];
+    const globalCertArn = props.config.domains.globalCertArn;
 
-    // 0. Domains
+    // 0. DOMAINS & CERTIFICATES STRATEGY
+    let globalCertificate: acm.ICertificate | undefined;
+    let regionalCertificate: acm.ICertificate | undefined;
     let domains: AmodxDomains | undefined;
-    if (domainName) {
+
+    // Case A: We have a Root Domain (e.g. amodx.net)
+    if (rootDomain) {
       domains = new AmodxDomains(this, 'Domains', {
-        domainName: domainName,
+        domainName: rootDomain,
       });
+
+      // Regional Cert (EU-Central-1) for API Gateway
+      // We always create this via the Construct because it's cheap/easy and specific to the stack region
+      regionalCertificate = domains.regionalCertificate;
+
+      // Global Cert (US-East-1) for CloudFront
+      if (globalCertArn) {
+        // Option 1: Use the Massive Cert managed by our script
+        globalCertificate = acm.Certificate.fromCertificateArn(this, 'GlobalCert', globalCertArn);
+      } else {
+        // Option 2 (Fallback): Use the internal one (Only covers root + wildcard)
+        globalCertificate = domains.globalCertificate;
+      }
     }
+
+    // Combine all domains for CloudFront
+    // If we have a custom cert ARN, we assume it covers tenants.
+    // If we rely on fallback, we only support root + wildcard.
+    const allDomains = rootDomain
+        ? [rootDomain, `*.${rootDomain}`, ...(globalCertArn ? tenantDomains : [])]
+        : undefined;
+
 
     // 1. Secrets & Data
     const masterKeySecret = new secretsmanager.Secret(this, 'AmodxMasterKey', {
@@ -48,10 +83,10 @@ export class AmodxStack extends cdk.Stack {
 
     // 2. API Domain Setup
     let apiDomain: apigw.DomainName | undefined;
-    if (domains) {
+    if (domains && regionalCertificate) {
       apiDomain = new apigw.DomainName(this, 'ApiDomain', {
-        domainName: `api.${domainName}`,
-        certificate: domains.regionalCertificate,
+        domainName: `api.${rootDomain}`,
+        certificate: regionalCertificate,
       });
     }
 
@@ -84,11 +119,11 @@ export class AmodxStack extends cdk.Stack {
       table: db.table,
       apiUrl: api.httpApi.url!,
       masterKeySecret: masterKeySecret,
-      certificate: domains?.globalCertificate,
-      domainNames: domainName ? [domainName, `*.${domainName}`] : undefined,
+      certificate: globalCertificate,
+      domainNames: allDomains,
     });
 
-    // WIRE RENDERER DNS (This was missing!)
+    // Wire Renderer DNS
     if (domains) {
       const target = route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(renderer.distribution));
 
@@ -104,22 +139,25 @@ export class AmodxStack extends cdk.Stack {
         recordName: '*',
         target: target,
       });
+
+      // NOTE: We CANNOT create DNS records for Tenant Custom Domains (client.com) here.
+      // Those are in external Hosted Zones. The client manages them.
     }
 
-    const rendererUrl = domainName ? `https://${domainName}` : `https://${renderer.distribution.distributionDomainName}`;
+    const rendererUrl = rootDomain ? `https://${rootDomain}` : `https://${renderer.distribution.distributionDomainName}`;
 
     // 5. Admin Layer
     const admin = new AdminHosting(this, 'AdminHosting', {
-      apiUrl: domainName ? `https://api.${domainName}/` : api.httpApi.url!,
+      apiUrl: rootDomain ? `https://api.${rootDomain}/` : api.httpApi.url!,
       userPoolId: auth.adminPool.userPoolId,
       userPoolClientId: auth.adminClient.userPoolClientId,
       region: this.region,
       rendererUrl: rendererUrl,
-      certificate: domains?.globalCertificate,
-      domainName: domainName ? `admin.${domainName}` : undefined,
+      certificate: globalCertificate,
+      domainName: rootDomain ? `admin.${rootDomain}` : undefined,
     });
 
-    // WIRE ADMIN DNS (This was missing!)
+    // Wire Admin DNS
     if (domains) {
       new route53.ARecord(this, 'AdminRecord', {
         zone: domains.zone,
@@ -136,7 +174,7 @@ export class AmodxStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PublicClientId', { value: auth.publicClient.userPoolClientId });
     new cdk.CfnOutput(this, 'Region', { value: this.region });
     new cdk.CfnOutput(this, 'RendererUrl', { value: rendererUrl });
-    new cdk.CfnOutput(this, 'AdminUrl', { value: domainName ? `https://admin.${domainName}` : `https://${admin.distribution.distributionDomainName}` });
+    new cdk.CfnOutput(this, 'AdminUrl', { value: rootDomain ? `https://admin.${rootDomain}` : `https://${admin.distribution.distributionDomainName}` });
     new cdk.CfnOutput(this, 'MasterKeySecretName', { value: masterKeySecret.secretName });
   }
 }

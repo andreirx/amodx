@@ -7,6 +7,7 @@ coverage
 test-report.xml
 .idea
 *.iml
+amodx.config.json
 
 # Build artifacts
 .open-next/

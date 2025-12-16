@@ -4,13 +4,13 @@
 
 ![AMODX Architecture](WP-vs-AMODX.jpg)
 
-AMODX is a **Serverless Command Center** that allows you to manage hundreds of client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard.**
+AMODX is a **Serverless Command Center** that allows you to manage up to 99 client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard.**
 
 * Clean, secure, and modern.
 * Extremely cheap to run: AWS Lambdas, Cognito, DynamoDB, EventBridge, S3.
 * AI first: capture context in the platform and hook up Claude to the MCP server to generate content.
 
-**One Deployment = One Agency.** You manage infinite client sites ("Tenants") from a single dashboard.
+**One Deployment = One Agency.** You manage 99 client sites ("Tenants") from a single dashboard.
 
 This is not for everyone. It's for you if you are technically inclined, you appreciate precision and you want to iterate fast - and don't want headaches.
 

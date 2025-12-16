@@ -2,23 +2,28 @@
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { AmodxStack } from '../lib/amodx-stack';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const app = new cdk.App();
 
-// Read domain from context: npx cdk deploy -c domainName=amodx.net
-// If missing, it defaults to undefined (CloudFront URLs only)
-const domainName = app.node.tryGetContext('domainName');
-const stackName = app.node.tryGetContext('stackName') || 'AmodxStack';
+// 1. Load Config
+const configPath = path.join(__dirname, '../../amodx.config.json');
 
+// Fallback for CI/First run if config doesn't exist
+const config = fs.existsSync(configPath)
+    ? JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+    : {};
 
+// CLI Overrides (Optional)
+const domainName = app.node.tryGetContext('domainName') || config.domains?.root;
+const stackName = app.node.tryGetContext('stackName') || config.stackName || 'AmodxStack';
+
+// 2. Deploy
 new AmodxStack(app, stackName, {
-    /* Specialize this stack for the AWS Account and Region
-     * implied by the current CLI configuration. */
     env: {
-        account: process.env.CDK_DEFAULT_ACCOUNT,
-        region: process.env.CDK_DEFAULT_REGION
+        account: config.account || process.env.CDK_DEFAULT_ACCOUNT,
+        region: config.region || process.env.CDK_DEFAULT_REGION
     },
-    // Pass the custom property
-    domainName: domainName,
-    stackName: stackName,
+    config: config // Pass the full config object
 });
