@@ -2,39 +2,23 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import type { ContentItem } from "@amodx/shared";
 import { useNavigate } from "react-router-dom";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {Plus, FileText, Loader2, LayoutDashboard} from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
+import { Plus, FileText, Loader2, LayoutDashboard } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTenant } from "@/context/TenantContext";
 
 export default function ContentList() {
     const { currentTenant } = useTenant();
     const [items, setItems] = useState<ContentItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-
-    // New State for Dialog
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [newTitle, setNewTitle] = useState("");
     const [isCreating, setIsCreating] = useState(false);
-
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -42,16 +26,35 @@ export default function ContentList() {
             setLoading(true);
             loadContent();
         }
-    }, [currentTenant?.id]); // Only trigger if tenant exists
+    }, [currentTenant?.id]);
 
     async function loadContent() {
         try {
             const data = await apiRequest("/content");
-            setItems(data.items);
+            // Sort by CreatedAt desc
+            const sorted = (data.items || []).sort((a: any, b: any) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+            setItems(sorted);
         } catch (err: any) {
             setError(err.message);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function updateStatus(id: string, newStatus: string) {
+        // Optimistic Update
+        setItems(prev => prev.map(item => item.id === id ? { ...item, status: newStatus as any } : item));
+
+        try {
+            await apiRequest(`/content/${id}`, {
+                method: "PUT",
+                body: JSON.stringify({ status: newStatus })
+            });
+        } catch (err: any) {
+            alert("Failed to update status");
+            loadContent(); // Revert
         }
     }
 
@@ -69,7 +72,7 @@ export default function ContentList() {
             });
             setNewTitle("");
             setIsDialogOpen(false);
-            await loadContent(); // Refresh list
+            await loadContent();
         } catch (err: any) {
             alert("Failed to create: " + err.message);
         } finally {
@@ -77,7 +80,6 @@ export default function ContentList() {
         }
     }
 
-    // 1. Guard Clause
     if (!currentTenant) {
         return (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-muted-foreground">
@@ -85,7 +87,7 @@ export default function ContentList() {
                     <LayoutDashboard className="h-8 w-8 opacity-50" />
                 </div>
                 <h2 className="text-xl font-semibold mb-2">No Site Selected</h2>
-                <p>Please select or create a site in the sidebar to manage content.</p>
+                <p>Please select or create a site in the sidebar.</p>
             </div>
         );
     }
@@ -93,19 +95,15 @@ export default function ContentList() {
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
-        <div className="p-8 max-w-5xl mx-auto space-y-6">
+        <div className="p-8 max-w-6xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold tracking-tight">Content</h1>
-
-                {/* CREATE DIALOG */}
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                         <Button><Plus className="mr-2 h-4 w-4" /> Create Page</Button>
                     </DialogTrigger>
                     <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Create New Page</DialogTitle>
-                        </DialogHeader>
+                        <DialogHeader><DialogTitle>Create New Page</DialogTitle></DialogHeader>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
                                 <Label>Page Title</Label>
@@ -116,14 +114,13 @@ export default function ContentList() {
                                     onKeyDown={(e) => e.key === "Enter" && createPage()}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Slug will be generated automatically:
-                                    <span className="font-mono ml-1">
-                    /{newTitle.toLowerCase().replace(/ /g, "-").replace(/[^\w-]/g, "")}
-                  </span>
+                                    Slug will be: <span className="font-mono">/{newTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}</span>
                                 </p>
                             </div>
                             <Button onClick={createPage} disabled={isCreating} className="w-full">
-                                {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Create"}
+                            <>
+                                {isCreating ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : ("Create")}
+                            </>
                             </Button>
                         </div>
                     </DialogContent>
@@ -132,13 +129,12 @@ export default function ContentList() {
 
             {error && <div className="text-red-500 p-4 border border-red-200 rounded">{error}</div>}
 
-            <div className="border rounded-md">
+            <div className="border rounded-md bg-white">
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Title</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Type</TableHead>
+                            <TableHead className="w-[400px]">Title</TableHead>
+                            <TableHead className="w-[150px]">Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -146,25 +142,33 @@ export default function ContentList() {
                         {items.map((item) => (
                             <TableRow key={item.id}>
                                 <TableCell className="font-medium">
-                                    <div className="flex flex-col">
-                                        <span className="flex items-center gap-2">
-                                          <FileText className="h-4 w-4 text-muted-foreground" />
+                                    <div className="flex flex-col cursor-pointer" onClick={() => navigate(`/content/${item.nodeId}`)}>
+                                        <span className="flex items-center gap-2 text-base">
+                                            <FileText className="h-4 w-4 text-muted-foreground" />
                                             {item.title}
                                         </span>
-                                        {/* Show the Slug */}
-                                        <span className="text-xs text-muted-foreground ml-6 font-mono">
-                                            {item.slug || ". . . . . ."}
+                                        <span className="text-xs text-muted-foreground ml-6 font-mono opacity-70">
+                                            {item.slug || "/"}
                                         </span>
                                     </div>
                                 </TableCell>
-                                <TableCell>{item.status}</TableCell>
-                                <TableCell>Page</TableCell>
-                                <TableCell className="text-right">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => navigate(`/content/${item.nodeId}`)}
+                                <TableCell>
+                                    <Select
+                                        defaultValue={item.status}
+                                        onValueChange={(val) => updateStatus(item.nodeId, val)}
                                     >
+                                        <SelectTrigger className="h-8 w-[130px]">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Draft">Draft</SelectItem>
+                                            <SelectItem value="Published">Published</SelectItem>
+                                            <SelectItem value="Archived">Archived</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="sm" onClick={() => navigate(`/content/${item.nodeId}`)}>
                                         Edit
                                     </Button>
                                 </TableCell>
@@ -172,8 +176,8 @@ export default function ContentList() {
                         ))}
                         {items.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={4} className="h-24 text-center">
-                                    No content found.
+                                <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                                    No content found. Create your first page!
                                 </TableCell>
                             </TableRow>
                         )}

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Save, ArrowLeft, Loader2 } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { Settings as SettingsIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -50,6 +51,7 @@ export default function ContentEditor() {
     const [seoTitle, setSeoTitle] = useState("");
     const [seoDesc, setSeoDesc] = useState("");
     const [featuredImg, setFeaturedImg] = useState("");
+    const [seoKeywords, setSeoKeywords] = useState("");
 
     // Track if user manually touched SEO fields
     const [manualSeo, setManualSeo] = useState(false);
@@ -70,6 +72,7 @@ export default function ContentEditor() {
             // Load existing SEO
             setSeoTitle(data.seoTitle || "");
             setSeoDesc(data.seoDescription || "");
+            setSeoKeywords(data.seoKeywords || "");
             setFeaturedImg(data.featuredImage || "");
 
             // If they exist, assume manual override
@@ -108,6 +111,7 @@ export default function ContentEditor() {
                     // Send SEO Data
                     seoTitle: finalSeoTitle,
                     seoDescription: finalSeoDesc,
+                    seoKeywords: seoKeywords,
                     featuredImage: finalImg
                 })
             });
@@ -120,6 +124,11 @@ export default function ContentEditor() {
         }
     }
 
+    // Helper to update status
+    const updateStatus = (val: string) => {
+        if (content) setContent({ ...content, status: val as any });
+    };
+
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
     if (!content) return <div className="p-8">Content not found</div>;
 
@@ -128,13 +137,22 @@ export default function ContentEditor() {
 
             {/* 1. Global Header (Back, Status, Save) */}
             <header className="flex-none flex items-center justify-between px-6 py-3 border-b bg-card z-20">
-                {/* ... (Existing Header Code) ... */}
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                     <div className="flex flex-col">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{content.status}</span>
+                        {/* STATUS SELECTOR */}
+                        <Select value={content?.status || "Draft"} onValueChange={updateStatus}>
+                            <SelectTrigger className={`h-8 w-[140px] font-medium ${content?.status === 'Published' ? 'text-green-600 bg-green-50 border-green-200' : 'text-muted-foreground'}`}>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Draft">Draft</SelectItem>
+                                <SelectItem value="Published">Published</SelectItem>
+                                <SelectItem value="Archived">Archived</SelectItem>
+                            </SelectContent>
+                        </Select>
                         <span className="text-sm font-medium text-muted-foreground">Last saved: ...</span>
                     </div>
                 </div>
@@ -152,6 +170,14 @@ export default function ContentEditor() {
                                 <SheetTitle>SEO & Social</SheetTitle>
                             </SheetHeader>
                             <div className="space-y-6 py-6">
+                                <div className="space-y-2">
+                                    <Label>Keywords (Comma separated)</Label>
+                                    <Input
+                                        value={seoKeywords}
+                                        onChange={e => setSeoKeywords(e.target.value)}
+                                        placeholder="agency, marketing, growth"
+                                    />
+                                </div>
                                 <div className="space-y-2">
                                     <Label>SEO Title</Label>
                                     <Input
@@ -192,8 +218,10 @@ export default function ContentEditor() {
                     </Sheet>
 
                     <Button onClick={save} disabled={saving}>
-                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> :
-                            <Save className="mr-2 h-4 w-4"/>}
+                        <>
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> :
+                                <Save className="mr-2 h-4 w-4"/>}
+                        </>
                         Save Changes
                     </Button>
                 </div>

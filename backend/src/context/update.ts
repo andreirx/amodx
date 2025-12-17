@@ -14,6 +14,7 @@ export const handler: AmodxHandler = async (event) => {
         if (!id || !event.body) return { statusCode: 400, body: "Missing ID or Body" };
         const body = JSON.parse(event.body);
 
+        // 1. Verify
         const existing = await db.send(new GetCommand({
             TableName: TABLE_NAME,
             Key: { PK: `TENANT#${tenantId}`, SK: `CONTEXT#${id}` }
@@ -21,21 +22,22 @@ export const handler: AmodxHandler = async (event) => {
 
         if (!existing.Item) return { statusCode: 404, body: "Context not found" };
 
+        // 2. Update
         await db.send(new UpdateCommand({
             TableName: TABLE_NAME,
             Key: { PK: `TENANT#${tenantId}`, SK: `CONTEXT#${id}` },
-            UpdateExpression: "SET #n = :n, #d = :d, updatedBy = :u, updatedAt = :t",
-            ExpressionAttributeNames: { "#n": "name", "#d": "data" },
+            UpdateExpression: "SET #t = :t, blocks = :b, tags = :tags, updatedBy = :u, updatedAt = :now",
+            ExpressionAttributeNames: { "#t": "title" },
             ExpressionAttributeValues: {
-                ":n": body.name || existing.Item.name,
-                ":d": body.data || existing.Item.data,
+                ":t": body.title || existing.Item.title,
+                ":b": body.blocks || existing.Item.blocks || [],
+                ":tags": body.tags || existing.Item.tags || [],
                 ":u": auth.sub,
-                ":t": new Date().toISOString()
+                ":now": new Date().toISOString()
             }
         }));
 
         return { statusCode: 200, body: JSON.stringify({ message: "Updated" }) };
-
     } catch (error: any) {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }

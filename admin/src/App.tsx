@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { getCurrentUser } from 'aws-amplify/auth';
 import LoginPage from "@/pages/Login";
 import StrategyBoard from "@/pages/StrategyBoard";
+import StrategyEditor from "@/pages/StrategyEditor";
 import ContentList from "@/pages/ContentList";
 import ContentEditor from "@/pages/ContentEditor";
 import SettingsPage from "@/pages/Settings";
@@ -52,6 +53,7 @@ export default function App() {
                     <Route path="/" element={<ContentList />} />
                     <Route path="/content/:id" element={<ContentEditor />} />
                     <Route path="/strategy" element={<StrategyBoard />} />
+                    <Route path="/strategy/:id" element={<StrategyEditor />} />
                     <Route path="/media" element={<MediaLibrary />} />
                     <Route path="/settings" element={<SettingsPage />} />
                 </Route>

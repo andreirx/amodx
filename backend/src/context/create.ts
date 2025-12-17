@@ -1,6 +1,4 @@
-import {
-    APIGatewayProxyHandlerV2WithLambdaAuthorizer
-} from "aws-lambda";
+import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ContextItemSchema } from "@amodx/shared";
@@ -12,13 +10,22 @@ export const handler: AmodxHandler = async (event) => {
     try {
         if (!event.body) return { statusCode: 400, body: "Missing body" };
 
-        // Identity & Scope
         const tenantId = event.headers['x-tenant-id'] || "DEMO";
         const auth = event.requestContext.authorizer.lambda;
 
         const body = JSON.parse(event.body);
-        const input = ContextItemSchema.omit({ id: true, tenantId: true }).parse(body);
+
+        // Zod Validation (Strips unknown fields)
+        const input = ContextItemSchema.omit({
+            id: true,
+            tenantId: true,
+            createdAt: true,
+            createdBy: true,
+            updatedAt: true
+        }).parse(body);
+
         const id = crypto.randomUUID();
+        const now = new Date().toISOString();
 
         await db.send(new PutCommand({
             TableName: TABLE_NAME,
@@ -28,8 +35,12 @@ export const handler: AmodxHandler = async (event) => {
                 tenantId,
                 id,
                 createdBy: auth.sub,
-                createdAt: new Date().toISOString(),
-                ...input
+                createdAt: now,
+                updatedAt: now,
+                title: input.title,
+                blocks: input.blocks,
+                tags: input.tags,
+                Type: "Context" // For GSI indexing if we add one later
             },
         }));
 

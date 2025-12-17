@@ -4,11 +4,9 @@ import { z } from "zod";
 // 1. GLOBAL ENUMS & CONSTANTS
 // ==========================================
 
-export const ContentType = z.enum(["Page", "Post", "Folder", "FunnelStep", "Product"]);
 export const ContentStatus = z.enum(["Draft", "Published", "Archived"]);
-export const AccessType = z.enum(["Public", "LoginRequired", "Group", "Purchase"]);
+export const AccessType = z.enum(["Public", "LoginRequired", "Group", "Purchase", "EmailGate"]);
 export const WorkItemStatus = z.enum(["Draft", "PendingApproval", "Scheduled", "Completed", "Failed"]);
-export const ContextType = z.enum(["Strategy", "Persona", "PainPoint", "BrandVoice", "Offer"]);
 
 // Helper for Navigation
 export const LinkSchema = z.object({
@@ -21,12 +19,11 @@ export const LinkSchema = z.object({
 // ==========================================
 
 export const AccessPolicySchema = z.object({
-    type: AccessType,
+    type: AccessType.default("Public"),
     // If type == Group
     requiredGroups: z.array(z.string()).optional(),
     // If type == Purchase
     requiredProductId: z.string().optional(),
-    // For price display in the UI if locked
     price: z.number().optional(),
     currency: z.string().default("USD"),
 });
@@ -34,31 +31,15 @@ export const AccessPolicySchema = z.object({
 export type AccessPolicy = z.infer<typeof AccessPolicySchema>;
 
 // ==========================================
-// 3. SITE STRUCTURE (The Skeleton)
+// 3. SITE STRUCTURE
 // ==========================================
 
-// A "Node" is a permanent spot in the site tree (e.g., "The About Page")
-export const NodeSchema = z.object({
-    id: z.string(), // UUID
-    tenantId: z.string(),
-    parentId: z.string().nullable(), // Null for Root
-    type: ContentType,
-    title: z.string(),
-    // Links to Strategy Context (e.g., "This page targets Angry Dads")
-    contextTags: z.array(z.string()).optional(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-});
-
-export type Node = z.infer<typeof NodeSchema>;
-
-// A "Route" maps a URL to a Node
 export const RouteSchema = z.object({
-    slug: z.string(), // "/services/plumbing"
+    slug: z.string(),
     tenantId: z.string(),
     targetNodeId: z.string(),
     isRedirect: z.boolean().default(false),
-    redirectTo: z.string().optional(), // If isRedirect is true
+    redirectTo: z.string().optional(),
     seoTitle: z.string().optional(),
     seoDescription: z.string().optional(),
 });
@@ -69,31 +50,32 @@ export type Route = z.infer<typeof RouteSchema>;
 // 4. CONTENT DATA (The Payload)
 // ==========================================
 
-// We use a Block-based editor (like Notion/Tiptap)
-export const ContentBlockSchema = z.object({
-    id: z.string(),
-    type: z.string(), // "paragraph", "heading", "image", "hero", "form"
-    content: z.any(), // The JSON data for the block
-    settings: z.record(z.string(), z.any()).optional(), // Layout settings (color, width)
-});
-
 export const ContentItemSchema = z.object({
-    id: z.string(), // UUID (Usually NodeID + Version)
+    id: z.string(),
     nodeId: z.string(),
     version: z.number(),
-    status: ContentStatus,
+    status: ContentStatus.default("Draft"),
+
     title: z.string(),
     slug: z.string().optional(),
 
-    // SEO FIELDS
+    // SEO
     seoTitle: z.string().optional(),
     seoDescription: z.string().optional(),
-    featuredImage: z.string().optional(), // URL
+    seoKeywords: z.string().optional(),
+    featuredImage: z.string().optional(),
 
-    blocks: z.array(z.any()),
-    accessPolicy: AccessPolicySchema.default({ type: "Public", currency: "USD" }),
-    author: z.string(), // UserID
+    // THE MEAT
+    blocks: z.array(z.any()).default([]), // Tiptap JSON
+
+    // THE GATE
+    accessPolicy: AccessPolicySchema,
+
+    author: z.string(),
+    authorEmail: z.string().optional(),
     createdAt: z.string(),
+    updatedAt: z.string().optional(),
+    updatedBy: z.string().optional(),
 });
 
 export type ContentItem = z.infer<typeof ContentItemSchema>;
@@ -102,16 +84,25 @@ export type ContentItem = z.infer<typeof ContentItemSchema>;
 // 5. THE BRAIN (Strategy & Context)
 // ==========================================
 
+// REFACTORED: No more strict "Strategy/Persona" types.
+// Just structured documents with tags.
 export const ContextItemSchema = z.object({
     id: z.string(),
     tenantId: z.string(),
-    type: ContextType,
-    name: z.string(), // e.g., "Angry Dad Persona"
-    data: z.string(), // The text description or JSON string
-    embeddingId: z.string().optional(), // Reference to Vector DB
+
+    title: z.string(),
+    blocks: z.array(z.any()).default([]), // Now uses Block Editor!
+
+    tags: z.array(z.string()).default([]), // e.g. ["Persona", "Q1-2025"]
+
+    embeddingId: z.string().optional(),
+    createdBy: z.string().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string().optional(),
 });
 
 export type ContextItem = z.infer<typeof ContextItemSchema>;
+
 
 // ==========================================
 // 6. THE ENGINE (Work Items / Agents)

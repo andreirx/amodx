@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem } from "@amodx/shared";
+import { TenantConfig, ContentItem, AccessPolicySchema } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -82,7 +82,7 @@ function mapTenant(item: any): TenantConfig {
     } as TenantConfig;
 }
 
-// 2. Fetch Content (Returns Union Type)
+// 2. Fetch Content (Updated for new Schema)
 export async function getContentBySlug(tenantId: string, slug: string): Promise<ContentResult | null> {
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return null;
@@ -95,7 +95,6 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
 
         if (!routeRes.Item) return null;
 
-        // Handle Redirects
         if (routeRes.Item.IsRedirect) {
             return { redirect: routeRes.Item.RedirectTo };
         }
@@ -108,7 +107,17 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
 
         if (!contentRes.Item) return null;
 
-        return contentRes.Item as ContentItem;
+        const item = contentRes.Item;
+
+        // Ensure Access Policy exists (Fallback to Public)
+        const accessPolicy = item.accessPolicy || { type: 'Public', currency: 'USD' };
+
+        return {
+            ...item,
+            accessPolicy,
+            status: item.status || "Draft" // Default to Draft if missing
+        } as ContentItem;
+
     } catch (error) {
         console.error("DynamoDB Content Error:", error);
         return null;
