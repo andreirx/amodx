@@ -3,7 +3,7 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
 import * as fs from "fs";
 import * as path from "path";
 
-const REGION = process.env.AWS_REGION || "eu-central-1"; // Or grab from aws configure
+const REGION = process.env.AWS_REGION || "eu-central-1";
 const STACK_NAME = "AmodxStack";
 
 async function main() {
@@ -19,13 +19,10 @@ async function main() {
     const getOutput = (keyPart: string) => outputs.find(o => o.OutputKey?.includes(keyPart))?.OutputValue;
 
     const apiUrl = getOutput("ApiApiUrl");
-
     const adminPoolId = getOutput("AdminPoolId");
     const adminClientId = getOutput("AdminClientId");
-
     const publicPoolId = getOutput("PublicPoolId");
     const publicClientId = getOutput("PublicClientId");
-
     const rendererUrl = getOutput("RendererHostingRendererUrl");
     const secretName = getOutput("MasterKeySecretName");
 
@@ -37,8 +34,23 @@ async function main() {
     // 2. Fetch Secret Value
     console.log(`🔐 Fetching Master Key from Secrets Manager: ${secretName}...`);
     const secretRes = await sm.send(new GetSecretValueCommand({ SecretId: secretName }));
-    const secretJson = JSON.parse(secretRes.SecretString || "{}");
-    const apiKey = secretJson.apiKey;
+    const secretString = secretRes.SecretString || "";
+
+    let apiKey = "";
+
+    // Robust Parsing: Handle JSON or Raw String
+    try {
+        const secretJson = JSON.parse(secretString);
+        apiKey = secretJson.apiKey || secretString; // Use property if exists, else assume whole string
+    } catch (e) {
+        // Not JSON? Then the whole string is the key.
+        apiKey = secretString;
+    }
+
+    if (!apiKey) {
+        console.error("❌ Failed to retrieve API Key from secret.");
+        process.exit(1);
+    }
 
     // 3. Write Admin .env.local
     const adminEnv = `
@@ -66,8 +78,9 @@ NEXT_PUBLIC_USER_POOL_CLIENT_ID=${publicClientId}
     // 5. Write MCP .env
     const mcpEnv = `
 AMODX_API_URL=${apiUrl}
-AMODX_API_KEY=${apiKey}
+AMODX_API_KEY="${apiKey}" 
 `.trim();
+
     fs.writeFileSync(path.join(__dirname, "../tools/mcp-server/.env"), mcpEnv);
     console.log("✅ Updated tools/mcp-server/.env");
 

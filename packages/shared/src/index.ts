@@ -66,10 +66,10 @@ export const ContentItemSchema = z.object({
     featuredImage: z.string().optional(),
 
     // THE MEAT
-    blocks: z.array(z.any()).default([]), // Tiptap JSON
+    blocks: z.array(z.any()).default([]),
 
     // THE GATE
-    accessPolicy: AccessPolicySchema,
+    accessPolicy: AccessPolicySchema.default({ type: "Public", currency: "USD" }),
 
     author: z.string(),
     authorEmail: z.string().optional(),
