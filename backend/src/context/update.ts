@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import {publishAudit} from "../lib/events";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -36,6 +37,15 @@ export const handler: AmodxHandler = async (event) => {
                 ":now": new Date().toISOString()
             }
         }));
+
+        // Non-blocking (or awaited, it's fast)
+        await publishAudit({
+            tenantId,
+            actorId: auth.sub,
+            action: "UPDATE_CONTEXT",
+            details: { title: body.title },
+            ip: event.requestContext.http.sourceIp
+        });
 
         return { statusCode: 200, body: JSON.stringify({ message: "Updated" }) };
     } catch (error: any) {

@@ -12,6 +12,10 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import { AmodxEvents } from './events';
+import * as path from "node:path";
 
 interface AmodxStackProps extends cdk.StackProps {
   config: {
@@ -81,6 +85,22 @@ export class AmodxStack extends cdk.Stack {
       });
     }
 
+    // 1. Audit Worker (Consumer)
+    // We define this here because the EventBus needs to point to it
+    const auditWorker = new nodejs.NodejsFunction(this, 'AuditWorker', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, '../../backend/src/audit/worker.ts'),
+      handler: 'handler',
+      environment: { TABLE_NAME: db.table.tableName },
+      bundling: { minify: true, sourceMap: true },
+    });
+    db.table.grantWriteData(auditWorker);
+
+    // 2. Events Infra (The Bus)
+    const events = new AmodxEvents(this, 'Events', {
+      auditFunction: auditWorker
+    });
+
     // 3. API Layer
     const api = new AmodxApi(this, 'Api', {
       table: db.table,
@@ -88,7 +108,9 @@ export class AmodxStack extends cdk.Stack {
       userPoolClientId: auth.adminClient.userPoolClientId,
       masterKeySecret: masterKeySecret,
       uploadsBucket: uploads.bucket,
+      privateBucket: uploads.privateBucket,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
+      eventBus: events.bus,
     });
 
     if (apiDomain && domains) {

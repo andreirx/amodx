@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb"; // <--- CHANGED IMPORT
 import { TenantConfigSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
+import {publishAudit} from "../lib/events";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 

@@ -4,6 +4,7 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as events from 'aws-cdk-lib/aws-events';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
@@ -18,8 +19,10 @@ interface AmodxApiProps {
     userPoolId: string;
     userPoolClientId: string;
     masterKeySecret: secretsmanager.ISecret;
-    uploadsBucket: s3.IBucket; // The private bucket
+    uploadsBucket: s3.IBucket; // The public bucket (images, ...)
+    privateBucket: s3.IBucket; // The private bucket
     uploadsCdnUrl: string;     // The public URL
+    eventBus: events.IEventBus;
 }
 
 export class AmodxApi extends Construct {
@@ -64,7 +67,10 @@ export class AmodxApi extends Construct {
         // --- SHARED PROPS ---
         const nodeProps = {
             runtime: lambda.Runtime.NODEJS_22_X,
-            environment: { TABLE_NAME: props.table.tableName },
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                EVENT_BUS_NAME: props.eventBus.eventBusName
+            },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         };
 
@@ -280,7 +286,7 @@ export class AmodxApi extends Construct {
         props.table.grantWriteData(createAssetFunc);
         props.uploadsBucket.grantPut(createAssetFunc);
 
-        // NEW: List Assets
+        // List Assets
         const listAssetFunc = new nodejs.NodejsFunction(this, 'ListAssetFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/assets/list.ts'),
@@ -300,6 +306,55 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ListAssetInt', listAssetFunc),
         });
 
+        // AUDIT LOGS
+        const listAuditFunc = new nodejs.NodejsFunction(this, 'ListAuditFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/audit/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listAuditFunc);
+        this.httpApi.addRoutes({
+            path: '/audit',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListAuditInt', listAuditFunc),
+        });
+
+        // RESOURCES (PRIVATE)
+        const resourceEnv = {
+            TABLE_NAME: props.table.tableName,
+            PRIVATE_BUCKET: props.privateBucket.bucketName,
+        };
+
+        const createResourceFunc = new nodejs.NodejsFunction(this, 'CreateResourceFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/resources/presign.ts'),
+            handler: 'uploadHandler', // Named export
+            environment: resourceEnv,
+        });
+        props.privateBucket.grantPut(createResourceFunc);
+        props.table.grantWriteData(createResourceFunc);
+
+        const getResourceFunc = new nodejs.NodejsFunction(this, 'GetResourceFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/resources/presign.ts'),
+            handler: 'downloadHandler', // Named export
+            environment: resourceEnv,
+        });
+        props.privateBucket.grantRead(getResourceFunc);
+        props.table.grantReadData(getResourceFunc);
+
+        this.httpApi.addRoutes({
+            path: '/resources/upload',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('UploadResourceInt', createResourceFunc),
+        });
+
+        this.httpApi.addRoutes({
+            path: '/resources/{id}/download',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('DownloadResourceInt', getResourceFunc),
+        });
+
         // B. LEADS API (CRM)
         const createLeadFunc = new nodejs.NodejsFunction(this, 'CreateLeadFunc', {
             ...nodeProps,
@@ -312,6 +367,14 @@ export class AmodxApi extends Construct {
             path: '/leads',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
+        });
+
+        // NEW: Grant permissions to all API functions to PutEvents
+        // This iterates through all children and adds permission if it's a Function
+        this.node.children.forEach(child => {
+            if (child instanceof nodejs.NodejsFunction) {
+                props.eventBus.grantPutEventsTo(child);
+            }
         });
 
         new cdk.CfnOutput(this, 'ApiUrl', { value: this.httpApi.url || '' });

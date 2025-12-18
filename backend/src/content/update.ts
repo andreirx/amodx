@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, TransactWriteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { ContentItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
+import {publishAudit} from "../lib/events";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -105,6 +106,15 @@ export const handler: AmodxHandler = async (event) => {
                 }
             }));
         }
+
+        // Non-blocking (or awaited, it's fast)
+        await publishAudit({
+            tenantId,
+            actorId: userId,
+            action: "UPDATE_PAGE",
+            details: { title: input.title },
+            ip: event.requestContext.http.sourceIp
+        });
 
         return {
             statusCode: 200,

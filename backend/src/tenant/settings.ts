@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import {publishAudit} from "../lib/events";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -66,6 +67,15 @@ export const updateHandler: AmodxHandler = async (event) => {
                 ...merged,
             }
         }));
+
+        // Non-blocking (or awaited, it's fast)
+        await publishAudit({
+            tenantId,
+            actorId: auth.sub,
+            action: "TENANT_SETTINGS",
+            details: {},
+            ip: event.requestContext.http.sourceIp
+        });
 
         return { statusCode: 200, body: JSON.stringify({ message: "Settings Saved" }) };
     } catch (error: any) {

@@ -3,8 +3,8 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db, TABLE_NAME } from "../lib/db";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { logAudit } from "../lib/audit";
 import { AuthorizerContext } from "../auth/context";
+import {publishAudit} from "../lib/events";
 
 const s3 = new S3Client({});
 const BUCKET = process.env.UPLOADS_BUCKET!;
@@ -53,11 +53,12 @@ export const handler: Handler = async (event) => {
         }));
 
         // 4. Audit
-        await logAudit({
+        await publishAudit({
             tenantId,
             actorId: auth.sub,
             action: "UPLOAD_ASSET",
-            details: { filename, size, assetId }
+            details: { filename, size, assetId },
+            ip: event.requestContext.http.sourceIp
         });
 
         return {
