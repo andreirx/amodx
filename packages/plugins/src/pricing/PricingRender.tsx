@@ -11,14 +11,15 @@ export function PricingRender({ attrs }: { attrs: any }) {
                 <p className="text-xl text-muted-foreground">{attrs.subheadline}</p>
             </div>
 
-            {/* GRID LAYOUT - This makes them side-by-side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto px-4">
+            {/* FIX: Use Flexbox to center items instead of Grid */}
+            <div className="flex flex-wrap justify-center gap-8 max-w-7xl mx-auto px-4">
                 {plans.map((plan: any) => (
                     <div
                         key={plan.id}
-                        className={`flex flex-col p-8 rounded-2xl border ${
+                        // Use w-full on mobile, fixed width on desktop to look nice
+                        className={`flex flex-col p-8 rounded-2xl border w-full max-w-sm ${
                             plan.highlight
-                                ? 'border-primary bg-primary/5 ring-1 ring-primary shadow-lg scale-105'
+                                ? 'border-primary bg-primary/5 ring-1 ring-primary shadow-lg scale-105 z-10'
                                 : 'border-border bg-card'
                         }`}
                     >

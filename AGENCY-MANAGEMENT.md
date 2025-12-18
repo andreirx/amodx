@@ -94,5 +94,4 @@ npx cdk deploy
 ## 4. Billing & Invoicing (The Business)
 
 AMODX does not process payments internally (to keep the core light).
-*   **Stripe:** Create Payment Links in Stripe Dashboard. Paste them into your "Pricing" blocks.
-*   **Invoicing:** We recommend using a webhook (Zapier or custom Lambda) to listen to `stripe.checkout.completed` and send data to your accounting software (QuickBooks, Xero, Oblio).
+Currently implementing payments via Paddle.

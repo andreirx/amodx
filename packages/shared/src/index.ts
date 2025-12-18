@@ -164,6 +164,14 @@ export const IntegrationsSchema = z.object({
     googleAnalyticsId: z.string().optional(), // G-XXXXXXXX
     googleSearchConsoleId: z.string().optional(), // Verification Code
 
+    // PADDLE INTEGRATION
+    paddle: z.object({
+        environment: z.enum(["sandbox", "production"]).default("sandbox"),
+        clientToken: z.string().optional(), // Public Key for Frontend
+        vendorId: z.string().optional(), // For classic or tracking
+    }).default({ environment: "sandbox" }),
+
+
     // Privacy Friendly (Umami/Plausible)
     // We store the script URL and the Website ID
     analytics: z.object({
@@ -172,7 +180,6 @@ export const IntegrationsSchema = z.object({
         websiteId: z.string().optional(), // UUID for Umami
     }).default({ provider: "none" }),
 
-    stripePublicKey: z.string().optional(),
     mailerlite: z.boolean().default(false),
     perplexity: z.boolean().default(false),
 });
@@ -223,7 +230,7 @@ export const TenantConfigSchema = z.object({
     integrations: IntegrationsSchema.default({
         googleAnalyticsId: "",
         googleSearchConsoleId: "",
-        stripePublicKey: "",
+        paddle: { environment: "sandbox", clientToken: "", vendorId: "" },
         analytics: { provider: "none" },
         mailerlite: false,
         perplexity: false,

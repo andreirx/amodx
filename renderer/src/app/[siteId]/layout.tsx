@@ -3,6 +3,7 @@ import { ThemeInjector } from "@/components/ThemeInjector";
 import { Navbar } from "@/components/Navbar";
 import { Analytics } from "@/components/Analytics";
 import { Metadata } from "next";
+import { PaddleLoader } from "@/components/PaddleLoader";
 
 export const revalidate = 3600;
 
@@ -56,6 +57,8 @@ export default async function SiteLayout({ children, params }: Props) {
                 gaId: config.integrations?.googleAnalyticsId,
                 analytics: config.integrations?.analytics
             }} />
+
+            <PaddleLoader config={config.integrations?.paddle} />
 
             <Navbar
                 siteName={config.name}

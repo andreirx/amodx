@@ -22,6 +22,16 @@ export function middleware(request: NextRequest) {
     // 2. PREVIEW MODE
     // matches /_site/client-id/page
     if (path.startsWith('/_site/')) {
+        const host = request.headers.get('host') || '';
+
+        // SECURITY: Only allow _site previews on localhost or *.cloudfront.net
+        // This prevents SEO leakage on production domains (e.g. amodx.net/_site/...)
+        const isAllowedHost = host.includes('localhost') || host.includes('cloudfront.net');
+
+        if (!isAllowedHost) {
+            return new NextResponse("Previews are only available via the CloudFront URL.", { status: 403 });
+        }
+
         const parts = path.split('/');
         // parts[0] = "", parts[1] = "_site", parts[2] = "client-id"
         if (parts.length >= 3) {

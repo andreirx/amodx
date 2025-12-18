@@ -234,11 +234,6 @@ export default function SettingsPage() {
                                         />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label>Production Domain</Label>
-                                        <Input value={config.domain || ""}
-                                               onChange={e => setConfig({...config, domain: e.target.value})}/>
-                                    </div>
                                 </div>
                             </div>
                             <div className="space-y-2">
@@ -386,8 +381,100 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* INTERFACE */}
+                    {/* MERCHANT settings (paddle) */}
                     <Card>
+                        <CardHeader>
+                            <CardTitle>Payments (Paddle)</CardTitle>
+                            <CardDescription>Merchant of Record configuration.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Environment</Label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                                    value={config.integrations?.paddle?.environment || "sandbox"}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            paddle: {
+                                                ...config.integrations?.paddle,
+                                                environment: e.target.value as "sandbox" | "production"
+                                            }
+                                        }
+                                    })}
+                                >
+                                    <option value="sandbox">Sandbox (Testing)</option>
+                                    <option value="production">Production (Live)</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Client Token</Label>
+                                <Input
+                                    value={config.integrations?.paddle?.clientToken || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            paddle: {
+                                                // FIX: Ensure environment exists by defaulting it explicitly
+                                                environment: config.integrations?.paddle?.environment || "sandbox",
+                                                ...config.integrations?.paddle,
+                                                clientToken: e.target.value
+                                            }
+                                        }
+                                    })}
+                                    placeholder="test_..."
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                </div>
+
+                {/* RIGHT COLUMN: Colors */}
+                <div className="lg:col-span-1">
+                    {/* TYPOGRAPHY */}
+                    <Card className="space-y-6">
+                        <CardHeader className="pb-4">
+                            <div className="flex items-center gap-2">
+                                <Type className="h-5 w-5 text-muted-foreground"/>
+                                <CardTitle>Typography</CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex-1 space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Heading Font (Google Fonts)</Label>
+                                    <Input placeholder="Inter" value={config.theme?.fontHeading || ""}
+                                           onChange={e => updateTheme("fontHeading", e.target.value)}/>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Body Font (Google Fonts)</Label>
+                                    <Input placeholder="Inter" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="space-y-6">
+                        <CardHeader className="pb-4">
+                            <div className="flex items-center gap-2">
+                                <Palette className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Colors</CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <ColorInput label="Primary" desc="Buttons, Highlights" value={config.theme?.primaryColor} onChange={v => updateTheme("primaryColor", v)} />
+                            <ColorInput label="Secondary" desc="Accents, Muted" value={config.theme?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
+                            <div className="h-px bg-border" />
+                            <ColorInput label="Background" desc="Page Background" value={config.theme?.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} />
+                            <ColorInput label="Surface" desc="Cards, Sidebars" value={config.theme?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
+                        </CardContent>
+                    </Card>
+
+                    {/* INTERFACE */}
+                    <Card className="space-y-6">
                         <CardHeader className="pb-4">
                             <div className="flex items-center gap-2">
                                 <MousePointerClick className="h-5 w-5 text-muted-foreground" />
@@ -395,7 +482,7 @@ export default function SettingsPage() {
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="gap-4">
                                 <div className="space-y-2">
                                     <Label>Border Radius</Label>
                                     <div className="flex items-center gap-4">
@@ -415,47 +502,6 @@ export default function SettingsPage() {
                                     </select>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* RIGHT COLUMN: Colors */}
-                <div className="lg:col-span-1">
-                    {/* TYPOGRAPHY */}
-                    <Card className="space-y-6">
-                        <CardHeader className="pb-4">
-                            <div className="flex items-center gap-2">
-                                <Type className="h-5 w-5 text-muted-foreground" />
-                                <CardTitle>Typography</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex-1 space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Heading Font (Google Fonts)</Label>
-                                    <Input placeholder="Inter" value={config.theme?.fontHeading || ""} onChange={e => updateTheme("fontHeading", e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Body Font (Google Fonts)</Label>
-                                    <Input placeholder="Inter" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="h-full">
-                        <CardHeader className="pb-4">
-                            <div className="flex items-center gap-2">
-                                <Palette className="h-5 w-5 text-muted-foreground" />
-                                <CardTitle>Colors</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <ColorInput label="Primary" desc="Buttons, Highlights" value={config.theme?.primaryColor} onChange={v => updateTheme("primaryColor", v)} />
-                            <ColorInput label="Secondary" desc="Accents, Muted" value={config.theme?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
-                            <div className="h-px bg-border" />
-                            <ColorInput label="Background" desc="Page Background" value={config.theme?.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} />
-                            <ColorInput label="Surface" desc="Cards, Sidebars" value={config.theme?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
                         </CardContent>
                     </Card>
                 </div>

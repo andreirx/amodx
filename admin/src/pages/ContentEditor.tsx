@@ -264,6 +264,7 @@ export default function ContentEditor() {
                            BUT we make the Toolbar Sticky relative to this Main container.
                         */}
                         <BlockEditor
+                            key={content?.id}
                             initialContent={blocks}
                             onChange={(newBlocks) => setBlocks(newBlocks)}
                         />

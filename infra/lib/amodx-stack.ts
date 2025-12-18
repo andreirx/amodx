@@ -142,7 +142,8 @@ export class AmodxStack extends cdk.Stack {
       new route53.ARecord(this, 'RendererWildcardRecord', { zone: domains.zone, recordName: '*', target });
     }
 
-    const rendererUrl = rootDomain ? `https://${rootDomain}` : `https://${renderer.distribution.distributionDomainName}`;
+    const cloudFrontUrl = `https://${renderer.distribution.distributionDomainName}`;
+    const rendererUrl = rootDomain ? `https://${rootDomain}` : cloudFrontUrl;
 
     // 5. Admin Layer
     const admin = new AdminHosting(this, 'AdminHosting', {
@@ -150,7 +151,7 @@ export class AmodxStack extends cdk.Stack {
       userPoolId: auth.adminPool.userPoolId,
       userPoolClientId: auth.adminClient.userPoolClientId,
       region: this.region,
-      rendererUrl: rendererUrl,
+      rendererUrl: cloudFrontUrl,
       certificate: globalCertificate,
       domainName: rootDomain ? `admin.${rootDomain}` : undefined,
     });
@@ -171,7 +172,8 @@ export class AmodxStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PublicPoolId', { value: auth.publicPool.userPoolId });
     new cdk.CfnOutput(this, 'PublicClientId', { value: auth.publicClient.userPoolClientId });
     new cdk.CfnOutput(this, 'Region', { value: this.region });
-    new cdk.CfnOutput(this, 'RendererUrl', { value: rendererUrl });
+    new cdk.CfnOutput(this, 'AGENCY RendererUrl', { value: rendererUrl });
+    new cdk.CfnOutput(this, 'CloudFrontRendererUrl', { value: cloudFrontUrl });
     new cdk.CfnOutput(this, 'AdminUrl', { value: rootDomain ? `https://admin.${rootDomain}` : `https://${admin.distribution.distributionDomainName}` });
     new cdk.CfnOutput(this, 'MasterKeySecretName', { value: masterKeySecret.secretName });
   }

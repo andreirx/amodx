@@ -22,8 +22,18 @@ export default function StrategyEditor() {
     async function load() {
         try {
             const data = await apiRequest(`/context/${id}`);
-            setTitle(data.title);
-            setBlocks(data.blocks || []);
+            setTitle(data.title || data.name);
+            // MIGRATION LOGIC:
+            let loadedBlocks = data.blocks || [];
+            if (loadedBlocks.length === 0 && data.data) {
+                // Convert old string content to a block
+                loadedBlocks = [{
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: data.data }]
+                }];
+            }
+
+            setBlocks(loadedBlocks);
             setTags(data.tags?.join(", ") || "");
         } catch (e) {
             console.error(e);
@@ -103,6 +113,7 @@ export default function StrategyEditor() {
                     </div>
 
                     <BlockEditor
+                        key={id}
                         initialContent={blocks}
                         onChange={setBlocks}
                     />
