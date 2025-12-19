@@ -457,21 +457,46 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    <Card className="space-y-6">
-                        <CardHeader className="pb-4">
-                            <div className="flex items-center gap-2">
-                                <Palette className="h-5 w-5 text-muted-foreground" />
-                                <CardTitle>Colors</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <ColorInput label="Primary" desc="Buttons, Highlights" value={config.theme?.primaryColor} onChange={v => updateTheme("primaryColor", v)} />
-                            <ColorInput label="Secondary" desc="Accents, Muted" value={config.theme?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
-                            <div className="h-px bg-border" />
-                            <ColorInput label="Background" desc="Page Background" value={config.theme?.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} />
-                            <ColorInput label="Surface" desc="Cards, Sidebars" value={config.theme?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
-                        </CardContent>
-                    </Card>
+                    {/* RIGHT COLUMN: Colors */}
+                    <div className="lg:col-span-1">
+                        <Card className="h-full">
+                            <CardHeader className="pb-4">
+                                <div className="flex items-center gap-2">
+                                    <Palette className="h-5 w-5 text-muted-foreground" />
+                                    <CardTitle>Colors</CardTitle>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+
+                                {/* Primary Group */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Primary</Label>
+                                    <ColorInput label="Background" desc="Buttons" value={config.theme?.primaryColor} onChange={v => updateTheme("primaryColor", v)} />
+                                    <ColorInput label="Text" desc="On Buttons" value={config.theme?.primaryForeground} onChange={v => updateTheme("primaryForeground", v)} />
+                                </div>
+
+                                <div className="h-px bg-border" />
+
+                                {/* Secondary Group */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Secondary</Label>
+                                    <ColorInput label="Background" desc="Accents" value={config.theme?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
+                                    <ColorInput label="Text" desc="On Accents" value={config.theme?.secondaryForeground} onChange={v => updateTheme("secondaryForeground", v)} />
+                                </div>
+
+                                <div className="h-px bg-border" />
+
+                                {/* Base Group */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Base</Label>
+                                    <ColorInput label="Page Background" desc="" value={config.theme?.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} />
+                                    <ColorInput label="Body Text" desc="Default Text" value={config.theme?.textColor} onChange={v => updateTheme("textColor", v)} />
+                                    <ColorInput label="Surface" desc="Cards" value={config.theme?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
+                                </div>
+
+                            </CardContent>
+                        </Card>
+                    </div>
 
                     {/* INTERFACE */}
                     <Card className="space-y-6">

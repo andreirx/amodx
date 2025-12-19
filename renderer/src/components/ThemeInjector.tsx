@@ -7,11 +7,18 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
 
     const {
         primaryColor = "#000000",
+        primaryForeground = "#ffffff",
+
         secondaryColor = "#ffffff",
+        secondaryForeground = "#000000",
+
         backgroundColor = "#ffffff",
+        textColor = "#020817",
+
         surfaceColor = "#f4f4f5",
-        fontHeading = "Inter",
-        fontBody = "Inter",
+
+        fontHeading = "Prata",
+        fontBody = "Lato",
         radius = "0.5rem"
     } = theme;
 
@@ -23,28 +30,28 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
     :root {
       /* Base Colors */
       --background: ${backgroundColor} !important;
-      --foreground: #020817 !important; /* FIXED: Dark text, not primary color */
+      --foreground: ${textColor} !important;
       
       /* Primary Brand */
       --primary: ${primaryColor} !important;
-      --primary-foreground: #ffffff !important; /* Always White Text on Buttons */
+      --primary-foreground: ${primaryForeground} !important;
       
       /* Secondary/Accents */
       --secondary: ${secondaryColor} !important;
-      --secondary-foreground: #0f172a !important; /* Dark text on secondary */
+      --secondary-foreground: ${secondaryForeground} !important;
       
       /* UI Elements */
       --card: ${surfaceColor} !important;
       --card-foreground: #020817 !important;
       
       --popover: ${surfaceColor} !important;
-      --popover-foreground: #020817 !important;
+      --popover-foreground: ${textColor} !important;
       
-      --muted: #f1f5f9 !important;
+      --muted: ${surfaceColor} !important;
       --muted-foreground: #64748b !important;
       
       --accent: ${secondaryColor} !important;
-      --accent-foreground: #0f172a !important;
+      --accent-foreground: ${secondaryForeground} !important;
       
       --destructive: #ef4444 !important;
       --destructive-foreground: #ffffff !important;

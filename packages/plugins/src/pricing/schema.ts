@@ -7,6 +7,7 @@ const PlanSchema = z.object({
     interval: z.string(),
     features: z.string(),
     buttonText: z.string(),
+    buttonLink: z.string().default("#"),
     highlight: z.boolean(),
 });
 
@@ -21,6 +22,7 @@ export const PricingSchema = z.object({
             interval: 'mo',
             features: 'Feature 1\nFeature 2',
             buttonText: 'Start',
+            buttonLink: '#',
             highlight: false
         },
         {
@@ -30,6 +32,7 @@ export const PricingSchema = z.object({
             interval: 'mo',
             features: 'Everything in Starter\nPriority Support',
             buttonText: 'Go Pro',
+            buttonLink: '#',
             highlight: true
         }
     ]),

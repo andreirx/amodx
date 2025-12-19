@@ -11,13 +11,12 @@ export function PricingRender({ attrs }: { attrs: any }) {
                 <p className="text-xl text-muted-foreground">{attrs.subheadline}</p>
             </div>
 
-            {/* FIX: Use Flexbox to center items instead of Grid */}
+            {/* FLEXBOX CENTER */}
             <div className="flex flex-wrap justify-center gap-8 max-w-7xl mx-auto px-4">
                 {plans.map((plan: any) => (
                     <div
                         key={plan.id}
-                        // Use w-full on mobile, fixed width on desktop to look nice
-                        className={`flex flex-col p-8 rounded-2xl border w-full max-w-sm ${
+                        className={`flex flex-col p-8 rounded-2xl border w-62 shrink-0 ${
                             plan.highlight
                                 ? 'border-primary bg-primary/5 ring-1 ring-primary shadow-lg scale-105 z-10'
                                 : 'border-border bg-card'
@@ -32,21 +31,24 @@ export function PricingRender({ attrs }: { attrs: any }) {
                         </div>
 
                         <div className="space-y-4 mb-8 flex-1">
-                            {plan.features.split('\n').map((feat: string, i: number) => (
+                            {(plan.features || "").split('\n').map((feat: string, i: number) => (
                                 <div key={i} className="flex items-start gap-3">
                                     <Check className="h-5 w-5 text-primary shrink-0" />
-                                    <span className="text-sm">{feat}</span>
+                                    <span className="text-sm opacity-90">{feat}</span>
                                 </div>
                             ))}
                         </div>
 
-                        <button className={`w-full py-3 rounded-lg text-sm font-semibold transition-all ${
-                            plan.highlight
-                                ? 'bg-primary text-primary-foreground hover:opacity-90'
-                                : 'bg-secondary text-secondary-foreground hover:opacity-80'
-                        }`}>
+                        <a
+                            href={plan.buttonLink || "#"}
+                            className={`w-full py-3 rounded-lg text-sm font-semibold transition-all text-center inline-block ${
+                                plan.highlight
+                                    ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-md'
+                                    : 'bg-secondary text-secondary-foreground hover:opacity-90 shadow-sm'
+                            }`}
+                        >
                             {plan.buttonText}
-                        </button>
+                        </a>
                     </div>
                 ))}
             </div>

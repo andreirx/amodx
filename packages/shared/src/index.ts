@@ -145,12 +145,20 @@ export const ThemeSchema = z.object({
 
     // Colors
     primaryColor: z.string().default("#000000"),
+    primaryForeground: z.string().default("#ffffff"),
+
     secondaryColor: z.string().default("#ffffff"),
+    secondaryForeground: z.string().default("#000000"),
+
+    // backgrounds
     backgroundColor: z.string().default("#ffffff"),
     surfaceColor: z.string().default("#f4f4f5"), // Cards/Sidebars
 
+    // Global Text
+    textColor: z.string().default("#020817"),
+
     // Typography (We will load these from Google Fonts in the Renderer)
-    fontHeading: z.string().default("Playfair Display"),
+    fontHeading: z.string().default("Prata"),
     fontBody: z.string().default("Lato"),
 
     // UI Roundness
@@ -220,10 +228,13 @@ export const TenantConfigSchema = z.object({
     theme: ThemeSchema.default({
         mode: "light",
         primaryColor: "#000000",
+        primaryForeground: "#ffffff",
         secondaryColor: "#ffffff",
+        secondaryForeground: "#000000",
         backgroundColor: "#ffffff",
         surfaceColor: "#f4f4f5",
-        fontHeading: "Playfair Display",
+        textColor: "#020817",
+        fontHeading: "Prata",
         fontBody: "Lato",
         radius: "0.5rem"
     }),

@@ -1,24 +1,24 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import { Plus, Trash2, GripVertical, Star } from 'lucide-react';
+import { Plus, Trash2, Star } from 'lucide-react';
 import React from 'react';
 
 const Input = ({ label, value, onChange, className = "" }: any) => (
-    <div className="space-y-1">
+    <div className="space-y-1 w-full">
         {label && <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>}
         <input
             className={`w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-blue-500 outline-none transition-colors ${className}`}
-            value={value}
+            value={value || ""}
             onChange={e => onChange(e.target.value)}
         />
     </div>
 );
 
 const TextArea = ({ label, value, onChange }: any) => (
-    <div className="space-y-1">
+    <div className="space-y-1 w-full">
         {label && <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>}
         <textarea
             className="w-full h-20 bg-white border border-gray-200 rounded p-2 text-sm focus:border-blue-500 outline-none transition-colors font-mono"
-            value={value}
+            value={value || ""}
             onChange={e => onChange(e.target.value)}
         />
     </div>
@@ -27,14 +27,13 @@ const TextArea = ({ label, value, onChange }: any) => (
 export function PricingEditor(props: any) {
     const { headline, subheadline, plans } = props.node.attrs;
 
-    // SAFETY CHECK: If plans is undefined, default to empty array
-    // This prevents the white screen of death
+    // Safety check
     const safePlans = Array.isArray(plans) ? plans : [];
 
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     const updatePlan = (index: number, field: string, value: any) => {
-        const newPlans = [...plans];
+        const newPlans = [...safePlans];
         newPlans[index] = { ...newPlans[index], [field]: value };
         update('plans', newPlans);
     };
@@ -47,13 +46,14 @@ export function PricingEditor(props: any) {
             interval: 'mo',
             features: 'Feature 1',
             buttonText: 'Sign Up',
+            buttonLink: '#',
             highlight: false
         };
-        update('plans', [...plans, newPlan]);
+        update('plans', [...safePlans, newPlan]);
     };
 
     const removePlan = (index: number) => {
-        const newPlans = plans.filter((_: any, i: number) => i !== index);
+        const newPlans = safePlans.filter((_: any, i: number) => i !== index);
         update('plans', newPlans);
     };
 
@@ -104,7 +104,12 @@ export function PricingEditor(props: any) {
                                     <Input label="Period" value={plan.interval} onChange={(v: string) => updatePlan(i, 'interval', v)} />
                                 </div>
                                 <TextArea label="Features" value={plan.features} onChange={(v: string) => updatePlan(i, 'features', v)} />
-                                <Input label="Button" value={plan.buttonText} onChange={(v: string) => updatePlan(i, 'buttonText', v)} />
+
+                                {/* Button Config */}
+                                <div className="space-y-2 pt-2 border-t border-gray-50">
+                                    <Input label="Button Label" value={plan.buttonText} onChange={(v: string) => updatePlan(i, 'buttonText', v)} />
+                                    <Input label="Link URL" value={plan.buttonLink} onChange={(v: string) => updatePlan(i, 'buttonLink', v)} placeholder="https://..." className="font-mono text-xs text-gray-600" />
+                                </div>
                             </div>
                         </div>
                     ))}
