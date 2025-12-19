@@ -343,6 +343,19 @@ export class AmodxApi extends Construct {
         props.privateBucket.grantRead(getResourceFunc);
         props.table.grantReadData(getResourceFunc);
 
+        const listResourcesFunc = new nodejs.NodejsFunction(this, 'ListResourcesFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/resources/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listResourcesFunc);
+
+        this.httpApi.addRoutes({
+            path: '/resources/list', // Explicit path
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListResourcesInt', listResourcesFunc),
+        });
+
         this.httpApi.addRoutes({
             path: '/resources/upload',
             methods: [apigw.HttpMethod.POST],
@@ -360,8 +373,16 @@ export class AmodxApi extends Construct {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/leads/create.ts'),
             handler: 'handler',
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                // NEW: Needs bucket info
+                PRIVATE_BUCKET: props.privateBucket.bucketName,
+            }
         });
         props.table.grantWriteData(createLeadFunc);
+        // NEW: Needs permission to read metadata (to find key) and sign URL
+        props.table.grantReadData(createLeadFunc); // Already has write, read usually implied or add separate
+        props.privateBucket.grantRead(createLeadFunc); // To sign URLs
 
         this.httpApi.addRoutes({
             path: '/leads',

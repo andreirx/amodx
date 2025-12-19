@@ -3,12 +3,16 @@ import { PricingPlugin } from './pricing';
 import { ImagePlugin } from './image';
 import { ContactPlugin } from './contact';
 import { PluginDefinition } from './types';
+import {VideoPlugin} from "./video";
+import {LeadMagnetPlugin} from "./lead-magnet";
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
     PricingPlugin,
     ImagePlugin,
     ContactPlugin,
+    VideoPlugin,
+    LeadMagnetPlugin
 ];
 
 

@@ -179,6 +179,13 @@ export const IntegrationsSchema = z.object({
         vendorId: z.string().optional(), // For classic or tracking
     }).default({ environment: "sandbox" }),
 
+    // GOOGLE OAUTH (Comments/Identity)
+    // We store these here so the Renderer can load them dynamically per tenant.
+    google: z.object({
+        clientId: z.string().optional(),
+        clientSecret: z.string().optional(), // Stored in DB for V1.
+    }).optional(),
+
 
     // Privacy Friendly (Umami/Plausible)
     // We store the script URL and the Website ID
@@ -242,6 +249,7 @@ export const TenantConfigSchema = z.object({
         googleAnalyticsId: "",
         googleSearchConsoleId: "",
         paddle: { environment: "sandbox", clientToken: "", vendorId: "" },
+        google: { clientId: "", clientSecret: "" },
         analytics: { provider: "none" },
         mailerlite: false,
         perplexity: false,

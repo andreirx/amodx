@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Loader2, ExternalLink, Palette, Type, MousePointerClick, AlertCircle, Mail } from "lucide-react";
+import {Loader2, ExternalLink, Palette, Type, MousePointerClick, AlertCircle, Mail, Key} from "lucide-react";
 import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload } from "lucide-react";
 
@@ -378,6 +378,51 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
                             )}
+                        </CardContent>
+                    </Card>
+
+                    {/* IDENTITY PROVIDERS */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Key className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Identity (Google OAuth)</CardTitle>
+                            </div>
+                            <CardDescription>Enable login for comments and gated content.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="p-3 bg-blue-50 border border-blue-100 rounded-md text-xs text-blue-800">
+                                <strong>Callback URL:</strong> <span className="font-mono select-all">{`https://${config.domain}/api/auth/callback/google`}</span>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Client ID</Label>
+                                <Input
+                                    value={config.integrations?.google?.clientId || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            google: { ...config.integrations?.google, clientId: e.target.value }
+                                        }
+                                    })}
+                                    placeholder="...apps.googleusercontent.com"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Client Secret</Label>
+                                <Input
+                                    type="password"
+                                    value={config.integrations?.google?.clientSecret || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            google: { ...config.integrations?.google, clientSecret: e.target.value }
+                                        }
+                                    })}
+                                    placeholder="GOCSPX-..."
+                                />
+                            </div>
                         </CardContent>
                     </Card>
 
