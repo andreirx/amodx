@@ -50,6 +50,8 @@ export type Route = z.infer<typeof RouteSchema>;
 // 4. CONTENT DATA (The Payload)
 // ==========================================
 
+export const CommentsMode = z.enum(["Enabled", "Locked", "Hidden"]); // Locked = Read Only
+
 export const ContentItemSchema = z.object({
     id: z.string(),
     nodeId: z.string(),
@@ -65,6 +67,9 @@ export const ContentItemSchema = z.object({
     seoKeywords: z.string().optional(),
     featuredImage: z.string().optional(),
 
+    // comments default off
+    commentsMode: CommentsMode.default("Hidden"),
+
     // THE MEAT
     blocks: z.array(z.any()).default([]),
 
@@ -79,6 +84,26 @@ export const ContentItemSchema = z.object({
 });
 
 export type ContentItem = z.infer<typeof ContentItemSchema>;
+
+// NEW: The Comment Data Model
+
+export const CommentSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    pageId: z.string(), // Links to ContentItem.id
+
+    authorId: z.string().optional(),
+    authorName: z.string(),
+    authorEmail: z.string().email(), // Private (backend only)
+    authorImage: z.string().optional(), // From Google
+
+    content: z.string().min(1).max(2000),
+    status: z.enum(["Approved", "Pending", "Spam"]).default("Approved"), // Auto-approve for now
+
+    createdAt: z.string(),
+});
+
+export type Comment = z.infer<typeof CommentSchema>;
 
 // ==========================================
 // 5. THE BRAIN (Strategy & Context)

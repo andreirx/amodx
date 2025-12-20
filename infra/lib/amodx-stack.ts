@@ -71,7 +71,26 @@ export class AmodxStack extends cdk.Stack {
     }
 
     // ... (Secrets, Uploads, DB, Auth) ... (Keep existing code)
-    const masterKeySecret = new secretsmanager.Secret(this, 'AmodxMasterKey', { /*...*/ });
+    // A. Master API Key (For MCP/Robots)
+    const masterKeySecret = new secretsmanager.Secret(this, 'AmodxMasterKey', {
+      description: 'Master API Key for AMODX MCP Tools',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'apiKey',
+        excludePunctuation: true,
+        includeSpace: false,
+      },
+    });
+
+    // B. NextAuth Secret (For Cookie Signing) - NEW PRODUCTION RESOURCE
+    const nextAuthSecret = new secretsmanager.Secret(this, 'NextAuthSecret', {
+      description: 'Signing key for NextAuth.js sessions',
+      generateSecretString: {
+        passwordLength: 32,
+        excludePunctuation: true,
+      }
+    });
+
     const uploads = new AmodxUploads(this, 'Uploads');
     const db = new AmodxDatabase(this, 'Database');
     const auth = new AmodxAuth(this, 'Auth');
@@ -130,6 +149,7 @@ export class AmodxStack extends cdk.Stack {
       table: db.table,
       apiUrl: api.httpApi.url!,
       masterKeySecret: masterKeySecret,
+      nextAuthSecret: nextAuthSecret,
       certificate: globalCertificate,
       domainNames: allDomains.length > 0 ? allDomains : undefined, // <--- FIX: Pass tenants even if root is missing
     });

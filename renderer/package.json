@@ -10,14 +10,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@amodx/plugins": "*",
     "@aws-sdk/client-dynamodb": "^3.946.0",
     "@aws-sdk/lib-dynamodb": "^3.946.0",
     "next": "16.0.7",
+    "next-auth": "^4.24.13",
     "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "@amodx/plugins": "*"
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.0.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -26,7 +28,6 @@
     "eslint-config-next": "16.0.7",
     "open-next": "^3.1.3",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "@aws-sdk/client-secrets-manager": "^3.0.0"
+    "typescript": "^5"
   }
 }

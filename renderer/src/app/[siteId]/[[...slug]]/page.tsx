@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
 import { ContentItem } from "@amodx/shared";
 import Link from "next/link"; // For the Login Button
+import { CommentsSection } from "@/components/CommentsSection";
 
 export const revalidate = 3600;
 
@@ -126,6 +127,8 @@ export default async function Page({ params, searchParams }: Props) {
             )}
 
             <RenderBlocks blocks={content.blocks} />
+
+            <CommentsSection pageId={content.nodeId} mode={content.commentsMode} />
         </main>
     );
 }

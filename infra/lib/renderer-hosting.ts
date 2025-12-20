@@ -15,6 +15,7 @@ interface RendererHostingProps {
     table: dynamodb.Table;
     apiUrl: string;
     masterKeySecret: secretsmanager.ISecret;
+    nextAuthSecret: secretsmanager.ISecret;
     certificate?: acm.ICertificate;
     domainNames?: string[];
 }
@@ -63,7 +64,12 @@ export class RendererHosting extends Construct {
                 CACHE_BUCKET_NAME: assetBucket.bucketName,
                 CACHE_BUCKET_KEY_PREFIX: '_cache',
                 CACHE_BUCKET_REGION: cdk.Stack.of(this).region,
-                AMODX_API_KEY_SECRET: props.masterKeySecret.secretName
+                AMODX_API_KEY_SECRET: props.masterKeySecret.secretName,
+                // PRODUCTION CONFIGURATION FOR NEXTAUTH
+                // CloudFormation resolves this string at deploy time to the actual secret value
+                NEXTAUTH_SECRET: props.nextAuthSecret.secretValue.unsafeUnwrap(),
+                // Helps NextAuth determine the callback URL base
+                NEXTAUTH_URL: `https://${props.domainNames ? props.domainNames[0] : 'localhost'}`,
             },
         });
         props.masterKeySecret.grantRead(serverFunction);
@@ -71,6 +77,8 @@ export class RendererHosting extends Construct {
         // Grant Permissions
         props.table.grantReadData(serverFunction);
         assetBucket.grantReadWrite(serverFunction);
+        props.masterKeySecret.grantRead(serverFunction);
+        // NextAuth secret is injected as ENV, so no runtime read permission needed for it
 
         // 4. Lambda Function URL
         const fnUrl = serverFunction.addFunctionUrl({

@@ -129,6 +129,11 @@ export default function ContentEditor() {
         if (content) setContent({ ...content, status: val as any });
     };
 
+    // Helper to update comments config
+    const updateCommentsMode = (val: string) => {
+        if (content) setContent({ ...content, commentsMode: val as any });
+    };
+
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
     if (!content) return <div className="p-8">Content not found</div>;
 
@@ -139,13 +144,14 @@ export default function ContentEditor() {
             <header className="flex-none flex items-center justify-between px-6 py-3 border-b bg-card z-20">
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-                        <ArrowLeft className="h-4 w-4" />
+                        <ArrowLeft className="h-4 w-4"/>
                     </Button>
                     <div className="flex flex-col">
                         {/* STATUS SELECTOR */}
                         <Select value={content?.status || "Draft"} onValueChange={updateStatus}>
-                            <SelectTrigger className={`h-8 w-[140px] font-medium ${content?.status === 'Published' ? 'text-green-600 bg-green-50 border-green-200' : 'text-muted-foreground'}`}>
-                                <SelectValue />
+                            <SelectTrigger
+                                className={`h-8 w-[140px] font-medium ${content?.status === 'Published' ? 'text-green-600 bg-green-50 border-green-200' : 'text-muted-foreground'}`}>
+                                <SelectValue/>
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Draft">Draft</SelectItem>
@@ -155,6 +161,27 @@ export default function ContentEditor() {
                         </Select>
                         <span className="text-sm font-medium text-muted-foreground">Last saved: ...</span>
                     </div>
+                </div>
+                <div className="flex flex-col">
+                    <div className="flex gap-2 mb-1">
+                        {/* Status Selector (Existing) */}
+                        <Select value={content?.status || "Draft"} onValueChange={updateStatus}>
+                            {/* ... options ... */}
+                        </Select>
+
+                        {/* NEW: Comments Selector */}
+                        <Select value={content?.commentsMode || "Hidden"} onValueChange={updateCommentsMode}>
+                            <SelectTrigger className="h-8 w-[110px] text-xs">
+                                <SelectValue placeholder="Comments"/>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Enabled">Comments On</SelectItem>
+                                <SelectItem value="Locked">Locked (Read)</SelectItem>
+                                <SelectItem value="Hidden">Disabled</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground">Last saved...</span>
                 </div>
                 <div className="flex items-center gap-2">
                     {/* SEO SHEET */}
@@ -247,7 +274,7 @@ export default function ContentEditor() {
                                 />
                             </div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span>URL:</span>
+                            <span>URL:</span>
                                 <span className="font-mono bg-muted/50 px-2 py-0.5 rounded">/</span>
                                 <Input
                                     value={slug.replace(/^\//, '')}

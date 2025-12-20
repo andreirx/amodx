@@ -390,6 +390,34 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
         });
 
+
+        // COMMENTS API
+        const listCommentsFunc = new nodejs.NodejsFunction(this, 'ListCommentsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/comments/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listCommentsFunc);
+
+        const createCommentFunc = new nodejs.NodejsFunction(this, 'CreateCommentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/comments/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createCommentFunc);
+
+        this.httpApi.addRoutes({
+            path: '/comments',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListCommentsInt', listCommentsFunc),
+        });
+
+        this.httpApi.addRoutes({
+            path: '/comments',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateCommentInt', createCommentFunc),
+        });
+
         // NEW: Grant permissions to all API functions to PutEvents
         // This iterates through all children and adds permission if it's a Function
         this.node.children.forEach(child => {
