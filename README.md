@@ -39,7 +39,7 @@ This is the killer feature. Because AMODX runs on an open protocol (MCP), you ca
 ## 🚀 Getting Started
 
 ### 1. Setup Your Environment
-If this is your first time using AWS tools, read the **[Installation Guide](INSTALL.md)**.
+If this is your first time using AWS tools (and even if it isn't), read the **[Installation Guide](INSTALL.md)**.
 
 ### 2. Deploy Your Infrastructure
 Run one command to provision your entire agency backend.
@@ -55,7 +55,7 @@ npx cdk deploy
 
 ### 3. Access Your Command Center
 1.  Open the **Admin URL**.
-2.  Log in (First user created via AWS Console).
+2.  Log in (First user created via AWS Console - see the **[AWS Installation Guide](INSTALL.md)**).
 3.  **Create your first Client Site** via the Sidebar.
 
 ### 4. Connect With Claude Desktop
@@ -73,6 +73,10 @@ Read the **[Agency Operations Manual](AGENCY-MANAGEMENT.md)** for details on:
 *   Connecting Custom Domains (e.g., `client.com`).
 *   Managing SSL Certificates.
 *   Scaling past 100 clients.
+
+Read the **[Tenant Integrations Manual](INTEGRATION-MANUAL.md)** for details on:
+*   Integrating Google OAuth2 for your clients to enable comments and other private site sections.
+*   Supporting Paddle as Merchant of Record for your tenants so they can sell their items worldwide.
 
 ---
 

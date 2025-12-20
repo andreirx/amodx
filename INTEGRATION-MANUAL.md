@@ -10,6 +10,7 @@ To allow visitors to log in to a specific client site (e.g., `dental-clinic.com`
 **Why?** Google requires a strict whitelist of domains. You cannot use a shared "Agency" app for all clients.
 
 1.  **Create Project:** Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project (e.g., "Dental Clinic Site").
+    * Make sure you have your team set up first.
 2.  **Consent Screen:** Configure the OAuth Consent Screen.
     *   *User Type:* External.
     *   *App Name:* The Client's Brand Name.
