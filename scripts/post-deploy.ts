@@ -89,7 +89,7 @@ AMODX_API_KEY="${apiKey}"
 TABLE_NAME=${getOutput("TableName")}
 ADMIN_API_URL=${apiUrl}
 TENANT_API_URL=${apiUrl} 
-TEST_ADMIN_USER=test-admin@amodx.net
+TEST_ADMIN_USER=admin@staging.amodx.net
 TEST_ADMIN_PASSWORD=ChangeMe123!
 `.trim();
         fs.writeFileSync(path.join(__dirname, "../.env.test"), testEnv);

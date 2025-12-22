@@ -4,12 +4,11 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
 
-    // Define SEO files that must be handled dynamically
+    // 1. Skip Internals & Statics (Allow SEO files)
     const isSeoFile = path.endsWith('/robots.txt') ||
         path.endsWith('/sitemap.xml') ||
         path.endsWith('/llms.txt');
 
-    // 1. Skip Internals
     if (
         path.startsWith('/_next') ||
         path.startsWith('/api') ||
@@ -19,34 +18,43 @@ export function middleware(request: NextRequest) {
         return NextResponse.next();
     }
 
-    // 2. PREVIEW MODE
-    // matches /_site/client-id/page
-    if (path.startsWith('/_site/')) {
-        const host = request.headers.get('host') || '';
-
-        // SECURITY: Only allow _site previews on localhost or *.cloudfront.net
-        // This prevents SEO leakage on production domains (e.g. amodx.net/_site/...)
-        const isAllowedHost = host.includes('localhost') || host.includes('cloudfront.net');
-
-        if (!isAllowedHost) {
-            return new NextResponse("Previews are only available via the CloudFront URL.", { status: 403 });
-        }
-
+    // 2. TEST MODE: /tenant/[id]/...
+    // Used for E2E testing to avoid creating DNS records for every test case
+    if (path.startsWith('/tenant/')) {
         const parts = path.split('/');
-        // parts[0] = "", parts[1] = "_site", parts[2] = "client-id"
+        // parts[0]="", parts[1]="tenant", parts[2]="test-123", parts[3]="home"
         if (parts.length >= 3) {
             const tenantId = parts[2];
-            const restOfPath = "/" + parts.slice(3).join("/"); // "/page" or "/"
+            const restOfPath = "/" + parts.slice(3).join("/");
 
-            // Rewrite to: /client-id/page
-            // This maps to [siteId]=client-id
             const url = request.nextUrl.clone();
             url.pathname = `/${tenantId}${restOfPath}`;
             return NextResponse.rewrite(url);
         }
     }
 
-    // 3. PRODUCTION MODE
+    // 3. PREVIEW MODE: /_site/[id]/...
+    // Secure preview for Admins
+    if (path.startsWith('/_site/')) {
+        const host = request.headers.get('host') || '';
+        const isAllowedHost = host.includes('localhost') || host.includes('cloudfront.net') || host.includes('staging');
+
+        if (!isAllowedHost) {
+            return new NextResponse("Previews are restricted.", { status: 403 });
+        }
+
+        const parts = path.split('/');
+        if (parts.length >= 3) {
+            const tenantId = parts[2];
+            const restOfPath = "/" + parts.slice(3).join("/");
+
+            const url = request.nextUrl.clone();
+            url.pathname = `/${tenantId}${restOfPath}`;
+            return NextResponse.rewrite(url);
+        }
+    }
+
+    // 4. PRODUCTION MODE: Domain Mapping
     const forwardedHost = request.headers.get('x-forwarded-host');
     const host = forwardedHost || request.headers.get('host') || '';
     const cleanHost = host.split(':')[0];
