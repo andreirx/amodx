@@ -5,6 +5,7 @@
 ![AMODX Architecture](WP-vs-AMODX.jpg)
 
 AMODX is a **Serverless Command Center** that allows you to manage up to 99 client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard.**
+It is currently used to host and manage https://amodx.net.
 
 * Clean, secure, and modern.
 * Extremely cheap to run: AWS Lambdas, Cognito, DynamoDB, EventBridge, S3.

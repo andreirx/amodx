@@ -22,7 +22,10 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",
     "@types/node": "^20.0.0",
+    "@vitest/ui": "^4.0.16",
+    "aws-sdk-client-mock": "^4.1.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.16"
   }
 }

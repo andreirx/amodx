@@ -41,8 +41,8 @@ export class AdminHosting extends Construct {
         // 2. S3 Bucket
         const bucket = new s3.Bucket(this, 'AdminBucket', {
             accessControl: s3.BucketAccessControl.PRIVATE,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
-            autoDeleteObjects: true,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+            autoDeleteObjects: false,
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // Secure
         });
 

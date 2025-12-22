@@ -18,6 +18,7 @@ import { AmodxEvents } from './events';
 import * as path from "node:path";
 
 interface AmodxStackProps extends cdk.StackProps {
+  stage: string;
   config: {
     domains: {
       root?: string; // Optional now
@@ -31,6 +32,13 @@ interface AmodxStackProps extends cdk.StackProps {
 export class AmodxStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AmodxStackProps) {
     super(scope, id, props);
+
+    // Optional: Add a tag to all resources so you can find costs easily in AWS Console
+    cdk.Tags.of(this).add('Stage', props.stage);
+    cdk.Tags.of(this).add('Project', 'AMODX');
+
+    // Helper to suffix names: "AmodxBus" -> "AmodxBus-staging"
+    const suffix = props.stage === 'prod' ? '' : `-${props.stage}`;
 
     const rootDomain = props.config.domains.root;
     const tenantDomains = props.config.domains.tenants || [];
@@ -91,9 +99,9 @@ export class AmodxStack extends cdk.Stack {
       }
     });
 
-    const uploads = new AmodxUploads(this, 'Uploads');
-    const db = new AmodxDatabase(this, 'Database');
-    const auth = new AmodxAuth(this, 'Auth');
+    const uploads = new AmodxUploads(this, 'Uploads', { bucketSuffix: suffix });
+    const db = new AmodxDatabase(this, 'Database', { tableSuffix: suffix });
+    const auth = new AmodxAuth(this, 'Auth', { nameSuffix: suffix });
 
     // 2. API Domain Setup (Only if Root Domain exists)
     let apiDomain: apigw.DomainName | undefined;
@@ -117,7 +125,8 @@ export class AmodxStack extends cdk.Stack {
 
     // 2. Events Infra (The Bus)
     const events = new AmodxEvents(this, 'Events', {
-      auditFunction: auditWorker
+      auditFunction: auditWorker,
+      busName: `AmodxSystemBus${suffix}`
     });
 
     // 3. API Layer

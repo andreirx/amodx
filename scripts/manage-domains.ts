@@ -4,14 +4,18 @@ import * as path from "path";
 
 // CloudFront Certs MUST be in us-east-1
 const acm = new ACMClient({ region: "us-east-1" });
-const configPath = path.join(__dirname, "../amodx.config.json");
+
+// 1. Parse Arguments
+const configFile = process.argv[2] || "amodx.config.json";
+const configPath = path.join(__dirname, `../${configFile}`);
 
 async function main() {
     if (!fs.existsSync(configPath)) {
-        console.error("❌ amodx.config.json not found. Run 'npm run setup-config' first.");
+        console.error(`❌ Config file not found: ${configFile}`);
         process.exit(1);
     }
 
+    console.log(`📂 Using config: ${configFile}`);
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const domains = [
         config.domains.root,
@@ -57,7 +61,6 @@ async function main() {
         const options = cert?.DomainValidationOptions || [];
 
         // Filter for records that still need validation
-        // FIXED: Use the correct Enum string
         const pendingOptions = options.filter(o => o.ValidationStatus === DomainStatus.PENDING_VALIDATION);
 
         if (pendingOptions.length > 0 && pendingOptions[0].ResourceRecord) {
@@ -90,7 +93,7 @@ async function main() {
     // 3. Save ARN to Config
     config.domains.globalCertArn = certArn;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log("✅ amodx.config.json updated. You can now run 'npx cdk deploy'.");
+    console.log(`✅ ${configFile} updated. You can now run 'npx cdk deploy'.`);
 }
 
 main().catch(console.error);

@@ -2,17 +2,24 @@ import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 
+interface AmodxDatabaseProps {
+    tableSuffix?: string;
+}
+
 export class AmodxDatabase extends Construct {
     public readonly table: dynamodb.Table;
 
-    constructor(scope: Construct, id: string) {
+    constructor(scope: Construct, id: string, props?: AmodxDatabaseProps) {
         super(scope, id);
 
+        const suffix = props?.tableSuffix || '';
+
         this.table = new dynamodb.Table(scope, 'AmodxTable', {
+            tableName: `AmodxTable${suffix}`,
             partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // Serverless pricing
-            removalPolicy: cdk.RemovalPolicy.DESTROY, // For Dev: deletes table if stack is destroyed
+            removalPolicy: cdk.RemovalPolicy.RETAIN, // For Dev: deletes table if stack is destroyed
             pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
         });
 

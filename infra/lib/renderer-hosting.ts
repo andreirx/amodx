@@ -44,8 +44,8 @@ export class RendererHosting extends Construct {
 
         // 2. Asset Bucket (Public files)
         const assetBucket = new s3.Bucket(this, 'RendererAssets', {
-            autoDeleteObjects: true,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            autoDeleteObjects: false,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
             publicReadAccess: false,
         });
 

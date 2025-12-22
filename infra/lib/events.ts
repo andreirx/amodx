@@ -6,6 +6,7 @@ import { Construct } from 'constructs';
 
 interface AmodxEventsProps {
     auditFunction: lambda.IFunction;
+    busName: string;
 }
 
 export class AmodxEvents extends Construct {
@@ -16,7 +17,7 @@ export class AmodxEvents extends Construct {
 
         // 1. The Event Bus
         this.bus = new events.EventBus(this, 'AmodxBus', {
-            eventBusName: 'AmodxSystemBus',
+            eventBusName: props.busName, // <--- USE PROP
         });
 
         // 2. Rule: Catch All Audit Events
