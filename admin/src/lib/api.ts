@@ -1,8 +1,10 @@
 import { fetchAuthSession, signOut } from 'aws-amplify/auth';
 
 const getConfig = (key: string) => {
+    // FIX: Prioritize Runtime Config (window) over Build Config (import.meta.env)
+    // This prevents local .env.local from polluting Staging deployments
     // @ts-ignore
-    return import.meta.env[key] || window.AMODX_CONFIG?.[key];
+    return window.AMODX_CONFIG?.[key] || import.meta.env[key];
 };
 
 export async function apiRequest(path: string, options: RequestInit = {}) {
