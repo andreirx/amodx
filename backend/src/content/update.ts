@@ -53,7 +53,7 @@ export const handler: AmodxHandler = async (event) => {
             ":t": input.title || current.title,
             ":b": input.blocks || current.blocks,
             ":s": input.status || current.status,
-            ":cm": input.commentsMode || current.commentsMode || "Hidden", // <--- Added
+            ":cm": input.commentsMode || current.commentsMode || "Hidden",
 
             // SEO
             ":st": input.seoTitle ?? current.seoTitle ?? null,
@@ -64,6 +64,8 @@ export const handler: AmodxHandler = async (event) => {
             ":u": timestamp,
             ":ub": userId
         };
+
+        console.log("DYNAMO VALUES:", JSON.stringify(updateValues, null, 2));
 
         const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, updatedAt = :u, updatedBy = :ub";
 

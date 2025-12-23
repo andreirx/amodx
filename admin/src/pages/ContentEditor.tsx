@@ -99,6 +99,8 @@ export default function ContentEditor() {
             if (!finalImg) finalImg = findImage(blocks);
         }
 
+        console.log("SAVING with Mode:", content?.commentsMode); // DEBUG
+
         try {
             setSaving(true);
             await apiRequest(`/content/${id}`, {
@@ -132,6 +134,7 @@ export default function ContentEditor() {
 
     // Helper to update comments config
     const updateCommentsMode = (val: string) => {
+        console.log("Setting Comments Mode to:", val); // DEBUG
         if (content) setContent({ ...content, commentsMode: val as any });
     };
 
@@ -162,14 +165,7 @@ export default function ContentEditor() {
                         </Select>
                         <span className="text-sm font-medium text-muted-foreground">Last saved: ...</span>
                     </div>
-                </div>
-                <div className="flex flex-col">
                     <div className="flex gap-2 mb-1">
-                        {/* Status Selector (Existing) */}
-                        <Select value={content?.status || "Draft"} onValueChange={updateStatus}>
-                            {/* ... options ... */}
-                        </Select>
-
                         {/* NEW: Comments Selector */}
                         <Select value={content?.commentsMode || "Hidden"} onValueChange={updateCommentsMode}>
                             <SelectTrigger className="h-8 w-[110px] text-xs">
@@ -182,7 +178,6 @@ export default function ContentEditor() {
                             </SelectContent>
                         </Select>
                     </div>
-                    <span className="text-sm font-medium text-muted-foreground">Last saved...</span>
                 </div>
                 <div className="flex items-center gap-2">
                     {/* SEO SHEET */}
