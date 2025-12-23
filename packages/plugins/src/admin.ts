@@ -8,6 +8,8 @@ import {LeadMagnetPlugin} from "./lead-magnet";
 import {CtaPlugin} from "./cta";
 import {FeaturesPlugin} from "./features";
 import {TestimonialsPlugin} from "./testimonials";
+import { ColumnsPlugin } from './columns';
+import { TablePlugin } from './table';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -18,7 +20,9 @@ const REGISTRY: PluginDefinition[] = [
     LeadMagnetPlugin,
     CtaPlugin,
     FeaturesPlugin,
-    TestimonialsPlugin
+    TestimonialsPlugin,
+    ColumnsPlugin,
+    TablePlugin
 ];
 
 

@@ -24,69 +24,343 @@ const getHeaders = (tenantId?: string) => {
     return h;
 };
 
-// --- BLOCK DEFINITIONS FOR AI ---
-// We keep a lightweight definition here so the AI knows how to construct them
+// --- COMPLETE BLOCK DEFINITIONS FOR AI ---
+// Updated with all current plugins as of Sprint 2 completion
 const BLOCK_SCHEMAS = {
     hero: {
-        description: "A large banner with headline, subheadline, and call to action.",
+        description: "A large banner with headline, subheadline, CTA button, and optional background image. Supports 3 layout styles.",
         attrs: {
-            headline: "string",
-            subheadline: "string",
-            ctaText: "string",
-            ctaLink: "string (/contact)",
-            style: "center | split | minimal",
-            imageSrc: "string (url)"
+            headline: "string (e.g., 'Welcome to AMODX')",
+            subheadline: "string (optional)",
+            ctaText: "string (e.g., 'Get Started')",
+            ctaLink: "string (e.g., '/contact' or '#pricing')",
+            style: "'center' | 'split' | 'minimal'",
+            imageSrc: "string (optional, image URL)"
+        },
+        example: {
+            type: "hero",
+            attrs: {
+                headline: "Build Better Websites",
+                subheadline: "Fast, secure, and AI-native",
+                ctaText: "Start Free",
+                ctaLink: "/signup",
+                style: "center",
+                imageSrc: null
+            }
         }
     },
     pricing: {
-        description: "A grid of pricing plans.",
+        description: "A flexible pricing table with multiple plan cards. Supports highlighting featured plans and custom button links.",
         attrs: {
-            headline: "string",
-            subheadline: "string",
-            plans: [{
-                id: "string (uuid)",
-                title: "string",
-                price: "string",
-                interval: "mo | yr",
-                features: "string (newline separated)",
-                buttonText: "string",
-                highlight: "boolean"
-            }]
-        }
-    },
-    image: {
-        description: "A standard image with caption.",
-        attrs: {
-            src: "string (url)",
-            alt: "string",
-            caption: "string",
-            width: "full | wide | centered"
+            headline: "string (e.g., 'Simple Pricing')",
+            subheadline: "string (optional)",
+            plans: "array of plan objects (see example)"
+        },
+        planStructure: {
+            id: "string (uuid, use crypto.randomUUID())",
+            title: "string (e.g., 'Pro')",
+            price: "string (e.g., '$99')",
+            interval: "string (e.g., 'mo' or 'yr')",
+            features: "string (newline-separated list, e.g., 'Unlimited sites\\nPriority support\\nAdvanced analytics')",
+            buttonText: "string (e.g., 'Get Started')",
+            buttonLink: "string (optional, defaults to '#')",
+            highlight: "boolean (true for featured plan)"
+        },
+        example: {
+            type: "pricing",
+            attrs: {
+                headline: "Choose Your Plan",
+                subheadline: "All plans include 14-day trial",
+                plans: [
+                    {
+                        id: "uuid-here",
+                        title: "Starter",
+                        price: "$29",
+                        interval: "mo",
+                        features: "5 sites\\n10GB storage\\nEmail support",
+                        buttonText: "Start",
+                        buttonLink: "/signup?plan=starter",
+                        highlight: false
+                    },
+                    {
+                        id: "uuid-here",
+                        title: "Pro",
+                        price: "$99",
+                        interval: "mo",
+                        features: "Unlimited sites\\n100GB storage\\nPriority support\\nCustom domains",
+                        buttonText: "Go Pro",
+                        buttonLink: "/signup?plan=pro",
+                        highlight: true
+                    }
+                ]
+            }
         }
     },
     contact: {
-        description: "A contact form that emails the tenant.",
+        description: "A contact form that emails submissions to the tenant's configured email. Supports custom fields and CRM tagging.",
         attrs: {
-            headline: "string",
-            description: "string",
-            buttonText: "string",
-            successMessage: "string",
-            tags: "string (crm tags)"
+            headline: "string (e.g., 'Get In Touch')",
+            description: "string (optional subtext)",
+            buttonText: "string (e.g., 'Send Message')",
+            successMessage: "string (e.g., 'Thanks! We'll reply within 24 hours.')",
+            tags: "string (optional, comma-separated CRM tags for segmentation)"
+        },
+        example: {
+            type: "contact",
+            attrs: {
+                headline: "Contact Us",
+                description: "We'd love to hear from you",
+                buttonText: "Send",
+                successMessage: "Thanks for reaching out!",
+                tags: "website-inquiry, lead"
+            }
         }
     },
+    image: {
+        description: "A standalone image block with caption and width control.",
+        attrs: {
+            src: "string (image URL, required)",
+            alt: "string (accessibility description)",
+            caption: "string (optional, displayed below image)",
+            width: "'full' | 'wide' | 'centered' (controls max-width)"
+        },
+        example: {
+            type: "image",
+            attrs: {
+                src: "https://example.com/image.jpg",
+                alt: "Product screenshot",
+                caption: "Our dashboard in action",
+                width: "wide"
+            }
+        }
+    },
+    video: {
+        description: "Embedded video player supporting YouTube, Vimeo, or direct MP4 links.",
+        attrs: {
+            url: "string (video URL, required)",
+            caption: "string (optional, displayed below)",
+            autoplay: "boolean (default false)",
+            controls: "boolean (default true)"
+        },
+        example: {
+            type: "video",
+            attrs: {
+                url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                caption: "Product demo video",
+                autoplay: false,
+                controls: true
+            }
+        }
+    },
+    leadmagnet: {
+        description: "Email capture form offering a downloadable resource (PDF, ebook, etc). User gets download link after providing email.",
+        attrs: {
+            headline: "string (e.g., 'Download Free Guide')",
+            description: "string (what they'll get)",
+            buttonText: "string (e.g., 'Get Free Guide')",
+            resourceUrl: "string (S3 URL to the gated file)",
+            resourceName: "string (e.g., 'SEO Checklist.pdf')",
+            tags: "string (optional, CRM tags)"
+        },
+        example: {
+            type: "leadmagnet",
+            attrs: {
+                headline: "Get Our Free SEO Guide",
+                description: "50-page comprehensive checklist",
+                buttonText: "Download Now",
+                resourceUrl: "s3://bucket/seo-guide.pdf",
+                resourceName: "SEO-Guide-2025.pdf",
+                tags: "lead-magnet, seo-interest"
+            }
+        }
+    },
+    features: {
+        description: "Grid of feature cards with icons, headlines, and descriptions. Perfect for product features or service offerings.",
+        attrs: {
+            headline: "string (section title)",
+            subheadline: "string (optional)",
+            items: "array of feature objects (see example)"
+        },
+        featureStructure: {
+            id: "string (uuid)",
+            icon: "string (lucide-react icon name, e.g., 'Zap', 'Shield', 'Rocket')",
+            title: "string (feature name)",
+            description: "string (feature description)"
+        },
+        example: {
+            type: "features",
+            attrs: {
+                headline: "Why Choose Us",
+                subheadline: "Everything you need to succeed",
+                items: [
+                    {
+                        id: "uuid-here",
+                        icon: "Zap",
+                        title: "Lightning Fast",
+                        description: "Pages load in under 100ms worldwide"
+                    },
+                    {
+                        id: "uuid-here",
+                        icon: "Shield",
+                        title: "Secure by Default",
+                        description: "Bank-grade encryption and DDoS protection"
+                    },
+                    {
+                        id: "uuid-here",
+                        icon: "Rocket",
+                        title: "Scales Automatically",
+                        description: "From 10 to 10 million users with zero config"
+                    }
+                ]
+            }
+        }
+    },
+    cta: {
+        description: "Call-to-action banner with headline, description, and button. Use for conversions or important announcements.",
+        attrs: {
+            headline: "string (attention-grabbing text)",
+            description: "string (supporting text)",
+            buttonText: "string (action verb)",
+            buttonLink: "string (destination URL)",
+            style: "'primary' | 'secondary' | 'accent' (visual emphasis level)"
+        },
+        example: {
+            type: "cta",
+            attrs: {
+                headline: "Ready to Get Started?",
+                description: "Join 10,000+ agencies already using AMODX",
+                buttonText: "Start Free Trial",
+                buttonLink: "/signup",
+                style: "primary"
+            }
+        }
+    },
+    testimonials: {
+        description: "Customer testimonial carousel or grid. Social proof section with quotes, names, and photos.",
+        attrs: {
+            headline: "string (section title)",
+            subheadline: "string (optional)",
+            items: "array of testimonial objects (see example)"
+        },
+        testimonialStructure: {
+            id: "string (uuid)",
+            quote: "string (the testimonial text)",
+            author: "string (person's name)",
+            role: "string (e.g., 'CEO at TechCorp')",
+            image: "string (optional, avatar URL)"
+        },
+        example: {
+            type: "testimonials",
+            attrs: {
+                headline: "What Our Clients Say",
+                subheadline: "Don't just take our word for it",
+                items: [
+                    {
+                        id: "uuid-here",
+                        quote: "AMODX cut our development time by 80%. Game changer.",
+                        author: "Sarah Johnson",
+                        role: "Founder, DesignCo",
+                        image: "https://example.com/sarah.jpg"
+                    }
+                ]
+            }
+        }
+    },
+    columns: {
+        description: "Multi-column layout for side-by-side content. Supports 2-4 columns with flexible widths. Auto-stacks on mobile.",
+        attrs: {
+            columnCount: "'2' | '3' | '4' (number of columns)",
+            gap: "'sm' | 'md' | 'lg' (spacing between columns)",
+            columns: "array of column objects (see example)"
+        },
+        columnStructure: {
+            id: "string (uuid)",
+            width: "'1/4' | '1/3' | '1/2' | '2/3' | '3/4' | 'full' (column width as fraction)",
+            content: "string (text content, supports multiple paragraphs separated by newlines)"
+        },
+        example: {
+            type: "columns",
+            attrs: {
+                columnCount: "2",
+                gap: "md",
+                columns: [
+                    {
+                        id: "uuid-here",
+                        width: "1/2",
+                        content: "This is the left column content.\\n\\nSupports multiple paragraphs."
+                    },
+                    {
+                        id: "uuid-here",
+                        width: "1/2",
+                        content: "This is the right column content.\\n\\nAlso with multiple paragraphs."
+                    }
+                ]
+            }
+        },
+        notes: "Column widths should sum logically (e.g., two 1/2 columns, or 1/3 + 2/3). System will render them responsively."
+    },
+    table: {
+        description: "Data table with customizable rows and columns. Perfect for pricing comparisons, specifications, or structured data.",
+        attrs: {
+            headers: "array of strings (column headers)",
+            rows: "array of row objects (see example)",
+            striped: "boolean (zebra-stripe rows for readability, default true)",
+            bordered: "boolean (show cell borders, default true)"
+        },
+        rowStructure: {
+            id: "string (uuid)",
+            cells: "array of cell objects"
+        },
+        cellStructure: {
+            id: "string (uuid)",
+            content: "string (cell text)"
+        },
+        example: {
+            type: "table",
+            attrs: {
+                headers: ["Feature", "Starter", "Pro", "Enterprise"],
+                rows: [
+                    {
+                        id: "uuid-here",
+                        cells: [
+                            { id: "uuid-1", content: "Users" },
+                            { id: "uuid-2", content: "Up to 5" },
+                            { id: "uuid-3", content: "Up to 25" },
+                            { id: "uuid-4", content: "Unlimited" }
+                        ]
+                    },
+                    {
+                        id: "uuid-here",
+                        cells: [
+                            { id: "uuid-5", content: "Storage" },
+                            { id: "uuid-6", content: "10GB" },
+                            { id: "uuid-7", content: "100GB" },
+                            { id: "uuid-8", content: "1TB" }
+                        ]
+                    }
+                ],
+                striped: true,
+                bordered: true
+            }
+        },
+        notes: "All rows must have the same number of cells as there are headers. Empty cells should use empty string ('')."
+    },
     paragraph: {
-        description: "Standard text.",
-        content: "string (text)"
+        description: "Standard text paragraph. Use for body content.",
+        content: "string (the text content)"
     },
     heading: {
-        description: "Section title.",
-        attrs: { level: "number (1-3)" },
-        content: "string (text)"
+        description: "Section heading (H1, H2, or H3).",
+        attrs: {
+            level: "number (1, 2, or 3)"
+        },
+        content: "string (heading text)"
     }
 };
 
 const server = new McpServer({
     name: "AMODX-Bridge",
-    version: "2.0.0",
+    version: "2.1.0",
 });
 
 // ==========================================
@@ -121,7 +395,7 @@ server.tool("create_tenant",
 );
 
 // ==========================================
-// 2. STRATEGY & CONTEXT (Refactored)
+// 2. STRATEGY & CONTEXT
 // ==========================================
 
 server.tool("list_context",
@@ -129,10 +403,8 @@ server.tool("list_context",
     async ({ tenant_id }) => {
         try {
             const response = await axios.get(`${API_URL}/context`, { headers: getHeaders(tenant_id) });
-            // FIXED: Using new Schema (title, tags, blocks)
             const summary = response.data.items.map((item: any) => {
                 const tags = item.tags && item.tags.length > 0 ? `[${item.tags.join(', ')}] ` : '';
-                // Try to preview block text
                 let snippet = "No content";
                 if (item.blocks && item.blocks.length > 0) {
                     const firstBlock = item.blocks[0];
@@ -160,7 +432,6 @@ server.tool("create_context",
     },
     async ({ tenant_id, title, tags, content }) => {
         try {
-            // Simple text-to-block conversion for creation
             const blocks = [{ type: 'paragraph', content: [{ type: 'text', text: content }] }];
             const tagArray = tags.split(',').map(t => t.trim());
 
@@ -187,7 +458,7 @@ server.tool("read_context",
 );
 
 // ==========================================
-// 3. CONTENT & BLOCKS (The Core)
+// 3. CONTENT & BLOCKS
 // ==========================================
 
 server.tool("list_content",
@@ -209,7 +480,7 @@ server.tool("get_block_schemas", {}, async () => {
     return {
         content: [{
             type: "text",
-            text: `Available UI Blocks and their JSON structure:\n${JSON.stringify(BLOCK_SCHEMAS, null, 2)}`
+            text: `AMODX Available UI Blocks (Sprint 2 Complete):\n\n${JSON.stringify(BLOCK_SCHEMAS, null, 2)}\n\nNOTE: All blocks with array attributes (plans, items, columns, rows) require proper UUID generation for 'id' fields. Use crypto.randomUUID() or similar.`
         }]
     };
 });
@@ -218,9 +489,23 @@ server.tool("add_block",
     {
         tenant_id: z.string(),
         page_id: z.string(),
-        type: z.enum(["hero", "pricing", "contact", "image", "paragraph", "heading"]),
+        type: z.enum([
+            "hero",
+            "pricing",
+            "contact",
+            "image",
+            "video",
+            "leadmagnet",
+            "features",
+            "cta",
+            "testimonials",
+            "columns",
+            "table",
+            "paragraph",
+            "heading"
+        ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
-        content_text: z.string().optional().describe("For text blocks, the text content"),
+        content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
     },
     async ({ tenant_id, page_id, type, attrs, content_text }) => {
         try {
@@ -249,7 +534,7 @@ server.tool("add_block",
                 headers: getHeaders(tenant_id)
             });
 
-            return { content: [{ type: "text", text: `Added ${type} block to page "${page.title}".` }] };
+            return { content: [{ type: "text", text: `✓ Added ${type} block to page "${page.title}".` }] };
 
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
@@ -271,27 +556,55 @@ server.tool("create_page",
             const response = await axios.post(`${API_URL}/content`, payload, {
                 headers: getHeaders(tenant_id)
             });
-            return { content: [{ type: "text", text: `Created page "${title}" (ID: ${response.data.nodeId})` }] };
+            return { content: [{ type: "text", text: `✓ Created page "${title}" (ID: ${response.data.nodeId})` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
         }
     }
 );
 
-// Standard get_schema for context
+// ==========================================
+// 4. SCHEMA REFERENCE
+// ==========================================
+
 server.tool("get_schema", {}, async () => {
     return {
         content: [{
             type: "text",
-            text: `AMODX Core Entities:
-- Tenant: A client website.
-- Content: Pages containing Blocks (Hero, Pricing, etc).
-- Context: Strategic documents with Tags.
+            text: `AMODX System Architecture:
 
-To build a page:
-1. 'list_content' to find page ID.
-2. 'get_block_schemas' to see available UI components.
-3. 'add_block' to append a component.`
+ENTITIES:
+- Tenant: A client website/site (has domain, theme, integrations)
+- Content: Pages with blocks (hero, pricing, table, etc)
+- Context: Strategy documents with tags (persona, Q1, etc)
+- Blocks: UI components that render on pages
+
+WORKFLOW TO BUILD A PAGE:
+1. list_tenants → Get tenant_id
+2. list_content → Find existing pages or create_page
+3. get_block_schemas → See all available blocks
+4. add_block → Insert blocks with proper JSON attrs
+
+CURRENT PLUGINS:
+✓ Hero (3 styles: center, split, minimal)
+✓ Pricing (dynamic plans with highlight)
+✓ Contact Form (email capture)
+✓ Image (with caption & width control)
+✓ Video (YouTube/Vimeo/MP4)
+✓ Lead Magnet (gated downloads)
+✓ Features (grid of cards)
+✓ CTA (call-to-action banner)
+✓ Testimonials (social proof)
+✓ Columns (2-4 column layouts)
+✓ Table (data tables with headers)
+✓ Paragraph & Heading (text blocks)
+
+TIPS:
+- Always generate UUIDs for array items (plans, columns, rows, etc)
+- Use newline (\\n) for multi-line text in features/pricing
+- Check existing blocks with get_block_schemas before adding
+- Columns widths should add up logically (1/2 + 1/2, 1/3 + 2/3, etc)
+- Table rows must have same number of cells as headers`
         }],
     };
 });
@@ -299,7 +612,7 @@ To build a page:
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("AMODX MCP Server running on Stdio");
+    console.error("AMODX MCP Server v2.1.0 running on Stdio");
 }
 
 main().catch((error) => {
