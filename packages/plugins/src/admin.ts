@@ -7,6 +7,7 @@ import {VideoPlugin} from "./video";
 import {LeadMagnetPlugin} from "./lead-magnet";
 import {CtaPlugin} from "./cta";
 import {FeaturesPlugin} from "./features";
+import {TestimonialsPlugin} from "./testimonials";
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -16,7 +17,8 @@ const REGISTRY: PluginDefinition[] = [
     VideoPlugin,
     LeadMagnetPlugin,
     CtaPlugin,
-    FeaturesPlugin
+    FeaturesPlugin,
+    TestimonialsPlugin
 ];
 
 

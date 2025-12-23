@@ -7,6 +7,7 @@ import {VideoRender} from "./video/VideoRender";
 import {LeadMagnetRender} from "./lead-magnet/LeadMagnetRender";
 import {CtaRender} from "./cta/CtaRender";
 import {FeaturesRender} from "./features/FeaturesRender";
+import {TestimonialsRender} from "./testimonials/TestimonialsRender";
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -17,4 +18,5 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'leadMagnet': LeadMagnetRender,
     'cta': CtaRender,
     'features': FeaturesRender,
+    'testimonials': TestimonialsRender,
 };

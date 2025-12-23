@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from 'next/headers';
 
 export async function POST(req: NextRequest) {
     try {
@@ -11,9 +12,24 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Configuration Error" }, { status: 500 });
         }
 
-        // 2. Forward to Backend
-        // We pass the Tenant ID header which the Client sent to us
         const tenantId = req.headers.get("x-tenant-id");
+
+        // 1. Capture Referral Cookie
+        const cookieStore = await cookies();
+        const referral = cookieStore.get('amodx_ref')?.value;
+        const source = body.source || 'Website'; // Source passed from component
+
+        // 2. Prepare Payload for Backend
+        // We inject the referral into the 'data' map if LeadSchema allows it
+        const backendPayload = {
+            ...body,
+            source: source,
+            data: {
+                ...body.data,
+                referral: referral || null,
+                userAgent: req.headers.get('user-agent'),
+            }
+        };
 
         const response = await fetch(`${apiUrl}/leads`, {
             method: 'POST',
