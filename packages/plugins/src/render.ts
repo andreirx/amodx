@@ -8,8 +8,8 @@ import {LeadMagnetRender} from "./lead-magnet/LeadMagnetRender";
 import {CtaRender} from "./cta/CtaRender";
 import {FeaturesRender} from "./features/FeaturesRender";
 import {TestimonialsRender} from "./testimonials/TestimonialsRender";
-import { ColumnsPlugin } from './columns';
-import { TablePlugin } from './table';
+import { ColumnsRender } from './columns/ColumnsRender';
+import { TableRender } from './table/TableRender';
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -21,6 +21,6 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'cta': CtaRender,
     'features': FeaturesRender,
     'testimonials': TestimonialsRender,
-    columns: ColumnsPlugin.renderComponent,
-    table: TablePlugin.renderComponent,
+    'columns': ColumnsRender,
+    'table': TableRender,
 };
