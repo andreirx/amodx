@@ -115,7 +115,8 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
         return {
             ...item,
             accessPolicy,
-            status: item.status || "Draft" // Default to Draft if missing
+            status: item.status || "Draft",
+            commentsMode: item.commentsMode || "Hidden"
         } as ContentItem;
 
     } catch (error) {

@@ -12,24 +12,22 @@ interface Comment {
     createdAt: string;
 }
 
-export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabled" | "Locked" | "Hidden" }) {
+export function CommentsSection({ pageId, mode }: { pageId: string, mode?: "Enabled" | "Locked" | "Hidden" }) {
     const { data: session } = useSession();
     const [comments, setComments] = useState<Comment[]>([]);
     const [newComment, setNewComment] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
+    // SAFETY: Default to Hidden if mode is missing/undefined
+    const safeMode = mode || "Hidden";
+
     // Fetch Comments
     useEffect(() => {
-        if (mode === "Hidden") return;
+        if (safeMode === "Hidden") return;
 
         // Use Global Tenant ID
         // @ts-ignore
         const tenantId = typeof window !== 'undefined' ? window.AMODX_TENANT_ID : "";
-
-        // For now, let's use the PUBLIC API directly for reading (List is public)
-        // Ideally we proxy this via Next.js to hide the API URL, but list is public.
-        // Actually, we haven't built a proxy for GET comments yet.
-        // Let's assume we create a proxy at /api/comments
 
         fetch(`/api/comments?pageId=${pageId}`, {
             headers: { 'x-tenant-id': tenantId }
@@ -39,7 +37,6 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
                     console.error("Failed to load comments", res.status);
                     return { items: [] };
                 }
-                // Check content type before parsing
                 const contentType = res.headers.get("content-type");
                 if (contentType && contentType.indexOf("application/json") !== -1) {
                     return res.json();
@@ -48,7 +45,7 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
             })
             .then(data => setComments(data.items || []))
             .catch(err => console.error("Comment fetch error:", err));
-    }, [pageId, mode]);
+    }, [pageId, safeMode]);
 
     const handleSubmit = async (e: any) => {
         e.preventDefault();
@@ -59,17 +56,16 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
         const tenantId = window.AMODX_TENANT_ID;
 
         try {
-            await fetch('/api/comments', { // This must be the PROXY route
+            await fetch('/api/comments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
                 body: JSON.stringify({
                     pageId,
                     content: newComment,
-                    // Author details handled by Server Proxy via Session
                 })
             });
             setNewComment("");
-            // Refresh list...
+            // Optimistic update or refetch could go here
         } catch (e) {
             alert("Failed to post");
         } finally {
@@ -77,7 +73,7 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
         }
     };
 
-    if (mode === "Hidden") return null;
+    if (safeMode === "Hidden") return null;
 
     return (
         <section className="max-w-4xl mx-auto py-12 px-6 border-t border-border mt-12">
@@ -108,7 +104,7 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
             </div>
 
             {/* FORM */}
-            {mode === "Locked" ? (
+            {safeMode === "Locked" ? (
                 <div className="p-4 bg-muted/50 rounded-lg text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
                     <Lock className="w-4 h-4" /> Comments are closed for this post.
                 </div>

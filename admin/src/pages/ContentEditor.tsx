@@ -108,6 +108,7 @@ export default function ContentEditor() {
                     slug: slug,
                     status: content?.status,
                     blocks: blocks,
+                    commentsMode: content?.commentsMode || "Hidden",
                     // Send SEO Data
                     seoTitle: finalSeoTitle,
                     seoDescription: finalSeoDesc,
