@@ -5,6 +5,8 @@ import { ImageRender } from './image/ImageRender';
 import { ContactRender } from './contact/ContactRender';
 import {VideoRender} from "./video/VideoRender";
 import {LeadMagnetRender} from "./lead-magnet/LeadMagnetRender";
+import {CtaRender} from "./cta/CtaRender";
+import {FeaturesRender} from "./features/FeaturesRender";
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -12,5 +14,7 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'image': ImageRender,
     'contact': ContactRender,
     'video': VideoRender,
-    'leadMagnet': LeadMagnetRender
+    'leadMagnet': LeadMagnetRender,
+    'cta': CtaRender,
+    'features': FeaturesRender,
 };

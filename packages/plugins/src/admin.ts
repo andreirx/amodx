@@ -5,6 +5,8 @@ import { ContactPlugin } from './contact';
 import { PluginDefinition } from './types';
 import {VideoPlugin} from "./video";
 import {LeadMagnetPlugin} from "./lead-magnet";
+import {CtaPlugin} from "./cta";
+import {FeaturesPlugin} from "./features";
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -12,7 +14,9 @@ const REGISTRY: PluginDefinition[] = [
     ImagePlugin,
     ContactPlugin,
     VideoPlugin,
-    LeadMagnetPlugin
+    LeadMagnetPlugin,
+    CtaPlugin,
+    FeaturesPlugin
 ];
 
 
