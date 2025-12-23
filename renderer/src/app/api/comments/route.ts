@@ -1,22 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt"; // Decrypts the session cookie
+import { getToken } from "next-auth/jwt";
 import { getMasterKey } from "@/lib/api-client";
+import { getTenantConfig } from "@/lib/dynamo";
 
 const API_URL = process.env.API_URL;
 
-// GET /api/comments?pageId=... (Public)
+// GET /api/comments?pageId=... (Public List)
 export async function GET(req: NextRequest) {
     try {
-        const tenantId = req.headers.get("x-tenant-id");
+        console.log("[Comments Proxy] GET Start");
+
+        // 1. Resolve Tenant ID (Header or Host)
+        let tenantId = req.headers.get("x-tenant-id");
+        if (!tenantId) {
+            const host = req.headers.get("host")?.split(":")[0] || "";
+            const config = await getTenantConfig(host);
+            if (config) tenantId = config.id;
+        }
+
         const pageId = req.nextUrl.searchParams.get("pageId");
 
         if (!tenantId || !pageId) {
+            console.error("[Comments Proxy] Missing parameters:", { tenantId, pageId });
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
         const apiKey = await getMasterKey();
 
-        // Call Backend (read-only list)
+        console.log(`[Comments Proxy] Fetching from backend: ${API_URL}/comments`);
+
+        // 2. Call Backend
         const res = await fetch(`${API_URL}/comments?pageId=${pageId}`, {
             headers: {
                 "x-tenant-id": tenantId,
@@ -25,41 +38,52 @@ export async function GET(req: NextRequest) {
             }
         });
 
+        if (!res.ok) {
+            const txt = await res.text();
+            console.error(`[Comments Proxy] Backend GET Error ${res.status}: ${txt}`);
+            return NextResponse.json({ error: "Backend Failed" }, { status: res.status });
+        }
+
         const data = await res.json();
-        return NextResponse.json(data, { status: res.status });
+        return NextResponse.json(data, { status: 200 });
 
     } catch (e: any) {
+        console.error("[Comments Proxy] GET Crash:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
 
-// POST /api/comments (Authenticated)
+// POST /api/comments (Authenticated Create)
 export async function POST(req: NextRequest) {
     try {
-        // 1. Verify Authentication
-        // This decrypts the HTTP-only cookie set by NextAuth
-        const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+        console.log("[Comments Proxy] POST Start");
 
-        if (!token || !token.email) {
-            return NextResponse.json({ error: "You must be logged in to comment." }, { status: 401 });
+        // 1. Resolve Tenant
+        let tenantId = req.headers.get("x-tenant-id");
+        if (!tenantId) {
+            const host = req.headers.get("host")?.split(":")[0] || "";
+            const config = await getTenantConfig(host);
+            if (config) tenantId = config.id;
         }
-
-        // 2. Prepare Payload
-        const body = await req.json();
-        const tenantId = req.headers.get("x-tenant-id");
 
         if (!tenantId) return NextResponse.json({ error: "Missing Tenant ID" }, { status: 400 });
 
+        // 2. Verify Auth
+        const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+        if (!token) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         const apiKey = await getMasterKey();
+        const body = await req.json();
 
         // 3. Call Backend
-        // We inject the Author details we verified from the Token
         const backendPayload = {
             ...body,
             authorName: token.name || "Anonymous",
             authorEmail: token.email,
             authorImage: token.picture,
-            authorId: token.sub // Google/Auth Provider ID
+            authorId: token.sub
         };
 
         const res = await fetch(`${API_URL}/comments`, {
@@ -68,16 +92,22 @@ export async function POST(req: NextRequest) {
                 "Content-Type": "application/json",
                 "x-tenant-id": tenantId,
                 "x-api-key": apiKey || "",
-                "Authorization": "Bearer robot" // Pass Gatekeeper
+                "Authorization": "Bearer robot"
             },
             body: JSON.stringify(backendPayload)
         });
 
+        if (!res.ok) {
+            const txt = await res.text();
+            console.error(`[Comments Proxy] Backend POST Error ${res.status}: ${txt}`);
+            return NextResponse.json({ error: "Backend Failed" }, { status: res.status });
+        }
+
         const data = await res.json();
-        return NextResponse.json(data, { status: res.status });
+        return NextResponse.json(data, { status: 201 });
 
     } catch (e: any) {
-        console.error("Comment Proxy Error:", e);
+        console.error("[Comments Proxy] POST Crash:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

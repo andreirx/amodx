@@ -25,7 +25,6 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
         // Use Global Tenant ID
         // @ts-ignore
         const tenantId = typeof window !== 'undefined' ? window.AMODX_TENANT_ID : "";
-        const apiUrl = "https://amodx.net/api"; // Or use relative proxy if we build one
 
         // For now, let's use the PUBLIC API directly for reading (List is public)
         // Ideally we proxy this via Next.js to hide the API URL, but list is public.
@@ -35,8 +34,20 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode: "Enabl
         fetch(`/api/comments?pageId=${pageId}`, {
             headers: { 'x-tenant-id': tenantId }
         })
-            .then(res => res.json())
-            .then(data => setComments(data.items || []));
+            .then(async (res) => {
+                if (!res.ok) {
+                    console.error("Failed to load comments", res.status);
+                    return { items: [] };
+                }
+                // Check content type before parsing
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    return res.json();
+                }
+                return { items: [] };
+            })
+            .then(data => setComments(data.items || []))
+            .catch(err => console.error("Comment fetch error:", err));
     }, [pageId, mode]);
 
     const handleSubmit = async (e: any) => {
