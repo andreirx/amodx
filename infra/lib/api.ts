@@ -245,6 +245,42 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ContactInt', contactFunc),
         });
 
+        // CONSENT API (GDPR)
+        const consentFunc = new nodejs.NodejsFunction(this, 'ConsentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/consent/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(consentFunc);
+
+        this.httpApi.addRoutes({
+            path: '/consent',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('ConsentInt', consentFunc),
+        });
+
+        // WORDPRESS IMPORT API
+        const importFunc = new nodejs.NodejsFunction(this, 'ImportFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/import/wordpress.ts'),
+            handler: 'handler',
+            timeout: cdk.Duration.minutes(15), // Max Lambda timeout
+            memorySize: 3008, // 3GB for large XML parsing
+            environment: {
+                TABLE_NAME: props.table.tableName,
+                UPLOADS_BUCKET: props.uploadsBucket.bucketName,
+                UPLOADS_CDN_URL: props.uploadsCdnUrl,
+                EVENT_BUS_NAME: props.eventBus.eventBusName
+            }
+        });
+        props.table.grantReadWriteData(importFunc);
+        props.uploadsBucket.grantReadWrite(importFunc);
+
+        this.httpApi.addRoutes({
+            path: '/import/wordpress',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('ImportInt', importFunc),
+        });
 
         // Tenant Management (Create New Site, List Sites)
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {

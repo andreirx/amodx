@@ -6,6 +6,7 @@ import { Navbar } from "@/components/Navbar";
 import { Analytics } from "@/components/Analytics";
 import { Metadata } from "next";
 import { PaddleLoader } from "@/components/PaddleLoader";
+import { CookieConsent } from "@/components/CookieConsent";
 
 export const revalidate = 3600;
 
@@ -87,6 +88,8 @@ export default async function SiteLayout({ children, params }: Props) {
                         </div>
                     </div>
                 </footer>
+
+                <CookieConsent tenantId={config.id} />
             </div>
         </Providers>
     );
