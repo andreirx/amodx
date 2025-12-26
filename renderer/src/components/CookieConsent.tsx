@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect } from "react";
 
 interface ConsentState {
     necessary: boolean;
@@ -23,12 +23,24 @@ interface ConsentData {
     visitorId: string;
 }
 
-// Context for consent state
-const ConsentContext = createContext<ConsentState | null>(null);
-
-// Hook for plugins to check consent
+// SIMPLIFIED: Hook reads from global window object
 export function useConsent(): ConsentState | null {
-    return useContext(ConsentContext);
+    const [consent, setConsent] = useState<ConsentState | null>(null);
+
+    useEffect(() => {
+        // Initial read
+        setConsent((window as any).AMODX_CONSENT || null);
+
+        // Listen for updates
+        const handleUpdate = (e: CustomEvent) => setConsent(e.detail);
+        window.addEventListener('amodx-consent-updated', handleUpdate as EventListener);
+
+        return () => {
+            window.removeEventListener('amodx-consent-updated', handleUpdate as EventListener);
+        };
+    }, []);
+
+    return consent;
 }
 
 // Generate or retrieve visitor ID
@@ -125,7 +137,6 @@ async function sendConsentToBackend(tenantId: string, visitorId: string, choice:
 
 export function CookieConsent({ tenantId, config }: CookieConsentProps) {
     const [showBanner, setShowBanner] = useState(false);
-    const [consent, setConsent] = useState<ConsentState | null>(null);
     const [isClient, setIsClient] = useState(false);
 
     const headline = config?.headline || "We value your privacy";
@@ -140,7 +151,6 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
 
         if (storedConsent) {
             // Apply existing consent
-            setConsent(storedConsent.consent);
             setGlobalConsent(storedConsent.consent);
             setShowBanner(false);
         } else {
@@ -162,7 +172,6 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
         saveConsentToStorage(tenantId, newConsent, visitorId);
 
         // Set global state
-        setConsent(newConsent);
         setGlobalConsent(newConsent);
 
         // Hide banner
@@ -172,91 +181,51 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
         sendConsentToBackend(tenantId, visitorId, choice);
     };
 
-    // Don't render until client-side
+    // Don't render until client-side or if consent already given
     if (!isClient || !showBanner) {
-        return consent ? (
-            <ConsentContext.Provider value={consent}>
-                {null}
-            </ConsentContext.Provider>
-        ) : null;
+        return null;
     }
 
     const positionClasses = position === "top"
-        ? "top-0 animate-slide-down"
-        : "bottom-0 animate-slide-up";
+        ? "top-0"
+        : "bottom-0";
 
     return (
-        <>
-            <ConsentContext.Provider value={consent}>
-                <div className={`fixed left-0 right-0 ${positionClasses} z-50 p-4 md:p-6`}>
-                    <div className="max-w-4xl mx-auto bg-white dark:bg-gray-900 shadow-2xl rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                            <div className="flex-1">
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                                    {headline}
-                                </h3>
-                                <p className="text-sm text-gray-600 dark:text-gray-300">
-                                    {description}
-                                </p>
-                            </div>
+        <div className={`fixed left-0 right-0 ${positionClasses} z-50 p-4 md:p-6 animate-slide-in`}>
+            <div className="max-w-4xl mx-auto bg-white dark:bg-gray-900 shadow-2xl rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                            {headline}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300">
+                            {description}
+                        </p>
+                    </div>
 
-                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-shrink-0">
-                                <button
-                                    onClick={() => handleChoice('denied')}
-                                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                >
-                                    Deny All
-                                </button>
-                                <button
-                                    onClick={() => handleChoice('necessary')}
-                                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                >
-                                    Necessary Only
-                                </button>
-                                <button
-                                    onClick={() => handleChoice('all')}
-                                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
-                                    style={config?.primaryColor ? { backgroundColor: config.primaryColor } : {}}
-                                >
-                                    Accept All
-                                </button>
-                            </div>
-                        </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-shrink-0">
+                        <button
+                            onClick={() => handleChoice('denied')}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                            Deny All
+                        </button>
+                        <button
+                            onClick={() => handleChoice('necessary')}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                            Necessary Only
+                        </button>
+                        <button
+                            onClick={() => handleChoice('all')}
+                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+                            style={config?.primaryColor ? { backgroundColor: config.primaryColor } : {}}
+                        >
+                            Accept All
+                        </button>
                     </div>
                 </div>
-            </ConsentContext.Provider>
-
-            <style jsx>{`
-                @keyframes slide-up {
-                    from {
-                        transform: translateY(100%);
-                        opacity: 0;
-                    }
-                    to {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                }
-
-                @keyframes slide-down {
-                    from {
-                        transform: translateY(-100%);
-                        opacity: 0;
-                    }
-                    to {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                }
-
-                .animate-slide-up {
-                    animation: slide-up 0.3s ease-out;
-                }
-
-                .animate-slide-down {
-                    animation: slide-down 0.3s ease-out;
-                }
-            `}</style>
-        </>
+            </div>
+        </div>
     );
 }
