@@ -74,8 +74,15 @@ export function TableEditor(props: any) {
     };
 
     const updateCell = (rowIndex: number, cellIndex: number, value: string) => {
-        const newRows = [...safeRows];
-        newRows[rowIndex].cells[cellIndex].content = value;
+        const newRows = safeRows.map((row, rIdx) => {
+            if (rIdx !== rowIndex) return row;
+            return {
+                ...row,
+                cells: row.cells.map((cell: any, cIdx: number) =>
+                    cIdx === cellIndex ? { ...cell, content: value } : cell
+                )
+            };
+        });
         update('rows', newRows);
     };
 
