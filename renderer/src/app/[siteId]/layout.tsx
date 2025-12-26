@@ -1,5 +1,4 @@
 import { Providers } from "@/components/Providers";
-
 import { getTenantConfig } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { Navbar } from "@/components/Navbar";
@@ -15,7 +14,7 @@ type Props = {
     params: Promise<{ siteId: string }>;
 };
 
-// NEW: Global Metadata (Favicon & Title Template)
+// Global Metadata (Favicon & Title Template)
 export async function generateMetadata({ params }: { params: Promise<{ siteId: string }> }): Promise<Metadata> {
     const { siteId } = await params;
     const config = await getTenantConfig(siteId);
@@ -25,10 +24,9 @@ export async function generateMetadata({ params }: { params: Promise<{ siteId: s
     return {
         title: {
             template: `%s | ${config.name}`,
-            default: config.name, // "My Site"
+            default: config.name,
         },
         icons: {
-            // Logic: Specific Icon -> Logo -> Default
             icon: config.icon || config.logo || '/favicon.ico',
         },
     };
@@ -66,6 +64,17 @@ export default async function SiteLayout({ children, params }: Props) {
 
                 <PaddleLoader config={config.integrations?.paddle} />
 
+                {/* GDPR Cookie Consent Banner */}
+                <CookieConsent
+                    tenantId={config.id}
+                    config={{
+                        headline: config.gdpr?.headline,
+                        description: config.gdpr?.description,
+                        position: config.gdpr?.position || "bottom",
+                        primaryColor: config.theme?.primaryColor,
+                    }}
+                />
+
                 <Navbar
                     siteName={config.name}
                     logo={config.logo}
@@ -82,14 +91,12 @@ export default async function SiteLayout({ children, params }: Props) {
                     <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-sm text-muted-foreground">
                         <p>© {new Date().getFullYear()} {config.name}</p>
                         <div className="flex gap-4">
-                            {(config.footerLinks || []).map((link, i) => (
+                            {(config.footerLinks || []).map((link: any, i: number) => (
                                 <a key={i} href={link.href} className="hover:text-foreground">{link.label}</a>
                             ))}
                         </div>
                     </div>
                 </footer>
-
-                <CookieConsent tenantId={config.id} />
             </div>
         </Providers>
     );
