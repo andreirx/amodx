@@ -426,6 +426,18 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
         });
 
+        const listLeadsFunc = new nodejs.NodejsFunction(this, 'ListLeadsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/leads/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listLeadsFunc);
+
+        this.httpApi.addRoutes({
+            path: '/leads',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListLeadsInt', listLeadsFunc),
+        });
 
         // COMMENTS API
         const listCommentsFunc = new nodejs.NodejsFunction(this, 'ListCommentsFunc', {

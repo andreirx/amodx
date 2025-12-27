@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTenant } from "@/context/TenantContext";
+import { UploadCloud } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function ContentList() {
     const { currentTenant } = useTenant();
@@ -20,6 +22,10 @@ export default function ContentList() {
     const [newTitle, setNewTitle] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const navigate = useNavigate();
+
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importXml, setImportXml] = useState("");
+    const [importing, setImporting] = useState(false);
 
     useEffect(() => {
         if (currentTenant) {
@@ -40,6 +46,25 @@ export default function ContentList() {
             setError(err.message);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleImport() {
+        if (!importXml) return;
+        setImporting(true);
+        try {
+            const res = await apiRequest("/import/wordpress", {
+                method: "POST",
+                body: JSON.stringify({ wxrContent: importXml })
+            });
+            alert(`Import Started! Processed ${res.processedCount} items. Check logs for details.`);
+            setIsImportOpen(false);
+            setImportXml("");
+            loadContent();
+        } catch (e: any) {
+            alert("Import failed: " + e.message);
+        } finally {
+            setImporting(false);
         }
     }
 
@@ -100,7 +125,7 @@ export default function ContentList() {
                 <h1 className="text-3xl font-bold tracking-tight">Content</h1>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button><Plus className="mr-2 h-4 w-4" /> Create Page</Button>
+                        <Button><Plus className="mr-2 h-4 w-4"/> Create Page</Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader><DialogTitle>Create New Page</DialogTitle></DialogHeader>
@@ -114,17 +139,53 @@ export default function ContentList() {
                                     onKeyDown={(e) => e.key === "Enter" && createPage()}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Slug will be: <span className="font-mono">/{newTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}</span>
+                                    Slug will be: <span
+                                    className="font-mono">/{newTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-")}</span>
                                 </p>
                             </div>
                             <Button onClick={createPage} disabled={isCreating} className="w-full">
-                            <>
-                                {isCreating ? (<Loader2 className="mr-2 h-4 w-4 animate-spin" />) : ("Create")}
-                            </>
+                                <>
+                                    {isCreating ? (<Loader2 className="mr-2 h-4 w-4 animate-spin"/>) : ("Create")}
+                                </>
                             </Button>
                         </div>
                     </DialogContent>
                 </Dialog>
+            </div>
+
+            <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-bold tracking-tight">Content</h1>
+                <div className="flex gap-2">
+                    {/* IMPORT DIALOG */}
+                    <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline"><UploadCloud className="mr-2 h-4 w-4"/> Import WP</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                            <DialogHeader><DialogTitle>Import from WordPress</DialogTitle></DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <p className="text-sm text-muted-foreground">
+                                    Export your WordPress content (Tools &rarr; Export &rarr; All content) and paste the
+                                    XML content below.
+                                    Images will be downloaded and re-uploaded to AMODX automatically.
+                                </p>
+                                <Textarea
+                                    placeholder="<?xml version='1.0' encoding='UTF-8'?>..."
+                                    className="font-mono text-xs h-[300px]"
+                                    value={importXml}
+                                    onChange={e => setImportXml(e.target.value)}
+                                />
+                                <Button onClick={handleImport} disabled={importing} className="w-full">
+                                    {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Start Import"}
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                        {/* ... existing Create Page Button ... */}
+                    </Dialog>
+                </div>
             </div>
 
             {error && <div className="text-red-500 p-4 border border-red-200 rounded">{error}</div>}
@@ -142,9 +203,10 @@ export default function ContentList() {
                         {items.map((item) => (
                             <TableRow key={item.id}>
                                 <TableCell className="font-medium">
-                                    <div className="flex flex-col cursor-pointer" onClick={() => navigate(`/content/${item.nodeId}`)}>
+                                    <div className="flex flex-col cursor-pointer"
+                                         onClick={() => navigate(`/content/${item.nodeId}`)}>
                                         <span className="flex items-center gap-2 text-base">
-                                            <FileText className="h-4 w-4 text-muted-foreground" />
+                                            <FileText className="h-4 w-4 text-muted-foreground"/>
                                             {item.title}
                                         </span>
                                         <span className="text-xs text-muted-foreground ml-6 font-mono opacity-70">
@@ -158,7 +220,7 @@ export default function ContentList() {
                                         onValueChange={(val) => updateStatus(item.nodeId, val)}
                                     >
                                         <SelectTrigger className="h-8 w-[130px]">
-                                            <SelectValue />
+                                            <SelectValue/>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="Draft">Draft</SelectItem>
@@ -168,7 +230,8 @@ export default function ContentList() {
                                     </Select>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="sm" onClick={() => navigate(`/content/${item.nodeId}`)}>
+                                    <Button variant="ghost" size="sm"
+                                            onClick={() => navigate(`/content/${item.nodeId}`)}>
                                         Edit
                                     </Button>
                                 </TableCell>

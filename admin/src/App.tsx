@@ -12,6 +12,7 @@ import { TenantProvider } from "@/context/TenantContext";
 import MediaLibrary from "@/pages/MediaLibrary";
 import AuditLog from "@/pages/AuditLog";
 import Resources from "./pages/Resources";
+import Leads from "@/pages/Leads";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -57,6 +58,7 @@ export default function App() {
                     <Route path="/strategy" element={<StrategyBoard />} />
                     <Route path="/strategy/:id" element={<StrategyEditor />} />
                     <Route path="/media" element={<MediaLibrary />} />
+                    <Route path="/leads" element={<Leads />} />
                     <Route path="/audit" element={<AuditLog />} />
                     <Route path="/resources" element={<Resources />} />
                     <Route path="/settings" element={<SettingsPage />} />
