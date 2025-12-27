@@ -17,7 +17,9 @@
     "@aws-sdk/client-ses": "^3.948.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0",
     "@aws-sdk/s3-request-presigner": "^3.948.0",
-    "aws-jwt-verify": "^5.1.1"
+    "aws-jwt-verify": "^5.1.1",
+    "fast-xml-parser": "^5.3.3",
+    "htmlparser2": "^10.0.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",

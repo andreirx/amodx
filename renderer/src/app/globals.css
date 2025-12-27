@@ -48,3 +48,36 @@
         @apply font-heading;
     }
 }
+
+/* GDPR Cookie Consent Animations */
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@layer utilities {
+    .animate-slide-in {
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .animate-slide-in-top {
+        animation: slideDown 0.3s ease-out;
+    }
+}

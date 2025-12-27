@@ -99,7 +99,7 @@ export const handler = async (
     });
 
     // Public Routes
-    if (event.routeKey === "POST /leads" || event.routeKey === "POST /contact") {
+    if (event.routeKey === "POST /leads" || event.routeKey === "POST /contact" || event.routeKey === "POST /consent") {
         console.log("✅ Auth Success: Public Route Bypass");
         return { isAuthorized: true, context: { sub: "anonymous" } };
     }

@@ -15,7 +15,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
         const tenantId = typeof window !== 'undefined' ? window.AMODX_TENANT_ID : "";
 
         try {
-            const response = await fetch('/api/leads', {
+            const response = await fetch('/api/contact', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

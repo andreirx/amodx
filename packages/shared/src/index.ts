@@ -230,6 +230,16 @@ export const HeaderConfigSchema = z.object({
     showTitle: z.boolean().default(true),
 });
 
+// GDPR Cookie Consent Configuration
+export const GDPRConfigSchema = z.object({
+    headline: z.string().optional(),
+    description: z.string().optional(),
+    position: z.enum(["bottom", "top"]).default("bottom"),
+    enabled: z.boolean().default(true),
+});
+
+export type GDPRConfig = z.infer<typeof GDPRConfigSchema>;
+
 export const TenantConfigSchema = z.object({
     id: z.string(), // e.g., "client-bob"
     domain: z.string(), // e.g., "dental-pros.com"
@@ -238,6 +248,12 @@ export const TenantConfigSchema = z.object({
     // NEW FIELDS
     description: z.string().optional(), // SEO Meta + llms.txt intro
     header: HeaderConfigSchema.default({ showLogo: true, showTitle: true }),
+
+    // GDPR Cookie Consent
+    gdpr: GDPRConfigSchema.default({
+        position: "bottom",
+        enabled: true
+    }),
 
     // NEW: Assets & Nav
     logo: z.string().optional(),

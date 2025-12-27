@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import {Loader2, ExternalLink, Palette, Type, MousePointerClick, AlertCircle, Mail, Key} from "lucide-react";
 import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
@@ -475,6 +476,71 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {/* GDPR / PRIVACY */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Cookie Consent (GDPR)</CardTitle>
+                            </div>
+                            <CardDescription>Configure the consent banner for EU visitors.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="gdpr-enabled"
+                                    className="rounded border-gray-300"
+                                    checked={config.gdpr?.enabled ?? true}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        gdpr: { ...config.gdpr!, enabled: e.target.checked }
+                                    })}
+                                />
+                                <Label htmlFor="gdpr-enabled">Enable Cookie Banner</Label>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Headline</Label>
+                                <Input
+                                    value={config.gdpr?.headline || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        gdpr: { ...config.gdpr!, headline: e.target.value }
+                                    })}
+                                    placeholder="We value your privacy"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Description Text</Label>
+                                <textarea
+                                    className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                    value={config.gdpr?.description || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        gdpr: { ...config.gdpr!, description: e.target.value }
+                                    })}
+                                    placeholder="We use cookies to improve your experience..."
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Position</Label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                                    value={config.gdpr?.position || "bottom"}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        gdpr: { ...config.gdpr!, position: e.target.value as "bottom" | "top" }
+                                    })}
+                                >
+                                    <option value="bottom">Bottom</option>
+                                    <option value="top">Top</option>
+                                </select>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* RIGHT COLUMN: Colors */}
