@@ -4,29 +4,34 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
-        // 1. Get Environment Variable (Injected by CDK)
-        const apiUrl = process.env.API_URL;
+        // 1. Get Environment Variable
+        // Remove trailing slash if present to prevent double slashes (https://api.com//contact)
+        const apiUrl = process.env.API_URL?.replace(/\/$/, "");
+
         if (!apiUrl) {
-            console.error("API_URL is missing in Renderer Environment");
+            console.error("[Contact Proxy] API_URL is missing in Renderer Environment");
             return NextResponse.json({ error: "Configuration Error" }, { status: 500 });
         }
 
         // 2. Forward to Backend
-        // We pass the Tenant ID header which the Client sent to us
         const tenantId = req.headers.get("x-tenant-id");
+
+        console.log(`[Contact Proxy] Forwarding to ${apiUrl}/contact for tenant ${tenantId}`);
 
         const response = await fetch(`${apiUrl}/contact`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'x-tenant-id': tenantId || '',
+                'x-api-key': 'web-client',
+                'Authorization': 'Bearer public'
             },
             body: JSON.stringify(body)
         });
 
         if (!response.ok) {
             const error = await response.text();
-            console.error("Backend Leads Error:", error);
+            console.error(`[Contact Proxy] Backend Error (${response.status}):`, error);
             return NextResponse.json({ error: "Submission Failed" }, { status: response.status });
         }
 
@@ -34,6 +39,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(data);
 
     } catch (err: any) {
+        console.error("[Contact Proxy] Exception:", err);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

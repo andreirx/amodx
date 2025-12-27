@@ -23,6 +23,7 @@ interface AmodxApiProps {
     privateBucket: s3.IBucket; // The private bucket
     uploadsCdnUrl: string;     // The public URL
     eventBus: events.IEventBus;
+    sesEmail: string;
 }
 
 export class AmodxApi extends Construct {
@@ -228,7 +229,7 @@ export class AmodxApi extends Construct {
             handler: 'handler',
             environment: {
                 TABLE_NAME: props.table.tableName,
-                SES_FROM_EMAIL: "contact@bijuterie.software",
+                SES_FROM_EMAIL: props.sesEmail,
             }
         });
 

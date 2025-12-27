@@ -1,18 +1,28 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
-import { db, TABLE_NAME } from "../lib/db.js"; // Ensure extension is .js for Lambda ESM
+import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+    // LOG EVERYTHING
+    console.log("📨 Contact Handler Started");
+    console.log("Headers:", JSON.stringify(event.headers));
+
     try {
         const tenantId = event.headers['x-tenant-id'];
-        if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
+
+        if (!tenantId) {
+            console.error("❌ Missing x-tenant-id header");
+            return { statusCode: 400, body: "Missing Tenant" };
+        }
 
         const body = JSON.parse(event.body || "{}");
         const { name, email, message, tags } = body;
+
+        console.log(`Processing contact for Tenant: ${tenantId}, Email: ${email}`);
 
         // 1. Fetch Tenant Config
         const tenantRes = await db.send(new GetCommand({
@@ -23,9 +33,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         const config = tenantRes.Item;
 
         // 2. Determine Recipient
-        // Fallback to the Agency Admin email if tenant hasn't set one
-        // Ideally, we default to the FROM_EMAIL if no specific contact is set.
         const recipient = config?.integrations?.contactEmail || FROM_EMAIL;
+        console.log(`Sending from: ${FROM_EMAIL} -> to: ${recipient}`);
 
         // 3. Send Email
         await ses.send(new SendEmailCommand({
@@ -40,10 +49,11 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }));
 
+        console.log("✅ Email dispatched to SES");
         return { statusCode: 200, body: JSON.stringify({ message: "Sent" }) };
 
     } catch (e: any) {
-        console.error(e);
+        console.error("❌ Fatal Error:", e);
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };

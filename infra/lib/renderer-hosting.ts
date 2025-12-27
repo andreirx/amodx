@@ -106,7 +106,9 @@ function handler(event) {
                 'Accept',
                 'Accept-Language',
                 'Content-Type',
-                'X-Forwarded-Host'
+                'X-Forwarded-Host',
+                'x-tenant-id', // <--- CRITICAL FIX: Allow this header through
+                'x-automation-key' // Future proofing for MCP
             ),
             queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
             cookieBehavior: cloudfront.OriginRequestCookieBehavior.all(),

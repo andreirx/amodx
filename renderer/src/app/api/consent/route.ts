@@ -16,6 +16,8 @@ export async function POST(req: NextRequest) {
             headers: {
                 'Content-Type': 'application/json',
                 'x-tenant-id': tenantId || '',
+                'x-api-key': 'web-client',
+                'Authorization': 'Bearer public'
             },
             body: JSON.stringify(body)
         });

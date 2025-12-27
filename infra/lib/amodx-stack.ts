@@ -129,6 +129,9 @@ export class AmodxStack extends cdk.Stack {
       busName: `AmodxSystemBus${suffix}`
     });
 
+    // READ CONFIG (Fallback to your verified email for safety)
+    const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
+
     // 3. API Layer
     const api = new AmodxApi(this, 'Api', {
       table: db.table,
@@ -139,6 +142,7 @@ export class AmodxStack extends cdk.Stack {
       privateBucket: uploads.privateBucket,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
       eventBus: events.bus,
+      sesEmail: sesEmail,
     });
 
     if (apiDomain && domains) {
