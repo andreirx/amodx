@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
+import { Users } from "lucide-react";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox
 } from "lucide-react";
@@ -40,6 +41,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
         { name: "Content", href: "/", icon: LayoutDashboard },
         { name: "Strategy", href: "/strategy", icon: Target },
         { name: "Media", href: "/media", icon: ImageIcon },
+        { name: "Leads", href: "/leads", icon: Users },
         { name: "Audit Log", href: "/audit", icon: Activity },
         { name: "Resources", href: "/resources", icon: FileBox },
         { name: "Settings", href: "/settings", icon: Settings },
