@@ -151,10 +151,6 @@ export default function ContentList() {
                         </div>
                     </DialogContent>
                 </Dialog>
-            </div>
-
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight">Content</h1>
                 <div className="flex gap-2">
                     {/* IMPORT DIALOG */}
                     <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
