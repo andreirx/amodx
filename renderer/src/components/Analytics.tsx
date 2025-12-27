@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { useConsent } from "./CookieConsent";
 
 interface AnalyticsProps {
     config: {
@@ -15,6 +16,14 @@ interface AnalyticsProps {
 
 export function Analytics({ config }: AnalyticsProps) {
     const { gaId, analytics } = config;
+    const consent = useConsent();
+
+    // 1. If consent is not yet determined (null), or if analytics is denied, DO NOT RENDER
+    // Note: If you want to use Google Consent Mode (Advanced), you would render it
+    // with 'denied' flags. For simplicity/privacy, we just don't render the script at all.
+    if (!consent?.analytics) {
+        return null;
+    }
 
     return (
         <>
