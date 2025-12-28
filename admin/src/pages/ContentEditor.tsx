@@ -5,7 +5,7 @@ import type { ContentItem } from "@amodx/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, ArrowLeft, Loader2 } from "lucide-react";
+import { Save, ArrowLeft, Loader2, Palette } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -56,6 +56,11 @@ export default function ContentEditor() {
     // Track if user manually touched SEO fields
     const [manualSeo, setManualSeo] = useState(false);
 
+    // THEME OVERRIDES STATE
+    const [hideNav, setHideNav] = useState(false);
+    const [hideFooter, setHideFooter] = useState(false);
+    const [themeOverride, setThemeOverride] = useState<Record<string, string>>({});
+
 
     useEffect(() => {
         if (id) loadContent(id);
@@ -77,6 +82,12 @@ export default function ContentEditor() {
 
             // If they exist, assume manual override
             if (data.seoTitle || data.seoDescription) setManualSeo(true);
+
+            // Load Overrides
+            setHideNav(data.hideNav || false);
+            setHideFooter(data.hideFooter || false);
+            setThemeOverride(data.themeOverride || {});
+
         } catch (err) {
             console.error(err);
             alert("Failed to load content");
@@ -115,7 +126,11 @@ export default function ContentEditor() {
                     seoTitle: finalSeoTitle,
                     seoDescription: finalSeoDesc,
                     seoKeywords: seoKeywords,
-                    featuredImage: finalImg
+                    featuredImage: finalImg,
+                    // NEW: Save Overrides
+                    hideNav,
+                    hideFooter,
+                    themeOverride
                 })
             });
             // RELOAD FROM SERVER (Cleaner than manual object merging)
@@ -126,6 +141,11 @@ export default function ContentEditor() {
             setSaving(false);
         }
     }
+
+    // Helper to update specific theme keys
+    const updateTheme = (key: string, val: string) => {
+        setThemeOverride(prev => ({ ...prev, [key]: val }));
+    };
 
     // Helper to update status
     const updateStatus = (val: string) => {
@@ -185,56 +205,118 @@ export default function ContentEditor() {
                         <SheetTrigger asChild>
                             <Button variant="outline" size="sm">
                                 <SettingsIcon className="mr-2 h-4 w-4"/>
-                                Metadata
+                                Page Settings
                             </Button>
                         </SheetTrigger>
                         <SheetContent>
                             <SheetHeader>
-                                <SheetTitle>SEO & Social</SheetTitle>
+                                <SheetTitle>Page Configuration</SheetTitle>
                             </SheetHeader>
                             <div className="space-y-6 py-6">
-                                <div className="space-y-2">
-                                    <Label>Keywords (Comma separated)</Label>
-                                    <Input
-                                        value={seoKeywords}
-                                        onChange={e => setSeoKeywords(e.target.value)}
-                                        placeholder="agency, marketing, growth"
-                                    />
+                                {/* 1. LANDING PAGE MODE */}
+                                <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
+                                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                                        <Palette className="w-4 h-4"/> Landing Page Design
+                                    </h4>
+
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="hideNav" className="text-sm">Hide Navigation</Label>
+                                        <input type="checkbox" id="hideNav" checked={hideNav}
+                                               onChange={e => setHideNav(e.target.checked)} className="h-4 w-4"/>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="hideFooter" className="text-sm">Hide Footer</Label>
+                                        <input type="checkbox" id="hideFooter" checked={hideFooter}
+                                               onChange={e => setHideFooter(e.target.checked)} className="h-4 w-4"/>
+                                    </div>
+
+                                    <div className="pt-2 border-t mt-2">
+                                        <Label className="text-xs text-muted-foreground mb-1 block">Override Primary
+                                            Color</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                type="color"
+                                                className="w-8 h-8 p-0 border-0"
+                                                value={themeOverride.primaryColor || "#000000"}
+                                                onChange={e => updateTheme("primaryColor", e.target.value)}
+                                            />
+                                            {themeOverride.primaryColor && (
+                                                <Button variant="ghost" size="sm" onClick={() => {
+                                                    const newTheme = {...themeOverride};
+                                                    delete newTheme.primaryColor;
+                                                    setThemeOverride(newTheme);
+                                                }}>Reset</Button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-1">
+                                        <Label className="text-xs text-muted-foreground mb-1 block">Override
+                                            Background</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                type="color"
+                                                className="w-8 h-8 p-0 border-0"
+                                                value={themeOverride.backgroundColor || "#ffffff"}
+                                                onChange={e => updateTheme("backgroundColor", e.target.value)}
+                                            />
+                                            {themeOverride.backgroundColor && (
+                                                <Button variant="ghost" size="sm" onClick={() => {
+                                                    const newTheme = {...themeOverride};
+                                                    delete newTheme.backgroundColor;
+                                                    setThemeOverride(newTheme);
+                                                }}>Reset</Button>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>SEO Title</Label>
-                                    <Input
-                                        value={seoTitle}
-                                        onChange={e => {
-                                            setSeoTitle(e.target.value);
-                                            setManualSeo(true);
-                                        }}
-                                        placeholder={title}
-                                    />
-                                    <p className="text-xs text-muted-foreground">Defaults to page title.</p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Meta Description</Label>
-                                    <Textarea
-                                        value={seoDesc}
-                                        onChange={e => {
-                                            setSeoDesc(e.target.value);
-                                            setManualSeo(true);
-                                        }}
-                                        rows={4}
-                                        placeholder="Auto-generated from content..."
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Featured Image URL</Label>
-                                    <Input
-                                        value={featuredImg}
-                                        onChange={e => {
-                                            setFeaturedImg(e.target.value);
-                                            setManualSeo(true);
-                                        }}
-                                    />
-                                    {/* You could add the upload logic here too if you want */}
+
+                                <div className="space-y-4">
+                                    <h4 className="text-sm font-semibold border-b pb-1">SEO & Metadata</h4>
+
+                                    <div className="space-y-2">
+                                        <Label>Keywords (Comma separated)</Label>
+                                        <Input
+                                            value={seoKeywords}
+                                            onChange={e => setSeoKeywords(e.target.value)}
+                                            placeholder="agency, marketing, growth"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>SEO Title</Label>
+                                        <Input
+                                            value={seoTitle}
+                                            onChange={e => {
+                                                setSeoTitle(e.target.value);
+                                                setManualSeo(true);
+                                            }}
+                                            placeholder={title}
+                                        />
+                                        <p className="text-xs text-muted-foreground">Defaults to page title.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Meta Description</Label>
+                                        <Textarea
+                                            value={seoDesc}
+                                            onChange={e => {
+                                                setSeoDesc(e.target.value);
+                                                setManualSeo(true);
+                                            }}
+                                            rows={4}
+                                            placeholder="Auto-generated from content..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Featured Image URL</Label>
+                                        <Input
+                                            value={featuredImg}
+                                            onChange={e => {
+                                                setFeaturedImg(e.target.value);
+                                                setManualSeo(true);
+                                            }}
+                                        />
+                                        {/* You could add the upload logic here too if you want */}
+                                    </div>
                                 </div>
                             </div>
                         </SheetContent>

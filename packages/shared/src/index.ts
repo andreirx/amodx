@@ -46,6 +46,32 @@ export const RouteSchema = z.object({
 
 export type Route = z.infer<typeof RouteSchema>;
 
+// Expanded Theme Config
+export const ThemeSchema = z.object({
+    mode: z.enum(["light", "dark"]).default("light"),
+
+    // Colors
+    primaryColor: z.string().default("#000000"),
+    primaryForeground: z.string().default("#ffffff"),
+
+    secondaryColor: z.string().default("#ffffff"),
+    secondaryForeground: z.string().default("#000000"),
+
+    // backgrounds
+    backgroundColor: z.string().default("#ffffff"),
+    surfaceColor: z.string().default("#f4f4f5"), // Cards/Sidebars
+
+    // Global Text
+    textColor: z.string().default("#020817"),
+
+    // Typography (We will load these from Google Fonts in the Renderer)
+    fontHeading: z.string().default("Prata"),
+    fontBody: z.string().default("Lato"),
+
+    // UI Roundness
+    radius: z.string().default("0.5rem"),
+});
+
 // ==========================================
 // 4. CONTENT DATA (The Payload)
 // ==========================================
@@ -69,6 +95,11 @@ export const ContentItemSchema = z.object({
 
     // comments default off
     commentsMode: CommentsMode.default("Hidden"),
+
+    // LANDING PAGE OVERRIDES (NEW)
+    themeOverride: ThemeSchema.partial().optional(), // Allow partial overrides
+    hideNav: z.boolean().default(false),
+    hideFooter: z.boolean().default(false),
 
     // THE MEAT
     blocks: z.array(z.any()).default([]),
@@ -163,32 +194,6 @@ export type WorkItem = z.infer<typeof WorkItemSchema>;
 
 export const TenantStatus = z.enum(["LIVE", "SUSPENDED", "OFF"]);
 export const UserRole = z.enum(["GLOBAL_ADMIN", "CLIENT_ADMIN", "EDITOR"]);
-
-// Expanded Theme Config
-export const ThemeSchema = z.object({
-    mode: z.enum(["light", "dark"]).default("light"),
-
-    // Colors
-    primaryColor: z.string().default("#000000"),
-    primaryForeground: z.string().default("#ffffff"),
-
-    secondaryColor: z.string().default("#ffffff"),
-    secondaryForeground: z.string().default("#000000"),
-
-    // backgrounds
-    backgroundColor: z.string().default("#ffffff"),
-    surfaceColor: z.string().default("#f4f4f5"), // Cards/Sidebars
-
-    // Global Text
-    textColor: z.string().default("#020817"),
-
-    // Typography (We will load these from Google Fonts in the Renderer)
-    fontHeading: z.string().default("Prata"),
-    fontBody: z.string().default("Lato"),
-
-    // UI Roundness
-    radius: z.string().default("0.5rem"),
-});
 
 // Expanded Integrations
 export const IntegrationsSchema = z.object({

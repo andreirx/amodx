@@ -5,6 +5,7 @@ import { Metadata } from "next";
 import { ContentItem } from "@amodx/shared";
 import Link from "next/link"; // For the Login Button
 import { CommentsSection } from "@/components/CommentsSection";
+import { ThemeInjector } from "@/components/ThemeInjector";
 
 export const revalidate = 3600;
 
@@ -108,9 +109,33 @@ export default async function Page({ params, searchParams }: Props) {
         );
     }
 
-    // 4. Render Content (with Draft Banner if needed)
+    // 1. Theme Override Logic
+    // We merge the GLOBAL theme with the PAGE override to ensure completeness
+    // If we passed just the partial override, ThemeInjector might default missing keys to black/white.
+    const mergedTheme = {
+        ...config.theme,
+        ...(content.themeOverride || {})
+    };
+
+    const hasThemeOverride = content.themeOverride && Object.keys(content.themeOverride).length > 0;
+
     return (
         <main className="max-w-4xl mx-auto py-12 px-6 relative">
+
+            {/* A. Apply Color Overrides (if any) */}
+            {hasThemeOverride && (
+                <ThemeInjector theme={mergedTheme} tenantId={config.id} />
+            )}
+
+            {/* B. Apply Hide Nav/Footer Logic */}
+            {(content.hideNav || content.hideFooter) && (
+                <style dangerouslySetInnerHTML={{
+                    __html: `
+                        ${content.hideNav ? 'nav, .site-navbar { display: none !important; }' : ''}
+                        ${content.hideFooter ? 'footer, .site-footer { display: none !important; }' : ''}
+                    `
+                }} />
+            )}
 
             {/* DRAFT WATERMARK */}
             {content.status === 'Draft' && (

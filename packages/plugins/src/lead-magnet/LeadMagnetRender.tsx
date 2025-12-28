@@ -16,7 +16,6 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
         const tenantId = typeof window !== 'undefined' ? window.AMODX_TENANT_ID : "";
 
         try {
-            // POST to Leads API
             const res = await fetch('/api/leads', {
                 method: 'POST',
                 headers: {
@@ -25,7 +24,7 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                 },
                 body: JSON.stringify({
                     email,
-                    resourceId: attrs.resourceId, // <--- Request the file
+                    resourceId: attrs.resourceId,
                     tags: attrs.tags
                 })
             });
@@ -35,10 +34,7 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
             if (data.downloadUrl) {
                 setDownloadUrl(data.downloadUrl);
                 setStatus("success");
-                // Optional: Auto-trigger download?
-                // window.location.href = data.downloadUrl;
             } else {
-                // Should technically be success (lead saved) but no file found
                 setStatus("success");
             }
         } catch (err) {
@@ -68,16 +64,17 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
     }
 
     return (
-        <div className="my-10 max-w-md mx-auto bg-white border-2 border-dashed border-indigo-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-50/50 p-6 text-center border-b border-indigo-100">
-                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-3">
+        <div className="my-10 max-w-md mx-auto bg-card border-2 border-dashed border-primary/20 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+            {/* Header Area */}
+            <div className="bg-muted/50 p-6 text-center border-b border-border">
+                <div className="w-10 h-10 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-3">
                     <Lock className="w-5 h-5" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">{attrs.headline}</h3>
-                <p className="text-sm text-gray-500 mt-1">{attrs.description}</p>
+                <h3 className="text-lg font-bold text-foreground">{attrs.headline}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{attrs.description}</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 bg-background">
                 <div>
                     <label className="sr-only">Email</label>
                     <input
@@ -85,13 +82,13 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                         type="email"
                         required
                         placeholder="name@example.com"
-                        className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                        className="w-full px-4 py-2.5 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all placeholder:text-muted-foreground"
                     />
                 </div>
                 <button
                     type="submit"
                     disabled={status === "loading"}
-                    className="w-full py-3 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     {status === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
                     {status === "loading" ? "Unlocking..." : attrs.buttonText}
