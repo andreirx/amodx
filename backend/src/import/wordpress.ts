@@ -117,8 +117,8 @@ async function processPost(tenantId: string, post: WordPressPost): Promise<void>
     // Map WordPress status to AMODX status
     const status = post.status === 'publish' ? 'Published' : 'Draft';
 
-    // Build slug path
-    const slugPath = post.postType === 'page' ? `/${post.slug}` : `/blog/${post.slug}`;
+    // Build slug path - FLATTEN everything instead of keeping the blog
+    const slugPath = `/${post.slug}`;
 
     await db.send(new PutCommand({
         TableName: TABLE_NAME,
@@ -147,7 +147,7 @@ async function processPost(tenantId: string, post: WordPressPost): Promise<void>
         Item: {
             PK: `TENANT#${tenantId}`,
             SK: `ROUTE#${slugPath}`,
-            target: nodeId,
+            TargetNode: `NODE#${nodeId}`,
             createdAt: new Date().toISOString(),
             Type: "Route"
         }

@@ -42,9 +42,10 @@ export async function parseWXR(xmlContent: string): Promise<WordPressPost[]> {
     for (const item of items) {
         // Extract WordPress-specific fields
         const postType = item['wp:post_type'] || 'post';
+        const status = mapWordPressStatus(item['wp:status']) || 'draft';
 
-        // Skip attachments
-        if (postType === 'attachment') {
+        // FILTER: Skip attachments AND trash
+        if (postType === 'attachment' || status === 'trash') {
             continue;
         }
 
@@ -54,9 +55,11 @@ export async function parseWXR(xmlContent: string): Promise<WordPressPost[]> {
         }
 
         const title = item.title || 'Untitled';
-        const slug = item['wp:post_name'] || generateSlugFromTitle(title);
+        // FIX: Ignore __trashed suffix in slug if it leaked through
+        let slug = item['wp:post_name'] || generateSlugFromTitle(title);
+        if (slug.includes('__trashed'))
+            continue;
         const content = item['content:encoded'] || '';
-        const status = mapWordPressStatus(item['wp:status'] || 'draft');
         const publishedAt = item.pubDate || item['wp:post_date'];
 
         // Try to extract featured image from post meta
@@ -98,8 +101,9 @@ function generateSlugFromTitle(title: string): string {
         .replace(/^-+|-+$/g, '');
 }
 
-function mapWordPressStatus(wpStatus: string): 'publish' | 'draft' | 'private' {
+function mapWordPressStatus(wpStatus: string): 'publish' | 'draft' | 'private' | 'trash' {
     if (wpStatus === 'publish') return 'publish';
     if (wpStatus === 'private') return 'private';
+    if (wpStatus === 'trash') return 'trash';
     return 'draft';
 }

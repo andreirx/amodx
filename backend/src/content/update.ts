@@ -19,6 +19,7 @@ export const handler: AmodxHandler = async (event) => {
 
         const body = JSON.parse(event.body);
 
+        // Zod validation (defaults might be injected here!)
         const input = ContentItemSchema.pick({
             title: true,
             blocks: true,
@@ -52,23 +53,30 @@ export const handler: AmodxHandler = async (event) => {
         const timestamp = new Date().toISOString();
         const userId = auth.sub;
 
-        // Shared Values
+        // --- CRITICAL FIX: Explicitly check 'body' keys to avoid Zod Default overwrites ---
+        // Use the input value ONLY if the key exists in the raw payload.
+        // Otherwise, keep the current DB value.
+
+        const getValue = (key: string, dbValue: any) => {
+            return Object.prototype.hasOwnProperty.call(body, key) ? input[key as keyof typeof input] : dbValue;
+        };
+
         const updateValues = {
-            ":t": input.title || current.title,
-            ":b": input.blocks || current.blocks,
-            ":s": input.status || current.status,
-            ":cm": input.commentsMode || current.commentsMode || "Hidden",
+            ":t": getValue("title", current.title),
+            ":b": getValue("blocks", current.blocks), // <--- Prevents [] overwrite
+            ":s": getValue("status", current.status),
+            ":cm": getValue("commentsMode", current.commentsMode || "Hidden"),
 
-            // SEO
-            ":st": input.seoTitle ?? current.seoTitle ?? null,
-            ":sd": input.seoDescription ?? current.seoDescription ?? null,
-            ":sk": input.seoKeywords ?? current.seoKeywords ?? null,
-            ":fi": input.featuredImage ?? current.featuredImage ?? null,
+            // SEO (Nullable fields need careful handling)
+            ":st": getValue("seoTitle", current.seoTitle) ?? null,
+            ":sd": getValue("seoDescription", current.seoDescription) ?? null,
+            ":sk": getValue("seoKeywords", current.seoKeywords) ?? null,
+            ":fi": getValue("featuredImage", current.featuredImage) ?? null,
 
-            // OVERRIDES (Use strict null checks or fallback to empty/false)
-            ":to": input.themeOverride ?? current.themeOverride ?? {},
-            ":hn": input.hideNav ?? current.hideNav ?? false,
-            ":hf": input.hideFooter ?? current.hideFooter ?? false,
+            // Overrides
+            ":to": getValue("themeOverride", current.themeOverride) ?? {},
+            ":hn": getValue("hideNav", current.hideNav) ?? false,
+            ":hf": getValue("hideFooter", current.hideFooter) ?? false,
 
             ":u": timestamp,
             ":ub": userId
@@ -139,7 +147,7 @@ export const handler: AmodxHandler = async (event) => {
             tenantId,
             actorId: userId,
             action: "UPDATE_PAGE",
-            details: { title: input.title, hasOverrides: !!input.themeOverride },
+            details: { title: input.title, status: input.status }, // Log status change
             ip: event.requestContext.http.sourceIp
         });
 
