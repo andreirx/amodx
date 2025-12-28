@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Menu } from "lucide-react";
@@ -10,12 +9,44 @@ import {
     SheetTitle,
     SheetDescription
 } from "@/components/ui/sheet";
+import { apiRequest } from "@/lib/api";
+import { useEffect, useState } from "react";
 
 export default function AdminLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [links, setLinks] = useState<{ title: string, slug: string }[]>([]);
+
+    // 2. FETCH LINKS ON MOUNT
+    useEffect(() => {
+        const fetchLinks = async () => {
+            try {
+                // Fetch pages to populate the autocomplete
+                const res = await apiRequest("/content");
+                if (res.items) {
+                    const pages = res.items.map((p: any) => ({
+                        title: p.title,
+                        slug: p.slug
+                    }));
+                    setLinks(pages);
+                }
+            } catch (e) {
+                console.warn("Autolink fetch failed", e);
+            }
+        };
+        fetchLinks();
+    }, []);
 
     return (
         <div className="flex min-h-screen bg-background">
+            {/* 3. INJECT DATALIST GLOBALLY */}
+            <datalist id="amodx-links">
+                {links.map((link) => (
+                    <option key={link.slug} value={link.slug}>
+                        {link.title}
+                    </option>
+                ))}
+            </datalist>
+
             {/* 1. DESKTOP SIDEBAR (Hidden on mobile) */}
             <div className="hidden md:block w-64 fixed inset-y-0 border-r bg-card z-20">
                 <Sidebar />

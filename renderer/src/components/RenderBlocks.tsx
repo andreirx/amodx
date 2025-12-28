@@ -1,5 +1,9 @@
+"use client"; // <--- Add this
+
 import React from "react";
 import { RENDER_MAP } from "@amodx/plugins/render";
+import { useTenantUrl } from "@/lib/routing"; // Import
+import Link from "next/link"; // Use Next Link for prefetching
 
 // --- RECURSIVE HELPER ---
 const RenderChildren = ({ content }: { content: any[] }) => {
@@ -9,6 +13,7 @@ const RenderChildren = ({ content }: { content: any[] }) => {
 
 // --- CORE COMPONENTS ---
 const Paragraph = ({ content }: any) => {
+    const { getUrl } = useTenantUrl(); // Hook
     if (!content) return <p className="mb-4 h-4" />;
     return (
         <p className="mb-4 leading-7 text-foreground/90">
@@ -19,7 +24,18 @@ const Paragraph = ({ content }: any) => {
                         c.marks.forEach((m: any) => {
                             if (m.type === "bold") text = <strong key={i} className="font-bold">{text}</strong>;
                             if (m.type === "italic") text = <em key={i} className="italic">{text}</em>;
-                            if (m.type === "link") text = <a href={m.attrs.href} key={i} className="text-primary underline underline-offset-4 hover:opacity-80">{text}</a>;
+                            if (m.type === "link") {
+                                // FIX: Use Next Link + getUrl
+                                text = (
+                                    <Link
+                                        href={getUrl(m.attrs.href)}
+                                        key={i}
+                                        className="text-primary underline underline-offset-4 hover:opacity-80"
+                                    >
+                                        {text}
+                                    </Link>
+                                );
+                            }
                         });
                     }
                     return <span key={i}>{text}</span>;
@@ -56,23 +72,34 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
     ...RENDER_MAP // Plugins
 };
 
+// SMART FIX: Transform blocks before rendering
 export function RenderBlocks({ blocks }: { blocks: any[] }) {
+    const { getUrl } = useTenantUrl();
+
     if (!blocks || !Array.isArray(blocks)) return null;
 
     return (
         <>
             {blocks.map((block, index) => {
                 const Component = CORE_COMPONENTS[block.type];
-                if (!Component) {
-                    console.warn(`Unknown block type: ${block.type}`);
-                    return null;
+                if (!Component) return null;
+
+                // CLONE attributes to inject fixed URLs
+                const newAttrs = { ...block.attrs };
+
+                // Auto-fix known link fields
+                if (newAttrs.ctaLink) newAttrs.ctaLink = getUrl(newAttrs.ctaLink);
+                if (newAttrs.buttonLink) newAttrs.buttonLink = getUrl(newAttrs.buttonLink);
+
+                // For Pricing: Plans array
+                if (newAttrs.plans) {
+                    newAttrs.plans = newAttrs.plans.map((p: any) => ({
+                        ...p,
+                        buttonLink: getUrl(p.buttonLink)
+                    }));
                 }
 
-                // If it's a structural block (Hero, Pricing), render full width
-                // If it's text, we constrain it slightly inside the component logic above or via global layout
-                // Since we removed 'prose', the Tailwind classes in Paragraph/Heading handle typography now.
-
-                return <Component key={index} {...block} />;
+                return <Component key={index} {...block} attrs={newAttrs} />;
             })}
         </>
     );

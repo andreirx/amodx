@@ -55,7 +55,7 @@ export function CtaEditor(props: any) {
 
                     <div className="grid grid-cols-2 gap-4">
                         <Input label="Button Label" value={buttonText} onChange={(v: string) => update('buttonText', v)} />
-                        <Input label="Button Link" value={buttonLink} onChange={(v: string) => update('buttonLink', v)} placeholder="/signup" />
+                        <Input label="Button Link" value={buttonLink} onChange={(v: string) => update('buttonLink', v)} list="amodx-links" placeholder="/signup" />
                     </div>
                 </div>
             </div>

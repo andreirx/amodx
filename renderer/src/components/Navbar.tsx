@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
+import { useTenantUrl } from "@/lib/routing";
 
 interface LinkItem {
     label: string;
@@ -22,6 +23,7 @@ export function Navbar({
     showLogo?: boolean;
     showTitle?: boolean;
 }) {
+    const { getUrl } = useTenantUrl();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
 
     return (
@@ -31,7 +33,7 @@ export function Navbar({
 
                     {/* --- LOGO AREA --- */}
                     <div className="flex shrink-0 items-center">
-                        <Link href="/" className="flex items-center gap-2">
+                        <Link href={getUrl("/")} className="flex items-center gap-2">
                             {showLogo && logo && (
                                 <img src={logo} alt={siteName} className="h-8 w-auto object-contain"/>
                             )}
@@ -46,14 +48,14 @@ export function Navbar({
                         {links.map((link, i) => (
                             <Link
                                 key={i}
-                                href={link.href}
+                                href={getUrl(link.href)}
                                 className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
                             >
                                 {link.label}
                             </Link>
                         ))}
                         <Link
-                            href="/contact"
+                            href={getUrl("/contact")}
                             className="bg-primary text-primary-foreground px-5 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
                         >
                             Contact

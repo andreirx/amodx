@@ -10,6 +10,7 @@ import {Loader2, ExternalLink, Palette, Type, MousePointerClick, AlertCircle, Ma
 import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload } from "lucide-react";
 import { ShieldCheck } from "lucide-react";
+import { SmartLinkInput } from "@/components/ui/smart-link-input";
 
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
@@ -298,13 +299,20 @@ export default function SettingsPage() {
                                     <Input value={link.label}
                                            onChange={e => updateLink('navLinks', i, 'label', e.target.value)}
                                            placeholder="Label" className="flex-1"/>
-                                    <Input value={link.href}
-                                           onChange={e => updateLink('navLinks', i, 'href', e.target.value)}
-                                           placeholder="/path" className="flex-1"/>
-                                    <Button variant="ghost" size="icon" onClick={() => removeLink('navLinks', i)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    <div className="flex-1">
+                                        <SmartLinkInput
+                                            value={link.href}
+                                            onChange={val => updateLink('navLinks', i, 'href', val)}
+                                            placeholder="/path"
+                                        />
+                                    </div>
+                                    <Button variant="ghost" size="icon"
+                                            onClick={() => removeLink('navLinks', i)}><Trash2
+                                        className="h-4 w-4 text-destructive"/></Button>
                                 </div>
                             ))}
-                            {(config.navLinks?.length === 0) && <p className="text-sm text-muted-foreground italic">No links added.</p>}
+                            {(config.navLinks?.length === 0) &&
+                                <p className="text-sm text-muted-foreground italic">No links added.</p>}
                         </CardContent>
                     </Card>
 

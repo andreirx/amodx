@@ -98,7 +98,7 @@ export function HeroEditor(props: any) {
                             </div>
                             <div>
                                 <Label icon={LinkIcon}>Link</Label>
-                                <Input value={ctaLink} onChange={(v: string) => update('ctaLink', v)} placeholder="/path" className="font-mono text-xs" />
+                                <Input value={ctaLink} onChange={(v: string) => update('ctaLink', v)} list="amodx-links" placeholder="/path" className="font-mono text-xs" />
                             </div>
                         </div>
                     </div>

@@ -1,11 +1,32 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, TransactWriteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { ContentItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
+import { z } from "zod"; // Import Zod directly
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+
+// STRICT SCHEMA - No Defaults!
+const StrictUpdateSchema = z.object({
+    title: z.string().optional(),
+    slug: z.string().optional(),
+    status: z.string().optional(),
+    commentsMode: z.string().optional(),
+    // Crucial: No .default([]) here. If it's missing, it's undefined.
+    blocks: z.array(z.any()).optional(),
+
+    // SEO
+    seoTitle: z.string().optional(),
+    seoDescription: z.string().optional(),
+    seoKeywords: z.string().optional(),
+    featuredImage: z.string().optional(),
+
+    // Overrides
+    themeOverride: z.any().optional(),
+    hideNav: z.boolean().optional(),
+    hideFooter: z.boolean().optional(),
+});
 
 export const handler: AmodxHandler = async (event) => {
     try {
@@ -19,23 +40,9 @@ export const handler: AmodxHandler = async (event) => {
 
         const body = JSON.parse(event.body);
 
-        // Zod validation (defaults might be injected here!)
-        const input = ContentItemSchema.pick({
-            title: true,
-            blocks: true,
-            status: true,
-            slug: true,
-            commentsMode: true,
-            // SEO
-            seoTitle: true,
-            seoDescription: true,
-            seoKeywords: true,
-            featuredImage: true,
-            // DESIGN OVERRIDES (Crucial!)
-            themeOverride: true,
-            hideNav: true,
-            hideFooter: true
-        }).partial().parse(body);
+        // 1. Parse using the strict local schema
+        // This guarantees 'blocks' is undefined if not sent, never []
+        const input = StrictUpdateSchema.parse(body);
 
         const currentRes = await db.send(new GetCommand({
             TableName: TABLE_NAME,
@@ -53,30 +60,22 @@ export const handler: AmodxHandler = async (event) => {
         const timestamp = new Date().toISOString();
         const userId = auth.sub;
 
-        // --- CRITICAL FIX: Explicitly check 'body' keys to avoid Zod Default overwrites ---
-        // Use the input value ONLY if the key exists in the raw payload.
-        // Otherwise, keep the current DB value.
-
-        const getValue = (key: string, dbValue: any) => {
-            return Object.prototype.hasOwnProperty.call(body, key) ? input[key as keyof typeof input] : dbValue;
-        };
-
+        // 2. Merge Logic using strict undefined checks
+        // If input.blocks is undefined, use current.blocks.
         const updateValues = {
-            ":t": getValue("title", current.title),
-            ":b": getValue("blocks", current.blocks), // <--- Prevents [] overwrite
-            ":s": getValue("status", current.status),
-            ":cm": getValue("commentsMode", current.commentsMode || "Hidden"),
+            ":t": input.title ?? current.title,
+            ":b": input.blocks ?? current.blocks, // <--- SAFETY
+            ":s": input.status ?? current.status,
+            ":cm": input.commentsMode ?? current.commentsMode ?? "Hidden",
 
-            // SEO (Nullable fields need careful handling)
-            ":st": getValue("seoTitle", current.seoTitle) ?? null,
-            ":sd": getValue("seoDescription", current.seoDescription) ?? null,
-            ":sk": getValue("seoKeywords", current.seoKeywords) ?? null,
-            ":fi": getValue("featuredImage", current.featuredImage) ?? null,
+            ":st": input.seoTitle ?? current.seoTitle ?? null,
+            ":sd": input.seoDescription ?? current.seoDescription ?? null,
+            ":sk": input.seoKeywords ?? current.seoKeywords ?? null,
+            ":fi": input.featuredImage ?? current.featuredImage ?? null,
 
-            // Overrides
-            ":to": getValue("themeOverride", current.themeOverride) ?? {},
-            ":hn": getValue("hideNav", current.hideNav) ?? false,
-            ":hf": getValue("hideFooter", current.hideFooter) ?? false,
+            ":to": input.themeOverride ?? current.themeOverride ?? {},
+            ":hn": input.hideNav ?? current.hideNav ?? false,
+            ":hf": input.hideFooter ?? current.hideFooter ?? false,
 
             ":u": timestamp,
             ":ub": userId
@@ -85,10 +84,11 @@ export const handler: AmodxHandler = async (event) => {
         const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, themeOverride = :to, hideNav = :hn, hideFooter = :hf, updatedAt = :u, updatedBy = :ub";
 
         if (slugChanged) {
+            // ... (TransactWriteCommand logic remains identical to previous version)
+            // Copy logic from previous step or repo, ensuring Update uses updateValues
             await db.send(new TransactWriteCommand({
                 TransactItems: [
                     {
-                        // 1. OLD ROUTE -> Redirect
                         Put: {
                             TableName: TABLE_NAME,
                             Item: {
@@ -103,7 +103,6 @@ export const handler: AmodxHandler = async (event) => {
                         }
                     },
                     {
-                        // 2. NEW ROUTE
                         Put: {
                             TableName: TABLE_NAME,
                             Item: {
@@ -119,7 +118,6 @@ export const handler: AmodxHandler = async (event) => {
                         }
                     },
                     {
-                        // 3. UPDATE CONTENT
                         Update: {
                             TableName: TABLE_NAME,
                             Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
@@ -147,7 +145,7 @@ export const handler: AmodxHandler = async (event) => {
             tenantId,
             actorId: userId,
             action: "UPDATE_PAGE",
-            details: { title: input.title, status: input.status }, // Log status change
+            details: { title: input.title, status: input.status },
             ip: event.requestContext.http.sourceIp
         });
 
