@@ -5,7 +5,7 @@ import type { ContentItem } from "@amodx/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, ArrowLeft, Loader2, Palette } from "lucide-react";
+import {Save, ArrowLeft, Loader2, Palette, X} from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -35,6 +35,49 @@ const findImage = (blocks: any[]): string => {
     blocks.forEach(traverse);
     return src;
 };
+
+// IMPROVED COLOR COMPONENT
+function ColorOverride({ label, value, onChange, onReset }: { label: string, value?: string, onChange: (v: string) => void, onReset: () => void }) {
+    const isSet = value !== undefined && value !== "";
+
+    return (
+        <div className="space-y-1">
+            <Label className="text-[10px] uppercase text-muted-foreground tracking-wider">{label}</Label>
+            <div className="flex gap-2 items-center h-9">
+                {isSet ? (
+                    <>
+                        <div className="relative flex-1 h-full">
+                            <Input
+                                type="color"
+                                className="w-full h-full p-1 cursor-pointer"
+                                value={value}
+                                onChange={e => onChange(e.target.value)}
+                            />
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-muted-foreground hover:text-red-500 hover:bg-red-50"
+                            onClick={onReset}
+                            title="Revert to Global Default"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </>
+                ) : (
+                    <Button
+                        variant="outline"
+                        className="w-full h-full text-xs text-muted-foreground font-normal border-dashed"
+                        onClick={() => onChange("#7f7f7f")} // Default starting color when clicking
+                    >
+                        Use Global Default
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+}
+
 
 export default function ContentEditor() {
     const { id } = useParams();
@@ -147,6 +190,12 @@ export default function ContentEditor() {
         setThemeOverride(prev => ({ ...prev, [key]: val }));
     };
 
+    const resetThemeKey = (key: string) => {
+        const newTheme = { ...themeOverride };
+        delete newTheme[key];
+        setThemeOverride(newTheme);
+    };
+
     // Helper to update status
     const updateStatus = (val: string) => {
         if (content) setContent({ ...content, status: val as any });
@@ -214,62 +263,100 @@ export default function ContentEditor() {
                             </SheetHeader>
                             <div className="space-y-6 py-6">
                                 {/* 1. LANDING PAGE MODE */}
-                                <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
-                                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                                        <Palette className="w-4 h-4"/> Landing Page Design
+                                <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
+                                    <h4 className="text-sm font-semibold flex items-center gap-2 pb-2 border-b">
+                                        <Palette className="w-4 h-4 text-primary"/> Design Overrides
                                     </h4>
 
-                                    <div className="flex items-center justify-between">
-                                        <Label htmlFor="hideNav" className="text-sm">Hide Navigation</Label>
-                                        <input type="checkbox" id="hideNav" checked={hideNav}
-                                               onChange={e => setHideNav(e.target.checked)} className="h-4 w-4"/>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <Label htmlFor="hideFooter" className="text-sm">Hide Footer</Label>
-                                        <input type="checkbox" id="hideFooter" checked={hideFooter}
-                                               onChange={e => setHideFooter(e.target.checked)} className="h-4 w-4"/>
+                                    {/* Layout Toggles */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" checked={hideNav}
+                                                   onChange={e => setHideNav(e.target.checked)}
+                                                   className="rounded border-gray-300 text-primary focus:ring-primary"/>
+                                            <span className="text-sm">Hide Navbar</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" checked={hideFooter}
+                                                   onChange={e => setHideFooter(e.target.checked)}
+                                                   className="rounded border-gray-300 text-primary focus:ring-primary"/>
+                                            <span className="text-sm">Hide Footer</span>
+                                        </label>
                                     </div>
 
-                                    <div className="pt-2 border-t mt-2">
-                                        <Label className="text-xs text-muted-foreground mb-1 block">Override Primary
-                                            Color</Label>
-                                        <div className="flex gap-2">
-                                            <Input
-                                                type="color"
-                                                className="w-8 h-8 p-0 border-0"
-                                                value={themeOverride.primaryColor || "#000000"}
-                                                onChange={e => updateTheme("primaryColor", e.target.value)}
+                                    {/* Colors Grid */}
+                                    <div className="space-y-3">
+                                        <Label className="text-xs font-semibold">Color Scheme</Label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <ColorOverride
+                                                label="Primary (Buttons)"
+                                                value={themeOverride.primaryColor}
+                                                onChange={v => updateTheme("primaryColor", v)}
+                                                onReset={() => resetThemeKey("primaryColor")}
                                             />
-                                            {themeOverride.primaryColor && (
-                                                <Button variant="ghost" size="sm" onClick={() => {
-                                                    const newTheme = {...themeOverride};
-                                                    delete newTheme.primaryColor;
-                                                    setThemeOverride(newTheme);
-                                                }}>Reset</Button>
-                                            )}
+                                            <ColorOverride
+                                                label="Background"
+                                                value={themeOverride.backgroundColor}
+                                                onChange={v => updateTheme("backgroundColor", v)}
+                                                onReset={() => resetThemeKey("backgroundColor")}
+                                            />
+                                            <ColorOverride
+                                                label="Secondary (Accents)"
+                                                value={themeOverride.secondaryColor}
+                                                onChange={v => updateTheme("secondaryColor", v)}
+                                                onReset={() => resetThemeKey("secondaryColor")}
+                                            />
+                                            <ColorOverride
+                                                label="Text Color"
+                                                value={themeOverride.textColor}
+                                                onChange={v => updateTheme("textColor", v)}
+                                                onReset={() => resetThemeKey("textColor")}
+                                            />
                                         </div>
                                     </div>
 
-                                    <div className="pt-1">
-                                        <Label className="text-xs text-muted-foreground mb-1 block">Override
-                                            Background</Label>
-                                        <div className="flex gap-2">
-                                            <Input
-                                                type="color"
-                                                className="w-8 h-8 p-0 border-0"
-                                                value={themeOverride.backgroundColor || "#ffffff"}
-                                                onChange={e => updateTheme("backgroundColor", e.target.value)}
-                                            />
-                                            {themeOverride.backgroundColor && (
-                                                <Button variant="ghost" size="sm" onClick={() => {
-                                                    const newTheme = {...themeOverride};
-                                                    delete newTheme.backgroundColor;
-                                                    setThemeOverride(newTheme);
-                                                }}>Reset</Button>
-                                            )}
+                                    {/* Fonts */}
+                                    <div className="space-y-3 pt-2">
+                                        <Label className="text-xs font-semibold">Typography (Google Fonts)</Label>
+                                        <div className="space-y-2">
+                                            <div className="relative">
+                                                <Input
+                                                    className="h-8 text-xs pr-8"
+                                                    placeholder="Global Default"
+                                                    value={themeOverride.fontHeading || ""}
+                                                    onChange={e => updateTheme("fontHeading", e.target.value)}
+                                                />
+                                                {themeOverride.fontHeading && (
+                                                    <Button variant="ghost" size="icon"
+                                                            className="absolute right-0 top-0 h-8 w-8"
+                                                            onClick={() => resetThemeKey("fontHeading")}>
+                                                        <X className="h-3 w-3"/>
+                                                    </Button>
+                                                )}
+                                                <span
+                                                    className="text-[10px] text-muted-foreground absolute -top-4 left-0">Headings</span>
+                                            </div>
+                                            <div className="relative mt-5">
+                                                <Input
+                                                    className="h-8 text-xs pr-8"
+                                                    placeholder="Global Default"
+                                                    value={themeOverride.fontBody || ""}
+                                                    onChange={e => updateTheme("fontBody", e.target.value)}
+                                                />
+                                                {themeOverride.fontBody && (
+                                                    <Button variant="ghost" size="icon"
+                                                            className="absolute right-0 top-0 h-8 w-8"
+                                                            onClick={() => resetThemeKey("fontBody")}>
+                                                        <X className="h-3 w-3"/>
+                                                    </Button>
+                                                )}
+                                                <span
+                                                    className="text-[10px] text-muted-foreground absolute -top-4 left-0">Body</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
+
 
                                 <div className="space-y-4">
                                     <h4 className="text-sm font-semibold border-b pb-1">SEO & Metadata</h4>
@@ -352,7 +439,7 @@ export default function ContentEditor() {
                                 />
                             </div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>URL:</span>
+                                <span>URL:</span>
                                 <span className="font-mono bg-muted/50 px-2 py-0.5 rounded">/</span>
                                 <Input
                                     value={slug.replace(/^\//, '')}

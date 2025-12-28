@@ -19,17 +19,21 @@ export const handler: AmodxHandler = async (event) => {
 
         const body = JSON.parse(event.body);
 
-        // FIX 1: Add 'commentsMode' to the allowlist
         const input = ContentItemSchema.pick({
             title: true,
             blocks: true,
             status: true,
             slug: true,
             commentsMode: true,
+            // SEO
             seoTitle: true,
             seoDescription: true,
             seoKeywords: true,
-            featuredImage: true
+            featuredImage: true,
+            // DESIGN OVERRIDES (Crucial!)
+            themeOverride: true,
+            hideNav: true,
+            hideFooter: true
         }).partial().parse(body);
 
         const currentRes = await db.send(new GetCommand({
@@ -61,13 +65,16 @@ export const handler: AmodxHandler = async (event) => {
             ":sk": input.seoKeywords ?? current.seoKeywords ?? null,
             ":fi": input.featuredImage ?? current.featuredImage ?? null,
 
+            // OVERRIDES (Use strict null checks or fallback to empty/false)
+            ":to": input.themeOverride ?? current.themeOverride ?? {},
+            ":hn": input.hideNav ?? current.hideNav ?? false,
+            ":hf": input.hideFooter ?? current.hideFooter ?? false,
+
             ":u": timestamp,
             ":ub": userId
         };
 
-        console.log("DYNAMO VALUES:", JSON.stringify(updateValues, null, 2));
-
-        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, updatedAt = :u, updatedBy = :ub";
+        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, themeOverride = :to, hideNav = :hn, hideFooter = :hf, updatedAt = :u, updatedBy = :ub";
 
         if (slugChanged) {
             await db.send(new TransactWriteCommand({
@@ -96,7 +103,7 @@ export const handler: AmodxHandler = async (event) => {
                                 SK: `ROUTE#${newSlug}`,
                                 TargetNode: `NODE#${nodeId}`,
                                 Type: "Route",
-                                Domain: "localhost", // Should technically be dynamic but fine for now
+                                Domain: "localhost",
                                 CreatedAt: timestamp,
                                 CreatedBy: userId
                             },
@@ -132,7 +139,7 @@ export const handler: AmodxHandler = async (event) => {
             tenantId,
             actorId: userId,
             action: "UPDATE_PAGE",
-            details: { title: input.title },
+            details: { title: input.title, hasOverrides: !!input.themeOverride },
             ip: event.requestContext.http.sourceIp
         });
 
