@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
 import { Users } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox
 } from "lucide-react";
@@ -39,6 +40,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
 
     const navItems = [
         { name: "Content", href: "/", icon: LayoutDashboard },
+        { name: "Products", href: "/products", icon: ShoppingBag },
         { name: "Strategy", href: "/strategy", icon: Target },
         { name: "Media", href: "/media", icon: ImageIcon },
         { name: "Leads", href: "/leads", icon: Users },

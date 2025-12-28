@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, AccessPolicySchema } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -121,6 +121,29 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
 
     } catch (error) {
         console.error("DynamoDB Content Error:", error);
+        return null;
+    }
+}
+
+// 3. Fetch Product (NEW)
+export async function getProductById(tenantId: string, productId: string): Promise<Product | null> {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        const result = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: {
+                PK: `TENANT#${tenantId}`,
+                SK: `PRODUCT#${productId}`
+            }
+        }));
+
+        if (!result.Item) return null;
+
+        return result.Item as Product;
+    } catch (error) {
+        console.error("DynamoDB Product Error:", error);
         return null;
     }
 }

@@ -13,6 +13,8 @@ import MediaLibrary from "@/pages/MediaLibrary";
 import AuditLog from "@/pages/AuditLog";
 import Resources from "./pages/Resources";
 import Leads from "@/pages/Leads";
+import Products from "@/pages/Products";
+import ProductEditor from "@/pages/ProductEditor";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -55,6 +57,8 @@ export default function App() {
                 >
                     <Route path="/" element={<ContentList />} />
                     <Route path="/content/:id" element={<ContentEditor />} />
+                    <Route path="/products" element={<Products />} />
+                    <Route path="/products/:id" element={<ProductEditor />} />
                     <Route path="/strategy" element={<StrategyBoard />} />
                     <Route path="/strategy/:id" element={<StrategyEditor />} />
                     <Route path="/media" element={<MediaLibrary />} />

@@ -467,6 +467,70 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('CreateCommentInt', createCommentFunc),
         });
 
+        // --- NEW: PRODUCTS API ---
+
+        const createProductFunc = new nodejs.NodejsFunction(this, 'CreateProductFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createProductFunc);
+
+        const listProductsFunc = new nodejs.NodejsFunction(this, 'ListProductsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listProductsFunc);
+
+        const getProductFunc = new nodejs.NodejsFunction(this, 'GetProductFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getProductFunc);
+
+        const updateProductFunc = new nodejs.NodejsFunction(this, 'UpdateProductFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateProductFunc);
+
+        const deleteProductFunc = new nodejs.NodejsFunction(this, 'DeleteProductFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(deleteProductFunc);
+
+        // Routes
+        this.httpApi.addRoutes({
+            path: '/products',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateProductInt', createProductFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/products',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListProductsInt', listProductsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/products/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetProductInt', getProductFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/products/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateProductInt', updateProductFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/products/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteProductInt', deleteProductFunc),
+        });
+
         // NEW: Grant permissions to all API functions to PutEvents
         // This iterates through all children and adds permission if it's a Function
         this.node.children.forEach(child => {

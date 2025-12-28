@@ -24,6 +24,8 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
 
     const fonts = Array.from(new Set([fontHeading, fontBody]));
     const fontQuery = fonts.map(f => `family=${f.replace(/ /g, "+")}:wght@400;700`).join("&");
+
+    // 1. Ensure display=swap is present (Google supports this natively)
     const fontUrl = `https://fonts.googleapis.com/css2?${fontQuery}&display=swap`;
 
     const css = `
@@ -58,7 +60,7 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
       
       /* Borders & Inputs */
       --border: #e2e8f0 !important;
-      --input: #e2e8f0 !important;
+      --input: #e2e8f0 !important;\
       --ring: ${primaryColor} !important;
       
       /* Shape & Type */
@@ -78,15 +80,30 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
     }
   `;
 
+    // OPTIMIZATION: Non-blocking Font Loading Strategy
+    // 1. Preload the resource (High Priority fetch)
+    // 2. Load as 'print' media (Non-blocking for render)
+    // 3. Swap to 'all' media once loaded (Applies style)
+    // 4. Fallback <noscript> for non-JS users
+    const fontLoaderHtml = `
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+      <link rel="preload" as="style" href="${fontUrl}" />
+      <link rel="stylesheet" href="${fontUrl}" media="print" onload="this.media='all'" />
+      <noscript>
+        <link rel="stylesheet" href="${fontUrl}" />
+      </noscript>
+    `;
+
     return (
         <>
             <script dangerouslySetInnerHTML={{
                 __html: `window.AMODX_TENANT_ID = "${tenantId || ''}";`
             }}/>
 
-            <link rel="preconnect" href="https://fonts.googleapis.com"/>
-            <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous"/>
-            <link href={fontUrl} rel="stylesheet"/>
+            {/* Injected Font Loader (Hidden container) */}
+            <div dangerouslySetInnerHTML={{ __html: fontLoaderHtml }} style={{ display: "none" }} />
+
             <style dangerouslySetInnerHTML={{__html: css}}/>
         </>
     );

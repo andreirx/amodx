@@ -370,3 +370,48 @@ export const AuditLogSchema = z.object({
     ipAddress: z.string().optional(),
 });
 export type AuditLog = z.infer<typeof AuditLogSchema>;
+
+// --- COMMERCE & PRODUCTS ---
+
+export const ProductStatus = z.enum(["active", "archived", "draft"]);
+export const Availability = z.enum(["in_stock", "out_of_stock", "preorder"]);
+export const Condition = z.enum(["new", "refurbished", "used"]);
+
+export const ProductSchema = z.object({
+    id: z.string(), // UUID
+    tenantId: z.string(),
+
+    // 0. Status (Crucial for filtering)
+    status: ProductStatus.default("draft"),
+
+    // 1. Basic Data (OpenAI Required)
+    title: z.string().min(1),
+    description: z.string().max(5000),
+    link: z.string().url().optional(),
+
+    // 2. Pricing
+    price: z.string(),
+    currency: z.string().default("USD"),
+    salePrice: z.string().optional(),
+
+    // 3. Inventory
+    availability: Availability.default("in_stock"),
+    inventoryQuantity: z.number().int().optional(),
+
+    // 4. Categorization
+    brand: z.string().optional(),
+    category: z.string().optional(),
+    condition: Condition.default("new"),
+
+    // 5. Media
+    imageLink: z.string().url(),
+    additionalImageLinks: z.array(z.string().url()).default([]),
+
+    // 6. Commerce Integration
+    paymentLinkId: z.string().optional(),
+
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+
+export type Product = z.infer<typeof ProductSchema>;
