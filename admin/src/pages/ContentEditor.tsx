@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Settings as SettingsIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { RotateCcw } from "lucide-react";
 
 // Helper to extract text from Tiptap JSON
 const extractText = (blocks: any[]): string => {
@@ -46,10 +47,10 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
             <div className="flex gap-2 items-center h-9">
                 {isSet ? (
                     <>
-                        <div className="relative flex-1 h-full">
-                            <Input
+                        <div className="relative flex-1 h-full border rounded-md overflow-hidden">
+                            <input
                                 type="color"
-                                className="w-full h-full p-1 cursor-pointer"
+                                className="absolute inset-0 w-[150%] h-[150%] -translate-x-[25%] -translate-y-[25%] cursor-pointer p-0 border-0"
                                 value={value}
                                 onChange={e => onChange(e.target.value)}
                             />
@@ -59,7 +60,7 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
                             size="icon"
                             className="h-9 w-9 text-muted-foreground hover:text-red-500 hover:bg-red-50"
                             onClick={onReset}
-                            title="Revert to Global Default"
+                            title="Remove Override (Use Global)"
                         >
                             <X className="h-4 w-4" />
                         </Button>
@@ -68,9 +69,10 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
                     <Button
                         variant="outline"
                         className="w-full h-full text-xs text-muted-foreground font-normal border-dashed"
-                        onClick={() => onChange("#7f7f7f")} // Default starting color when clicking
+                        onClick={() => onChange("#7f7f7f")} // Starts editing
+                        title="Click to override global color"
                     >
-                        Use Global Default
+                        Inherited (Global)
                     </Button>
                 )}
             </div>
@@ -176,8 +178,14 @@ export default function ContentEditor() {
                     themeOverride
                 })
             });
+
             // RELOAD FROM SERVER (Cleaner than manual object merging)
             await loadContent(id);
+
+            // --- NEW: Trigger Global Link Refresh ---
+            // Because the title or slug might have changed
+            window.dispatchEvent(new Event("amodx:refresh-links"));
+
         } catch (err: any) {
             alert("Failed to save: " + err.message);
         } finally {
@@ -205,6 +213,15 @@ export default function ContentEditor() {
     const updateCommentsMode = (val: string) => {
         console.log("Setting Comments Mode to:", val); // DEBUG
         if (content) setContent({ ...content, commentsMode: val as any });
+    };
+
+    // NEW FUNCTION: Reset everything
+    const resetAllDesign = () => {
+        if (confirm("Remove all design overrides for this page? It will revert to the Global Theme.")) {
+            setThemeOverride({});
+            setHideNav(false);
+            setHideFooter(false);
+        }
     };
 
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
@@ -264,9 +281,18 @@ export default function ContentEditor() {
                             <div className="space-y-6 py-6">
                                 {/* 1. LANDING PAGE MODE */}
                                 <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
-                                    <h4 className="text-sm font-semibold flex items-center gap-2 pb-2 border-b">
-                                        <Palette className="w-4 h-4 text-primary"/> Design Overrides
-                                    </h4>
+                                    <div className="flex items-center justify-between border-b pb-2">
+                                        <h4 className="text-sm font-semibold flex items-center gap-2 pb-2 border-b">
+                                            <Palette className="w-4 h-4 text-primary"/> Design Overrides
+                                        </h4>
+                                        {/* RESET BUTTON */}
+                                        {(Object.keys(themeOverride).length > 0 || hideNav || hideFooter) && (
+                                            <Button variant="ghost" size="sm" onClick={resetAllDesign}
+                                                    className="h-6 text-[10px] text-red-500 hover:text-red-600 hover:bg-red-50">
+                                                <RotateCcw className="w-3 h-3 mr-1"/> Reset All
+                                            </Button>
+                                        )}
+                                    </div>
 
                                     {/* Layout Toggles */}
                                     <div className="grid grid-cols-2 gap-4">

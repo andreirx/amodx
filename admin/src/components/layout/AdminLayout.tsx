@@ -11,30 +11,56 @@ import {
 } from "@/components/ui/sheet";
 import { apiRequest } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { useCallback } from "react";
 
 export default function AdminLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [links, setLinks] = useState<{ title: string, slug: string }[]>([]);
 
-    // 2. FETCH LINKS ON MOUNT
+    // Define fetch function
+    const fetchLinks = useCallback(async () => {
+        try {
+            const res = await apiRequest("/content");
+            if (res.items) {
+                const pages = res.items.map((p: any) => ({
+                    title: p.title,
+                    slug: p.slug
+                }));
+                // Sort by title for easier searching
+                pages.sort((a: any, b: any) => a.title.localeCompare(b.title));
+                setLinks(pages);
+            }
+        } catch (e) {
+            console.warn("Autolink fetch failed", e);
+        }
+    }, []);
+
+    // Initial Load + Event Listener
     useEffect(() => {
-        const fetchLinks = async () => {
-            try {
-                // Fetch pages to populate the autocomplete
-                const res = await apiRequest("/content");
-                if (res.items) {
-                    const pages = res.items.map((p: any) => ({
-                        title: p.title,
-                        slug: p.slug
-                    }));
-                    setLinks(pages);
-                }
-            } catch (e) {
-                console.warn("Autolink fetch failed", e);
+        fetchLinks(); // Initial load
+
+        // Listen for updates
+        const handleRefresh = (e: Event) => {
+            // Check if the event carries data (CustomEvent)
+            const detail = (e as CustomEvent).detail;
+
+            if (detail && Array.isArray(detail)) {
+                // OPTIMIZATION: Use the data passed by ContentList
+                const pages = detail.map((p: any) => ({
+                    title: p.title,
+                    slug: p.slug
+                }));
+                pages.sort((a: any, b: any) => a.title.localeCompare(b.title));
+                setLinks(pages);
+            } else {
+                // Fallback: Fetch from API if no data provided
+                fetchLinks();
             }
         };
-        fetchLinks();
-    }, []);
+
+        window.addEventListener("amodx:refresh-links", handleRefresh as EventListener);
+        return () => window.removeEventListener("amodx:refresh-links", handleRefresh as EventListener);
+    }, [fetchLinks]);
 
     return (
         <div className="flex min-h-screen bg-background">

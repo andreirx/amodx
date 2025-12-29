@@ -565,12 +565,12 @@ export default function SettingsPage() {
                             <div className="flex-1 space-y-4">
                                 <div className="space-y-2">
                                     <Label>Heading Font (Google Fonts)</Label>
-                                    <Input placeholder="Inter" value={config.theme?.fontHeading || ""}
+                                    <Input placeholder="Prata" value={config.theme?.fontHeading || ""}
                                            onChange={e => updateTheme("fontHeading", e.target.value)}/>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Body Font (Google Fonts)</Label>
-                                    <Input placeholder="Inter" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
+                                    <Input placeholder="Lato" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
                                 </div>
                             </div>
                         </CardContent>

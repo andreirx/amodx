@@ -42,6 +42,13 @@ export default function ContentList() {
                 new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             );
             setItems(sorted);
+
+            // --- NEW: Trigger Global Link Refresh ---
+            // OPTIMIZATION: Pass the data we just got!
+            window.dispatchEvent(new CustomEvent("amodx:refresh-links", {
+                detail: data.items
+            }));
+
         } catch (err: any) {
             setError(err.message);
         } finally {

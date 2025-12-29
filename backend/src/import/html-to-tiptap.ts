@@ -211,23 +211,34 @@ export class HTMLToTiptapConverter {
         }
     }
 
+    // UPDATE THIS METHOD
     private processInlineContent(element: Element): TiptapNode[] {
         const content: TiptapNode[] = [];
 
         DomUtils.getChildren(element).forEach(node => {
             if (node.type === 'text') {
                 const textNode = node as Text;
-                const text = textNode.data.trim();
-                if (text) {
+
+                // FIX: Do NOT use .trim() here.
+                // It merges "Hello " + "<b>World</b>" into "HelloWorld".
+                // Instead, normalize newlines/tabs to single spaces, but keep the space if it exists.
+                const text = textNode.data.replace(/[\n\t\r]+/g, ' ');
+
+                // Only skip if it's truly empty or just a massive whitespace block that collapses to nothing
+                if (text && text.length > 0) {
                     content.push({ type: 'text', text });
                 }
             } else if (node.type === 'tag') {
                 const childElement = node as Element;
                 const tagName = childElement.name.toLowerCase();
 
+                // FIX: Helper to get text without aggressive trimming
+                // We normalize internal whitespace but usually keep edges for tags clean
+                const getInner = (el: Element) => DomUtils.textContent(el).replace(/[\n\t\r]+/g, ' ');
+
                 // Handle inline formatting
                 if (tagName === 'strong' || tagName === 'b') {
-                    const text = DomUtils.textContent(childElement).trim();
+                    const text = getInner(childElement);
                     if (text) {
                         content.push({
                             type: 'text',
@@ -236,7 +247,7 @@ export class HTMLToTiptapConverter {
                         });
                     }
                 } else if (tagName === 'em' || tagName === 'i') {
-                    const text = DomUtils.textContent(childElement).trim();
+                    const text = getInner(childElement);
                     if (text) {
                         content.push({
                             type: 'text',
@@ -245,7 +256,7 @@ export class HTMLToTiptapConverter {
                         });
                     }
                 } else if (tagName === 'a') {
-                    const text = DomUtils.textContent(childElement).trim();
+                    const text = getInner(childElement);
                     const href = childElement.attribs?.href;
                     if (text && href) {
                         content.push({
@@ -256,7 +267,7 @@ export class HTMLToTiptapConverter {
                     }
                 } else {
                     // For other tags, just extract text
-                    const text = DomUtils.textContent(childElement).trim();
+                    const text = getInner(childElement);
                     if (text) {
                         content.push({ type: 'text', text });
                     }
