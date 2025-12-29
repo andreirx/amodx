@@ -120,6 +120,10 @@ async function processPost(tenantId: string, post: WordPressPost): Promise<void>
     // Build slug path - FLATTEN everything instead of keeping the blog
     const slugPath = `/${post.slug}`;
 
+    // 2. Determine Comments Mode
+    // If we have imported comments, enable them.
+    const commentsMode = post.comments.length > 0 ? "Enabled" : "Hidden";
+
     await db.send(new PutCommand({
         TableName: TABLE_NAME,
         Item: {
@@ -137,7 +141,7 @@ async function processPost(tenantId: string, post: WordPressPost): Promise<void>
             Type: "Page",
             blocks,
             featuredImage: featuredImageUrl,
-            commentsMode: "Disabled"
+            commentsMode: commentsMode
         }
     }));
 
@@ -153,6 +157,38 @@ async function processPost(tenantId: string, post: WordPressPost): Promise<void>
         }
     }));
 
+    // 5. PROCESS COMMENTS
+    if (post.comments.length > 0) {
+        console.log(`Importing ${post.comments.length} comments for ${post.title}`);
+
+        // Write in parallel (DynamoDB handles concurrency well enough for this batch size)
+        const commentPromises = post.comments.map(c => {
+            const commentId = crypto.randomUUID();
+            // WP dates are often local, assume UTC or store as string
+            const commentDate = c.date ? new Date(c.date).toISOString() : new Date().toISOString();
+
+            return db.send(new PutCommand({
+                TableName: TABLE_NAME,
+                Item: {
+                    PK: `TENANT#${tenantId}`,
+                    // Sort Key strategy: COMMENT#PageID#Date
+                    SK: `COMMENT#${nodeId}#${commentDate}`,
+                    id: commentId,
+                    tenantId,
+                    pageId: nodeId,
+                    authorName: c.author || "Anonymous",
+                    authorEmail: c.email || "unknown@example.com",
+                    authorImage: "", // No gravatar fetch for now
+                    content: c.content,
+                    status: c.approved ? "Approved" : "Pending",
+                    createdAt: commentDate,
+                    Type: "Comment"
+                }
+            }));
+        });
+
+        await Promise.all(commentPromises);
+    }
     console.log(`Created content and route for "${post.title}" at ${slugPath}`);
 }
 
