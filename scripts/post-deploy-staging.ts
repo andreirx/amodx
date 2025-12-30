@@ -5,7 +5,7 @@ import * as path from "path";
 
 // 1. Parse Arguments
 // Args: [node, script, StackName]
-const STACK_NAME = process.argv[2] || "AmodxStack";
+const STACK_NAME = process.argv[2] || "AmodxStack-staging";
 const REGION = process.env.AWS_REGION || "eu-central-1";
 
 async function main() {
@@ -83,6 +83,18 @@ AMODX_API_KEY="${apiKey}"
 `.trim();
         fs.writeFileSync(path.join(__dirname, "../tools/mcp-server/.env"), mcpEnv);
         console.log("✅ Updated tools/mcp-server/.env");
+
+        // 7. Write Testing .env (For Playwright/Vitest)
+        const testEnv = `
+TABLE_NAME=${getOutput("TableName")}
+ADMIN_API_URL=${apiUrl}
+TENANT_API_URL=${apiUrl} 
+TEST_ADMIN_USER=admin@staging.amodx.net
+TEST_ADMIN_PASSWORD=ChangeMe123!
+AMODX_API_KEY="${apiKey}"
+`.trim();
+        fs.writeFileSync(path.join(__dirname, "../.env.test"), testEnv);
+        console.log("✅ Updated .env.test (Root)");
 
         console.log(`\n🚀 Environment Configured for ${STACK_NAME}!`);
 

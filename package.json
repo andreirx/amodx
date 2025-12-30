@@ -14,7 +14,8 @@
     "build": "npm run build --workspaces",
     "setup-config": "tsx scripts/setup-config.ts",
     "manage-domains": "tsx scripts/manage-domains.ts",
-    "post-deploy": "npx tsx scripts/post-deploy.ts"
+    "post-deploy": "npx tsx scripts/post-deploy.ts",
+    "post-deploy-staging": "npx tsx scripts/post-deploy-staging.ts"
   },
   "dependencies": {
     "autoprefixer": "^10.4.22",

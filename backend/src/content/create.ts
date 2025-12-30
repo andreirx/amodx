@@ -4,14 +4,18 @@ import {
 import { db, TABLE_NAME } from "../lib/db.js";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { ContentItemSchema } from "@amodx/shared";
-import { AuthorizerContext } from "../auth/context.js"; // Import your context definition
+import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 
 
 // Typed Handler
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-const toSlug = (str: string) => "/" + str.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+// Helper: Ensure slug format (lowercase, hyphens, leading slash)
+const cleanSlug = (str: string) => {
+    const cleaned = str.toLowerCase().trim().replace(/[^a-z0-9-\/]/g, '').replace(/[\s_-]+/g, '-');
+    return cleaned.startsWith('/') ? cleaned : '/' + cleaned;
+};
 
 export const handler: AmodxHandler = async (event) => {
     try {
@@ -34,7 +38,10 @@ export const handler: AmodxHandler = async (event) => {
         const nodeId = crypto.randomUUID();
         const contentId = crypto.randomUUID();
         const now = new Date().toISOString();
-        const slug = toSlug(input.title);
+
+        // FIX: Prefer provided slug, otherwise derive from title
+        const rawSlug = input.slug && input.slug.trim() ? input.slug : input.title;
+        const slug = cleanSlug(rawSlug);
 
         await db.send(new TransactWriteCommand({
             TransactItems: [
