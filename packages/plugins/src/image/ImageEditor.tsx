@@ -1,5 +1,5 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import { UploadCloud, Image as ImageIcon, Loader2, Minimize2, Maximize2, MoveHorizontal } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Loader2, Minimize2, Maximize2, MoveHorizontal, Search } from 'lucide-react';
 import React, { useState } from 'react';
 
 const Input = ({ value, onChange, placeholder, className = "" }: any) => (
@@ -27,12 +27,22 @@ export function ImageEditor(props: any) {
 
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
+    // 1. Dependency Injection: Get the picker function
+    const handleLibraryPick = () => {
+        const pickFn = props.editor.storage.image?.pickFn;
+        if (pickFn) {
+            pickFn((url: string) => update('src', url));
+        } else {
+            alert("Media Picker not connected");
+        }
+    };
+
     const handleUpload = async (file: File) => {
         setUploading(true);
         try {
             const uploadFn = props.editor.storage.image?.uploadFn;
             if (!uploadFn) {
-                alert("Upload function not configured in Editor");
+                alert("Upload function not configured");
                 return;
             }
             const publicUrl = await uploadFn(file);
@@ -53,68 +63,60 @@ export function ImageEditor(props: any) {
         <NodeViewWrapper className="my-6">
             <div className={`group relative rounded-lg border border-gray-200 bg-gray-50 overflow-hidden transition-all ${width === 'centered' ? 'max-w-md mx-auto' : ''}`}>
 
-                {/* TOOLBAR (Floating on Hover) */}
+                {/* Top Toolbar */}
                 <div className="absolute top-2 right-2 flex items-center gap-1 bg-white border border-gray-200 shadow-sm rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <ToolbarButton
-                        active={width === 'centered'}
-                        onClick={() => update('width', 'centered')}
-                        icon={Minimize2}
-                        title="Centered"
-                    />
-                    <ToolbarButton
-                        active={width === 'wide'}
-                        onClick={() => update('width', 'wide')}
-                        icon={MoveHorizontal}
-                        title="Wide"
-                    />
-                    <ToolbarButton
-                        active={width === 'full'}
-                        onClick={() => update('width', 'full')}
-                        icon={Maximize2}
-                        title="Full Width"
-                    />
+                    <ToolbarButton active={width === 'centered'} onClick={() => update('width', 'centered')} icon={Minimize2} title="Centered" />
+                    <ToolbarButton active={width === 'wide'} onClick={() => update('width', 'wide')} icon={MoveHorizontal} title="Wide" />
+                    <ToolbarButton active={width === 'full'} onClick={() => update('width', 'full')} icon={Maximize2} title="Full Width" />
                 </div>
 
                 {src ? (
+                    // FILLED STATE
                     <div className="relative">
                         <img src={src} alt={alt} className="w-full h-auto object-cover bg-white" />
 
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                            <label className="cursor-pointer bg-white text-gray-900 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 shadow-sm">
-                                Change Image
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                            {/* Upload Button */}
+                            <label className="cursor-pointer bg-white text-gray-900 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 shadow-sm flex items-center gap-2">
+                                <UploadCloud className="w-3 h-3"/> Upload
                                 <input type="file" className="hidden" onChange={onFileChange} accept="image/*" />
                             </label>
+
+                            {/* Library Button */}
+                            <button onClick={handleLibraryPick} className="bg-white text-gray-900 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 shadow-sm flex items-center gap-2">
+                                <Search className="w-3 h-3"/> Library
+                            </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="py-16 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 m-2 rounded-lg hover:bg-gray-100 transition-colors">
+                    // EMPTY STATE
+                    <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 m-2 rounded-lg bg-gray-50/50">
                         {uploading ? (
                             <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
                         ) : (
-                            <>
-                                <UploadCloud className="w-8 h-8 text-gray-400 mb-2" />
-                                <span className="text-sm text-gray-500 font-medium">Drag & Drop or Click to Upload</span>
-                                <input type="file" className="absolute inset-0 cursor-pointer opacity-0" onChange={onFileChange} accept="image/*" />
-                            </>
+                            <div className="flex gap-4">
+                                <label className="flex flex-col items-center cursor-pointer p-4 hover:bg-white hover:shadow-sm rounded-lg transition-all border border-transparent hover:border-gray-200">
+                                    <UploadCloud className="w-6 h-6 text-gray-400 mb-2" />
+                                    <span className="text-xs font-medium text-gray-600">Upload New</span>
+                                    <input type="file" className="hidden" onChange={onFileChange} accept="image/*" />
+                                </label>
+
+                                <div className="w-px bg-gray-200 my-2"></div>
+
+                                <button onClick={handleLibraryPick} className="flex flex-col items-center cursor-pointer p-4 hover:bg-white hover:shadow-sm rounded-lg transition-all border border-transparent hover:border-gray-200">
+                                    <Search className="w-6 h-6 text-gray-400 mb-2" />
+                                    <span className="text-xs font-medium text-gray-600">Select Existing</span>
+                                </button>
+                            </div>
                         )}
                     </div>
                 )}
 
+                {/* Footer Inputs */}
                 <div className="p-3 bg-white border-t border-gray-100 space-y-2">
-                    <Input
-                        value={caption}
-                        onChange={(v: string) => update('caption', v)}
-                        placeholder="Write a caption (optional)"
-                        className="text-center font-medium text-gray-700"
-                    />
-                    <div className="pt-1">
-                        <Input
-                            value={alt}
-                            onChange={(v: string) => update('alt', v)}
-                            placeholder="Alt Text (Required for SEO)"
-                            className="text-xs text-gray-500"
-                        />
-                    </div>
+                    <Input value={caption} onChange={(v: string) => update('caption', v)} placeholder="Write a caption (optional)" className="text-center font-medium text-gray-700" />
+                    <Input value={alt} onChange={(v: string) => update('alt', v)} placeholder="Alt Text (Required for SEO)" className="text-xs text-gray-500" />
                 </div>
             </div>
         </NodeViewWrapper>

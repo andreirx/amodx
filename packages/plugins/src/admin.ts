@@ -10,6 +10,7 @@ import {FeaturesPlugin} from "./features";
 import {TestimonialsPlugin} from "./testimonials";
 import { ColumnsPlugin } from './columns';
 import { TablePlugin } from './table';
+import { HtmlPlugin } from './html';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -22,7 +23,8 @@ const REGISTRY: PluginDefinition[] = [
     FeaturesPlugin,
     TestimonialsPlugin,
     ColumnsPlugin,
-    TablePlugin
+    TablePlugin,
+    HtmlPlugin
 ];
 
 

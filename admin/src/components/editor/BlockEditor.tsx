@@ -6,6 +6,8 @@ import { getExtensions } from "@amodx/plugins/admin";
 import { Toolbar } from "./Toolbar";
 import type { AnyExtension } from "@tiptap/core";
 import { uploadFile } from "@/lib/upload";
+import { useState } from "react";
+import { MediaPicker } from "@/components/MediaPicker"; // Ensure this import works
 
 interface BlockEditorProps {
     initialContent?: any;
@@ -13,6 +15,24 @@ interface BlockEditorProps {
 }
 
 export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
+    const [pickerOpen, setPickerOpen] = useState(false);
+
+    // FIX: Parentheses around the function type allow 'null' as a state value
+    const [pickerCallback, setPickerCallback] = useState<((url: string) => void) | null>(null);
+
+    const openPicker = (callback: (url: string) => void) => {
+        // We pass a function that RETURNS the callback, so React doesn't execute the callback immediately as an updater
+        setPickerCallback(() => callback);
+        setPickerOpen(true);
+    };
+
+    const handleSelect = (url: string) => {
+        if (pickerCallback) {
+            pickerCallback(url);
+        }
+        setPickerOpen(false);
+        setPickerCallback(null);
+    };
 
     const editor = useEditor({
         extensions: [
@@ -29,11 +49,11 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
                 class: "prose prose-zinc dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4",
             },
         },
-        // FIX: Cast storage to any to allow injection
         onBeforeCreate({ editor }) {
             const storage = editor.storage as any;
             if (storage.image) {
                 storage.image.uploadFn = uploadFile;
+                storage.image.pickFn = openPicker; // Wired up!
             }
         },
         onUpdate: ({ editor }) => {
@@ -43,12 +63,7 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
 
     return (
         <div className="group flex flex-col relative min-h-[500px]">
-            {/*
-                Sticky Toolbar
-                - 'sticky': Sticks to the nearest scrolling ancestor (the <main> div in ContentEditor).
-                - 'top-0': Sticks to the top.
-                - 'z-10': Stays above text.
-            */}
+            {/* Sticky Toolbar */}
             <div className="sticky top-0 z-10 mx-auto w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 py-2 transition-all">
                 <Toolbar editor={editor} />
             </div>
@@ -56,6 +71,13 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
             <div className="flex-1 cursor-text">
                 <EditorContent editor={editor} />
             </div>
+
+            {/* Media Picker Dialog */}
+            <MediaPicker
+                open={pickerOpen}
+                onOpenChange={setPickerOpen}
+                onSelect={handleSelect}
+            />
         </div>
     );
 }

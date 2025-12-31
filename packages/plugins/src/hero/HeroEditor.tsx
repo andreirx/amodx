@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutTemplate, Type, Link as LinkIcon, Image as ImageIcon, Upload } from 'lucide-react';
 import React, { useState } from 'react';
+import { Search } from 'lucide-react';
 
 // --- LOCAL UI HELPERS (No Shadcn dependency) ---
 
@@ -36,6 +37,16 @@ export function HeroEditor(props: any) {
     const { headline, subheadline, ctaText, ctaLink, style, imageSrc } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
+
+    // 1. Inject Picker
+    const handleLibraryPick = () => {
+        const pickFn = props.editor.storage.image?.pickFn;
+        if (pickFn) {
+            pickFn((url: string) => update('imageSrc', url));
+        } else {
+            alert("Media Picker not connected");
+        }
+    };
 
     const handleUpload = async (file: File) => {
         setUploading(true);
@@ -103,7 +114,7 @@ export function HeroEditor(props: any) {
                         </div>
                     </div>
 
-                    {/* Right: Image Uploader */}
+                    {/* Right: Image Uploader - UPDATED */}
                     <div className="border-l pl-6 border-dashed border-gray-200">
                         <Label icon={ImageIcon}>Hero Image</Label>
                         <div className="mt-2 relative aspect-video bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-indigo-300 hover:bg-indigo-50/10 transition-colors group/upload overflow-hidden">
@@ -111,8 +122,15 @@ export function HeroEditor(props: any) {
                             {imageSrc ? (
                                 <>
                                     <img src={imageSrc} className="w-full h-full object-cover" alt="Hero" />
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/upload:opacity-100 flex items-center justify-center transition-opacity">
-                                        <p className="text-white text-xs font-medium cursor-pointer">Change Image</p>
+                                    {/* Hover Overlay */}
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/upload:opacity-100 flex items-center justify-center gap-2 transition-opacity">
+                                        <label className="cursor-pointer bg-white text-gray-900 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100">
+                                            Upload
+                                            <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} accept="image/*" />
+                                        </label>
+                                        <button onClick={handleLibraryPick} className="bg-white text-gray-900 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100">
+                                            Library
+                                        </button>
                                     </div>
                                 </>
                             ) : (
@@ -120,20 +138,22 @@ export function HeroEditor(props: any) {
                                     {uploading ? (
                                         <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent" />
                                     ) : (
-                                        <>
-                                            <Upload className="w-6 h-6 mb-2 opacity-50" />
-                                            <span className="text-xs">Upload Image</span>
-                                        </>
+                                        <div className="flex flex-col gap-2 items-center">
+                                            <Upload className="w-6 h-6 opacity-30" />
+                                            <div className="flex gap-2">
+                                                <label className="text-[10px] uppercase font-bold text-indigo-600 cursor-pointer hover:underline">
+                                                    Upload
+                                                    <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} accept="image/*" />
+                                                </label>
+                                                <span className="text-[10px] text-gray-400">OR</span>
+                                                <button onClick={handleLibraryPick} className="text-[10px] uppercase font-bold text-indigo-600 hover:underline">
+                                                    Library
+                                                </button>
+                                            </div>
+                                        </div>
                                     )}
                                 </>
                             )}
-
-                            <input
-                                type="file"
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])}
-                                accept="image/*"
-                            />
                         </div>
                     </div>
                 </div>

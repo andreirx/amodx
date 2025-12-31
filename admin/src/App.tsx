@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import { getCurrentUser } from 'aws-amplify/auth';
 import LoginPage from "@/pages/Login";
 import StrategyBoard from "@/pages/StrategyBoard";
@@ -11,12 +11,14 @@ import AdminLayout from "@/components/layout/AdminLayout";
 import { TenantProvider } from "@/context/TenantContext";
 import MediaLibrary from "@/pages/MediaLibrary";
 import AuditLog from "@/pages/AuditLog";
-import Resources from "./pages/Resources";
+import Resources from "@/pages/Resources";
 import Leads from "@/pages/Leads";
 import Products from "@/pages/Products";
 import ProductEditor from "@/pages/ProductEditor";
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+// 1. Create a Shell Component to handle Auth & Context
+// This replaces the old "ProtectedRoute" wrapper logic inside the routes
+function AppShell() {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
     useEffect(() => {
@@ -32,43 +34,48 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         }
     }
 
-    if (isAuthenticated === null) return <div>Loading Auth...</div>;
-    if (!isAuthenticated) return <Navigate to="/login" replace />;
+    if (isAuthenticated === null) {
+        return <div className="flex h-screen items-center justify-center">Loading...</div>;
+    }
 
-    return <>{children}</>;
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
+
+    return (
+        <TenantProvider>
+            {/* AdminLayout renders <Outlet /> for the child routes */}
+            <AdminLayout />
+        </TenantProvider>
+    );
 }
 
+// 2. Define the Router Configuration
+const router = createBrowserRouter([
+    {
+        path: "/login",
+        element: <LoginPage />,
+    },
+    {
+        path: "/",
+        element: <AppShell />, // Acts as the layout + auth guard
+        children: [
+            { index: true, element: <ContentList /> },
+            { path: "content/:id", element: <ContentEditor /> },
+            { path: "products", element: <Products /> },
+            { path: "products/:id", element: <ProductEditor /> },
+            { path: "strategy", element: <StrategyBoard /> },
+            { path: "strategy/:id", element: <StrategyEditor /> },
+            { path: "media", element: <MediaLibrary /> },
+            { path: "leads", element: <Leads /> },
+            { path: "audit", element: <AuditLog /> },
+            { path: "resources", element: <Resources /> },
+            { path: "settings", element: <SettingsPage /> },
+        ],
+    },
+]);
+
+// 3. Export the App
 export default function App() {
-    return (
-        <BrowserRouter>
-            <Routes>
-                <Route path="/login" element={<LoginPage />} />
-
-                {/* Wrap all internal pages with the Admin Layout */}
-                <Route
-                    element={
-                        <ProtectedRoute>
-                            {/* Provider lives inside Auth protection */}
-                            <TenantProvider>
-                                <AdminLayout />
-                            </TenantProvider>
-                        </ProtectedRoute>
-                    }
-                >
-                    <Route path="/" element={<ContentList />} />
-                    <Route path="/content/:id" element={<ContentEditor />} />
-                    <Route path="/products" element={<Products />} />
-                    <Route path="/products/:id" element={<ProductEditor />} />
-                    <Route path="/strategy" element={<StrategyBoard />} />
-                    <Route path="/strategy/:id" element={<StrategyEditor />} />
-                    <Route path="/media" element={<MediaLibrary />} />
-                    <Route path="/leads" element={<Leads />} />
-                    <Route path="/audit" element={<AuditLog />} />
-                    <Route path="/resources" element={<Resources />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                </Route>
-
-            </Routes>
-        </BrowserRouter>
-    );
+    return <RouterProvider router={router} />;
 }
