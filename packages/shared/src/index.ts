@@ -420,3 +420,62 @@ export const ProductSchema = z.object({
 });
 
 export type Product = z.infer<typeof ProductSchema>;
+
+type Theme = z.infer<typeof ThemeSchema>;
+
+export const THEME_PRESETS: Record<string, Partial<Theme>> = {
+    "standard": {
+        primaryColor: "#000000",
+        primaryForeground: "#ffffff",
+        backgroundColor: "#ffffff",
+        textColor: "#020817",
+        surfaceColor: "#f4f4f5",
+        fontHeading: "Inter",
+        fontBody: "Inter",
+        radius: "0.5rem"
+    },
+    "midnight": {
+        primaryColor: "#6366f1", // Indigo 500
+        primaryForeground: "#ffffff",
+        backgroundColor: "#09090b", // Zinc 950
+        textColor: "#fafafa", // Zinc 50
+        surfaceColor: "#18181b", // Zinc 900
+        secondaryColor: "#27272a", // Zinc 800
+        secondaryForeground: "#fafafa",
+        fontHeading: "Plus Jakarta Sans",
+        fontBody: "Inter",
+        radius: "0.75rem"
+    },
+    "editorial": {
+        primaryColor: "#1c1917", // Stone 900
+        primaryForeground: "#fafaf9",
+        backgroundColor: "#fefce8", // Yellow 50 (Cream)
+        textColor: "#1c1917",
+        surfaceColor: "#f5f5f4", // Stone 100
+        fontHeading: "Playfair Display",
+        fontBody: "Lora",
+        radius: "0rem"
+    },
+    "corporate": {
+        primaryColor: "#0f172a", // Slate 900
+        primaryForeground: "#f8fafc",
+        backgroundColor: "#ffffff",
+        textColor: "#334155", // Slate 700
+        surfaceColor: "#f1f5f9", // Slate 100
+        secondaryColor: "#e2e8f0",
+        secondaryForeground: "#0f172a",
+        fontHeading: "Lato",
+        fontBody: "Lato",
+        radius: "0.3rem"
+    },
+    "vibrant": {
+        primaryColor: "#db2777", // Pink 600
+        primaryForeground: "#ffffff",
+        backgroundColor: "#ffffff",
+        textColor: "#1f2937",
+        surfaceColor: "#f3f4f6",
+        fontHeading: "Poppins",
+        fontBody: "Open Sans",
+        radius: "1rem"
+    }
+};

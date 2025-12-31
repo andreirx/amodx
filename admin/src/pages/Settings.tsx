@@ -11,6 +11,7 @@ import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload } from "lucide-react";
 import { ShieldCheck } from "lucide-react";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
+import { THEME_PRESETS } from "@amodx/shared";
 
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
@@ -116,6 +117,17 @@ export default function SettingsPage() {
             }
         }
     };
+
+    const applyPreset = (presetName: string) => {
+        const preset = THEME_PRESETS[presetName];
+        if (preset) {
+            setConfig(prev => ({
+                ...prev,
+                theme: { ...prev.theme, ...preset } as any
+            }));
+        }
+    };
+
 
     // Guard Clause
     if (!currentTenant) {
@@ -579,6 +591,34 @@ export default function SettingsPage() {
                     {/* RIGHT COLUMN: Colors */}
                     <div className="lg:col-span-1">
                         <Card className="h-full">
+                            {/* PRESETS CARD */}
+                            <Card>
+                                <CardHeader className="pb-4">
+                                    <div className="flex items-center gap-2">
+                                        <Palette className="h-5 w-5 text-muted-foreground" />
+                                        <CardTitle>Theme Presets</CardTitle>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.keys(THEME_PRESETS).map(key => (
+                                            <Button
+                                                key={key}
+                                                variant="outline"
+                                                className="capitalize text-xs justify-start"
+                                                onClick={() => applyPreset(key)}
+                                            >
+                                                <div
+                                                    className="w-3 h-3 rounded-full mr-2 border"
+                                                    style={{ backgroundColor: THEME_PRESETS[key].primaryColor }}
+                                                />
+                                                {key}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
                             <CardHeader className="pb-4">
                                 <div className="flex items-center gap-2">
                                     <Palette className="h-5 w-5 text-muted-foreground" />

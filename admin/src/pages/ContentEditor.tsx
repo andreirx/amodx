@@ -1,21 +1,19 @@
-import {useEffect, useMemo, useState} from "react";
-import {useParams, useNavigate, useBlocker} from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useBlocker } from "react-router-dom";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {Save, ArrowLeft, Loader2, Palette, X} from "lucide-react";
+import { Save, ArrowLeft, Loader2, Palette, X, RotateCcw, Settings as SettingsIcon } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-import { Settings as SettingsIcon } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { RotateCcw } from "lucide-react";
-
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
-// Helper to extract text from Tiptap JSON
+import { THEME_PRESETS } from "@amodx/shared";
+
+// ... [Keep extractText, findImage, ColorOverride helpers EXACTLY AS BEFORE] ...
 const extractText = (blocks: any[]): string => {
     let text = "";
     const traverse = (node: any) => {
@@ -41,7 +39,6 @@ const findImage = (blocks: any[]): string => {
 // IMPROVED COLOR COMPONENT
 function ColorOverride({ label, value, onChange, onReset }: { label: string, value?: string, onChange: (v: string) => void, onReset: () => void }) {
     const isSet = value !== undefined && value !== "";
-
     return (
         <div className="space-y-1">
             <Label className="text-[10px] uppercase text-muted-foreground tracking-wider">{label}</Label>
@@ -61,7 +58,7 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
                             size="icon"
                             className="h-9 w-9 text-muted-foreground hover:text-red-500 hover:bg-red-50"
                             onClick={onReset}
-                            title="Remove Override (Use Global)"
+                            title="Remove Override"
                         >
                             <X className="h-4 w-4" />
                         </Button>
@@ -70,10 +67,10 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
                     <Button
                         variant="outline"
                         className="w-full h-full text-xs text-muted-foreground font-normal border-dashed"
-                        onClick={() => onChange("#7f7f7f")} // Starts editing
-                        title="Click to override global color"
+                        onClick={() => onChange("#7f7f7f")}
+                        title="Click to override"
                     >
-                        Inherited (Global)
+                        Inherited
                     </Button>
                 )}
             </div>
@@ -81,7 +78,7 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
     );
 }
 
-// Defined initial state to avoid undefined errors
+// ... [Keep DEFAULT_STATE] ...
 const DEFAULT_STATE = {
     title: "",
     slug: "",
@@ -106,12 +103,11 @@ export default function ContentEditor() {
 
     // Store the DIRTY state (current edits)
     const [form, setForm] = useState(DEFAULT_STATE);
-
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [manualSeo, setManualSeo] = useState(false);
 
-    // Calculate dirty state
+    // ... [Keep isDirty, useBlocker, useEffects for BeforeUnload] ...
     const isDirty = useMemo(() => {
         if (!serverState) return false;
         return JSON.stringify(serverState) !== JSON.stringify(form);
@@ -135,9 +131,8 @@ export default function ContentEditor() {
         ({ currentLocation, nextLocation }) => isDirty && currentLocation.pathname !== nextLocation.pathname
     );
 
-    useEffect(() => {
-        if (id) loadContent(id);
-    }, [id]);
+    // ... [Keep loadContent, save functions] ...
+    useEffect(() => { if (id) loadContent(id); }, [id]);
 
     async function loadContent(nodeId: string) {
         try {
@@ -158,12 +153,9 @@ export default function ContentEditor() {
                 hideFooter: data.hideFooter || false,
                 themeOverride: data.themeOverride || {}
             };
-
             setForm(state);
-            setServerState(state); // Sync clean state
-
+            setServerState(state);
             if (data.seoTitle || data.seoDescription) setManualSeo(true);
-
         } catch (err) {
             console.error(err);
             alert("Failed to load content");
@@ -174,7 +166,6 @@ export default function ContentEditor() {
 
     async function save() {
         if (!id) return;
-
         let finalSeoTitle = form.seoTitle;
         let finalSeoDesc = form.seoDescription;
         let finalImg = form.featuredImage;
@@ -193,18 +184,11 @@ export default function ContentEditor() {
                 seoDescription: finalSeoDesc,
                 featuredImage: finalImg,
             };
-
-            await apiRequest(`/content/${id}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-
-            // Update clean state
+            await apiRequest(`/content/${id}`, { method: "PUT", body: JSON.stringify(payload) });
             setServerState(payload);
             // Re-fetch to ensure sync (e.g. if slug changed backend side)
             await loadContent(id);
             window.dispatchEvent(new Event("amodx:refresh-links"));
-
         } catch (err: any) {
             alert("Failed to save: " + err.message);
         } finally {
@@ -236,20 +220,32 @@ export default function ContentEditor() {
         }
     };
 
+    // --- NEW: Apply Preset ---
+    const applyPreset = (presetName: string) => {
+        const preset = THEME_PRESETS[presetName];
+        if (preset) {
+            setForm(prev => ({
+                ...prev,
+                themeOverride: {
+                    ...prev.themeOverride,
+                    ...preset
+                }
+            }));
+        }
+    };
+
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
         <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
 
-            {/* BLOCKER DIALOG */}
+            {/* Blocker Dialog */}
             {blocker.state === "blocked" && (
                 <Dialog open={true} onOpenChange={() => blocker.reset()}>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Unsaved Changes</DialogTitle>
-                            <DialogDescription>
-                                You have unsaved changes. Are you sure you want to leave?
-                            </DialogDescription>
+                            <DialogDescription>You have unsaved changes. Are you sure you want to leave?</DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
                             <Button variant="outline" onClick={() => blocker.reset()}>Cancel</Button>
@@ -259,6 +255,7 @@ export default function ContentEditor() {
                 </Dialog>
             )}
 
+            {/* Header */}
             <header className="flex-none flex items-center justify-between px-6 py-3 border-b bg-card z-20">
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
@@ -281,18 +278,17 @@ export default function ContentEditor() {
                             <span className="text-[10px] text-muted-foreground">All changes saved</span>
                         )}
                     </div>
-                    <div className="flex gap-2 mb-1">
-                        <Select value={form.commentsMode} onValueChange={v => update("commentsMode", v)}>
-                            <SelectTrigger className="h-8 w-[110px] text-xs">
-                                <SelectValue placeholder="Comments"/>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="Enabled">Comments On</SelectItem>
-                                <SelectItem value="Locked">Locked (Read)</SelectItem>
-                                <SelectItem value="Hidden">Disabled</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {/* Comments Toggle */}
+                    <Select value={form.commentsMode} onValueChange={v => update("commentsMode", v)}>
+                        <SelectTrigger className="h-8 w-[110px] text-xs">
+                            <SelectValue placeholder="Comments"/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Enabled">Comments On</SelectItem>
+                            <SelectItem value="Locked">Locked (Read)</SelectItem>
+                            <SelectItem value="Hidden">Disabled</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -306,7 +302,8 @@ export default function ContentEditor() {
                         <SheetContent>
                             <SheetHeader><SheetTitle>Page Configuration</SheetTitle></SheetHeader>
                             <div className="space-y-6 py-6 overflow-y-auto h-full pb-20">
-                                {/* Design Overrides */}
+
+                                {/* 1. DESIGN OVERRIDES */}
                                 <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
                                     <div className="flex items-center justify-between border-b pb-2">
                                         <h4 className="text-sm font-semibold flex items-center gap-2">
@@ -318,6 +315,49 @@ export default function ContentEditor() {
                                             </Button>
                                         )}
                                     </div>
+
+                                    {/* PRESETS BUTTONS */}
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold">Quick Presets</Label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {Object.keys(THEME_PRESETS).map(key => (
+                                                <Button
+                                                    key={key}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="justify-start h-8 text-xs capitalize"
+                                                    onClick={() => applyPreset(key)}
+                                                >
+                                                    <div
+                                                        className="w-2 h-2 rounded-full mr-2 border shrink-0"
+                                                        style={{ backgroundColor: THEME_PRESETS[key].primaryColor }}
+                                                    />
+                                                    {key}
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-border/50 my-2" />
+
+                                    {/* MODE SELECTOR */}
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold">Mode</Label>
+                                        <Select
+                                            value={form.themeOverride.mode || "light"}
+                                            onValueChange={v => updateTheme("mode", v)}
+                                        >
+                                            <SelectTrigger className="h-8 text-xs">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="light">Light</SelectItem>
+                                                <SelectItem value="dark">Dark</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-muted-foreground">Applies CSS class `.dark` if selected.</p>
+                                    </div>
+
                                     <div className="grid grid-cols-2 gap-4">
                                         <label className="flex items-center gap-2 cursor-pointer text-sm">
                                             <input type="checkbox" checked={form.hideNav} onChange={e => update("hideNav", e.target.checked)} className="rounded" />
@@ -328,6 +368,7 @@ export default function ContentEditor() {
                                             Hide Footer
                                         </label>
                                     </div>
+
                                     <div className="space-y-3">
                                         <Label className="text-xs font-semibold">Colors</Label>
                                         <div className="grid grid-cols-2 gap-3">
@@ -337,6 +378,7 @@ export default function ContentEditor() {
                                             <ColorOverride label="Surface" value={form.themeOverride.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} onReset={() => resetThemeKey("surfaceColor")} />
                                         </div>
                                     </div>
+
                                     <div className="space-y-3">
                                         <Label className="text-xs font-semibold">Typography</Label>
                                         <div className="space-y-2">
@@ -346,7 +388,7 @@ export default function ContentEditor() {
                                     </div>
                                 </div>
 
-                                {/* SEO */}
+                                {/* 2. SEO SECTION */}
                                 <div className="space-y-4">
                                     <h4 className="text-sm font-semibold border-b pb-1">SEO</h4>
                                     <div className="space-y-2">
@@ -380,6 +422,7 @@ export default function ContentEditor() {
             <main className="flex-1 flex flex-col min-h-0">
                 <div className="flex-1 overflow-y-auto">
                     <div className="max-w-4xl mx-auto w-full p-8 pb-32">
+                        {/* Title & Slug Inputs */}
                         <div className="space-y-6 mb-8">
                             <div className="space-y-2">
                                 <Label className="text-muted-foreground">Page Title</Label>
@@ -401,9 +444,10 @@ export default function ContentEditor() {
                             </div>
                         </div>
 
+                        {/* Editor */}
                         <BlockEditor
-                            key={id} // Force remount on ID change
-                            initialContent={serverState?.blocks} // Pass CLEAN blocks initially
+                            key={id}
+                            initialContent={serverState?.blocks}
                             onChange={(newBlocks) => update("blocks", newBlocks)}
                         />
                     </div>
