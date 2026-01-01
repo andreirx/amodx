@@ -142,12 +142,19 @@ export const handler = async (
 
     try {
         const payload = await verifier.verify(token);
+
+        // FIX: Read custom attributes from the token payload
+        // Cognito stores custom attributes as "custom:role"
+        const role = (payload as any)["custom:role"] || "EDITOR";
+        const tenantId = (payload as any)["custom:tenantId"] || "";
+
         return {
             isAuthorized: true,
             context: {
                 sub: payload.sub,
                 email: (payload as any).email,
-                role: "USER"
+                role: role,
+                tenantId: tenantId
             }
         };
     } catch (err) {

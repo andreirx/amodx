@@ -27,15 +27,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
     // Result is ContentItem
     const content = result as ContentItem;
+    // Construct absolute URL
+    const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
 
     return {
         title: content.seoTitle || content.title || config.name,
         description: content.seoDescription,
+        // NEW: Explicit Base for relative assets
+        metadataBase: new URL(`https://${config.domain}`),
         openGraph: {
             title: content.seoTitle || content.title,
             description: content.seoDescription,
-            images: content.featuredImage ? [{ url: content.featuredImage }] : [],
+            url: canonicalUrl, // <--- Ahrefs needs this
+            type: 'website',   // <--- And this
+            images: content.featuredImage
+                ? [{ url: content.featuredImage }]
+                : (config.logo ? [{ url: config.logo }] : []), // Fallback to logo
             siteName: config.name,
+        },
+        alternates: {
+            canonical: canonicalUrl,
         }
     };
 }

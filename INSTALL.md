@@ -66,13 +66,20 @@ npm run post-deploy
 Since public signup is disabled for Admins, you must create the first user via AWS CLI.
 
 1.  Find your `UserPoolId` in `admin/.env.local`.
-2.  Run this command:
+2.  Run this command to create the user:
     ```bash
     aws cognito-idp admin-create-user \
       --user-pool-id <YOUR_USER_POOL_ID> \
       --username admin@youragency.com \
       --temporary-password ChangeMe123! \
       --message-action SUPPRESS
+    ```
+3.  Promote to Global Admin: (Required to access the Users/Team page):
+    ```bash
+    aws cognito-idp admin-update-user-attributes \
+    --user-pool-id <YOUR_USER_POOL_ID> \
+    --username admin@youragency.com \
+    --user-attributes Name="custom:role",Value="GLOBAL_ADMIN" Name="custom:tenantId",Value="GLOBAL"
     ```
 
 You can now log in at the **Admin URL** (printed in the deploy output).

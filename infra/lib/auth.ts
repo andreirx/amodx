@@ -28,12 +28,20 @@ export class AmodxAuth extends Construct {
             signInAliases: { email: true },
             autoVerify: { email: true },
             passwordPolicy: { minLength: 8, requireSymbols: false },
+            customAttributes: {
+                'role': new cognito.StringAttribute({ mutable: true }),
+                'tenantId': new cognito.StringAttribute({ mutable: true }),
+            },
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
 
         this.adminClient = this.adminPool.addClient('AmodxAdminClient', {
             userPoolClientName: `amodx-admin-client${suffix}`,
             generateSecret: false,
-            authFlows: { userSrp: true },
+            authFlows: {
+                userSrp: true,
+                custom: true,
+            },
         });
 
         // ==========================================

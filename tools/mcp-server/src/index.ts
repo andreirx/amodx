@@ -345,6 +345,18 @@ const BLOCK_SCHEMAS = {
         },
         notes: "All rows must have the same number of cells as there are headers. Empty cells should use empty string ('')."
     },
+    html: {
+        description: "Raw HTML embed code. Use for Tweets, YouTube, Google Maps, or custom forms.",
+        attrs: {
+            content: "string (The raw HTML/JS code)"
+        },
+        example: {
+            type: "html",
+            attrs: {
+                content: "<iframe src='...' width='100%'></iframe>"
+            }
+        }
+    },
     paragraph: {
         description: "Standard text paragraph. Use for body content.",
         content: "string (the text content)"
@@ -476,6 +488,76 @@ server.tool("list_content",
     }
 );
 
+// ... imports and existing tools ...
+
+// 1. READ PAGE (Essential for editing context)
+server.tool("read_page",
+    {
+        tenant_id: z.string(),
+        page_id: z.string().describe("The Node ID of the page (from list_content)")
+    },
+    async ({ tenant_id, page_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content/${page_id}`, {
+                headers: getHeaders(tenant_id)
+            });
+            // We return the raw JSON so Claude can copy/paste existing blocks to modify them
+            return {
+                content: [{
+                    type: "text",
+                    text: JSON.stringify(response.data, null, 2)
+                }]
+            };
+        } catch (error: any) {
+            return {
+                content: [{ type: "text", text: `Error: ${error.message}` }],
+                isError: true
+            };
+        }
+    }
+);
+
+// 2. UPDATE PAGE (The "God Mode" Editor)
+server.tool("update_page",
+    {
+        tenant_id: z.string(),
+        page_id: z.string(),
+        title: z.string().optional(),
+        slug: z.string().optional(),
+        status: z.enum(["Draft", "Published", "Archived"]).optional(),
+        // This is the magic field. Claude sends the full array here.
+        blocks: z.string().optional().describe("Full JSON array of blocks. REPLACES existing content. Use read_page first to get current blocks, then modify/reorder/add/delete as needed."),
+        seo_title: z.string().optional(),
+        seo_description: z.string().optional()
+    },
+    async ({ tenant_id, page_id, title, slug, status, blocks, seo_title, seo_description }) => {
+        try {
+            const payload: any = {};
+            if (title) payload.title = title;
+            if (slug) payload.slug = slug;
+            if (status) payload.status = status;
+            if (seo_title) payload.seoTitle = seo_title;
+            if (seo_description) payload.seoDescription = seo_description;
+
+            if (blocks) {
+                try {
+                    payload.blocks = JSON.parse(blocks);
+                } catch (e) {
+                    return { content: [{ type: "text", text: "Error: blocks must be valid JSON string" }], isError: true };
+                }
+            }
+
+            const response = await axios.put(`${API_URL}/content/${page_id}`, payload, {
+                headers: getHeaders(tenant_id)
+            });
+
+            return { content: [{ type: "text", text: `✓ Updated page "${title || page_id}". New slug: ${response.data.slug || 'unchanged'}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
 server.tool("get_block_schemas", {}, async () => {
     return {
         content: [{
@@ -502,7 +584,8 @@ server.tool("add_block",
             "columns",
             "table",
             "paragraph",
-            "heading"
+            "heading",
+            "html"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
@@ -563,6 +646,67 @@ server.tool("create_page",
     }
 );
 
+// LIST PRODUCTS
+server.tool("list_products",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/products`, { headers: getHeaders(tenant_id) });
+            const summary = response.data.items.map((p: any) =>
+                `- ${p.title} (${p.price} ${p.currency}) [${p.status}] ID: ${p.id}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Products for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// CREATE PRODUCT
+server.tool("create_product",
+    {
+        tenant_id: z.string(),
+        title: z.string(),
+        price: z.string(),
+        description: z.string().describe("Plain text description"),
+        image_link: z.string().describe("URL of main image"),
+    },
+    async ({ tenant_id, title, price, description, image_link }) => {
+        try {
+            const payload = {
+                title,
+                price,
+                description,
+                imageLink: image_link,
+                status: "draft",
+                currency: "USD",
+                availability: "in_stock",
+                condition: "new"
+            };
+            const response = await axios.post(`${API_URL}/products`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Created product "${title}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// LIST ASSETS (Media)
+server.tool("list_assets",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/assets`, { headers: getHeaders(tenant_id) });
+            const summary = response.data.items.slice(0, 20).map((a: any) =>
+                `- [${a.fileType}] ${a.fileName}: ${a.publicUrl}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Recent Assets (Top 20) for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
 // ==========================================
 // 4. SCHEMA REFERENCE
 // ==========================================
@@ -578,12 +722,19 @@ ENTITIES:
 - Content: Pages with blocks (hero, pricing, table, etc)
 - Context: Strategy documents with tags (persona, Q1, etc)
 - Blocks: UI components that render on pages
+- Products: Sellable items that will appear on the site
+- Assets: Private files that can be offered in exchange for the visitor email
 
 WORKFLOW TO BUILD A PAGE:
 1. list_tenants → Get tenant_id
 2. list_content → Find existing pages or create_page
 3. get_block_schemas → See all available blocks
 4. add_block → Insert blocks with proper JSON attrs
+
+WORKFLOW TO EDIT A PAGE:
+1. list_content → Find the page_id
+2. read_page → Get the current JSON structure
+3. update_page → Send back the modified JSON (change order, fix typos, add blocks)
 
 CURRENT PLUGINS:
 ✓ Hero (3 styles: center, split, minimal)
@@ -598,6 +749,7 @@ CURRENT PLUGINS:
 ✓ Columns (2-4 column layouts)
 ✓ Table (data tables with headers)
 ✓ Paragraph & Heading (text blocks)
+✓ Custom HTML
 
 TIPS:
 - Always generate UUIDs for array items (plans, columns, rows, etc)

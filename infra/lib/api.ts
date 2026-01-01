@@ -531,6 +531,49 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('DeleteProductInt', deleteProductFunc),
         });
 
+        // --- USERS API (New) ---
+        const listUsersFunc = new nodejs.NodejsFunction(this, 'ListUsersFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/users/list.ts'),
+            handler: 'handler',
+            environment: {
+                USER_POOL_ID: props.userPoolId, // Pass the Pool ID
+            }
+        });
+
+        // Grant Cognito Permissions
+        listUsersFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['cognito-idp:ListUsers'],
+            resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
+        }));
+
+        this.httpApi.addRoutes({
+            path: '/users',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListUsersInt', listUsersFunc),
+        });
+
+        // Invite User
+        const inviteUserFunc = new nodejs.NodejsFunction(this, 'InviteUserFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/users/invite.ts'),
+            handler: 'handler',
+            environment: {
+                USER_POOL_ID: props.userPoolId,
+            }
+        });
+
+        inviteUserFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['cognito-idp:AdminCreateUser'],
+            resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
+        }));
+
+        this.httpApi.addRoutes({
+            path: '/users',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('InviteUserInt', inviteUserFunc),
+        });
+
         // NEW: Grant permissions to all API functions to PutEvents
         // This iterates through all children and adds permission if it's a Function
         this.node.children.forEach(child => {
