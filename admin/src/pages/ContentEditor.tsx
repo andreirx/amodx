@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { MediaPicker } from "@/components/MediaPicker";
 
 import { THEME_PRESETS } from "@amodx/shared";
 
@@ -98,6 +99,7 @@ const DEFAULT_STATE = {
 export default function ContentEditor() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
 
     // Store the CLEAN state (from server)
     const [serverState, setServerState] = useState<typeof DEFAULT_STATE | null>(null);
@@ -223,7 +225,7 @@ export default function ContentEditor() {
         }
     };
 
-    // --- NEW: Apply Preset ---
+    // --- Apply Preset ---
     const applyPreset = (presetName: string) => {
         const preset = THEME_PRESETS[presetName];
         if (preset) {
@@ -425,10 +427,31 @@ export default function ContentEditor() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Featured Image</Label>
-                                        <Input value={form.featuredImage} onChange={e => {
-                                            update("featuredImage", e.target.value);
-                                            setManualSeo(true);
-                                        }}/>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                value={form.featuredImage}
+                                                onChange={e => {
+                                                    update("featuredImage", e.target.value);
+                                                    setManualSeo(true);
+                                                }}
+                                                placeholder="https://..."
+                                            />
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => setMediaPickerOpen(true)}
+                                                title="Select from Library"
+                                            >
+                                                <Palette className="h-4 w-4"/> {/* Or ImageIcon */}
+                                            </Button>
+                                        </div>
+                                        {form.featuredImage && (
+                                            <div
+                                                className="mt-2 relative aspect-video rounded-md overflow-hidden border">
+                                                <img src={form.featuredImage} className="w-full h-full object-cover"
+                                                     alt="Featured"/>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Schema Override</Label>
@@ -493,6 +516,14 @@ export default function ContentEditor() {
                     </div>
                 </div>
             </main>
+            <MediaPicker
+                open={mediaPickerOpen}
+                onOpenChange={setMediaPickerOpen}
+                onSelect={(url) => {
+                    update("featuredImage", url);
+                    setManualSeo(true);
+                }}
+            />
         </div>
     );
 }

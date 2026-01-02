@@ -7,8 +7,6 @@ import { ContentItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 
-
-// Typed Handler
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 // Helper: Ensure slug format (lowercase, hyphens, leading slash)
@@ -19,18 +17,16 @@ const cleanSlug = (str: string) => {
 
 export const handler: AmodxHandler = async (event) => {
     try {
-        // 1. Get User Info from Authorizer
-        // This is guaranteed to exist because the Authorizer ran first
         const auth = event.requestContext.authorizer.lambda;
         const userId = auth.sub;
         const authorName = auth.email || "Robot";
-
-        // 2. Resolve Tenant
         const tenantId = event.headers['x-tenant-id'] || "DEMO";
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);
 
+        // 1. Validation
+        // We use the shared schema to validate types, but we will construct the Item manually below
         const input = ContentItemSchema.omit({
             id: true, createdAt: true, author: true, nodeId: true, version: true
         }).parse(body);
@@ -39,28 +35,55 @@ export const handler: AmodxHandler = async (event) => {
         const contentId = crypto.randomUUID();
         const now = new Date().toISOString();
 
-        // FIX: Prefer provided slug, otherwise derive from title
+        // 2. Slug Logic
+        // Prefer provided slug, otherwise derive from title
         const rawSlug = input.slug && input.slug.trim() ? input.slug : input.title;
         const slug = cleanSlug(rawSlug);
 
+        // 3. Construct Item Explicitly (Safety & Clarity)
+        const contentItem = {
+            PK: `TENANT#${tenantId}`,
+            SK: `CONTENT#${nodeId}#LATEST`,
+            id: contentId,
+            nodeId: nodeId,
+            slug: slug,
+            title: input.title,
+
+            // Core Logic
+            status: input.status,
+            blocks: input.blocks,
+            commentsMode: input.commentsMode,
+            accessPolicy: input.accessPolicy,
+
+            // SEO Metadata
+            seoTitle: input.seoTitle,
+            seoDescription: input.seoDescription,
+            seoKeywords: input.seoKeywords,
+            featuredImage: input.featuredImage,
+
+            // Design Overrides (Explicitly Mapped)
+            themeOverride: input.themeOverride || {},
+            hideNav: input.hideNav || false,
+            hideFooter: input.hideFooter || false,
+            hideSharing: input.hideSharing || false, // <--- Explicit
+            schemaType: input.schemaType || null,    // <--- Explicit
+
+            // System Metadata
+            version: 1,
+            createdAt: now,
+            updatedAt: now,
+            author: userId,
+            authorEmail: authorName,
+            Type: "Page",
+        };
+
+        // 4. Transaction
         await db.send(new TransactWriteCommand({
             TransactItems: [
                 {
                     Put: {
                         TableName: TABLE_NAME,
-                        Item: {
-                            PK: `TENANT#${tenantId}`,
-                            SK: `CONTENT#${nodeId}#LATEST`,
-                            ...input,
-                            id: contentId,
-                            nodeId: nodeId,
-                            slug: slug,
-                            version: 1,
-                            createdAt: now,
-                            author: userId,
-                            authorEmail: authorName,
-                            Type: "Page",
-                        }
+                        Item: contentItem
                     }
                 },
                 {
@@ -71,7 +94,7 @@ export const handler: AmodxHandler = async (event) => {
                             SK: `ROUTE#${slug}`,
                             TargetNode: `NODE#${nodeId}`,
                             Type: "Route",
-                            Domain: "localhost",
+                            Domain: "localhost", // Legacy field, can be ignored or updated
                             CreatedAt: now
                         },
                         ConditionExpression: "attribute_not_exists(SK)"
@@ -80,7 +103,6 @@ export const handler: AmodxHandler = async (event) => {
             ]
         }));
 
-        // Non-blocking (or awaited, it's fast)
         await publishAudit({
             tenantId,
             actorId: userId,
@@ -88,7 +110,6 @@ export const handler: AmodxHandler = async (event) => {
             details: { title: input.title, slug },
             ip: event.requestContext.http.sourceIp
         });
-
 
         return {
             statusCode: 201,

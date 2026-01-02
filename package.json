@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
+    "setup": "tsx scripts/setup.ts",
     "setup-config": "tsx scripts/setup-config.ts",
     "manage-domains": "tsx scripts/manage-domains.ts",
     "post-deploy": "npx tsx scripts/post-deploy.ts",
@@ -29,6 +30,7 @@
     "@aws-sdk/client-sts": "^3.952.0",
     "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.1",
+    "prompts": "^2.4.2",
     "tsx": "^4.7.1"
   }
 }

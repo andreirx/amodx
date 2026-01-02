@@ -1,4 +1,4 @@
-# AMODX: The Agency Operating System
+# AMODX: Serverless CMS & Agency Operating System
 
 > **Turn your agency into a software company.**
 
@@ -16,7 +16,6 @@ It is currently used to host and manage https://amodx.net and https://blog.bijup
 This is not for everyone. It's for you if you are technically inclined, you appreciate precision and you want to iterate fast - and don't want headaches.
 
 ---
-
 
 ## ⚡ Why AMODX?
 
@@ -42,24 +41,23 @@ This is the killer feature. Because AMODX runs on an open protocol (MCP), you ca
 ### 1. Setup Your Environment
 If this is your first time using AWS tools (and even if it isn't), read the **[Installation Guide](INSTALL.md)**.
 
-### 2. Deploy Your Infrastructure
-Run one command to provision your entire agency backend.
+### 2. Zero-Config Deployment
+Run one command to provision your entire agency backend, configure the environment, and create your Admin account.
 
 ```bash
 npm install
-npm run setup-config # Generates your config file
-cd infra
-npx cdk deploy
+npm run setup
 ```
 
-*The terminal will output your **Admin URL**. Save this.*
+The interactive wizard will:
+1.  Verify your AWS Identity.
+2.  Generate your Configuration.
+3.  Deploy the Infrastructure (CloudFormation).
+4.  Create and Promote your Global Admin User.
 
-### 3. Access Your Command Center
-1.  Open the **Admin URL**.
-2.  Log in (First user created via AWS Console - see the **[AWS Installation Guide](INSTALL.md)**).
-3.  **Create your first Client Site** via the Sidebar.
+*The terminal will output your **Admin URL** and login credentials.*
 
-### 4. Connect With Claude Desktop
+### 3. Connect With Claude Desktop
 To enable the AI capabilities:
 1.  Get your Master API Key from AWS Secrets Manager (created during deploy).
 2.  Run the setup script:
@@ -69,7 +67,7 @@ To enable the AI capabilities:
     npm run setup
     ```
 
-### 5. Running a Business
+### 4. Running a Business
 Read the **[Agency Operations Manual](AGENCY-MANAGEMENT.md)** for details on:
 *   Connecting Custom Domains (e.g., `client.com`).
 *   Managing SSL Certificates.

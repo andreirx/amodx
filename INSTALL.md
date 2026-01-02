@@ -35,54 +35,40 @@ node -v
 
 ---
 
-## 3. Bootstrap CDK (One-Time)
+## 3. Configure Email (AWS SES)
 
-The AWS CDK needs a dedicated S3 bucket to store deployment artifacts.
+AMODX uses **AWS SES (Simple Email Service)** to send login invites, lead magnet deliveries, and notifications.
 
-```bash
-# Replace <ACCOUNT_ID> and <REGION>
-npx cdk bootstrap aws://<ACCOUNT_ID>/<REGION>
-```
+1.  Go to **AWS Console** -> **Amazon SES**.
+2.  Go to **Identities** -> **Create Identity**.
+3.  Select **Email Address** and enter the address you want emails to come *from* (e.g., `admin@youragency.com`).
+4.  Check your inbox and click the verification link sent by AWS.
+5.  *Note:* Until you request "Production Access" from AWS support, you can only send emails to *verified addresses* (i.e., your own email). This is fine for testing.
 
 ---
 
-## 4. Deployment & Bootstrap
+## 4. Zero-Config Deployment
 
-### A. Deploy Infrastructure
-This provisions the Database, API, Auth, and S3 Buckets.
-```bash
-cd infra
-npx cdk deploy
-```
+We provide an interactive installer that handles Bootstrapping, Config Generation, Deployment, and User Creation in one go.
 
-### B. Configure Local Environment (Critical)
-We use a script to pull the API URLs, Secrets, and IDs from AWS and write them to your local `.env` files.
 ```bash
 # Run from root
-npm run post-deploy
+npm install
+npm run setup
 ```
 
-### C. Create the First Admin
-Since public signup is disabled for Admins, you must create the first user via AWS CLI.
+**The script will ask for:**
+1.  **Stack Name:** (Default: `AmodxStack`)
+2.  **Root Domain:** (e.g. `amodx.net` - leave empty if you don't have one yet).
+3.  **SES Email:** The email you verified in Step 3.
+4.  **Admin User:** The email/password for your super-admin account.
 
-1.  Find your `UserPoolId` in `admin/.env.local`.
-2.  Run this command to create the user:
-    ```bash
-    aws cognito-idp admin-create-user \
-      --user-pool-id <YOUR_USER_POOL_ID> \
-      --username admin@youragency.com \
-      --temporary-password ChangeMe123! \
-      --message-action SUPPRESS
-    ```
-3.  Promote to Global Admin: (Required to access the Users/Team page):
-    ```bash
-    aws cognito-idp admin-update-user-attributes \
-    --user-pool-id <YOUR_USER_POOL_ID> \
-    --username admin@youragency.com \
-    --user-attributes Name="custom:role",Value="GLOBAL_ADMIN" Name="custom:tenantId",Value="GLOBAL"
-    ```
-
-You can now log in at the **Admin URL** (printed in the deploy output).
+**What happens automatically:**
+*   `amodx.config.json` is created.
+*   AWS CDK is bootstrapped (if needed).
+*   Infrastructure is deployed to the Cloud.
+*   Local `.env` files are synced with Cloud outputs.
+*   Your Admin User is created in Cognito and **promoted to Global Admin** (giving you access to the Team & Users page).
 
 ---
 
@@ -94,3 +80,5 @@ cd tools/mcp-server
 npm run build
 npm run setup
 ```
+
+**Restart Claude Desktop** after running this to load the new configuration.

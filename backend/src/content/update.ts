@@ -3,7 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, TransactWriteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
-import { z } from "zod"; // Import Zod directly
+import { z } from "zod";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -26,6 +26,8 @@ const StrictUpdateSchema = z.object({
     themeOverride: z.any().optional(),
     hideNav: z.boolean().optional(),
     hideFooter: z.boolean().optional(),
+    hideSharing: z.boolean().optional(),
+    schemaType: z.string().optional(),
 });
 
 export const handler: AmodxHandler = async (event) => {
@@ -64,7 +66,7 @@ export const handler: AmodxHandler = async (event) => {
         // If input.blocks is undefined, use current.blocks.
         const updateValues = {
             ":t": input.title ?? current.title,
-            ":b": input.blocks ?? current.blocks, // <--- SAFETY
+            ":b": input.blocks ?? current.blocks,
             ":s": input.status ?? current.status,
             ":cm": input.commentsMode ?? current.commentsMode ?? "Hidden",
 
@@ -76,16 +78,18 @@ export const handler: AmodxHandler = async (event) => {
             ":to": input.themeOverride ?? current.themeOverride ?? {},
             ":hn": input.hideNav ?? current.hideNav ?? false,
             ":hf": input.hideFooter ?? current.hideFooter ?? false,
+            ":hs": input.hideSharing ?? current.hideSharing ?? false,
+            ":sch": input.schemaType ?? current.schemaType ?? null,
 
             ":u": timestamp,
             ":ub": userId
         };
 
-        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, themeOverride = :to, hideNav = :hn, hideFooter = :hf, updatedAt = :u, updatedBy = :ub";
+        // Add to Update Expression
+        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, themeOverride = :to, hideNav = :hn, hideFooter = :hf, hideSharing = :hs, schemaType = :sch, updatedAt = :u, updatedBy = :ub";
 
         if (slugChanged) {
-            // ... (TransactWriteCommand logic remains identical to previous version)
-            // Copy logic from previous step or repo, ensuring Update uses updateValues
+            // ... (TransactWrite logic - keep existing) ...
             await db.send(new TransactWriteCommand({
                 TransactItems: [
                     {
