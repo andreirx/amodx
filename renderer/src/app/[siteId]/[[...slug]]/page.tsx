@@ -6,6 +6,8 @@ import { ContentItem } from "@amodx/shared";
 import Link from "next/link"; // For the Login Button
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
+import { SocialShare } from "@/components/SocialShare";
+import Script from "next/script";
 
 export const revalidate = 3600;
 
@@ -82,6 +84,62 @@ export default async function Page({ params, searchParams }: Props) {
     const policy = content.accessPolicy || { type: 'Public' };
     const isPublic = policy.type === 'Public';
 
+    // --- SCHEMA GENERATOR ---
+    const globalSchemaType = config.schemaType || "Organization";
+    const pageSchemaType = content.schemaType; // might be undefined
+
+    // 1. Determine the Entity Type
+    // If it's the homepage ('/'), we use the Global Type (e.g. SoftwareApplication)
+    // If it's an internal page, we default to WebPage unless overridden (e.g. Article)
+    const isHome = slugPath === '/';
+    const effectiveType = pageSchemaType || (isHome ? globalSchemaType : 'WebPage');
+
+    const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
+
+    let jsonLd: any = {
+        "@context": "https://schema.org",
+        "@type": effectiveType,
+        "name": content.seoTitle || content.title || config.name,
+        "description": content.seoDescription || config.description,
+        "url": canonicalUrl,
+    };
+
+    // 2. Specific Enhancements based on Type
+    if (effectiveType === 'SoftwareApplication') {
+        jsonLd = {
+            ...jsonLd,
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Cloud/Web",
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+            }
+        };
+    } else if (effectiveType === 'Article') {
+        jsonLd = {
+            ...jsonLd,
+            "headline": content.title,
+            "image": content.featuredImage ? [content.featuredImage] : [],
+            "datePublished": content.createdAt,
+            "dateModified": content.updatedAt || content.createdAt,
+            "author": {
+                "@type": "Person",
+                "name": content.author || config.name
+            }
+        };
+    } else if (effectiveType === 'Organization' || effectiveType === 'LocalBusiness') {
+        jsonLd = {
+            ...jsonLd,
+            "logo": config.logo,
+            "contactPoint": config.integrations?.contactEmail ? {
+                "@type": "ContactPoint",
+                "email": config.integrations.contactEmail,
+                "contactType": "customer service"
+            } : undefined
+        };
+    }
+
     // TODO: Connect to NextAuth session here
     const isAuthenticated = false; // Mock: Assume user is anon for now
     const hasAccess = isPublic || isAuthenticated;
@@ -132,6 +190,12 @@ export default async function Page({ params, searchParams }: Props) {
 
     return (
         <main className="max-w-4xl mx-auto py-12 px-6 relative">
+            {/* SCHEMA INJECTION */}
+            <Script
+                id="json-ld-schema"
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
 
             {/* A. Apply Color Overrides (if any) */}
             {hasThemeOverride && (
@@ -161,6 +225,8 @@ export default async function Page({ params, searchParams }: Props) {
                     {content.title}
                 </h1>
             )}
+
+            {!content.hideSharing && <SocialShare title={content.title} />}
 
             <RenderBlocks blocks={content.blocks} />
 

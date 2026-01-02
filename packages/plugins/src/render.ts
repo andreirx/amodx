@@ -11,6 +11,7 @@ import {TestimonialsRender} from "./testimonials/TestimonialsRender";
 import { ColumnsRender } from './columns/ColumnsRender';
 import { TableRender } from './table/TableRender';
 import { HtmlRender } from './html/HtmlRender';
+import {FaqRender} from "./faq/FaqRender";
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -25,4 +26,5 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'columns': ColumnsRender,
     'table': TableRender,
     'html': HtmlRender,
+    'faq': FaqRender
 };

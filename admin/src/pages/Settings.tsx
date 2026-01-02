@@ -12,6 +12,7 @@ import { Plus, Trash2, Upload } from "lucide-react";
 import { ShieldCheck } from "lucide-react";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
 import { THEME_PRESETS } from "@amodx/shared";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
@@ -248,6 +249,27 @@ export default function SettingsPage() {
                                         />
                                     </div>
 
+                                    <div className="space-y-2">
+                                        <Label>SEO Entity Type (Schema.org)</Label>
+                                        <Select
+                                            value={config.schemaType || "Organization"}
+                                            onValueChange={v => setConfig({...config, schemaType: v as any})}
+                                        >
+                                            <SelectTrigger><SelectValue/></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Organization">Organization (Standard)</SelectItem>
+                                                <SelectItem value="Corporation">Corporation</SelectItem>
+                                                <SelectItem value="LocalBusiness">Local Business</SelectItem>
+                                                <SelectItem value="SoftwareApplication">Software Application
+                                                    (SaaS)</SelectItem>
+                                                <SelectItem value="Person">Person (Portfolio)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-muted-foreground">
+                                            Defines what this site "is" to Google.
+                                            Use 'SoftwareApplication' for AMODX.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                             <div className="space-y-2">

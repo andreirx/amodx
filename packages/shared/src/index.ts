@@ -78,6 +78,17 @@ export const ThemeSchema = z.object({
 
 export const CommentsMode = z.enum(["Enabled", "Locked", "Hidden"]); // Locked = Read Only
 
+// New Enum for Schema Types
+export const SchemaType = z.enum([
+    "Organization",
+    "Corporation",
+    "LocalBusiness",
+    "SoftwareApplication",
+    "Person",
+    "Article",
+    "WebPage"
+]);
+
 export const ContentItemSchema = z.object({
     id: z.string(),
     nodeId: z.string(),
@@ -96,10 +107,14 @@ export const ContentItemSchema = z.object({
     // comments default off
     commentsMode: CommentsMode.default("Hidden"),
 
-    // LANDING PAGE OVERRIDES (NEW)
+    // Page-level Override
+    schemaType: SchemaType.optional(), // e.g., Homepage might be SoftwareApplication, Blog might be Article
+
+    // PAGE OVERRIDES
     themeOverride: ThemeSchema.partial().optional(), // Allow partial overrides
     hideNav: z.boolean().default(false),
     hideFooter: z.boolean().default(false),
+    hideSharing: z.boolean().default(false),
 
     // THE MEAT
     blocks: z.array(z.any()).default([]),
@@ -260,13 +275,16 @@ export const TenantConfigSchema = z.object({
         enabled: true
     }),
 
-    // NEW: Assets & Nav
+    // Global Schema Settings
+    schemaType: SchemaType.default("Organization"),
+
+    // Assets & Nav
     logo: z.string().optional(),
     icon: z.string().optional(), // Favicon
     navLinks: z.array(LinkSchema).default([]),
     footerLinks: z.array(LinkSchema).default([]),
 
-    // THE NEW STATE MACHINE
+    // DRAFT-LIVE STATE MACHINE
     status: TenantStatus.default("LIVE"),
 
     plan: z.enum(["Free", "Pro", "Agency"]),

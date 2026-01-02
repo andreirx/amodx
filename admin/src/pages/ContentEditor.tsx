@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 import { THEME_PRESETS } from "@amodx/shared";
 
-// ... [Keep extractText, findImage, ColorOverride helpers EXACTLY AS BEFORE] ...
 const extractText = (blocks: any[]): string => {
     let text = "";
     const traverse = (node: any) => {
@@ -91,7 +90,9 @@ const DEFAULT_STATE = {
     featuredImage: "",
     hideNav: false,
     hideFooter: false,
-    themeOverride: {} as Record<string, string>
+    hideSharing: false,
+    themeOverride: {} as Record<string, string>,
+    schemaType: undefined as string | undefined
 };
 
 export default function ContentEditor() {
@@ -151,7 +152,9 @@ export default function ContentEditor() {
                 featuredImage: data.featuredImage || "",
                 hideNav: data.hideNav || false,
                 hideFooter: data.hideFooter || false,
-                themeOverride: data.themeOverride || {}
+                hideSharing: data.hideSharing || false,
+                themeOverride: data.themeOverride || {},
+                schemaType: data.schemaType || undefined
             };
             setForm(state);
             setServerState(state);
@@ -216,7 +219,7 @@ export default function ContentEditor() {
 
     const resetAllDesign = () => {
         if (confirm("Remove all design overrides?")) {
-            setForm(prev => ({ ...prev, themeOverride: {}, hideNav: false, hideFooter: false }));
+            setForm(prev => ({ ...prev, themeOverride: {}, hideNav: false, hideFooter: false, hideSharing: false }));
         }
     };
 
@@ -292,7 +295,7 @@ export default function ContentEditor() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* SEO SHEET */}
+                    {/* Design & SEO SHEET */}
                     <Sheet>
                         <SheetTrigger asChild>
                             <Button variant="outline" size="sm">
@@ -309,7 +312,7 @@ export default function ContentEditor() {
                                         <h4 className="text-sm font-semibold flex items-center gap-2">
                                             <Palette className="w-4 h-4 text-primary"/> Design
                                         </h4>
-                                        {(Object.keys(form.themeOverride).length > 0 || form.hideNav || form.hideFooter) && (
+                                        {(Object.keys(form.themeOverride).length > 0 || form.hideNav || form.hideFooter || form.hideSharing) && (
                                             <Button variant="ghost" size="sm" onClick={resetAllDesign} className="h-6 text-[10px] text-red-500">
                                                 <RotateCcw className="w-3 h-3 mr-1"/> Reset
                                             </Button>
@@ -360,19 +363,29 @@ export default function ContentEditor() {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <label className="flex items-center gap-2 cursor-pointer text-sm">
-                                            <input type="checkbox" checked={form.hideNav} onChange={e => update("hideNav", e.target.checked)} className="rounded" />
+                                            <input type="checkbox" checked={form.hideNav}
+                                                   onChange={e => update("hideNav", e.target.checked)}
+                                                   className="rounded"/>
                                             Hide Navbar
                                         </label>
                                         <label className="flex items-center gap-2 cursor-pointer text-sm">
-                                            <input type="checkbox" checked={form.hideFooter} onChange={e => update("hideFooter", e.target.checked)} className="rounded" />
+                                            <input type="checkbox" checked={form.hideFooter}
+                                                   onChange={e => update("hideFooter", e.target.checked)}
+                                                   className="rounded"/>
                                             Hide Footer
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                            <input type="checkbox" checked={form.hideSharing}
+                                                   onChange={e => update("hideSharing", e.target.checked)}
+                                                   className="rounded"/>
+                                            Hide Share Buttons
                                         </label>
                                     </div>
 
                                     <div className="space-y-3">
                                         <Label className="text-xs font-semibold">Colors</Label>
                                         <div className="grid grid-cols-2 gap-3">
-                                            <ColorOverride label="Primary" value={form.themeOverride.primaryColor} onChange={v => updateTheme("primaryColor", v)} onReset={() => resetThemeKey("primaryColor")} />
+                                        <ColorOverride label="Primary" value={form.themeOverride.primaryColor} onChange={v => updateTheme("primaryColor", v)} onReset={() => resetThemeKey("primaryColor")} />
                                             <ColorOverride label="Background" value={form.themeOverride.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} onReset={() => resetThemeKey("backgroundColor")} />
                                             <ColorOverride label="Text" value={form.themeOverride.textColor} onChange={v => updateTheme("textColor", v)} onReset={() => resetThemeKey("textColor")} />
                                             <ColorOverride label="Surface" value={form.themeOverride.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} onReset={() => resetThemeKey("surfaceColor")} />
@@ -393,19 +406,46 @@ export default function ContentEditor() {
                                     <h4 className="text-sm font-semibold border-b pb-1">SEO</h4>
                                     <div className="space-y-2">
                                         <Label>Keywords</Label>
-                                        <Input value={form.seoKeywords} onChange={e => update("seoKeywords", e.target.value)} />
+                                        <Input value={form.seoKeywords}
+                                               onChange={e => update("seoKeywords", e.target.value)}/>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>SEO Title</Label>
-                                        <Input value={form.seoTitle} onChange={e => { update("seoTitle", e.target.value); setManualSeo(true); }} placeholder={form.title} />
+                                        <Input value={form.seoTitle} onChange={e => {
+                                            update("seoTitle", e.target.value);
+                                            setManualSeo(true);
+                                        }} placeholder={form.title}/>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Description</Label>
-                                        <Textarea value={form.seoDescription} onChange={e => { update("seoDescription", e.target.value); setManualSeo(true); }} rows={4} />
+                                        <Textarea value={form.seoDescription} onChange={e => {
+                                            update("seoDescription", e.target.value);
+                                            setManualSeo(true);
+                                        }} rows={4}/>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Featured Image</Label>
-                                        <Input value={form.featuredImage} onChange={e => { update("featuredImage", e.target.value); setManualSeo(true); }} />
+                                        <Input value={form.featuredImage} onChange={e => {
+                                            update("featuredImage", e.target.value);
+                                            setManualSeo(true);
+                                        }}/>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Schema Override</Label>
+                                        <Select
+                                            value={form.schemaType || "Default"}
+                                            onValueChange={v => update("schemaType", v === "Default" ? undefined : v)}
+                                        >
+                                            <SelectTrigger><SelectValue
+                                                placeholder="Default (Inherit)"/></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Default">Default (Inherit)</SelectItem>
+                                                <SelectItem value="WebPage">WebPage (Standard)</SelectItem>
+                                                <SelectItem value="Article">Article (Blog Post)</SelectItem>
+                                                <SelectItem value="SoftwareApplication">Software App
+                                                    (Landing)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
                             </div>
