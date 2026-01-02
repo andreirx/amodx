@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ArrowLeft, Save, Upload, Trash2, Plus } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
+import { FileBox } from "lucide-react";
 
 export default function ProductEditor() {
     const { id } = useParams();
@@ -33,6 +34,7 @@ export default function ProductEditor() {
         condition: "new",
         imageLink: "",
         additionalImageLinks: [] as string[],
+        resourceId: "",
         paymentLinkId: ""
     });
 
@@ -253,6 +255,30 @@ export default function ProductEditor() {
                                             <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleImageUpload(e, false)} />
                                         </div>
                                     </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Digital Delivery</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Resource ID (Optional)</Label>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            value={form.resourceId || ""}
+                                            onChange={e => setForm({...form, resourceId: e.target.value})}
+                                            placeholder="Paste ID from Resources"
+                                        />
+                                        <Button variant="outline" size="icon" onClick={() => window.open('/resources', '_blank')} title="Find Resource ID">
+                                            <FileBox className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        If set, the system will email a secure download link after purchase.
+                                    </p>
                                 </div>
                             </CardContent>
                         </Card>

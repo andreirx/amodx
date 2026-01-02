@@ -574,6 +574,34 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('InviteUserInt', inviteUserFunc),
         });
 
+        // --- WEBHOOKS ---
+        const paddleFunc = new nodejs.NodejsFunction(this, 'PaddleWebhookFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/webhooks/paddle.ts'),
+            handler: 'handler',
+            environment: {
+                // Pass dependencies
+                SES_FROM_EMAIL: props.sesEmail,
+                PRIVATE_BUCKET: props.privateBucket.bucketName
+            }
+        });
+
+        // Permissions
+        props.privateBucket.grantRead(paddleFunc); // To sign URLs
+        props.table.grantReadData(paddleFunc);     // To find product/resource
+
+        // Grant SES
+        paddleFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+            resources: ['*'],
+        }));
+
+        this.httpApi.addRoutes({
+            path: '/webhooks/paddle',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('PaddleInt', paddleFunc),
+        });
+
         // NEW: Grant permissions to all API functions to PutEvents
         // This iterates through all children and adds permission if it's a Function
         this.node.children.forEach(child => {

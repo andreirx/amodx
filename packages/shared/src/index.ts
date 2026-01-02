@@ -433,6 +433,9 @@ export const ProductSchema = z.object({
     // 6. Commerce Integration
     paymentLinkId: z.string().optional(),
 
+    // The Digital Asset to deliver
+    resourceId: z.string().optional(),
+
     createdAt: z.string(),
     updatedAt: z.string(),
 });

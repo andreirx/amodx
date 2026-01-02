@@ -4,7 +4,7 @@ import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, ShoppingBag, Edit, Trash2 } from "lucide-react";
+import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox } from "lucide-react"; // Import FileBox
 import { useNavigate } from "react-router-dom";
 
 export default function Products() {
@@ -81,7 +81,15 @@ export default function Products() {
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-col">
-                                            <span className="font-medium">{p.title}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium">{p.title}</span>
+                                                {/* NEW: Digital Product Indicator */}
+                                                {p.resourceId && (
+                                                    <span className="inline-flex items-center rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">
+                                                        <FileBox className="mr-1 h-3 w-3" /> Digital
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                                                 {p.category || "Uncategorized"}
                                             </span>
