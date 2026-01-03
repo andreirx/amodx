@@ -22,6 +22,8 @@ const StrictUpdateSchema = z.object({
     seoKeywords: z.string().optional(),
     featuredImage: z.string().optional(),
 
+    tags: z.array(z.string()).optional(),
+
     // Overrides
     themeOverride: z.any().optional(),
     hideNav: z.boolean().optional(),
@@ -75,6 +77,8 @@ export const handler: AmodxHandler = async (event) => {
             ":sk": input.seoKeywords ?? current.seoKeywords ?? null,
             ":fi": input.featuredImage ?? current.featuredImage ?? null,
 
+            ":tags": input.tags ?? current.tags ?? [],
+
             ":to": input.themeOverride ?? current.themeOverride ?? {},
             ":hn": input.hideNav ?? current.hideNav ?? false,
             ":hf": input.hideFooter ?? current.hideFooter ?? false,
@@ -86,7 +90,7 @@ export const handler: AmodxHandler = async (event) => {
         };
 
         // Add to Update Expression
-        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, themeOverride = :to, hideNav = :hn, hideFooter = :hf, hideSharing = :hs, schemaType = :sch, updatedAt = :u, updatedBy = :ub";
+        const updateExprBase = "SET title = :t, blocks = :b, tags = :tags,#s = :s, commentsMode = :cm, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, themeOverride = :to, hideNav = :hn, hideFooter = :hf, hideSharing = :hs, schemaType = :sch, updatedAt = :u, updatedBy = :ub";
 
         if (slugChanged) {
             // ... (TransactWrite logic - keep existing) ...

@@ -245,6 +245,15 @@ export default function ContentList() {
                                         </div>
                                         <div className="flex items-center gap-2 text-xs text-blue-800 ml-6">
                                             <span className="font-mono bg-muted/50 px-1 rounded">{item.slug}</span>
+                                            {item.tags && item.tags.length > 0 && (
+                                                <div className="flex gap-1">
+                                                    {item.tags.map(tag => (
+                                                        <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full font-medium">
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </TableCell>

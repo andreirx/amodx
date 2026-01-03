@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Save, ArrowLeft, Loader2, Palette, X, RotateCcw, Settings as SettingsIcon } from "lucide-react";
+import { Tag } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { MediaPicker } from "@/components/MediaPicker";
+import { TagInput } from "@/components/ui/tag-input";
 
 import { THEME_PRESETS } from "@amodx/shared";
 
@@ -89,6 +91,7 @@ const DEFAULT_STATE = {
     seoDescription: "",
     seoKeywords: "",
     featuredImage: "",
+    tags: [] as string[],
     hideNav: false,
     hideFooter: false,
     hideSharing: false,
@@ -110,7 +113,7 @@ export default function ContentEditor() {
     const [saving, setSaving] = useState(false);
     const [manualSeo, setManualSeo] = useState(false);
 
-    // ... [Keep isDirty, useBlocker, useEffects for BeforeUnload] ...
+    // dirty state management
     const isDirty = useMemo(() => {
         if (!serverState) return false;
         return JSON.stringify(serverState) !== JSON.stringify(form);
@@ -134,8 +137,30 @@ export default function ContentEditor() {
         ({ currentLocation, nextLocation }) => isDirty && currentLocation.pathname !== nextLocation.pathname
     );
 
-    // ... [Keep loadContent, save functions] ...
-    useEffect(() => { if (id) loadContent(id); }, [id]);
+    // Store all unique tags found in the system for autocomplete
+    const [availableTags, setAvailableTags] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (id) loadContent(id);
+        fetchAvailableTags();
+    }, [id]);
+
+    async function fetchAvailableTags() {
+        try {
+            // We fetch all content to derive tags.
+            // Optimization: Later, make a dedicated endpoint GET /tags
+            const res = await apiRequest("/content");
+            const allTags = new Set<string>();
+            res.items.forEach((item: any) => {
+                if (Array.isArray(item.tags)) {
+                    item.tags.forEach((t: string) => allTags.add(t));
+                }
+            });
+            setAvailableTags(Array.from(allTags).sort());
+        } catch (e) {
+            console.warn("Failed to fetch tags", e);
+        }
+    }
 
     async function loadContent(nodeId: string) {
         try {
@@ -152,6 +177,7 @@ export default function ContentEditor() {
                 seoDescription: data.seoDescription || "",
                 seoKeywords: data.seoKeywords || "",
                 featuredImage: data.featuredImage || "",
+                tags: data.tags || [],
                 hideNav: data.hideNav || false,
                 hideFooter: data.hideFooter || false,
                 hideSharing: data.hideSharing || false,
@@ -308,6 +334,17 @@ export default function ContentEditor() {
                             <SheetHeader><SheetTitle>Page Configuration</SheetTitle></SheetHeader>
                             <div className="space-y-6 py-6 overflow-y-auto h-full pb-20">
 
+                                <div className="space-y-2">
+                                    <Tag className="w-3 h-3" /><Label>Categorization</Label>
+                                    <TagInput
+                                        value={form.tags}
+                                        onChange={(tags) => update("tags", tags)}
+                                        availableTags={availableTags}
+                                        placeholder="e.g. Blog, Case Study"
+                                    />
+                                    <p className="text-[10px] text-muted-foreground">Used for filtering Post Grids.</p>
+                                </div>
+
                                 {/* 1. DESIGN OVERRIDES */}
                                 <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
                                     <div className="flex items-center justify-between border-b pb-2">
@@ -315,7 +352,8 @@ export default function ContentEditor() {
                                             <Palette className="w-4 h-4 text-primary"/> Design
                                         </h4>
                                         {(Object.keys(form.themeOverride).length > 0 || form.hideNav || form.hideFooter || form.hideSharing) && (
-                                            <Button variant="ghost" size="sm" onClick={resetAllDesign} className="h-6 text-[10px] text-red-500">
+                                            <Button variant="ghost" size="sm" onClick={resetAllDesign}
+                                                    className="h-6 text-[10px] text-red-500">
                                                 <RotateCcw className="w-3 h-3 mr-1"/> Reset
                                             </Button>
                                         )}
@@ -335,7 +373,7 @@ export default function ContentEditor() {
                                                 >
                                                     <div
                                                         className="w-2 h-2 rounded-full mr-2 border shrink-0"
-                                                        style={{ backgroundColor: THEME_PRESETS[key].primaryColor }}
+                                                        style={{backgroundColor: THEME_PRESETS[key].primaryColor}}
                                                     />
                                                     {key}
                                                 </Button>
@@ -343,7 +381,7 @@ export default function ContentEditor() {
                                         </div>
                                     </div>
 
-                                    <div className="h-px bg-border/50 my-2" />
+                                    <div className="h-px bg-border/50 my-2"/>
 
                                     {/* MODE SELECTOR */}
                                     <div className="space-y-2">
@@ -353,14 +391,15 @@ export default function ContentEditor() {
                                             onValueChange={v => updateTheme("mode", v)}
                                         >
                                             <SelectTrigger className="h-8 text-xs">
-                                                <SelectValue />
+                                                <SelectValue/>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="light">Light</SelectItem>
                                                 <SelectItem value="dark">Dark</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                        <p className="text-[10px] text-muted-foreground">Applies CSS class `.dark` if selected.</p>
+                                        <p className="text-[10px] text-muted-foreground">Applies CSS class `.dark` if
+                                            selected.</p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
@@ -387,18 +426,30 @@ export default function ContentEditor() {
                                     <div className="space-y-3">
                                         <Label className="text-xs font-semibold">Colors</Label>
                                         <div className="grid grid-cols-2 gap-3">
-                                        <ColorOverride label="Primary" value={form.themeOverride.primaryColor} onChange={v => updateTheme("primaryColor", v)} onReset={() => resetThemeKey("primaryColor")} />
-                                            <ColorOverride label="Background" value={form.themeOverride.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} onReset={() => resetThemeKey("backgroundColor")} />
-                                            <ColorOverride label="Text" value={form.themeOverride.textColor} onChange={v => updateTheme("textColor", v)} onReset={() => resetThemeKey("textColor")} />
-                                            <ColorOverride label="Surface" value={form.themeOverride.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} onReset={() => resetThemeKey("surfaceColor")} />
+                                            <ColorOverride label="Primary" value={form.themeOverride.primaryColor}
+                                                           onChange={v => updateTheme("primaryColor", v)}
+                                                           onReset={() => resetThemeKey("primaryColor")}/>
+                                            <ColorOverride label="Background" value={form.themeOverride.backgroundColor}
+                                                           onChange={v => updateTheme("backgroundColor", v)}
+                                                           onReset={() => resetThemeKey("backgroundColor")}/>
+                                            <ColorOverride label="Text" value={form.themeOverride.textColor}
+                                                           onChange={v => updateTheme("textColor", v)}
+                                                           onReset={() => resetThemeKey("textColor")}/>
+                                            <ColorOverride label="Surface" value={form.themeOverride.surfaceColor}
+                                                           onChange={v => updateTheme("surfaceColor", v)}
+                                                           onReset={() => resetThemeKey("surfaceColor")}/>
                                         </div>
                                     </div>
 
                                     <div className="space-y-3">
                                         <Label className="text-xs font-semibold">Typography</Label>
                                         <div className="space-y-2">
-                                            <Input className="h-8 text-xs" placeholder="Headings Font (e.g. Inter)" value={form.themeOverride.fontHeading || ""} onChange={e => updateTheme("fontHeading", e.target.value)} />
-                                            <Input className="h-8 text-xs" placeholder="Body Font (e.g. Lato)" value={form.themeOverride.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
+                                            <Input className="h-8 text-xs" placeholder="Headings Font (e.g. Inter)"
+                                                   value={form.themeOverride.fontHeading || ""}
+                                                   onChange={e => updateTheme("fontHeading", e.target.value)}/>
+                                            <Input className="h-8 text-xs" placeholder="Body Font (e.g. Lato)"
+                                                   value={form.themeOverride.fontBody || ""}
+                                                   onChange={e => updateTheme("fontBody", e.target.value)}/>
                                         </div>
                                     </div>
                                 </div>

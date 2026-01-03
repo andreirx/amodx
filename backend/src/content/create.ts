@@ -65,8 +65,8 @@ export const handler: AmodxHandler = async (event) => {
             themeOverride: input.themeOverride || {},
             hideNav: input.hideNav || false,
             hideFooter: input.hideFooter || false,
-            hideSharing: input.hideSharing || false, // <--- Explicit
-            schemaType: input.schemaType || null,    // <--- Explicit
+            hideSharing: input.hideSharing || false,
+            schemaType: input.schemaType || null,
 
             // System Metadata
             version: 1,

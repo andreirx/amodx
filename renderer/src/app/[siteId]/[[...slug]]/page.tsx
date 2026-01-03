@@ -228,7 +228,7 @@ export default async function Page({ params, searchParams }: Props) {
 
             {!content.hideSharing && <SocialShare title={content.title} />}
 
-            <RenderBlocks blocks={content.blocks} />
+            <RenderBlocks blocks={content.blocks} tenantId={config.id} />
 
             <CommentsSection pageId={content.nodeId} mode={content.commentsMode} />
         </main>

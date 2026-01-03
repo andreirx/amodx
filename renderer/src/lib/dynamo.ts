@@ -1,4 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { TenantConfig, ContentItem, Product } from "@amodx/shared";
 
@@ -125,7 +126,7 @@ export async function getContentBySlug(tenantId: string, slug: string): Promise<
     }
 }
 
-// 3. Fetch Product (NEW)
+// 3. Fetch Product
 export async function getProductById(tenantId: string, productId: string): Promise<Product | null> {
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return null;
@@ -145,5 +146,44 @@ export async function getProductById(tenantId: string, productId: string): Promi
     } catch (error) {
         console.error("DynamoDB Product Error:", error);
         return null;
+    }
+}
+
+export async function getPostsByTag(tenantId: string, tag: string, limit = 6) {
+    if (!process.env.TABLE_NAME) return [];
+
+    try {
+        // Query CONTENT items for this tenant
+        // Optimization: In V2, add a GSI for "Tags" to avoid Scan/Filter overhead
+        // For V1 (Small sites), we query all content and filter in memory or via FilterExpression
+
+        const params: any = {
+            TableName: process.env.TABLE_NAME,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "CONTENT#",
+                ":pub": "Published"
+            },
+            FilterExpression: "#s = :pub",
+            ExpressionAttributeNames: { "#s": "status" }
+        };
+
+        if (tag) {
+            params.FilterExpression += " AND contains(tags, :tag)";
+            params.ExpressionAttributeValues[":tag"] = tag;
+        }
+
+        const result = await docClient.send(new QueryCommand(params));
+        const items = result.Items || [];
+
+        // Sort: Newest First
+        items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        return items.slice(0, limit);
+
+    } catch (e) {
+        console.error("Failed to fetch posts", e);
+        return [];
     }
 }

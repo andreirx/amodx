@@ -357,6 +357,47 @@ const BLOCK_SCHEMAS = {
             }
         }
     },
+    faq: {
+        description: "Accordion list for Frequently Asked Questions. Good for SEO schema generation.",
+        attrs: {
+            headline: "string (e.g., 'Frequently Asked Questions')",
+            items: "array of Q&A objects (see example)"
+        },
+        faqItemStructure: {
+            id: "string (uuid)",
+            question: "string",
+            answer: "string"
+        },
+        example: {
+            type: "faq",
+            attrs: {
+                headline: "FAQ",
+                items: [
+                    { id: "uuid-1", question: "Is this free?", answer: "Yes." },
+                    { id: "uuid-2", question: "Can I cancel?", answer: "Anytime." }
+                ]
+            }
+        }
+    },
+    postGrid: {
+        description: "A dynamic grid that displays blog posts or pages matching a specific tag.",
+        attrs: {
+            headline: "string (e.g., 'Latest News')",
+            filterTag: "string (optional - if empty, shows all)",
+            limit: "number (default 6)",
+            showImages: "boolean (default true)",
+            columns: "'2' | '3' (default '3')"
+        },
+        example: {
+            type: "postGrid",
+            attrs: {
+                headline: "From the Blog",
+                filterTag: "news",
+                limit: 3,
+                columns: "3"
+            }
+        }
+    },
     paragraph: {
         description: "Standard text paragraph. Use for body content.",
         content: "string (the text content)"
@@ -585,7 +626,9 @@ server.tool("add_block",
             "table",
             "paragraph",
             "heading",
-            "html"
+            "html",
+            "faq",
+            "postGrid"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
@@ -656,6 +699,25 @@ server.tool("list_products",
                 `- ${p.title} (${p.price} ${p.currency}) [${p.status}] ID: ${p.id}`
             ).join("\n");
             return { content: [{ type: "text", text: `Products for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("list_tags",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content`, { headers: getHeaders(tenant_id) });
+            const allTags = new Set<string>();
+            (response.data.items || []).forEach((item: any) => {
+                if (Array.isArray(item.tags)) {
+                    item.tags.forEach((t: string) => allTags.add(t));
+                }
+            });
+            const sorted = Array.from(allTags).sort();
+            return { content: [{ type: "text", text: `Available Tags for ${tenant_id}:\n${sorted.join(", ")}` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
         }
@@ -750,6 +812,8 @@ CURRENT PLUGINS:
 ✓ Table (data tables with headers)
 ✓ Paragraph & Heading (text blocks)
 ✓ Custom HTML
+✓ FAQ (Accordion)
+✓ Post Grid (Dynamic Blog List)
 
 TIPS:
 - Always generate UUIDs for array items (plans, columns, rows, etc)

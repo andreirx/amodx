@@ -104,6 +104,9 @@ export const ContentItemSchema = z.object({
     seoKeywords: z.string().optional(),
     featuredImage: z.string().optional(),
 
+    // CATEGORIZATION
+    tags: z.array(z.string()).default([]),
+
     // comments default off
     commentsMode: CommentsMode.default("Hidden"),
 

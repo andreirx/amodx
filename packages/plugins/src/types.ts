@@ -13,5 +13,5 @@ export interface PluginDefinition {
     editorExtension: Node;
 
     // The Frontend React Component
-    renderComponent: React.FC<{ attrs: any }>;
+    renderComponent: React.FC<{ attrs: any; tenantId?: string }>;
 }

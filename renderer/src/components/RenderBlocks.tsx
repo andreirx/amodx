@@ -72,8 +72,8 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
     ...RENDER_MAP // Plugins
 };
 
-// SMART FIX: Transform blocks before rendering
-export function RenderBlocks({ blocks }: { blocks: any[] }) {
+// UPDATE: Accept tenantId prop
+export function RenderBlocks({ blocks, tenantId }: { blocks: any[], tenantId?: string }) {
     const { getUrl } = useTenantUrl();
 
     if (!blocks || !Array.isArray(blocks)) return null;
@@ -81,10 +81,15 @@ export function RenderBlocks({ blocks }: { blocks: any[] }) {
     return (
         <>
             {blocks.map((block, index) => {
-                const Component = CORE_COMPONENTS[block.type];
-                if (!Component) return null;
+                const Component = RENDER_MAP[block.type]; // e.g. PostGridRender
 
-                // CLONE attributes to inject fixed URLs
+                // Fallback for core types not in plugin map (paragraph, heading...)
+                const CoreComponent = (CORE_COMPONENTS as any)[block.type];
+                const FinalComponent = Component || CoreComponent;
+
+                if (!FinalComponent) return null;
+
+                // Clone attrs to inject fixed URLs
                 const newAttrs = { ...block.attrs };
 
                 // Auto-fix known link fields
@@ -99,7 +104,8 @@ export function RenderBlocks({ blocks }: { blocks: any[] }) {
                     }));
                 }
 
-                return <Component key={index} {...block} attrs={newAttrs} />;
+                // PASS TENANT ID DOWN
+                return <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} />;
             })}
         </>
     );

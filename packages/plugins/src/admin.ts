@@ -12,6 +12,7 @@ import { ColumnsPlugin } from './columns';
 import { TablePlugin } from './table';
 import { HtmlPlugin } from './html';
 import {FaqPlugin} from "./faq";
+import {PostGridPlugin} from "./post-grid";
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -26,7 +27,8 @@ const REGISTRY: PluginDefinition[] = [
     ColumnsPlugin,
     TablePlugin,
     HtmlPlugin,
-    FaqPlugin
+    FaqPlugin,
+    PostGridPlugin
 ];
 
 
