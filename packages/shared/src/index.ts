@@ -72,6 +72,18 @@ export const ThemeSchema = z.object({
     radius: z.string().default("0.5rem"),
 });
 
+// Saved Theme Entity (Agency-wide assets)
+export const SavedThemeSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    theme: ThemeSchema, // The actual style values
+    createdBy: z.string(),
+    createdAt: z.string()
+});
+
+export type SavedTheme = z.infer<typeof SavedThemeSchema>;
+
+
 // ==========================================
 // 4. CONTENT DATA (The Payload)
 // ==========================================
@@ -115,6 +127,7 @@ export const ContentItemSchema = z.object({
 
     // PAGE OVERRIDES
     themeOverride: ThemeSchema.partial().optional(), // Allow partial overrides
+    darkThemeOverride: ThemeSchema.partial().optional(),
     hideNav: z.boolean().default(false),
     hideFooter: z.boolean().default(false),
     hideSharing: z.boolean().default(false),
@@ -312,6 +325,8 @@ export const TenantConfigSchema = z.object({
         fontBody: "Lato",
         radius: "0.5rem"
     }),
+    darkTheme: ThemeSchema.optional(),
+
     integrations: IntegrationsSchema.default({
         googleAnalyticsId: "",
         googleSearchConsoleId: "",

@@ -6,13 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import {Loader2, ExternalLink, Palette, Type, MousePointerClick, AlertCircle, Mail, Key} from "lucide-react";
+import {
+    Loader2,
+    ExternalLink,
+    Palette,
+    Type,
+    MousePointerClick,
+    AlertCircle,
+    Mail,
+    Key,
+    Sun,
+    Moon,
+    Save
+} from "lucide-react";
 import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload } from "lucide-react";
 import { ShieldCheck } from "lucide-react";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
 import { THEME_PRESETS } from "@amodx/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
 
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
@@ -27,6 +42,12 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Theme Engine State
+    const [activeTab, setActiveTab] = useState<'light' | 'dark'>('light');
+    const [customThemes, setCustomThemes] = useState<any[]>([]);
+    const [isSaveThemeOpen, setIsSaveThemeOpen] = useState(false);
+    const [newThemeName, setNewThemeName] = useState("");
 
     // Get the URL dynamically so it works in Prod and Local
     const rendererUrl = getRendererUrl();
@@ -51,6 +72,15 @@ export default function SettingsPage() {
         }
     }
 
+    async function loadCustomThemes() {
+        try {
+            const res = await apiRequest("/themes");
+            setCustomThemes(res.items || []);
+        } catch (e) {
+            console.warn("Failed to load themes", e);
+        }
+    }
+
     async function save() {
         setSaving(true);
         setError(null);
@@ -65,6 +95,29 @@ export default function SettingsPage() {
         } finally {
             setSaving(false);
         }
+    }
+
+    async function saveCurrentTheme() {
+        if (!newThemeName) return;
+        try {
+            // Save whichever tab is active
+            const themeToSave = activeTab === 'light' ? config.theme : config.darkTheme;
+            await apiRequest("/themes", {
+                method: "POST",
+                body: JSON.stringify({ name: newThemeName, theme: themeToSave })
+            });
+            setIsSaveThemeOpen(false);
+            setNewThemeName("");
+            loadCustomThemes();
+        } catch (e: any) {
+            alert(e.message);
+        }
+    }
+
+    async function deleteTheme(id: string) {
+        if (!confirm("Delete this theme?")) return;
+        await apiRequest(`/themes/${id}`, { method: "DELETE" });
+        loadCustomThemes();
     }
 
     // Helper for array fields (Nav Links)
@@ -84,11 +137,43 @@ export default function SettingsPage() {
         setConfig({ ...config, [field]: current });
     };
 
+// Smart Theme Updater (Targeting correct tab)
     const updateTheme = (key: string, val: string) => {
-        setConfig(prev => ({
-            ...prev,
-            theme: { ...prev.theme!, [key]: val }
-        }));
+        if (activeTab === 'light') {
+            setConfig(prev => {
+                const currentTheme = prev.theme || {};
+                return {
+                    ...prev,
+                    theme: { ...currentTheme, [key]: val } as any // Force cast to satisfy Zod/TS mismatch
+                };
+            });
+        } else {
+            setConfig(prev => {
+                const currentTheme = prev.theme || {};
+                const currentDark = prev.darkTheme || { ...currentTheme };
+                return {
+                    ...prev,
+                    darkTheme: { ...currentDark, [key]: val } as any
+                };
+            });
+        }
+    };
+
+    const applyPreset = (presetTheme: any) => {
+        if (activeTab === 'light') {
+            setConfig(prev => ({
+                ...prev,
+                theme: { ...(prev.theme || {}), ...presetTheme } as any
+            }));
+        } else {
+            setConfig(prev => {
+                const base = prev.darkTheme || prev.theme || {};
+                return {
+                    ...prev,
+                    darkTheme: { ...base, ...presetTheme } as any
+                };
+            });
+        }
     };
 
     const updateIntegration = (key: string, val: any) => {
@@ -119,17 +204,6 @@ export default function SettingsPage() {
         }
     };
 
-    const applyPreset = (presetName: string) => {
-        const preset = THEME_PRESETS[presetName];
-        if (preset) {
-            setConfig(prev => ({
-                ...prev,
-                theme: { ...prev.theme, ...preset } as any
-            }));
-        }
-    };
-
-
     // Guard Clause
     if (!currentTenant) {
         return (
@@ -143,6 +217,9 @@ export default function SettingsPage() {
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
     const previewUrl = rendererUrl && config.id ? `${rendererUrl}/_site/${config.id}` : "#";
+
+    // Helper for active theme config
+    const activeConfig = activeTab === 'light' ? config.theme : (config.darkTheme || config.theme);
 
     return (
         <div className="p-8 max-w-5xl mx-auto space-y-8 pb-20">
@@ -610,74 +687,102 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* RIGHT COLUMN: Colors */}
-                    <div className="lg:col-span-1">
-                        <Card className="h-full">
-                            {/* PRESETS CARD */}
-                            <Card>
-                                <CardHeader className="pb-4">
-                                    <div className="flex items-center gap-2">
-                                        <Palette className="h-5 w-5 text-muted-foreground" />
-                                        <CardTitle>Theme Presets</CardTitle>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {Object.keys(THEME_PRESETS).map(key => (
-                                            <Button
-                                                key={key}
-                                                variant="outline"
-                                                className="capitalize text-xs justify-start"
-                                                onClick={() => applyPreset(key)}
-                                            >
-                                                <div
-                                                    className="w-3 h-3 rounded-full mr-2 border"
-                                                    style={{ backgroundColor: THEME_PRESETS[key].primaryColor }}
-                                                />
-                                                {key}
-                                            </Button>
-                                        ))}
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <CardHeader className="pb-4">
-                                <div className="flex items-center gap-2">
-                                    <Palette className="h-5 w-5 text-muted-foreground" />
-                                    <CardTitle>Colors</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-
-                                {/* Primary Group */}
-                                <div className="space-y-2">
-                                    <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Primary</Label>
-                                    <ColorInput label="Background" desc="Buttons" value={config.theme?.primaryColor} onChange={v => updateTheme("primaryColor", v)} />
-                                    <ColorInput label="Text" desc="On Buttons" value={config.theme?.primaryForeground} onChange={v => updateTheme("primaryForeground", v)} />
-                                </div>
-
-                                <div className="h-px bg-border" />
-
-                                {/* Secondary Group */}
-                                <div className="space-y-2">
-                                    <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Secondary</Label>
-                                    <ColorInput label="Background" desc="Accents" value={config.theme?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
-                                    <ColorInput label="Text" desc="On Accents" value={config.theme?.secondaryForeground} onChange={v => updateTheme("secondaryForeground", v)} />
-                                </div>
-
-                                <div className="h-px bg-border" />
-
-                                {/* Base Group */}
-                                <div className="space-y-2">
-                                    <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Base</Label>
-                                    <ColorInput label="Page Background" desc="" value={config.theme?.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} />
-                                    <ColorInput label="Body Text" desc="Default Text" value={config.theme?.textColor} onChange={v => updateTheme("textColor", v)} />
-                                    <ColorInput label="Surface" desc="Cards" value={config.theme?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
-                                </div>
-
-                            </CardContent>
-                        </Card>
+                    {/* THEME SWITCHER TAB */}
+                    <div className="flex bg-muted p-1 rounded-lg">
+                        <button
+                            onClick={() => setActiveTab('light')}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'light' ? 'bg-white shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <Sun className="w-4 h-4" /> Light Mode
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('dark')}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'dark' ? 'bg-white shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <Moon className="w-4 h-4" /> Dark Mode
+                        </button>
                     </div>
+
+                    <Card className={activeTab === 'dark' ? "border-indigo-200 bg-slate-50" : ""}>
+                        <CardHeader className="pb-4">
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="text-base">{activeTab === 'light' ? 'Standard Theme' : 'Dark Mode Overrides'}</CardTitle>
+
+                                <Dialog open={isSaveThemeOpen} onOpenChange={setIsSaveThemeOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" size="icon" title="Save current styles as Theme">
+                                            <Save className="h-4 w-4" />
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader><DialogTitle>Save Custom Theme</DialogTitle></DialogHeader>
+                                        <div className="space-y-4 py-4">
+                                            <Label>Theme Name</Label>
+                                            <Input value={newThemeName} onChange={e => setNewThemeName(e.target.value)} placeholder="e.g. Winter Sale 2025" />
+                                            <Button onClick={saveCurrentTheme} className="w-full">Save Theme</Button>
+                                        </div>
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
+                            <CardDescription>
+                                {activeTab === 'light' ? "Default appearance for all visitors." : "Applied when user system preference is Dark."}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+
+                            {/* PRESETS */}
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase">Load Preset</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {/* Built-in Presets */}
+                                    {Object.keys(THEME_PRESETS).map(key => (
+                                        <Button key={key} variant="outline" size="sm" className="justify-start h-8 text-xs capitalize" onClick={() => applyPreset(THEME_PRESETS[key])}>
+                                            <div className="w-2 h-2 rounded-full mr-2 border shrink-0" style={{ backgroundColor: THEME_PRESETS[key].primaryColor }} />
+                                            {key}
+                                        </Button>
+                                    ))}
+                                    {/* Custom Themes */}
+                                    {customThemes.map(t => (
+                                        <div key={t.id} className="group relative">
+                                            <Button variant="outline" size="sm" className="w-full justify-start h-8 text-xs" onClick={() => applyPreset(t.theme)}>
+                                                <div className="w-2 h-2 rounded-full mr-2 border shrink-0" style={{ backgroundColor: t.theme.primaryColor }} />
+                                                <span className="truncate">{t.name}</span>
+                                            </Button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); deleteTheme(t.id); }}
+                                                className="absolute right-1 top-1 p-1 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="h-px bg-border" />
+
+                            {/* COLORS */}
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase">Palette</Label>
+                                <ColorInput label="Background" value={activeConfig?.backgroundColor} onChange={v => updateTheme("backgroundColor", v)} />
+                                <ColorInput label="Text Color" value={activeConfig?.textColor} onChange={v => updateTheme("textColor", v)} />
+                                <ColorInput label="Primary" value={activeConfig?.primaryColor} onChange={v => updateTheme("primaryColor", v)} />
+                                <ColorInput label="Primary Text" value={activeConfig?.primaryForeground} onChange={v => updateTheme("primaryForeground", v)} />
+                                <ColorInput label="Secondary" value={activeConfig?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
+                                <ColorInput label="Surface" value={activeConfig?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
+                            </div>
+
+                            {/* FONTS (Only show on Light tab to avoid confusion, or allow override?) */}
+                            {activeTab === 'light' && (
+                                <div className="space-y-2 pt-2">
+                                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Typography</Label>
+                                    <Input className="h-8 text-xs" placeholder="Headings (Google Font)" value={activeConfig?.fontHeading} onChange={e => updateTheme("fontHeading", e.target.value)} />
+                                    <Input className="h-8 text-xs" placeholder="Body (Google Font)" value={activeConfig?.fontBody} onChange={e => updateTheme("fontBody", e.target.value)} />
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
 
                     {/* INTERFACE */}
                     <Card className="space-y-6">
@@ -716,17 +821,16 @@ export default function SettingsPage() {
     );
 }
 
-function ColorInput({ label, desc, value, onChange }: { label: string, desc: string, value?: string, onChange: (v: string) => void }) {
+function ColorInput({ label, value, onChange }: { label: string, value?: string, onChange: (v: string) => void }) {
     return (
-        <div className="space-y-2">
-            <div className="flex justify-between">
-                <Label>{label}</Label>
-                <span className="text-[10px] text-muted-foreground uppercase">{desc}</span>
+        <div className="flex items-center gap-2">
+            <div className="relative w-8 h-8 rounded-full overflow-hidden border shadow-sm shrink-0">
+                <input type="color" className="absolute inset-0 w-[150%] h-[150%] -translate-x-1/4 -translate-y-1/4 cursor-pointer p-0 border-0" value={value || "#ffffff"} onChange={e => onChange(e.target.value)} />
             </div>
-            <div className="flex gap-2">
-                <Input type="color" className="w-12 h-10 p-1 cursor-pointer" value={value || "#000000"} onChange={e => onChange(e.target.value)} />
-                <Input value={value || ""} onChange={e => onChange(e.target.value)} className="font-mono text-xs uppercase" />
+            <div className="flex-1">
+                <Input className="h-8 text-xs font-mono uppercase" value={value || ""} onChange={e => onChange(e.target.value)} />
             </div>
+            <span className="text-[10px] text-muted-foreground w-16 text-right truncate">{label}</span>
         </div>
     );
 }

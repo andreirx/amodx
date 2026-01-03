@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
-import { LayoutGrid } from 'lucide-react';
+import { Newspaper } from 'lucide-react';
 import { PostGridSchema } from './schema';
 import { PostGridEditor } from './PostGridEditor';
 import { PostGridRender } from './PostGridRender';
@@ -9,7 +9,7 @@ import { PluginDefinition } from '../types';
 export const PostGridPlugin: PluginDefinition = {
     key: 'postGrid',
     label: 'Post Grid',
-    icon: LayoutGrid,
+    icon: Newspaper,
     schema: PostGridSchema,
 
     editorExtension: Node.create({

@@ -602,6 +602,45 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('PaddleInt', paddleFunc),
         });
 
+
+        // --- THEMES API ---
+        const themeProps = { ...nodeProps, entry: path.join(__dirname, '../../backend/src/themes/manage.ts') };
+
+        // 1. Create Theme
+        const createThemeFunc = new nodejs.NodejsFunction(this, 'CreateThemeFunc', {
+            ...themeProps, handler: 'createHandler',
+        });
+        props.table.grantWriteData(createThemeFunc);
+
+        // 2. List Themes
+        const listThemesFunc = new nodejs.NodejsFunction(this, 'ListThemesFunc', {
+            ...themeProps, handler: 'listHandler',
+        });
+        props.table.grantReadData(listThemesFunc);
+
+        // 3. Delete Theme
+        const deleteThemeFunc = new nodejs.NodejsFunction(this, 'DeleteThemeFunc', {
+            ...themeProps, handler: 'deleteHandler',
+        });
+        props.table.grantWriteData(deleteThemeFunc);
+
+        // Routes
+        this.httpApi.addRoutes({
+            path: '/themes',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateThemeInt', createThemeFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/themes',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListThemeInt', listThemesFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/themes/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteThemeInt', deleteThemeFunc),
+        });
+
         // NEW: Grant permissions to all API functions to PutEvents
         // This iterates through all children and adds permission if it's a Function
         this.node.children.forEach(child => {
