@@ -4,6 +4,7 @@ import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { ProductSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
+import {requireRole} from "../auth/policy";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -12,6 +13,13 @@ export const handler: Handler = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
         const id = event.pathParameters?.id;
+
+        // SECURITY: Editors allowed
+        try {
+            requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         if (!tenantId || !id || !event.body) return { statusCode: 400, body: "Missing Data" };
 

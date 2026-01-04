@@ -529,9 +529,7 @@ server.tool("list_content",
     }
 );
 
-// ... imports and existing tools ...
-
-// 1. READ PAGE (Essential for editing context)
+// 4. READ PAGE (Essential for editing context)
 server.tool("read_page",
     {
         tenant_id: z.string(),
@@ -558,7 +556,7 @@ server.tool("read_page",
     }
 );
 
-// 2. UPDATE PAGE (The "God Mode" Editor)
+// 5. UPDATE PAGE (The "God Mode" Editor)
 server.tool("update_page",
     {
         tenant_id: z.string(),
@@ -769,6 +767,62 @@ server.tool("list_assets",
     }
 );
 
+// LIST COMMENTS (Admin View)
+server.tool("list_comments",
+    {
+        tenant_id: z.string(),
+        page_id: z.string().optional().describe("Optional: Filter by specific page node ID")
+    },
+    async ({ tenant_id, page_id }) => {
+        try {
+            const url = page_id
+                ? `${API_URL}/comments?pageId=${page_id}`
+                : `${API_URL}/comments`; // Backend now supports listing all if no pageId provided
+
+            const response = await axios.get(url, { headers: getHeaders(tenant_id) });
+
+            const summary = response.data.items.map((c: any) =>
+                `[${c.status}] ${c.authorName} (${c.authorEmail}): "${c.content.substring(0, 50)}..." (Date: ${c.createdAt})`
+            ).join("\n");
+
+            if (!summary) return { content: [{ type: "text", text: "No comments found." }] };
+
+            return { content: [{ type: "text", text: `Comments for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// MODERATE COMMENT
+server.tool("moderate_comment",
+    {
+        tenant_id: z.string(),
+        page_id: z.string().describe("The Page ID belonging to the comment"),
+        created_at: z.string().describe("The exact ISO timestamp of the comment (acts as ID)"),
+        action: z.enum(["UPDATE_STATUS", "DELETE"]),
+        status: z.enum(["Approved", "Pending", "Spam", "Hidden"]).optional().describe("Required if action is UPDATE_STATUS")
+    },
+    async ({ tenant_id, page_id, created_at, action, status }) => {
+        try {
+            const payload = {
+                pageId: page_id,
+                createdAt: created_at,
+                action,
+                status
+            };
+
+            await axios.put(`${API_URL}/comments`, payload, {
+                headers: getHeaders(tenant_id)
+            });
+
+            return { content: [{ type: "text", text: `✓ Comment moderated: ${action} ${status ? `-> ${status}` : ''}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
 // ==========================================
 // 4. SCHEMA REFERENCE
 // ==========================================
@@ -786,6 +840,7 @@ ENTITIES:
 - Blocks: UI components that render on pages
 - Products: Sellable items that will appear on the site
 - Assets: Private files that can be offered in exchange for the visitor email
+- Comments: User discussions on pages (can be moderated)
 
 WORKFLOW TO BUILD A PAGE:
 1. list_tenants → Get tenant_id
@@ -797,6 +852,15 @@ WORKFLOW TO EDIT A PAGE:
 1. list_content → Find the page_id
 2. read_page → Get the current JSON structure
 3. update_page → Send back the modified JSON (change order, fix typos, add blocks)
+
+WORKFLOW TO MODERATE COMMENTS:
+1. list_comments → See all comments (optionally filter by page_id)
+2. moderate_comment → Approve, Spam, or Delete based on content
+
+WORKFLOW FOR BLOGGING:
+1. list_tags → See existing tags (to ensure consistency)
+2. create_page / update_page → Apply tags to content items
+3. add_block (postGrid) → Add a grid filtered by those tags
 
 CURRENT PLUGINS:
 ✓ Hero (3 styles: center, split, minimal)
@@ -811,7 +875,7 @@ CURRENT PLUGINS:
 ✓ Columns (2-4 column layouts)
 ✓ Table (data tables with headers)
 ✓ Paragraph & Heading (text blocks)
-✓ Custom HTML
+✓ Custom HTML (Embeds, Scripts)
 ✓ FAQ (Accordion)
 ✓ Post Grid (Dynamic Blog List)
 

@@ -4,6 +4,7 @@ import { UpdateCommand, TransactWriteCommand, GetCommand } from "@aws-sdk/lib-dy
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { z } from "zod";
+import {requireRole} from "../auth/policy";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -34,9 +35,16 @@ const StrictUpdateSchema = z.object({
 
 export const handler: AmodxHandler = async (event) => {
     try {
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
         const nodeId = event.pathParameters?.id;
+
+        // SECURITY: Editors allowed
+        try {
+            requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         if (!nodeId || !event.body) {
             return { statusCode: 400, body: JSON.stringify({ error: "Missing ID or Body" }) };

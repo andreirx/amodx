@@ -5,6 +5,7 @@ import { db, TABLE_NAME } from "../lib/db";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context";
 import {publishAudit} from "../lib/events";
+import {requireRole} from "../auth/policy";
 
 const s3 = new S3Client({});
 const BUCKET = process.env.UPLOADS_BUCKET!;
@@ -14,8 +15,15 @@ type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 export const handler: Handler = async (event) => {
     try {
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
+
+        // 1. FAIL if no tenant ID (No more "DEMO")
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // 2. ENFORCE Policy
+        // Editors and Admins can list content
+        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const { filename, contentType, size } = JSON.parse(event.body);

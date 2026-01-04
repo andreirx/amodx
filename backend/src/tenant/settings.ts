@@ -3,12 +3,22 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import {publishAudit} from "../lib/events";
+import { requireRole } from "../auth/policy.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 export const getHandler: AmodxHandler = async (event) => {
     try {
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
+        const auth = event.requestContext.authorizer.lambda;
+
+        // 1. FAIL if no tenant ID (No more "DEMO")
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // 2. ENFORCE Policy
+        // Editors and Admins can list content
+        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+
 
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
@@ -36,8 +46,15 @@ export const getHandler: AmodxHandler = async (event) => {
 
 export const updateHandler: AmodxHandler = async (event) => {
     try {
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
+
+        // SECURITY: Tenant Admin or Global Admin required
+        try {
+            requireRole(auth, ["TENANT_ADMIN"], tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);

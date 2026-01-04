@@ -24,6 +24,7 @@ interface AmodxApiProps {
     uploadsCdnUrl: string;     // The public URL
     eventBus: events.IEventBus;
     sesEmail: string;
+    adminDomain?: string;
 }
 
 export class AmodxApi extends Construct {
@@ -31,6 +32,21 @@ export class AmodxApi extends Construct {
 
     constructor(scope: Construct, id: string, props: AmodxApiProps) {
         super(scope, id);
+
+        // Dynamic Origin List
+        const allowedOrigins = [
+            'http://localhost:3000', // Local Admin
+            'http://localhost:5173'  // Local Vite
+        ];
+
+        if (props.adminDomain) {
+            allowedOrigins.push(`https://${props.adminDomain}`);
+            // Also allow the root domain just in case
+            // allowedOrigins.push(`https://${props.adminDomain.replace('admin.', '')}`);
+        } else {
+            // Fallback for initial deployment before domain is set
+            allowedOrigins.push('*');
+        }
 
         // 1. Authorizer Lambda
         const authorizerFunc = new nodejs.NodejsFunction(this, 'AuthorizerFunc', {
@@ -59,7 +75,7 @@ export class AmodxApi extends Construct {
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
             defaultAuthorizer: authorizer,
             corsPreflight: {
-                allowOrigins: ['*'],
+                allowOrigins: allowedOrigins,
                 allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PUT, apigw.CorsHttpMethod.DELETE],
                 allowHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-api-key'],
             },
@@ -467,7 +483,21 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('CreateCommentInt', createCommentFunc),
         });
 
-        // --- NEW: PRODUCTS API ---
+        // Moderate Comment
+        const moderateCommentFunc = new nodejs.NodejsFunction(this, 'ModerateCommentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/comments/moderate.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(moderateCommentFunc);
+
+        this.httpApi.addRoutes({
+            path: '/comments',
+            methods: [apigw.HttpMethod.PUT], // We'll use PUT for moderation actions
+            integration: new integrations.HttpLambdaIntegration('ModerateCommentInt', moderateCommentFunc),
+        });
+
+        // --- PRODUCTS API ---
 
         const createProductFunc = new nodejs.NodejsFunction(this, 'CreateProductFunc', {
             ...nodeProps,

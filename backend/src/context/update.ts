@@ -3,17 +3,25 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import {publishAudit} from "../lib/events";
+import {requireRole} from "../auth/policy";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 export const handler: AmodxHandler = async (event) => {
     try {
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
         const id = event.pathParameters?.id;
 
         if (!id || !event.body) return { statusCode: 400, body: "Missing ID or Body" };
         const body = JSON.parse(event.body);
+
+        // 1. FAIL if no tenant ID (No more "DEMO")
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // 2. ENFORCE Policy
+        // Editors and Admins can list content
+        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         // 1. Verify
         const existing = await db.send(new GetCommand({

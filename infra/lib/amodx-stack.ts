@@ -143,6 +143,7 @@ export class AmodxStack extends cdk.Stack {
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
       eventBus: events.bus,
       sesEmail: sesEmail,
+      adminDomain: rootDomain ? `admin.${rootDomain}` : undefined,
     });
 
     if (apiDomain && domains) {

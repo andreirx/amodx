@@ -1,6 +1,7 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { CognitoIdentityProviderClient, ListUsersCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { AuthorizerContext } from "../auth/context";
+import {requireRole} from "../auth/policy";
 
 const cognito = new CognitoIdentityProviderClient({});
 const USER_POOL_ID = process.env.USER_POOL_ID!;
@@ -10,8 +11,16 @@ type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 export const handler: Handler = async (event) => {
     try {
         const auth = event.requestContext.authorizer.lambda;
+        const tenantId = event.headers['x-tenant-id'];
         const requesterRole = auth.role || "EDITOR";
         const requesterTenant = auth.tenantId;
+
+        // 1. FAIL if no tenant ID (No more "DEMO")
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // 2. ENFORCE Policy
+        // Editors and Admins can list content
+        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         // 1. Fetch Users
         const command = new ListUsersCommand({

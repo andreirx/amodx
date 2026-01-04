@@ -6,6 +6,7 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { ContentItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
+import { requireRole } from "../auth/policy.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -20,7 +21,14 @@ export const handler: AmodxHandler = async (event) => {
         const auth = event.requestContext.authorizer.lambda;
         const userId = auth.sub;
         const authorName = auth.email || "Robot";
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
+
+        // SECURITY: Editors allowed
+        try {
+            requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);

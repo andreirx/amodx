@@ -16,6 +16,7 @@ import Leads from "@/pages/Leads";
 import Products from "@/pages/Products";
 import ProductEditor from "@/pages/ProductEditor";
 import UsersPage from "@/pages/Users";
+import Comments from "@/pages/Comments";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -69,6 +70,7 @@ const router = createBrowserRouter([
             { path: "strategy/:id", element: <StrategyEditor /> },
             { path: "media", element: <MediaLibrary /> },
             { path: "leads", element: <Leads /> },
+            { path: "comments", element: <Comments /> },
             { path: "audit", element: <AuditLog /> },
             { path: "resources", element: <Resources /> },
             { path: "users", element: <UsersPage /> },

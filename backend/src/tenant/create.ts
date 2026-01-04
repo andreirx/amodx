@@ -1,17 +1,26 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb"; // <--- CHANGED IMPORT
+import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { TenantConfigSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import {publishAudit} from "../lib/events";
+import { requireRole } from "../auth/policy.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 export const handler: AmodxHandler = async (event) => {
     try {
+        const auth = event.requestContext.authorizer.lambda;
+
+        // SECURITY: Only Global Admin can create tenants
+        try {
+            requireRole(auth, []); // Empty array + Global check means ONLY Global Admin passes
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
+
         if (!event.body) return { statusCode: 400, body: "Missing body" };
 
-        const auth = event.requestContext.authorizer.lambda;
         const userId = auth.sub;
         const body = JSON.parse(event.body);
 
