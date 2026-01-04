@@ -567,9 +567,14 @@ server.tool("update_page",
         // This is the magic field. Claude sends the full array here.
         blocks: z.string().optional().describe("Full JSON array of blocks. REPLACES existing content. Use read_page first to get current blocks, then modify/reorder/add/delete as needed."),
         seo_title: z.string().optional(),
-        seo_description: z.string().optional()
+        seo_description: z.string().optional(),
+        tags: z.string().optional().describe("Comma separated tags"),
+        hide_nav: z.boolean().optional(),
+        hide_footer: z.boolean().optional(),
+        hide_sharing: z.boolean().optional(),
+        theme_override: z.string().optional().describe("JSON string of theme variables to override for THIS PAGE ONLY. Example: {\"primaryColor\": \"#ff0000\", \"backgroundColor\": \"#000000\"}")
     },
-    async ({ tenant_id, page_id, title, slug, status, blocks, seo_title, seo_description }) => {
+    async ({ tenant_id, page_id, title, slug, status, blocks, seo_title, seo_description, tags, hide_nav, hide_footer, hide_sharing, theme_override }) => {
         try {
             const payload: any = {};
             if (title) payload.title = title;
@@ -577,12 +582,25 @@ server.tool("update_page",
             if (status) payload.status = status;
             if (seo_title) payload.seoTitle = seo_title;
             if (seo_description) payload.seoDescription = seo_description;
+            if (tags) payload.tags = tags.split(',').map(t => t.trim());
+            if (hide_nav !== undefined) payload.hideNav = hide_nav;
+            if (hide_footer !== undefined) payload.hideFooter = hide_footer;
+            if (hide_sharing !== undefined) payload.hideSharing = hide_sharing;
 
             if (blocks) {
                 try {
                     payload.blocks = JSON.parse(blocks);
                 } catch (e) {
                     return { content: [{ type: "text", text: "Error: blocks must be valid JSON string" }], isError: true };
+                }
+            }
+
+            // Handle Theme Parsing
+            if (theme_override) {
+                try {
+                    payload.themeOverride = JSON.parse(theme_override);
+                } catch (e) {
+                    return { content: [{ type: "text", text: "Error: theme_override must be valid JSON string" }], isError: true };
                 }
             }
 
@@ -671,11 +689,13 @@ server.tool("create_page",
         tenant_id: z.string(),
         title: z.string(),
         slug: z.string().optional(),
+        tags: z.string().optional().describe("Comma separated tags (e.g. 'blog, news')"),
     },
-    async ({ tenant_id, title, slug }) => {
+    async ({ tenant_id, title, slug, tags }) => {
         try {
             const payload: any = { title, status: "Draft", blocks: [] };
             if (slug) payload.slug = slug;
+            if (tags) payload.tags = tags.split(',').map(t => t.trim());
 
             const response = await axios.post(`${API_URL}/content`, payload, {
                 headers: getHeaders(tenant_id)
@@ -730,14 +750,16 @@ server.tool("create_product",
         price: z.string(),
         description: z.string().describe("Plain text description"),
         image_link: z.string().describe("URL of main image"),
+        resource_id: z.string().optional().describe("ID of a private file to deliver upon purchase"),
     },
-    async ({ tenant_id, title, price, description, image_link }) => {
+    async ({ tenant_id, title, price, description, image_link, resource_id }) => {
         try {
             const payload = {
                 title,
                 price,
                 description,
                 imageLink: image_link,
+                resourceId: resource_id,
                 status: "draft",
                 currency: "USD",
                 availability: "in_stock",
@@ -824,6 +846,104 @@ server.tool("moderate_comment",
 );
 
 // ==========================================
+// 5. THEME MANAGEMENT
+// ==========================================
+
+server.tool("list_themes",
+    { tenant_id: z.string() }, // Needed for auth headers
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/themes`, { headers: getHeaders(tenant_id) });
+            const summary = response.data.items.map((t: any) =>
+                `- ${t.name} (ID: ${t.id}) [Primary: ${t.theme.primaryColor}]`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Custom Themes:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("create_theme",
+    {
+        tenant_id: z.string(),
+        name: z.string(),
+        primary_color: z.string().optional(),
+        primary_foreground: z.string().optional(),
+        background_color: z.string().optional(),
+        text_color: z.string().optional(),
+        secondary_color: z.string().optional(),
+        surface_color: z.string().optional(),
+        font_heading: z.string().optional(),
+        font_body: z.string().optional(),
+        radius: z.string().optional(),
+    },
+    async (args) => {
+        try {
+            // Construct the theme object with defaults
+            const theme = {
+                mode: "light", // Default
+                primaryColor: args.primary_color || "#000000",
+                primaryForeground: args.primary_foreground || "#ffffff",
+                backgroundColor: args.background_color || "#ffffff",
+                textColor: args.text_color || "#020817",
+                secondaryColor: args.secondary_color || "#ffffff",
+                secondaryForeground: "#000000",
+                surfaceColor: args.surface_color || "#f4f4f5",
+                fontHeading: args.font_heading || "Inter",
+                fontBody: args.font_body || "Inter",
+                radius: args.radius || "0.5rem"
+            };
+
+            const response = await axios.post(`${API_URL}/themes`, {
+                name: args.name,
+                theme
+            }, { headers: getHeaders(args.tenant_id) });
+
+            return { content: [{ type: "text", text: `✓ Created theme "${args.name}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("apply_theme",
+    {
+        tenant_id: z.string(),
+        theme_id: z.string().describe("ID from list_themes"),
+        mode: z.enum(["light", "dark"]).default("light").describe("Which slot to apply this theme to")
+    },
+    async ({ tenant_id, theme_id, mode }) => {
+        try {
+            // 1. Get the theme details first (since we need the data to update settings)
+            // Ideally backend would have an endpoint for this, but we can list and find
+            const themesRes = await axios.get(`${API_URL}/themes`, { headers: getHeaders(tenant_id) });
+            const themeItem = themesRes.data.items.find((t: any) => t.id === theme_id);
+
+            if (!themeItem) return { content: [{ type: "text", text: "Theme not found" }], isError: true };
+
+            // 2. Update Tenant Settings
+            const settingsRes = await axios.get(`${API_URL}/settings`, { headers: getHeaders(tenant_id) });
+            const currentConfig = settingsRes.data;
+
+            const payload: any = {};
+            if (mode === 'light') {
+                payload.theme = { ...currentConfig.theme, ...themeItem.theme };
+            } else {
+                payload.darkTheme = { ...(currentConfig.darkTheme || currentConfig.theme), ...themeItem.theme };
+            }
+
+            await axios.put(`${API_URL}/settings`, payload, { headers: getHeaders(tenant_id) });
+
+            return { content: [{ type: "text", text: `✓ Applied theme "${themeItem.name}" to ${mode} mode.` }] };
+
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
 // 4. SCHEMA REFERENCE
 // ==========================================
 
@@ -861,6 +981,13 @@ WORKFLOW FOR BLOGGING:
 1. list_tags → See existing tags (to ensure consistency)
 2. create_page / update_page → Apply tags to content items
 3. add_block (postGrid) → Add a grid filtered by those tags
+
+WORKFLOW FOR STYLING:
+1. list_themes → See available presets
+2. create_theme → Generate a new visual style (colors/fonts)
+3. apply_theme → Apply a saved theme to Light or Dark mode
+4. update_page (theme_override) → Apply specific colors to a single landing page
+
 
 CURRENT PLUGINS:
 ✓ Hero (3 styles: center, split, minimal)

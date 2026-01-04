@@ -1,21 +1,26 @@
-import { getTenantConfig, getContentBySlug, ContentResult } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
 import { ContentItem } from "@amodx/shared";
-import Link from "next/link"; // For the Login Button
+import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { SocialShare } from "@/components/SocialShare";
 import Script from "next/script";
 
-export const revalidate = 3600;
+// NEW: Auth Imports
+import { decode } from "next-auth/jwt";
+import { cookies } from "next/headers";
+
+export const revalidate = 3600; // Default to ISR
 
 type Props = {
     params: Promise<{ siteId: string; slug?: string[] }>;
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
+// ... [generateMetadata remains the same] ...
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { siteId, slug } = await params;
     const config = await getTenantConfig(siteId);
@@ -24,27 +29,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const slugPath = slug ? "/" + slug.join("/") : "/";
     const result = await getContentBySlug(config.id, slugPath);
 
-    // If result is redirect or null, return minimal metadata
     if (!result || 'redirect' in result) return { title: config.name };
 
-    // Result is ContentItem
     const content = result as ContentItem;
-    // Construct absolute URL
     const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
 
     return {
         title: content.seoTitle || content.title || config.name,
         description: content.seoDescription,
-        // NEW: Explicit Base for relative assets
         metadataBase: new URL(`https://${config.domain}`),
         openGraph: {
             title: content.seoTitle || content.title,
             description: content.seoDescription,
-            url: canonicalUrl, // <--- Ahrefs needs this
-            type: 'website',   // <--- And this
+            url: canonicalUrl,
+            type: 'website',
             images: content.featuredImage
                 ? [{ url: content.featuredImage }]
-                : (config.logo ? [{ url: config.logo }] : []), // Fallback to logo
+                : (config.logo ? [{ url: config.logo }] : []),
             siteName: config.name,
         },
         alternates: {
@@ -55,7 +56,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Page({ params, searchParams }: Props) {
     const { siteId, slug } = await params;
-    const { preview } = await searchParams; // Read ?preview=true
+    const { preview } = await searchParams;
     const slugPath = slug ? "/" + slug.join("/") : "/";
 
     const config = await getTenantConfig(siteId);
@@ -71,29 +72,48 @@ export default async function Page({ params, searchParams }: Props) {
 
     const content = result as ContentItem;
 
-    // 2. STATUS CHECK (Draft vs Published)
-    // If Draft AND not in preview mode -> 404
-    // NOTE: In a real secure system, 'preview=true' should verify a signed token.
-    // For now, we allow it so you can test, but add a TODO to secure it.
+    // Status Check
     if (content.status !== 'Published' && !preview) {
         return notFound();
     }
 
-    // 3. ACCESS GATEKEEPER (The Plumbing)
-    // We check the policy. If not Public, we check the session (Placeholder for now).
+    // --- ACCESS GATEKEEPER ---
     const policy = content.accessPolicy || { type: 'Public' };
     const isPublic = policy.type === 'Public';
 
+    let isAuthenticated = false;
+
+    // Only check auth if necessary (Preserves ISR for public pages)
+    if (!isPublic) {
+        const cookieStore = await cookies();
+        const sessionToken = cookieStore.get("next-auth.session-token")?.value ||
+            cookieStore.get("__Secure-next-auth.session-token")?.value;
+
+        if (sessionToken && process.env.NEXTAUTH_SECRET) {
+            try {
+                // Verify the JWT signature to prevent cookie spoofing
+                const decoded = await decode({
+                    token: sessionToken,
+                    secret: process.env.NEXTAUTH_SECRET
+                });
+                if (decoded) isAuthenticated = true;
+            } catch (e) {
+                console.warn("Invalid session token", e);
+            }
+        }
+    }
+
+    const hasAccess = isPublic || isAuthenticated;
+
     // --- SCHEMA GENERATOR ---
     const globalSchemaType = config.schemaType || "Organization";
-    const pageSchemaType = content.schemaType; // might be undefined
+    const pageSchemaType = content.schemaType;
 
     // 1. Determine the Entity Type
     // If it's the homepage ('/'), we use the Global Type (e.g. SoftwareApplication)
     // If it's an internal page, we default to WebPage unless overridden (e.g. Article)
     const isHome = slugPath === '/';
     const effectiveType = pageSchemaType || (isHome ? globalSchemaType : 'WebPage');
-
     const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
 
     let jsonLd: any = {
@@ -104,17 +124,12 @@ export default async function Page({ params, searchParams }: Props) {
         "url": canonicalUrl,
     };
 
-    // 2. Specific Enhancements based on Type
     if (effectiveType === 'SoftwareApplication') {
         jsonLd = {
             ...jsonLd,
             "applicationCategory": "BusinessApplication",
             "operatingSystem": "Cloud/Web",
-            "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-            }
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
         };
     } else if (effectiveType === 'Article') {
         jsonLd = {
@@ -123,10 +138,7 @@ export default async function Page({ params, searchParams }: Props) {
             "image": content.featuredImage ? [content.featuredImage] : [],
             "datePublished": content.createdAt,
             "dateModified": content.updatedAt || content.createdAt,
-            "author": {
-                "@type": "Person",
-                "name": content.author || config.name
-            }
+            "author": { "@type": "Person", "name": content.author || config.name }
         };
     } else if (effectiveType === 'Organization' || effectiveType === 'LocalBusiness') {
         jsonLd = {
@@ -140,47 +152,43 @@ export default async function Page({ params, searchParams }: Props) {
         };
     }
 
-    // TODO: Connect to NextAuth session here
-    const isAuthenticated = false; // Mock: Assume user is anon for now
-    const hasAccess = isPublic || isAuthenticated;
-
-    // If Access Denied, render the Gate instead of the Content
+    // --- RENDER: ACCESS DENIED ---
     if (!hasAccess) {
         return (
-            <main className="max-w-4xl mx-auto py-20 px-6 text-center space-y-6">
-                <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center">
-                    <span className="text-2xl">🔒</span>
-                </div>
+            <>
+                <ThemeInjector theme={config.theme} tenantId={config.id} />
+                <main className="max-w-4xl mx-auto py-20 px-6 text-center space-y-6">
+                    <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                        <span className="text-2xl">🔒</span>
+                    </div>
 
-                <h1 className="text-4xl font-bold tracking-tight">Restricted Access</h1>
+                    <h1 className="text-4xl font-bold tracking-tight">Restricted Access</h1>
 
-                <p className="text-xl text-muted-foreground max-w-lg mx-auto">
-                    {policy.type === 'LoginRequired' && "You must be logged in to view this page."}
-                    {policy.type === 'Purchase' && `This content requires a subscription (${policy.currency} ${policy.price}).`}
-                </p>
+                    <p className="text-xl text-muted-foreground max-w-lg mx-auto">
+                        {policy.type === 'LoginRequired' && "You must be logged in to view this page."}
+                        {policy.type === 'Purchase' && `This content requires a subscription (${policy.currency} ${policy.price}).`}
+                    </p>
 
-                <div className="flex gap-4 justify-center pt-4">
-                    {/* PLUMBING: Login Button redirects to Auth with callback to current page */}
-                    <Link
-                        href={`/api/auth/signin?callbackUrl=${encodeURIComponent(slugPath)}`}
-                        className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-8 hover:opacity-90"
-                    >
-                        Log In
-                    </Link>
+                    <div className="flex gap-4 justify-center pt-4">
+                        <Link
+                            href={`/api/auth/signin?callbackUrl=${encodeURIComponent(slugPath)}`}
+                            className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-8 hover:opacity-90 transition-opacity"
+                        >
+                            Log In with Google
+                        </Link>
 
-                    {policy.type === 'Purchase' && (
-                        <button className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-8">
-                            Purchase Access
-                        </button>
-                    )}
-                </div>
-            </main>
+                        {policy.type === 'Purchase' && (
+                            <button className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-8">
+                                Purchase Access
+                            </button>
+                        )}
+                    </div>
+                </main>
+            </>
         );
     }
 
-    // 1. Theme Override Logic
-    // We merge the GLOBAL theme with the PAGE override to ensure completeness
-    // If we passed just the partial override, ThemeInjector might default missing keys to black/white.
+    // --- RENDER: CONTENT ---
     const mergedTheme = {
         ...config.theme,
         ...(content.themeOverride || {})

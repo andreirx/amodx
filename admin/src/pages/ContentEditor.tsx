@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, ArrowLeft, Loader2, Palette, X, RotateCcw, Settings as SettingsIcon } from "lucide-react";
+import { Save, ArrowLeft, Loader2, Palette, X, RotateCcw, Settings as SettingsIcon, Lock } from "lucide-react";
 import { Tag } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -86,6 +86,7 @@ const DEFAULT_STATE = {
     slug: "",
     status: "Draft",
     commentsMode: "Hidden",
+    accessPolicy: { type: 'Public' } as any,
     blocks: [] as any[],
     seoTitle: "",
     seoDescription: "",
@@ -172,6 +173,7 @@ export default function ContentEditor() {
                 slug: data.slug || "",
                 status: data.status || "Draft",
                 commentsMode: data.commentsMode || "Hidden",
+                accessPolicy: data.accessPolicy || { type: 'Public' },
                 blocks: data.blocks || [],
                 seoTitle: data.seoTitle || "",
                 seoDescription: data.seoDescription || "",
@@ -520,6 +522,35 @@ export default function ContentEditor() {
                                                     (Landing)</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                    </div>
+                                </div>
+
+                                {/* 3. ACCESS CONTROL */}
+                                <div className="space-y-4 rounded-xl border bg-amber-50/50 p-4 shadow-sm">
+                                    <div className="flex items-center justify-between border-b border-amber-100 pb-2">
+                                        <h4 className="text-sm font-semibold flex items-center gap-2 text-amber-900">
+                                            <Lock className="w-4 h-4 text-amber-600"/> Access
+                                        </h4>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Visibility</Label>
+                                        <Select
+                                            value={form.accessPolicy?.type || "Public"}
+                                            onValueChange={v => update("accessPolicy", { ...form.accessPolicy, type: v })}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Public">Public (Everyone)</SelectItem>
+                                                <SelectItem value="LoginRequired">Login Required (Members)</SelectItem>
+                                                {/* <SelectItem value="Purchase">Purchase Required (Product)</SelectItem> */}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[10px] text-muted-foreground">
+                                            {form.accessPolicy?.type === 'LoginRequired'
+                                                ? "Visitors must sign in with Google to view this page."
+                                                : "Page is visible to the world."}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
