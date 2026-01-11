@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { z } from "zod";
 import { AccessPolicySchema } from "@amodx/shared";
+import { requireRole } from "../auth/policy.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -15,15 +16,12 @@ const StrictUpdateSchema = z.object({
     status: z.string().optional(),
     commentsMode: z.string().optional(),
     blocks: z.array(z.any()).optional(),
-
     seoTitle: z.string().optional(),
     seoDescription: z.string().optional(),
     seoKeywords: z.string().optional(),
     featuredImage: z.string().optional(),
-
     tags: z.array(z.string()).optional(),
     accessPolicy: AccessPolicySchema.optional(),
-
     themeOverride: z.any().optional(),
     hideNav: z.boolean().optional(),
     hideFooter: z.boolean().optional(),
@@ -33,9 +31,12 @@ const StrictUpdateSchema = z.object({
 
 export const handler: AmodxHandler = async (event) => {
     try {
-        const tenantId = event.headers['x-tenant-id'] || "DEMO";
+        const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
         const nodeId = event.pathParameters?.id;
+
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id" }) };
+        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         if (!nodeId || !event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing ID or Body" }) };
 
@@ -45,6 +46,7 @@ export const handler: AmodxHandler = async (event) => {
         // This guarantees 'blocks' is undefined if not sent, never []
         const input = StrictUpdateSchema.parse(body);
 
+        // 1. Fetch Current State (to snapshot it)
         const currentRes = await db.send(new GetCommand({
             TableName: TABLE_NAME,
             Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` }
@@ -52,6 +54,15 @@ export const handler: AmodxHandler = async (event) => {
         const current = currentRes.Item;
         if (!current) return { statusCode: 404, body: "Content not found" };
 
+        // 2. Prepare Snapshot Item (The version we are about to overwrite)
+        const currentVersion = current.version || 1;
+        const snapshotItem = {
+            ...current,
+            SK: `CONTENT#${nodeId}#v${currentVersion}`, // Save as v1, v2...
+            snapshotCreatedAt: new Date().toISOString() // Metadata for history list
+        };
+
+        // 3. Prepare Update Logic
         const oldSlug = current.slug;
         const rawNewSlug = input.slug ?? oldSlug;
         const newSlug = rawNewSlug.startsWith("/") ? rawNewSlug : "/" + rawNewSlug;
@@ -68,91 +79,103 @@ export const handler: AmodxHandler = async (event) => {
             ":s": input.status ?? current.status,
             ":cm": input.commentsMode ?? current.commentsMode ?? "Hidden",
             ":ap": input.accessPolicy ?? current.accessPolicy ?? { type: 'Public' },
-
             ":st": input.seoTitle ?? current.seoTitle ?? null,
             ":sd": input.seoDescription ?? current.seoDescription ?? null,
             ":sk": input.seoKeywords ?? current.seoKeywords ?? null,
             ":fi": input.featuredImage ?? current.featuredImage ?? null,
-
             ":tags": input.tags ?? current.tags ?? [],
             ":to": input.themeOverride ?? current.themeOverride ?? {},
             ":hn": input.hideNav ?? current.hideNav ?? false,
             ":hf": input.hideFooter ?? current.hideFooter ?? false,
             ":hs": input.hideSharing ?? current.hideSharing ?? false,
             ":sch": input.schemaType ?? current.schemaType ?? null,
-
             ":u": timestamp,
-            ":ub": userId
+            ":ub": userId,
+            ":v": currentVersion + 1 // INCREMENT VERSION
         };
 
-        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, accessPolicy = :ap, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, tags = :tags, hideNav = :hn, hideFooter = :hf, hideSharing = :hs, themeOverride = :to, schemaType = :sch, updatedAt = :u, updatedBy = :ub";
+        const updateExprBase = "SET title = :t, blocks = :b, #s = :s, commentsMode = :cm, accessPolicy = :ap, seoTitle = :st, seoDescription = :sd, seoKeywords = :sk, featuredImage = :fi, tags = :tags, hideNav = :hn, hideFooter = :hf, hideSharing = :hs, themeOverride = :to, schemaType = :sch, updatedAt = :u, updatedBy = :ub, version = :v";
+
+        // 4. Transaction: Snapshot + Update (+ Redirects if needed)
+        const transactItems: any[] = [
+            // A. Save the Snapshot
+            {
+                Put: {
+                    TableName: TABLE_NAME,
+                    Item: snapshotItem
+                }
+            }
+        ];
 
         if (slugChanged) {
-            await db.send(new TransactWriteCommand({
-                TransactItems: [
-                    {
-                        Put: {
-                            TableName: TABLE_NAME,
-                            Item: {
-                                PK: `TENANT#${tenantId}`,
-                                SK: `ROUTE#${oldSlug}`,
-                                Type: "Route",
-                                IsRedirect: true,
-                                RedirectTo: newSlug,
-                                CreatedAt: timestamp,
-                                UpdatedBy: userId
-                            }
-                        }
-                    },
-                    {
-                        Put: {
-                            TableName: TABLE_NAME,
-                            Item: {
-                                PK: `TENANT#${tenantId}`,
-                                SK: `ROUTE#${newSlug}`,
-                                TargetNode: `NODE#${nodeId}`,
-                                Type: "Route",
-                                Domain: "localhost",
-                                CreatedAt: timestamp,
-                                CreatedBy: userId
-                            },
-                            ConditionExpression: "attribute_not_exists(SK)"
-                        }
-                    },
-                    {
-                        Update: {
-                            TableName: TABLE_NAME,
-                            Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
-                            UpdateExpression: updateExprBase + ", slug = :sl",
-                            ExpressionAttributeNames: { "#s": "status" },
-                            ExpressionAttributeValues: { ...updateValues, ":sl": newSlug }
-                        }
+            // B. Handle Slug Change (Redirect Old -> New)
+            transactItems.push({
+                Put: {
+                    TableName: TABLE_NAME,
+                    Item: {
+                        PK: `TENANT#${tenantId}`,
+                        SK: `ROUTE#${oldSlug}`,
+                        Type: "Route",
+                        IsRedirect: true,
+                        RedirectTo: newSlug,
+                        CreatedAt: timestamp,
+                        UpdatedBy: userId
                     }
-                ]
-            }));
+                }
+            });
+            transactItems.push({
+                Put: {
+                    TableName: TABLE_NAME,
+                    Item: {
+                        PK: `TENANT#${tenantId}`,
+                        SK: `ROUTE#${newSlug}`,
+                        TargetNode: `NODE#${nodeId}`,
+                        Type: "Route",
+                        CreatedAt: timestamp,
+                        CreatedBy: userId
+                    },
+                    ConditionExpression: "attribute_not_exists(SK)"
+                }
+            });
+            transactItems.push({
+                Update: {
+                    TableName: TABLE_NAME,
+                    Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
+                    UpdateExpression: updateExprBase + ", slug = :sl",
+                    ExpressionAttributeNames: { "#s": "status" },
+                    ExpressionAttributeValues: { ...updateValues, ":sl": newSlug }
+                }
+            });
         } else {
-            await db.send(new UpdateCommand({
-                TableName: TABLE_NAME,
-                Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
-                UpdateExpression: updateExprBase,
-                ExpressionAttributeNames: { "#s": "status" },
-                ExpressionAttributeValues: updateValues
-            }));
+            // C. Just Update Content
+            transactItems.push({
+                Update: {
+                    TableName: TABLE_NAME,
+                    Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
+                    UpdateExpression: updateExprBase,
+                    ExpressionAttributeNames: { "#s": "status" },
+                    ExpressionAttributeValues: updateValues
+                }
+            });
         }
 
+        await db.send(new TransactWriteCommand({ TransactItems: transactItems }));
+
+        // Audit Log
         await publishAudit({
             tenantId,
-            actor: { id: userId, email: auth.email },
+            actor: { id: auth.sub, email: auth.email },
             action: "UPDATE_PAGE",
-            target: { title: input.title || current.title, id: nodeId },
+            target: { id: nodeId, title: input.title || current.title },
             details: {
+                version: currentVersion + 1,
                 slugChanged,
-                fieldsUpdated: Object.keys(input).filter(key => input[key as keyof typeof input] !== undefined),
+                fieldsUpdated: Object.keys(input)
             },
             ip: event.requestContext.http.sourceIp
         });
 
-        return { statusCode: 200, body: JSON.stringify({ message: "Updated", slug: newSlug }) };
+        return { statusCode: 200, body: JSON.stringify({ message: "Updated", version: currentVersion + 1, slug: newSlug }) };
     } catch (error: any) {
         console.error(error);
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };

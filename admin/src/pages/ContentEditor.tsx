@@ -4,11 +4,11 @@ import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, ArrowLeft, Loader2, Palette, X, RotateCcw, Settings as SettingsIcon, Lock } from "lucide-react";
+import { Save, ArrowLeft, Loader2, Palette, X, RotateCcw, History, Settings as SettingsIcon, Lock } from "lucide-react";
 import { Tag } from "lucide-react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { MediaPicker } from "@/components/MediaPicker";
@@ -103,6 +103,49 @@ const DEFAULT_STATE = {
 export default function ContentEditor() {
     const { id } = useParams();
     const navigate = useNavigate();
+
+    // NEW: History State
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [history, setHistory] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+
+
+    // NEW: Load History
+    async function loadHistory() {
+        if (!id) return;
+        setLoadingHistory(true);
+        try {
+            const res = await apiRequest(`/content/${id}/versions`);
+            setHistory(res.versions || []);
+        } catch (e) {
+            console.error("Failed to load history", e);
+        } finally {
+            setLoadingHistory(false);
+        }
+    }
+
+    // NEW: Handle Restore
+    async function handleRestore(version: number) {
+        if (!confirm(`Are you sure you want to revert to Version ${version}? Current unsaved changes will be lost.`)) return;
+
+        try {
+            setLoading(true);
+            const res = await apiRequest(`/content/${id}/restore`, {
+                method: 'POST',
+                body: JSON.stringify({ version })
+            });
+
+            alert(`Restored to Version ${res.version}`);
+            setIsHistoryOpen(false);
+
+            // Reload the editor with new data
+            await loadContent(id!);
+        } catch (e: any) {
+            alert("Restore failed: " + e.message);
+            setLoading(false);
+        }
+    }
+
     const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
 
     // Store the CLEAN state (from server)
@@ -325,6 +368,57 @@ export default function ContentEditor() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* --- NEW: HISTORY BUTTON --- */}
+                    <Sheet open={isHistoryOpen} onOpenChange={(open) => {
+                        setIsHistoryOpen(open);
+                        if(open) loadHistory();
+                    }}>
+                        <SheetTrigger asChild>
+                            <Button variant="ghost" size="sm" title="Version History">
+                                <History className="w-4 h-4 text-muted-foreground" />
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent>
+                            <SheetHeader>
+                                <SheetTitle>Version History</SheetTitle>
+                                <SheetDescription>Restore a previous version of this page.</SheetDescription>
+                            </SheetHeader>
+                            <div className="mt-6 space-y-4 overflow-y-auto max-h-[80vh] pr-2">
+                                {loadingHistory ? (
+                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin" /></div>
+                                ) : (
+                                    history.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground text-center">No history yet.</p>
+                                    ) : (
+                                        history.map((ver: any) => (
+                                            <div key={ver.version} className="flex flex-col gap-2 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                                                <div className="flex justify-between items-start">
+                                                    <span className="font-bold text-sm">Version {ver.version}</span>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${ver.status === 'Published' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                                        {ver.status}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {new Date(ver.updatedAt).toLocaleString()}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground truncate">
+                                                    By: {ver.updatedBy || "Unknown"}
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="w-full mt-2 h-7 text-xs"
+                                                    onClick={() => handleRestore(ver.version)}
+                                                >
+                                                    <RotateCcw className="w-3 h-3 mr-2" /> Restore
+                                                </Button>
+                                            </div>
+                                        ))
+                                    )
+                                )}
+                            </div>
+                        </SheetContent>
+                    </Sheet>
                     {/* Design & SEO SHEET */}
                     <Sheet>
                         <SheetTrigger asChild>

@@ -122,6 +122,35 @@ export class AmodxApi extends Construct {
         });
         props.table.grantReadWriteData(updateContentFunc);
 
+        // 1. Content History
+        const listHistoryFunc = new nodejs.NodejsFunction(this, 'ListHistoryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/content/history.ts'),
+            handler: 'listVersionsHandler',
+        });
+        props.table.grantReadData(listHistoryFunc);
+
+        this.httpApi.addRoutes({
+            path: '/content/{id}/versions',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListHistoryInt', listHistoryFunc),
+        });
+
+        // 2. Content Restore
+        const restoreContentFunc = new nodejs.NodejsFunction(this, 'RestoreContentFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/content/restore.ts'),
+            handler: 'restoreHandler',
+        });
+        props.table.grantReadWriteData(restoreContentFunc);
+        props.eventBus.grantPutEventsTo(restoreContentFunc); // Needs to audit
+
+        this.httpApi.addRoutes({
+            path: '/content/{id}/restore',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('RestoreContentInt', restoreContentFunc),
+        });
+
         this.httpApi.addRoutes({
             path: '/content',
             methods: [apigw.HttpMethod.POST],
