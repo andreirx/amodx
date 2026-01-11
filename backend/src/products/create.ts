@@ -49,9 +49,10 @@ export const handler: Handler = async (event) => {
 
         await publishAudit({
             tenantId,
-            actorId: auth.sub,
+            actor: { id: auth.sub, email: auth.email },
             action: "CREATE_PRODUCT",
-            details: { title: input.title },
+            target: { title: input.title, id: id },
+            details: { price: input.price, status: input.status },
             ip: event.requestContext.http.sourceIp
         });
 

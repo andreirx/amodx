@@ -3,8 +3,8 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ContextItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
-import {publishAudit} from "../lib/events";
-import {requireRole} from "../auth/policy";
+import { publishAudit } from "../lib/events.js";
+import { requireRole } from "../auth/policy.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -15,16 +15,15 @@ export const handler: AmodxHandler = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
 
-        // 1. FAIL if no tenant ID (No more "DEMO")
+        // 1. FAIL if no tenant ID
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
 
         // 2. ENFORCE Policy
-        // Editors and Admins can list content
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         const body = JSON.parse(event.body);
 
-        // Zod Validation (Strips unknown fields)
+        // Zod Validation
         const input = ContextItemSchema.omit({
             id: true,
             tenantId: true,
@@ -49,16 +48,17 @@ export const handler: AmodxHandler = async (event) => {
                 title: input.title,
                 blocks: input.blocks,
                 tags: input.tags,
-                Type: "Context" // For GSI indexing if we add one later
+                Type: "Context"
             },
         }));
 
-        // Non-blocking (or awaited, it's fast)
+        // Non-blocking
         await publishAudit({
             tenantId,
-            actorId: auth.sub,
+            actor: { id: auth.sub, email: auth.email },
             action: "CREATE_CONTEXT",
-            details: { title: input.title },
+            target: { id, title: input.title },
+            details: { tags: input.tags, blocksCount: input.blocks.length },
             ip: event.requestContext.http.sourceIp
         });
 

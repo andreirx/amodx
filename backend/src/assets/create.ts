@@ -63,9 +63,10 @@ export const handler: Handler = async (event) => {
         // 4. Audit
         await publishAudit({
             tenantId,
-            actorId: auth.sub,
+            actor: { id: auth.sub, email: auth.email },
             action: "UPLOAD_ASSET",
-            details: { filename, size, assetId },
+            target: { title: filename, id: assetId },
+            details: { fileType: contentType, size },
             ip: event.requestContext.http.sourceIp
         });
 

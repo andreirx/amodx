@@ -113,9 +113,10 @@ export const handler: AmodxHandler = async (event) => {
 
         await publishAudit({
             tenantId,
-            actorId: userId,
+            actor: { id: userId, email: authorName }, // Assuming authorName is email here
             action: "CREATE_PAGE",
-            details: { title: input.title, slug },
+            target: { title: input.title, id: nodeId },
+            details: { slug: slug },
             ip: event.requestContext.http.sourceIp
         });
 

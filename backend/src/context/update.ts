@@ -2,8 +2,8 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
-import {publishAudit} from "../lib/events";
-import {requireRole} from "../auth/policy";
+import { publishAudit } from "../lib/events.js";
+import { requireRole } from "../auth/policy.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -16,11 +16,10 @@ export const handler: AmodxHandler = async (event) => {
         if (!id || !event.body) return { statusCode: 400, body: "Missing ID or Body" };
         const body = JSON.parse(event.body);
 
-        // 1. FAIL if no tenant ID (No more "DEMO")
+        // 1. FAIL if no tenant ID
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
 
         // 2. ENFORCE Policy
-        // Editors and Admins can list content
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
         // 1. Verify
@@ -46,12 +45,13 @@ export const handler: AmodxHandler = async (event) => {
             }
         }));
 
-        // Non-blocking (or awaited, it's fast)
+        // Non-blocking
         await publishAudit({
             tenantId,
-            actorId: auth.sub,
+            actor: { id: auth.sub, email: auth.email },
             action: "UPDATE_CONTEXT",
-            details: { title: body.title },
+            target: { id, title: body.title || existing.Item.title },
+            details: { updatedFields: Object.keys(body) },
             ip: event.requestContext.http.sourceIp
         });
 

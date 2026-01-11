@@ -47,9 +47,10 @@ export const handler: Handler = async (event) => {
 
         await publishAudit({
             tenantId,
-            actorId: auth.sub,
+            actor: { id: auth.sub, email: auth.email },
             action: "UPDATE_PRODUCT",
-            details: { title: merged.title },
+            target: { title: merged.title, id: id },
+            details: { updatedFields: Object.keys(input).filter(key => input[key as keyof typeof input] !== undefined) },
             ip: event.requestContext.http.sourceIp
         });
 

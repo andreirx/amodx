@@ -35,7 +35,7 @@ export function Navbar({
                     <div className="flex shrink-0 items-center">
                         <Link href={getUrl("/")} className="flex items-center gap-2">
                             {showLogo && logo && (
-                                <img src={logo} alt={siteName} className="h-8 w-auto object-contain"/>
+                                <img src={logo} alt={siteName} className="h-12 w-auto object-contain"/>
                             )}
                             {showTitle && (
                                 <span className="text-xl font-bold text-foreground tracking-tight">{siteName}</span>

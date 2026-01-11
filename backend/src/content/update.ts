@@ -140,7 +140,17 @@ export const handler: AmodxHandler = async (event) => {
             }));
         }
 
-        await publishAudit({ tenantId, actorId: userId, action: "UPDATE_PAGE", details: { title: input.title } });
+        await publishAudit({
+            tenantId,
+            actor: { id: userId, email: auth.email },
+            action: "UPDATE_PAGE",
+            target: { title: input.title || current.title, id: nodeId },
+            details: {
+                slugChanged,
+                fieldsUpdated: Object.keys(input).filter(key => input[key as keyof typeof input] !== undefined),
+            },
+            ip: event.requestContext.http.sourceIp
+        });
 
         return { statusCode: 200, body: JSON.stringify({ message: "Updated", slug: newSlug }) };
     } catch (error: any) {

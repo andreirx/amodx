@@ -48,6 +48,15 @@ export const handler: AmodxHandler = async (event) => {
         };
         const validTenant = TenantConfigSchema.parse(newTenant);
 
+        await publishAudit({
+            tenantId: id,
+            actor: { id: userId, email: auth.email }, // Pass email
+            action: "CREATE_TENANT",
+            target: { title: validTenant.name }, // Pass title for context
+            details: {}, // Details might be empty here, or could add tenant config snapshot
+            ip: event.requestContext.http.sourceIp
+        });
+
         // 2. Prepare Default Home Page
         const homeNodeId = crypto.randomUUID();
         const homeContentId = crypto.randomUUID();

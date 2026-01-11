@@ -88,9 +88,10 @@ export const updateHandler: AmodxHandler = async (event) => {
         // Non-blocking (or awaited, it's fast)
         await publishAudit({
             tenantId,
-            actorId: auth.sub,
-            action: "TENANT_SETTINGS",
-            details: {},
+            actor: { id: auth.sub, email: auth.email },
+            action: "UPDATE_SETTINGS",
+            target: { title: current.name }, // Use current tenant name
+            details: { updatedFields: Object.keys(body) }, // Log which fields were changed
             ip: event.requestContext.http.sourceIp
         });
 

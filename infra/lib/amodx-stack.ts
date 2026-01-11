@@ -120,6 +120,7 @@ export class AmodxStack extends cdk.Stack {
       handler: 'handler',
       environment: { TABLE_NAME: db.table.tableName },
       bundling: { minify: true, sourceMap: true },
+      deadLetterQueueEnabled: true // CDK creates the SQS queue automatically to prevent losing logs
     });
     db.table.grantWriteData(auditWorker);
 
