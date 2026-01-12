@@ -289,10 +289,18 @@ export default function ContentList() {
                                             variant="ghost"
                                             size="icon"
                                             className="h-8 w-8"
-                                            // FIX: Use Renderer URL + /_site/ + tenant + slug
+                                            // Use Renderer URL + /_site/ + tenant + slug
                                             onClick={() => {
                                                 const rendererUrl = getRendererUrl();
-                                                const url = `${rendererUrl}/_site/${currentTenant.id}${item.slug}`;
+                                                // 1. Base URL
+                                                let url = `${rendererUrl}/_site/${currentTenant.id}${item.slug}`;
+
+                                                // 2. Append Preview Query Param if Draft
+                                                if (item.status === 'Draft') {
+                                                    // Check if slug already has params (edge case)
+                                                    url += url.includes('?') ? '&preview=true' : '?preview=true';
+                                                }
+
                                                 window.open(url, '_blank');
                                             }}
                                             title="Preview (Internal Link)"

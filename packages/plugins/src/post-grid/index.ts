@@ -13,24 +13,32 @@ export const PostGridPlugin: PluginDefinition = {
     schema: PostGridSchema,
 
     editorExtension: Node.create({
-        name: 'postGrid',
-        group: 'block',
-        atom: true,
+    name: 'postGrid',
+    group: 'block',
+    atom: true,
 
-        addAttributes() {
-            return {
-                headline: { default: 'Latest Posts' },
-                filterTag: { default: '' },
-                limit: { default: 6 },
-                showImages: { default: true },
-                columns: { default: '3' }
-            };
-        },
+    // NEW: Allow Admin to inject a tag fetcher
+    addStorage() {
+        return {
+            fetchTagsFn: null, // (callback: (tags: string[]) => void) => void
+        };
+    },
 
-        parseHTML() { return [{ tag: 'app-post-grid' }]; },
-        renderHTML({ HTMLAttributes }) { return ['app-post-grid', mergeAttributes(HTMLAttributes)]; },
-        addNodeView() { return ReactNodeViewRenderer(PostGridEditor); },
-    }),
+    addAttributes() {
+        return {
+            headline: { default: 'Latest Posts' },
+            filterTag: { default: '' },
+            limit: { default: 6 },
+            showImages: { default: true },
+            layout: { default: 'list' },
+            columns: { default: '3' }
+        };
+    },
+
+    parseHTML() { return [{ tag: 'app-post-grid' }]; },
+    renderHTML({ HTMLAttributes }) { return ['app-post-grid', mergeAttributes(HTMLAttributes)]; },
+    addNodeView() { return ReactNodeViewRenderer(PostGridEditor); },
+}),
 
     renderComponent: PostGridRender
 };

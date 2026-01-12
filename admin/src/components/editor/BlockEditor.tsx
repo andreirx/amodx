@@ -7,7 +7,8 @@ import { Toolbar } from "./Toolbar";
 import type { AnyExtension } from "@tiptap/core";
 import { uploadFile } from "@/lib/upload";
 import { useState } from "react";
-import { MediaPicker } from "@/components/MediaPicker"; // Ensure this import works
+import { MediaPicker } from "@/components/MediaPicker";
+import { apiRequest } from "@/lib/api"; // <--- Now valid here
 
 interface BlockEditorProps {
     initialContent?: any;
@@ -17,7 +18,7 @@ interface BlockEditorProps {
 export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
     const [pickerOpen, setPickerOpen] = useState(false);
 
-    // FIX: Parentheses around the function type allow 'null' as a state value
+    // Parentheses around the function type allow 'null' as a state value
     const [pickerCallback, setPickerCallback] = useState<((url: string) => void) | null>(null);
 
     const openPicker = (callback: (url: string) => void) => {
@@ -27,11 +28,26 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
     };
 
     const handleSelect = (url: string) => {
-        if (pickerCallback) {
-            pickerCallback(url);
-        }
+        if (pickerCallback) pickerCallback(url);
         setPickerOpen(false);
         setPickerCallback(null);
+    };
+
+    // DEFINE THE TAG FETCHER
+    const handleFetchTags = async (callback: (tags: string[]) => void) => {
+        try {
+            const res = await apiRequest("/content");
+            const allTags = new Set<string>();
+            (res.items || []).forEach((item: any) => {
+                if (Array.isArray(item.tags)) {
+                    item.tags.forEach((t: string) => allTags.add(t));
+                }
+            });
+            callback(Array.from(allTags).sort());
+        } catch (e) {
+            console.error("Failed to fetch tags for editor", e);
+            callback([]);
+        }
     };
 
     const editor = useEditor({
@@ -51,9 +67,21 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
         },
         onBeforeCreate({ editor }) {
             const storage = editor.storage as any;
+
+            // Image Handlers
             if (storage.image) {
                 storage.image.uploadFn = uploadFile;
-                storage.image.pickFn = openPicker; // Wired up!
+                storage.image.pickFn = openPicker;
+            }
+            // Hero Handlers (reuses image logic)
+            if (storage.hero) {
+                storage.hero.uploadFn = uploadFile;
+                storage.hero.pickFn = openPicker;
+            }
+
+            // NEW: PostGrid Handlers
+            if (storage.postGrid) {
+                storage.postGrid.fetchTagsFn = handleFetchTags;
             }
         },
         onUpdate: ({ editor }) => {

@@ -401,6 +401,20 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ListAuditInt', listAuditFunc),
         });
 
+// CONTENT GRAPH
+        const graphFunc = new nodejs.NodejsFunction(this, 'ContentGraphFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/audit/graph.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(graphFunc);
+
+        this.httpApi.addRoutes({
+            path: '/audit/graph',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ContentGraphInt', graphFunc),
+        });
+
         // RESOURCES (PRIVATE)
         const resourceEnv = {
             TABLE_NAME: props.table.tableName,

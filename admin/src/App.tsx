@@ -17,6 +17,7 @@ import Products from "@/pages/Products";
 import ProductEditor from "@/pages/ProductEditor";
 import UsersPage from "@/pages/Users";
 import Comments from "@/pages/Comments";
+import ContentGraph from "@/pages/ContentGraph";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -63,6 +64,7 @@ const router = createBrowserRouter([
         element: <AppShell />, // Acts as the layout + auth guard
         children: [
             { index: true, element: <ContentList /> },
+            { path: "graph", element: <ContentGraph /> },
             { path: "content/:id", element: <ContentEditor /> },
             { path: "products", element: <Products /> },
             { path: "products/:id", element: <ProductEditor /> },

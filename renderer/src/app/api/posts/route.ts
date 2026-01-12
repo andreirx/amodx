@@ -9,7 +9,10 @@ export async function GET(req: NextRequest) {
     const tenantId = req.headers.get("x-tenant-id");
     const { searchParams } = new URL(req.url);
     const tag = searchParams.get("tag");
-    const limit = parseInt(searchParams.get("limit") || "6");
+    const limitParam = searchParams.get("limit");
+
+    // Default to 6, but if 0 is passed, keep it 0 (Infinity)
+    const limit = limitParam !== null ? parseInt(limitParam) : 6;
 
     if (!tenantId || !process.env.TABLE_NAME) {
         return NextResponse.json({ items: [] });
@@ -39,11 +42,18 @@ export async function GET(req: NextRequest) {
         const result = await docClient.send(new QueryCommand(params));
         let items = result.Items || [];
 
-        // Sort by Date Descending (Newest First)
+        // 1. FILTER FOR LATEST VERSIONS ONLY
+        // With versioning, we have ...#v1, ...#v2, and ...#LATEST.
+        // We only want LATEST.
+        items = items.filter(item => item.SK.endsWith("#LATEST"));
+
+        // 2. Sort by Date Descending
         items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        // Limit results
-        items = items.slice(0, limit);
+        // 3. Limit Logic (0 = All)
+        if (limit > 0) {
+            items = items.slice(0, limit);
+        }
 
         // Map to lightweight format for grid
         const cleanItems = items.map((p: any) => ({

@@ -10,7 +10,7 @@ import { apiRequest } from "@/lib/api";
 import {Shield, Users} from "lucide-react";
 import { ShoppingBag } from "lucide-react";
 import {
-    LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare
+    LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph
 } from "lucide-react";
 import { Image as ImageIcon } from "lucide-react";
 import {
@@ -39,7 +39,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     const [isCreating, setIsCreating] = useState(false);
 
     const navItems = [
-        { name: "Content", href: "/", icon: LayoutDashboard },
+        { name: "Content List", href: "/", icon: LayoutDashboard },
+        { name: "Content Graph", href: "/graph", icon: GitGraph },
         { name: "Products", href: "/products", icon: ShoppingBag },
         { name: "Strategy", href: "/strategy", icon: Target },
         { name: "Media", href: "/media", icon: ImageIcon },
