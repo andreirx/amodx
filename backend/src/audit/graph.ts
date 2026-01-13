@@ -17,13 +17,13 @@ function normalizeSlug(url?: string): string | null {
 }
 
 // Helper: Fetch ALL items (Handle Pagination)
-// FIX: Removed ': any' cast on command to let TS infer QueryCommand output correctly
 async function fetchAllContent(tenantId: string) {
     let items: Record<string, any>[] = [];
     let lastEvaluatedKey: Record<string, any> | undefined = undefined;
 
     do {
-        const command = new QueryCommand({
+        // FIX: Explicitly type the command
+        const command: QueryCommand = new QueryCommand({
             TableName: TABLE_NAME,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": "CONTENT#" },
@@ -32,7 +32,7 @@ async function fetchAllContent(tenantId: string) {
             ExclusiveStartKey: lastEvaluatedKey
         });
 
-        // db.send(QueryCommand) returns QueryCommandOutput, which has Items
+        // Now res is strictly QueryCommandOutput
         const res = await db.send(command);
 
         if (res.Items) {
@@ -53,7 +53,6 @@ export const handler: Handler = async (event) => {
         if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
-        // 1. Fetch Config (Nav Links) & Content (Paginated)
         const [items, configRes] = await Promise.all([
             fetchAllContent(tenantId),
             db.send(new GetCommand({
@@ -96,10 +95,10 @@ export const handler: Handler = async (event) => {
         const incomingCounts = new Map<string, number>();
         nodeMap.forEach((_, id) => incomingCounts.set(id, 0));
 
-        // 3a. Global Links (Nav/Footer + System Pages)
+        // 3a. Global Links
         const globalLinks = [ ...(config.navLinks || []), ...(config.footerLinks || []) ];
-        globalLinks.push({ href: "/contact" }); // System Page Whitelist
-        globalLinks.push({ href: "/" });        // System Page Whitelist
+        globalLinks.push({ href: "/contact" });
+        globalLinks.push({ href: "/" });
 
         globalLinks.forEach((link: any) => {
             const slug = normalizeSlug(link.href);
@@ -109,7 +108,7 @@ export const handler: Handler = async (event) => {
             }
         });
 
-        // 3b. Process Content Links (With Error Safety)
+        // 3b. Process Content Links
         nodeMap.forEach((item) => {
             try {
                 nodes.push({
@@ -121,11 +120,8 @@ export const handler: Handler = async (event) => {
 
                 const uniqueTargets = new Set<string>();
 
-                // --- TRAVERSAL ---
                 const traverse = (node: any) => {
                     if (!node) return;
-
-                    // A. Direct Links
                     if (node.marks) {
                         node.marks.forEach((m: any) => {
                             if (m.type === 'link' && m.attrs?.href) {
@@ -141,7 +137,6 @@ export const handler: Handler = async (event) => {
                                 if (t && slugMap.has(t)) uniqueTargets.add(slugMap.get(t)!);
                             }
                         });
-                        // Array attrs
                         ['plans', 'items', 'columns', 'rows'].forEach(listKey => {
                             if (Array.isArray(node.attrs[listKey])) {
                                 node.attrs[listKey].forEach((subItem: any) => {
@@ -158,12 +153,9 @@ export const handler: Handler = async (event) => {
                         });
                     }
 
-                    // B. POST GRID LOGIC (Fixed Limit 0)
                     if (node.type === 'postGrid') {
                         const filterTag = node.attrs?.filterTag;
                         const rawLimit = node.attrs?.limit;
-
-                        // Limit Logic: 0 = Infinity, undefined = 6
                         let limit = 6;
                         if (rawLimit !== undefined && rawLimit !== null && rawLimit !== "") {
                             limit = parseInt(rawLimit);
@@ -173,18 +165,14 @@ export const handler: Handler = async (event) => {
                         if (filterTag && filterTag.trim() !== "") {
                             matches = matches.filter(p => p.tags.includes(filterTag));
                         }
-
-                        // Slice ONLY if limit > 0. If 0, take all.
                         if (limit > 0) {
                             matches = matches.slice(0, limit);
                         }
-
                         matches.forEach(p => {
                             if (p.id !== item.nodeId) uniqueTargets.add(p.id);
                         });
                     }
 
-                    // Recurse
                     if (node.content && Array.isArray(node.content)) {
                         node.content.forEach(traverse);
                     }
@@ -192,7 +180,6 @@ export const handler: Handler = async (event) => {
 
                 if (Array.isArray(item.blocks)) item.blocks.forEach(traverse);
 
-                // --- EDGES ---
                 uniqueTargets.forEach(targetId => {
                     if (targetId !== item.nodeId) {
                         edges.push({
@@ -209,16 +196,12 @@ export const handler: Handler = async (event) => {
             }
         });
 
-        // 4. Orphans
         const homepageId = slugMap.get('/');
         const orphans = nodes
             .filter(n => n.id !== homepageId && (incomingCounts.get(n.id) || 0) === 0)
             .map(n => ({ id: n.id, title: n.label, slug: n.slug }));
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ nodes, edges, orphans })
-        };
+        return { statusCode: 200, body: JSON.stringify({ nodes, edges, orphans }) };
 
     } catch (e: any) {
         console.error("Graph Fatal Error", e);

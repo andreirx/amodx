@@ -4,7 +4,7 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ProductSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
-import {requireRole} from "../auth/policy";
+import {requireRole} from "../auth/policy.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 

@@ -42,6 +42,12 @@ export class AmodxAuth extends Construct {
                 userSrp: true,
                 custom: true,
             },
+            // NEW: Security Hardening
+            accessTokenValidity: cdk.Duration.minutes(60), // Short-lived access
+            idTokenValidity: cdk.Duration.minutes(60),     // Short-lived identity
+            refreshTokenValidity: cdk.Duration.days(7),    // Force re-login every 7 days
+            enableTokenRevocation: true,                   // Allow admin to kill sessions remotely
+            preventUserExistenceErrors: true               // Don't reveal if email exists on failed login
         });
 
         // ==========================================

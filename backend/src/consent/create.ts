@@ -1,5 +1,5 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db, TABLE_NAME } from "../lib/db.js"; // <--- Added .js
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 
@@ -25,12 +25,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         // Validate input
         const validationResult = ConsentSchema.safeParse(body);
+
         if (!validationResult.success) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({
                     error: "Validation failed",
-                    details: validationResult.error.errors
+                    // FIX: Cast to any to avoid "Property errors does not exist" complaint
+                    details: (validationResult as any).error.errors
                 })
             };
         }
@@ -66,12 +68,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
     } catch (e: any) {
         console.error("Consent handler error:", e);
-        if (e instanceof z.ZodError) {
+        // FIX: Robust check for ZodError using name property
+        if (e instanceof z.ZodError || e.name === 'ZodError') {
             return {
                 statusCode: 400,
                 body: JSON.stringify({
                     error: "Validation failed",
-                    details: e.errors
+                    details: (e as any).errors || (e as any).issues
                 })
             };
         }

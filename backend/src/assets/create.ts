@@ -1,11 +1,11 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { db, TABLE_NAME } from "../lib/db";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { AuthorizerContext } from "../auth/context";
-import {publishAudit} from "../lib/events";
-import {requireRole} from "../auth/policy";
+import { db, TABLE_NAME } from "../lib/db.js";
+import { AuthorizerContext } from "../auth/context.js";
+import { publishAudit } from "../lib/events.js";
+import { requireRole } from "../auth/policy.js";
 
 const s3 = new S3Client({});
 const BUCKET = process.env.UPLOADS_BUCKET!;

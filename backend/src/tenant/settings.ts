@@ -1,9 +1,9 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { db, TABLE_NAME } from "../lib/db.js";
+import { db, TABLE_NAME } from "../lib/db.js"; // <--- Added .js
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import { AuthorizerContext } from "../auth/context.js";
-import {publishAudit} from "../lib/events";
-import { requireRole } from "../auth/policy.js";
+import { AuthorizerContext } from "../auth/context.js"; // <--- Added .js
+import { publishAudit } from "../lib/events.js"; // <--- Added .js
+import { requireRole } from "../auth/policy.js"; // <--- Added .js
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -12,13 +12,11 @@ export const getHandler: AmodxHandler = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
 
-        // 1. FAIL if no tenant ID (No more "DEMO")
+        // 1. FAIL if no tenant ID
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
 
         // 2. ENFORCE Policy
-        // Editors and Admins can list content
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
-
 
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
@@ -49,9 +47,12 @@ export const updateHandler: AmodxHandler = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
 
-        // SECURITY: Tenant Admin or Global Admin required
+        // CRITICAL FIX: Early return narrows type from (string | undefined) to (string)
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // SECURITY
         try {
-            requireRole(auth, ["TENANT_ADMIN"], tenantId);
+            requireRole(auth, ["TENANT_ADMIN", "GLOBAL_ADMIN"], tenantId);
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
@@ -64,7 +65,7 @@ export const updateHandler: AmodxHandler = async (event) => {
             Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
         }));
 
-        const current = result.Item || {};
+        const current = result.Item || { name: "Unknown" };
         const merged = { ...current, ...body };
 
         // Metadata updates
@@ -85,13 +86,13 @@ export const updateHandler: AmodxHandler = async (event) => {
             }
         }));
 
-        // Non-blocking (or awaited, it's fast)
+        // AUDIT LOG
         await publishAudit({
-            tenantId,
+            tenantId: tenantId, // TS is happy now because of the early return above
             actor: { id: auth.sub, email: auth.email },
             action: "UPDATE_SETTINGS",
-            target: { title: current.name }, // Use current tenant name
-            details: { updatedFields: Object.keys(body) }, // Log which fields were changed
+            target: { title: current.name || "Settings" },
+            details: { updatedFields: Object.keys(body) },
             ip: event.requestContext.http.sourceIp
         });
 

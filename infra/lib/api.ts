@@ -10,8 +10,6 @@ import * as path from 'path';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
-
-// Import the Authorizer and the ResponseType Enum
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 
 interface AmodxApiProps {
@@ -19,9 +17,9 @@ interface AmodxApiProps {
     userPoolId: string;
     userPoolClientId: string;
     masterKeySecret: secretsmanager.ISecret;
-    uploadsBucket: s3.IBucket; // The public bucket (images, ...)
-    privateBucket: s3.IBucket; // The private bucket
-    uploadsCdnUrl: string;     // The public URL
+    uploadsBucket: s3.IBucket;
+    privateBucket: s3.IBucket;
+    uploadsCdnUrl: string;
     eventBus: events.IEventBus;
     sesEmail: string;
     adminDomain?: string;
@@ -33,22 +31,18 @@ export class AmodxApi extends Construct {
     constructor(scope: Construct, id: string, props: AmodxApiProps) {
         super(scope, id);
 
-        // Dynamic Origin List
         const allowedOrigins = [
-            'http://localhost:3000', // Local Admin
-            'http://localhost:5173'  // Local Vite
+            'http://localhost:3000',
+            'http://localhost:5173'
         ];
 
         if (props.adminDomain) {
             allowedOrigins.push(`https://${props.adminDomain}`);
-            // Also allow the root domain just in case
-            // allowedOrigins.push(`https://${props.adminDomain.replace('admin.', '')}`);
         } else {
-            // Fallback for initial deployment before domain is set
             allowedOrigins.push('*');
         }
 
-        // 1. Authorizer Lambda
+        // 1. Authorizer
         const authorizerFunc = new nodejs.NodejsFunction(this, 'AuthorizerFunc', {
             runtime: lambda.Runtime.NODEJS_22_X,
             entry: path.join(__dirname, '../../backend/src/auth/authorizer.ts'),
@@ -60,18 +54,15 @@ export class AmodxApi extends Construct {
             },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         });
-
-        // Grant Lambda permission to read the secret
         props.masterKeySecret.grantRead(authorizerFunc);
 
-        // 2. Define Authorizer
         const authorizer = new HttpLambdaAuthorizer('AmodxAuthorizer', authorizerFunc, {
             responseTypes: [HttpLambdaResponseType.SIMPLE],
             resultsCacheTtl: cdk.Duration.minutes(0),
             identitySource: ['$request.header.Authorization', '$request.header.x-api-key'],
         });
 
-        // 3. HTTP API
+        // 2. HTTP API
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
             defaultAuthorizer: authorizer,
             corsPreflight: {
@@ -81,7 +72,7 @@ export class AmodxApi extends Construct {
             },
         });
 
-        // --- SHARED PROPS ---
+        // --- SHARED PROPS (THE FIX) ---
         const nodeProps = {
             runtime: lambda.Runtime.NODEJS_22_X,
             environment: {
@@ -89,11 +80,11 @@ export class AmodxApi extends Construct {
                 EVENT_BUS_NAME: props.eventBus.eventBusName
             },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+            memorySize: 1024,           // <--- 1024MB RAM
+            timeout: cdk.Duration.seconds(29), // <--- 29s Timeout
         };
 
-        // =========================================================
-        // 1. CONTENT API
-        // =========================================================
+        // --- CONTENT API ---
         const createContentFunc = new nodejs.NodejsFunction(this, 'CreateContentFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/content/create.ts'),
@@ -122,7 +113,7 @@ export class AmodxApi extends Construct {
         });
         props.table.grantReadWriteData(updateContentFunc);
 
-        // 1. Content History
+        // History & Restore
         const listHistoryFunc = new nodejs.NodejsFunction(this, 'ListHistoryFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/content/history.ts'),
@@ -130,26 +121,12 @@ export class AmodxApi extends Construct {
         });
         props.table.grantReadData(listHistoryFunc);
 
-        this.httpApi.addRoutes({
-            path: '/content/{id}/versions',
-            methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListHistoryInt', listHistoryFunc),
-        });
-
-        // 2. Content Restore
         const restoreContentFunc = new nodejs.NodejsFunction(this, 'RestoreContentFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/content/restore.ts'),
             handler: 'restoreHandler',
         });
         props.table.grantReadWriteData(restoreContentFunc);
-        props.eventBus.grantPutEventsTo(restoreContentFunc); // Needs to audit
-
-        this.httpApi.addRoutes({
-            path: '/content/{id}/restore',
-            methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('RestoreContentInt', restoreContentFunc),
-        });
 
         this.httpApi.addRoutes({
             path: '/content',
@@ -171,10 +148,18 @@ export class AmodxApi extends Construct {
             methods: [apigw.HttpMethod.PUT],
             integration: new integrations.HttpLambdaIntegration('UpdateContentInt', updateContentFunc),
         });
+        this.httpApi.addRoutes({
+            path: '/content/{id}/versions',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListHistoryInt', listHistoryFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/content/{id}/restore',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('RestoreContentInt', restoreContentFunc),
+        });
 
-        // =========================================================
-        // 2. CONTEXT API (Strategy)
-        // =========================================================
+        // --- CONTEXT API ---
         const createContextFunc = new nodejs.NodejsFunction(this, 'CreateContextFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/context/create.ts'),
@@ -204,14 +189,11 @@ export class AmodxApi extends Construct {
         props.table.grantWriteData(deleteContextFunc);
 
         const getContextFunc = new nodejs.NodejsFunction(this, 'GetContextFunc', {
-            runtime: lambda.Runtime.NODEJS_22_X,
+            ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/context/get.ts'),
             handler: 'handler',
-            environment: { TABLE_NAME: props.table.tableName },
-            bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         });
         props.table.grantReadData(getContextFunc);
-
 
         this.httpApi.addRoutes({
             path: '/context',
@@ -239,9 +221,7 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('GetContextInt', getContextFunc),
         });
 
-        // =========================================================
-        // 3. SETTINGS & TENANTS API
-        // =========================================================
+        // --- SETTINGS ---
         const getSettingsFunc = new nodejs.NodejsFunction(this, 'GetSettingsFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/tenant/settings.ts'),
@@ -267,18 +247,16 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('UpdateSettingsInt', updateSettingsFunc),
         });
 
-        // CONTACT EMAIL API
+        // --- CONTACT ---
         const contactFunc = new nodejs.NodejsFunction(this, 'ContactFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/contact/send.ts'),
             handler: 'handler',
             environment: {
-                TABLE_NAME: props.table.tableName,
+                ...nodeProps.environment,
                 SES_FROM_EMAIL: props.sesEmail,
             }
         });
-
-        // Grant SES Send Permission
         contactFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
             resources: ['*'],
@@ -291,7 +269,7 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ContactInt', contactFunc),
         });
 
-        // CONSENT API (GDPR)
+        // --- CONSENT ---
         const consentFunc = new nodejs.NodejsFunction(this, 'ConsentFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/consent/create.ts'),
@@ -305,18 +283,17 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ConsentInt', consentFunc),
         });
 
-        // WORDPRESS IMPORT API
+        // --- IMPORT ---
         const importFunc = new nodejs.NodejsFunction(this, 'ImportFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/import/wordpress.ts'),
             handler: 'handler',
-            timeout: cdk.Duration.minutes(15), // Max Lambda timeout
-            memorySize: 3008, // 3GB for large XML parsing
+            timeout: cdk.Duration.minutes(15),
+            memorySize: 3008,
             environment: {
-                TABLE_NAME: props.table.tableName,
+                ...nodeProps.environment,
                 UPLOADS_BUCKET: props.uploadsBucket.bucketName,
                 UPLOADS_CDN_URL: props.uploadsCdnUrl,
-                EVENT_BUS_NAME: props.eventBus.eventBusName
             }
         });
         props.table.grantReadWriteData(importFunc);
@@ -328,7 +305,7 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ImportInt', importFunc),
         });
 
-        // Tenant Management (Create New Site, List Sites)
+        // --- TENANTS ---
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/tenant/create.ts'),
@@ -354,13 +331,13 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ListTenantInt', listTenantFunc),
         });
 
-        // A. ASSETS API (Upload & List)
+        // --- ASSETS ---
         const createAssetFunc = new nodejs.NodejsFunction(this, 'CreateAssetFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/assets/create.ts'),
             handler: 'handler',
             environment: {
-                TABLE_NAME: props.table.tableName,
+                ...nodeProps.environment,
                 UPLOADS_BUCKET: props.uploadsBucket.bucketName,
                 UPLOADS_CDN_URL: props.uploadsCdnUrl,
             }
@@ -368,7 +345,6 @@ export class AmodxApi extends Construct {
         props.table.grantWriteData(createAssetFunc);
         props.uploadsBucket.grantPut(createAssetFunc);
 
-        // List Assets
         const listAssetFunc = new nodejs.NodejsFunction(this, 'ListAssetFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/assets/list.ts'),
@@ -381,27 +357,22 @@ export class AmodxApi extends Construct {
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('CreateAssetInt', createAssetFunc),
         });
-
         this.httpApi.addRoutes({
             path: '/assets',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('ListAssetInt', listAssetFunc),
         });
 
-        // AUDIT LOGS
+        // --- AUDIT ---
         const listAuditFunc = new nodejs.NodejsFunction(this, 'ListAuditFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/audit/list.ts'),
             handler: 'handler',
         });
         props.table.grantReadData(listAuditFunc);
-        this.httpApi.addRoutes({
-            path: '/audit',
-            methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListAuditInt', listAuditFunc),
-        });
 
-// CONTENT GRAPH
+        // --- CONTENT GRAPH ---
+        // Ensure this uses nodeProps with the 1024MB RAM
         const graphFunc = new nodejs.NodejsFunction(this, 'ContentGraphFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/audit/graph.ts'),
@@ -410,12 +381,17 @@ export class AmodxApi extends Construct {
         props.table.grantReadData(graphFunc);
 
         this.httpApi.addRoutes({
+            path: '/audit',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListAuditInt', listAuditFunc),
+        });
+        this.httpApi.addRoutes({
             path: '/audit/graph',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('ContentGraphInt', graphFunc),
         });
 
-        // RESOURCES (PRIVATE)
+        // --- RESOURCES ---
         const resourceEnv = {
             TABLE_NAME: props.table.tableName,
             PRIVATE_BUCKET: props.privateBucket.bucketName,
@@ -424,7 +400,7 @@ export class AmodxApi extends Construct {
         const createResourceFunc = new nodejs.NodejsFunction(this, 'CreateResourceFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/resources/presign.ts'),
-            handler: 'uploadHandler', // Named export
+            handler: 'uploadHandler',
             environment: resourceEnv,
         });
         props.privateBucket.grantPut(createResourceFunc);
@@ -433,7 +409,7 @@ export class AmodxApi extends Construct {
         const getResourceFunc = new nodejs.NodejsFunction(this, 'GetResourceFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/resources/presign.ts'),
-            handler: 'downloadHandler', // Named export
+            handler: 'downloadHandler',
             environment: resourceEnv,
         });
         props.privateBucket.grantRead(getResourceFunc);
@@ -447,44 +423,34 @@ export class AmodxApi extends Construct {
         props.table.grantReadData(listResourcesFunc);
 
         this.httpApi.addRoutes({
-            path: '/resources/list', // Explicit path
+            path: '/resources/list',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('ListResourcesInt', listResourcesFunc),
         });
-
         this.httpApi.addRoutes({
             path: '/resources/upload',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('UploadResourceInt', createResourceFunc),
         });
-
         this.httpApi.addRoutes({
             path: '/resources/{id}/download',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('DownloadResourceInt', getResourceFunc),
         });
 
-        // B. LEADS API (CRM)
+        // --- LEADS ---
         const createLeadFunc = new nodejs.NodejsFunction(this, 'CreateLeadFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/leads/create.ts'),
             handler: 'handler',
             environment: {
                 TABLE_NAME: props.table.tableName,
-                // NEW: Needs bucket info
                 PRIVATE_BUCKET: props.privateBucket.bucketName,
             }
         });
         props.table.grantWriteData(createLeadFunc);
-        // NEW: Needs permission to read metadata (to find key) and sign URL
-        props.table.grantReadData(createLeadFunc); // Already has write, read usually implied or add separate
-        props.privateBucket.grantRead(createLeadFunc); // To sign URLs
-
-        this.httpApi.addRoutes({
-            path: '/leads',
-            methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
-        });
+        props.table.grantReadData(createLeadFunc);
+        props.privateBucket.grantRead(createLeadFunc);
 
         const listLeadsFunc = new nodejs.NodejsFunction(this, 'ListLeadsFunc', {
             ...nodeProps,
@@ -495,11 +461,16 @@ export class AmodxApi extends Construct {
 
         this.httpApi.addRoutes({
             path: '/leads',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateLeadInt', createLeadFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/leads',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('ListLeadsInt', listLeadsFunc),
         });
 
-        // COMMENTS API
+        // --- COMMENTS ---
         const listCommentsFunc = new nodejs.NodejsFunction(this, 'ListCommentsFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/comments/list.ts'),
@@ -514,19 +485,6 @@ export class AmodxApi extends Construct {
         });
         props.table.grantWriteData(createCommentFunc);
 
-        this.httpApi.addRoutes({
-            path: '/comments',
-            methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListCommentsInt', listCommentsFunc),
-        });
-
-        this.httpApi.addRoutes({
-            path: '/comments',
-            methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('CreateCommentInt', createCommentFunc),
-        });
-
-        // Moderate Comment
         const moderateCommentFunc = new nodejs.NodejsFunction(this, 'ModerateCommentFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/comments/moderate.ts'),
@@ -536,12 +494,21 @@ export class AmodxApi extends Construct {
 
         this.httpApi.addRoutes({
             path: '/comments',
-            methods: [apigw.HttpMethod.PUT], // We'll use PUT for moderation actions
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListCommentsInt', listCommentsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/comments',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateCommentInt', createCommentFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/comments',
+            methods: [apigw.HttpMethod.PUT],
             integration: new integrations.HttpLambdaIntegration('ModerateCommentInt', moderateCommentFunc),
         });
 
-        // --- PRODUCTS API ---
-
+        // --- PRODUCTS ---
         const createProductFunc = new nodejs.NodejsFunction(this, 'CreateProductFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/products/create.ts'),
@@ -577,7 +544,6 @@ export class AmodxApi extends Construct {
         });
         props.table.grantWriteData(deleteProductFunc);
 
-        // Routes
         this.httpApi.addRoutes({
             path: '/products',
             methods: [apigw.HttpMethod.POST],
@@ -604,29 +570,20 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('DeleteProductInt', deleteProductFunc),
         });
 
-        // --- USERS API (New) ---
+        // --- USERS ---
         const listUsersFunc = new nodejs.NodejsFunction(this, 'ListUsersFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/users/list.ts'),
             handler: 'handler',
             environment: {
-                USER_POOL_ID: props.userPoolId, // Pass the Pool ID
+                USER_POOL_ID: props.userPoolId,
             }
         });
-
-        // Grant Cognito Permissions
         listUsersFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['cognito-idp:ListUsers'],
             resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
         }));
 
-        this.httpApi.addRoutes({
-            path: '/users',
-            methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListUsersInt', listUsersFunc),
-        });
-
-        // Invite User
         const inviteUserFunc = new nodejs.NodejsFunction(this, 'InviteUserFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/users/invite.ts'),
@@ -635,12 +592,16 @@ export class AmodxApi extends Construct {
                 USER_POOL_ID: props.userPoolId,
             }
         });
-
         inviteUserFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['cognito-idp:AdminCreateUser'],
             resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
         }));
 
+        this.httpApi.addRoutes({
+            path: '/users',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListUsersInt', listUsersFunc),
+        });
         this.httpApi.addRoutes({
             path: '/users',
             methods: [apigw.HttpMethod.POST],
@@ -653,17 +614,12 @@ export class AmodxApi extends Construct {
             entry: path.join(__dirname, '../../backend/src/webhooks/paddle.ts'),
             handler: 'handler',
             environment: {
-                // Pass dependencies
                 SES_FROM_EMAIL: props.sesEmail,
                 PRIVATE_BUCKET: props.privateBucket.bucketName
             }
         });
-
-        // Permissions
-        props.privateBucket.grantRead(paddleFunc); // To sign URLs
-        props.table.grantReadData(paddleFunc);     // To find product/resource
-
-        // Grant SES
+        props.privateBucket.grantRead(paddleFunc);
+        props.table.grantReadData(paddleFunc);
         paddleFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
             resources: ['*'],
@@ -675,29 +631,28 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('PaddleInt', paddleFunc),
         });
 
-
-        // --- THEMES API ---
-        const themeProps = { ...nodeProps, entry: path.join(__dirname, '../../backend/src/themes/manage.ts') };
-
-        // 1. Create Theme
+        // --- THEMES ---
         const createThemeFunc = new nodejs.NodejsFunction(this, 'CreateThemeFunc', {
-            ...themeProps, handler: 'createHandler',
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/themes/manage.ts'),
+            handler: 'createHandler',
         });
         props.table.grantWriteData(createThemeFunc);
 
-        // 2. List Themes
         const listThemesFunc = new nodejs.NodejsFunction(this, 'ListThemesFunc', {
-            ...themeProps, handler: 'listHandler',
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/themes/manage.ts'),
+            handler: 'listHandler',
         });
         props.table.grantReadData(listThemesFunc);
 
-        // 3. Delete Theme
         const deleteThemeFunc = new nodejs.NodejsFunction(this, 'DeleteThemeFunc', {
-            ...themeProps, handler: 'deleteHandler',
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/themes/manage.ts'),
+            handler: 'deleteHandler',
         });
         props.table.grantWriteData(deleteThemeFunc);
 
-        // Routes
         this.httpApi.addRoutes({
             path: '/themes',
             methods: [apigw.HttpMethod.POST],
@@ -714,8 +669,7 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('DeleteThemeInt', deleteThemeFunc),
         });
 
-        // NEW: Grant permissions to all API functions to PutEvents
-        // This iterates through all children and adds permission if it's a Function
+        // Grant EventBus Permissions to ALL Lambdas
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction) {
                 props.eventBus.grantPutEventsTo(child);

@@ -4,7 +4,7 @@ import {
 } from "aws-lambda";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { AuthorizerContext } from "./context";
+import { AuthorizerContext } from "./context.js";
 
 const userPoolId = process.env.USER_POOL_ID!;
 const clientId = process.env.USER_POOL_CLIENT_ID!;

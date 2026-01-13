@@ -1,4 +1,6 @@
-import { parseDocument, DomUtils, Element, Text } from "htmlparser2";
+// TO THIS:
+import { parseDocument, DomUtils } from "htmlparser2";
+import { Element, Text } from "domhandler"; // Ensure you install domhandler if missing
 
 export interface TiptapNode {
     type: string;

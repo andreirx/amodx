@@ -23,6 +23,8 @@ export const handler: AmodxHandler = async (event) => {
         const authorName = auth.email || "Robot";
         const tenantId = event.headers['x-tenant-id'];
 
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
         // SECURITY: Editors allowed
         try {
             requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);

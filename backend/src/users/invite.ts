@@ -1,7 +1,7 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { CognitoIdentityProviderClient, AdminCreateUserCommand } from "@aws-sdk/client-cognito-identity-provider";
-import { AuthorizerContext } from "../auth/context";
-import {requireRole} from "../auth/policy";
+import { AuthorizerContext } from "../auth/context.js";
+import {requireRole} from "../auth/policy.js";
 
 const cognito = new CognitoIdentityProviderClient({});
 const USER_POOL_ID = process.env.USER_POOL_ID!;

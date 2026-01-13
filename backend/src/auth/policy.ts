@@ -1,4 +1,4 @@
-import { AuthorizerContext } from "./context";
+import { AuthorizerContext } from "./context.js";
 
 export function requireRole(
     auth: AuthorizerContext,
