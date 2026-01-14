@@ -1,138 +1,65 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import { Plus, Trash2, LayoutGrid, Star } from 'lucide-react';
+import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
 import React from 'react';
 
-// Reusable Input Helper
-const Input = ({ label, value, onChange, className = "" }: any) => (
-    <div className="space-y-1 w-full">
-        {label && <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>}
-        <input
-            className={`w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-blue-500 outline-none transition-colors ${className}`}
-            value={value || ""}
-            onChange={e => onChange(e.target.value)}
-        />
-    </div>
+// ... Standard Inputs ...
+const Input = ({ value, onChange, placeholder }: any) => (
+    <input className="w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-blue-500 outline-none" value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
 );
-
-const TextArea = ({ label, value, onChange }: any) => (
-    <div className="space-y-1 w-full">
-        {label && <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>}
-        <textarea
-            className="w-full h-20 bg-white border border-gray-200 rounded p-2 text-sm focus:border-blue-500 outline-none transition-colors font-sans"
-            value={value || ""}
-            onChange={e => onChange(e.target.value)}
-        />
-    </div>
-);
-
-const Select = ({ label, value, onChange, options }: any) => (
-    <div className="space-y-1 w-full">
-        {label && <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>}
-        <select
-            className="w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-blue-500 outline-none cursor-pointer"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-        >
-            {options.map((o: string) => <option key={o} value={o}>{o}</option>)}
-        </select>
-    </div>
+const TextArea = ({ value, onChange, placeholder }: any) => (
+    <textarea className="w-full h-16 bg-white border border-gray-200 rounded p-2 text-sm focus:border-blue-500 outline-none resize-none" value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
 );
 
 export function FeaturesEditor(props: any) {
     const { headline, subheadline, items, columns } = props.node.attrs;
-
-    // Safety check for array
     const safeItems = Array.isArray(items) ? items : [];
-
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
-    const updateItem = (index: number, field: string, value: any) => {
-        const newItems = [...safeItems];
-        newItems[index] = { ...newItems[index], [field]: value };
-        update('items', newItems);
-    };
-
-    const addItem = () => {
-        const newItem = {
-            id: crypto.randomUUID(),
-            title: 'New Feature',
-            description: 'Description...',
-            icon: 'Check'
-        };
-        update('items', [...safeItems, newItem]);
-    };
-
-    const removeItem = (index: number) => {
-        const newItems = safeItems.filter((_: any, i: number) => i !== index);
-        update('items', newItems);
-    };
+    // ... addItem, removeItem, updateItem helpers ...
+    const updateItem = (i: number, f: string, v: any) => { const n = [...safeItems]; n[i] = {...n[i], [f]: v}; update('items', n); };
+    const addItem = () => update('items', [...safeItems, { id: crypto.randomUUID(), title: 'Feature', description: '...', icon: 'Check' }]);
+    const removeItem = (i: number) => update('items', safeItems.filter((_: any, idx: number) => idx !== i));
 
     return (
         <NodeViewWrapper className="my-8">
-            <div className="border border-gray-200 bg-gray-50/50 rounded-xl p-6 shadow-sm">
-
-                {/* Header */}
-                <div className="mb-6 flex justify-between items-start">
-                    <div className="space-y-4 max-w-lg flex-1">
-                        <div className="flex items-center gap-2">
-                            <LayoutGrid className="w-4 h-4 text-blue-600" />
-                            <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Feature Grid</span>
+            <div className="border border-gray-200 bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-50 text-blue-600">
+                            <LayoutGrid className="h-3.5 w-3.5" />
                         </div>
-                        <Input value={headline} onChange={(v: string) => update('headline', v)} className="font-bold text-lg" />
-                        <Input value={subheadline} onChange={(v: string) => update('subheadline', v)} />
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Feature Grid</span>
                     </div>
-                    <div className="w-32">
-                        <Select
-                            label="Columns"
-                            value={columns}
-                            onChange={(v: string) => update('columns', v)}
-                            options={["2", "3", "4"]}
-                        />
-                    </div>
+                    <select className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-blue-500" value={columns} onChange={e => update('columns', e.target.value)}>
+                        <option value="2">2 Cols</option>
+                        <option value="3">3 Cols</option>
+                        <option value="4">4 Cols</option>
+                    </select>
                 </div>
 
-                {/* Items Grid */}
-                <div className={`grid gap-4 grid-cols-1 md:grid-cols-2`}>
-                    {safeItems.map((item: any, i: number) => (
-                        <div key={item.id || i} className="relative p-4 rounded-lg border border-gray-200 bg-white group hover:border-blue-300 transition-colors">
-                            <button
-                                onClick={() => removeItem(i)}
-                                className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
-                                title="Remove Item"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
+                <div className="p-5">
+                    <div className="mb-6 space-y-2">
+                        <Input value={headline} onChange={(v: string) => update('headline', v)} placeholder="Headline" />
+                        <Input value={subheadline} onChange={(v: string) => update('subheadline', v)} placeholder="Subheadline" />
+                    </div>
 
-                            <div className="space-y-3 pr-6">
-                                <div className="flex gap-2">
-                                    {/* Simple Icon Selector for V1 */}
-                                    <div className="w-1/3">
-                                        <Select
-                                            label="Icon"
-                                            value={item.icon}
-                                            onChange={(v: string) => updateItem(i, 'icon', v)}
-                                            options={["Check", "Zap", "Shield", "TrendingUp", "Users", "Globe", "Lock", "Smile"]}
-                                        />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {safeItems.map((item: any, i: number) => (
+                            <div key={item.id || i} className="bg-white border border-gray-200 rounded-lg p-3 relative group">
+                                <button onClick={() => removeItem(i)} className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <div className="space-y-2">
+                                    <div className="flex gap-2">
+                                        <select className="w-24 h-8 bg-white border border-gray-200 rounded px-1 text-xs" value={item.icon} onChange={e => updateItem(i, 'icon', e.target.value)}>
+                                            {["Check", "Zap", "Shield", "TrendingUp", "Users", "Globe", "Lock", "Smile"].map(o => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                        <Input value={item.title} onChange={(v: string) => updateItem(i, 'title', v)} placeholder="Title" />
                                     </div>
-                                    <div className="w-2/3">
-                                        <Input label="Title" value={item.title} onChange={(v: string) => updateItem(i, 'title', v)} />
-                                    </div>
+                                    <TextArea value={item.description} onChange={(v: string) => updateItem(i, 'description', v)} placeholder="Description" />
                                 </div>
-                                <TextArea label="Description" value={item.description} onChange={(v: string) => updateItem(i, 'description', v)} />
                             </div>
-                        </div>
-                    ))}
-
-                    {/* Add Button */}
-                    <button
-                        onClick={addItem}
-                        className="flex flex-col items-center justify-center h-full min-h-[150px] rounded-lg border-2 border-dashed border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all group"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <Plus className="w-5 h-5 text-gray-400 group-hover:text-blue-500" />
-                        </div>
-                        <span className="mt-2 text-xs font-medium text-gray-500 group-hover:text-blue-600">Add Feature</span>
-                    </button>
+                        ))}
+                        <button onClick={addItem} className="min-h-[100px] border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-blue-500 hover:bg-blue-50 transition-colors"><Plus className="w-5 h-5" /></button>
+                    </div>
                 </div>
             </div>
         </NodeViewWrapper>

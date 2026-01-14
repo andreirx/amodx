@@ -2,20 +2,15 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutGrid, Loader2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-// Reusable Input
-const Input = ({ label, value, onChange, placeholder, type = "text", min, list }: any) => (
-    <div className="space-y-1 w-full">
-        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</label>
-        <input
-            type={type}
-            min={min}
-            list={list}
-            className="w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-indigo-500 outline-none transition-colors"
-            value={value === undefined || value === null ? "" : value}
-            onChange={e => onChange(e.target.value)}
-            placeholder={placeholder}
-        />
-    </div>
+const Input = ({ value, onChange, placeholder, type = "text", list }: any) => (
+    <input
+        type={type}
+        list={list}
+        className="w-full h-9 bg-white border border-gray-200 rounded-md px-3 text-sm focus:border-indigo-500 outline-none transition-colors"
+        value={value === undefined || value === null ? "" : value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+    />
 );
 
 export function PostGridEditor(props: any) {
@@ -24,71 +19,62 @@ export function PostGridEditor(props: any) {
 
     // Tag Fetching State
     const [availableTags, setAvailableTags] = useState<string[]>([]);
-    const [loadingTags, setLoadingTags] = useState(false);
-
-    const datalistId = `postgrid-tags-${Math.random().toString(36).substr(2, 9)}`;
 
     useEffect(() => {
-        // USE INJECTED FUNCTION
         const fetchFn = props.editor.storage.postGrid?.fetchTagsFn;
         if (fetchFn) {
-            setLoadingTags(true);
-            // We pass a callback to the host app
-            fetchFn((tags: string[]) => {
-                setAvailableTags(tags);
-                setLoadingTags(false);
-            });
+            fetchFn((tags: string[]) => setAvailableTags(tags));
         }
     }, []);
 
+    const datalistId = `postgrid-tags-${Math.random().toString(36).substr(2, 9)}`;
+
     return (
         <NodeViewWrapper className="my-8">
-            <div className="border border-indigo-100 bg-indigo-50/30 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-4 text-indigo-600">
-                    <LayoutGrid className="w-5 h-5" />
-                    <span className="font-bold text-xs uppercase tracking-widest">Dynamic Post Grid</span>
-                    {loadingTags && <Loader2 className="w-3 h-3 animate-spin ml-2 opacity-50" />}
+            <div className="border border-gray-200 bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded bg-indigo-50 text-indigo-600">
+                            <LayoutGrid className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Dynamic Post Grid</span>
+                    </div>
+                    <select
+                        className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-indigo-500"
+                        value={layout || 'grid'}
+                        onChange={e => update('layout', e.target.value)}
+                    >
+                        <option value="grid">Grid Layout</option>
+                        <option value="list">List Layout</option>
+                    </select>
                 </div>
 
-                <div className="space-y-4">
-                    <Input label="Headline" value={headline} onChange={(v: string) => update('headline', v)} />
+                <div className="p-5 space-y-4">
+                    <div>
+                        <label className="text-xs font-medium text-gray-500 mb-1.5 block">Section Headline</label>
+                        <Input value={headline} onChange={(v: string) => update('headline', v)} />
+                    </div>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                         <div>
+                            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Filter by Tag</label>
                             <Input
-                                label="Filter by Tag"
                                 value={filterTag}
                                 onChange={(v: string) => update('filterTag', v)}
                                 placeholder="All posts"
-                                list={datalistId} // Connect Input
+                                list={datalistId}
                             />
-                            {/* Define Datalist */}
                             <datalist id={datalistId}>
-                                {availableTags.map(tag => (
-                                    <option key={tag} value={tag}/>
-                                ))}
+                                {availableTags.map(tag => <option key={tag} value={tag} />)}
                             </datalist>
                         </div>
-
-                        <Input
-                            label="Limit (0 = All)"
-                            type="number"
-                            min="0"
-                            value={limit}
-                            onChange={(v: string) => update('limit', parseInt(v))}
-                        />
-
-                        <div className="space-y-1">
-                            <label
-                                className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Layout</label>
-                            <select
-                                className="w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-indigo-500 outline-none"
-                                value={layout || 'grid'}
-                                onChange={e => update('layout', e.target.value)}
-                            >
-                                <option value="grid">Grid Cards</option>
-                                <option value="list">Google Style List</option>
-                            </select>
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Max Items (0 = All)</label>
+                            <Input
+                                type="number"
+                                value={limit}
+                                onChange={(v: string) => update('limit', parseInt(v))}
+                            />
                         </div>
                     </div>
                 </div>
