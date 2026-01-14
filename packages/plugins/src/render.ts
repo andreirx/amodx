@@ -13,6 +13,7 @@ import { TableRender } from './table/TableRender';
 import { HtmlRender } from './html/HtmlRender';
 import { FaqRender } from "./faq/FaqRender";
 import { PostGridRender } from "./post-grid/PostGridRender";
+import { CarouselRender } from './carousel/CarouselRender';
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -28,5 +29,6 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'table': TableRender,
     'html': HtmlRender,
     'faq': FaqRender,
-    'postGrid': PostGridRender
+    'postGrid': PostGridRender,
+    'carousel': CarouselRender
 };

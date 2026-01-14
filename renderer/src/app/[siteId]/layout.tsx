@@ -21,14 +21,31 @@ export async function generateMetadata({ params }: { params: Promise<{ siteId: s
 
     if (!config) return {};
 
+    const baseUrl = `https://${config.domain}`;
+
     return {
         title: {
             template: `%s | ${config.name}`,
             default: config.name,
         },
+        description: config.description || `Official site for ${config.name}`,
         icons: {
             icon: config.icon || config.logo || '/favicon.ico',
         },
+        // NEW: AI & Feed Discovery
+        alternates: {
+            canonical: baseUrl,
+            types: {
+                // OpenAI / Standard Product Feed Discovery
+                'application/json': `${baseUrl}/openai-feed`,
+                // RSS/Atom fallback (using the same feed if valid JSON)
+                'application/feed+json': `${baseUrl}/openai-feed`,
+            }
+        },
+        // NEW: Explicitly link llms.txt for AI agents that parse HEAD
+        other: {
+            "ai-resource": `${baseUrl}/llms.txt`
+        }
     };
 }
 
