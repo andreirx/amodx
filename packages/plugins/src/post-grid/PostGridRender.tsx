@@ -4,32 +4,34 @@ import React, { useEffect, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
 export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: string }) {
-    const { headline, filterTag, limit, showImages, columns, layout } = attrs;
-    const [posts, setPosts] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [host, setHost] = useState("");
-    const [isMounted, setIsMounted] = useState(false);
+    const { headline, filterTag, limit, showImages, columns, layout, prefetchedPosts, serverDomain } = attrs;
 
-    // 1. SAFEGUARD: Wait for Client Mount
+    // Initialize state with PRE-FETCHED data if available
+    const [posts, setPosts] = useState<any[]>(prefetchedPosts || []);
+    const [loading, setLoading] = useState(!prefetchedPosts); // Only load if no data
+    const [error, setError] = useState("");
+    const [host, setHost] = useState(serverDomain || ""); // Use server domain if available
+
     useEffect(() => {
-        setIsMounted(true);
-        if (typeof window !== 'undefined') setHost(window.location.host);
+        if (typeof window !== 'undefined' && !host) {
+            setHost(window.location.host);
+        }
     }, []);
 
-    // 2. FETCH: Only run if mounted and tenantId exists
     useEffect(() => {
-        if (!isMounted || !tenantId) return;
-        fetchPosts();
-    }, [isMounted, tenantId, filterTag, limit]);
+        // Only fetch if we don't have data, or if props change (editor usage)
+        if (!prefetchedPosts && tenantId) {
+            fetchPosts();
+        }
+    }, [tenantId, filterTag, limit]);
 
     async function fetchPosts() {
+        setLoading(true);
         try {
             const tagParam = filterTag ? filterTag.trim() : "";
-            // Logic: If limit is 0/null/undefined, send 0 (backend treats 0 as Infinity)
             const limitParam = (!limit && limit !== 0) ? "6" : limit.toString();
-
             const query = new URLSearchParams({ tag: tagParam, limit: limitParam });
+
             const res = await fetch(`/api/posts?${query.toString()}`, {
                 headers: { 'x-tenant-id': tenantId || '' }
             });
@@ -47,11 +49,10 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
         }
     }
 
-    // 3. SERVER RENDER: Render NOTHING (or skeleton) to match initial client HTML
-    if (!isMounted) return null;
-
-    // 4. CLIENT RENDER
-    if (loading) {
+    // SSR HANDLING:
+    // If we have posts (prefetched), render them immediately.
+    // If we are loading and have no posts, show spinner.
+    if (loading && posts.length === 0) {
         return (
             <div className="py-12 flex justify-center opacity-50">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -59,11 +60,18 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
         );
     }
 
+    if (error) {
+        return (
+            <div className="py-8 text-center text-red-500 bg-red-50 rounded-lg mx-4">
+                <p className="text-sm">{error}</p>
+            </div>
+        );
+    }
+
     if (posts.length === 0) {
         return (
-            <div className="py-12 text-center border border-dashed rounded-xl mx-auto max-w-2xl bg-muted/20">
+            <div className="py-12 text-center border-2 border-dashed border-muted rounded-xl mx-4">
                 <p className="text-muted-foreground text-sm">No posts found.</p>
-                {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
             </div>
         );
     }
@@ -79,7 +87,11 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
                         <a key={post.id} href={post.slug} className="group flex gap-6 items-start">
                             {showImages && post.featuredImage && (
                                 <div className="w-32 h-24 shrink-0 rounded-lg overflow-hidden border border-border bg-muted">
-                                    <img src={post.featuredImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                    <img
+                                        src={post.featuredImage}
+                                        alt={post.title}
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    />
                                 </div>
                             )}
                             <div className="flex-1 min-w-0">
@@ -108,7 +120,7 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
                         <a key={post.id} href={post.slug} className="group block h-full flex flex-col">
                             {showImages && post.featuredImage && (
                                 <div className="aspect-video rounded-xl overflow-hidden bg-muted mb-4 border border-border">
-                                    <img src={post.featuredImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                    <img src={post.featuredImage} alt={post.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                 </div>
                             )}
                             <div className="flex-1">

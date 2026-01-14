@@ -149,7 +149,7 @@ export async function getProductById(tenantId: string, productId: string): Promi
     }
 }
 
-export async function getPostsByTag(tenantId: string, tag: string, limit = 6) {
+export async function getPosts(tenantId: string, tag?: string, limit: number = 6) {
     if (!process.env.TABLE_NAME) return [];
 
     try {
@@ -169,21 +169,37 @@ export async function getPostsByTag(tenantId: string, tag: string, limit = 6) {
             ExpressionAttributeNames: { "#s": "status" }
         };
 
-        if (tag) {
+        if (tag && tag.trim() !== "") {
             params.FilterExpression += " AND contains(tags, :tag)";
-            params.ExpressionAttributeValues[":tag"] = tag;
+            params.ExpressionAttributeValues[":tag"] = tag.trim();
         }
 
         const result = await docClient.send(new QueryCommand(params));
-        const items = result.Items || [];
+        let items = result.Items || [];
 
-        // Sort: Newest First
-        items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        // Filter LATEST
+        items = items.filter((item: any) => item.SK.endsWith("#LATEST"));
 
-        return items.slice(0, limit);
+        // Sort Date Desc
+        items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        // Limit
+        if (limit > 0) {
+            items = items.slice(0, limit);
+        }
+
+        return items.map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            slug: p.slug,
+            featuredImage: p.featuredImage,
+            seoDescription: p.seoDescription,
+            tags: p.tags,
+            createdAt: p.createdAt
+        }));
 
     } catch (e) {
-        console.error("Failed to fetch posts", e);
+        console.error("DynamoDB Posts Error:", e);
         return [];
     }
 }

@@ -1,4 +1,4 @@
-import { getTenantConfig, getContentBySlug } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
@@ -187,6 +187,30 @@ export default async function Page({ params, searchParams }: Props) {
             </>
         );
     }
+
+    // --- SEO FIX: PRE-FETCH POST GRID DATA ---
+    // We modify the blocks in memory before passing them to the renderer
+    if (content.blocks && Array.isArray(content.blocks)) {
+        await Promise.all(content.blocks.map(async (block: any) => {
+            if (block.type === 'postGrid') {
+                const tag = block.attrs.filterTag;
+                // Parse limit safely (handle "0" string or number)
+                let limit = 6;
+                if (block.attrs.limit !== undefined && block.attrs.limit !== null && block.attrs.limit !== "") {
+                    limit = parseInt(block.attrs.limit);
+                }
+
+                // Fetch data SERVER SIDE
+                const posts = await getPosts(config.id, tag, limit);
+
+                // Inject into attributes
+                block.attrs.prefetchedPosts = posts;
+                // Pass domain for breadcrumbs (fixes "window is undefined")
+                block.attrs.serverDomain = config.domain;
+            }
+        }));
+    }
+    // -----------------------------------------
 
     // --- RENDER: CONTENT ---
     const mergedTheme = {
