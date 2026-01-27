@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+} from "@/components/ui/dialog";
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
 import {
     Radar, ExternalLink, RefreshCw, ChevronRight, X,
-    MessageSquare, Globe, Flame,
+    MessageSquare, Globe, Flame, Plus,
 } from "lucide-react";
 import type { Signal } from "@amodx/shared";
 
@@ -28,6 +36,34 @@ export default function Signals() {
     const [draftReply, setDraftReply] = useState("");
     const [saving, setSaving] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>("all");
+    const [createOpen, setCreateOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [newSignal, setNewSignal] = useState({
+        url: "", title: "", source: "Web" as string, painScore: 5,
+    });
+
+    async function createSignal() {
+        if (!newSignal.url || !newSignal.title) return;
+        setCreating(true);
+        try {
+            await apiRequest("/signals", {
+                method: "POST",
+                body: JSON.stringify({
+                    ...newSignal,
+                    contentSnapshot: "",
+                    analysis: "Manually created signal",
+                    walletSignal: false,
+                }),
+            });
+            setCreateOpen(false);
+            setNewSignal({ url: "", title: "", source: "Web", painScore: 5 });
+            await loadSignals();
+        } catch (e) {
+            console.error("Failed to create signal:", e);
+        } finally {
+            setCreating(false);
+        }
+    }
 
     useEffect(() => {
         loadSignals();
@@ -84,10 +120,74 @@ export default function Signals() {
                             {filtered.length} signal{filtered.length !== 1 ? "s" : ""}
                         </span>
                     </div>
-                    <Button variant="outline" size="sm" onClick={loadSignals} disabled={loading}>
-                        <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-                        Refresh
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                            <DialogTrigger asChild>
+                                <Button size="sm">
+                                    <Plus className="h-4 w-4 mr-2" /> New Signal
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Create Signal</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label>URL</Label>
+                                        <Input
+                                            value={newSignal.url}
+                                            onChange={(e) => setNewSignal({ ...newSignal, url: e.target.value })}
+                                            placeholder="https://reddit.com/r/..."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Title</Label>
+                                        <Input
+                                            value={newSignal.title}
+                                            onChange={(e) => setNewSignal({ ...newSignal, title: e.target.value })}
+                                            placeholder="Signal title"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Source</Label>
+                                        <Select
+                                            value={newSignal.source}
+                                            onValueChange={(v) => setNewSignal({ ...newSignal, source: v })}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Reddit">Reddit</SelectItem>
+                                                <SelectItem value="Twitter">Twitter</SelectItem>
+                                                <SelectItem value="LinkedIn">LinkedIn</SelectItem>
+                                                <SelectItem value="Web">Web</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Pain Score (1-10)</Label>
+                                        <Select
+                                            value={String(newSignal.painScore)}
+                                            onValueChange={(v) => setNewSignal({ ...newSignal, painScore: Number(v) })}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                                                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <Button onClick={createSignal} disabled={creating || !newSignal.url || !newSignal.title} className="w-full">
+                                        {creating ? "Creating..." : "Create Signal"}
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+                        <Button variant="outline" size="sm" onClick={loadSignals} disabled={loading}>
+                            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                            Refresh
+                        </Button>
+                    </div>
                 </div>
 
                 {/* STATUS FILTER */}

@@ -24,7 +24,18 @@ npm workspaces monorepo with these packages:
 To prevent Server-Side Rendering crashes and Circular Dependencies:
 -   **Split Entry:** `admin.ts` (Browser) vs `render.ts` (Server).
 -   **No Cross-Imports:** Plugins in `packages/plugins` **CANNOT** import from `admin/` or `renderer/`.
--   **Dependency Injection:** If a Plugin Editor needs to fetch data (e.g., Tags, Images), the function must be injected via `editor.storage` in `admin/src/components/editor/BlockEditor.tsx`. Do not import API helpers directly into the plugin package.
+-   **Dependency Injection:** If a Plugin Editor needs to fetch data (e.g., Tags, Images), the function must be injected via `editor.storage` in `admin/src/components/editor/BlockEditor.tsx`.
+-   **Editor UI Style:** All Editor components (`*Editor.tsx`) must be wrapped in a **Standard Card Layout**:
+    ```tsx
+    <NodeViewWrapper className="my-8">
+        <div className="border border-gray-200 bg-white rounded-xl shadow-sm overflow-hidden">
+            {/* Header: Gray bg, border-b, Icon + Label + specific controls */}
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">...</div>
+            {/* Content: p-5 padding */}
+            <div className="p-5 space-y-4">...</div>
+        </div>
+    </NodeViewWrapper>
+    ```
 
 ### 2. Database Patterns (Single Table Design)
 -   **No Scans:** Never use `ScanCommand` in production paths. Use `QueryCommand` with `PK` and `SK`.
@@ -37,6 +48,7 @@ To prevent Server-Side Rendering crashes and Circular Dependencies:
 -   **Renderer (Next.js):**
     -   **SEO Pre-fetching:** Dynamic blocks (like PostGrid) must have their data fetched server-side in `page.tsx` and injected into `block.attrs`. Do not rely solely on `useEffect` for SEO-critical content.
     -   **Hydration Safety:** Do not access `window` or `localStorage` without a `useEffect` or `typeof window !== 'undefined'` check.
+    -   **Images:** Use `img` tags or unoptimized `Image` if using external CDNs to avoid Lambda bandwidth costs.
 -   **Admin (Vite):**
     -   Use `TenantContext` for all data fetching.
     -   Handle 403/401 errors by redirecting to Login.
@@ -54,6 +66,10 @@ To prevent Server-Side Rendering crashes and Circular Dependencies:
 ### 6. Audit Logging
 -   **Rich Context:** `publishAudit` calls must include human-readable `actor.email` and `target.title`, not just UUIDs.
 -   **Enrichment:** Events are processed async by `AuditWorker`. Ensure payload contains enough snapshot data for the log to be useful without re-querying the DB.
+
+### 7. Key Management & Secrets
+-   **Agency Keys:** Store in AWS Secrets Manager or local `.env` for MCP. Do not hardcode in codebase.
+-   **Tenant Keys:** Store in `TenantConfig` via the Settings page. Backend/MCP must fetch these at runtime.
 
 ## Build & Development Commands
 
