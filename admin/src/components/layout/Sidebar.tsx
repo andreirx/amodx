@@ -10,7 +10,7 @@ import { apiRequest } from "@/lib/api";
 import {Shield, Users} from "lucide-react";
 import { ShoppingBag } from "lucide-react";
 import {
-    LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph
+    LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph, Radar
 } from "lucide-react";
 import { Image as ImageIcon } from "lucide-react";
 import {
@@ -43,6 +43,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
         { name: "Content Graph", href: "/graph", icon: GitGraph },
         { name: "Products", href: "/products", icon: ShoppingBag },
         { name: "Strategy", href: "/strategy", icon: Target },
+        { name: "Signals", href: "/signals", icon: Radar },
         { name: "Media", href: "/media", icon: ImageIcon },
         { name: "Leads", href: "/leads", icon: Users },
         { name: "Comments", href: "/comments", icon: MessageSquare },

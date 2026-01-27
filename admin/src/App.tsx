@@ -18,6 +18,7 @@ import ProductEditor from "@/pages/ProductEditor";
 import UsersPage from "@/pages/Users";
 import Comments from "@/pages/Comments";
 import ContentGraph from "@/pages/ContentGraph";
+import Signals from "@/pages/Signals";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -76,6 +77,7 @@ const router = createBrowserRouter([
             { path: "audit", element: <AuditLog /> },
             { path: "resources", element: <Resources /> },
             { path: "users", element: <UsersPage /> },
+            { path: "signals", element: <Signals /> },
             { path: "settings", element: <SettingsPage /> },
         ],
     },

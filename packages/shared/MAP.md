@@ -31,6 +31,8 @@ Everything lives in one file. All exports are top-level from `src/index.ts`.
 | Availability | in_stock, out_of_stock, preorder | Inventory |
 | Condition | new, refurbished, used | Product condition |
 | WorkItemStatus | Draft, PendingApproval, Scheduled, Completed, Failed | Automation tasks |
+| SignalStatus | New, Drafted, Replied, Dismissed | Outbound lead tracking |
+| SignalSource | Reddit, Twitter, LinkedIn, Web | Signal origin platform |
 
 ### Core Schemas (with inferred types)
 
@@ -54,6 +56,7 @@ Everything lives in one file. All exports are top-level from `src/index.ts`.
 | IntegrationsSchema | Integrations | Third-party connections (GA, Paddle, OAuth, analytics) |
 | GDPRConfigSchema | GDPRConfig | Cookie consent banner settings |
 | HeaderConfigSchema | HeaderConfig | Navigation header display options |
+| SignalSchema | Signal | Outbound lead signal (URL, pain score, wallet signal, analysis, draft reply) |
 
 ### Constants
 

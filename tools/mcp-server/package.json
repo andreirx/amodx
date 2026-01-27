@@ -11,6 +11,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
     "axios": "^1.13.2",
+    "cheerio": "^1.2.0",
     "dotenv": "^16.4.7",
     "zod": "^4.1.13"
   },

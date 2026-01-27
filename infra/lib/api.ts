@@ -631,6 +631,44 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('PaddleInt', paddleFunc),
         });
 
+        // --- SIGNALS ---
+        const createSignalFunc = new nodejs.NodejsFunction(this, 'CreateSignalFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/signals/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(createSignalFunc);
+
+        const listSignalFunc = new nodejs.NodejsFunction(this, 'ListSignalFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/signals/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listSignalFunc);
+
+        const updateSignalFunc = new nodejs.NodejsFunction(this, 'UpdateSignalFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/signals/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateSignalFunc);
+
+        this.httpApi.addRoutes({
+            path: '/signals',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateSignalInt', createSignalFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/signals',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListSignalInt', listSignalFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/signals/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateSignalInt', updateSignalFunc),
+        });
+
         // --- THEMES ---
         const createThemeFunc = new nodejs.NodejsFunction(this, 'CreateThemeFunc', {
             ...nodeProps,

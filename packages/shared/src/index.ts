@@ -7,6 +7,8 @@ import { z } from "zod";
 export const ContentStatus = z.enum(["Draft", "Published", "Archived"]);
 export const AccessType = z.enum(["Public", "LoginRequired", "Group", "Purchase", "EmailGate"]);
 export const WorkItemStatus = z.enum(["Draft", "PendingApproval", "Scheduled", "Completed", "Failed"]);
+export const SignalStatus = z.enum(["New", "Drafted", "Replied", "Dismissed"]);
+export const SignalSource = z.enum(["Reddit", "Twitter", "LinkedIn", "Web"]);
 
 // Helper for Navigation
 export const LinkSchema = z.object({
@@ -462,6 +464,25 @@ export const ProductSchema = z.object({
 });
 
 export type Product = z.infer<typeof ProductSchema>;
+
+// --- SIGNALS (Outbound Lead Tracking) ---
+export const SignalSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    source: SignalSource,
+    url: z.string(),
+    title: z.string(),
+    contentSnapshot: z.string().max(5000),
+    author: z.string().optional(),
+    painScore: z.number().min(1).max(10),
+    walletSignal: z.boolean(),
+    analysis: z.string(),
+    draftReply: z.string().optional(),
+    status: SignalStatus.default("New"),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+export type Signal = z.infer<typeof SignalSchema>;
 
 type Theme = z.infer<typeof ThemeSchema>;
 

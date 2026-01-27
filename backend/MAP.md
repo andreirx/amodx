@@ -35,6 +35,10 @@ src/
 │   ├── create.ts          # POST /comments (public or authed)
 │   ├── list.ts            # GET /comments
 │   └── moderate.ts        # POST /comments/moderate
+├── signals/
+│   ├── create.ts          # POST /signals
+│   ├── list.ts            # GET /signals
+│   └── update.ts          # PUT /signals/{id}
 ├── leads/
 │   ├── create.ts          # POST /leads (public, no auth)
 │   └── list.ts            # GET /leads
@@ -110,6 +114,7 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 | Asset | `TENANT#<id>` | `ASSET#<assetId>` |
 | Resource | `TENANT#<id>` | `RESOURCE#<resourceId>` |
 | Audit log | `TENANT#<id>` | `AUDIT#<timestamp>#<id>` |
+| Signal | `TENANT#<id>` | `SIGNAL#<signalId>` |
 | Consent | `TENANT#<id>` | `CONSENT#<visitorId>#<timestamp>` |
 
 **GSIs:** GSI_Domain (lookup tenant by domain), GSI_Type (list by entity type), GSI_Status (workflow queries)

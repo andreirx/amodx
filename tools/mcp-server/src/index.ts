@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import axios from "axios";
+import * as cheerio from "cheerio";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -939,6 +940,126 @@ server.tool("apply_theme",
 
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// 6. SIGNALS (Outbound Lead Tracking)
+// ==========================================
+
+server.tool("search_web",
+    {
+        query: z.string().describe("Search query"),
+        limit: z.number().default(5).describe("Max results to return"),
+    },
+    async ({ query, limit }) => {
+        const SERPER_KEY = process.env.SERPER_API_KEY;
+        if (!SERPER_KEY) {
+            return { content: [{ type: "text" as const, text: "Error: SERPER_API_KEY not set in .env" }], isError: true };
+        }
+        try {
+            const response = await axios.post("https://google.serper.dev/search", {
+                q: query,
+                num: limit,
+            }, {
+                headers: { "X-API-KEY": SERPER_KEY, "Content-Type": "application/json" },
+            });
+            const results = (response.data.organic || []).map((r: any, i: number) =>
+                `${i + 1}. ${r.title}\n   ${r.link}\n   ${r.snippet || ""}`
+            ).join("\n\n");
+            return { content: [{ type: "text" as const, text: `Search results for "${query}":\n\n${results}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("scrape_url",
+    {
+        url: z.string().describe("URL to scrape"),
+    },
+    async ({ url }) => {
+        try {
+            const response = await axios.get(url, {
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; AMODX-Bot/1.0)" },
+                timeout: 15000,
+            });
+            const $ = cheerio.load(response.data);
+
+            // Remove scripts, styles, navs
+            $("script, style, nav, header, footer, aside").remove();
+
+            const title = $("title").text().trim();
+            const body = $("article, main, .post-content, .entry-content, body")
+                .first()
+                .text()
+                .replace(/\s+/g, " ")
+                .trim()
+                .substring(0, 5000);
+
+            const author = $("meta[name='author']").attr("content") || $("[rel='author']").first().text().trim() || undefined;
+
+            return {
+                content: [{
+                    type: "text" as const,
+                    text: `Scraped: ${url}\n\nTitle: ${title}\nAuthor: ${author || "Unknown"}\n\nContent:\n${body}`
+                }]
+            };
+        } catch (error: any) {
+            return { content: [{ type: "text" as const, text: `Error scraping ${url}: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("save_signal",
+    {
+        tenant_id: z.string(),
+        source: z.enum(["Reddit", "Twitter", "LinkedIn", "Web"]),
+        url: z.string(),
+        title: z.string(),
+        contentSnapshot: z.string().describe("The scraped/relevant text (max 5000 chars)"),
+        author: z.string().optional(),
+        painScore: z.number().min(1).max(10).describe("How urgent/painful is this lead's problem (1-10)"),
+        walletSignal: z.boolean().describe("Does the post indicate willingness to pay?"),
+        analysis: z.string().describe("AI analysis of why this is relevant"),
+        draftReply: z.string().optional().describe("Suggested reply to post"),
+    },
+    async (args) => {
+        try {
+            const response = await axios.post(`${API_URL}/signals`, {
+                source: args.source,
+                url: args.url,
+                title: args.title,
+                contentSnapshot: args.contentSnapshot,
+                author: args.author,
+                painScore: args.painScore,
+                walletSignal: args.walletSignal,
+                analysis: args.analysis,
+                draftReply: args.draftReply,
+            }, { headers: getHeaders(args.tenant_id) });
+            return { content: [{ type: "text" as const, text: `Saved signal "${args.title}" (ID: ${response.data.id}, Pain: ${args.painScore}/10)` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("list_signals",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/signals`, { headers: getHeaders(tenant_id) });
+            const items = response.data.items || [];
+            if (items.length === 0) {
+                return { content: [{ type: "text" as const, text: "No signals found." }] };
+            }
+            const summary = items.map((s: any) =>
+                `- [${s.status}] (Pain: ${s.painScore}/10) ${s.source}: ${s.title}${s.walletSignal ? " 💰" : ""} (ID: ${s.id})`
+            ).join("\n");
+            return { content: [{ type: "text" as const, text: `Signals for ${tenant_id}:\n${summary}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
         }
     }
 );

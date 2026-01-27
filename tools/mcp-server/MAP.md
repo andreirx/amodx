@@ -26,7 +26,7 @@ tsconfig.json
 - **Auth:** master API key in `x-api-key` header + `Authorization: Bearer robot`
 - **Tenant scoping:** `x-tenant-id` header per request
 
-## Tools (22 total)
+## Tools (26 total)
 
 ### Site Management
 | Tool | Method | Purpose |
@@ -68,6 +68,14 @@ tsconfig.json
 |------|--------|---------|
 | `list_comments` | GET /comments | List comments for moderation |
 | `moderate_comment` | POST /comments/moderate | Approve/spam/hide/delete comment |
+
+### Signals (Outbound Leads)
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `search_web` | Serper.dev API | Web search for prospects (requires SERPER_API_KEY) |
+| `scrape_url` | HTTP GET + cheerio | Extract text content from a URL |
+| `save_signal` | POST /signals | Save an analyzed outbound lead signal |
+| `list_signals` | GET /signals | List all signals for a tenant |
 
 ### Themes
 | Tool | Method | Purpose |

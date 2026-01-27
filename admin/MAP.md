@@ -37,6 +37,7 @@ src/
     ├── ProductEditor.tsx       # Product form: pricing, inventory, images, Paddle/digital delivery
     ├── StrategyBoard.tsx       # Strategy document cards with quick-create dialog
     ├── StrategyEditor.tsx      # Block editor for strategy docs with tags
+    ├── Signals.tsx             # Outbound lead signals list + detail side panel
     ├── MediaLibrary.tsx        # Asset grid gallery with copy-URL
     ├── Leads.tsx               # Lead table with CSV export
     ├── Comments.tsx            # Moderation queue with status control
@@ -60,6 +61,7 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 | `/products/:id` | ProductEditor | Product editor |
 | `/strategy` | StrategyBoard | Strategy docs |
 | `/strategy/:id` | StrategyEditor | Strategy editor |
+| `/signals` | Signals | Outbound lead signals |
 | `/media` | MediaLibrary | Asset gallery |
 | `/leads` | Leads | Form submissions |
 | `/comments` | Comments | Comment moderation |
