@@ -149,3 +149,24 @@ API operations publish events to EventBridge (`AmodxSystemBus`) for async proces
 
 Config lives in `amodx.config.json` (production) and `amodx.staging.json` (staging). Infrastructure deploys via CDK.
 *Note: Deployment is manual or via CI/CD pipelines. Do not auto-deploy unless explicitly instructed.*
+
+## NEW MODULE - THE GROWTH ENGINE
+
+This module handles market research and social broadcasting. It splits responsibilities between the Cloud (Memory) and the Local Machine (Execution).
+
+### 1. Data & Persistence (Cloud)
+-   **Signals:** Potential leads/threads are stored in DynamoDB (`SIGNAL#`) via the Backend API.
+-   **Configuration:** API Keys (e.g., Brave Search) are stored in `TenantConfig` (Settings).
+-   **No SaaS:** We do not use third-party wrappers like Ayrshare. We use raw infrastructure.
+
+### 2. Execution (Local MCP)
+The MCP Server (`tools/mcp-server`) acts as the "Hands".
+-   **Browser Automation:** Uses `playwright` running locally on the user's machine.
+-   **Session State:** Social cookies are stored in `tools/mcp-server/.storage/<platform>.json`.
+    -   **Rule:** This folder is `.gitignore`'d. Credentials never leave the local machine.
+-   **Research:** MCP fetches the Brave API Key from the Backend (`GET /settings`), then calls Brave directly.
+
+### 3. Workflow
+1.  **Auth:** User runs `social_login("linkedin")` → MCP opens Chrome → User logs in → Cookies saved to disk.
+2.  **Research:** Claude calls `search_web` → MCP calls Brave → Claude analyzes → Calls `save_signal` (Backend).
+3.  **Action:** Claude calls `post_social` → MCP loads cookies → Automates the post via Playwright.

@@ -261,14 +261,8 @@ export const IntegrationsSchema = z.object({
     mailerlite: z.boolean().default(false),
     perplexity: z.boolean().default(false),
 
-    // AYRSHARE (Social Media Scheduling)
-    ayrshare: z.object({
-        apiKey: z.string().optional(),
-        profileKey: z.string().optional(),
-    }).optional(),
-
-    // SERPER (Web Search for Signals)
-    serperApiKey: z.string().optional(),
+    // BRAVE SEARCH (Local Research Stack)
+    braveApiKey: z.string().optional(),
 });
 
 // New Header Config

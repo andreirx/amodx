@@ -669,6 +669,20 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('UpdateSignalInt', updateSignalFunc),
         });
 
+        // --- RESEARCH ---
+        const researchSearchFunc = new nodejs.NodejsFunction(this, 'ResearchSearchFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/research/search.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(researchSearchFunc);
+
+        this.httpApi.addRoutes({
+            path: '/research/search',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('ResearchSearchInt', researchSearchFunc),
+        });
+
         // --- THEMES ---
         const createThemeFunc = new nodejs.NodejsFunction(this, 'CreateThemeFunc', {
             ...nodeProps,

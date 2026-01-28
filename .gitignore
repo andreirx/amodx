@@ -2,12 +2,18 @@ node_modules
 dist
 cdk.out
 .DS_Store
-.env
+.env*
+.storage
 coverage
 test-report.xml
 .idea
 *.iml
 amodx.*.json
+
+*.js
+*.d.ts
+!jest.config.js
+cdk.out/
 
 # Build artifacts
 .open-next/

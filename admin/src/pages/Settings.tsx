@@ -661,57 +661,26 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* EXTERNAL INTEGRATIONS */}
+                    {/* RESEARCH */}
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <Key className="h-5 w-5 text-muted-foreground" />
-                                <CardTitle>External Integrations</CardTitle>
+                                <CardTitle>Research</CardTitle>
                             </div>
-                            <CardDescription>API keys for social scheduling and web search.</CardDescription>
+                            <CardDescription>API keys for local research stack.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Ayrshare API Key</Label>
+                                <Label>Brave Search API Key</Label>
                                 <Input
                                     type="password"
-                                    value={config.integrations?.ayrshare?.apiKey || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        integrations: {
-                                            ...config.integrations!,
-                                            ayrshare: { ...config.integrations?.ayrshare, apiKey: e.target.value }
-                                        }
-                                    })}
-                                    placeholder="API key from Ayrshare dashboard"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Ayrshare Profile Key</Label>
-                                <Input
-                                    type="password"
-                                    value={config.integrations?.ayrshare?.profileKey || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        integrations: {
-                                            ...config.integrations!,
-                                            ayrshare: { ...config.integrations?.ayrshare, profileKey: e.target.value }
-                                        }
-                                    })}
-                                    placeholder="Profile key for multi-profile setups"
-                                />
-                            </div>
-                            <div className="h-px bg-border" />
-                            <div className="space-y-2">
-                                <Label>Serper API Key</Label>
-                                <Input
-                                    type="password"
-                                    value={config.integrations?.serperApiKey || ""}
-                                    onChange={e => updateIntegration("serperApiKey", e.target.value)}
-                                    placeholder="API key from serper.dev"
+                                    value={config.integrations?.braveApiKey || ""}
+                                    onChange={e => updateIntegration("braveApiKey", e.target.value)}
+                                    placeholder="API key from search.brave.com"
                                 />
                                 <p className="text-[10px] text-muted-foreground">
-                                    Used by the MCP server for web search when finding outbound signals.
+                                    Used for web search when finding outbound signals.
                                 </p>
                             </div>
                         </CardContent>
