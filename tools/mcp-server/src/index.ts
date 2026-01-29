@@ -32,7 +32,7 @@ const getHeaders = (tenantId?: string) => {
 };
 
 // --- COMPLETE BLOCK DEFINITIONS FOR AI ---
-// Updated with all current plugins as of Sprint 2 completion
+// Synced with packages/plugins — 15 custom blocks + 2 Tiptap builtins
 const BLOCK_SCHEMAS = {
     hero: {
         description: "A large banner with headline, subheadline, CTA button, and optional background image. Supports 3 layout styles.",
@@ -124,12 +124,14 @@ const BLOCK_SCHEMAS = {
         }
     },
     image: {
-        description: "A standalone image block with caption and width control.",
+        description: "A standalone image block with caption, width control, and aspect ratio.",
         attrs: {
             src: "string (image URL, required)",
             alt: "string (accessibility description)",
+            title: "string (optional, tooltip text)",
             caption: "string (optional, displayed below image)",
-            width: "'full' | 'wide' | 'centered' (controls max-width)"
+            width: "'full' | 'wide' | 'centered' (controls max-width)",
+            aspectRatio: "string (e.g., 'auto', '16/9', '4/3', default 'auto')"
         },
         example: {
             type: "image",
@@ -137,7 +139,8 @@ const BLOCK_SCHEMAS = {
                 src: "https://example.com/image.jpg",
                 alt: "Product screenshot",
                 caption: "Our dashboard in action",
-                width: "wide"
+                width: "wide",
+                aspectRatio: "auto"
             }
         }
     },
@@ -146,37 +149,37 @@ const BLOCK_SCHEMAS = {
         attrs: {
             url: "string (video URL, required)",
             caption: "string (optional, displayed below)",
-            autoplay: "boolean (default false)",
-            controls: "boolean (default true)"
+            width: "'centered' | 'wide' | 'full' (default 'centered')",
+            autoplay: "boolean (default false)"
         },
         example: {
             type: "video",
             attrs: {
                 url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
                 caption: "Product demo video",
-                autoplay: false,
-                controls: true
+                width: "centered",
+                autoplay: false
             }
         }
     },
-    leadmagnet: {
+    leadMagnet: {
         description: "Email capture form offering a downloadable resource (PDF, ebook, etc). User gets download link after providing email.",
         attrs: {
             headline: "string (e.g., 'Download Free Guide')",
             description: "string (what they'll get)",
             buttonText: "string (e.g., 'Get Free Guide')",
-            resourceUrl: "string (S3 URL to the gated file)",
-            resourceName: "string (e.g., 'SEO Checklist.pdf')",
+            resourceId: "string (ID of private resource from Resources page)",
+            fileName: "string (display name, e.g., 'SEO Checklist.pdf')",
             tags: "string (optional, CRM tags)"
         },
         example: {
-            type: "leadmagnet",
+            type: "leadMagnet",
             attrs: {
                 headline: "Get Our Free SEO Guide",
                 description: "50-page comprehensive checklist",
                 buttonText: "Download Now",
-                resourceUrl: "s3://bucket/seo-guide.pdf",
-                resourceName: "SEO-Guide-2025.pdf",
+                resourceId: "resource-uuid-here",
+                fileName: "SEO-Guide-2025.pdf",
                 tags: "lead-magnet, seo-interest"
             }
         }
@@ -186,7 +189,8 @@ const BLOCK_SCHEMAS = {
         attrs: {
             headline: "string (section title)",
             subheadline: "string (optional)",
-            items: "array of feature objects (see example)"
+            items: "array of feature objects (see example)",
+            columns: "'2' | '3' | '4' (default '3')"
         },
         featureStructure: {
             id: "string (uuid)",
@@ -199,6 +203,7 @@ const BLOCK_SCHEMAS = {
             attrs: {
                 headline: "Why Choose Us",
                 subheadline: "Everything you need to succeed",
+                columns: "3",
                 items: [
                     {
                         id: "uuid-here",
@@ -223,22 +228,22 @@ const BLOCK_SCHEMAS = {
         }
     },
     cta: {
-        description: "Call-to-action banner with headline, description, and button. Use for conversions or important announcements.",
+        description: "Call-to-action banner with headline, supporting text, and button. Use for conversions or important announcements.",
         attrs: {
             headline: "string (attention-grabbing text)",
-            description: "string (supporting text)",
+            subheadline: "string (supporting text)",
             buttonText: "string (action verb)",
             buttonLink: "string (destination URL)",
-            style: "'primary' | 'secondary' | 'accent' (visual emphasis level)"
+            style: "'simple' | 'card' | 'band' (layout variant)"
         },
         example: {
             type: "cta",
             attrs: {
                 headline: "Ready to Get Started?",
-                description: "Join 10,000+ agencies already using AMODX",
+                subheadline: "Join 10,000+ agencies already using AMODX",
                 buttonText: "Start Free Trial",
                 buttonLink: "/signup",
-                style: "primary"
+                style: "simple"
             }
         }
     },
@@ -247,27 +252,29 @@ const BLOCK_SCHEMAS = {
         attrs: {
             headline: "string (section title)",
             subheadline: "string (optional)",
-            items: "array of testimonial objects (see example)"
+            items: "array of testimonial objects (see example)",
+            style: "'grid' | 'slider' | 'minimal' (default 'grid')"
         },
         testimonialStructure: {
             id: "string (uuid)",
             quote: "string (the testimonial text)",
             author: "string (person's name)",
             role: "string (e.g., 'CEO at TechCorp')",
-            image: "string (optional, avatar URL)"
+            avatar: "string (optional, avatar URL)"
         },
         example: {
             type: "testimonials",
             attrs: {
                 headline: "What Our Clients Say",
                 subheadline: "Don't just take our word for it",
+                style: "grid",
                 items: [
                     {
                         id: "uuid-here",
                         quote: "AMODX cut our development time by 80%. Game changer.",
                         author: "Sarah Johnson",
                         role: "Founder, DesignCo",
-                        image: "https://example.com/sarah.jpg"
+                        avatar: "https://example.com/sarah.jpg"
                     }
                 ]
             }
@@ -355,17 +362,19 @@ const BLOCK_SCHEMAS = {
     html: {
         description: "Raw HTML embed code. Use for Tweets, YouTube, Google Maps, or custom forms.",
         attrs: {
-            content: "string (The raw HTML/JS code)"
+            content: "string (The raw HTML/JS code)",
+            isSandboxed: "boolean (if true, runs in iframe sandbox, default false)"
         },
         example: {
             type: "html",
             attrs: {
-                content: "<iframe src='...' width='100%'></iframe>"
+                content: "<iframe src='...' width='100%'></iframe>",
+                isSandboxed: false
             }
         }
     },
     faq: {
-        description: "Accordion list for Frequently Asked Questions. Good for SEO schema generation.",
+        description: "Accordion list for Frequently Asked Questions. Generates FAQPage JSON-LD for SEO.",
         attrs: {
             headline: "string (e.g., 'Frequently Asked Questions')",
             items: "array of Q&A objects (see example)"
@@ -393,7 +402,8 @@ const BLOCK_SCHEMAS = {
             filterTag: "string (optional - if empty, shows all)",
             limit: "number (default 6)",
             showImages: "boolean (default true)",
-            columns: "'2' | '3' (default '3')"
+            layout: "'grid' | 'list' (default 'list')",
+            columns: "'2' | '3' (default '3', used in grid layout)"
         },
         example: {
             type: "postGrid",
@@ -401,7 +411,52 @@ const BLOCK_SCHEMAS = {
                 headline: "From the Blog",
                 filterTag: "news",
                 limit: 3,
-                columns: "3"
+                layout: "grid",
+                columns: "3",
+                showImages: true
+            }
+        }
+    },
+    carousel: {
+        description: "Image/card carousel with Swiper. Supports standard and coverflow styles.",
+        attrs: {
+            headline: "string (e.g., 'Featured Collection')",
+            items: "array of carousel item objects (see example)",
+            height: "'small' | 'medium' | 'large' (default 'medium')",
+            style: "'standard' | 'coverflow' (default 'coverflow')"
+        },
+        carouselItemStructure: {
+            id: "string (uuid)",
+            title: "string (card title)",
+            description: "string (short description)",
+            image: "string (optional, image URL)",
+            link: "string (destination URL, default '#')",
+            linkText: "string (e.g., 'Learn More')"
+        },
+        example: {
+            type: "carousel",
+            attrs: {
+                headline: "Our Portfolio",
+                height: "medium",
+                style: "coverflow",
+                items: [
+                    {
+                        id: "uuid-here",
+                        title: "Project Alpha",
+                        description: "A complete brand redesign",
+                        image: "https://example.com/alpha.jpg",
+                        link: "/projects/alpha",
+                        linkText: "View Project"
+                    },
+                    {
+                        id: "uuid-here",
+                        title: "Project Beta",
+                        description: "E-commerce platform launch",
+                        image: "https://example.com/beta.jpg",
+                        link: "/projects/beta",
+                        linkText: "View Project"
+                    }
+                ]
             }
         }
     },
@@ -626,7 +681,7 @@ server.tool("get_block_schemas", {}, async () => {
     return {
         content: [{
             type: "text",
-            text: `AMODX Available UI Blocks (Sprint 2 Complete):\n\n${JSON.stringify(BLOCK_SCHEMAS, null, 2)}\n\nNOTE: All blocks with array attributes (plans, items, columns, rows) require proper UUID generation for 'id' fields. Use crypto.randomUUID() or similar.`
+            text: `AMODX Available UI Blocks (15 plugins + 2 builtins):\n\n${JSON.stringify(BLOCK_SCHEMAS, null, 2)}\n\nNOTE: All blocks with array attributes (plans, items, columns, rows) require proper UUID generation for 'id' fields. Use crypto.randomUUID() or similar.`
         }]
     };
 });
@@ -641,7 +696,7 @@ server.tool("add_block",
             "contact",
             "image",
             "video",
-            "leadmagnet",
+            "leadMagnet",
             "features",
             "cta",
             "testimonials",
@@ -651,7 +706,8 @@ server.tool("add_block",
             "heading",
             "html",
             "faq",
-            "postGrid"
+            "postGrid",
+            "carousel"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
