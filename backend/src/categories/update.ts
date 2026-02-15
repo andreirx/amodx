@@ -1,10 +1,10 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { ProductSchema } from "@amodx/shared";
+import { CategorySchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
-import {requireRole} from "../auth/policy.js";
+import { requireRole } from "../auth/policy.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -14,31 +14,32 @@ export const handler: Handler = async (event) => {
         const auth = event.requestContext.authorizer.lambda;
         const id = event.pathParameters?.id;
 
-        // SECURITY: Editors allowed
         try {
             requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
 
-        if (!tenantId || !id || !event.body) return { statusCode: 400, body: "Missing Data" };
+        if (!tenantId || !id || !event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing Data" }) };
 
         const body = JSON.parse(event.body);
 
-        // Fetch existing
         const existing = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `PRODUCT#${id}` }
+            Key: { PK: `TENANT#${tenantId}`, SK: `CATEGORY#${id}` }
         }));
 
-        if (!existing.Item) return { statusCode: 404, body: "Product not found" };
+        if (!existing.Item) return { statusCode: 404, body: JSON.stringify({ error: "Category not found" }) };
 
-        // Partial validation
-        const input = ProductSchema.omit({
-            id: true, tenantId: true, createdAt: true, updatedAt: true
+        const input = CategorySchema.omit({
+            id: true, tenantId: true, createdAt: true, updatedAt: true, productCount: true
         }).partial().parse(body);
 
-        const merged: Record<string, any> = { ...existing.Item, ...input, updatedAt: new Date().toISOString() };
+        const merged: Record<string, any> = {
+            ...existing.Item,
+            ...input,
+            updatedAt: new Date().toISOString(),
+        };
 
         // Update GSI attribute if slug changed
         if (input.slug && input.slug !== existing.Item.slug) {
@@ -53,8 +54,8 @@ export const handler: Handler = async (event) => {
         await publishAudit({
             tenantId,
             actor: { id: auth.sub, email: auth.email },
-            action: "UPDATE_PRODUCT",
-            target: { title: merged.title, id: id },
+            action: "UPDATE_CATEGORY",
+            target: { title: merged.name, id },
             details: { updatedFields: Object.keys(input).filter(key => input[key as keyof typeof input] !== undefined) },
             ip: event.requestContext.http.sourceIp
         });

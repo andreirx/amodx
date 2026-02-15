@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
 import {Shield, Users} from "lucide-react";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag, FolderTree } from "lucide-react";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph, Radar
 } from "lucide-react";
@@ -38,19 +38,40 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     const [newDomain, setNewDomain] = useState("");
     const [isCreating, setIsCreating] = useState(false);
 
-    const navItems = [
-        { name: "Content List", href: "/", icon: LayoutDashboard },
-        { name: "Content Graph", href: "/graph", icon: GitGraph },
-        { name: "Products", href: "/products", icon: ShoppingBag },
-        { name: "Strategy", href: "/strategy", icon: Target },
-        { name: "Signals", href: "/signals", icon: Radar },
-        { name: "Media", href: "/media", icon: ImageIcon },
-        { name: "Leads", href: "/leads", icon: Users },
-        { name: "Comments", href: "/comments", icon: MessageSquare },
-        { name: "Audit Log", href: "/audit", icon: Activity },
-        { name: "Resources", href: "/resources", icon: FileBox },
-        { name: "Team", href: "/users", icon: Shield },
-        { name: "Settings", href: "/settings", icon: Settings },
+    const navSections = [
+        {
+            label: "Content",
+            items: [
+                { name: "Pages", href: "/", icon: LayoutDashboard },
+                { name: "Content Graph", href: "/graph", icon: GitGraph },
+                { name: "Media", href: "/media", icon: ImageIcon },
+            ]
+        },
+        {
+            label: "Commerce",
+            items: [
+                { name: "Products", href: "/products", icon: ShoppingBag },
+                { name: "Categories", href: "/categories", icon: FolderTree },
+            ]
+        },
+        {
+            label: "Growth",
+            items: [
+                { name: "Strategy", href: "/strategy", icon: Target },
+                { name: "Signals", href: "/signals", icon: Radar },
+                { name: "Leads", href: "/leads", icon: Users },
+            ]
+        },
+        {
+            label: "System",
+            items: [
+                { name: "Comments", href: "/comments", icon: MessageSquare },
+                { name: "Audit Log", href: "/audit", icon: Activity },
+                { name: "Resources", href: "/resources", icon: FileBox },
+                { name: "Team", href: "/users", icon: Shield },
+                { name: "Settings", href: "/settings", icon: Settings },
+            ]
+        },
     ];
 
     async function handleLogout() {
@@ -137,18 +158,25 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             </div>
 
             {/* NAVIGATION */}
-            <div className="space-y-1 p-4 flex-1">
-                {navItems.map((item) => {
-                    const isActive = location.pathname === item.href || (item.href !== "/" && location.pathname.startsWith(item.href));
-                    return (
-                        <Link key={item.href} to={item.href} onClick={onNavigate}>
-                            <Button variant={isActive ? "secondary" : "ghost"} className="w-full justify-start mb-1">
-                                <item.icon className="mr-2 h-4 w-4" />
-                                {item.name}
-                            </Button>
-                        </Link>
-                    );
-                })}
+            <div className="p-4 flex-1 space-y-4">
+                {navSections.map((section) => (
+                    <div key={section.label}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 mb-1">{section.label}</p>
+                        <div className="space-y-0.5">
+                            {section.items.map((item) => {
+                                const isActive = location.pathname === item.href || (item.href !== "/" && location.pathname.startsWith(item.href));
+                                return (
+                                    <Link key={item.href} to={item.href} onClick={onNavigate}>
+                                        <Button variant={isActive ? "secondary" : "ghost"} className="w-full justify-start h-9">
+                                            <item.icon className="mr-2 h-4 w-4" />
+                                            {item.name}
+                                        </Button>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* FOOTER */}

@@ -1,7 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -79,6 +79,9 @@ function mapTenant(item: any): TenantConfig {
 
         theme: theme || {},
         integrations: item.integrations || {},
+        urlPrefixes: item.urlPrefixes || { product: "/produs", category: "/categorie", cart: "/cos", checkout: "/comanda", shop: "/magazin" },
+        quickContact: item.quickContact || undefined,
+        topBar: item.topBar || undefined,
         createdAt: item.createdAt || new Date().toISOString()
     } as TenantConfig;
 }
@@ -146,6 +149,137 @@ export async function getProductById(tenantId: string, productId: string): Promi
     } catch (error) {
         console.error("DynamoDB Product Error:", error);
         return null;
+    }
+}
+
+// 4. Fetch Product by Slug (via GSI_Slug)
+export async function getProductBySlug(tenantId: string, slug: string): Promise<Product | null> {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            IndexName: "GSI_Slug",
+            KeyConditionExpression: "TenantSlug = :ts",
+            ExpressionAttributeValues: { ":ts": `${tenantId}#${slug}` },
+        }));
+
+        const product = result.Items?.find((item: any) => item.SK?.startsWith("PRODUCT#"));
+        if (!product) return null;
+        return product as Product;
+    } catch (error) {
+        console.error("DynamoDB Product Slug Error:", error);
+        return null;
+    }
+}
+
+// 5. Fetch Category by Slug (via GSI_Slug)
+export async function getCategoryBySlug(tenantId: string, slug: string): Promise<Category | null> {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            IndexName: "GSI_Slug",
+            KeyConditionExpression: "TenantSlug = :ts",
+            ExpressionAttributeValues: { ":ts": `${tenantId}#${slug}` },
+        }));
+
+        const category = result.Items?.find((item: any) => item.SK?.startsWith("CATEGORY#"));
+        if (!category) return null;
+        return category as Category;
+    } catch (error) {
+        console.error("DynamoDB Category Slug Error:", error);
+        return null;
+    }
+}
+
+// 6. Fetch Products by Category (paginated)
+export async function getProductsByCategory(tenantId: string, categoryId: string, page: number = 1, limit: number = 24) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return { items: [], total: 0 };
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "contains(categoryIds, :catId) AND #s = :active",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "PRODUCT#",
+                ":catId": categoryId,
+                ":active": "active"
+            },
+            ExpressionAttributeNames: { "#s": "status" },
+            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, sortOrder, volumePricing"
+        }));
+
+        const allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const start = (page - 1) * limit;
+        const items = allProducts.slice(start, start + limit);
+
+        return { items, total: allProducts.length };
+    } catch (error) {
+        console.error("DynamoDB Products by Category Error:", error);
+        return { items: [], total: 0 };
+    }
+}
+
+// 7. Fetch All Categories (for navigation)
+export async function getAllCategories(tenantId: string): Promise<Category[]> {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return [];
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :active",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "CATEGORY#",
+                ":active": "active"
+            },
+            ExpressionAttributeNames: { "#s": "status" },
+            ProjectionExpression: "id, #n, slug, parentId, sortOrder, productCount, imageLink, seoTitle, seoDescription",
+        }));
+
+        return (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0)) as Category[];
+    } catch (error) {
+        console.error("DynamoDB Categories Error:", error);
+        return [];
+    }
+}
+
+// 8. Fetch All Active Products (for shop page)
+export async function getActiveProducts(tenantId: string, page: number = 1, limit: number = 24) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return { items: [], total: 0 };
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :active",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "PRODUCT#",
+                ":active": "active"
+            },
+            ExpressionAttributeNames: { "#s": "status" },
+            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing"
+        }));
+
+        const allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const start = (page - 1) * limit;
+        const items = allProducts.slice(start, start + limit);
+
+        return { items, total: allProducts.length };
+    } catch (error) {
+        console.error("DynamoDB Active Products Error:", error);
+        return { items: [], total: 0 };
     }
 }
 

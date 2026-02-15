@@ -1,8 +1,8 @@
-import { getTenantConfig, getContentBySlug, getPosts } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
-import { ContentItem } from "@amodx/shared";
+import { ContentItem, Product, Category } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -20,20 +20,63 @@ type Props = {
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
-// ... [generateMetadata remains the same] ...
+// Commerce prefix matching helper
+function matchCommercePrefix(slugPath: string, urlPrefixes: any): { type: 'product' | 'category' | 'shop'; itemSlug?: string } | null {
+    const prefixes = urlPrefixes || { product: "/produs", category: "/categorie", shop: "/magazin" };
+
+    if (slugPath === prefixes.shop) return { type: 'shop' };
+    if (slugPath.startsWith(prefixes.product + "/")) {
+        return { type: 'product', itemSlug: slugPath.slice(prefixes.product.length + 1) };
+    }
+    if (slugPath.startsWith(prefixes.category + "/")) {
+        return { type: 'category', itemSlug: slugPath.slice(prefixes.category.length + 1) };
+    }
+    return null;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { siteId, slug } = await params;
     const config = await getTenantConfig(siteId);
     if (!config) return {};
 
     const slugPath = slug ? "/" + slug.join("/") : "/";
-    const result = await getContentBySlug(config.id, slugPath);
+    const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
 
+    // Check commerce routes first
+    const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
+    if (commerce) {
+        if (commerce.type === 'product' && commerce.itemSlug) {
+            const product = await getProductBySlug(config.id, commerce.itemSlug);
+            if (product) return {
+                title: (product as any).seoTitle || product.title,
+                description: (product as any).seoDescription || product.description?.substring(0, 160),
+                metadataBase: new URL(`https://${config.domain}`),
+                openGraph: { title: product.title, description: product.description?.substring(0, 160), images: product.imageLink ? [{ url: product.imageLink }] : [], url: canonicalUrl, siteName: config.name },
+                alternates: { canonical: canonicalUrl }
+            };
+        }
+        if (commerce.type === 'category' && commerce.itemSlug) {
+            const category = await getCategoryBySlug(config.id, commerce.itemSlug);
+            if (category) return {
+                title: category.seoTitle || category.name,
+                description: category.seoDescription || `Browse ${category.name} products`,
+                metadataBase: new URL(`https://${config.domain}`),
+                openGraph: { title: category.name, description: category.seoDescription, images: category.imageLink ? [{ url: category.imageLink }] : [], url: canonicalUrl, siteName: config.name },
+                alternates: { canonical: canonicalUrl }
+            };
+        }
+        if (commerce.type === 'shop') return {
+            title: `Shop - ${config.name}`,
+            metadataBase: new URL(`https://${config.domain}`),
+            alternates: { canonical: canonicalUrl }
+        };
+    }
+
+    // Content page metadata
+    const result = await getContentBySlug(config.id, slugPath);
     if (!result || 'redirect' in result) return { title: config.name };
 
     const content = result as ContentItem;
-    const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
-
     return {
         title: content.seoTitle || content.title || config.name,
         description: content.seoDescription,
@@ -48,9 +91,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
                 : (config.logo ? [{ url: config.logo }] : []),
             siteName: config.name,
         },
-        alternates: {
-            canonical: canonicalUrl,
-        }
+        alternates: { canonical: canonicalUrl }
     };
 }
 
@@ -61,6 +102,36 @@ export default async function Page({ params, searchParams }: Props) {
 
     const config = await getTenantConfig(siteId);
     if (!config) return notFound();
+
+    // --- COMMERCE ROUTING ---
+    const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
+    if (commerce) {
+        const prefixes = config.urlPrefixes || { product: "/produs", category: "/categorie", shop: "/magazin" };
+
+        if (commerce.type === 'product' && commerce.itemSlug) {
+            const product = await getProductBySlug(config.id, commerce.itemSlug);
+            if (!product) return notFound();
+            if ((product as any).status !== 'active' && !preview) return notFound();
+            return <ProductPageView product={product as any} config={config} prefixes={prefixes} />;
+        }
+
+        if (commerce.type === 'category' && commerce.itemSlug) {
+            const category = await getCategoryBySlug(config.id, commerce.itemSlug);
+            if (!category) return notFound();
+            const page = parseInt((await searchParams).page as string || "1");
+            const { items: products, total } = await getProductsByCategory(config.id, category.id, page, 24);
+            return <CategoryPageView category={category} products={products} total={total} page={page} config={config} prefixes={prefixes} />;
+        }
+
+        if (commerce.type === 'shop') {
+            const page = parseInt((await searchParams).page as string || "1");
+            const [{ items: products, total }, categories] = await Promise.all([
+                getActiveProducts(config.id, page, 24),
+                getAllCategories(config.id)
+            ]);
+            return <ShopPageView products={products} categories={categories} total={total} page={page} config={config} prefixes={prefixes} />;
+        }
+    }
 
     const result = await getContentBySlug(config.id, slugPath);
     if (!result) return notFound();
@@ -263,6 +334,289 @@ export default async function Page({ params, searchParams }: Props) {
             <RenderBlocks blocks={content.blocks} tenantId={config.id} />
 
             <CommentsSection pageId={content.nodeId} mode={content.commentsMode} />
+        </main>
+    );
+}
+
+// --- COMMERCE PAGE COMPONENTS ---
+
+function ProductCard({ product, productPrefix }: { product: any; productPrefix: string }) {
+    return (
+        <Link href={`${productPrefix}/${product.slug}`} className="group block">
+            <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-3">
+                {product.imageLink ? (
+                    <img src={product.imageLink} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-4xl">🛍</div>
+                )}
+            </div>
+            <h3 className="font-medium text-foreground group-hover:text-primary transition-colors line-clamp-2">{product.title}</h3>
+            <div className="mt-1">
+                {product.salePrice ? (
+                    <div className="flex items-center gap-2">
+                        <span className="text-red-600 font-bold">{product.salePrice} {product.currency}</span>
+                        <span className="line-through text-muted-foreground text-sm">{product.price}</span>
+                    </div>
+                ) : (
+                    <span className="font-semibold">{product.price} {product.currency}</span>
+                )}
+            </div>
+            {product.availability !== 'in_stock' && (
+                <span className="text-xs text-amber-600 mt-1 block capitalize">{(product.availability || '').replace('_', ' ')}</span>
+            )}
+        </Link>
+    );
+}
+
+function Pagination({ page, total, limit, baseUrl }: { page: number; total: number; limit: number; baseUrl: string }) {
+    const totalPages = Math.ceil(total / limit);
+    if (totalPages <= 1) return null;
+
+    return (
+        <div className="flex items-center justify-center gap-2 mt-12">
+            {page > 1 && (
+                <Link href={`${baseUrl}?page=${page - 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Previous</Link>
+            )}
+            <span className="text-sm text-muted-foreground px-4">Page {page} of {totalPages}</span>
+            {page < totalPages && (
+                <Link href={`${baseUrl}?page=${page + 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Next</Link>
+            )}
+        </div>
+    );
+}
+
+function ProductPageView({ product, config, prefixes }: { product: any; config: any; prefixes: any }) {
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": product.title,
+        "description": product.description,
+        "image": product.imageLink,
+        "offers": {
+            "@type": "Offer",
+            "price": product.salePrice || product.price,
+            "priceCurrency": product.currency || "RON",
+            "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+        }
+    };
+
+    return (
+        <main className="max-w-6xl mx-auto py-12 px-6">
+            <Script id="product-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
+            {/* Breadcrumbs */}
+            <nav className="text-sm text-muted-foreground mb-8">
+                <Link href="/" className="hover:text-primary">Home</Link>
+                <span className="mx-2">/</span>
+                <Link href={prefixes.shop || "/magazin"} className="hover:text-primary">Shop</Link>
+                <span className="mx-2">/</span>
+                <span className="text-foreground">{product.title}</span>
+            </nav>
+
+            <div className="grid md:grid-cols-2 gap-12">
+                {/* Images */}
+                <div className="space-y-4">
+                    {product.imageLink && (
+                        <div className="aspect-square bg-muted rounded-lg overflow-hidden">
+                            <img src={product.imageLink} alt={product.title} className="w-full h-full object-cover" />
+                        </div>
+                    )}
+                    {product.additionalImageLinks?.length > 0 && (
+                        <div className="grid grid-cols-4 gap-2">
+                            {product.additionalImageLinks.map((img: string, i: number) => (
+                                <div key={i} className="aspect-square bg-muted rounded overflow-hidden">
+                                    <img src={img} alt="" className="w-full h-full object-cover" />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Product Info */}
+                <div className="space-y-6">
+                    <h1 className="text-3xl font-bold tracking-tight">{product.title}</h1>
+
+                    {/* Price */}
+                    <div className="text-2xl">
+                        {product.salePrice ? (
+                            <div className="flex items-center gap-3">
+                                <span className="font-bold text-red-600">{product.salePrice} {product.currency}</span>
+                                <span className="line-through text-muted-foreground text-lg">{product.price} {product.currency}</span>
+                            </div>
+                        ) : (
+                            <span className="font-bold">{product.price} {product.currency}</span>
+                        )}
+                    </div>
+
+                    {/* Volume Pricing */}
+                    {product.volumePricing?.length > 0 && (
+                        <div className="border rounded-lg p-4">
+                            <p className="text-sm font-medium mb-2">Volume Pricing</p>
+                            <div className="space-y-1">
+                                {product.volumePricing.map((tier: any, i: number) => (
+                                    <div key={i} className="flex justify-between text-sm">
+                                        <span>{tier.minQuantity}+ units</span>
+                                        <span className="font-medium">{tier.price} {product.currency} each</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Availability */}
+                    <div>
+                        {product.availability === 'in_stock' ? (
+                            <span className="inline-flex items-center gap-1.5 text-green-600 text-sm font-medium">
+                                <span className="w-2 h-2 bg-green-500 rounded-full" /> In Stock
+                            </span>
+                        ) : product.availability === 'preorder' ? (
+                            <span className="text-amber-600 text-sm font-medium">Pre-order</span>
+                        ) : (
+                            <span className="text-red-600 text-sm font-medium">Out of Stock</span>
+                        )}
+                    </div>
+
+                    {/* Short Description */}
+                    {product.description && (
+                        <p className="text-muted-foreground whitespace-pre-wrap">{product.description}</p>
+                    )}
+
+                    {/* Personalizations */}
+                    {product.personalizations?.length > 0 && (
+                        <div className="border-t pt-6 space-y-4">
+                            <p className="font-medium">Personalization</p>
+                            {product.personalizations.map((opt: any) => (
+                                <div key={opt.id} className="space-y-1">
+                                    <label className="text-sm font-medium">
+                                        {opt.label} {opt.required && <span className="text-red-500">*</span>}
+                                        {parseFloat(opt.addedCost) > 0 && <span className="text-muted-foreground ml-1">(+{opt.addedCost} {product.currency})</span>}
+                                    </label>
+                                    {opt.type === 'text' ? (
+                                        <input className="w-full border rounded-md px-3 py-2 text-sm" maxLength={opt.maxLength} placeholder={opt.label} />
+                                    ) : (
+                                        <select className="w-full border rounded-md px-3 py-2 text-sm">
+                                            <option value="">Select...</option>
+                                            {(opt.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                        </select>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Tags */}
+                    {product.tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {product.tags.map((tag: string) => (
+                                <span key={tag} className="bg-muted px-2 py-1 rounded text-xs">{tag}</span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Tabs: Long Description / Ingredients / Nutritional Values */}
+            {(product.longDescription || product.ingredients || product.nutritionalValues?.length > 0) && (
+                <div className="mt-16 border-t pt-12">
+                    {product.longDescription && (
+                        <div className="prose max-w-none mb-12">
+                            <h2 className="text-xl font-bold mb-4">Description</h2>
+                            <div dangerouslySetInnerHTML={{ __html: product.longDescription }} />
+                        </div>
+                    )}
+                    {product.ingredients && (
+                        <div className="mb-12">
+                            <h2 className="text-xl font-bold mb-4">Ingredients</h2>
+                            <p className="text-muted-foreground whitespace-pre-wrap">{product.ingredients}</p>
+                        </div>
+                    )}
+                    {product.nutritionalValues?.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-bold mb-4">Nutritional Values</h2>
+                            <div className="border rounded-lg overflow-hidden">
+                                {product.nutritionalValues.map((nv: any, i: number) => (
+                                    <div key={i} className={`flex justify-between px-4 py-2.5 text-sm ${i % 2 === 0 ? 'bg-muted/50' : ''}`}>
+                                        <span>{nv.label}</span>
+                                        <div className="flex gap-4">
+                                            <span className="font-medium">{nv.value}</span>
+                                            {nv.dailyPercent && <span className="text-muted-foreground">{nv.dailyPercent}</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </main>
+    );
+}
+
+function CategoryPageView({ category, products, total, page, config, prefixes }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any }) {
+    return (
+        <main className="max-w-6xl mx-auto py-12 px-6">
+            {/* Breadcrumbs */}
+            <nav className="text-sm text-muted-foreground mb-8">
+                <Link href="/" className="hover:text-primary">Home</Link>
+                <span className="mx-2">/</span>
+                <Link href={prefixes.shop || "/magazin"} className="hover:text-primary">Shop</Link>
+                <span className="mx-2">/</span>
+                <span className="text-foreground">{category.name}</span>
+            </nav>
+
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold tracking-tight">{category.name}</h1>
+                {category.description && (
+                    <p className="text-muted-foreground mt-2">{category.description}</p>
+                )}
+                <p className="text-sm text-muted-foreground mt-1">{total} product{total !== 1 ? 's' : ''}</p>
+            </div>
+
+            {products.length === 0 ? (
+                <p className="text-muted-foreground py-12 text-center">No products in this category yet.</p>
+            ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {products.map((product: any) => (
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} />
+                    ))}
+                </div>
+            )}
+
+            <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.category}/${category.slug}`} />
+        </main>
+    );
+}
+
+function ShopPageView({ products, categories, total, page, config, prefixes }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any }) {
+    return (
+        <main className="max-w-6xl mx-auto py-12 px-6">
+            <h1 className="text-3xl font-bold tracking-tight mb-8">Shop</h1>
+
+            {/* Category Navigation */}
+            {categories.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-8">
+                    <Link href={prefixes.shop || "/magazin"} className="px-4 py-2 rounded-full border text-sm font-medium bg-primary text-primary-foreground">
+                        All
+                    </Link>
+                    {categories.map((cat: any) => (
+                        <Link key={cat.id} href={`${prefixes.category}/${cat.slug}`} className="px-4 py-2 rounded-full border text-sm font-medium hover:bg-muted transition-colors">
+                            {cat.name} {cat.productCount > 0 && <span className="text-muted-foreground ml-1">({cat.productCount})</span>}
+                        </Link>
+                    ))}
+                </div>
+            )}
+
+            {products.length === 0 ? (
+                <p className="text-muted-foreground py-12 text-center">No products available yet.</p>
+            ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {products.map((product: any) => (
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} />
+                    ))}
+                </div>
+            )}
+
+            <Pagination page={page} total={total} limit={24} baseUrl={prefixes.shop || "/magazin"} />
         </main>
     );
 }

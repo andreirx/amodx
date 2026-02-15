@@ -4,23 +4,38 @@ import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox } from "lucide-react"; // Import FileBox
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function Products() {
     const { currentTenant } = useTenant();
     const navigate = useNavigate();
     const [products, setProducts] = useState<any[]>([]);
+    const [categories, setCategories] = useState<any[]>([]);
+    const [statusFilter, setStatusFilter] = useState("");
+    const [categoryFilter, setCategoryFilter] = useState("");
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (currentTenant) loadProducts();
+        if (currentTenant) {
+            loadProducts();
+            loadCategories();
+        }
     }, [currentTenant?.id]);
+
+    useEffect(() => {
+        if (currentTenant) loadProducts();
+    }, [statusFilter, categoryFilter]);
 
     async function loadProducts() {
         setLoading(true);
         try {
-            const res = await apiRequest("/products");
+            const params = new URLSearchParams();
+            if (statusFilter) params.set("status", statusFilter);
+            if (categoryFilter) params.set("category", categoryFilter);
+            const qs = params.toString();
+            const res = await apiRequest(`/products${qs ? `?${qs}` : ""}`);
             setProducts(res.items || []);
         } catch (e) {
             console.error(e);
@@ -28,6 +43,17 @@ export default function Products() {
             setLoading(false);
         }
     }
+
+    async function loadCategories() {
+        try {
+            const res = await apiRequest("/categories");
+            setCategories(res.items || []);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    const categoryMap = Object.fromEntries(categories.map((c: any) => [c.id, c.name]));
 
     async function handleDelete(id: string) {
         if (!confirm("Are you sure? This will break AI feeds referencing this product.")) return;
@@ -52,6 +78,27 @@ export default function Products() {
                 <Button onClick={() => navigate("/products/new")}>
                     <Plus className="mr-2 h-4 w-4" /> Add Product
                 </Button>
+            </div>
+
+            <div className="flex gap-3">
+                <Select value={statusFilter} onValueChange={v => setStatusFilter(v === "_all" ? "" : v)}>
+                    <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="_all">All Statuses</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={categoryFilter} onValueChange={v => setCategoryFilter(v === "_all" ? "" : v)}>
+                    <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Categories" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="_all">All Categories</SelectItem>
+                        {categories.map((c: any) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
             </div>
 
             <Card>
@@ -90,9 +137,20 @@ export default function Products() {
                                                     </span>
                                                 )}
                                             </div>
-                                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                                {p.category || "Uncategorized"}
-                                            </span>
+                                            <div className="flex flex-wrap gap-1 mt-0.5">
+                                                {(p.categoryIds || []).length > 0 ? (
+                                                    (p.categoryIds as string[]).slice(0, 2).map((cid: string) => (
+                                                        <span key={cid} className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700">
+                                                            {categoryMap[cid] || cid}
+                                                        </span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-xs text-muted-foreground">Uncategorized</span>
+                                                )}
+                                                {(p.categoryIds || []).length > 2 && (
+                                                    <span className="text-[10px] text-muted-foreground">+{p.categoryIds.length - 2}</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </TableCell>
                                     <TableCell>

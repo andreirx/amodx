@@ -1,7 +1,7 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { ProductSchema } from "@amodx/shared";
+import { CategorySchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
@@ -22,26 +22,24 @@ export const handler: Handler = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
 
-        // SECURITY: Editors allowed
         try {
             requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }
 
-        if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
-        if (!event.body) return { statusCode: 400, body: "Missing Body" };
+        if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing Tenant" }) };
+        if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing Body" }) };
 
         const body = JSON.parse(event.body);
 
-        // Validate
-        const input = ProductSchema.omit({
-            id: true, tenantId: true, createdAt: true, updatedAt: true
+        const input = CategorySchema.omit({
+            id: true, tenantId: true, createdAt: true, updatedAt: true, productCount: true
         }).parse(body);
 
         // Auto-generate slug if not provided
         if (!input.slug) {
-            input.slug = slugify(input.title);
+            input.slug = slugify(input.name);
         }
 
         const id = crypto.randomUUID();
@@ -51,27 +49,27 @@ export const handler: Handler = async (event) => {
             TableName: TABLE_NAME,
             Item: {
                 PK: `TENANT#${tenantId}`,
-                SK: `PRODUCT#${id}`,
+                SK: `CATEGORY#${id}`,
                 TenantSlug: `${tenantId}#${input.slug}`,
+                Type: "Category",
                 id,
                 tenantId,
                 ...input,
+                productCount: 0,
                 createdAt: now,
                 updatedAt: now,
-                Type: "Product"
             }
         }));
 
         await publishAudit({
             tenantId,
             actor: { id: auth.sub, email: auth.email },
-            action: "CREATE_PRODUCT",
-            target: { title: input.title, id: id },
-            details: { price: input.price, status: input.status, slug: input.slug },
+            action: "CREATE_CATEGORY",
+            target: { title: input.name, id },
             ip: event.requestContext.http.sourceIp
         });
 
-        return { statusCode: 201, body: JSON.stringify({ id, slug: input.slug, message: "Product created" }) };
+        return { statusCode: 201, body: JSON.stringify({ id, slug: input.slug, message: "Category created" }) };
     } catch (e: any) {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }

@@ -14,34 +14,15 @@ export const handler: Handler = async (event) => {
         const auth = event.requestContext.authorizer.lambda;
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
-        // Optional filters from query params
-        const statusFilter = event.queryStringParameters?.status;
-        const categoryFilter = event.queryStringParameters?.category;
-
-        // Build filter expression
-        const filterParts: string[] = [];
-        const exprValues: Record<string, any> = {
-            ":pk": `TENANT#${tenantId}`,
-            ":sk": "PRODUCT#"
-        };
-
-        if (statusFilter) {
-            filterParts.push("#s = :statusVal");
-            exprValues[":statusVal"] = statusFilter;
-        }
-
-        if (categoryFilter) {
-            filterParts.push("contains(categoryIds, :catId)");
-            exprValues[":catId"] = categoryFilter;
-        }
-
         const result = await db.send(new QueryCommand({
             TableName: TABLE_NAME,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ...(filterParts.length > 0 ? { FilterExpression: filterParts.join(" AND ") } : {}),
-            ExpressionAttributeValues: exprValues,
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, #s, availability, inventoryQuantity, imageLink, categoryIds, tags, brand, sortOrder, createdAt, updatedAt",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "CATEGORY#"
+            },
+            ProjectionExpression: "id, #n, slug, parentId, sortOrder, #s, productCount, imageLink, seoTitle, seoDescription",
+            ExpressionAttributeNames: { "#s": "status", "#n": "name" }
         }));
 
         return { statusCode: 200, body: JSON.stringify({ items: result.Items || [] }) };

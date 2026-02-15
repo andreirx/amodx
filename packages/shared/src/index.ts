@@ -14,6 +14,34 @@ export const SignalSource = z.enum(["Reddit", "Twitter", "LinkedIn", "Web"]);
 export const LinkSchema = z.object({
     label: z.string(),
     href: z.string(),
+    children: z.array(z.object({
+        label: z.string(),
+        href: z.string(),
+    })).optional(), // dropdown sub-items
+});
+
+// Configurable URL prefixes per tenant (for i18n-friendly URLs)
+export const UrlPrefixesSchema = z.object({
+    product: z.string().default("/product"),
+    category: z.string().default("/category"),
+    cart: z.string().default("/cart"),
+    checkout: z.string().default("/checkout"),
+    shop: z.string().default("/shop"),
+});
+
+// Quick Contact widget config
+export const QuickContactSchema = z.object({
+    type: z.enum(["phone", "whatsapp", "email"]).default("phone"),
+    value: z.string(),        // phone number, whatsapp number, or email
+    label: z.string().optional(),
+});
+
+// Top Bar config
+export const TopBarSchema = z.object({
+    show: z.boolean().default(false),
+    content: z.string().optional(),  // HTML or text for announcement
+    quickContactPhone: z.string().optional(),
+    quickContactEmail: z.string().optional(),
 });
 
 // ==========================================
@@ -263,6 +291,21 @@ export const IntegrationsSchema = z.object({
 
     // BRAVE SEARCH (Local Research Stack)
     braveApiKey: z.string().optional(),
+
+    // FACEBOOK PIXEL
+    fbPixelId: z.string().optional(),
+
+    // GOOGLE MY BUSINESS (Reviews)
+    googlePlaceId: z.string().optional(),
+
+    // BANK TRANSFER DETAILS (for checkout)
+    bankTransfer: z.object({
+        bankName: z.string().optional(),
+        accountHolder: z.string().optional(),
+        iban: z.string().optional(),
+        swift: z.string().optional(),
+        referencePrefix: z.string().optional(), // e.g. "PPB"
+    }).optional(),
 });
 
 // New Header Config
@@ -304,6 +347,21 @@ export const TenantConfigSchema = z.object({
     icon: z.string().optional(), // Favicon
     navLinks: z.array(LinkSchema).default([]),
     footerLinks: z.array(LinkSchema).default([]),
+
+    // Commerce URL Prefixes (configurable per tenant for i18n)
+    urlPrefixes: UrlPrefixesSchema.default({
+        product: "/product",
+        category: "/category",
+        cart: "/cart",
+        checkout: "/checkout",
+        shop: "/shop",
+    }),
+
+    // Quick Contact Widget
+    quickContact: QuickContactSchema.optional(),
+
+    // Top Bar (announcement bar above header)
+    topBar: TopBarSchema.default({ show: false }),
 
     // DRAFT-LIVE STATE MACHINE
     status: TenantStatus.default("LIVE"),
@@ -426,47 +484,164 @@ export const ProductStatus = z.enum(["active", "archived", "draft"]);
 export const Availability = z.enum(["in_stock", "out_of_stock", "preorder"]);
 export const Condition = z.enum(["new", "refurbished", "used"]);
 
+// Commerce Helper Schemas
+export const VolumePricingTierSchema = z.object({
+    minQuantity: z.number().int().min(1),
+    price: z.string(), // price per unit at this tier
+});
+export type VolumePricingTier = z.infer<typeof VolumePricingTierSchema>;
+
+export const PersonalizationOptionSchema = z.object({
+    id: z.string(),
+    label: z.string(),               // "Personalized text on cookie"
+    type: z.enum(["text", "select"]),
+    required: z.boolean().default(false),
+    maxLength: z.number().optional(), // for text type
+    options: z.array(z.string()).optional(), // for select type
+    addedCost: z.string().default("0"),     // additional cost in product currency
+});
+export type PersonalizationOption = z.infer<typeof PersonalizationOptionSchema>;
+
+export const ProductVariantSchema = z.object({
+    id: z.string(),
+    name: z.string(),                // "Weight" or "Size"
+    options: z.array(z.object({
+        value: z.string(),           // "250g", "500g"
+        priceOverride: z.string().optional(),
+        imageLink: z.string().optional(),
+        availability: Availability.optional(),
+    })),
+});
+export type ProductVariant = z.infer<typeof ProductVariantSchema>;
+
+export const NutritionalValueSchema = z.object({
+    label: z.string(),          // "Calories", "Fat", "Protein"
+    value: z.string(),          // "250 kcal", "12g"
+    dailyPercent: z.string().optional(),
+});
+export type NutritionalValue = z.infer<typeof NutritionalValueSchema>;
+
 export const ProductSchema = z.object({
-    id: z.string(), // UUID
+    id: z.string(),
     tenantId: z.string(),
 
-    // 0. Status (Crucial for filtering)
+    // Status
     status: ProductStatus.default("draft"),
 
-    // 1. Basic Data (OpenAI Required)
+    // Basic Data
     title: z.string().min(1),
-    description: z.string().max(5000),
+    slug: z.string().default(""),              // URL-safe, auto-generated from title
+    description: z.string().max(5000),         // Generic/short description
+    longDescription: z.string().optional(),    // Detailed rich text (HTML from Tiptap)
     link: z.string().url().optional(),
 
-    // 2. Pricing
+    // Pricing
     price: z.string(),
     currency: z.string().default("USD"),
     salePrice: z.string().optional(),
+    volumePricing: z.array(VolumePricingTierSchema).default([]),
 
-    // 3. Inventory
+    // Inventory
     availability: Availability.default("in_stock"),
     inventoryQuantity: z.number().int().optional(),
 
-    // 4. Categorization
-    brand: z.string().optional(),
-    category: z.string().optional(),
-    condition: Condition.default("new"),
+    // Availability by Date
+    availableFrom: z.string().optional(),      // ISO date
+    availableUntil: z.string().optional(),     // ISO date
 
-    // 5. Media
+    // Categorization
+    brand: z.string().optional(),
+    category: z.string().optional(),           // kept for backward compat
+    categoryIds: z.array(z.string()).default([]),  // multi-category support
+    condition: Condition.default("new"),
+    tags: z.array(z.string()).default([]),
+
+    // Filterable Attributes (weight, flavor, etc.)
+    attributes: z.array(z.object({
+        key: z.string(),
+        value: z.string(),
+    })).default([]),
+
+    // Personalization
+    personalizations: z.array(PersonalizationOptionSchema).default([]),
+
+    // Variants
+    variants: z.array(ProductVariantSchema).default([]),
+
+    // Structured Tabs
+    ingredients: z.string().optional(),
+    nutritionalValues: z.array(NutritionalValueSchema).default([]),
+
+    // Media
     imageLink: z.string().url(),
     additionalImageLinks: z.array(z.string().url()).default([]),
 
-    // 6. Commerce Integration
+    // Commerce Integration
     paymentLinkId: z.string().optional(),
-
-    // The Digital Asset to deliver
     resourceId: z.string().optional(),
+
+    // SEO
+    seoTitle: z.string().optional(),
+    seoDescription: z.string().optional(),
+
+    // Sorting & Weight
+    sortOrder: z.number().default(0),
+    weight: z.number().optional(), // grams, for shipping calc
 
     createdAt: z.string(),
     updatedAt: z.string(),
 });
 
 export type Product = z.infer<typeof ProductSchema>;
+
+// --- CATEGORIES ---
+
+export const CategorySchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+
+    name: z.string().min(1),
+    slug: z.string().min(1),
+    description: z.string().optional(),
+
+    // Hierarchy
+    parentId: z.string().nullable().default(null),
+    sortOrder: z.number().default(0),
+
+    // Display
+    imageLink: z.string().optional(),
+
+    // SEO
+    seoTitle: z.string().optional(),
+    seoDescription: z.string().optional(),
+
+    // State
+    status: z.enum(["active", "hidden"]).default("active"),
+    productCount: z.number().default(0),
+
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+
+export type Category = z.infer<typeof CategorySchema>;
+
+// --- DELIVERY CONFIG (per-tenant) ---
+
+export const DeliveryConfigSchema = z.object({
+    tenantId: z.string(),
+
+    freeDeliveryThreshold: z.string().optional(),    // e.g. "150" RON
+    flatShippingCost: z.string().default("15"),      // default shipping cost
+    minimumOrderAmount: z.string().optional(),
+
+    deliveryLeadDays: z.number().default(3),
+    blockedDates: z.array(z.string()).default([]),   // ISO dates with no delivery
+    deliveryDaysOfWeek: z.array(z.number()).default([1, 2, 3, 4, 5]), // 0=Sun..6=Sat
+
+    updatedAt: z.string(),
+});
+
+export type DeliveryConfig = z.infer<typeof DeliveryConfigSchema>;
 
 // --- SIGNALS (Outbound Lead Tracking) ---
 export const SignalSchema = z.object({

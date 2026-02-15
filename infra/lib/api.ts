@@ -570,6 +570,124 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('DeleteProductInt', deleteProductFunc),
         });
 
+        // --- CATEGORIES ---
+        const createCategoryFunc = new nodejs.NodejsFunction(this, 'CreateCategoryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(createCategoryFunc);
+
+        const listCategoriesFunc = new nodejs.NodejsFunction(this, 'ListCategoriesFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listCategoriesFunc);
+
+        const getCategoryFunc = new nodejs.NodejsFunction(this, 'GetCategoryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getCategoryFunc);
+
+        const updateCategoryFunc = new nodejs.NodejsFunction(this, 'UpdateCategoryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateCategoryFunc);
+
+        const deleteCategoryFunc = new nodejs.NodejsFunction(this, 'DeleteCategoryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(deleteCategoryFunc);
+
+        this.httpApi.addRoutes({
+            path: '/categories',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateCategoryInt', createCategoryFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/categories',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListCategoriesInt', listCategoriesFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/categories/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetCategoryInt', getCategoryFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/categories/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateCategoryInt', updateCategoryFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/categories/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteCategoryInt', deleteCategoryFunc),
+        });
+
+        // --- PUBLIC API (No Auth) ---
+        const noAuth = new apigw.HttpNoneAuthorizer();
+
+        const publicListProductsFunc = new nodejs.NodejsFunction(this, 'PublicListProductsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/public-list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicListProductsFunc);
+
+        const publicGetProductFunc = new nodejs.NodejsFunction(this, 'PublicGetProductFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/public-get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicGetProductFunc);
+
+        const publicListCategoriesFunc = new nodejs.NodejsFunction(this, 'PublicListCategoriesFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/public-list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicListCategoriesFunc);
+
+        const publicGetCategoryFunc = new nodejs.NodejsFunction(this, 'PublicGetCategoryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/categories/public-get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicGetCategoryFunc);
+
+        this.httpApi.addRoutes({
+            path: '/public/products',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicListProductsInt', publicListProductsFunc),
+            authorizer: noAuth,
+        });
+        this.httpApi.addRoutes({
+            path: '/public/products/{slug}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicGetProductInt', publicGetProductFunc),
+            authorizer: noAuth,
+        });
+        this.httpApi.addRoutes({
+            path: '/public/categories',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicListCategoriesInt', publicListCategoriesFunc),
+            authorizer: noAuth,
+        });
+        this.httpApi.addRoutes({
+            path: '/public/categories/{slug}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicGetCategoryInt', publicGetCategoryFunc),
+            authorizer: noAuth,
+        });
+
         // --- USERS ---
         const listUsersFunc = new nodejs.NodejsFunction(this, 'ListUsersFunc', {
             ...nodeProps,

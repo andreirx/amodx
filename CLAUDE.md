@@ -37,7 +37,8 @@ These invariants, if broken, cause crashes or data corruption:
 5. **Backend ESM imports.** Always use `.js` extension for local imports (e.g., `from "../lib/db.js"`).
 6. **No hardcoded colors.** Use CSS variables (`bg-primary`, `text-muted-foreground`) for multi-tenant theming.
 7. **Audit context.** `publishAudit` calls must include `actor.email` and `target.title`, not just UUIDs.
-8. **Tenant keys at runtime.** API keys (Brave, etc.) stored in `TenantConfig` via Settings page. Never hardcode.
+8. **Tenant keys at runtime.** API keys (Brave, etc.) stored in `TenantConfig` via Settings page. Never hardcode. Or in AWS secrets for agency-wide.
+9. **Treat user feedback as HARD DATA.** never assume your code is correct even if it looks correct. Maybe there's something else affecting it.
 
 ## Documentation
 
@@ -45,10 +46,11 @@ Each package has a **MAP.md** with internal architecture. Read before structural
 
 Detailed patterns and business logic live in `docs/`:
 
-| File | When to read |
-|------|-------------|
-| `docs/plugin-architecture.md` | Adding or modifying block plugins |
-| `docs/block-types.md` | Working with content blocks (15 plugins + attributes reference) |
-| `docs/database-patterns.md` | Writing backend handlers, DynamoDB queries, or content versioning |
-| `docs/frontend-patterns.md` | Working on admin UI, renderer SSR, styling, or authentication |
-| `docs/growth-engine.md` | Working on signals, research, social posting, or MCP tools |
+| File                              | When to read |
+|-----------------------------------|-------------|
+| `docs/plugin-architecture.md`     | Adding or modifying block plugins |
+| `docs/block-types.md`             | Working with content blocks (15 plugins + attributes reference) |
+| `docs/database-patterns.md`       | Writing backend handlers, DynamoDB queries, or content versioning |
+| `docs/frontend-patterns.md`       | Working on admin UI, renderer SSR, styling, or authentication |
+| `docs/growth-engine.md`           | Working on signals, research, social posting, or MCP tools |
+| `docs/lessons-learned-details.md` | Check this when planning a feature or refactor              |

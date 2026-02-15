@@ -43,5 +43,12 @@ export class AmodxDatabase extends Construct {
             partitionKey: { name: 'Status', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'ScheduledFor', type: dynamodb.AttributeType.STRING },
         });
+
+        // 4. GSI for Slug-based lookups (Commerce: Products & Categories by slug)
+        this.table.addGlobalSecondaryIndex({
+            indexName: 'GSI_Slug',
+            partitionKey: { name: 'TenantSlug', type: dynamodb.AttributeType.STRING },
+            projectionType: dynamodb.ProjectionType.ALL,
+        });
     }
 }
