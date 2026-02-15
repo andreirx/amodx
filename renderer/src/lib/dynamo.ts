@@ -317,6 +317,36 @@ export async function getOrderForCustomer(tenantId: string, orderId: string, ema
     }
 }
 
+// 11. Fetch approved reviews for a product
+export async function getProductReviews(tenantId: string, productId: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return { items: [], averageRating: 0, totalReviews: 0 };
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :approved",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": `REVIEW#${productId}#`,
+                ":approved": "approved",
+            },
+            ExpressionAttributeNames: { "#s": "status" },
+            ProjectionExpression: "id, authorName, rating, content, source, createdAt",
+        }));
+
+        const items = (result.Items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const totalReviews = items.length;
+        const averageRating = totalReviews > 0 ? Math.round((items.reduce((s: number, r: any) => s + r.rating, 0) / totalReviews) * 10) / 10 : 0;
+
+        return { items, averageRating, totalReviews };
+    } catch (error) {
+        console.error("DynamoDB Reviews Error:", error);
+        return { items: [], averageRating: 0, totalReviews: 0 };
+    }
+}
+
 export async function getPosts(tenantId: string, tag?: string, limit: number = 6) {
     if (!process.env.TABLE_NAME) return [];
 

@@ -26,6 +26,9 @@ import OrderDetail from "@/pages/OrderDetail";
 import Customers from "@/pages/Customers";
 import CustomerDetail from "@/pages/CustomerDetail";
 import DeliverySettings from "@/pages/DeliverySettings";
+import Coupons from "@/pages/Coupons";
+import CouponEditor from "@/pages/CouponEditor";
+import Reviews from "@/pages/Reviews";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -83,6 +86,9 @@ const router = createBrowserRouter([
             { path: "customers", element: <Customers /> },
             { path: "customers/:email", element: <CustomerDetail /> },
             { path: "delivery", element: <DeliverySettings /> },
+            { path: "coupons", element: <Coupons /> },
+            { path: "coupons/:id", element: <CouponEditor /> },
+            { path: "reviews", element: <Reviews /> },
             { path: "strategy", element: <StrategyBoard /> },
             { path: "strategy/:id", element: <StrategyEditor /> },
             { path: "media", element: <MediaLibrary /> },

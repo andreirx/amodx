@@ -723,6 +723,45 @@ export const CustomerSchema = z.object({
 });
 export type Customer = z.infer<typeof CustomerSchema>;
 
+// --- COUPONS ---
+
+export const CouponSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    code: z.string().min(1),
+    type: z.enum(["percentage", "fixed_amount"]).default("percentage"),
+    value: z.string(), // e.g. "10" for 10% or "25" for 25 RON
+    minimumOrderAmount: z.string().default("0"),
+    maximumDiscount: z.string().optional(), // cap for percentage coupons
+    validFrom: z.string().optional(),
+    validUntil: z.string().optional(),
+    usageLimit: z.number().default(0), // 0 = unlimited
+    usageCount: z.number().default(0),
+    perCustomerLimit: z.number().default(0), // 0 = unlimited
+    applicableCategories: z.array(z.string()).default([]),
+    applicableProducts: z.array(z.string()).default([]),
+    status: z.enum(["active", "expired", "disabled"]).default("active"),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+export type Coupon = z.infer<typeof CouponSchema>;
+
+// --- REVIEWS ---
+
+export const ReviewSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    productId: z.string(),
+    source: z.enum(["google", "internal", "imported"]).default("internal"),
+    authorName: z.string().min(1),
+    rating: z.number().min(1).max(5),
+    content: z.string().default(""),
+    googleReviewId: z.string().optional(),
+    status: z.enum(["approved", "pending", "hidden"]).default("pending"),
+    createdAt: z.string(),
+});
+export type Review = z.infer<typeof ReviewSchema>;
+
 // --- SIGNALS (Outbound Lead Tracking) ---
 export const SignalSchema = z.object({
     id: z.string(),

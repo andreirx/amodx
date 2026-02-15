@@ -994,6 +994,144 @@ export class AmodxApi extends Construct {
             authorizer: noAuth,
         });
 
+        // --- COUPONS ---
+        const createCouponFunc = new nodejs.NodejsFunction(this, 'CreateCouponFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/coupons/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(createCouponFunc);
+
+        const listCouponsFunc = new nodejs.NodejsFunction(this, 'ListCouponsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/coupons/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listCouponsFunc);
+
+        const getCouponFunc = new nodejs.NodejsFunction(this, 'GetCouponFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/coupons/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getCouponFunc);
+
+        const updateCouponFunc = new nodejs.NodejsFunction(this, 'UpdateCouponFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/coupons/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateCouponFunc);
+
+        const deleteCouponFunc = new nodejs.NodejsFunction(this, 'DeleteCouponFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/coupons/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(deleteCouponFunc);
+
+        const validateCouponFunc = new nodejs.NodejsFunction(this, 'ValidateCouponFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/coupons/public-validate.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(validateCouponFunc);
+
+        this.httpApi.addRoutes({
+            path: '/coupons',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateCouponInt', createCouponFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/coupons',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListCouponsInt', listCouponsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/coupons/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetCouponInt', getCouponFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/coupons/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateCouponInt', updateCouponFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/coupons/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteCouponInt', deleteCouponFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/public/coupons/validate',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('ValidateCouponInt', validateCouponFunc),
+            authorizer: noAuth,
+        });
+
+        // --- REVIEWS ---
+        const createReviewFunc = new nodejs.NodejsFunction(this, 'CreateReviewFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/reviews/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createReviewFunc);
+
+        const listReviewsFunc = new nodejs.NodejsFunction(this, 'ListReviewsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/reviews/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listReviewsFunc);
+
+        const updateReviewFunc = new nodejs.NodejsFunction(this, 'UpdateReviewFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/reviews/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateReviewFunc);
+
+        const deleteReviewFunc = new nodejs.NodejsFunction(this, 'DeleteReviewFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/reviews/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(deleteReviewFunc);
+
+        const publicListReviewsFunc = new nodejs.NodejsFunction(this, 'PublicListReviewsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/reviews/public-list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicListReviewsFunc);
+
+        this.httpApi.addRoutes({
+            path: '/reviews',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateReviewInt', createReviewFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/reviews',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListReviewsInt', listReviewsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/reviews/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateReviewInt', updateReviewFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/reviews/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteReviewInt', deleteReviewFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/public/reviews/{productId}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicListReviewsInt', publicListReviewsFunc),
+            authorizer: noAuth,
+        });
+
         // Grant EventBus Permissions to ALL Lambdas
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction) {

@@ -1,4 +1,4 @@
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getDeliveryConfig, getOrderForCustomer } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
@@ -127,7 +127,8 @@ export default async function Page({ params, searchParams }: Props) {
             const product = await getProductBySlug(config.id, commerce.itemSlug);
             if (!product) return notFound();
             if ((product as any).status !== 'active' && !preview) return notFound();
-            return <ProductPageView product={product as any} config={config} prefixes={prefixes} />;
+            const reviews = await getProductReviews(config.id, (product as any).id);
+            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} />;
         }
 
         if (commerce.type === 'category' && commerce.itemSlug) {
@@ -149,6 +150,7 @@ export default async function Page({ params, searchParams }: Props) {
 
         if (commerce.type === 'cart') {
             const deliveryConfig = await getDeliveryConfig(config.id);
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
             return (
                 <CartPageView
                     checkoutPrefix={prefixes.checkout || "/comanda"}
@@ -157,6 +159,8 @@ export default async function Page({ params, searchParams }: Props) {
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
                     minimumOrderAmount={deliveryConfig?.minimumOrderAmount || 0}
                     currency="RON"
+                    tenantId={config.id}
+                    apiUrl={apiUrl}
                 />
             );
         }
@@ -452,8 +456,8 @@ function Pagination({ page, total, limit, baseUrl }: { page: number; total: numb
     );
 }
 
-function ProductPageView({ product, config, prefixes }: { product: any; config: any; prefixes: any }) {
-    const jsonLd = {
+function ProductPageView({ product, config, prefixes, reviews }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number } }) {
+    const jsonLd: any = {
         "@context": "https://schema.org",
         "@type": "Product",
         "name": product.title,
@@ -466,6 +470,13 @@ function ProductPageView({ product, config, prefixes }: { product: any; config: 
             "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
         }
     };
+    if (reviews && reviews.totalReviews > 0) {
+        jsonLd.aggregateRating = {
+            "@type": "AggregateRating",
+            "ratingValue": reviews.averageRating,
+            "reviewCount": reviews.totalReviews,
+        };
+    }
 
     return (
         <main className="max-w-6xl mx-auto py-12 px-6">
@@ -613,6 +624,34 @@ function ProductPageView({ product, config, prefixes }: { product: any; config: 
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Reviews */}
+            {reviews && reviews.totalReviews > 0 && (
+                <div className="mt-16 border-t pt-12">
+                    <div className="flex items-center gap-3 mb-8">
+                        <h2 className="text-xl font-bold">Reviews</h2>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-amber-500 text-lg">{"★".repeat(Math.round(reviews.averageRating))}</span>
+                            <span className="text-sm text-muted-foreground">{reviews.averageRating}/5 ({reviews.totalReviews} review{reviews.totalReviews !== 1 ? "s" : ""})</span>
+                        </div>
+                    </div>
+                    <div className="space-y-6">
+                        {reviews.items.map((review: any) => (
+                            <div key={review.id} className="border rounded-lg p-5">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-medium text-sm">{review.authorName}</span>
+                                        {review.source === "google" && <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">Google</span>}
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString("ro-RO")}</span>
+                                </div>
+                                <div className="text-amber-500 text-sm mb-2">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                                {review.content && <p className="text-sm text-muted-foreground">{review.content}</p>}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
         </main>

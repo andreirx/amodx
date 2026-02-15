@@ -3,7 +3,8 @@
 import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import Link from "next/link";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { Minus, Plus, Trash2, Tag } from "lucide-react";
+import { useState } from "react";
 
 interface CartPageProps {
     checkoutPrefix: string;
@@ -12,15 +13,56 @@ interface CartPageProps {
     flatShippingCost: number;
     minimumOrderAmount: number;
     currency: string;
+    tenantId: string;
+    apiUrl: string;
 }
 
-export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency }: CartPageProps) {
+export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl }: CartPageProps) {
     const { items, removeItem, updateQuantity, subtotal, itemCount } = useCart();
     const { getUrl } = useTenantUrl();
 
+    const [couponCode, setCouponCode] = useState("");
+    const [couponDiscount, setCouponDiscount] = useState(0);
+    const [couponApplied, setCouponApplied] = useState("");
+    const [couponError, setCouponError] = useState("");
+    const [couponLoading, setCouponLoading] = useState(false);
+
     const shippingCost = freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost;
-    const total = subtotal + shippingCost;
+    const total = subtotal + shippingCost - couponDiscount;
     const meetsMinimum = minimumOrderAmount <= 0 || subtotal >= minimumOrderAmount;
+
+    async function applyCoupon() {
+        if (!couponCode.trim() || !apiUrl) return;
+        setCouponError("");
+        setCouponLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}/public/coupons/validate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
+                body: JSON.stringify({ code: couponCode.trim(), subtotal: String(subtotal), items: items.map(i => ({ productId: i.productId })) }),
+            });
+            const data = await res.json();
+            if (data.valid) {
+                setCouponDiscount(parseFloat(data.discount));
+                setCouponApplied(couponCode.trim().toUpperCase());
+            } else {
+                setCouponError(data.reason || "Invalid coupon");
+                setCouponDiscount(0);
+                setCouponApplied("");
+            }
+        } catch {
+            setCouponError("Could not validate coupon");
+        } finally {
+            setCouponLoading(false);
+        }
+    }
+
+    function removeCoupon() {
+        setCouponCode("");
+        setCouponDiscount(0);
+        setCouponApplied("");
+        setCouponError("");
+    }
 
     if (items.length === 0) {
         return (
@@ -106,11 +148,45 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
                     <div className="border rounded-lg p-6 sticky top-24 space-y-4">
                         <h2 className="font-bold text-lg">Order Summary</h2>
 
+                        {/* Coupon Input */}
+                        <div>
+                            {couponApplied ? (
+                                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <Tag className="h-3.5 w-3.5 text-green-600" />
+                                        <span className="font-medium text-green-700">{couponApplied}</span>
+                                        <span className="text-green-600">-{couponDiscount.toFixed(2)} {currency}</span>
+                                    </div>
+                                    <button onClick={removeCoupon} className="text-green-600 hover:text-red-500 text-xs underline">Remove</button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input
+                                        value={couponCode}
+                                        onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                                        placeholder="Coupon code"
+                                        className="flex-1 border rounded-md px-3 py-2 text-sm"
+                                        onKeyDown={e => e.key === "Enter" && applyCoupon()}
+                                    />
+                                    <button onClick={applyCoupon} disabled={couponLoading} className="px-3 py-2 border rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+                                        {couponLoading ? "..." : "Apply"}
+                                    </button>
+                                </div>
+                            )}
+                            {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
+                        </div>
+
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Subtotal</span>
                                 <span>{subtotal.toFixed(2)} {currency}</span>
                             </div>
+                            {couponDiscount > 0 && (
+                                <div className="flex justify-between text-green-600">
+                                    <span>Discount</span>
+                                    <span>-{couponDiscount.toFixed(2)} {currency}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Shipping</span>
                                 <span>{shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`}</span>
