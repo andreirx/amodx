@@ -5,6 +5,7 @@ import { ProductSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { writeCatProductItems } from "../lib/catprod.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -61,6 +62,16 @@ export const handler: Handler = async (event) => {
                 Type: "Product"
             }
         }));
+
+        // Write CATPROD# adjacency items for category lookups
+        await writeCatProductItems(tenantId, {
+            id, title: input.title, slug: input.slug, price: input.price,
+            currency: input.currency, salePrice: input.salePrice,
+            imageLink: input.imageLink, availability: input.availability,
+            sortOrder: input.sortOrder || 0, tags: input.tags || [],
+            volumePricing: input.volumePricing || [],
+            categoryIds: input.categoryIds || [],
+        });
 
         await publishAudit({
             tenantId,

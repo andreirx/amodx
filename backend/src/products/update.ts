@@ -5,6 +5,7 @@ import { ProductSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import {requireRole} from "../auth/policy.js";
+import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -49,6 +50,19 @@ export const handler: Handler = async (event) => {
             TableName: TABLE_NAME,
             Item: merged
         }));
+
+        // Rebuild CATPROD# adjacency items (delete old, write new)
+        const oldCategoryIds: string[] = existing.Item.categoryIds || [];
+        const newCategoryIds: string[] = merged.categoryIds || [];
+        await deleteCatProductItems(tenantId!, id!, oldCategoryIds);
+        await writeCatProductItems(tenantId!, {
+            id: id!, title: merged.title, slug: merged.slug, price: merged.price,
+            currency: merged.currency, salePrice: merged.salePrice,
+            imageLink: merged.imageLink, availability: merged.availability,
+            sortOrder: merged.sortOrder || 0, tags: merged.tags || [],
+            volumePricing: merged.volumePricing || [],
+            categoryIds: newCategoryIds,
+        });
 
         await publishAudit({
             tenantId,

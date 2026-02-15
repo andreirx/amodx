@@ -643,6 +643,86 @@ export const DeliveryConfigSchema = z.object({
 
 export type DeliveryConfig = z.infer<typeof DeliveryConfigSchema>;
 
+// --- ORDERS & CUSTOMERS ---
+
+export const ShippingAddressSchema = z.object({
+    street: z.string().min(1),
+    city: z.string().min(1),
+    county: z.string().min(1),
+    postalCode: z.string().default(""),
+    country: z.string().default("Romania"),
+    notes: z.string().default(""),
+});
+export type ShippingAddress = z.infer<typeof ShippingAddressSchema>;
+
+export const OrderItemSchema = z.object({
+    productId: z.string(),
+    productTitle: z.string(),
+    productImage: z.string().default(""),
+    productSlug: z.string().default(""),
+    quantity: z.number().int().min(1),
+    unitPrice: z.string(),
+    totalPrice: z.string(),
+    personalizations: z.array(z.object({
+        label: z.string(),
+        value: z.string(),
+        addedCost: z.string().default("0"),
+    })).default([]),
+    selectedVariant: z.string().optional(),
+});
+export type OrderItem = z.infer<typeof OrderItemSchema>;
+
+export const StatusHistorySchema = z.object({
+    status: z.string(),
+    timestamp: z.string(),
+    note: z.string().default(""),
+});
+
+export const OrderSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    orderNumber: z.string(),
+    customerEmail: z.string().email(),
+    customerName: z.string().min(1),
+    customerPhone: z.string().default(""),
+    shippingAddress: ShippingAddressSchema,
+    items: z.array(OrderItemSchema).min(1),
+    subtotal: z.string(),
+    shippingCost: z.string().default("0"),
+    discount: z.string().default("0"),
+    total: z.string(),
+    currency: z.string().default("RON"),
+    couponCode: z.string().optional(),
+    couponDiscount: z.string().default("0"),
+    paymentMethod: z.enum(["cash_on_delivery", "bank_transfer"]).default("cash_on_delivery"),
+    paymentStatus: z.enum(["pending", "paid"]).default("pending"),
+    requestedDeliveryDate: z.string().optional(),
+    estimatedDeliveryDate: z.string().optional(),
+    trackingNumber: z.string().optional(),
+    status: z.enum(["pending", "confirmed", "processing", "shipped", "delivered", "completed", "cancelled"]).default("pending"),
+    statusHistory: z.array(StatusHistorySchema).default([]),
+    internalNotes: z.string().default(""),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+export type Order = z.infer<typeof OrderSchema>;
+
+export const CustomerSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    email: z.string().email(),
+    name: z.string().min(1),
+    phone: z.string().default(""),
+    orderCount: z.number().default(0),
+    totalSpent: z.string().default("0"),
+    lastOrderDate: z.string().optional(),
+    defaultAddress: ShippingAddressSchema.optional(),
+    notes: z.string().default(""),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+export type Customer = z.infer<typeof CustomerSchema>;
+
 // --- SIGNALS (Outbound Lead Tracking) ---
 export const SignalSchema = z.object({
     id: z.string(),

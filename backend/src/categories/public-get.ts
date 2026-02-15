@@ -1,6 +1,7 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { queryCatProducts } from "../lib/catprod.js";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -28,26 +29,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const category = catResult.Items[0];
 
-        // Fetch products in this category (paginated)
+        // Fetch products via CATPROD# adjacency items (O(n) where n = products in category)
+        const allProducts = await queryCatProducts(tenantId, category.id);
+
+        // Paginate
         const page = parseInt(event.queryStringParameters?.page || "1");
         const limit = Math.min(parseInt(event.queryStringParameters?.limit || "24"), 100);
-
-        const productsResult = await db.send(new QueryCommand({
-            TableName: TABLE_NAME,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "contains(categoryIds, :catId) AND #s = :active",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "PRODUCT#",
-                ":catId": category.id,
-                ":active": "active"
-            },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, sortOrder"
-        }));
-
-        // Client-side pagination (DynamoDB FilterExpression doesn't support server-side paging with filters)
-        const allProducts = (productsResult.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
         const start = (page - 1) * limit;
         const products = allProducts.slice(start, start + limit);
 

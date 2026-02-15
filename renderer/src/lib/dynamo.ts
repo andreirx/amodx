@@ -196,7 +196,7 @@ export async function getCategoryBySlug(tenantId: string, slug: string): Promise
     }
 }
 
-// 6. Fetch Products by Category (paginated)
+// 6. Fetch Products by Category via CATPROD# adjacency items (O(n) where n = products in category)
 export async function getProductsByCategory(tenantId: string, categoryId: string, page: number = 1, limit: number = 24) {
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return { items: [], total: 0 };
@@ -205,15 +205,10 @@ export async function getProductsByCategory(tenantId: string, categoryId: string
         const result = await docClient.send(new QueryCommand({
             TableName: tableName,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "contains(categoryIds, :catId) AND #s = :active",
             ExpressionAttributeValues: {
                 ":pk": `TENANT#${tenantId}`,
-                ":sk": "PRODUCT#",
-                ":catId": categoryId,
-                ":active": "active"
+                ":sk": `CATPROD#${categoryId}#`,
             },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, sortOrder, volumePricing"
         }));
 
         const allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
@@ -280,6 +275,45 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
     } catch (error) {
         console.error("DynamoDB Active Products Error:", error);
         return { items: [], total: 0 };
+    }
+}
+
+// 9. Fetch Delivery Config
+export async function getDeliveryConfig(tenantId: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        const result = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: { PK: `TENANT#${tenantId}`, SK: "DELIVERYCONFIG#default" }
+        }));
+        return result.Item || null;
+    } catch (error) {
+        console.error("DynamoDB DeliveryConfig Error:", error);
+        return null;
+    }
+}
+
+// 10. Fetch Order for Customer (public - requires email match)
+export async function getOrderForCustomer(tenantId: string, orderId: string, email: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        const result = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: { PK: `TENANT#${tenantId}`, SK: `ORDER#${orderId}` }
+        }));
+
+        if (!result.Item) return null;
+        if (result.Item.customerEmail !== email) return null;
+
+        const { internalNotes, ...order } = result.Item;
+        return order;
+    } catch (error) {
+        console.error("DynamoDB Order Error:", error);
+        return null;
     }
 }
 

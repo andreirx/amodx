@@ -21,6 +21,11 @@ import ContentGraph from "@/pages/ContentGraph";
 import Signals from "@/pages/Signals";
 import Categories from "@/pages/Categories";
 import CategoryEditor from "@/pages/CategoryEditor";
+import Orders from "@/pages/Orders";
+import OrderDetail from "@/pages/OrderDetail";
+import Customers from "@/pages/Customers";
+import CustomerDetail from "@/pages/CustomerDetail";
+import DeliverySettings from "@/pages/DeliverySettings";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -73,6 +78,11 @@ const router = createBrowserRouter([
             { path: "products/:id", element: <ProductEditor /> },
             { path: "categories", element: <Categories /> },
             { path: "categories/:id", element: <CategoryEditor /> },
+            { path: "orders", element: <Orders /> },
+            { path: "orders/:id", element: <OrderDetail /> },
+            { path: "customers", element: <Customers /> },
+            { path: "customers/:email", element: <CustomerDetail /> },
+            { path: "delivery", element: <DeliverySettings /> },
             { path: "strategy", element: <StrategyBoard /> },
             { path: "strategy/:id", element: <StrategyEditor /> },
             { path: "media", element: <MediaLibrary /> },

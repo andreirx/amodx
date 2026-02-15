@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useTenantUrl } from "@/lib/routing";
+import { CartWidget } from "./CartWidget";
 
 interface LinkItem {
     label: string;
@@ -54,6 +55,7 @@ export function Navbar({
                                 {link.label}
                             </Link>
                         ))}
+                        <CartWidget />
                         <Link
                             href={getUrl("/contact")}
                             className="bg-primary text-primary-foreground px-5 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"

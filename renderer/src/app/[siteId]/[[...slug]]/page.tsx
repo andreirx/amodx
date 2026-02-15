@@ -1,4 +1,4 @@
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getDeliveryConfig, getOrderForCustomer } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
@@ -8,6 +8,8 @@ import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { SocialShare } from "@/components/SocialShare";
 import Script from "next/script";
+import { CartPageView } from "@/components/CartPageView";
+import { CheckoutPageView } from "@/components/CheckoutPageView";
 
 // NEW: Auth Imports
 import { decode } from "next-auth/jwt";
@@ -21,9 +23,18 @@ type Props = {
 };
 
 // Commerce prefix matching helper
-function matchCommercePrefix(slugPath: string, urlPrefixes: any): { type: 'product' | 'category' | 'shop'; itemSlug?: string } | null {
-    const prefixes = urlPrefixes || { product: "/produs", category: "/categorie", shop: "/magazin" };
+type CommerceMatch = { type: 'product' | 'category' | 'shop' | 'cart' | 'checkout' | 'checkout-confirm' | 'checkout-track'; itemSlug?: string };
 
+function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch | null {
+    const prefixes = urlPrefixes || { product: "/produs", category: "/categorie", shop: "/magazin", cart: "/cos", checkout: "/comanda" };
+
+    if (slugPath === prefixes.cart) return { type: 'cart' };
+    if (slugPath === prefixes.checkout) return { type: 'checkout' };
+    if (slugPath === prefixes.checkout + "/confirmare") return { type: 'checkout-confirm' };
+    if (slugPath.startsWith(prefixes.checkout + "/")) {
+        const segment = slugPath.slice(prefixes.checkout.length + 1);
+        if (segment && segment !== "confirmare") return { type: 'checkout-track', itemSlug: segment };
+    }
     if (slugPath === prefixes.shop) return { type: 'shop' };
     if (slugPath.startsWith(prefixes.product + "/")) {
         return { type: 'product', itemSlug: slugPath.slice(prefixes.product.length + 1) };
@@ -70,6 +81,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
             metadataBase: new URL(`https://${config.domain}`),
             alternates: { canonical: canonicalUrl }
         };
+        if (commerce.type === 'cart') return { title: `Cart - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
+        if (commerce.type === 'checkout') return { title: `Checkout - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
+        if (commerce.type === 'checkout-confirm') return { title: `Order Confirmation - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
+        if (commerce.type === 'checkout-track') return { title: `Order Tracking - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
     }
 
     // Content page metadata
@@ -130,6 +145,58 @@ export default async function Page({ params, searchParams }: Props) {
                 getAllCategories(config.id)
             ]);
             return <ShopPageView products={products} categories={categories} total={total} page={page} config={config} prefixes={prefixes} />;
+        }
+
+        if (commerce.type === 'cart') {
+            const deliveryConfig = await getDeliveryConfig(config.id);
+            return (
+                <CartPageView
+                    checkoutPrefix={prefixes.checkout || "/comanda"}
+                    shopPrefix={prefixes.shop || "/magazin"}
+                    freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
+                    flatShippingCost={deliveryConfig?.flatShippingCost || 0}
+                    minimumOrderAmount={deliveryConfig?.minimumOrderAmount || 0}
+                    currency="RON"
+                />
+            );
+        }
+
+        if (commerce.type === 'checkout') {
+            const deliveryConfig = await getDeliveryConfig(config.id);
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+            return (
+                <CheckoutPageView
+                    tenantId={config.id}
+                    apiUrl={apiUrl}
+                    confirmPrefix={`${prefixes.checkout || "/comanda"}/confirmare`}
+                    cartPrefix={prefixes.cart || "/cos"}
+                    freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
+                    flatShippingCost={deliveryConfig?.flatShippingCost || 0}
+                    currency="RON"
+                    bankTransfer={config.integrations?.bankTransfer}
+                />
+            );
+        }
+
+        if (commerce.type === 'checkout-confirm') {
+            const sp = await searchParams;
+            const orderId = sp.id as string;
+            const email = sp.email as string;
+            let order = null;
+            if (orderId && email) {
+                order = await getOrderForCustomer(config.id, orderId, email);
+            }
+            return <ConfirmationPageView order={order} config={config} prefixes={prefixes} />;
+        }
+
+        if (commerce.type === 'checkout-track') {
+            const sp = await searchParams;
+            const email = sp.email as string;
+            let order = null;
+            if (commerce.itemSlug && email) {
+                order = await getOrderForCustomer(config.id, commerce.itemSlug, email);
+            }
+            return <OrderTrackingView order={order} config={config} prefixes={prefixes} />;
         }
     }
 
@@ -617,6 +684,189 @@ function ShopPageView({ products, categories, total, page, config, prefixes }: {
             )}
 
             <Pagination page={page} total={total} limit={24} baseUrl={prefixes.shop || "/magazin"} />
+        </main>
+    );
+}
+
+function ConfirmationPageView({ order, config, prefixes }: { order: any; config: any; prefixes: any }) {
+    const bankTransfer = config.integrations?.bankTransfer;
+
+    if (!order) {
+        return (
+            <main className="max-w-4xl mx-auto py-20 px-6 text-center">
+                <div className="text-6xl mb-6">✅</div>
+                <h1 className="text-3xl font-bold mb-4">Thank you for your order!</h1>
+                <p className="text-muted-foreground mb-8">Your order has been placed successfully. You will receive a confirmation email shortly.</p>
+                <Link href={prefixes.shop || "/magazin"} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
+                    Continue Shopping
+                </Link>
+            </main>
+        );
+    }
+
+    return (
+        <main className="max-w-4xl mx-auto py-12 px-6">
+            <div className="text-center mb-12">
+                <div className="text-6xl mb-4">✅</div>
+                <h1 className="text-3xl font-bold mb-2">Order Confirmed!</h1>
+                <p className="text-lg text-muted-foreground">
+                    Order <span className="font-mono font-bold text-foreground">{order.orderNumber}</span>
+                </p>
+            </div>
+
+            {/* Bank Transfer Details */}
+            {order.paymentMethod === "bank_transfer" && bankTransfer && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
+                    <h2 className="font-bold text-lg mb-3">Bank Transfer Details</h2>
+                    <p className="text-sm text-muted-foreground mb-4">Please transfer the total amount to the following account:</p>
+                    <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-muted-foreground">Bank:</span> <strong>{bankTransfer.bankName}</strong></div>
+                        <div><span className="text-muted-foreground">Account Holder:</span> <strong>{bankTransfer.accountHolder}</strong></div>
+                        <div className="sm:col-span-2"><span className="text-muted-foreground">IBAN:</span> <strong className="font-mono">{bankTransfer.iban}</strong></div>
+                        {bankTransfer.swift && <div><span className="text-muted-foreground">SWIFT:</span> <strong className="font-mono">{bankTransfer.swift}</strong></div>}
+                        <div><span className="text-muted-foreground">Reference:</span> <strong>{order.orderNumber}</strong></div>
+                        <div><span className="text-muted-foreground">Amount:</span> <strong>{order.total} {order.currency}</strong></div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cash on Delivery */}
+            {order.paymentMethod === "cash_on_delivery" && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-8">
+                    <h2 className="font-bold text-lg mb-2">Cash on Delivery</h2>
+                    <p className="text-sm text-muted-foreground">You will pay <strong>{order.total} {order.currency}</strong> when you receive your order.</p>
+                    {order.estimatedDeliveryDate && <p className="text-sm mt-2">Estimated delivery: <strong>{order.estimatedDeliveryDate}</strong></p>}
+                </div>
+            )}
+
+            {/* Order Items */}
+            <div className="border rounded-lg p-6 mb-8">
+                <h2 className="font-bold text-lg mb-4">Order Details</h2>
+                <div className="space-y-3">
+                    {(order.items || []).map((item: any, i: number) => (
+                        <div key={i} className="flex justify-between text-sm py-2 border-b last:border-0">
+                            <div>
+                                <p className="font-medium">{item.productTitle}</p>
+                                <p className="text-muted-foreground">Qty: {item.quantity}</p>
+                                {item.personalizations?.length > 0 && (
+                                    <p className="text-xs text-muted-foreground">{item.personalizations.map((p: any) => `${p.label}: ${p.value}`).join(", ")}</p>
+                                )}
+                            </div>
+                            <span className="font-medium">{item.totalPrice} {order.currency}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="border-t mt-4 pt-4 space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{order.subtotal} {order.currency}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Shipping</span><span>{order.shippingCost === "0" ? "Free" : `${order.shippingCost} ${order.currency}`}</span></div>
+                    {parseFloat(order.discount || "0") > 0 && (
+                        <div className="flex justify-between text-green-600"><span>Discount</span><span>-{order.discount} {order.currency}</span></div>
+                    )}
+                    <div className="flex justify-between font-bold text-base border-t pt-2"><span>Total</span><span>{order.total} {order.currency}</span></div>
+                </div>
+            </div>
+
+            {/* Shipping Address */}
+            {order.shippingAddress && (
+                <div className="border rounded-lg p-6 mb-8">
+                    <h2 className="font-bold text-lg mb-3">Shipping Address</h2>
+                    <p className="text-sm">{order.customerName}</p>
+                    <p className="text-sm text-muted-foreground">{order.shippingAddress.street}</p>
+                    <p className="text-sm text-muted-foreground">{order.shippingAddress.city}, {order.shippingAddress.county} {order.shippingAddress.postalCode}</p>
+                    {order.customerPhone && <p className="text-sm text-muted-foreground mt-2">Phone: {order.customerPhone}</p>}
+                </div>
+            )}
+
+            <div className="text-center">
+                <Link href={prefixes.shop || "/magazin"} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
+                    Continue Shopping
+                </Link>
+            </div>
+        </main>
+    );
+}
+
+function OrderTrackingView({ order, config, prefixes }: { order: any; config: any; prefixes: any }) {
+    if (!order) {
+        return (
+            <main className="max-w-4xl mx-auto py-20 px-6 text-center">
+                <h1 className="text-3xl font-bold mb-4">Order Not Found</h1>
+                <p className="text-muted-foreground mb-8">Please check the order ID and email address.</p>
+                <Link href={prefixes.shop || "/magazin"} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
+                    Continue Shopping
+                </Link>
+            </main>
+        );
+    }
+
+    const statusSteps = ["pending", "confirmed", "processing", "shipped", "delivered", "completed"];
+    const currentStepIndex = statusSteps.indexOf(order.status);
+
+    return (
+        <main className="max-w-4xl mx-auto py-12 px-6">
+            <h1 className="text-3xl font-bold tracking-tight mb-2">Order {order.orderNumber}</h1>
+            <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString("ro-RO")}</p>
+
+            {/* Status Timeline */}
+            <div className="mb-12">
+                <div className="flex items-center justify-between">
+                    {statusSteps.map((step, i) => (
+                        <div key={step} className="flex flex-col items-center flex-1">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                i <= currentStepIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                            }`}>
+                                {i <= currentStepIndex ? "✓" : i + 1}
+                            </div>
+                            <span className={`text-xs mt-1 capitalize ${i <= currentStepIndex ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                                {step}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+                <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((currentStepIndex + 1) / statusSteps.length) * 100}%` }} />
+                </div>
+            </div>
+
+            {/* Status History */}
+            {order.statusHistory?.length > 0 && (
+                <div className="border rounded-lg p-6 mb-8">
+                    <h2 className="font-bold text-lg mb-4">Status History</h2>
+                    <div className="space-y-3">
+                        {order.statusHistory.map((entry: any, i: number) => (
+                            <div key={i} className="flex gap-3 text-sm">
+                                <span className="text-muted-foreground whitespace-nowrap">{new Date(entry.timestamp).toLocaleString("ro-RO")}</span>
+                                <span className="capitalize font-medium">{entry.status}</span>
+                                {entry.note && <span className="text-muted-foreground">- {entry.note}</span>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Tracking Number */}
+            {order.trackingNumber && (
+                <div className="border rounded-lg p-6 mb-8">
+                    <h2 className="font-bold text-lg mb-2">Tracking</h2>
+                    <p className="text-sm">Tracking Number: <span className="font-mono font-bold">{order.trackingNumber}</span></p>
+                </div>
+            )}
+
+            {/* Order Items Summary */}
+            <div className="border rounded-lg p-6">
+                <h2 className="font-bold text-lg mb-4">Items</h2>
+                {(order.items || []).map((item: any, i: number) => (
+                    <div key={i} className="flex justify-between text-sm py-2 border-b last:border-0">
+                        <span>{item.productTitle} x{item.quantity}</span>
+                        <span className="font-medium">{item.totalPrice} {order.currency}</span>
+                    </div>
+                ))}
+                <div className="border-t mt-3 pt-3 flex justify-between font-bold">
+                    <span>Total</span>
+                    <span>{order.total} {order.currency}</span>
+                </div>
+            </div>
         </main>
     );
 }

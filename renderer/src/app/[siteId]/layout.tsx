@@ -68,8 +68,10 @@ export default async function SiteLayout({ children, params }: Props) {
         );
     }
 
+    const cartPrefix = config.urlPrefixes?.cart || "/cos";
+
     return (
-        <Providers>
+        <Providers tenantId={config.id} cartPrefix={cartPrefix}>
             <div className="site-wrapper flex flex-col min-h-screen">
                 <ThemeInjector theme={config.theme} tenantId={config.id} />
 

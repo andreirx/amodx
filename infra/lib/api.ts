@@ -839,6 +839,161 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('DeleteThemeInt', deleteThemeFunc),
         });
 
+        // --- ORDERS ---
+        const createOrderFunc = new nodejs.NodejsFunction(this, 'CreateOrderFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/orders/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(createOrderFunc);
+
+        const listOrdersFunc = new nodejs.NodejsFunction(this, 'ListOrdersFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/orders/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listOrdersFunc);
+
+        const getOrderFunc = new nodejs.NodejsFunction(this, 'GetOrderFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/orders/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getOrderFunc);
+
+        const updateOrderStatusFunc = new nodejs.NodejsFunction(this, 'UpdateOrderStatusFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/orders/update-status.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateOrderStatusFunc);
+
+        const updateOrderFunc = new nodejs.NodejsFunction(this, 'UpdateOrderFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/orders/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateOrderFunc);
+
+        const publicGetOrderFunc = new nodejs.NodejsFunction(this, 'PublicGetOrderFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/orders/public-get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicGetOrderFunc);
+
+        this.httpApi.addRoutes({
+            path: '/orders',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListOrdersInt', listOrdersFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/orders/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetOrderInt', getOrderFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/orders/{id}/status',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateOrderStatusInt', updateOrderStatusFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/orders/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateOrderInt', updateOrderFunc),
+        });
+
+        // Public order routes (no auth)
+        this.httpApi.addRoutes({
+            path: '/public/orders',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateOrderInt', createOrderFunc),
+            authorizer: noAuth,
+        });
+        this.httpApi.addRoutes({
+            path: '/public/orders/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicGetOrderInt', publicGetOrderFunc),
+            authorizer: noAuth,
+        });
+
+        // --- CUSTOMERS ---
+        const listCustomersFunc = new nodejs.NodejsFunction(this, 'ListCustomersFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/customers/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listCustomersFunc);
+
+        const getCustomerFunc = new nodejs.NodejsFunction(this, 'GetCustomerFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/customers/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getCustomerFunc);
+
+        const updateCustomerFunc = new nodejs.NodejsFunction(this, 'UpdateCustomerFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/customers/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateCustomerFunc);
+
+        this.httpApi.addRoutes({
+            path: '/customers',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListCustomersInt', listCustomersFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/customers/{email}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetCustomerInt', getCustomerFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/customers/{email}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateCustomerInt', updateCustomerFunc),
+        });
+
+        // --- DELIVERY ---
+        const getDeliveryConfigFunc = new nodejs.NodejsFunction(this, 'GetDeliveryConfigFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/delivery/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getDeliveryConfigFunc);
+
+        const updateDeliveryConfigFunc = new nodejs.NodejsFunction(this, 'UpdateDeliveryConfigFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/delivery/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateDeliveryConfigFunc);
+
+        const availableDatesFunc = new nodejs.NodejsFunction(this, 'AvailableDatesFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/delivery/available-dates.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(availableDatesFunc);
+
+        this.httpApi.addRoutes({
+            path: '/delivery/config',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetDeliveryConfigInt', getDeliveryConfigFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/delivery/config',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateDeliveryConfigInt', updateDeliveryConfigFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/public/delivery/dates',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('AvailableDatesInt', availableDatesFunc),
+            authorizer: noAuth,
+        });
+
         // Grant EventBus Permissions to ALL Lambdas
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction) {
