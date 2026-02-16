@@ -2,7 +2,7 @@ import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCateg
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
-import { ContentItem, Product, Category } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -27,7 +27,7 @@ type Props = {
 type CommerceMatch = { type: 'product' | 'category' | 'shop' | 'cart' | 'checkout' | 'checkout-confirm' | 'checkout-track'; itemSlug?: string };
 
 function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch | null {
-    const prefixes = urlPrefixes || { product: "/produs", category: "/categorie", shop: "/magazin", cart: "/cos", checkout: "/comanda" };
+    const prefixes = urlPrefixes || URL_PREFIX_DEFAULTS;
 
     if (slugPath === prefixes.cart) return { type: 'cart' };
     if (slugPath === prefixes.checkout) return { type: 'checkout' };
@@ -122,7 +122,7 @@ export default async function Page({ params, searchParams }: Props) {
     // --- COMMERCE ROUTING ---
     const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
     if (commerce) {
-        const prefixes = config.urlPrefixes || { product: "/produs", category: "/categorie", shop: "/magazin" };
+        const prefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
 
         if (commerce.type === 'product' && commerce.itemSlug) {
             const product = await getProductBySlug(config.id, commerce.itemSlug);

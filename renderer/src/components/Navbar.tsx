@@ -64,8 +64,9 @@ export function Navbar({
                         </Link>
                     </div>
 
-                    {/* --- MOBILE TOGGLE --- */}
-                    <div className="flex items-center md:hidden">
+                    {/* --- MOBILE TOGGLE + CART --- */}
+                    <div className="flex items-center gap-2 md:hidden">
+                        <CartWidget />
                         <button
                             onClick={() => setIsMobileOpen(!isMobileOpen)}
                             className="text-foreground p-2 -mr-2"

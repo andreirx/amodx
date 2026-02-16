@@ -7,6 +7,7 @@ import { ContentItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -49,6 +50,12 @@ export const handler: AmodxHandler = async (event) => {
         // Prefer provided slug, otherwise derive from title
         const rawSlug = input.slug && input.slug.trim() ? input.slug : input.title;
         const slug = cleanSlug(rawSlug);
+
+        // 2b. Check slug doesn't conflict with commerce URL prefixes
+        const conflict = await checkSlugCommerceConflict(tenantId, slug);
+        if (conflict) {
+            return { statusCode: 400, body: JSON.stringify({ error: conflict }) };
+        }
 
         // 3. Construct Item Explicitly (Safety & Clarity)
         const contentItem = {

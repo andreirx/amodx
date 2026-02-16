@@ -176,6 +176,13 @@ export default function SettingsPage() {
         }
     };
 
+    const updateUrlPrefix = (key: string, val: string) => {
+        setConfig(prev => ({
+            ...prev,
+            urlPrefixes: { ...prev.urlPrefixes!, [key]: val }
+        }));
+    };
+
     const updateIntegration = (key: string, val: any) => {
         setConfig(prev => ({
             ...prev,
@@ -424,6 +431,61 @@ export default function SettingsPage() {
                             ))}
                             {(config.navLinks?.length === 0) &&
                                 <p className="text-sm text-muted-foreground italic">No links added.</p>}
+                        </CardContent>
+                    </Card>
+
+                    {/* URL PREFIXES (Commerce Routing) */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>URL Prefixes</CardTitle>
+                            <CardDescription>Configure URL paths for commerce pages. Must start with "/" (e.g. "/produs" or "/product").</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Product</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.product || ""}
+                                        onChange={e => updateUrlPrefix("product", e.target.value)}
+                                        placeholder="/produs"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Category</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.category || ""}
+                                        onChange={e => updateUrlPrefix("category", e.target.value)}
+                                        placeholder="/categorie"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Cart</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.cart || ""}
+                                        onChange={e => updateUrlPrefix("cart", e.target.value)}
+                                        placeholder="/cos"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Checkout</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.checkout || ""}
+                                        onChange={e => updateUrlPrefix("checkout", e.target.value)}
+                                        placeholder="/comanda"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Shop</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.shop || ""}
+                                        onChange={e => updateUrlPrefix("shop", e.target.value)}
+                                        placeholder="/magazin"
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">
+                                Changing these will update how commerce URLs are generated and resolved. Existing links using old prefixes will stop working.
+                            </p>
                         </CardContent>
                     </Card>
 

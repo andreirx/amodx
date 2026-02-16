@@ -6,6 +6,7 @@ import { publishAudit } from "../lib/events.js";
 import { z } from "zod";
 import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
+import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -67,6 +68,14 @@ export const handler: AmodxHandler = async (event) => {
         const rawNewSlug = input.slug ?? oldSlug;
         const newSlug = rawNewSlug.startsWith("/") ? rawNewSlug : "/" + rawNewSlug;
         const slugChanged = newSlug !== oldSlug;
+
+        // Check slug doesn't conflict with commerce URL prefixes
+        if (slugChanged) {
+            const conflict = await checkSlugCommerceConflict(tenantId, newSlug);
+            if (conflict) {
+                return { statusCode: 400, body: JSON.stringify({ error: conflict }) };
+            }
+        }
 
         const timestamp = new Date().toISOString();
         const userId = auth.sub;

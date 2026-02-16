@@ -1,5 +1,5 @@
 import { Providers } from "@/components/Providers";
-import { getTenantConfig } from "@/lib/dynamo";
+import { getTenantConfig, hasActivePopups } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { Navbar } from "@/components/Navbar";
 import { Analytics } from "@/components/Analytics";
@@ -10,6 +10,7 @@ import { QuickContact } from "@/components/QuickContact";
 import { TopBar } from "@/components/TopBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
+import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
 
 export const revalidate = 3600;
 
@@ -72,8 +73,9 @@ export default async function SiteLayout({ children, params }: Props) {
         );
     }
 
-    const cartPrefix = config.urlPrefixes?.cart || "/cos";
+    const cartPrefix = config.urlPrefixes?.cart || URL_PREFIX_DEFAULTS.cart;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const showPopups = apiUrl ? await hasActivePopups(config.id) : false;
 
     return (
         <Providers tenantId={config.id} cartPrefix={cartPrefix}>
@@ -145,8 +147,8 @@ export default async function SiteLayout({ children, params }: Props) {
                     />
                 )}
 
-                {/* Popup Manager */}
-                {apiUrl && (
+                {/* Popup Manager — only rendered if tenant has active popups (checked server-side) */}
+                {showPopups && (
                     <PopupManager
                         tenantId={config.id}
                         apiUrl={apiUrl}

@@ -20,13 +20,22 @@ export const LinkSchema = z.object({
     })).optional(), // dropdown sub-items
 });
 
+// SINGLE SOURCE OF TRUTH for URL prefix defaults — do NOT duplicate these elsewhere
+export const URL_PREFIX_DEFAULTS = {
+    product: "/produs",
+    category: "/categorie",
+    cart: "/cos",
+    checkout: "/comanda",
+    shop: "/magazin",
+} as const;
+
 // Configurable URL prefixes per tenant (for i18n-friendly URLs)
 export const UrlPrefixesSchema = z.object({
-    product: z.string().default("/product"),
-    category: z.string().default("/category"),
-    cart: z.string().default("/cart"),
-    checkout: z.string().default("/checkout"),
-    shop: z.string().default("/shop"),
+    product: z.string().default(URL_PREFIX_DEFAULTS.product),
+    category: z.string().default(URL_PREFIX_DEFAULTS.category),
+    cart: z.string().default(URL_PREFIX_DEFAULTS.cart),
+    checkout: z.string().default(URL_PREFIX_DEFAULTS.checkout),
+    shop: z.string().default(URL_PREFIX_DEFAULTS.shop),
 });
 
 // Quick Contact widget config
@@ -349,13 +358,7 @@ export const TenantConfigSchema = z.object({
     footerLinks: z.array(LinkSchema).default([]),
 
     // Commerce URL Prefixes (configurable per tenant for i18n)
-    urlPrefixes: UrlPrefixesSchema.default({
-        product: "/product",
-        category: "/category",
-        cart: "/cart",
-        checkout: "/checkout",
-        shop: "/shop",
-    }),
+    urlPrefixes: UrlPrefixesSchema.default(URL_PREFIX_DEFAULTS),
 
     // Quick Contact Widget
     quickContact: QuickContactSchema.optional(),

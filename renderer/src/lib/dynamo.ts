@@ -1,7 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -79,7 +79,7 @@ function mapTenant(item: any): TenantConfig {
 
         theme: theme || {},
         integrations: item.integrations || {},
-        urlPrefixes: item.urlPrefixes || { product: "/produs", category: "/categorie", cart: "/cos", checkout: "/comanda", shop: "/magazin" },
+        urlPrefixes: item.urlPrefixes || URL_PREFIX_DEFAULTS,
         quickContact: item.quickContact || undefined,
         topBar: item.topBar || undefined,
         createdAt: item.createdAt || new Date().toISOString()
@@ -427,5 +427,28 @@ export async function getFormBySlug(tenantId: string, slug: string) {
     } catch (error) {
         console.error("DynamoDB Form Error:", error);
         return null;
+    }
+}
+
+// Check if tenant has any active popups (lightweight, Limit 1)
+export async function hasActivePopups(tenantId: string): Promise<boolean> {
+    const tableName = process.env.TABLE_NAME || process.env.NEXT_PUBLIC_TABLE_NAME || "amodx-table";
+    try {
+        const res = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :active",
+            ExpressionAttributeNames: { "#s": "status" },
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "POPUP#",
+                ":active": "active",
+            },
+            Limit: 1,
+            ProjectionExpression: "id",
+        }));
+        return (res.Items?.length ?? 0) > 0;
+    } catch {
+        return false;
     }
 }
