@@ -77,6 +77,7 @@ function mapTenant(item: any): TenantConfig {
         navLinks: item.navLinks || [],
         footerLinks: item.footerLinks || [],
 
+        commerceEnabled: item.commerceEnabled ?? false,
         theme: theme || {},
         integrations: item.integrations || {},
         urlPrefixes: item.urlPrefixes || URL_PREFIX_DEFAULTS,

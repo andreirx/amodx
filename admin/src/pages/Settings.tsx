@@ -20,7 +20,7 @@ import {
     Save
 } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
-import { Plus, Trash2, Upload } from "lucide-react";
+import { Plus, Trash2, Upload, ShoppingBag } from "lucide-react";
 import { ShieldCheck } from "lucide-react";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
 import { THEME_PRESETS } from "@amodx/shared";
@@ -375,6 +375,31 @@ export default function SettingsPage() {
                                         className="ml-2 h-3 w-3"/></a>
                                 </Button>
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* COMMERCE TOGGLE */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Commerce</CardTitle>
+                            </div>
+                            <CardDescription>Enable the full e-commerce flow: cart, checkout, orders, delivery, and coupons. Products, categories, and Paddle purchases work without this.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.commerceEnabled ?? false}
+                                    onChange={e => setConfig({ ...config, commerceEnabled: e.target.checked })}
+                                    className="rounded border-gray-300 h-5 w-5"
+                                />
+                                <div>
+                                    <span className="font-medium text-sm">Enable Commerce</span>
+                                    <p className="text-xs text-muted-foreground">Shows cart in navbar, enables checkout flow, orders management, delivery settings, and coupons.</p>
+                                </div>
+                            </label>
                         </CardContent>
                     </Card>
 

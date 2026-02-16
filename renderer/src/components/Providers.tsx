@@ -12,8 +12,8 @@ interface ProvidersProps {
 export function Providers({ children, tenantId, cartPrefix }: ProvidersProps) {
     return (
         <SessionProvider>
-            {tenantId ? (
-                <CartProvider tenantId={tenantId} cartPrefix={cartPrefix || "/cart"}>
+            {tenantId && cartPrefix ? (
+                <CartProvider tenantId={tenantId} cartPrefix={cartPrefix}>
                     {children}
                 </CartProvider>
             ) : (

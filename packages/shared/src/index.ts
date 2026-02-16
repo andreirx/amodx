@@ -357,6 +357,9 @@ export const TenantConfigSchema = z.object({
     navLinks: z.array(LinkSchema).default([]),
     footerLinks: z.array(LinkSchema).default([]),
 
+    // Commerce toggle — enables cart, checkout, orders flow. Products/categories/Paddle still work without it.
+    commerceEnabled: z.boolean().default(false),
+
     // Commerce URL Prefixes (configurable per tenant for i18n)
     urlPrefixes: UrlPrefixesSchema.default(URL_PREFIX_DEFAULTS),
 

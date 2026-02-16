@@ -16,13 +16,15 @@ export function Navbar({
                            logo,
                            links = [],
                            showLogo = true,
-                           showTitle = true
+                           showTitle = true,
+                           commerceEnabled = false
                        }: {
     siteName: string;
     logo?: string;
     links?: LinkItem[];
     showLogo?: boolean;
     showTitle?: boolean;
+    commerceEnabled?: boolean;
 }) {
     const { getUrl } = useTenantUrl();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -55,7 +57,7 @@ export function Navbar({
                                 {link.label}
                             </Link>
                         ))}
-                        <CartWidget />
+                        {commerceEnabled && <CartWidget />}
                         <Link
                             href={getUrl("/contact")}
                             className="bg-primary text-primary-foreground px-5 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
@@ -66,7 +68,7 @@ export function Navbar({
 
                     {/* --- MOBILE TOGGLE + CART --- */}
                     <div className="flex items-center gap-2 md:hidden">
-                        <CartWidget />
+                        {commerceEnabled && <CartWidget />}
                         <button
                             onClick={() => setIsMobileOpen(!isMobileOpen)}
                             className="text-foreground p-2 -mr-2"

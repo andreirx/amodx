@@ -38,6 +38,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     const [newDomain, setNewDomain] = useState("");
     const [isCreating, setIsCreating] = useState(false);
 
+    const isCommerce = currentTenant?.commerceEnabled ?? false;
+
     const navSections = [
         {
             label: "Content",
@@ -52,11 +54,13 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             items: [
                 { name: "Products", href: "/products", icon: ShoppingBag },
                 { name: "Categories", href: "/categories", icon: FolderTree },
-                { name: "Orders", href: "/orders", icon: Package },
-                { name: "Customers", href: "/customers", icon: Users },
-                { name: "Coupons", href: "/coupons", icon: Ticket },
-                { name: "Reviews", href: "/reviews", icon: Star },
-                { name: "Delivery", href: "/delivery", icon: Truck },
+                ...(isCommerce ? [
+                    { name: "Orders", href: "/orders", icon: Package },
+                    { name: "Customers", href: "/customers", icon: Users },
+                    { name: "Coupons", href: "/coupons", icon: Ticket },
+                    { name: "Reviews", href: "/reviews", icon: Star },
+                    { name: "Delivery", href: "/delivery", icon: Truck },
+                ] : []),
             ]
         },
         {

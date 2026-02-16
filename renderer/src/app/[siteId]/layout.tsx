@@ -73,12 +73,13 @@ export default async function SiteLayout({ children, params }: Props) {
         );
     }
 
+    const commerceEnabled = config.commerceEnabled ?? false;
     const cartPrefix = config.urlPrefixes?.cart || URL_PREFIX_DEFAULTS.cart;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const showPopups = apiUrl ? await hasActivePopups(config.id) : false;
 
     return (
-        <Providers tenantId={config.id} cartPrefix={cartPrefix}>
+        <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
             <div className="site-wrapper flex flex-col min-h-screen">
                 <ThemeInjector theme={config.theme} tenantId={config.id} />
 
@@ -121,6 +122,7 @@ export default async function SiteLayout({ children, params }: Props) {
                     links={config.navLinks}
                     showLogo={config.header?.showLogo}
                     showTitle={config.header?.showTitle}
+                    commerceEnabled={commerceEnabled}
                 />
 
                 <div className="flex-1">

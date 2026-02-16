@@ -120,16 +120,18 @@ export default async function Page({ params, searchParams }: Props) {
     if (!config) return notFound();
 
     // --- COMMERCE ROUTING ---
+    const commerceEnabled = config.commerceEnabled ?? false;
     const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
     if (commerce) {
         const prefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
 
+        // Product, category, and shop pages work regardless of commerceEnabled
         if (commerce.type === 'product' && commerce.itemSlug) {
             const product = await getProductBySlug(config.id, commerce.itemSlug);
             if (!product) return notFound();
             if ((product as any).status !== 'active' && !preview) return notFound();
             const reviews = await getProductReviews(config.id, (product as any).id);
-            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} />;
+            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} commerceEnabled={commerceEnabled} />;
         }
 
         if (commerce.type === 'category' && commerce.itemSlug) {
@@ -148,6 +150,9 @@ export default async function Page({ params, searchParams }: Props) {
             ]);
             return <ShopPageView products={products} categories={categories} total={total} page={page} config={config} prefixes={prefixes} />;
         }
+
+        // Cart, checkout, confirmation, tracking require commerceEnabled
+        if (!commerceEnabled) return notFound();
 
         if (commerce.type === 'cart') {
             const deliveryConfig = await getDeliveryConfig(config.id);
@@ -457,7 +462,7 @@ function Pagination({ page, total, limit, baseUrl }: { page: number; total: numb
     );
 }
 
-function ProductPageView({ product, config, prefixes, reviews }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number } }) {
+function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean }) {
     const jsonLd: any = {
         "@context": "https://schema.org",
         "@type": "Product",
@@ -560,20 +565,22 @@ function ProductPageView({ product, config, prefixes, reviews }: { product: any;
                         <p className="text-muted-foreground whitespace-pre-wrap">{product.description}</p>
                     )}
 
-                    {/* Add to Cart (client component with variant/personalization/quantity) */}
-                    <AddToCartButton
-                        productId={product.id}
-                        title={product.title}
-                        slug={product.slug || ""}
-                        imageLink={product.imageLink || ""}
-                        price={product.price}
-                        salePrice={product.salePrice}
-                        currency={product.currency || "RON"}
-                        availability={product.availability || "in_stock"}
-                        variants={product.variants || []}
-                        personalizations={product.personalizations || []}
-                        volumePricing={product.volumePricing || []}
-                    />
+                    {/* Add to Cart — only shown when commerce is enabled */}
+                    {commerceEnabled && (
+                        <AddToCartButton
+                            productId={product.id}
+                            title={product.title}
+                            slug={product.slug || ""}
+                            imageLink={product.imageLink || ""}
+                            price={product.price}
+                            salePrice={product.salePrice}
+                            currency={product.currency || "RON"}
+                            availability={product.availability || "in_stock"}
+                            variants={product.variants || []}
+                            personalizations={product.personalizations || []}
+                            volumePricing={product.volumePricing || []}
+                        />
+                    )}
 
                     {/* Tags */}
                     {product.tags?.length > 0 && (

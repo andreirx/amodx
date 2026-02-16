@@ -6,6 +6,7 @@ interface Tenant {
     id: string;
     name: string;
     domain: string;
+    commerceEnabled?: boolean;
 }
 
 interface TenantContextType {

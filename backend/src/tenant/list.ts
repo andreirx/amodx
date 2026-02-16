@@ -25,7 +25,8 @@ export const handler: AmodxHandler = async (event) => {
                 id: item.id,
                 name: item.name,
                 domain: item.domain,
-                status: item.status
+                status: item.status,
+                commerceEnabled: item.commerceEnabled ?? false,
             })) || [];
 
             return { statusCode: 200, body: JSON.stringify({ items: tenants }) };
@@ -48,7 +49,8 @@ export const handler: AmodxHandler = async (event) => {
                 id: result.Item.id,
                 name: result.Item.name,
                 domain: result.Item.domain,
-                status: result.Item.status
+                status: result.Item.status,
+                commerceEnabled: result.Item.commerceEnabled ?? false,
             };
 
             return { statusCode: 200, body: JSON.stringify({ items: [tenant] }) };
