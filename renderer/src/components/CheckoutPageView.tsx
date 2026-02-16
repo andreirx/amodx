@@ -3,7 +3,7 @@
 import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { useRouter } from "next/navigation";
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 
 const ROMANIAN_COUNTIES = [
     "Alba", "Arad", "Arges", "Bacau", "Bihor", "Bistrita-Nasaud", "Botosani",
@@ -25,13 +25,133 @@ interface CheckoutProps {
     bankTransfer?: { bankName?: string; accountHolder?: string; iban?: string; swift?: string; referencePrefix?: string };
 }
 
+// --- Inline delivery date picker ---
+function DeliveryDatePicker({
+    availableDates,
+    selectedDate,
+    onSelect,
+    loading,
+}: {
+    availableDates: string[];
+    selectedDate: string;
+    onSelect: (date: string) => void;
+    loading: boolean;
+}) {
+    const availableSet = new Set(availableDates);
+
+    const [viewYear, setViewYear] = useState(() => {
+        if (availableDates.length > 0) return parseInt(availableDates[0].substring(0, 4));
+        return new Date().getFullYear();
+    });
+    const [viewMonth, setViewMonth] = useState(() => {
+        if (availableDates.length > 0) return parseInt(availableDates[0].substring(5, 7)) - 1;
+        return new Date().getMonth();
+    });
+
+    // Update view when dates load
+    useEffect(() => {
+        if (availableDates.length > 0) {
+            setViewYear(parseInt(availableDates[0].substring(0, 4)));
+            setViewMonth(parseInt(availableDates[0].substring(5, 7)) - 1);
+        }
+    }, [availableDates]);
+
+    if (loading) {
+        return <div className="text-sm text-muted-foreground py-4">Loading delivery dates...</div>;
+    }
+
+    if (availableDates.length === 0) return null;
+
+    const firstDay = new Date(viewYear, viewMonth, 1);
+    const lastDay = new Date(viewYear, viewMonth + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    let startDow = firstDay.getDay();
+    startDow = startDow === 0 ? 6 : startDow - 1; // Mon=0
+
+    const cells: (number | null)[] = [];
+    for (let i = 0; i < startDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+    const monthLabel = firstDay.toLocaleString("default", { month: "long", year: "numeric" });
+
+    function toStr(day: number): string {
+        return `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+
+    const lastAvail = availableDates[availableDates.length - 1];
+    const firstAvail = availableDates[0];
+    const firstAvailYear = parseInt(firstAvail.substring(0, 4));
+    const firstAvailMonth = parseInt(firstAvail.substring(5, 7)) - 1;
+    const lastAvailYear = parseInt(lastAvail.substring(0, 4));
+    const lastAvailMonth = parseInt(lastAvail.substring(5, 7)) - 1;
+
+    const canPrev = viewYear > firstAvailYear || (viewYear === firstAvailYear && viewMonth > firstAvailMonth);
+    const canNext = viewYear < lastAvailYear || (viewYear === lastAvailYear && viewMonth < lastAvailMonth);
+
+    function prevMonth() {
+        if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
+        else setViewMonth(viewMonth - 1);
+    }
+    function nextMonth() {
+        if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
+        else setViewMonth(viewMonth + 1);
+    }
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-3">
+                <button type="button" onClick={prevMonth} disabled={!canPrev}
+                    className="px-2 py-1 text-sm border rounded hover:bg-muted disabled:opacity-30 transition-colors">
+                    &larr;
+                </button>
+                <span className="text-sm font-semibold">{monthLabel}</span>
+                <button type="button" onClick={nextMonth} disabled={!canNext}
+                    className="px-2 py-1 text-sm border rounded hover:bg-muted disabled:opacity-30 transition-colors">
+                    &rarr;
+                </button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => (
+                    <div key={d} className="font-medium text-muted-foreground py-1">{d}</div>
+                ))}
+                {cells.map((day, i) => {
+                    if (day === null) return <div key={`pad-${i}`} />;
+                    const dateStr = toStr(day);
+                    const isAvail = availableSet.has(dateStr);
+                    const isSelected = dateStr === selectedDate;
+
+                    return (
+                        <button
+                            key={dateStr}
+                            type="button"
+                            disabled={!isAvail}
+                            onClick={() => isAvail && onSelect(dateStr)}
+                            className={`py-2 rounded text-xs font-medium transition-colors ${
+                                isSelected
+                                    ? "bg-primary text-primary-foreground"
+                                    : isAvail
+                                        ? "bg-green-50 text-green-800 hover:bg-green-100 border border-green-200"
+                                        : "text-muted-foreground/30"
+                            }`}
+                        >
+                            {day}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer }: CheckoutProps) {
-    const { items, subtotal, clearCart } = useCart();
+    const { items, subtotal, clearCart, coupon } = useCart();
     const { getUrl } = useTenantUrl();
     const router = useRouter();
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+
+    const couponDiscount = coupon?.discount || 0;
 
     const [form, setForm] = useState({
         customerName: "",
@@ -43,10 +163,34 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
         postalCode: "",
         notes: "",
         paymentMethod: "cash_on_delivery" as "cash_on_delivery" | "bank_transfer",
+        requestedDeliveryDate: "",
     });
 
+    // Fetch available delivery dates
+    const [availableDates, setAvailableDates] = useState<string[]>([]);
+    const [datesLoading, setDatesLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchDates() {
+            try {
+                const res = await fetch(`${apiUrl}/public/delivery/dates`, {
+                    headers: { "x-tenant-id": tenantId },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setAvailableDates(data.dates || []);
+                }
+            } catch (e) {
+                console.error("Failed to fetch delivery dates", e);
+            } finally {
+                setDatesLoading(false);
+            }
+        }
+        if (apiUrl && tenantId) fetchDates();
+    }, [apiUrl, tenantId]);
+
     const shippingCost = freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost;
-    const total = subtotal + shippingCost;
+    const total = subtotal + shippingCost - couponDiscount;
 
     const update = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -81,7 +225,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 selectedVariant: item.selectedVariant,
             }));
 
-            const body = {
+            const body: any = {
                 customerName: form.customerName,
                 customerEmail: form.customerEmail,
                 customerPhone: form.customerPhone,
@@ -97,6 +241,12 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 paymentMethod: form.paymentMethod,
                 currency,
             };
+            if (coupon?.code) {
+                body.couponCode = coupon.code;
+            }
+            if (form.requestedDeliveryDate) {
+                body.requestedDeliveryDate = form.requestedDeliveryDate;
+            }
 
             const res = await fetch(`${apiUrl}/public/orders`, {
                 method: "POST",
@@ -183,6 +333,24 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                             </div>
                         </section>
 
+                        {/* Delivery Date */}
+                        {!datesLoading && availableDates.length > 0 && (
+                            <section>
+                                <h2 className="text-lg font-bold mb-4">Preferred Delivery Date</h2>
+                                <DeliveryDatePicker
+                                    availableDates={availableDates}
+                                    selectedDate={form.requestedDeliveryDate}
+                                    onSelect={(date) => update("requestedDeliveryDate", date)}
+                                    loading={datesLoading}
+                                />
+                                {form.requestedDeliveryDate && (
+                                    <p className="text-sm text-green-700 mt-2">
+                                        Selected: {new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString("ro-RO", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                                    </p>
+                                )}
+                            </section>
+                        )}
+
                         {/* Payment Method */}
                         <section>
                             <h2 className="text-lg font-bold mb-4">Payment Method</h2>
@@ -236,10 +404,22 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                     <span className="text-muted-foreground">Subtotal</span>
                                     <span>{subtotal.toFixed(2)} {currency}</span>
                                 </div>
+                                {couponDiscount > 0 && (
+                                    <div className="flex justify-between text-green-600">
+                                        <span>Discount ({coupon?.code})</span>
+                                        <span>-{couponDiscount.toFixed(2)} {currency}</span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Shipping</span>
                                     <span>{shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`}</span>
                                 </div>
+                                {form.requestedDeliveryDate && (
+                                    <div className="flex justify-between">
+                                        <span className="text-muted-foreground">Delivery</span>
+                                        <span className="text-xs">{new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString("ro-RO", { day: "numeric", month: "short" })}</span>
+                                    </div>
+                                )}
                                 <div className="border-t pt-2 flex justify-between font-bold text-base">
                                     <span>Total</span>
                                     <span>{total.toFixed(2)} {currency}</span>

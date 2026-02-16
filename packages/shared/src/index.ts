@@ -22,11 +22,11 @@ export const LinkSchema = z.object({
 
 // SINGLE SOURCE OF TRUTH for URL prefix defaults — do NOT duplicate these elsewhere
 export const URL_PREFIX_DEFAULTS = {
-    product: "/produs",
-    category: "/categorie",
-    cart: "/cos",
-    checkout: "/comanda",
-    shop: "/magazin",
+    product: "/product",
+    category: "/category",
+    cart: "/cart",
+    checkout: "/checkout",
+    shop: "/shop",
 } as const;
 
 // Configurable URL prefixes per tenant (for i18n-friendly URLs)
@@ -268,6 +268,7 @@ export const UserRole = z.enum(["GLOBAL_ADMIN", "CLIENT_ADMIN", "EDITOR"]);
 // Expanded Integrations
 export const IntegrationsSchema = z.object({
     contactEmail: z.string().email().optional(),
+    orderProcessingEmail: z.string().email().optional(), // receives order notifications (fulfillment team)
 
     googleAnalyticsId: z.string().optional(), // G-XXXXXXXX
     googleSearchConsoleId: z.string().optional(), // Verification Code
@@ -641,7 +642,9 @@ export const DeliveryConfigSchema = z.object({
     minimumOrderAmount: z.string().optional(),
 
     deliveryLeadDays: z.number().default(3),
-    blockedDates: z.array(z.string()).default([]),   // ISO dates with no delivery
+    blockedDates: z.array(z.string()).default([]),   // YYYY-MM-DD specific blocked dates
+    yearlyOffDays: z.array(z.string()).default([]),  // MM-DD recurring yearly (e.g. "12-25", "01-01")
+    unblockedDates: z.array(z.string()).default([]), // YYYY-MM-DD forced available (overrides weekly/yearly)
     deliveryDaysOfWeek: z.array(z.number()).default([1, 2, 3, 4, 5]), // 0=Sun..6=Sat
 
     updatedAt: z.string(),

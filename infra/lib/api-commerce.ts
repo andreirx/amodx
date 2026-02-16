@@ -15,6 +15,7 @@ interface CommerceApiProps extends NestedStackProps {
     authorizerFuncArn: string;
     table: dynamodb.ITable;
     eventBus: events.IEventBus;
+    sesEmail: string;
 }
 
 export class CommerceApi extends NestedStack {
@@ -27,7 +28,7 @@ export class CommerceApi extends NestedStack {
         cdk.Tags.of(this).add('Project', 'AMODX');
         cdk.Tags.of(this).add('Module', 'Commerce');
 
-        const { httpApiId, authorizerFuncArn, table, eventBus } = props;
+        const { httpApiId, authorizerFuncArn, table, eventBus, sesEmail } = props;
 
         const nodeProps = {
             runtime: lambda.Runtime.NODEJS_22_X,
@@ -169,8 +170,16 @@ export class CommerceApi extends NestedStack {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/orders/create.ts'),
             handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                SES_FROM_EMAIL: sesEmail,
+            },
         });
         table.grantReadWriteData(createOrderFunc);
+        createOrderFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail'],
+            resources: ['*'],
+        }));
 
         const listOrdersFunc = new nodejs.NodejsFunction(this, 'ListOrdersFunc', {
             ...nodeProps,
@@ -190,8 +199,16 @@ export class CommerceApi extends NestedStack {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/orders/update-status.ts'),
             handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                SES_FROM_EMAIL: sesEmail,
+            },
         });
         table.grantReadWriteData(updateOrderStatusFunc);
+        updateOrderStatusFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail'],
+            resources: ['*'],
+        }));
 
         const updateOrderFunc = new nodejs.NodejsFunction(this, 'UpdateOrderFunc', {
             ...nodeProps,

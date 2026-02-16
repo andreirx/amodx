@@ -14,6 +14,11 @@ export interface CartItem {
     personalizations: { label: string; value: string; addedCost: number }[];
 }
 
+interface CouponState {
+    code: string;
+    discount: number;
+}
+
 interface CartContextType {
     items: CartItem[];
     addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;
@@ -23,6 +28,8 @@ interface CartContextType {
     subtotal: number;
     itemCount: number;
     cartPrefix: string;
+    coupon: CouponState | null;
+    setCoupon: (coupon: CouponState | null) => void;
 }
 
 const CartContext = createContext<CartContextType | null>(null);
@@ -37,12 +44,15 @@ function getItemKey(item: { productId: string; selectedVariant?: string }) {
 
 export function CartProvider({ children, tenantId, cartPrefix }: { children: ReactNode; tenantId: string; cartPrefix: string }) {
     const [items, setItems] = useState<CartItem[]>([]);
+    const [coupon, setCouponState] = useState<CouponState | null>(null);
     const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         try {
             const raw = localStorage.getItem(getCartKey(tenantId));
             if (raw) setItems(JSON.parse(raw));
+            const couponRaw = localStorage.getItem(`${getCartKey(tenantId)}_coupon`);
+            if (couponRaw) setCouponState(JSON.parse(couponRaw));
         } catch {}
         setLoaded(true);
     }, [tenantId]);
@@ -51,6 +61,17 @@ export function CartProvider({ children, tenantId, cartPrefix }: { children: Rea
         if (!loaded) return;
         localStorage.setItem(getCartKey(tenantId), JSON.stringify(items));
     }, [items, tenantId, loaded]);
+
+    useEffect(() => {
+        if (!loaded) return;
+        if (coupon) {
+            localStorage.setItem(`${getCartKey(tenantId)}_coupon`, JSON.stringify(coupon));
+        } else {
+            localStorage.removeItem(`${getCartKey(tenantId)}_coupon`);
+        }
+    }, [coupon, tenantId, loaded]);
+
+    const setCoupon = useCallback((c: CouponState | null) => setCouponState(c), []);
 
     const addItem = useCallback((item: Omit<CartItem, "quantity"> & { quantity?: number }) => {
         setItems(prev => {
@@ -83,7 +104,10 @@ export function CartProvider({ children, tenantId, cartPrefix }: { children: Rea
         ));
     }, [removeItem]);
 
-    const clearCart = useCallback(() => setItems([]), []);
+    const clearCart = useCallback(() => {
+        setItems([]);
+        setCouponState(null);
+    }, []);
 
     const subtotal = items.reduce((sum, item) => {
         const personalizationCost = item.personalizations.reduce((s, p) => s + p.addedCost, 0);
@@ -93,7 +117,7 @@ export function CartProvider({ children, tenantId, cartPrefix }: { children: Rea
     const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
     return (
-        <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, subtotal, itemCount, cartPrefix }}>
+        <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, subtotal, itemCount, cartPrefix, coupon, setCoupon }}>
             {children}
         </CartContext.Provider>
     );

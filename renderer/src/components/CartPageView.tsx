@@ -18,15 +18,14 @@ interface CartPageProps {
 }
 
 export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl }: CartPageProps) {
-    const { items, removeItem, updateQuantity, subtotal, itemCount } = useCart();
+    const { items, removeItem, updateQuantity, subtotal, itemCount, coupon, setCoupon } = useCart();
     const { getUrl } = useTenantUrl();
 
-    const [couponCode, setCouponCode] = useState("");
-    const [couponDiscount, setCouponDiscount] = useState(0);
-    const [couponApplied, setCouponApplied] = useState("");
+    const [couponCode, setCouponCode] = useState(coupon?.code || "");
     const [couponError, setCouponError] = useState("");
     const [couponLoading, setCouponLoading] = useState(false);
 
+    const couponDiscount = coupon?.discount || 0;
     const shippingCost = freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost;
     const total = subtotal + shippingCost - couponDiscount;
     const meetsMinimum = minimumOrderAmount <= 0 || subtotal >= minimumOrderAmount;
@@ -43,12 +42,10 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
             });
             const data = await res.json();
             if (data.valid) {
-                setCouponDiscount(parseFloat(data.discount));
-                setCouponApplied(couponCode.trim().toUpperCase());
+                setCoupon({ code: couponCode.trim().toUpperCase(), discount: parseFloat(data.discount) });
             } else {
                 setCouponError(data.reason || "Invalid coupon");
-                setCouponDiscount(0);
-                setCouponApplied("");
+                setCoupon(null);
             }
         } catch {
             setCouponError("Could not validate coupon");
@@ -59,8 +56,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
 
     function removeCoupon() {
         setCouponCode("");
-        setCouponDiscount(0);
-        setCouponApplied("");
+        setCoupon(null);
         setCouponError("");
     }
 
@@ -150,12 +146,12 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
 
                         {/* Coupon Input */}
                         <div>
-                            {couponApplied ? (
+                            {coupon ? (
                                 <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm">
                                     <div className="flex items-center gap-2">
                                         <Tag className="h-3.5 w-3.5 text-green-600" />
-                                        <span className="font-medium text-green-700">{couponApplied}</span>
-                                        <span className="text-green-600">-{couponDiscount.toFixed(2)} {currency}</span>
+                                        <span className="font-medium text-green-700">{coupon.code}</span>
+                                        <span className="text-green-600">-{coupon.discount.toFixed(2)} {currency}</span>
                                     </div>
                                     <button onClick={removeCoupon} className="text-green-600 hover:text-red-500 text-xs underline">Remove</button>
                                 </div>

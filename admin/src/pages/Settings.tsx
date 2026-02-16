@@ -420,7 +420,18 @@ export default function SettingsPage() {
                                     placeholder="owner@client-site.com"
                                 />
                                 <p className="text-[10px] text-muted-foreground">
-                                    Form submissions will be sent here. If empty, they go to the agency admin.
+                                    Form submissions and order notifications will be sent here. If empty, they go to the agency admin.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Order Processing Email</Label>
+                                <Input
+                                    value={config.integrations?.orderProcessingEmail || ""}
+                                    onChange={e => updateIntegration("orderProcessingEmail", e.target.value)}
+                                    placeholder="orders@client-site.com"
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                    Fulfillment team receives new order notifications here. Can be the same as contact email or a separate address.
                                 </p>
                             </div>
                         </CardContent>

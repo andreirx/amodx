@@ -32,11 +32,11 @@ The Settings page (`admin/src/pages/Settings.tsx`) is ~900 lines covering site i
 ### Extract commerce views from catch-all page
 `renderer/src/app/[siteId]/[[...slug]]/page.tsx` is ~900 lines containing ProductPageView, CategoryPageView, CartPageView, CheckoutPageView, ConfirmationPageView, OrderTrackingView, and ShopPageView all inline. Extract each to its own file under `renderer/src/components/commerce/`.
 
-### Coupon not wired through checkout
-CartPageView validates coupons but the discount is NOT passed through to the checkout POST /public/orders call. The couponCode and couponDiscount fields need to be included in the order creation payload.
+### ~~Coupon not wired through checkout~~ — DONE
+Coupon state stored in CartContext (persisted in localStorage). CheckoutPageView reads coupon from context, displays discount in summary, sends `couponCode` in POST body. Backend validates server-side, calculates discount, stores in order, increments coupon usage atomically.
 
-### Delivery date picker missing from checkout
-CheckoutPageView does not include a delivery date picker. The backend has `GET /public/delivery/dates` but it's not called from the checkout form.
+### ~~Delivery date picker missing from checkout~~ DONE
+Delivery date picker added to CheckoutPageView. Fetches available dates from API, renders mini calendar with month navigation, sends `requestedDeliveryDate` in POST body. Admin has full calendar customizer with yearly holidays, per-day overrides, and correct lead-day calculation skipping off-days.
 
 ---
 
@@ -45,6 +45,6 @@ CheckoutPageView does not include a delivery date picker. The backend has `GET /
 ### Replace `any` types in admin pages
 Several admin pages (Orders, Customers, Products, etc.) use `any` types for API responses. Create proper TypeScript interfaces using the shared schemas.
 
-### Split CDK api.ts
-`infra/lib/api.ts` has grown with 50+ Lambda registrations. Group into separate construct files: `api-content.ts`, `api-commerce.ts`, `api-engagement.ts`, `api-system.ts`.
+### ~~Split CDK api.ts~~ — DONE
+Split into `api.ts` (parent, 390 resources) + `api-commerce.ts` (NestedStack, 234) + `api-engagement.ts` (NestedStack, 94).
 

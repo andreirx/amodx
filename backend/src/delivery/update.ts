@@ -29,6 +29,8 @@ export const handler: Handler = async (event) => {
             minimumOrderAmount: body.minimumOrderAmount ?? 0,
             deliveryLeadDays: body.deliveryLeadDays ?? 1,
             blockedDates: body.blockedDates ?? [],
+            yearlyOffDays: body.yearlyOffDays ?? [],
+            unblockedDates: body.unblockedDates ?? [],
             deliveryDaysOfWeek: body.deliveryDaysOfWeek ?? [1, 2, 3, 4, 5],
             updatedAt: new Date().toISOString()
         };
