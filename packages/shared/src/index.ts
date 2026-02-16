@@ -762,6 +762,67 @@ export const ReviewSchema = z.object({
 });
 export type Review = z.infer<typeof ReviewSchema>;
 
+// --- POPUPS ---
+
+export const PopupSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string().min(1),
+    type: z.enum(["announcement", "newsletter", "promotion", "custom"]).default("announcement"),
+    headline: z.string().optional(),
+    body: z.string().optional(),         // HTML content
+    imageLink: z.string().optional(),
+    ctaText: z.string().optional(),
+    ctaLink: z.string().optional(),
+    trigger: z.enum(["page_load", "exit_intent", "scroll", "time_delay"]).default("page_load"),
+    triggerValue: z.string().default("0"),  // scroll %, seconds delay
+    showOnPages: z.array(z.string()).default([]),  // empty = all pages
+    showOncePerSession: z.boolean().default(true),
+    status: z.enum(["active", "disabled"]).default("disabled"),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+export type Popup = z.infer<typeof PopupSchema>;
+
+// --- FORMS ---
+
+export const FormFieldSchema = z.object({
+    id: z.string(),
+    label: z.string(),
+    type: z.enum(["text", "email", "phone", "textarea", "select", "checkbox", "number"]),
+    required: z.boolean().default(false),
+    placeholder: z.string().optional(),
+    options: z.array(z.string()).optional(), // for select type
+});
+export type FormField = z.infer<typeof FormFieldSchema>;
+
+export const FormDefinitionSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string().min(1),
+    slug: z.string().min(1),
+    fields: z.array(FormFieldSchema).default([]),
+    submitButtonText: z.string().default("Submit"),
+    successMessage: z.string().default("Thank you! Your submission has been received."),
+    notifyEmail: z.string().optional(),    // email to notify on submission
+    status: z.enum(["active", "disabled"]).default("active"),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+});
+export type FormDefinition = z.infer<typeof FormDefinitionSchema>;
+
+export const FormSubmissionSchema = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    formId: z.string(),
+    formName: z.string(),
+    data: z.record(z.string(), z.any()),  // field label → value
+    submitterEmail: z.string().optional(),
+    status: z.enum(["new", "read", "archived"]).default("new"),
+    createdAt: z.string(),
+});
+export type FormSubmission = z.infer<typeof FormSubmissionSchema>;
+
 // --- SIGNALS (Outbound Lead Tracking) ---
 export const SignalSchema = z.object({
     id: z.string(),

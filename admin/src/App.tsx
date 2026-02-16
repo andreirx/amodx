@@ -29,6 +29,11 @@ import DeliverySettings from "@/pages/DeliverySettings";
 import Coupons from "@/pages/Coupons";
 import CouponEditor from "@/pages/CouponEditor";
 import Reviews from "@/pages/Reviews";
+import Popups from "@/pages/Popups";
+import PopupEditor from "@/pages/PopupEditor";
+import Forms from "@/pages/Forms";
+import FormEditor from "@/pages/FormEditor";
+import FormSubmissions from "@/pages/FormSubmissions";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -89,6 +94,11 @@ const router = createBrowserRouter([
             { path: "coupons", element: <Coupons /> },
             { path: "coupons/:id", element: <CouponEditor /> },
             { path: "reviews", element: <Reviews /> },
+            { path: "popups", element: <Popups /> },
+            { path: "popups/:id", element: <PopupEditor /> },
+            { path: "forms", element: <Forms /> },
+            { path: "forms/:id", element: <FormEditor /> },
+            { path: "forms/:id/submissions", element: <FormSubmissions /> },
             { path: "strategy", element: <StrategyBoard /> },
             { path: "strategy/:id", element: <StrategyEditor /> },
             { path: "media", element: <MediaLibrary /> },

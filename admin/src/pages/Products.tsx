@@ -5,8 +5,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox } from "lucide-react";
+import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function Products() {
     const { currentTenant } = useTenant();
@@ -16,6 +18,9 @@ export default function Products() {
     const [statusFilter, setStatusFilter] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("");
     const [loading, setLoading] = useState(true);
+    const [showImport, setShowImport] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState<any>(null);
 
     useEffect(() => {
         if (currentTenant) {
@@ -65,6 +70,27 @@ export default function Products() {
         }
     }
 
+    async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setImporting(true);
+        setImportResult(null);
+        try {
+            const csvContent = await file.text();
+            const res = await apiRequest("/import/woocommerce", {
+                method: "POST",
+                body: JSON.stringify({ csvContent, currency: "RON" }),
+            });
+            setImportResult(res);
+            loadProducts();
+        } catch (err: any) {
+            setImportResult({ error: err.message });
+        } finally {
+            setImporting(false);
+            e.target.value = "";
+        }
+    }
+
     if (!currentTenant) return <div className="p-8">Select a site.</div>;
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
@@ -75,10 +101,46 @@ export default function Products() {
                     <h1 className="text-3xl font-bold tracking-tight">Products</h1>
                     <p className="text-muted-foreground">Manage your AI-ready inventory.</p>
                 </div>
-                <Button onClick={() => navigate("/products/new")}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Product
-                </Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setShowImport(!showImport)}>
+                        <Upload className="mr-2 h-4 w-4" /> Import CSV
+                    </Button>
+                    <Button onClick={() => navigate("/products/new")}>
+                        <Plus className="mr-2 h-4 w-4" /> Add Product
+                    </Button>
+                </div>
             </div>
+
+            {showImport && (
+                <Card>
+                    <CardContent className="p-4 space-y-3">
+                        <div>
+                            <h3 className="font-medium text-sm">WooCommerce CSV Import</h3>
+                            <p className="text-xs text-muted-foreground">Upload a WooCommerce product export CSV. Categories will be created automatically.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Label htmlFor="csv-import" className="cursor-pointer">
+                                <div className="flex items-center gap-2 border rounded-md px-4 py-2 text-sm hover:bg-muted transition-colors">
+                                    {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                    {importing ? "Importing..." : "Choose CSV File"}
+                                </div>
+                            </Label>
+                            <Input id="csv-import" type="file" accept=".csv" onChange={handleImport} disabled={importing} className="hidden" />
+                        </div>
+                        {importResult && (
+                            <div className={`text-sm p-3 rounded-md ${importResult.error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                                {importResult.error ? importResult.error : importResult.message}
+                                {importResult.errors?.length > 0 && (
+                                    <details className="mt-2">
+                                        <summary className="cursor-pointer text-xs">Show errors ({importResult.errors.length})</summary>
+                                        <ul className="text-xs mt-1 space-y-0.5">{importResult.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}</ul>
+                                    </details>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="flex gap-3">
                 <Select value={statusFilter} onValueChange={v => setStatusFilter(v === "_all" ? "" : v)}>

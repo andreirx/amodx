@@ -10,6 +10,7 @@ import { SocialShare } from "@/components/SocialShare";
 import Script from "next/script";
 import { CartPageView } from "@/components/CartPageView";
 import { CheckoutPageView } from "@/components/CheckoutPageView";
+import { AddToCartButton } from "@/components/AddToCartButton";
 
 // NEW: Auth Imports
 import { decode } from "next-auth/jwt";
@@ -559,28 +560,20 @@ function ProductPageView({ product, config, prefixes, reviews }: { product: any;
                         <p className="text-muted-foreground whitespace-pre-wrap">{product.description}</p>
                     )}
 
-                    {/* Personalizations */}
-                    {product.personalizations?.length > 0 && (
-                        <div className="border-t pt-6 space-y-4">
-                            <p className="font-medium">Personalization</p>
-                            {product.personalizations.map((opt: any) => (
-                                <div key={opt.id} className="space-y-1">
-                                    <label className="text-sm font-medium">
-                                        {opt.label} {opt.required && <span className="text-red-500">*</span>}
-                                        {parseFloat(opt.addedCost) > 0 && <span className="text-muted-foreground ml-1">(+{opt.addedCost} {product.currency})</span>}
-                                    </label>
-                                    {opt.type === 'text' ? (
-                                        <input className="w-full border rounded-md px-3 py-2 text-sm" maxLength={opt.maxLength} placeholder={opt.label} />
-                                    ) : (
-                                        <select className="w-full border rounded-md px-3 py-2 text-sm">
-                                            <option value="">Select...</option>
-                                            {(opt.options || []).map((o: string) => <option key={o} value={o}>{o}</option>)}
-                                        </select>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    {/* Add to Cart (client component with variant/personalization/quantity) */}
+                    <AddToCartButton
+                        productId={product.id}
+                        title={product.title}
+                        slug={product.slug || ""}
+                        imageLink={product.imageLink || ""}
+                        price={product.price}
+                        salePrice={product.salePrice}
+                        currency={product.currency || "RON"}
+                        availability={product.availability || "in_stock"}
+                        variants={product.variants || []}
+                        personalizations={product.personalizations || []}
+                        volumePricing={product.volumePricing || []}
+                    />
 
                     {/* Tags */}
                     {product.tags?.length > 0 && (

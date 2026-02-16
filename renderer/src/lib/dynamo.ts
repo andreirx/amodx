@@ -401,3 +401,31 @@ export async function getPosts(tenantId: string, tag?: string, limit: number = 6
         return [];
     }
 }
+
+// 12. Fetch Form Definition by Slug
+export async function getFormBySlug(tenantId: string, slug: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        // Lookup form ID via FORMSLUG#
+        const slugRes = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: { PK: `TENANT#${tenantId}`, SK: `FORMSLUG#${slug}` }
+        }));
+
+        if (!slugRes.Item?.formId) return null;
+
+        // Fetch full form definition
+        const formRes = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: { PK: `TENANT#${tenantId}`, SK: `FORM#${slugRes.Item.formId}` }
+        }));
+
+        if (!formRes.Item || formRes.Item.status !== "active") return null;
+        return formRes.Item;
+    } catch (error) {
+        console.error("DynamoDB Form Error:", error);
+        return null;
+    }
+}

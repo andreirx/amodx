@@ -6,6 +6,10 @@ import { Analytics } from "@/components/Analytics";
 import { Metadata } from "next";
 import { PaddleLoader } from "@/components/PaddleLoader";
 import { CookieConsent } from "@/components/CookieConsent";
+import { QuickContact } from "@/components/QuickContact";
+import { TopBar } from "@/components/TopBar";
+import { FBPixel } from "@/components/FBPixel";
+import { PopupManager } from "@/components/PopupManager";
 
 export const revalidate = 3600;
 
@@ -69,6 +73,7 @@ export default async function SiteLayout({ children, params }: Props) {
     }
 
     const cartPrefix = config.urlPrefixes?.cart || "/cos";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
     return (
         <Providers tenantId={config.id} cartPrefix={cartPrefix}>
@@ -83,6 +88,11 @@ export default async function SiteLayout({ children, params }: Props) {
 
                 <PaddleLoader config={config.integrations?.paddle} />
 
+                {/* Facebook Pixel */}
+                {config.integrations?.fbPixelId && (
+                    <FBPixel pixelId={config.integrations.fbPixelId} />
+                )}
+
                 {/* GDPR Cookie Consent Banner */}
                 <CookieConsent
                     tenantId={config.id}
@@ -93,6 +103,15 @@ export default async function SiteLayout({ children, params }: Props) {
                         primaryColor: config.theme?.primaryColor,
                     }}
                 />
+
+                {/* Top Bar */}
+                {config.topBar?.show && (
+                    <TopBar
+                        content={config.topBar.content}
+                        quickContactPhone={config.topBar.quickContactPhone}
+                        quickContactEmail={config.topBar.quickContactEmail}
+                    />
+                )}
 
                 <Navbar
                     siteName={config.name}
@@ -116,6 +135,24 @@ export default async function SiteLayout({ children, params }: Props) {
                         </div>
                     </div>
                 </footer>
+
+                {/* Quick Contact Floating Button */}
+                {config.quickContact && (
+                    <QuickContact
+                        type={config.quickContact.type}
+                        value={config.quickContact.value}
+                        label={config.quickContact.label}
+                    />
+                )}
+
+                {/* Popup Manager */}
+                {apiUrl && (
+                    <PopupManager
+                        tenantId={config.id}
+                        apiUrl={apiUrl}
+                        currentPath="/"
+                    />
+                )}
             </div>
         </Providers>
     );

@@ -1132,6 +1132,184 @@ export class AmodxApi extends Construct {
             authorizer: noAuth,
         });
 
+        // --- POPUPS ---
+        const createPopupFunc = new nodejs.NodejsFunction(this, 'CreatePopupFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/popups/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(createPopupFunc);
+
+        const listPopupsFunc = new nodejs.NodejsFunction(this, 'ListPopupsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/popups/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listPopupsFunc);
+
+        const getPopupFunc = new nodejs.NodejsFunction(this, 'GetPopupFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/popups/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getPopupFunc);
+
+        const updatePopupFunc = new nodejs.NodejsFunction(this, 'UpdatePopupFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/popups/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updatePopupFunc);
+
+        const deletePopupFunc = new nodejs.NodejsFunction(this, 'DeletePopupFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/popups/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(deletePopupFunc);
+
+        const publicListPopupsFunc = new nodejs.NodejsFunction(this, 'PublicListPopupsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/popups/public-list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(publicListPopupsFunc);
+
+        this.httpApi.addRoutes({
+            path: '/popups',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreatePopupInt', createPopupFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/popups',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListPopupsInt', listPopupsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/popups/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetPopupInt', getPopupFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/popups/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdatePopupInt', updatePopupFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/popups/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeletePopupInt', deletePopupFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/public/popups',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('PublicListPopupsInt', publicListPopupsFunc),
+            authorizer: noAuth,
+        });
+
+        // --- FORMS ---
+        const createFormFunc = new nodejs.NodejsFunction(this, 'CreateFormFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(createFormFunc);
+
+        const listFormsFunc = new nodejs.NodejsFunction(this, 'ListFormsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listFormsFunc);
+
+        const getFormFunc = new nodejs.NodejsFunction(this, 'GetFormFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/get.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getFormFunc);
+
+        const updateFormFunc = new nodejs.NodejsFunction(this, 'UpdateFormFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/update.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(updateFormFunc);
+
+        const deleteFormFunc = new nodejs.NodejsFunction(this, 'DeleteFormFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(deleteFormFunc);
+
+        const formSubmissionsFunc = new nodejs.NodejsFunction(this, 'FormSubmissionsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/submissions.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(formSubmissionsFunc);
+
+        const publicSubmitFormFunc = new nodejs.NodejsFunction(this, 'PublicSubmitFormFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/forms/public-submit.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(publicSubmitFormFunc);
+
+        this.httpApi.addRoutes({
+            path: '/forms',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateFormInt', createFormFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/forms',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListFormsInt', listFormsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/forms/{id}',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetFormInt', getFormFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/forms/{id}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateFormInt', updateFormFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/forms/{id}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteFormInt', deleteFormFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/forms/{id}/submissions',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('FormSubmissionsInt', formSubmissionsFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/public/forms/{slug}/submit',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('PublicSubmitFormInt', publicSubmitFormFunc),
+            authorizer: noAuth,
+        });
+
+        // --- WOOCOMMERCE IMPORT ---
+        const wooImportFunc = new nodejs.NodejsFunction(this, 'WooImportFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/import/woocommerce.ts'),
+            handler: 'handler',
+            timeout: cdk.Duration.minutes(5),
+            memorySize: 512,
+        });
+        props.table.grantReadWriteData(wooImportFunc);
+
+        this.httpApi.addRoutes({
+            path: '/import/woocommerce',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('WooImportInt', wooImportFunc),
+        });
+
         // Grant EventBus Permissions to ALL Lambdas
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction) {
