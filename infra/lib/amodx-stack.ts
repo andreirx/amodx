@@ -4,6 +4,8 @@ import { Construct } from 'constructs';
 import { AmodxDatabase } from './database';
 import { AmodxAuth } from './auth';
 import { AmodxApi } from './api';
+import { CommerceApi } from './api-commerce';
+import { EngagementApi } from './api-engagement';
 import { AdminHosting } from './admin-hosting';
 import { RendererHosting } from './renderer-hosting';
 import { AmodxUploads } from './uploads';
@@ -158,6 +160,22 @@ export class AmodxStack extends cdk.Stack {
         target: route53.RecordTarget.fromAlias(new targets.ApiGatewayv2DomainProperties(apiDomain.regionalDomainName, apiDomain.regionalHostedZoneId)),
       });
     }
+
+    // 3b. Commerce API (NestedStack — categories, orders, customers, delivery, coupons, reviews, woo import)
+    new CommerceApi(this, 'CommerceApi', {
+      httpApiId: api.httpApi.apiId,
+      authorizerFuncArn: api.authorizerFuncArn,
+      table: db.table,
+      eventBus: events.bus,
+    });
+
+    // 3c. Engagement API (NestedStack — popups, forms)
+    new EngagementApi(this, 'EngagementApi', {
+      httpApiId: api.httpApi.apiId,
+      authorizerFuncArn: api.authorizerFuncArn,
+      table: db.table,
+      eventBus: events.bus,
+    });
 
     // 4. Renderer Layer
     const renderer = new RendererHosting(this, 'RendererHosting', {

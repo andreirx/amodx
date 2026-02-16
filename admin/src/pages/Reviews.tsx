@@ -5,14 +5,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Star, Check, X, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Loader2, Star, Check, EyeOff, Trash2 } from "lucide-react";
 
 export default function Reviews() {
     const { currentTenant } = useTenant();
     const [reviews, setReviews] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState("");
-    const [productFilter, setProductFilter] = useState("");
+    const [productFilter] = useState("");
 
     useEffect(() => {
         if (currentTenant) loadReviews();

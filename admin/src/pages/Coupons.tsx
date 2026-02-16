@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Ticket, Edit, Trash2 } from "lucide-react";
+import { Loader2, Plus, Edit, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function Coupons() {
