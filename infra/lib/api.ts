@@ -92,7 +92,7 @@ export class AmodxApi extends Construct {
             entry: path.join(__dirname, '../../backend/src/content/create.ts'),
             handler: 'handler',
         });
-        props.table.grantWriteData(createContentFunc);
+        props.table.grantReadWriteData(createContentFunc);
 
         const listContentFunc = new nodejs.NodejsFunction(this, 'ListContentFunc', {
             ...nodeProps,
@@ -544,7 +544,7 @@ export class AmodxApi extends Construct {
             entry: path.join(__dirname, '../../backend/src/products/delete.ts'),
             handler: 'handler',
         });
-        props.table.grantWriteData(deleteProductFunc);
+        props.table.grantReadWriteData(deleteProductFunc);
 
         this.httpApi.addRoutes({
             path: '/products',

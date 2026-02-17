@@ -122,7 +122,7 @@ export class EngagementApi extends NestedStack {
             entry: path.join(__dirname, '../../backend/src/popups/delete.ts'),
             handler: 'handler',
         });
-        table.grantWriteData(deletePopupFunc);
+        table.grantReadWriteData(deletePopupFunc);
 
         const publicListPopupsFunc = new nodejs.NodejsFunction(this, 'PublicListPopupsFunc', {
             ...nodeProps,

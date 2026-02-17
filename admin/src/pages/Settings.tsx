@@ -603,7 +603,7 @@ export default function SettingsPage() {
                                         onChange={e => setConfig({
                                             ...config,
                                             integrations: {
-                                                ...config.integrations,
+                                                ...config.integrations!,
                                                 bankTransfer: { ...config.integrations?.bankTransfer, bankName: e.target.value }
                                             }
                                         })}
@@ -617,7 +617,7 @@ export default function SettingsPage() {
                                         onChange={e => setConfig({
                                             ...config,
                                             integrations: {
-                                                ...config.integrations,
+                                                ...config.integrations!,
                                                 bankTransfer: { ...config.integrations?.bankTransfer, accountHolder: e.target.value }
                                             }
                                         })}
@@ -632,7 +632,7 @@ export default function SettingsPage() {
                                     onChange={e => setConfig({
                                         ...config,
                                         integrations: {
-                                            ...config.integrations,
+                                            ...config.integrations!,
                                             bankTransfer: { ...config.integrations?.bankTransfer, iban: e.target.value }
                                         }
                                     })}
@@ -647,7 +647,7 @@ export default function SettingsPage() {
                                         onChange={e => setConfig({
                                             ...config,
                                             integrations: {
-                                                ...config.integrations,
+                                                ...config.integrations!,
                                                 bankTransfer: { ...config.integrations?.bankTransfer, swift: e.target.value }
                                             }
                                         })}
@@ -661,7 +661,7 @@ export default function SettingsPage() {
                                         onChange={e => setConfig({
                                             ...config,
                                             integrations: {
-                                                ...config.integrations,
+                                                ...config.integrations!,
                                                 bankTransfer: { ...config.integrations?.bankTransfer, referencePrefix: e.target.value }
                                             }
                                         })}
