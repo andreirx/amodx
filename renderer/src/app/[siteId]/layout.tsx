@@ -146,12 +146,53 @@ export default async function SiteLayout({ children, params }: Props) {
                 </div>
 
                 <footer className="border-t py-12 bg-muted/30">
-                    <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-sm text-muted-foreground">
-                        <p>© {new Date().getFullYear()} {config.name}</p>
-                        <div className="flex gap-4">
-                            {(config.footerLinks || []).map((link: any, i: number) => (
-                                <a key={i} href={link.href} className="hover:text-foreground">{link.label}</a>
-                            ))}
+                    <div className="max-w-7xl mx-auto px-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">
+                            {/* Column 1: Company Details */}
+                            {(config.companyDetails?.legalName || config.companyDetails?.address || config.companyDetails?.cui) && (
+                                <div className="space-y-1">
+                                    {config.companyDetails?.legalName && (
+                                        <p className="font-semibold text-foreground">{config.companyDetails.legalName}</p>
+                                    )}
+                                    {config.companyDetails?.address && <p>{config.companyDetails.address}</p>}
+                                    {config.companyDetails?.cui && <p>CUI: {config.companyDetails.cui}</p>}
+                                    {config.companyDetails?.tradeRegister && <p>Reg: {config.companyDetails.tradeRegister}</p>}
+                                    {config.companyDetails?.phone && <p>Tel: {config.companyDetails.phone}</p>}
+                                    {config.companyDetails?.email && <p>{config.companyDetails.email}</p>}
+                                </div>
+                            )}
+
+                            {/* Column 2: Footer Links */}
+                            {(config.footerLinks || []).length > 0 && (
+                                <div className="space-y-1">
+                                    <p className="font-semibold text-foreground mb-2">Links</p>
+                                    {(config.footerLinks || []).map((link: any, i: number) => (
+                                        <a key={i} href={link.href} className="block hover:text-foreground">{link.label}</a>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Column 3: Legal Links */}
+                            {(config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (
+                                <div className="space-y-1">
+                                    <p className="font-semibold text-foreground mb-2">Legal</p>
+                                    {config.legalLinks?.termsUrl && (
+                                        <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">Termeni și condiții</a>
+                                    )}
+                                    {config.legalLinks?.privacyUrl && (
+                                        <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">Politica de confidențialitate</a>
+                                    )}
+                                    {config.legalLinks?.anpcUrl && (
+                                        <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">ANPC</a>
+                                    )}
+                                    {config.legalLinks?.anpcSalUrl && (
+                                        <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">Soluționare alternativă a litigiilor</a>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-8 pt-4 border-t text-center text-xs text-muted-foreground">
+                            <p>© {new Date().getFullYear()} {config.companyDetails?.legalName || config.name}. All rights reserved.</p>
                         </div>
                     </div>
                 </footer>

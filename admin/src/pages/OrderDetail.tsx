@@ -11,18 +11,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, ArrowLeft, Package, User, MapPin, CreditCard, Truck, Clock, Save } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
-    pending: "bg-yellow-50 text-yellow-700",
+    placed: "bg-yellow-50 text-yellow-700",
+    pending: "bg-yellow-50 text-yellow-700", // backward compat
     confirmed: "bg-blue-50 text-blue-700",
-    processing: "bg-indigo-50 text-indigo-700",
+    prepared: "bg-indigo-50 text-indigo-700",
+    processing: "bg-indigo-50 text-indigo-700", // backward compat
     shipped: "bg-purple-50 text-purple-700",
     delivered: "bg-green-50 text-green-700",
-    completed: "bg-green-100 text-green-800 font-bold",
     cancelled: "bg-red-50 text-red-700",
+    annulled: "bg-red-100 text-red-800",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+    placed: "Placed",
+    pending: "Placed", // backward compat
+    confirmed: "Confirmed",
+    prepared: "Prepared",
+    processing: "Prepared", // backward compat
+    shipped: "Shipped",
+    delivered: "Delivered",
+    cancelled: "Cancelled",
+    annulled: "Annulled",
 };
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
     pending: "bg-yellow-50 text-yellow-700",
     paid: "bg-green-50 text-green-700",
+    refunded: "bg-orange-50 text-orange-700",
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -30,7 +45,7 @@ const PAYMENT_LABELS: Record<string, string> = {
     bank_transfer: "Bank",
 };
 
-const ALL_STATUSES = ["pending", "confirmed", "processing", "shipped", "delivered", "completed", "cancelled"];
+const ALL_STATUSES = ["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"];
 
 export default function OrderDetail() {
     const { id } = useParams();
@@ -141,7 +156,7 @@ export default function OrderDetail() {
                     </p>
                 </div>
                 <span className={`ml-auto inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-700"}`}>
-                    {order.status}
+                    {STATUS_LABELS[order.status] || order.status}
                 </span>
             </div>
 
@@ -333,14 +348,14 @@ export default function OrderDetail() {
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-muted-foreground">Current:</span>
                                 <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-700"}`}>
-                                    {order.status}
+                                    {STATUS_LABELS[order.status] || order.status}
                                 </span>
                             </div>
                             <Select value={newStatus} onValueChange={setNewStatus}>
                                 <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
                                 <SelectContent>
                                     {ALL_STATUSES.map(s => (
-                                        <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                                        <SelectItem key={s} value={s}>{STATUS_LABELS[s] || s}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -409,7 +424,7 @@ export default function OrderDetail() {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[entry.status] || "bg-gray-100 text-gray-700"}`}>
-                                                        {entry.status}
+                                                        {STATUS_LABELS[entry.status] || entry.status}
                                                     </span>
                                                     <span className="text-xs text-muted-foreground">
                                                         {entry.timestamp ? new Date(entry.timestamp).toLocaleDateString("ro-RO", {

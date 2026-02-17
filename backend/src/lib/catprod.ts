@@ -12,6 +12,7 @@ interface ProductCardProjection {
     id: string;
     title: string;
     slug: string;
+    sku?: string;
     price: string;
     currency: string;
     salePrice?: string;
@@ -32,6 +33,7 @@ function buildCatProdItem(tenantId: string, categoryId: string, product: Product
         id: product.id,
         title: product.title,
         slug: product.slug,
+        sku: product.sku,
         price: product.price,
         currency: product.currency,
         salePrice: product.salePrice,

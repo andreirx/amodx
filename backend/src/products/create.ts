@@ -65,8 +65,8 @@ export const handler: Handler = async (event) => {
 
         // Write CATPROD# adjacency items for category lookups
         await writeCatProductItems(tenantId, {
-            id, title: input.title, slug: input.slug, price: input.price,
-            currency: input.currency, salePrice: input.salePrice,
+            id, title: input.title, slug: input.slug, sku: input.sku,
+            price: input.price, currency: input.currency, salePrice: input.salePrice,
             imageLink: input.imageLink, availability: input.availability,
             sortOrder: input.sortOrder || 0, tags: input.tags || [],
             volumePricing: input.volumePricing || [],

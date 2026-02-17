@@ -12,7 +12,7 @@ import { TagInput } from "@/components/ui/tag-input";
 import { Loader2, ArrowLeft, Save, Upload, Trash2, Plus, X } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
 
-const TABS = ["Basic", "Pricing", "Personalization", "Details", "Categories", "Media", "SEO"] as const;
+const TABS = ["Basic", "Pricing", "Variants", "Personalization", "Details", "Categories", "Media", "SEO"] as const;
 type Tab = typeof TABS[number];
 
 interface CategoryOption {
@@ -193,6 +193,7 @@ export default function ProductEditor() {
                 <div className="max-w-4xl mx-auto pb-20">
                     {activeTab === "Basic" && <BasicTab form={form} setForm={setForm} onTitleChange={handleTitleChange} />}
                     {activeTab === "Pricing" && <PricingTab form={form} setForm={setForm} />}
+                    {activeTab === "Variants" && <VariantsTab form={form} setForm={setForm} />}
                     {activeTab === "Personalization" && <PersonalizationTab form={form} setForm={setForm} />}
                     {activeTab === "Details" && <DetailsTab form={form} setForm={setForm} />}
                     {activeTab === "Categories" && <CategoriesTab form={form} setForm={setForm} allCategories={allCategories} />}
@@ -220,6 +221,11 @@ function BasicTab({ form, setForm, onTitleChange }: any) {
                         <Label>Slug</Label>
                         <Input value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} placeholder="birthday-cookie-box" />
                         <p className="text-xs text-muted-foreground">URL-safe identifier. Auto-generated from title.</p>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>SKU</Label>
+                        <Input value={form.sku || ""} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="CB-001" />
+                        <p className="text-xs text-muted-foreground">Stock Keeping Unit. Optional identifier for inventory management.</p>
                     </div>
                     <div className="space-y-2">
                         <Label>Short Description</Label>
@@ -372,6 +378,128 @@ function PricingTab({ form, setForm }: any) {
                             <Input type="date" value={form.availableUntil || ""} onChange={e => setForm({ ...form, availableUntil: e.target.value })} />
                         </div>
                     </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+function VariantsTab({ form, setForm }: any) {
+    const variants = form.variants || [];
+
+    const addVariantGroup = () => {
+        setForm({
+            ...form,
+            variants: [...variants, { id: crypto.randomUUID(), name: "", options: [] }]
+        });
+    };
+
+    const removeVariantGroup = (index: number) => {
+        setForm({ ...form, variants: variants.filter((_: any, i: number) => i !== index) });
+    };
+
+    const updateGroupName = (index: number, name: string) => {
+        const updated = [...variants];
+        updated[index] = { ...updated[index], name };
+        setForm({ ...form, variants: updated });
+    };
+
+    const addOption = (groupIndex: number) => {
+        const updated = [...variants];
+        updated[groupIndex] = {
+            ...updated[groupIndex],
+            options: [...updated[groupIndex].options, { value: "", priceOverride: "", imageLink: "", availability: "in_stock" }]
+        };
+        setForm({ ...form, variants: updated });
+    };
+
+    const removeOption = (groupIndex: number, optIndex: number) => {
+        const updated = [...variants];
+        updated[groupIndex] = {
+            ...updated[groupIndex],
+            options: updated[groupIndex].options.filter((_: any, i: number) => i !== optIndex)
+        };
+        setForm({ ...form, variants: updated });
+    };
+
+    const updateOption = (groupIndex: number, optIndex: number, field: string, value: string) => {
+        const updated = [...variants];
+        const options = [...updated[groupIndex].options];
+        options[optIndex] = { ...options[optIndex], [field]: value };
+        updated[groupIndex] = { ...updated[groupIndex], options };
+        setForm({ ...form, variants: updated });
+    };
+
+    return (
+        <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <CardTitle>Variant Groups</CardTitle>
+                        <Button variant="outline" size="sm" onClick={addVariantGroup}>
+                            <Plus className="h-4 w-4 mr-2" /> Add Variant Group
+                        </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        Define product variations like Size, Weight, or Flavor. Each group has multiple options.
+                    </p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    {variants.length === 0 && (
+                        <p className="text-sm text-muted-foreground italic">No variants. Click "Add Variant Group" to create one (e.g. Weight: 250g, 500g).</p>
+                    )}
+                    {variants.map((group: any, gi: number) => (
+                        <div key={group.id || gi} className="border rounded-lg p-4 space-y-4">
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    value={group.name}
+                                    onChange={e => updateGroupName(gi, e.target.value)}
+                                    placeholder="Variant name (e.g. Weight, Size, Flavor)"
+                                    className="flex-1 font-medium"
+                                />
+                                <Button variant="ghost" size="icon" className="text-red-500" onClick={() => removeVariantGroup(gi)}>
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                                {(group.options || []).map((opt: any, oi: number) => (
+                                    <div key={oi} className="grid grid-cols-5 gap-2 items-end">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Value</Label>
+                                            <Input value={opt.value} onChange={e => updateOption(gi, oi, 'value', e.target.value)} placeholder="250g" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Price Override</Label>
+                                            <Input value={opt.priceOverride || ""} onChange={e => updateOption(gi, oi, 'priceOverride', e.target.value)} placeholder="25.00" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Image URL</Label>
+                                            <Input value={opt.imageLink || ""} onChange={e => updateOption(gi, oi, 'imageLink', e.target.value)} placeholder="https://..." />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Availability</Label>
+                                            <Select value={opt.availability || "in_stock"} onValueChange={v => updateOption(gi, oi, 'availability', v)}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="in_stock">In Stock</SelectItem>
+                                                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                                                    <SelectItem value="preorder">Pre-order</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="text-red-500" onClick={() => removeOption(gi, oi)}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <Button variant="outline" size="sm" onClick={() => addOption(gi)}>
+                                <Plus className="h-3 w-3 mr-1" /> Add Option
+                            </Button>
+                        </div>
+                    ))}
                 </CardContent>
             </Card>
         </div>

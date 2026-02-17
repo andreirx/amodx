@@ -539,6 +539,278 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
+                    {/* PAYMENT METHODS */}
+                    {config.commerceEnabled && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Payment Methods</CardTitle>
+                            <CardDescription>Select which payment methods are available at checkout. At least one must be enabled.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <label className="flex items-center gap-3 p-3 border rounded-md hover:bg-muted/50 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={(config.enabledPaymentMethods || ["cash_on_delivery"]).includes("cash_on_delivery")}
+                                    onChange={e => {
+                                        const current = config.enabledPaymentMethods || ["cash_on_delivery"];
+                                        const next = e.target.checked
+                                            ? [...new Set([...current, "cash_on_delivery"])]
+                                            : current.filter(m => m !== "cash_on_delivery");
+                                        if (next.length > 0) setConfig({ ...config, enabledPaymentMethods: next as any });
+                                    }}
+                                    className="rounded"
+                                />
+                                <div>
+                                    <p className="font-medium text-sm">Cash on Delivery (COD)</p>
+                                    <p className="text-xs text-muted-foreground">Customer pays when the order is delivered.</p>
+                                </div>
+                            </label>
+                            <label className="flex items-center gap-3 p-3 border rounded-md hover:bg-muted/50 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={(config.enabledPaymentMethods || ["cash_on_delivery"]).includes("bank_transfer")}
+                                    onChange={e => {
+                                        const current = config.enabledPaymentMethods || ["cash_on_delivery"];
+                                        const next = e.target.checked
+                                            ? [...new Set([...current, "bank_transfer"])]
+                                            : current.filter(m => m !== "bank_transfer");
+                                        if (next.length > 0) setConfig({ ...config, enabledPaymentMethods: next as any });
+                                    }}
+                                    className="rounded"
+                                />
+                                <div>
+                                    <p className="font-medium text-sm">Bank Transfer</p>
+                                    <p className="text-xs text-muted-foreground">Customer pays via bank transfer. Configure details below.</p>
+                                </div>
+                            </label>
+                        </CardContent>
+                    </Card>
+                    )}
+
+                    {/* BANK TRANSFER DETAILS */}
+                    {config.commerceEnabled && (config.enabledPaymentMethods || []).includes("bank_transfer") && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Bank Transfer Details</CardTitle>
+                            <CardDescription>These details are included in order confirmation emails for bank transfer payments.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Bank Name</Label>
+                                    <Input
+                                        value={config.integrations?.bankTransfer?.bankName || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            integrations: {
+                                                ...config.integrations,
+                                                bankTransfer: { ...config.integrations?.bankTransfer, bankName: e.target.value }
+                                            }
+                                        })}
+                                        placeholder="ING Bank"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Account Holder</Label>
+                                    <Input
+                                        value={config.integrations?.bankTransfer?.accountHolder || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            integrations: {
+                                                ...config.integrations,
+                                                bankTransfer: { ...config.integrations?.bankTransfer, accountHolder: e.target.value }
+                                            }
+                                        })}
+                                        placeholder="SC Company SRL"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>IBAN</Label>
+                                <Input
+                                    value={config.integrations?.bankTransfer?.iban || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations,
+                                            bankTransfer: { ...config.integrations?.bankTransfer, iban: e.target.value }
+                                        }
+                                    })}
+                                    placeholder="RO49AAAA1B31007593840000"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>SWIFT/BIC (optional)</Label>
+                                    <Input
+                                        value={config.integrations?.bankTransfer?.swift || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            integrations: {
+                                                ...config.integrations,
+                                                bankTransfer: { ...config.integrations?.bankTransfer, swift: e.target.value }
+                                            }
+                                        })}
+                                        placeholder="INGBROBU"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Reference Prefix (optional)</Label>
+                                    <Input
+                                        value={config.integrations?.bankTransfer?.referencePrefix || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            integrations: {
+                                                ...config.integrations,
+                                                bankTransfer: { ...config.integrations?.bankTransfer, referencePrefix: e.target.value }
+                                            }
+                                        })}
+                                        placeholder="PPB"
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    )}
+
+                    {/* COMPANY DETAILS */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Company Details</CardTitle>
+                            <CardDescription>Used in the footer and for legal compliance.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Legal Name</Label>
+                                    <Input
+                                        value={config.companyDetails?.legalName || ""}
+                                        onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, legalName: e.target.value } })}
+                                        placeholder="SC Company Name SRL"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>CUI / CIF</Label>
+                                    <Input
+                                        value={config.companyDetails?.cui || ""}
+                                        onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, cui: e.target.value } })}
+                                        placeholder="RO12345678"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Trade Register</Label>
+                                    <Input
+                                        value={config.companyDetails?.tradeRegister || ""}
+                                        onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, tradeRegister: e.target.value } })}
+                                        placeholder="J40/1234/2020"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Phone</Label>
+                                    <Input
+                                        value={config.companyDetails?.phone || ""}
+                                        onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, phone: e.target.value } })}
+                                        placeholder="+40 700 000 000"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Address</Label>
+                                <Input
+                                    value={config.companyDetails?.address || ""}
+                                    onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, address: e.target.value } })}
+                                    placeholder="Str. Example nr. 1, București"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Email</Label>
+                                <Input
+                                    value={config.companyDetails?.email || ""}
+                                    onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, email: e.target.value } })}
+                                    placeholder="contact@company.ro"
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* FOOTER LINKS */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <CardTitle>Footer Links</CardTitle>
+                                <Button variant="outline" size="sm" onClick={() => addLink('footerLinks')}>
+                                    <Plus className="h-4 w-4 mr-2"/> Add Link
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {(config.footerLinks || []).map((link, i) => (
+                                <div key={i} className="flex gap-2">
+                                    <Input value={link.label}
+                                        onChange={e => updateLink('footerLinks', i, 'label', e.target.value)}
+                                        placeholder="Label"
+                                        className="flex-1"
+                                    />
+                                    <SmartLinkInput
+                                        value={link.href}
+                                        onChange={val => updateLink('footerLinks', i, 'href', val)}
+                                        placeholder="URL"
+                                        className="flex-1"
+                                    />
+                                    <Button variant="ghost" size="icon"
+                                        onClick={() => removeLink('footerLinks', i)}><Trash2
+                                    className="h-4 w-4 text-destructive"/></Button>
+                                </div>
+                            ))}
+                            {(config.footerLinks?.length === 0) &&
+                                <p className="text-sm text-muted-foreground italic">No footer links added.</p>}
+                        </CardContent>
+                    </Card>
+
+                    {/* LEGAL LINKS */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Legal Links</CardTitle>
+                            <CardDescription>Required for Romanian e-commerce compliance. Shown in the footer.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Terms & Conditions</Label>
+                                    <SmartLinkInput
+                                        value={config.legalLinks?.termsUrl || ""}
+                                        onChange={val => setConfig({ ...config, legalLinks: { ...config.legalLinks, termsUrl: val } })}
+                                        placeholder="/termeni-si-conditii"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Privacy Policy</Label>
+                                    <SmartLinkInput
+                                        value={config.legalLinks?.privacyUrl || ""}
+                                        onChange={val => setConfig({ ...config, legalLinks: { ...config.legalLinks, privacyUrl: val } })}
+                                        placeholder="/politica-confidentialitate"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>ANPC (Consumer Protection)</Label>
+                                    <Input
+                                        value={config.legalLinks?.anpcUrl || ""}
+                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcUrl: e.target.value } })}
+                                        placeholder="https://anpc.ro/..."
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>ANPC SAL (Online Dispute)</Label>
+                                    <Input
+                                        value={config.legalLinks?.anpcSalUrl || ""}
+                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcSalUrl: e.target.value } })}
+                                        placeholder="https://ec.europa.eu/consumers/odr"
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     {/* NOTIFICATIONS */}
                     <Card>
                         <CardHeader>
@@ -652,6 +924,14 @@ export default function SettingsPage() {
                                         value={config.urlPrefixes?.shop || ""}
                                         onChange={e => updateUrlPrefix("shop", e.target.value)}
                                         placeholder="/magazin"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Account</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.account || ""}
+                                        onChange={e => updateUrlPrefix("account", e.target.value)}
+                                        placeholder="/account"
                                     />
                                 </div>
                             </div>

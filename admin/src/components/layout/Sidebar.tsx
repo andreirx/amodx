@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
 import {Shield, Users} from "lucide-react";
-import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList } from "lucide-react";
+import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail } from "lucide-react";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph, Radar
 } from "lucide-react";
@@ -60,6 +60,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                     { name: "Coupons", href: "/coupons", icon: Ticket },
                     { name: "Reviews", href: "/reviews", icon: Star },
                     { name: "Delivery", href: "/delivery", icon: Truck },
+                    { name: "Email Templates", href: "/order-emails", icon: Mail },
                 ] : []),
             ]
         },

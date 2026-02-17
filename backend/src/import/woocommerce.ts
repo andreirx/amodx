@@ -71,10 +71,27 @@ function parseCSVLine(line: string): string[] {
     return result;
 }
 
-function mapAvailability(stock: string, stockStatus: string): string {
-    if (stockStatus === 'outofstock') return 'out_of_stock';
-    if (stockStatus === 'onbackorder') return 'preorder';
+function mapAvailability(stockQty: string, stockStatus: string): string {
+    const lower = stockStatus.toLowerCase();
+    if (lower === 'outofstock' || lower === '0') return 'out_of_stock';
+    if (lower === 'onbackorder') return 'preorder';
     return 'in_stock';
+}
+
+/** Extract attribute columns from a row (Attribute 1 name, Attribute 1 value(s), etc.) */
+function extractAttributes(row: Record<string, string>): { key: string; value: string }[] {
+    const attrs: { key: string; value: string }[] = [];
+    for (const key of Object.keys(row)) {
+        if (key.startsWith('Attribute') && key.includes('name')) {
+            const idx = key.replace(/\D/g, '');
+            const attrName = row[key];
+            const attrVal = row[`Attribute ${idx} value(s)`] || row[`Attribute ${idx} values`] || '';
+            if (attrName && attrVal) {
+                attrs.push({ key: attrName, value: attrVal });
+            }
+        }
+    }
+    return attrs;
 }
 
 interface ImportResult {
@@ -113,15 +130,31 @@ export const handler: Handler = async (event) => {
         const result: ImportResult = { imported: 0, skipped: 0, categoriesCreated: 0, errors: [] };
         const categoryCache: Record<string, string> = {}; // name → id
 
-        for (const row of rows) {
-            try {
-                // Skip variations (they reference parent products)
-                const type = row['Type'] || row['type'] || '';
-                if (type.toLowerCase() === 'variation') {
-                    result.skipped++;
-                    continue;
-                }
+        // === Two-pass approach for variable products + variations ===
 
+        // Pass 1: Separate parents (simple/variable) and variations
+        const parents: Record<string, string>[] = [];
+        const variationsByParent: Map<string, Record<string, string>[]> = new Map();
+
+        for (const row of rows) {
+            const type = (row['Type'] || row['type'] || 'simple').toLowerCase();
+            if (type === 'variation') {
+                const parentSlug = row['Parent'] || row['parent'] || '';
+                if (parentSlug) {
+                    const existing = variationsByParent.get(parentSlug) || [];
+                    existing.push(row);
+                    variationsByParent.set(parentSlug, existing);
+                } else {
+                    result.skipped++;
+                }
+            } else {
+                parents.push(row);
+            }
+        }
+
+        // Pass 2: Process parents + merge variations
+        for (const row of parents) {
+            try {
                 const title = row['Name'] || row['name'] || row['post_title'] || '';
                 if (!title) {
                     result.skipped++;
@@ -132,6 +165,7 @@ export const handler: Handler = async (event) => {
                 const now = new Date().toISOString();
                 const wooSlug = row['Slug'] || row['slug'] || '';
                 const productSlug = wooSlug || slugify(title);
+                const sku = row['SKU'] || row['sku'] || '';
 
                 // Parse price
                 const regularPrice = row['Regular price'] || row['regular_price'] || '0';
@@ -144,21 +178,17 @@ export const handler: Handler = async (event) => {
                 if (categoryString) {
                     const catNames = categoryString.split(',').map((c: string) => c.trim());
                     for (const catPath of catNames) {
-                        // Handle hierarchical categories like "Parent > Child"
                         const parts = catPath.split('>').map((p: string) => p.trim());
                         const leafCat = parts[parts.length - 1];
                         if (!leafCat) continue;
 
                         if (!categoryCache[leafCat]) {
-                            // Check if category exists
                             const catSlug = slugify(leafCat);
                             const existingCat = await db.send(new GetCommand({
                                 TableName: TABLE_NAME,
                                 Key: { PK: `TENANT#${tenantId}`, SK: `CATEGORY#${catSlug}` }
                             }));
 
-                            // Search by querying all categories
-                            // Since we don't have an index by name, use slug as ID
                             if (!existingCat.Item) {
                                 const catId = catSlug;
                                 const parentId = parts.length > 1 ? slugify(parts[parts.length - 2]) : null;
@@ -209,23 +239,59 @@ export const handler: Handler = async (event) => {
 
                 // Parse weight
                 const weightStr = row['Weight (kg)'] || row['weight'] || '';
-                const weight = weightStr ? Math.round(parseFloat(weightStr) * 1000) : undefined; // convert kg to grams
+                const weight = weightStr ? Math.round(parseFloat(weightStr) * 1000) : undefined;
 
                 // Parse stock
                 const stockStatus = row['In stock?'] || row['stock_status'] || '1';
                 const stockQty = row['Stock'] || row['stock_quantity'] || '';
-                const availability = mapAvailability(stockQty, stockStatus === '0' ? 'outofstock' : 'instock');
+                const availability = mapAvailability(stockQty, stockStatus);
 
-                // Parse attributes
-                const attributes: { key: string; value: string }[] = [];
-                for (const key of Object.keys(row)) {
-                    if (key.startsWith('Attribute') && key.includes('name')) {
-                        const idx = key.replace(/\D/g, '');
-                        const attrName = row[key];
-                        const attrVal = row[`Attribute ${idx} value(s)`] || row[`Attribute ${idx} values`] || '';
-                        if (attrName && attrVal) {
-                            attributes.push({ key: attrName, value: attrVal });
+                // Parse attributes from the parent row
+                const attributes = extractAttributes(row);
+
+                // === Build variants from variation rows ===
+                const type = (row['Type'] || row['type'] || 'simple').toLowerCase();
+                const variations = variationsByParent.get(productSlug) || [];
+                const variants: any[] = [];
+
+                if (type === 'variable' && variations.length > 0) {
+                    // Group by attribute dimensions
+                    const dimensionMap: Map<string, Map<string, any>> = new Map();
+
+                    for (const varRow of variations) {
+                        const varAttrs = extractAttributes(varRow);
+                        for (const attr of varAttrs) {
+                            if (!dimensionMap.has(attr.key)) {
+                                dimensionMap.set(attr.key, new Map());
+                            }
+                            const optionMap = dimensionMap.get(attr.key)!;
+                            // Split pipe-separated values (WooCommerce uses pipes for multi-value)
+                            const values = attr.value.split('|').map(v => v.trim());
+                            for (const val of values) {
+                                if (!optionMap.has(val)) {
+                                    const varPrice = varRow['Regular price'] || varRow['regular_price'] || '';
+                                    const varSalePrice = varRow['Sale price'] || varRow['sale_price'] || '';
+                                    const varImage = (varRow['Images'] || varRow['images'] || '').split(',')[0]?.trim() || '';
+                                    const varStockStatus = varRow['In stock?'] || varRow['stock_status'] || '1';
+                                    const varAvailability = mapAvailability('', varStockStatus);
+
+                                    optionMap.set(val, {
+                                        value: val,
+                                        priceOverride: varSalePrice || varPrice || undefined,
+                                        imageLink: varImage || undefined,
+                                        availability: varAvailability,
+                                    });
+                                }
+                            }
                         }
+                    }
+
+                    for (const [dimName, optionMap] of dimensionMap) {
+                        variants.push({
+                            id: crypto.randomUUID(),
+                            name: dimName,
+                            options: [...optionMap.values()],
+                        });
                     }
                 }
 
@@ -240,6 +306,7 @@ export const handler: Handler = async (event) => {
                     status: defaultStatus,
                     title,
                     slug: productSlug,
+                    sku: sku || undefined,
                     description: shortDescription,
                     longDescription: longDescription || undefined,
                     price: regularPrice || '0',
@@ -258,7 +325,7 @@ export const handler: Handler = async (event) => {
                     seoDescription: row['SEO description'] || row['meta_description'] || undefined,
                     volumePricing: [],
                     personalizations: [],
-                    variants: [],
+                    variants,
                     nutritionalValues: [],
                     sortOrder: 0,
                     condition: "new",

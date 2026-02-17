@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { publishAudit } from "../lib/events.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
@@ -50,6 +51,16 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }));
 
         console.log("✅ Email dispatched to SES");
+
+        await publishAudit({
+            tenantId,
+            actor: { id: email || "anonymous", email: email || "anonymous" },
+            action: "CONTACT_FORM_SUBMIT",
+            target: { title: `Contact from ${name}`, id: email },
+            details: { tags },
+            ip: event.requestContext?.http?.sourceIp
+        });
+
         return { statusCode: 200, body: JSON.stringify({ message: "Sent" }) };
 
     } catch (e: any) {

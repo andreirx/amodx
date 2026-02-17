@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -206,9 +207,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         couponDiscount,
                         total,
                         currency,
-                        status: "pending",
-                        paymentStatus: "unpaid",
-                        statusHistory: [{ status: "pending", timestamp: now, note: "Order placed" }],
+                        status: "placed",
+                        paymentStatus: "pending",
+                        statusHistory: [{ status: "placed", timestamp: now, note: "Order placed" }],
                         createdAt: now,
                         updatedAt: now,
                         Type: "Order"
@@ -224,7 +225,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         SK: `CUSTORDER#${customerEmail.toLowerCase()}#${orderId}`,
                         orderNumber,
                         total,
-                        status: "pending",
+                        status: "placed",
                         createdAt: now,
                         Type: "CustomerOrder"
                     }
@@ -271,10 +272,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         await db.send(new TransactWriteCommand({ TransactItems: transactItems }));
 
-        // --- Send confirmation emails ---
+        // --- Send confirmation emails via templates ---
         if (FROM_EMAIL && customerEmail) {
             try {
-                // Fetch tenant config for site name + notification emails
                 const tenantRes = await db.send(new GetCommand({
                     TableName: TABLE_NAME,
                     Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
@@ -284,81 +284,71 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 const adminEmail = tenantConfig?.integrations?.contactEmail;
                 const processingEmail = tenantConfig?.integrations?.orderProcessingEmail;
 
+                // Get template for "placed" status (custom or default)
+                const defaults = getDefaultTemplates();
+                const customTemplates = tenantConfig?.orderEmailConfig?.templates || {};
+                const template = customTemplates["placed"] || defaults["placed"];
+
                 const itemLines = validatedItems.map(i =>
                     `  ${i.productTitle} x${i.quantity} — ${i.totalPrice.toFixed(2)} ${currency}`
                 ).join("\n");
 
-                const discountLine = couponDiscount > 0
-                    ? `Discount (${validatedCouponCode}): -${couponDiscount.toFixed(2)} ${currency}\n`
+                const addressLine = shippingAddress
+                    ? `${shippingAddress.street}, ${shippingAddress.city}, ${shippingAddress.county}${shippingAddress.postalCode ? ` ${shippingAddress.postalCode}` : ""}`
                     : "";
 
-                const addressLine = shippingAddress
-                    ? `Shipping to: ${shippingAddress.street}, ${shippingAddress.city}, ${shippingAddress.county}${shippingAddress.postalCode ? ` ${shippingAddress.postalCode}` : ""}`
-                    : null;
-
-                // 1. Customer confirmation email
-                const customerBody = [
-                    `Hi ${customerName},`,
-                    ``,
-                    `Thank you for your order! Here are your order details:`,
-                    ``,
-                    `Order Number: ${orderNumber}`,
-                    `Date: ${new Date(now).toLocaleDateString("en-GB")}`,
-                    ``,
-                    `Items:`,
-                    itemLines,
-                    ``,
-                    `Subtotal: ${subtotal.toFixed(2)} ${currency}`,
-                    discountLine ? discountLine : null,
-                    `Shipping: ${shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`}`,
-                    `Total: ${total.toFixed(2)} ${currency}`,
-                    ``,
-                    `Payment: ${paymentMethod === "bank_transfer" ? "Bank Transfer" : "Cash on Delivery"}`,
-                    ``,
-                    addressLine,
-                    ``,
-                    `We'll notify you when your order status changes.`,
-                    ``,
-                    `Best regards,`,
+                const vars: Record<string, string> = {
+                    orderNumber,
+                    customerName,
+                    customerEmail: customerEmail.toLowerCase(),
+                    customerPhone: customerPhone || "",
+                    status: "placed",
+                    statusLabel: STATUS_LABELS["placed"],
+                    trackingNumber: "",
+                    items: itemLines,
+                    subtotal: subtotal.toFixed(2),
+                    total: total.toFixed(2),
+                    currency,
+                    shippingCost: shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`,
+                    couponDiscount: couponDiscount > 0 ? `${couponDiscount.toFixed(2)} ${currency}` : "",
+                    paymentMethod: paymentMethod === "bank_transfer" ? "Bank Transfer" : "Cash on Delivery",
+                    deliveryDate: requestedDeliveryDate || "",
+                    shippingAddress: addressLine,
+                    note: "",
                     siteName,
-                ].filter(line => line !== null).join("\n");
+                };
 
-                await ses.send(new SendEmailCommand({
-                    Source: FROM_EMAIL,
-                    Destination: { ToAddresses: [customerEmail.toLowerCase()] },
-                    Message: {
-                        Subject: { Data: `[${siteName}] Order Confirmation — ${orderNumber}` },
-                        Body: { Text: { Data: customerBody } }
-                    }
-                }));
+                const renderedSubject = renderTemplate(template.subject, vars);
+                const renderedBody = renderTemplate(template.body, vars);
 
-                // 2. Admin/processing notification email
+                // Send to customer
+                if (template.sendToCustomer) {
+                    await ses.send(new SendEmailCommand({
+                        Source: FROM_EMAIL,
+                        Destination: { ToAddresses: [customerEmail.toLowerCase()] },
+                        Message: {
+                            Subject: { Data: `[${siteName}] ${renderedSubject}` },
+                            Body: { Text: { Data: renderedBody } }
+                        }
+                    }));
+                }
+
+                // Send to admin/processing
                 const internalRecipients = new Set<string>();
-                if (adminEmail) internalRecipients.add(adminEmail);
-                if (processingEmail) internalRecipients.add(processingEmail);
+                if (template.sendToAdmin && adminEmail) internalRecipients.add(adminEmail);
+                if (template.sendToProcessing && processingEmail) internalRecipients.add(processingEmail);
 
                 if (internalRecipients.size > 0) {
+                    // Internal email includes extra details
                     const internalBody = [
-                        `New order received!`,
+                        renderedBody,
                         ``,
-                        `Order Number: ${orderNumber}`,
-                        `Date: ${new Date(now).toLocaleDateString("en-GB")}`,
-                        ``,
+                        `--- Internal Details ---`,
                         `Customer: ${customerName}`,
                         `Email: ${customerEmail}`,
                         customerPhone ? `Phone: ${customerPhone}` : null,
-                        ``,
-                        `Items:`,
-                        itemLines,
-                        ``,
-                        `Subtotal: ${subtotal.toFixed(2)} ${currency}`,
-                        discountLine ? discountLine : null,
-                        `Shipping: ${shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`}`,
-                        `Total: ${total.toFixed(2)} ${currency}`,
-                        ``,
-                        `Payment: ${paymentMethod === "bank_transfer" ? "Bank Transfer" : "Cash on Delivery"}`,
-                        ``,
-                        addressLine,
+                        `Payment: ${vars.paymentMethod}`,
+                        addressLine ? `Shipping: ${addressLine}` : null,
                         shippingAddress?.notes ? `Notes: ${shippingAddress.notes}` : null,
                         requestedDeliveryDate ? `Requested Delivery: ${requestedDeliveryDate}` : null,
                     ].filter(line => line !== null).join("\n");
@@ -367,13 +357,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         Source: FROM_EMAIL,
                         Destination: { ToAddresses: [...internalRecipients] },
                         Message: {
-                            Subject: { Data: `[${siteName}] New Order ${orderNumber} — ${total.toFixed(2)} ${currency}` },
+                            Subject: { Data: `[${siteName}] ${renderedSubject}` },
                             Body: { Text: { Data: internalBody } }
                         }
                     }));
                 }
             } catch (emailErr) {
-                // Log but don't fail the order
                 console.error("Failed to send confirmation email:", emailErr);
             }
         }

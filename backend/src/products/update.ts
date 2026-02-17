@@ -56,8 +56,8 @@ export const handler: Handler = async (event) => {
         const newCategoryIds: string[] = merged.categoryIds || [];
         await deleteCatProductItems(tenantId!, id!, oldCategoryIds);
         await writeCatProductItems(tenantId!, {
-            id: id!, title: merged.title, slug: merged.slug, price: merged.price,
-            currency: merged.currency, salePrice: merged.salePrice,
+            id: id!, title: merged.title, slug: merged.slug, sku: merged.sku,
+            price: merged.price, currency: merged.currency, salePrice: merged.salePrice,
             imageLink: merged.imageLink, availability: merged.availability,
             sortOrder: merged.sortOrder || 0, tags: merged.tags || [],
             volumePricing: merged.volumePricing || [],

@@ -5,21 +5,14 @@ import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-const STATUS_LABELS: Record<string, string> = {
-    pending: "Pending",
-    confirmed: "Confirmed",
-    processing: "Processing",
-    shipped: "Shipped",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
-    refunded: "Refunded",
-};
+const VALID_STATUSES = ["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"];
 
 export const handler: Handler = async (event) => {
     try {
@@ -42,6 +35,11 @@ export const handler: Handler = async (event) => {
         const { status, note, trackingNumber } = body;
 
         if (!status) return { statusCode: 400, body: JSON.stringify({ error: "Status is required" }) };
+
+        // Validate against allowed statuses
+        if (!VALID_STATUSES.includes(status)) {
+            return { statusCode: 400, body: JSON.stringify({ error: `Invalid status. Allowed: ${VALID_STATUSES.join(", ")}` }) };
+        }
 
         const now = new Date().toISOString();
 
@@ -88,7 +86,7 @@ export const handler: Handler = async (event) => {
             ip: event.requestContext.http.sourceIp
         });
 
-        // --- Send status notification email to customer ---
+        // --- Send status notification email via templates ---
         const customerEmail = existing.Item.customerEmail;
         if (FROM_EMAIL && customerEmail && status !== previousStatus) {
             try {
@@ -96,42 +94,78 @@ export const handler: Handler = async (event) => {
                     TableName: TABLE_NAME,
                     Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
                 }));
-                const siteName = tenantRes.Item?.name || "Our Shop";
-                const orderNumber = existing.Item.orderNumber;
-                const statusLabel = STATUS_LABELS[status] || status;
+                const tenantConfig = tenantRes.Item;
+                const siteName = tenantConfig?.name || "Our Shop";
+                const adminEmail = tenantConfig?.integrations?.contactEmail;
+                const processingEmail = tenantConfig?.integrations?.orderProcessingEmail;
 
-                let extraInfo = "";
-                if (status === "shipped" && (trackingNumber || existing.Item.trackingNumber)) {
-                    extraInfo = `\nTracking Number: ${trackingNumber || existing.Item.trackingNumber}`;
-                }
-                if (note) {
-                    extraInfo += `\nNote: ${note}`;
-                }
+                // Get template for this status (custom or default)
+                const defaults = getDefaultTemplates();
+                const customTemplates = tenantConfig?.orderEmailConfig?.templates || {};
+                const template = customTemplates[status] || defaults[status];
 
-                const emailBody = [
-                    `Hi ${existing.Item.customerName},`,
-                    ``,
-                    `Your order ${orderNumber} has been updated.`,
-                    ``,
-                    `New Status: ${statusLabel}`,
-                    extraInfo ? extraInfo : null,
-                    ``,
-                    `Order Total: ${existing.Item.total?.toFixed?.(2) || existing.Item.total} ${existing.Item.currency || "RON"}`,
-                    ``,
-                    `Thank you for shopping with us!`,
-                    ``,
-                    `Best regards,`,
-                    siteName,
-                ].filter(line => line !== null).join("\n");
+                if (template) {
+                    const order = existing.Item;
+                    const itemLines = (order.items || []).map((i: any) =>
+                        `  ${i.productTitle || i.title} x${i.quantity} — ${(parseFloat(i.totalPrice || 0)).toFixed(2)} ${order.currency || "RON"}`
+                    ).join("\n");
 
-                await ses.send(new SendEmailCommand({
-                    Source: FROM_EMAIL,
-                    Destination: { ToAddresses: [customerEmail] },
-                    Message: {
-                        Subject: { Data: `[${siteName}] Order ${orderNumber} — ${statusLabel}` },
-                        Body: { Text: { Data: emailBody } }
+                    const addressLine = order.shippingAddress
+                        ? `${order.shippingAddress.street}, ${order.shippingAddress.city}, ${order.shippingAddress.county}`
+                        : "";
+
+                    const vars: Record<string, string> = {
+                        orderNumber: order.orderNumber || "",
+                        customerName: order.customerName || "",
+                        customerEmail: customerEmail,
+                        customerPhone: order.customerPhone || "",
+                        status,
+                        statusLabel: STATUS_LABELS[status] || status,
+                        trackingNumber: trackingNumber || order.trackingNumber || "",
+                        items: itemLines,
+                        subtotal: (parseFloat(order.subtotal || 0)).toFixed(2),
+                        total: (parseFloat(order.total || 0)).toFixed(2),
+                        currency: order.currency || "RON",
+                        shippingCost: (parseFloat(order.shippingCost || 0)).toFixed(2),
+                        couponDiscount: order.couponDiscount ? `${parseFloat(order.couponDiscount).toFixed(2)}` : "",
+                        paymentMethod: order.paymentMethod === "bank_transfer" ? "Bank Transfer" : "Cash on Delivery",
+                        deliveryDate: order.requestedDeliveryDate || "",
+                        shippingAddress: addressLine,
+                        note: note || "",
+                        siteName,
+                    };
+
+                    const renderedSubject = renderTemplate(template.subject, vars);
+                    const renderedBody = renderTemplate(template.body, vars);
+
+                    // Send to customer
+                    if (template.sendToCustomer) {
+                        await ses.send(new SendEmailCommand({
+                            Source: FROM_EMAIL,
+                            Destination: { ToAddresses: [customerEmail] },
+                            Message: {
+                                Subject: { Data: `[${siteName}] ${renderedSubject}` },
+                                Body: { Text: { Data: renderedBody } }
+                            }
+                        }));
                     }
-                }));
+
+                    // Send to admin/processing if configured
+                    const internalRecipients = new Set<string>();
+                    if (template.sendToAdmin && adminEmail) internalRecipients.add(adminEmail);
+                    if (template.sendToProcessing && processingEmail) internalRecipients.add(processingEmail);
+
+                    if (internalRecipients.size > 0) {
+                        await ses.send(new SendEmailCommand({
+                            Source: FROM_EMAIL,
+                            Destination: { ToAddresses: [...internalRecipients] },
+                            Message: {
+                                Subject: { Data: `[${siteName}] ${renderedSubject}` },
+                                Body: { Text: { Data: renderedBody } }
+                            }
+                        }));
+                    }
+                }
             } catch (emailErr) {
                 console.error("Failed to send status notification email:", emailErr);
             }

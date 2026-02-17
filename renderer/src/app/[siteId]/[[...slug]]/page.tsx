@@ -184,6 +184,7 @@ export default async function Page({ params, searchParams }: Props) {
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
                     currency="RON"
                     bankTransfer={config.integrations?.bankTransfer}
+                    enabledPaymentMethods={config.enabledPaymentMethods}
                 />
             );
         }

@@ -10,13 +10,27 @@ import { Loader2, Package, Eye, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const STATUS_COLORS: Record<string, string> = {
-    pending: "bg-yellow-50 text-yellow-700",
+    placed: "bg-yellow-50 text-yellow-700",
+    pending: "bg-yellow-50 text-yellow-700", // backward compat
     confirmed: "bg-blue-50 text-blue-700",
-    processing: "bg-indigo-50 text-indigo-700",
+    prepared: "bg-indigo-50 text-indigo-700",
+    processing: "bg-indigo-50 text-indigo-700", // backward compat
     shipped: "bg-purple-50 text-purple-700",
     delivered: "bg-green-50 text-green-700",
-    completed: "bg-green-100 text-green-800 font-bold",
     cancelled: "bg-red-50 text-red-700",
+    annulled: "bg-red-100 text-red-800",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+    placed: "Placed",
+    pending: "Placed",
+    confirmed: "Confirmed",
+    prepared: "Prepared",
+    processing: "Prepared",
+    shipped: "Shipped",
+    delivered: "Delivered",
+    cancelled: "Cancelled",
+    annulled: "Annulled",
 };
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -73,13 +87,13 @@ export default function Orders() {
                     <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="_all">All Statuses</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="placed">Placed</SelectItem>
                         <SelectItem value="confirmed">Confirmed</SelectItem>
-                        <SelectItem value="processing">Processing</SelectItem>
+                        <SelectItem value="prepared">Prepared</SelectItem>
                         <SelectItem value="shipped">Shipped</SelectItem>
                         <SelectItem value="delivered">Delivered</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
                         <SelectItem value="cancelled">Cancelled</SelectItem>
+                        <SelectItem value="annulled">Annulled</SelectItem>
                     </SelectContent>
                 </Select>
                 <div className="relative">
@@ -143,7 +157,7 @@ export default function Orders() {
                                     </TableCell>
                                     <TableCell>
                                         <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${STATUS_COLORS[o.status] || "bg-gray-100 text-gray-700"}`}>
-                                            {o.status}
+                                            {STATUS_LABELS[o.status] || o.status}
                                         </span>
                                     </TableCell>
                                     <TableCell className="text-right">

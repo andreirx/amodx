@@ -23,6 +23,7 @@ interface CheckoutProps {
     flatShippingCost: number;
     currency: string;
     bankTransfer?: { bankName?: string; accountHolder?: string; iban?: string; swift?: string; referencePrefix?: string };
+    enabledPaymentMethods?: string[];
 }
 
 // --- Inline delivery date picker ---
@@ -143,7 +144,7 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer }: CheckoutProps) {
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"] }: CheckoutProps) {
     const { items, subtotal, clearCart, coupon } = useCart();
     const { getUrl } = useTenantUrl();
     const router = useRouter();
@@ -162,7 +163,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
         county: "",
         postalCode: "",
         notes: "",
-        paymentMethod: "cash_on_delivery" as "cash_on_delivery" | "bank_transfer",
+        paymentMethod: (enabledPaymentMethods[0] || "cash_on_delivery") as "cash_on_delivery" | "bank_transfer",
         requestedDeliveryDate: "",
     });
 
@@ -355,14 +356,16 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                         <section>
                             <h2 className="text-lg font-bold mb-4">Payment Method</h2>
                             <div className="space-y-3">
-                                <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${form.paymentMethod === "cash_on_delivery" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
-                                    <input type="radio" name="paymentMethod" value="cash_on_delivery" checked={form.paymentMethod === "cash_on_delivery"} onChange={e => update("paymentMethod", e.target.value)} className="accent-primary" />
-                                    <div>
-                                        <p className="font-medium text-sm">Cash on Delivery</p>
-                                        <p className="text-xs text-muted-foreground">Pay when you receive your order</p>
-                                    </div>
-                                </label>
-                                {bankTransfer && (
+                                {enabledPaymentMethods.includes("cash_on_delivery") && (
+                                    <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${form.paymentMethod === "cash_on_delivery" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
+                                        <input type="radio" name="paymentMethod" value="cash_on_delivery" checked={form.paymentMethod === "cash_on_delivery"} onChange={e => update("paymentMethod", e.target.value)} className="accent-primary" />
+                                        <div>
+                                            <p className="font-medium text-sm">Cash on Delivery</p>
+                                            <p className="text-xs text-muted-foreground">Pay when you receive your order</p>
+                                        </div>
+                                    </label>
+                                )}
+                                {enabledPaymentMethods.includes("bank_transfer") && bankTransfer && (
                                     <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${form.paymentMethod === "bank_transfer" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
                                         <input type="radio" name="paymentMethod" value="bank_transfer" checked={form.paymentMethod === "bank_transfer"} onChange={e => update("paymentMethod", e.target.value)} className="accent-primary" />
                                         <div>

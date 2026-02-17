@@ -27,6 +27,7 @@ export const URL_PREFIX_DEFAULTS = {
     cart: "/cart",
     checkout: "/checkout",
     shop: "/shop",
+    account: "/account",
 } as const;
 
 // Configurable URL prefixes per tenant (for i18n-friendly URLs)
@@ -36,6 +37,7 @@ export const UrlPrefixesSchema = z.object({
     cart: z.string().default(URL_PREFIX_DEFAULTS.cart),
     checkout: z.string().default(URL_PREFIX_DEFAULTS.checkout),
     shop: z.string().default(URL_PREFIX_DEFAULTS.shop),
+    account: z.string().default(URL_PREFIX_DEFAULTS.account),
 });
 
 // Quick Contact widget config
@@ -276,6 +278,43 @@ export const WorkItemSchema = z.object({
 
 export type WorkItem = z.infer<typeof WorkItemSchema>;
 
+// --- ORDER EMAIL TEMPLATES ---
+
+export const OrderEmailTemplateSchema = z.object({
+    subject: z.string(),                        // "Order {{orderNumber}} — {{statusLabel}}"
+    body: z.string(),                           // plain text with {{variables}}
+    sendToCustomer: z.boolean().default(true),
+    sendToAdmin: z.boolean().default(false),
+    sendToProcessing: z.boolean().default(false),
+});
+export type OrderEmailTemplate = z.infer<typeof OrderEmailTemplateSchema>;
+
+export const OrderEmailConfigSchema = z.object({
+    templates: z.record(z.string(), OrderEmailTemplateSchema).default({}),
+    // key = status name (e.g. "placed", "confirmed", "shipped")
+});
+export type OrderEmailConfig = z.infer<typeof OrderEmailConfigSchema>;
+
+// --- COMPANY & LEGAL ---
+
+export const CompanyDetailsSchema = z.object({
+    legalName: z.string().optional(),        // "SC Povesti pe Biscuite SRL"
+    cui: z.string().optional(),              // CUI/CIF tax ID
+    tradeRegister: z.string().optional(),    // "J40/1234/2020"
+    address: z.string().optional(),          // Full address
+    phone: z.string().optional(),
+    email: z.string().optional(),
+});
+export type CompanyDetails = z.infer<typeof CompanyDetailsSchema>;
+
+export const LegalLinksSchema = z.object({
+    termsUrl: z.string().optional(),         // Terms & Conditions page URL
+    privacyUrl: z.string().optional(),       // Privacy Policy page URL
+    anpcUrl: z.string().optional(),          // ANPC complaints link
+    anpcSalUrl: z.string().optional(),       // ANPC SAL (online dispute) link
+});
+export type LegalLinks = z.infer<typeof LegalLinksSchema>;
+
 // ==========================================
 // 7. INFRASTRUCTURE & SETTINGS
 // ==========================================
@@ -390,6 +429,18 @@ export const TenantConfigSchema = z.object({
 
     // Commerce Bar (utility bar above navbar: phone, social, cart, CTA)
     commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [], currency: "lei" }),
+
+    // Order email templates (configurable per status)
+    orderEmailConfig: OrderEmailConfigSchema.default({ templates: {} }),
+
+    // Enabled payment methods for commerce checkout
+    enabledPaymentMethods: z.array(z.enum(["cash_on_delivery", "bank_transfer"])).default(["cash_on_delivery"]),
+
+    // Company details (footer, invoices)
+    companyDetails: CompanyDetailsSchema.default({}),
+
+    // Legal links (ANPC, T&C, Privacy)
+    legalLinks: LegalLinksSchema.default({}),
 
     // DRAFT-LIVE STATE MACHINE
     status: TenantStatus.default("LIVE"),
@@ -559,6 +610,7 @@ export const ProductSchema = z.object({
     // Basic Data
     title: z.string().min(1),
     slug: z.string().default(""),              // URL-safe, auto-generated from title
+    sku: z.string().optional(),               // Stock Keeping Unit (from WooCommerce/ERP)
     description: z.string().max(5000),         // Generic/short description
     longDescription: z.string().optional(),    // Detailed rich text (HTML from Tiptap)
     link: z.string().url().optional(),
@@ -725,11 +777,11 @@ export const OrderSchema = z.object({
     couponCode: z.string().optional(),
     couponDiscount: z.string().default("0"),
     paymentMethod: z.enum(["cash_on_delivery", "bank_transfer"]).default("cash_on_delivery"),
-    paymentStatus: z.enum(["pending", "paid"]).default("pending"),
+    paymentStatus: z.enum(["pending", "paid", "refunded"]).default("pending"),
     requestedDeliveryDate: z.string().optional(),
     estimatedDeliveryDate: z.string().optional(),
     trackingNumber: z.string().optional(),
-    status: z.enum(["pending", "confirmed", "processing", "shipped", "delivered", "completed", "cancelled"]).default("pending"),
+    status: z.enum(["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"]).default("placed"),
     statusHistory: z.array(StatusHistorySchema).default([]),
     internalNotes: z.string().default(""),
     createdAt: z.string(),
