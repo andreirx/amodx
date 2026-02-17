@@ -62,6 +62,8 @@ export const handler: Handler = async (event) => {
             sortOrder: merged.sortOrder || 0, tags: merged.tags || [],
             volumePricing: merged.volumePricing || [],
             categoryIds: newCategoryIds,
+            availableFrom: merged.availableFrom,
+            availableUntil: merged.availableUntil,
         });
 
         await publishAudit({

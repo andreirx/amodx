@@ -21,6 +21,8 @@ interface ProductCardProjection {
     tags: string[];
     volumePricing: any[];
     categoryIds: string[];
+    availableFrom?: string;
+    availableUntil?: string;
 }
 
 function buildCatProdItem(tenantId: string, categoryId: string, product: ProductCardProjection) {
@@ -39,6 +41,8 @@ function buildCatProdItem(tenantId: string, categoryId: string, product: Product
         tags: product.tags || [],
         volumePricing: product.volumePricing || [],
         categoryIds: product.categoryIds || [],
+        availableFrom: product.availableFrom,
+        availableUntil: product.availableUntil,
     };
 }
 

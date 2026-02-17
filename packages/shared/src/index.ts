@@ -53,6 +53,24 @@ export const TopBarSchema = z.object({
     quickContactEmail: z.string().optional(),
 });
 
+// Commerce Bar config (utility bar above navbar)
+export const SocialLinkSchema = z.object({
+    platform: z.enum(["facebook", "instagram", "tiktok", "youtube", "twitter", "linkedin", "pinterest"]),
+    url: z.string(),
+});
+
+export const CommerceBarSchema = z.object({
+    enabled: z.boolean().default(false),
+    phone: z.string().optional(),
+    whatsappNumber: z.string().optional(),
+    socialLinks: z.array(SocialLinkSchema).default([]),
+    ctaButton: z.object({
+        text: z.string(),
+        url: z.string(),
+    }).optional(),
+    currency: z.string().default("lei"),
+});
+
 // ==========================================
 // 2. ACCESS CONTROL (The Gatekeeper)
 // ==========================================
@@ -369,6 +387,9 @@ export const TenantConfigSchema = z.object({
 
     // Top Bar (announcement bar above header)
     topBar: TopBarSchema.default({ show: false }),
+
+    // Commerce Bar (utility bar above navbar: phone, social, cart, CTA)
+    commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [], currency: "lei" }),
 
     // DRAFT-LIVE STATE MACHINE
     status: TenantStatus.default("LIVE"),

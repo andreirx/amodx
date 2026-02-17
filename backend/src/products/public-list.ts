@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { queryCatProducts } from "../lib/catprod.js";
+import { isProductAvailable } from "../lib/availability.js";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -43,11 +44,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 FilterExpression: filterParts.join(" AND "),
                 ExpressionAttributeValues: exprValues,
                 ExpressionAttributeNames: { "#s": "status" },
-                ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing"
+                ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil"
             }));
 
             allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
         }
+
+        // Filter by availability dates
+        allProducts = allProducts.filter((p: any) => isProductAvailable(p));
 
         // Paginate
         const start = (page - 1) * limit;

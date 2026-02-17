@@ -8,6 +8,7 @@ import { PaddleLoader } from "@/components/PaddleLoader";
 import { CookieConsent } from "@/components/CookieConsent";
 import { QuickContact } from "@/components/QuickContact";
 import { TopBar } from "@/components/TopBar";
+import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
@@ -107,23 +108,38 @@ export default async function SiteLayout({ children, params }: Props) {
                     }}
                 />
 
-                {/* Top Bar */}
-                {config.topBar?.show && (
-                    <TopBar
-                        content={config.topBar.content}
-                        quickContactPhone={config.topBar.quickContactPhone}
-                        quickContactEmail={config.topBar.quickContactEmail}
-                    />
-                )}
+                {/* Sticky Header Wrapper */}
+                <div className="sticky top-0 z-50">
+                    {/* Top Bar (announcement) */}
+                    {config.topBar?.show && (
+                        <TopBar
+                            content={config.topBar.content}
+                            quickContactPhone={config.topBar.quickContactPhone}
+                            quickContactEmail={config.topBar.quickContactEmail}
+                        />
+                    )}
 
-                <Navbar
-                    siteName={config.name}
-                    logo={config.logo}
-                    links={config.navLinks}
-                    showLogo={config.header?.showLogo}
-                    showTitle={config.header?.showTitle}
-                    commerceEnabled={commerceEnabled}
-                />
+                    {/* Commerce Bar (utility: phone, social, cart, CTA) */}
+                    {config.commerceBar?.enabled && commerceEnabled && (
+                        <CommerceBar
+                            phone={config.commerceBar.phone}
+                            whatsappNumber={config.commerceBar.whatsappNumber}
+                            socialLinks={config.commerceBar.socialLinks}
+                            ctaButton={config.commerceBar.ctaButton}
+                            currency={config.commerceBar.currency}
+                        />
+                    )}
+
+                    <Navbar
+                        siteName={config.name}
+                        logo={config.logo}
+                        links={config.navLinks}
+                        showLogo={config.header?.showLogo}
+                        showTitle={config.header?.showTitle}
+                        commerceEnabled={commerceEnabled}
+                        hideContactButton={!!(config.commerceBar?.enabled && commerceEnabled)}
+                    />
+                </div>
 
                 <div className="flex-1">
                     {children}

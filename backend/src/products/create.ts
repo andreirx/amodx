@@ -71,6 +71,8 @@ export const handler: Handler = async (event) => {
             sortOrder: input.sortOrder || 0, tags: input.tags || [],
             volumePricing: input.volumePricing || [],
             categoryIds: input.categoryIds || [],
+            availableFrom: input.availableFrom,
+            availableUntil: input.availableUntil,
         });
 
         await publishAudit({

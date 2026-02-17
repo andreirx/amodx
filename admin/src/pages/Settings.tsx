@@ -403,6 +403,142 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {/* COMMERCE BAR */}
+                    {config.commerceEnabled && (
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Commerce Bar</CardTitle>
+                            </div>
+                            <CardDescription>Utility bar above the navbar with phone, social links, cart total, and optional CTA button.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.commerceBar?.enabled ?? false}
+                                    onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, enabled: e.target.checked } as any })}
+                                    className="rounded border-gray-300 h-5 w-5"
+                                />
+                                <div>
+                                    <span className="font-medium text-sm">Enable Commerce Bar</span>
+                                    <p className="text-xs text-muted-foreground">Shows a utility row above the navbar on desktop.</p>
+                                </div>
+                            </label>
+
+                            {config.commerceBar?.enabled && (<>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Phone Number</Label>
+                                    <Input
+                                        value={config.commerceBar?.phone || ""}
+                                        onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, phone: e.target.value } as any })}
+                                        placeholder="0762 271 715"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>WhatsApp Number</Label>
+                                    <Input
+                                        value={config.commerceBar?.whatsappNumber || ""}
+                                        onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, whatsappNumber: e.target.value } as any })}
+                                        placeholder="+40762271715"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Currency Symbol</Label>
+                                <Input
+                                    value={config.commerceBar?.currency || "lei"}
+                                    onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, currency: e.target.value } as any })}
+                                    placeholder="lei"
+                                    className="w-32"
+                                />
+                            </div>
+
+                            {/* Social Links */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label>Social Links</Label>
+                                    <Button variant="outline" size="sm" onClick={() => {
+                                        const links = [...(config.commerceBar?.socialLinks || []), { platform: "facebook" as const, url: "" }];
+                                        setConfig({ ...config, commerceBar: { ...config.commerceBar, socialLinks: links } as any });
+                                    }}>
+                                        <Plus className="h-4 w-4 mr-1" /> Add
+                                    </Button>
+                                </div>
+                                {(config.commerceBar?.socialLinks || []).map((link: any, i: number) => (
+                                    <div key={i} className="flex gap-2 items-center">
+                                        <Select
+                                            value={link.platform}
+                                            onValueChange={(val) => {
+                                                const links = [...(config.commerceBar?.socialLinks || [])];
+                                                links[i] = { ...links[i], platform: val as any };
+                                                setConfig({ ...config, commerceBar: { ...config.commerceBar, socialLinks: links } as any });
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-36">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="facebook">Facebook</SelectItem>
+                                                <SelectItem value="instagram">Instagram</SelectItem>
+                                                <SelectItem value="tiktok">TikTok</SelectItem>
+                                                <SelectItem value="youtube">YouTube</SelectItem>
+                                                <SelectItem value="twitter">Twitter/X</SelectItem>
+                                                <SelectItem value="linkedin">LinkedIn</SelectItem>
+                                                <SelectItem value="pinterest">Pinterest</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Input
+                                            value={link.url}
+                                            onChange={e => {
+                                                const links = [...(config.commerceBar?.socialLinks || [])];
+                                                links[i] = { ...links[i], url: e.target.value };
+                                                setConfig({ ...config, commerceBar: { ...config.commerceBar, socialLinks: links } as any });
+                                            }}
+                                            placeholder="https://facebook.com/..."
+                                            className="flex-1"
+                                        />
+                                        <Button variant="ghost" size="icon" onClick={() => {
+                                            const links = (config.commerceBar?.socialLinks || []).filter((_: any, j: number) => j !== i);
+                                            setConfig({ ...config, commerceBar: { ...config.commerceBar, socialLinks: links } as any });
+                                        }}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* CTA Button */}
+                            <div className="space-y-2">
+                                <Label>CTA Button (optional)</Label>
+                                <p className="text-xs text-muted-foreground">Prominent button on the right side of the commerce bar (e.g. seasonal promotions).</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                        value={config.commerceBar?.ctaButton?.text || ""}
+                                        onChange={e => {
+                                            const cta = { text: e.target.value, url: config.commerceBar?.ctaButton?.url || "" };
+                                            setConfig({ ...config, commerceBar: { ...config.commerceBar, ctaButton: cta.text ? cta : undefined } as any });
+                                        }}
+                                        placeholder="Button text"
+                                    />
+                                    <Input
+                                        value={config.commerceBar?.ctaButton?.url || ""}
+                                        onChange={e => {
+                                            const cta = { text: config.commerceBar?.ctaButton?.text || "", url: e.target.value };
+                                            setConfig({ ...config, commerceBar: { ...config.commerceBar, ctaButton: cta.text ? cta : undefined } as any });
+                                        }}
+                                        placeholder="/seasonal-page"
+                                    />
+                                </div>
+                            </div>
+                            </>)}
+                        </CardContent>
+                    </Card>
+                    )}
+
                     {/* NOTIFICATIONS */}
                     <Card>
                         <CardHeader>

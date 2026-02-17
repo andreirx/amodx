@@ -6,6 +6,15 @@ import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS } fro
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
 
+/** Check if a product is within its availability date window */
+function isProductAvailable(p: { availableFrom?: string; availableUntil?: string }): boolean {
+    if (!p.availableFrom && !p.availableUntil) return true;
+    const now = new Date().toISOString().split("T")[0];
+    if (p.availableFrom && now < p.availableFrom) return false;
+    if (p.availableUntil && now > p.availableUntil) return false;
+    return true;
+}
+
 // Define a Result Type that handles both cases
 export type ContentResult = ContentItem | { redirect: string };
 
@@ -168,6 +177,7 @@ export async function getProductBySlug(tenantId: string, slug: string): Promise<
 
         const product = result.Items?.find((item: any) => item.SK?.startsWith("PRODUCT#"));
         if (!product) return null;
+        if (!isProductAvailable(product as any)) return null;
         return product as Product;
     } catch (error) {
         console.error("DynamoDB Product Slug Error:", error);
@@ -212,7 +222,9 @@ export async function getProductsByCategory(tenantId: string, categoryId: string
             },
         }));
 
-        const allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const allProducts = (result.Items || [])
+            .filter((p: any) => isProductAvailable(p))
+            .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
         const start = (page - 1) * limit;
         const items = allProducts.slice(start, start + limit);
 
@@ -265,10 +277,12 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
                 ":active": "active"
             },
             ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing"
+            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil"
         }));
 
-        const allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const allProducts = (result.Items || [])
+            .filter((p: any) => isProductAvailable(p))
+            .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
         const start = (page - 1) * limit;
         const items = allProducts.slice(start, start + limit);
 

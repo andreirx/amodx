@@ -1,6 +1,7 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { isProductAvailable } from "../lib/availability.js";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -28,8 +29,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const product = result.Items[0];
 
-        // Don't expose draft products publicly
-        if (product.status !== "active") {
+        // Don't expose draft or unavailable products publicly
+        if (product.status !== "active" || !isProductAvailable(product)) {
             return { statusCode: 404, body: JSON.stringify({ error: "Product not found" }) };
         }
 

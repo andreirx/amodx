@@ -4,39 +4,26 @@ Items tracked here are known issues that don't block production but should be ad
 
 ---
 
-## High Priority
-
-### Navbar shrink-on-scroll
-Plan called for sticky navbar with shrink behavior on scroll. Currently sticky but no shrink animation.
-The commerce plugin should be able to add another row above the current navbar with the cart, with call, whatsapp, email, things like that.
+## High Priority (Missing Features)
 
 ### Google Reviews sync
-ReviewSchema supports `source: "google"` and `googleReviewId` but there's no import/sync handler for Google Places API reviews.
+ReviewSchema supports `source: "google"` and `googleReviewId` but there's no import/sync handler for Google Places API reviews. Need a backend handler that pulls reviews from Google My Business / Places API and writes them as ReviewSchema items.
 
 ### Reports / Analytics page
-No admin page for viewing order reports, revenue charts, or product performance metrics.
-
-### availableFrom/availableUntil not enforced
-ProductSchema has `availableFrom` and `availableUntil` fields but the public product endpoints don't filter by these dates. Products outside their availability window should return 404 on the renderer and be excluded from category listings.
+No admin page for viewing order reports, revenue charts, or product performance metrics. "Nice to have" per original spec.
 
 ### Form email notifications not implemented
 `backend/src/forms/public-submit.ts` saves submissions but doesn't send notification emails to `FormDefinition.notifyEmail`. Needs SES integration similar to existing contact form handler.
 
 ---
 
-## Medium Priority
+## Medium Priority (Code Quality)
 
 ### Split Settings page into sections
-The Settings page (`admin/src/pages/Settings.tsx`) is ~900 lines covering site identity, theme, analytics, identity providers, payments, GDPR, research, and now URL prefixes. Split into tabbed sections: **Visual** (theme, typography, interface), **Integrations** (analytics, payments, identity, research), **Commerce** (URL prefixes, delivery, bank transfer).
+The Settings page (`admin/src/pages/Settings.tsx`) is ~1050 lines covering site identity, theme, analytics, identity providers, payments, GDPR, commerce bar, URL prefixes, and more. Split into tabbed sections.
 
 ### Extract commerce views from catch-all page
 `renderer/src/app/[siteId]/[[...slug]]/page.tsx` is ~900 lines containing ProductPageView, CategoryPageView, CartPageView, CheckoutPageView, ConfirmationPageView, OrderTrackingView, and ShopPageView all inline. Extract each to its own file under `renderer/src/components/commerce/`.
-
-### ~~Coupon not wired through checkout~~ — DONE
-Coupon state stored in CartContext (persisted in localStorage). CheckoutPageView reads coupon from context, displays discount in summary, sends `couponCode` in POST body. Backend validates server-side, calculates discount, stores in order, increments coupon usage atomically.
-
-### ~~Delivery date picker missing from checkout~~ DONE
-Delivery date picker added to CheckoutPageView. Fetches available dates from API, renders mini calendar with month navigation, sends `requestedDeliveryDate` in POST body. Admin has full calendar customizer with yearly holidays, per-day overrides, and correct lead-day calculation skipping off-days.
 
 ---
 
@@ -45,6 +32,13 @@ Delivery date picker added to CheckoutPageView. Fetches available dates from API
 ### Replace `any` types in admin pages
 Several admin pages (Orders, Customers, Products, etc.) use `any` types for API responses. Create proper TypeScript interfaces using the shared schemas.
 
-### ~~Split CDK api.ts~~ — DONE
-Split into `api.ts` (parent, 390 resources) + `api-commerce.ts` (NestedStack, 234) + `api-engagement.ts` (NestedStack, 94).
+---
 
+## Completed
+
+- ~~Coupon not wired through checkout~~ — DONE (server-side validation, atomic usage increment)
+- ~~Delivery date picker missing from checkout~~ — DONE (mini calendar, yearly holidays, lead-day skip)
+- ~~Split CDK api.ts~~ — DONE (parent + 2 NestedStacks)
+- ~~Navbar shrink-on-scroll~~ — DONE (h-16→h-12, logo shrinks, CSS transitions)
+- ~~Commerce bar above navbar~~ — DONE (phone, social icons, cart total, CTA button)
+- ~~availableFrom/availableUntil not enforced~~ — DONE (filtered in all public endpoints + renderer SSR)

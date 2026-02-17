@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { queryCatProducts } from "../lib/catprod.js";
+import { isProductAvailable } from "../lib/availability.js";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -29,8 +30,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const category = catResult.Items[0];
 
-        // Fetch products via CATPROD# adjacency items (O(n) where n = products in category)
-        const allProducts = await queryCatProducts(tenantId, category.id);
+        // Fetch products via CATPROD# adjacency items, filter by availability dates
+        const allProducts = (await queryCatProducts(tenantId, category.id))
+            .filter((p: any) => isProductAvailable(p));
 
         // Paginate
         const page = parseInt(event.queryStringParameters?.page || "1");
