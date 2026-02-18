@@ -14,6 +14,9 @@ import { HtmlRender } from './html/HtmlRender';
 import { FaqRender } from "./faq/FaqRender";
 import { PostGridRender } from "./post-grid/PostGridRender";
 import { CarouselRender } from './carousel/CarouselRender';
+import { CodeBlockRender } from './code-block/CodeBlockRender';
+import { ReviewsCarouselRender } from './reviews-carousel/ReviewsCarouselRender';
+import { CategoryShowcaseRender } from './category-showcase/CategoryShowcaseRender';
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -30,5 +33,8 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'html': HtmlRender,
     'faq': FaqRender,
     'postGrid': PostGridRender,
-    'carousel': CarouselRender
+    'carousel': CarouselRender,
+    'codeBlock': CodeBlockRender,
+    'reviewsCarousel': ReviewsCarouselRender,
+    'categoryShowcase': CategoryShowcaseRender
 };

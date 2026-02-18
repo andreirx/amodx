@@ -362,6 +362,57 @@ export async function getProductReviews(tenantId: string, productId: string) {
     }
 }
 
+// 12. Fetch customer orders by email (CUSTORDER# adjacency)
+export async function getCustomerOrders(tenantId: string, email: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return [];
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": `CUSTORDER#${email.toLowerCase()}#`,
+            },
+            ProjectionExpression: "orderNumber, total, #s, createdAt, SK",
+            ExpressionAttributeNames: { "#s": "status" },
+        }));
+
+        return (result.Items || [])
+            .map((item: any) => ({
+                orderNumber: item.orderNumber,
+                total: item.total,
+                status: item.status,
+                createdAt: item.createdAt,
+                orderId: item.SK.split("#").pop(),
+            }))
+            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch (error) {
+        console.error("DynamoDB Customer Orders Error:", error);
+        return [];
+    }
+}
+
+// 13. Fetch customer profile by email
+export async function getCustomerProfile(tenantId: string, email: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return null;
+
+    try {
+        const result = await docClient.send(new GetCommand({
+            TableName: tableName,
+            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${email.toLowerCase()}` },
+            ProjectionExpression: "email, #n, phone, defaultAddress",
+            ExpressionAttributeNames: { "#n": "name" },
+        }));
+        return result.Item || null;
+    } catch (error) {
+        console.error("DynamoDB Customer Profile Error:", error);
+        return null;
+    }
+}
+
 export async function getPosts(tenantId: string, tag?: string, limit: number = 6) {
     if (!process.env.TABLE_NAME) return [];
 

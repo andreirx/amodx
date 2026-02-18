@@ -176,6 +176,7 @@ export class AmodxStack extends cdk.Stack {
       authorizerFuncArn: api.authorizerFuncArn,
       table: db.table,
       eventBus: events.bus,
+      sesEmail: sesEmail,
     });
 
     // 4. Renderer Layer

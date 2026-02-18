@@ -15,6 +15,7 @@ interface EngagementApiProps extends NestedStackProps {
     authorizerFuncArn: string;
     table: dynamodb.ITable;
     eventBus: events.IEventBus;
+    sesEmail: string;
 }
 
 export class EngagementApi extends NestedStack {
@@ -27,7 +28,7 @@ export class EngagementApi extends NestedStack {
         cdk.Tags.of(this).add('Project', 'AMODX');
         cdk.Tags.of(this).add('Module', 'Engagement');
 
-        const { httpApiId, authorizerFuncArn, table, eventBus } = props;
+        const { httpApiId, authorizerFuncArn, table, eventBus, sesEmail } = props;
 
         const nodeProps = {
             runtime: lambda.Runtime.NODEJS_22_X,
@@ -185,8 +186,16 @@ export class EngagementApi extends NestedStack {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/forms/public-submit.ts'),
             handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                SES_FROM_EMAIL: sesEmail,
+            },
         });
         table.grantReadWriteData(publicSubmitFormFunc);
+        publicSubmitFormFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+            resources: ['*'],
+        }));
 
         addRoute('CreateForm', 'POST /forms', createFormFunc);
         addRoute('ListForms', 'GET /forms', listFormsFunc);

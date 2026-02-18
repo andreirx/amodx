@@ -138,6 +138,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         showTitle={config.header?.showTitle}
                         commerceEnabled={commerceEnabled}
                         hideContactButton={!!(config.commerceBar?.enabled && commerceEnabled)}
+                        accountPrefix={config.urlPrefixes?.account || URL_PREFIX_DEFAULTS.account}
                     />
                 </div>
 

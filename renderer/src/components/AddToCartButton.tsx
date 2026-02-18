@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { ShoppingCart, Check, Minus, Plus } from "lucide-react";
+import { trackFBEvent } from "@/lib/fbpixel";
 
 interface VariantOption {
     value: string;
@@ -141,6 +142,14 @@ export function AddToCartButton({
             selectedVariant: variantLabel,
             personalizations: cartPersonalizations,
             quantity,
+        });
+
+        trackFBEvent("AddToCart", {
+            content_ids: [productId],
+            content_name: title,
+            content_type: "product",
+            value: lineTotal,
+            currency,
         });
 
         setAdded(true);

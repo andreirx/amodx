@@ -436,6 +436,9 @@ export const TenantConfigSchema = z.object({
     // Enabled payment methods for commerce checkout
     enabledPaymentMethods: z.array(z.enum(["cash_on_delivery", "bank_transfer"])).default(["cash_on_delivery"]),
 
+    // Default currency for commerce (products inherit this)
+    currency: z.string().default("RON"),
+
     // Company details (footer, invoices)
     companyDetails: CompanyDetailsSchema.default({}),
 

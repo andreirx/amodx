@@ -37,7 +37,7 @@ export default function ProductEditor() {
         description: "",
         longDescription: "",
         price: "",
-        currency: "RON",
+        currency: "",
         salePrice: "",
         status: "draft",
         availability: "in_stock",
@@ -69,6 +69,7 @@ export default function ProductEditor() {
         if (currentTenant) {
             loadCategories();
             if (!isNew && id) loadProduct();
+            else setForm(prev => ({ ...prev, currency: prev.currency || (currentTenant as any).currency || "RON" }));
         }
     }, [id, currentTenant?.id]);
 

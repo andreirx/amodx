@@ -375,6 +375,27 @@ export class CommerceApi extends NestedStack {
         addRoute('DeleteReview', 'DELETE /reviews/{id}', deleteReviewFunc);
         addRoute('PublicListReviews', 'GET /public/reviews/{productId}', publicListReviewsFunc, { noAuth: true });
 
+        // ===================== REPORTS =====================
+        const reportsSummaryFunc = new nodejs.NodejsFunction(this, 'ReportsSummaryFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/reports/summary.ts'),
+            handler: 'handler',
+        });
+        table.grantReadData(reportsSummaryFunc);
+
+        addRoute('ReportsSummary', 'GET /reports/summary', reportsSummaryFunc);
+
+        // ===================== BULK PRICE ADJUSTMENT =====================
+        const bulkPriceFunc = new nodejs.NodejsFunction(this, 'BulkPriceFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/products/bulk-price.ts'),
+            handler: 'handler',
+            timeout: cdk.Duration.minutes(5),
+        });
+        table.grantReadWriteData(bulkPriceFunc);
+
+        addRoute('BulkPrice', 'POST /products/bulk-price', bulkPriceFunc);
+
         // ===================== WOOCOMMERCE IMPORT =====================
         const wooImportFunc = new nodejs.NodejsFunction(this, 'WooImportFunc', {
             ...nodeProps,

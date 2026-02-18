@@ -5,10 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox, Upload } from "lucide-react";
+import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox, Upload, Percent } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function Products() {
     const { currentTenant } = useTenant();
@@ -21,6 +22,14 @@ export default function Products() {
     const [showImport, setShowImport] = useState(false);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState<any>(null);
+    const [bulkOpen, setBulkOpen] = useState(false);
+    const [bulkPercent, setBulkPercent] = useState("");
+    const [bulkRoundTo, setBulkRoundTo] = useState("0");
+    const [bulkCategory, setBulkCategory] = useState("");
+    const [bulkSalePrice, setBulkSalePrice] = useState(false);
+    const [bulkPreview, setBulkPreview] = useState<any[] | null>(null);
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkResult, setBulkResult] = useState<string | null>(null);
 
     useEffect(() => {
         if (currentTenant) {
@@ -79,7 +88,7 @@ export default function Products() {
             const csvContent = await file.text();
             const res = await apiRequest("/import/woocommerce", {
                 method: "POST",
-                body: JSON.stringify({ csvContent, currency: "RON" }),
+                body: JSON.stringify({ csvContent, currency: (currentTenant as any).currency || "RON" }),
             });
             setImportResult(res);
             loadProducts();
@@ -88,6 +97,55 @@ export default function Products() {
         } finally {
             setImporting(false);
             e.target.value = "";
+        }
+    }
+
+    async function handleBulkPreview() {
+        const pct = parseFloat(bulkPercent);
+        if (isNaN(pct) || pct === 0) return alert("Enter a non-zero percentage.");
+        setBulkLoading(true);
+        setBulkResult(null);
+        try {
+            const res = await apiRequest("/products/bulk-price", {
+                method: "POST",
+                body: JSON.stringify({
+                    categoryId: bulkCategory || undefined,
+                    percent: pct,
+                    roundTo: parseFloat(bulkRoundTo),
+                    applyToSalePrice: bulkSalePrice,
+                    dryRun: true,
+                }),
+            });
+            setBulkPreview(res.preview || []);
+        } catch (e: any) {
+            alert("Preview failed: " + e.message);
+        } finally {
+            setBulkLoading(false);
+        }
+    }
+
+    async function handleBulkApply() {
+        if (!bulkPreview || bulkPreview.length === 0) return;
+        if (!confirm(`This will update ${bulkPreview.length} product prices. Continue?`)) return;
+        setBulkLoading(true);
+        try {
+            const res = await apiRequest("/products/bulk-price", {
+                method: "POST",
+                body: JSON.stringify({
+                    categoryId: bulkCategory || undefined,
+                    percent: parseFloat(bulkPercent),
+                    roundTo: parseFloat(bulkRoundTo),
+                    applyToSalePrice: bulkSalePrice,
+                    dryRun: false,
+                }),
+            });
+            setBulkResult(res.message);
+            setBulkPreview(null);
+            loadProducts();
+        } catch (e: any) {
+            alert("Bulk update failed: " + e.message);
+        } finally {
+            setBulkLoading(false);
         }
     }
 
@@ -102,6 +160,123 @@ export default function Products() {
                     <p className="text-muted-foreground">Manage your AI-ready inventory.</p>
                 </div>
                 <div className="flex gap-2">
+                    <Dialog open={bulkOpen} onOpenChange={(open) => { setBulkOpen(open); if (!open) { setBulkPreview(null); setBulkResult(null); } }}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline">
+                                <Percent className="mr-2 h-4 w-4" /> Adjust Prices
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Bulk Price Adjustment</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 py-2">
+                                {/* Scope */}
+                                <div className="space-y-2">
+                                    <Label>Scope</Label>
+                                    <Select value={bulkCategory || "_all"} onValueChange={v => setBulkCategory(v === "_all" ? "" : v)}>
+                                        <SelectTrigger><SelectValue placeholder="All Products" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="_all">All Products</SelectItem>
+                                            {categories.map((c: any) => (
+                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Percentage */}
+                                <div className="space-y-2">
+                                    <Label>Percentage Change</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            value={bulkPercent}
+                                            onChange={e => setBulkPercent(e.target.value)}
+                                            placeholder="e.g. 10 or -5"
+                                            className="w-40"
+                                        />
+                                        <span className="text-sm text-muted-foreground">% (positive = increase, negative = decrease)</span>
+                                    </div>
+                                </div>
+
+                                {/* Rounding */}
+                                <div className="space-y-2">
+                                    <Label>Rounding</Label>
+                                    <Select value={bulkRoundTo} onValueChange={setBulkRoundTo}>
+                                        <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="0">No rounding</SelectItem>
+                                            <SelectItem value="5">Round up to nearest 5</SelectItem>
+                                            <SelectItem value="9">Round up to ending in 9</SelectItem>
+                                            <SelectItem value="0.99">Round to .99</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Sale price */}
+                                <label className="flex items-center gap-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={bulkSalePrice}
+                                        onChange={e => setBulkSalePrice(e.target.checked)}
+                                        className="rounded"
+                                    />
+                                    Also adjust sale prices
+                                </label>
+
+                                {/* Actions */}
+                                <div className="flex gap-2">
+                                    <Button onClick={handleBulkPreview} disabled={bulkLoading}>
+                                        {bulkLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                        Preview
+                                    </Button>
+                                    {bulkPreview && bulkPreview.length > 0 && (
+                                        <Button variant="default" onClick={handleBulkApply} disabled={bulkLoading} className="bg-green-600 hover:bg-green-700">
+                                            {bulkLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            Apply to {bulkPreview.length} products
+                                        </Button>
+                                    )}
+                                </div>
+
+                                {/* Result */}
+                                {bulkResult && (
+                                    <div className="text-sm p-3 rounded-md bg-green-50 text-green-700">{bulkResult}</div>
+                                )}
+
+                                {/* Preview Table */}
+                                {bulkPreview && bulkPreview.length > 0 && (
+                                    <div className="border rounded-md overflow-hidden">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Product</TableHead>
+                                                    <TableHead className="text-right">Old Price</TableHead>
+                                                    <TableHead className="text-right">New Price</TableHead>
+                                                    {bulkSalePrice && <TableHead className="text-right">Old Sale</TableHead>}
+                                                    {bulkSalePrice && <TableHead className="text-right">New Sale</TableHead>}
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {bulkPreview.map((p: any) => (
+                                                    <TableRow key={p.id}>
+                                                        <TableCell className="text-sm font-medium">{p.title}</TableCell>
+                                                        <TableCell className="text-right text-sm text-muted-foreground">{p.oldPrice} {p.currency}</TableCell>
+                                                        <TableCell className="text-right text-sm font-semibold">{p.newPrice} {p.currency}</TableCell>
+                                                        {bulkSalePrice && <TableCell className="text-right text-sm text-muted-foreground">{p.oldSalePrice || "—"}</TableCell>}
+                                                        {bulkSalePrice && <TableCell className="text-right text-sm font-semibold">{p.newSalePrice || "—"}</TableCell>}
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                )}
+                                {bulkPreview && bulkPreview.length === 0 && (
+                                    <p className="text-sm text-muted-foreground">No products to adjust.</p>
+                                )}
+                            </div>
+                        </DialogContent>
+                    </Dialog>
                     <Button variant="outline" onClick={() => setShowImport(!showImport)}>
                         <Upload className="mr-2 h-4 w-4" /> Import CSV
                     </Button>

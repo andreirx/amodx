@@ -4,6 +4,7 @@ import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { writeCatProductItems } from "../lib/catprod.js";
+import { publishAudit } from "../lib/events.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -353,6 +354,20 @@ export const handler: Handler = async (event) => {
                 result.errors.push(`Row "${row['Name'] || 'unknown'}": ${rowErr.message}`);
             }
         }
+
+        await publishAudit({
+            tenantId,
+            actor: { id: auth.sub, email: auth.email },
+            action: "WOOCOMMERCE_IMPORT",
+            target: { title: `WooCommerce CSV Import`, id: "import" },
+            details: {
+                imported: result.imported,
+                categoriesCreated: result.categoriesCreated,
+                skipped: result.skipped,
+                errors: result.errors.length > 0 ? result.errors : undefined,
+            },
+            ip: event.requestContext.http.sourceIp
+        });
 
         return {
             statusCode: 200,

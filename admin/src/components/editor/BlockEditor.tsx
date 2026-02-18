@@ -52,7 +52,7 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
 
     const editor = useEditor({
         extensions: [
-            StarterKit,
+            StarterKit.configure({ codeBlock: false }),
             Placeholder.configure({ placeholder: "Write something amazing..." }),
             Link.configure({ openOnClick: false, autolink: true, defaultProtocol: 'https' }),
             ...(getExtensions() as AnyExtension[]),
@@ -82,6 +82,19 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
             // NEW: PostGrid Handlers
             if (storage.postGrid) {
                 storage.postGrid.fetchTagsFn = handleFetchTags;
+            }
+
+            // Category Showcase Handlers
+            if (storage.categoryShowcase) {
+                storage.categoryShowcase.fetchCategoriesFn = async () => {
+                    try {
+                        const res = await apiRequest("/categories");
+                        return res.items || [];
+                    } catch (e) {
+                        console.error("Failed to fetch categories for editor", e);
+                        return [];
+                    }
+                };
             }
         },
         onUpdate: ({ editor }) => {

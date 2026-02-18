@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, User } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useTenantUrl } from "@/lib/routing";
 import { CartWidget } from "./CartWidget";
 
@@ -19,6 +20,7 @@ export function Navbar({
                            showTitle = true,
                            commerceEnabled = false,
                            hideContactButton = false,
+                           accountPrefix,
                        }: {
     siteName: string;
     logo?: string;
@@ -27,8 +29,10 @@ export function Navbar({
     showTitle?: boolean;
     commerceEnabled?: boolean;
     hideContactButton?: boolean;
+    accountPrefix?: string;
 }) {
     const { getUrl } = useTenantUrl();
+    const { data: session } = useSession();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
 
@@ -72,6 +76,19 @@ export function Navbar({
                                 {link.label}
                             </Link>
                         ))}
+                        {commerceEnabled && (
+                            session ? (
+                                <Link href={getUrl(accountPrefix || "/account")} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                                    <User className="h-4 w-4" />
+                                    {session.user?.name?.split(" ")[0] || "Account"}
+                                </Link>
+                            ) : (
+                                <a href="/api/auth/signin" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                                    <User className="h-4 w-4" />
+                                    Sign In
+                                </a>
+                            )
+                        )}
                         {commerceEnabled && !hideContactButton && <CartWidget />}
                         {!hideContactButton && (
                             <Link
@@ -112,6 +129,27 @@ export function Navbar({
                                 {link.label}
                             </Link>
                         ))}
+                        {commerceEnabled && (
+                            <div className="pt-2 border-t border-border">
+                                {session ? (
+                                    <Link
+                                        href={getUrl(accountPrefix || "/account")}
+                                        className="block py-3 text-base font-medium text-muted-foreground hover:text-primary px-3 rounded-md transition-colors"
+                                        onClick={() => setIsMobileOpen(false)}
+                                    >
+                                        My Account
+                                    </Link>
+                                ) : (
+                                    <a
+                                        href="/api/auth/signin"
+                                        className="block py-3 text-base font-medium text-muted-foreground hover:text-primary px-3 rounded-md transition-colors"
+                                        onClick={() => setIsMobileOpen(false)}
+                                    >
+                                        Sign In
+                                    </a>
+                                )}
+                            </div>
+                        )}
                         {!hideContactButton && (
                             <div className="pt-4 mt-2 border-t border-border">
                                 <Link

@@ -1,6 +1,6 @@
 # Block Types Reference
 
-15 custom plugins + 2 Tiptap builtins (`paragraph`, `heading`).
+18 custom plugins + 2 Tiptap builtins (`paragraph`, `heading`).
 
 Block type names are **camelCase** and must match exactly in Tiptap JSON.
 
@@ -23,6 +23,9 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 | `faq` | FAQ Accordion | headline, items[] (question, answer) | Generates FAQPage JSON-LD |
 | `postGrid` | Post Grid | headline, filterTag, limit, showImages, layout, columns | grid, list; 2 or 3 cols |
 | `carousel` | Carousel | headline, items[] (title, description, image, link, linkText), height, style | standard, coverflow |
+| `codeBlock` | Code Block | code, language, filename, showLineNumbers | 19 languages |
+| `reviewsCarousel` | Reviews Carousel | headline, items[] (name, avatarUrl, date, rating, text, source), showSource, autoScroll | google, facebook, manual sources |
+| `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText | 2, 3, 4 columns |
 
 ## Rules
 

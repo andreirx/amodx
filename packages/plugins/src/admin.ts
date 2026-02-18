@@ -14,6 +14,9 @@ import { HtmlPlugin } from './html';
 import {FaqPlugin} from "./faq";
 import {PostGridPlugin} from "./post-grid";
 import { CarouselPlugin } from './carousel';
+import { CodeBlockPlugin } from './code-block';
+import { ReviewsCarouselPlugin } from './reviews-carousel';
+import { CategoryShowcasePlugin } from './category-showcase';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -30,7 +33,10 @@ const REGISTRY: PluginDefinition[] = [
     HtmlPlugin,
     FaqPlugin,
     PostGridPlugin,
-    CarouselPlugin
+    CarouselPlugin,
+    CodeBlockPlugin,
+    ReviewsCarouselPlugin,
+    CategoryShowcasePlugin
 ];
 
 

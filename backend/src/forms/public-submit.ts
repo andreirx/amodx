@@ -1,6 +1,10 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+
+const ses = new SESClient({});
+const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -77,7 +81,28 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }));
 
-        // Skip email notification for now
+        // 5. Send email notification if configured
+        if (form.notifyEmail) {
+            const fieldLines = (form.fields || [])
+                .map((f: any) => `${f.label || f.name}: ${data[f.name] || "(empty)"}`)
+                .join("\n");
+
+            try {
+                await ses.send(new SendEmailCommand({
+                    Source: FROM_EMAIL,
+                    Destination: { ToAddresses: [form.notifyEmail] },
+                    ReplyToAddresses: data.email ? [data.email] : undefined,
+                    Message: {
+                        Subject: { Data: `New submission: ${form.name}` },
+                        Body: {
+                            Text: { Data: `New form submission for "${form.name}"\n\n${fieldLines}\n\nSubmitted: ${now}` }
+                        }
+                    }
+                }));
+            } catch (emailErr: any) {
+                console.error("Form notification email failed:", emailErr.message);
+            }
+        }
 
         return {
             statusCode: 201,

@@ -4,6 +4,8 @@ import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, FormEvent } from "react";
+import { useSession } from "next-auth/react";
+import { trackFBEvent } from "@/lib/fbpixel";
 
 const ROMANIAN_COUNTIES = [
     "Alba", "Arad", "Arges", "Bacau", "Bihor", "Bistrita-Nasaud", "Botosani",
@@ -148,6 +150,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
     const { items, subtotal, clearCart, coupon } = useCart();
     const { getUrl } = useTenantUrl();
     const router = useRouter();
+    const { data: session } = useSession();
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -166,6 +169,17 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
         paymentMethod: (enabledPaymentMethods[0] || "cash_on_delivery") as "cash_on_delivery" | "bank_transfer",
         requestedDeliveryDate: "",
     });
+
+    // Pre-fill from session (logged-in customer)
+    useEffect(() => {
+        if (session?.user) {
+            setForm(prev => ({
+                ...prev,
+                customerName: prev.customerName || session.user?.name || "",
+                customerEmail: prev.customerEmail || session.user?.email || "",
+            }));
+        }
+    }, [session]);
 
     // Fetch available delivery dates
     const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -248,6 +262,13 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
             if (form.requestedDeliveryDate) {
                 body.requestedDeliveryDate = form.requestedDeliveryDate;
             }
+
+            trackFBEvent("InitiateCheckout", {
+                content_ids: items.map(i => i.productId),
+                num_items: items.reduce((s, i) => s + i.quantity, 0),
+                value: subtotal,
+                currency,
+            });
 
             const res = await fetch(`${apiUrl}/public/orders`, {
                 method: "POST",

@@ -539,6 +539,24 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
+                    {/* CURRENCY */}
+                    {config.commerceEnabled && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Currency</CardTitle>
+                            <CardDescription>Default currency for products and checkout (e.g. RON, EUR, USD).</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Input
+                                value={config.currency || "RON"}
+                                onChange={e => setConfig({ ...config, currency: e.target.value })}
+                                placeholder="RON"
+                                className="w-32"
+                            />
+                        </CardContent>
+                    </Card>
+                    )}
+
                     {/* PAYMENT METHODS */}
                     {config.commerceEnabled && (
                     <Card>

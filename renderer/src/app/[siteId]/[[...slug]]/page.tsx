@@ -1,4 +1,4 @@
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getCustomerOrders, getCustomerProfile } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
@@ -11,6 +11,9 @@ import Script from "next/script";
 import { CartPageView } from "@/components/CartPageView";
 import { CheckoutPageView } from "@/components/CheckoutPageView";
 import { AddToCartButton } from "@/components/AddToCartButton";
+import { FBPurchaseEvent } from "@/components/FBPurchaseEvent";
+import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { AccountPageView } from "@/components/AccountPageView";
 
 // NEW: Auth Imports
 import { decode } from "next-auth/jwt";
@@ -24,7 +27,7 @@ type Props = {
 };
 
 // Commerce prefix matching helper
-type CommerceMatch = { type: 'product' | 'category' | 'shop' | 'cart' | 'checkout' | 'checkout-confirm' | 'checkout-track'; itemSlug?: string };
+type CommerceMatch = { type: 'product' | 'category' | 'shop' | 'cart' | 'checkout' | 'checkout-confirm' | 'checkout-track' | 'account'; itemSlug?: string };
 
 function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch | null {
     const prefixes = urlPrefixes || URL_PREFIX_DEFAULTS;
@@ -43,6 +46,7 @@ function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch 
     if (slugPath.startsWith(prefixes.category + "/")) {
         return { type: 'category', itemSlug: slugPath.slice(prefixes.category.length + 1) };
     }
+    if (slugPath === (prefixes.account || "/account")) return { type: 'account' };
     return null;
 }
 
@@ -151,8 +155,39 @@ export default async function Page({ params, searchParams }: Props) {
             return <ShopPageView products={products} categories={categories} total={total} page={page} config={config} prefixes={prefixes} />;
         }
 
-        // Cart, checkout, confirmation, tracking require commerceEnabled
+        // Account, cart, checkout, confirmation, tracking require commerceEnabled
         if (!commerceEnabled) return notFound();
+
+        if (commerce.type === 'account') {
+            // Decode session from JWT cookie server-side
+            let userEmail: string | null = null;
+            try {
+                const cookieStore = await cookies();
+                const token = cookieStore.get("next-auth.session-token")?.value;
+                if (token && process.env.NEXTAUTH_SECRET) {
+                    const decoded = await decode({ token, secret: process.env.NEXTAUTH_SECRET });
+                    userEmail = decoded?.email as string || null;
+                }
+            } catch {}
+
+            let orders: any[] = [];
+            let customer: any = null;
+            if (userEmail) {
+                [orders, customer] = await Promise.all([
+                    getCustomerOrders(config.id, userEmail),
+                    getCustomerProfile(config.id, userEmail),
+                ]);
+            }
+            return (
+                <AccountPageView
+                    orders={orders}
+                    customer={customer}
+                    currency={config.currency || "RON"}
+                    checkoutPrefix={prefixes.checkout || "/checkout"}
+                    shopPrefix={prefixes.shop || "/shop"}
+                />
+            );
+        }
 
         if (commerce.type === 'cart') {
             const deliveryConfig = await getDeliveryConfig(config.id);
@@ -164,7 +199,7 @@ export default async function Page({ params, searchParams }: Props) {
                     freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
                     minimumOrderAmount={deliveryConfig?.minimumOrderAmount || 0}
-                    currency="RON"
+                    currency={config.currency || "RON"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
                 />
@@ -182,7 +217,7 @@ export default async function Page({ params, searchParams }: Props) {
                     cartPrefix={prefixes.cart || "/cos"}
                     freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
-                    currency="RON"
+                    currency={config.currency || "RON"}
                     bankTransfer={config.integrations?.bankTransfer}
                     enabledPaymentMethods={config.enabledPaymentMethods}
                 />
@@ -500,22 +535,11 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
 
             <div className="grid md:grid-cols-2 gap-12">
                 {/* Images */}
-                <div className="space-y-4">
-                    {product.imageLink && (
-                        <div className="aspect-square bg-muted rounded-lg overflow-hidden">
-                            <img src={product.imageLink} alt={product.title} className="w-full h-full object-cover" />
-                        </div>
-                    )}
-                    {product.additionalImageLinks?.length > 0 && (
-                        <div className="grid grid-cols-4 gap-2">
-                            {product.additionalImageLinks.map((img: string, i: number) => (
-                                <div key={i} className="aspect-square bg-muted rounded overflow-hidden">
-                                    <img src={img} alt="" className="w-full h-full object-cover" />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <ProductImageGallery
+                    mainImage={product.imageLink}
+                    additionalImages={product.additionalImageLinks || []}
+                    title={product.title}
+                />
 
                 {/* Product Info */}
                 <div className="space-y-6">
@@ -746,6 +770,12 @@ function ConfirmationPageView({ order, config, prefixes }: { order: any; config:
 
     return (
         <main className="max-w-4xl mx-auto py-12 px-6">
+            <FBPurchaseEvent
+                orderId={order.id}
+                value={parseFloat(order.total) || 0}
+                currency={order.currency || "RON"}
+                items={(order.items || []).map((i: any) => ({ id: i.productId, quantity: i.quantity }))}
+            />
             <div className="text-center mb-12">
                 <div className="text-6xl mb-4">✅</div>
                 <h1 className="text-3xl font-bold mb-2">Order Confirmed!</h1>
