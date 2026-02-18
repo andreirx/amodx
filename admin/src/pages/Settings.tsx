@@ -447,16 +447,6 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label>Currency Symbol</Label>
-                                <Input
-                                    value={config.commerceBar?.currency || "lei"}
-                                    onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, currency: e.target.value } as any })}
-                                    placeholder="lei"
-                                    className="w-32"
-                                />
-                            </div>
-
                             {/* Social Links */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">

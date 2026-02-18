@@ -76,7 +76,7 @@ function WhatsAppIcon({ className }: { className?: string }) {
     );
 }
 
-export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton, currency = "lei" }: CommerceBarProps) {
+export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton, currency = "RON" }: CommerceBarProps) {
     const { getUrl } = useTenantUrl();
 
     return (

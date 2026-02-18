@@ -70,7 +70,6 @@ export const CommerceBarSchema = z.object({
         text: z.string(),
         url: z.string(),
     }).optional(),
-    currency: z.string().default("lei"),
 });
 
 // ==========================================
@@ -428,7 +427,7 @@ export const TenantConfigSchema = z.object({
     topBar: TopBarSchema.default({ show: false }),
 
     // Commerce Bar (utility bar above navbar: phone, social, cart, CTA)
-    commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [], currency: "lei" }),
+    commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [] }),
 
     // Order email templates (configurable per status)
     orderEmailConfig: OrderEmailConfigSchema.default({ templates: {} }),
@@ -620,7 +619,7 @@ export const ProductSchema = z.object({
 
     // Pricing
     price: z.string(),
-    currency: z.string().default("USD"),
+    currency: z.string().default("RON"),
     salePrice: z.string().optional(),
     volumePricing: z.array(VolumePricingTierSchema).default([]),
 

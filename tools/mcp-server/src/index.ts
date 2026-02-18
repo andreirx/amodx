@@ -32,7 +32,7 @@ const getHeaders = (tenantId?: string) => {
 };
 
 // --- COMPLETE BLOCK DEFINITIONS FOR AI ---
-// Synced with packages/plugins — 15 custom blocks + 2 Tiptap builtins
+// Synced with packages/plugins — 18 custom blocks + 2 Tiptap builtins
 const BLOCK_SCHEMAS = {
     hero: {
         description: "A large banner with headline, subheadline, CTA button, and optional background image. Supports 3 layout styles.",
@@ -460,6 +460,78 @@ const BLOCK_SCHEMAS = {
             }
         }
     },
+    codeBlock: {
+        description: "Syntax-highlighted code block with dark theme, optional line numbers, filename bar, and copy button. Supports 19 languages.",
+        attrs: {
+            code: "string (the source code)",
+            language: "'plaintext' | 'javascript' | 'typescript' | 'python' | 'html' | 'css' | 'json' | 'bash' | 'sql' | 'go' | 'rust' | 'java' | 'csharp' | 'php' | 'ruby' | 'yaml' | 'xml' | 'markdown' | 'diff'",
+            filename: "string (optional, displayed above code)",
+            showLineNumbers: "boolean (default false)"
+        },
+        example: {
+            type: "codeBlock",
+            attrs: {
+                code: "const greeting = 'Hello, World!';\nconsole.log(greeting);",
+                language: "javascript",
+                filename: "example.js",
+                showLineNumbers: true
+            }
+        }
+    },
+    reviewsCarousel: {
+        description: "Horizontal scrolling carousel of customer/Google/Facebook reviews with star ratings, source badges, and optional auto-scroll.",
+        attrs: {
+            headline: "string (e.g., 'What Our Customers Say')",
+            items: "array of review objects (see example)",
+            showSource: "boolean (default true, shows Google/Facebook badge)",
+            autoScroll: "boolean (default false)"
+        },
+        reviewItemStructure: {
+            id: "string (uuid)",
+            name: "string (reviewer name)",
+            avatarUrl: "string (optional, reviewer photo URL)",
+            date: "string (e.g., '2025-01-15')",
+            rating: "number (1-5)",
+            text: "string (review content)",
+            source: "'google' | 'facebook' | 'manual'"
+        },
+        example: {
+            type: "reviewsCarousel",
+            attrs: {
+                headline: "Customer Reviews",
+                showSource: true,
+                autoScroll: false,
+                items: [
+                    { id: "uuid-here", name: "Maria P.", date: "2025-03-10", rating: 5, text: "Excellent quality!", source: "google" },
+                    { id: "uuid-here", name: "Ion D.", date: "2025-02-28", rating: 4, text: "Fast delivery, great product.", source: "facebook" }
+                ]
+            }
+        }
+    },
+    categoryShowcase: {
+        description: "Displays products from a specific category with grid layout and 'View All' CTA button. Fetches products live from the commerce API. Only works on commerce-enabled tenants.",
+        attrs: {
+            categoryId: "string (category UUID from list_categories)",
+            categoryName: "string (display name)",
+            categorySlug: "string (URL slug)",
+            limit: "number (1-12, default 4)",
+            columns: "'2' | '3' | '4' (default '4')",
+            showPrice: "boolean (default true)",
+            ctaText: "string (e.g., 'View All Products')"
+        },
+        example: {
+            type: "categoryShowcase",
+            attrs: {
+                categoryId: "cat-uuid-here",
+                categoryName: "Best Sellers",
+                categorySlug: "best-sellers",
+                limit: 4,
+                columns: "4",
+                showPrice: true,
+                ctaText: "View All"
+            }
+        }
+    },
     paragraph: {
         description: "Standard text paragraph. Use for body content.",
         content: "string (the text content)"
@@ -475,7 +547,7 @@ const BLOCK_SCHEMAS = {
 
 const server = new McpServer({
     name: "AMODX-Bridge",
-    version: "2.1.0",
+    version: "3.0.0",
 });
 
 // ==========================================
@@ -681,7 +753,7 @@ server.tool("get_block_schemas", {}, async () => {
     return {
         content: [{
             type: "text",
-            text: `AMODX Available UI Blocks (15 plugins + 2 builtins):\n\n${JSON.stringify(BLOCK_SCHEMAS, null, 2)}\n\nNOTE: All blocks with array attributes (plans, items, columns, rows) require proper UUID generation for 'id' fields. Use crypto.randomUUID() or similar.`
+            text: `AMODX Available UI Blocks (18 plugins + 2 builtins):\n\n${JSON.stringify(BLOCK_SCHEMAS, null, 2)}\n\nNOTE: All blocks with array attributes (plans, items, columns, rows) require proper UUID generation for 'id' fields. Use crypto.randomUUID() or similar.`
         }]
     };
 });
@@ -707,7 +779,10 @@ server.tool("add_block",
             "html",
             "faq",
             "postGrid",
-            "carousel"
+            "carousel",
+            "codeBlock",
+            "reviewsCarousel",
+            "categoryShowcase"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
@@ -811,25 +886,426 @@ server.tool("create_product",
         tenant_id: z.string(),
         title: z.string(),
         price: z.string(),
+        slug: z.string().optional().describe("URL-friendly slug (auto-generated if omitted)"),
         description: z.string().describe("Plain text description"),
         image_link: z.string().describe("URL of main image"),
+        currency: z.string().optional().describe("Currency code (e.g., 'RON', 'EUR'). Defaults to tenant currency."),
+        category_ids: z.string().optional().describe("Comma-separated category IDs to assign product to"),
+        sale_price: z.string().optional().describe("Discounted price (shown with strikethrough on original)"),
+        sku: z.string().optional().describe("Stock Keeping Unit code"),
+        tags: z.string().optional().describe("Comma-separated product tags"),
         resource_id: z.string().optional().describe("ID of a private file to deliver upon purchase"),
     },
-    async ({ tenant_id, title, price, description, image_link, resource_id }) => {
+    async ({ tenant_id, title, price, slug, description, image_link, currency, category_ids, sale_price, sku, tags, resource_id }) => {
         try {
-            const payload = {
+            const payload: any = {
                 title,
                 price,
                 description,
                 imageLink: image_link,
                 resourceId: resource_id,
                 status: "draft",
-                currency: "USD",
                 availability: "in_stock",
                 condition: "new"
             };
+            if (slug) payload.slug = slug;
+            if (currency) payload.currency = currency;
+            if (sale_price) payload.salePrice = sale_price;
+            if (sku) payload.sku = sku;
+            if (category_ids) payload.categoryIds = category_ids.split(',').map(s => s.trim());
+            if (tags) payload.tags = tags.split(',').map(s => s.trim());
             const response = await axios.post(`${API_URL}/products`, payload, { headers: getHeaders(tenant_id) });
             return { content: [{ type: "text", text: `✓ Created product "${title}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: CATEGORIES
+// ==========================================
+
+server.tool("list_categories",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/categories`, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((c: any) =>
+                `- ${c.title} (ID: ${c.id}, Slug: ${c.slug}, Products: ${c.productCount || 0})`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Categories for ${tenant_id}:\n${summary || "No categories found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("create_category",
+    {
+        tenant_id: z.string(),
+        title: z.string(),
+        slug: z.string().optional().describe("URL-friendly slug (auto-generated if omitted)"),
+        description: z.string().optional(),
+        image_link: z.string().optional().describe("Category image URL"),
+        parent_id: z.string().optional().describe("Parent category ID for nested categories"),
+        sort_order: z.number().optional().describe("Sort order (lower = first)"),
+    },
+    async ({ tenant_id, title, slug, description, image_link, parent_id, sort_order }) => {
+        try {
+            const payload: any = { title };
+            if (slug) payload.slug = slug;
+            if (description) payload.description = description;
+            if (image_link) payload.imageLink = image_link;
+            if (parent_id) payload.parentId = parent_id;
+            if (sort_order !== undefined) payload.sortOrder = sort_order;
+            const response = await axios.post(`${API_URL}/categories`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Created category "${title}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: ORDERS
+// ==========================================
+
+server.tool("list_orders",
+    {
+        tenant_id: z.string(),
+        status: z.string().optional().describe("Filter by status: placed, confirmed, prepared, shipped, delivered, cancelled, annulled"),
+    },
+    async ({ tenant_id, status }) => {
+        try {
+            const url = status ? `${API_URL}/orders?status=${status}` : `${API_URL}/orders`;
+            const response = await axios.get(url, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((o: any) =>
+                `- ${o.orderNumber} [${o.status}] ${o.customerName} — ${o.total} ${o.currency} (${o.itemCount} items) ${o.createdAt}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Orders for ${tenant_id}:\n${summary || "No orders found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("get_order",
+    {
+        tenant_id: z.string(),
+        order_id: z.string().describe("Order ID (from list_orders)"),
+    },
+    async ({ tenant_id, order_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/orders/${order_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("update_order_status",
+    {
+        tenant_id: z.string(),
+        order_id: z.string(),
+        status: z.enum(["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"]),
+        tracking_number: z.string().optional().describe("Courier tracking number (typically added when shipping)"),
+        note: z.string().optional().describe("Internal note about the status change"),
+    },
+    async ({ tenant_id, order_id, status, tracking_number, note }) => {
+        try {
+            const payload: any = { status };
+            if (tracking_number) payload.trackingNumber = tracking_number;
+            if (note) payload.note = note;
+            await axios.put(`${API_URL}/orders/${order_id}/status`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Order ${order_id} status updated to "${status}"` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: CUSTOMERS
+// ==========================================
+
+server.tool("list_customers",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/customers`, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((c: any) =>
+                `- ${c.name} (${c.email}) — ${c.orderCount || 0} orders, Total: ${c.totalSpent || 0} ${c.currency || ""}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Customers for ${tenant_id}:\n${summary || "No customers found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("get_customer",
+    {
+        tenant_id: z.string(),
+        customer_id: z.string().describe("Customer ID (email-based, from list_customers)"),
+    },
+    async ({ tenant_id, customer_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/customers/${customer_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: COUPONS
+// ==========================================
+
+server.tool("list_coupons",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/coupons`, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((c: any) =>
+                `- ${c.code} (${c.type === "percent" ? c.value + "%" : c.value + " off"}) [${c.active ? "Active" : "Inactive"}] Used: ${c.usageCount || 0}/${c.usageLimit || "∞"} ID: ${c.id}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Coupons for ${tenant_id}:\n${summary || "No coupons found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("create_coupon",
+    {
+        tenant_id: z.string(),
+        code: z.string().describe("Coupon code customers will enter (e.g., 'SUMMER20')"),
+        type: z.enum(["percent", "fixed"]).describe("Discount type"),
+        value: z.number().describe("Discount value (percentage or fixed amount)"),
+        min_order: z.number().optional().describe("Minimum order value required"),
+        usage_limit: z.number().optional().describe("Max total uses (omit for unlimited)"),
+        expires_at: z.string().optional().describe("Expiry date in ISO format (e.g., '2025-12-31')"),
+    },
+    async ({ tenant_id, code, type, value, min_order, usage_limit, expires_at }) => {
+        try {
+            const payload: any = { code: code.toUpperCase(), type, value, active: true };
+            if (min_order !== undefined) payload.minOrder = min_order;
+            if (usage_limit !== undefined) payload.usageLimit = usage_limit;
+            if (expires_at) payload.expiresAt = expires_at;
+            const response = await axios.post(`${API_URL}/coupons`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Created coupon "${code}" (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: REVIEWS
+// ==========================================
+
+server.tool("list_reviews",
+    {
+        tenant_id: z.string(),
+        product_id: z.string().optional().describe("Filter reviews by product ID"),
+    },
+    async ({ tenant_id, product_id }) => {
+        try {
+            const url = product_id ? `${API_URL}/reviews?productId=${product_id}` : `${API_URL}/reviews`;
+            const response = await axios.get(url, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((r: any) =>
+                `- [${r.status}] ${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} ${r.authorName}: "${(r.content || "").substring(0, 80)}" (Product: ${r.productId})`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Reviews for ${tenant_id}:\n${summary || "No reviews found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("moderate_review",
+    {
+        tenant_id: z.string(),
+        review_id: z.string(),
+        product_id: z.string().describe("Product ID the review belongs to"),
+        status: z.enum(["approved", "rejected", "pending"]),
+    },
+    async ({ tenant_id, review_id, product_id, status }) => {
+        try {
+            await axios.put(`${API_URL}/reviews/${review_id}`, { productId: product_id, status }, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Review ${review_id} status updated to "${status}"` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: DELIVERY
+// ==========================================
+
+server.tool("get_delivery_config",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/delivery`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("update_delivery_config",
+    {
+        tenant_id: z.string(),
+        config: z.string().describe("JSON string of delivery config fields to update. Fields: freeDeliveryThreshold, deliveryFee, leadDays, weekDaysOff (array of 0-6), blockedDates, yearlyOffDays, unblockedDates, minOrder"),
+    },
+    async ({ tenant_id, config }) => {
+        try {
+            const payload = JSON.parse(config);
+            await axios.put(`${API_URL}/delivery`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Delivery config updated` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: REPORTS
+// ==========================================
+
+server.tool("get_reports",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/reports/summary`, { headers: getHeaders(tenant_id) });
+            const d = response.data;
+            const lines = [
+                `=== Commerce Reports for ${tenant_id} ===`,
+                ``,
+                `KPIs:`,
+                `  Total Revenue: ${d.kpi?.totalRevenue || 0}`,
+                `  Total Orders: ${d.kpi?.totalOrders || 0}`,
+                `  Avg Order Value: ${d.kpi?.avgOrderValue || 0}`,
+                `  Delivered Revenue: ${d.kpi?.deliveredRevenue || 0}`,
+                ``,
+                `Orders by Status:`,
+                ...(d.byStatus || []).map((s: any) => `  ${s.status}: ${s.count} orders (${s.revenue})`),
+                ``,
+                `Payment Methods:`,
+                ...(d.byPayment || []).map((p: any) => `  ${p.method}: ${p.count} orders (${p.revenue})`),
+                ``,
+                `Revenue by Month:`,
+                ...(d.revenueByMonth || []).map((m: any) => `  ${m.month}: ${m.revenue} (${m.orders} orders)`),
+                ``,
+                `Top Products:`,
+                ...(d.topProducts || []).slice(0, 10).map((p: any) => `  ${p.title}: ${p.quantity} sold (${p.revenue})`),
+            ];
+            if (d.coupons && d.coupons.length > 0) {
+                lines.push(``, `Coupon Usage:`);
+                d.coupons.forEach((c: any) => lines.push(`  ${c.code}: ${c.count} uses (${c.discount} discount)`));
+            }
+            return { content: [{ type: "text", text: lines.join("\n") }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: BULK PRICE ADJUSTMENT
+// ==========================================
+
+server.tool("bulk_price_adjust",
+    {
+        tenant_id: z.string(),
+        percent: z.number().describe("Percentage change (e.g., 10 for +10%, -5 for -5%)"),
+        category_id: z.string().optional().describe("Category ID to scope adjustment (omit for all products)"),
+        round_to: z.number().optional().describe("Rounding: 0=none, 5=nearest 5, 9=ending in 9, 0.99=ending in .99"),
+        apply_to_sale_price: z.boolean().optional().describe("Also adjust sale prices (default false)"),
+        dry_run: z.boolean().optional().describe("Preview changes without applying (default true)"),
+    },
+    async ({ tenant_id, percent, category_id, round_to, apply_to_sale_price, dry_run }) => {
+        try {
+            const payload: any = { percent, dryRun: dry_run !== false };
+            if (category_id) payload.categoryId = category_id;
+            if (round_to !== undefined) payload.roundTo = round_to;
+            if (apply_to_sale_price !== undefined) payload.applyToSalePrice = apply_to_sale_price;
+            const response = await axios.post(`${API_URL}/products/bulk-price`, payload, { headers: getHeaders(tenant_id) });
+            const d = response.data;
+            if (d.preview) {
+                const lines = [`Price Preview (${d.count} products):\n`];
+                d.preview.slice(0, 20).forEach((p: any) => {
+                    let line = `  ${p.title}: ${p.oldPrice} → ${p.newPrice} ${p.currency}`;
+                    if (p.oldSalePrice) line += ` (sale: ${p.oldSalePrice} → ${p.newSalePrice})`;
+                    lines.push(line);
+                });
+                if (d.count > 20) lines.push(`  ... and ${d.count - 20} more`);
+                lines.push(`\nTo apply, call again with dry_run=false`);
+                return { content: [{ type: "text", text: lines.join("\n") }] };
+            }
+            return { content: [{ type: "text", text: `✓ ${d.message}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// ==========================================
+// COMMERCE: POPUPS & FORMS
+// ==========================================
+
+server.tool("list_popups",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/popups`, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((p: any) =>
+                `- ${p.title} [${p.active ? "Active" : "Inactive"}] Trigger: ${p.trigger} (ID: ${p.id})`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Popups for ${tenant_id}:\n${summary || "No popups found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("list_forms",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/forms`, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((f: any) =>
+                `- ${f.title} (Slug: ${f.slug}, Fields: ${f.fields?.length || 0}) [${f.active ? "Active" : "Inactive"}] ID: ${f.id}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Forms for ${tenant_id}:\n${summary || "No forms found."}` }] };
+        } catch (error: any) {
+            return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("get_form_submissions",
+    {
+        tenant_id: z.string(),
+        form_id: z.string().describe("Form ID (from list_forms)"),
+    },
+    async ({ tenant_id, form_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/forms/${form_id}/submissions`, { headers: getHeaders(tenant_id) });
+            const items = response.data.items || [];
+            if (items.length === 0) {
+                return { content: [{ type: "text", text: "No submissions found." }] };
+            }
+            const summary = items.map((s: any) =>
+                `- ${s.createdAt}: ${JSON.stringify(s.data)}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Submissions for form ${form_id} (${items.length} total):\n${summary}` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
         }
@@ -1287,14 +1763,22 @@ server.tool("get_schema", {}, async () => {
     return {
         content: [{
             type: "text",
-            text: `AMODX System Architecture:
+            text: `AMODX System Architecture (v3.0):
 
 ENTITIES:
-- Tenant: A client website/site (has domain, theme, integrations)
+- Tenant: A client website/site (has domain, theme, integrations, currency)
 - Content: Pages with blocks (hero, pricing, table, etc)
 - Context: Strategy documents with tags (persona, Q1, etc)
-- Blocks: UI components that render on pages
-- Products: Sellable items that will appear on the site
+- Blocks: UI components that render on pages (18 plugins + 2 builtins)
+- Products: Physical/digital goods with pricing, variants, availability dates
+- Categories: Product categories with slugs and nested hierarchy
+- Orders: Customer orders with status workflow and email notifications
+- Customers: Auto-created on first order, tracks order history and total spent
+- Coupons: Discount codes (percent/fixed) with usage limits and expiry
+- Reviews: Product reviews with star ratings, source badges (Google/Facebook/manual)
+- Delivery: Configurable delivery fees, lead days, off-days, blocked/unblocked dates
+- Popups: Triggered overlays (page_load, exit_intent, scroll, time_delay)
+- Forms: Dynamic forms with field builder, email notifications, submissions tracking
 - Assets: Private files that can be offered in exchange for the visitor email
 - Comments: User discussions on pages (can be moderated)
 
@@ -1324,8 +1808,28 @@ WORKFLOW FOR STYLING:
 3. apply_theme → Apply a saved theme to Light or Dark mode
 4. update_page (theme_override) → Apply specific colors to a single landing page
 
+WORKFLOW FOR COMMERCE (Physical Goods):
+1. list_categories → See existing categories (or create_category)
+2. list_products → See existing products (or create_product with category_ids)
+3. Storefront is auto-generated: product pages, category pages, cart, checkout
+4. list_orders → Monitor incoming orders
+5. update_order_status → Process orders through: placed → confirmed → prepared → shipped → delivered
+6. get_reports → See revenue KPIs, top products, payment methods, monthly trends
 
-CURRENT PLUGINS:
+WORKFLOW FOR PROMOTIONS:
+1. list_coupons → See existing discount codes
+2. create_coupon → Create percent or fixed discount with limits
+3. bulk_price_adjust → Preview and apply percentage price changes across products/categories
+4. list_popups → See engagement popups (exit intent, scroll triggers)
+
+WORKFLOW FOR CUSTOMER INSIGHTS:
+1. list_customers → See all customers with order counts and totals
+2. get_customer → Full profile with address and order history
+3. list_reviews → See product reviews, moderate_review to approve/reject
+4. get_form_submissions → See form submission data
+5. get_reports → Revenue analytics, top products, coupon performance
+
+CURRENT PLUGINS (18 + 2 builtins):
 ✓ Hero (3 styles: center, split, minimal)
 ✓ Pricing (dynamic plans with highlight)
 ✓ Contact Form (email capture)
@@ -1339,15 +1843,27 @@ CURRENT PLUGINS:
 ✓ Table (data tables with headers)
 ✓ Paragraph & Heading (text blocks)
 ✓ Custom HTML (Embeds, Scripts)
-✓ FAQ (Accordion)
+✓ FAQ (Accordion with JSON-LD)
 ✓ Post Grid (Dynamic Blog List)
+✓ Carousel (Image/card slider with Swiper)
+✓ Code Block (syntax-highlighted, 19 languages)
+✓ Reviews Carousel (Google/Facebook badges, star ratings)
+✓ Category Showcase (live product grid from commerce API)
+
+ORDER STATUS FLOW:
+placed → confirmed → prepared → shipped → delivered
+                                         ↘ cancelled
+                                         ↘ annulled
 
 TIPS:
 - Always generate UUIDs for array items (plans, columns, rows, etc)
 - Use newline (\\n) for multi-line text in features/pricing
 - Check existing blocks with get_block_schemas before adding
 - Columns widths should add up logically (1/2 + 1/2, 1/3 + 2/3, etc)
-- Table rows must have same number of cells as headers`
+- Table rows must have same number of cells as headers
+- categoryShowcase requires commerce-enabled tenant and valid category ID
+- bulk_price_adjust defaults to dry_run=true (preview only) — call with dry_run=false to apply
+- Currency is set per-tenant in settings (default RON), inherited by new products`
         }],
     };
 });
@@ -1355,7 +1871,7 @@ TIPS:
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("AMODX MCP Server v2.1.0 running on Stdio");
+    console.error("AMODX MCP Server v3.0.0 running on Stdio");
 }
 
 main().catch((error) => {

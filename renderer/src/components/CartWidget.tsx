@@ -13,7 +13,7 @@ export function CartWidget({ showTotal, currency }: { showTotal?: boolean; curre
         <Link href={getUrl(cartPrefix)} className="relative flex items-center gap-1 p-2 text-muted-foreground hover:text-foreground transition-colors">
             {showTotal && (
                 <span className="text-sm font-medium">
-                    Cart/{subtotal.toFixed(0)} {currency || "lei"}
+                    Cart/{subtotal.toFixed(0)} {currency || "RON"}
                 </span>
             )}
             <span className="relative">

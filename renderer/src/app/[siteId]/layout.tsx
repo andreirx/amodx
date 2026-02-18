@@ -126,7 +126,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             whatsappNumber={config.commerceBar.whatsappNumber}
                             socialLinks={config.commerceBar.socialLinks}
                             ctaButton={config.commerceBar.ctaButton}
-                            currency={config.commerceBar.currency}
+                            currency={config.currency || "RON"}
                         />
                     )}
 
