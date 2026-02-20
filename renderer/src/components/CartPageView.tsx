@@ -15,9 +15,10 @@ interface CartPageProps {
     currency: string;
     tenantId: string;
     apiUrl: string;
+    contentMaxWidth?: string;
 }
 
-export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl }: CartPageProps) {
+export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl, contentMaxWidth = "max-w-6xl" }: CartPageProps) {
     const { items, removeItem, updateQuantity, subtotal, itemCount, coupon, setCoupon } = useCart();
     const { getUrl } = useTenantUrl();
 
@@ -62,7 +63,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
 
     if (items.length === 0) {
         return (
-            <main className="max-w-4xl mx-auto py-20 px-6 text-center">
+            <main className={`${contentMaxWidth} mx-auto py-20 px-6 text-center`}>
                 <div className="text-6xl mb-6">🛒</div>
                 <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
                 <p className="text-muted-foreground mb-8">Browse our products and add something you like.</p>
@@ -74,7 +75,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
     }
 
     return (
-        <main className="max-w-6xl mx-auto py-12 px-6">
+        <main className={`${contentMaxWidth} mx-auto py-12 px-6`}>
             <h1 className="text-3xl font-bold tracking-tight mb-8">Shopping Cart ({itemCount})</h1>
 
             <div className="grid lg:grid-cols-3 gap-12">

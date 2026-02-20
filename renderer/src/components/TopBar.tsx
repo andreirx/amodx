@@ -4,12 +4,13 @@ interface TopBarProps {
     content?: string;
     quickContactPhone?: string;
     quickContactEmail?: string;
+    contentMaxWidth?: string;
 }
 
-export function TopBar({ content, quickContactPhone, quickContactEmail }: TopBarProps) {
+export function TopBar({ content, quickContactPhone, quickContactEmail, contentMaxWidth = "max-w-7xl" }: TopBarProps) {
     return (
         <div className="bg-primary text-primary-foreground text-xs py-2 px-4">
-            <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className={`${contentMaxWidth} mx-auto flex items-center justify-between`}>
                 {content ? (
                     <span dangerouslySetInnerHTML={{ __html: content }} />
                 ) : (

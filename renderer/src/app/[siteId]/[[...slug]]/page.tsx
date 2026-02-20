@@ -185,6 +185,7 @@ export default async function Page({ params, searchParams }: Props) {
                     currency={config.currency || "RON"}
                     checkoutPrefix={prefixes.checkout || "/checkout"}
                     shopPrefix={prefixes.shop || "/shop"}
+                    contentMaxWidth={config.header?.contentPageMaxWidth || "max-w-4xl"}
                 />
             );
         }
@@ -202,6 +203,7 @@ export default async function Page({ params, searchParams }: Props) {
                     currency={config.currency || "RON"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
+                    contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
                 />
             );
         }
@@ -220,6 +222,7 @@ export default async function Page({ params, searchParams }: Props) {
                     currency={config.currency || "RON"}
                     bankTransfer={config.integrations?.bankTransfer}
                     enabledPaymentMethods={config.enabledPaymentMethods}
+                    contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
                 />
             );
         }
@@ -341,7 +344,7 @@ export default async function Page({ params, searchParams }: Props) {
         return (
             <>
                 <ThemeInjector theme={config.theme} tenantId={config.id} />
-                <main className="max-w-4xl mx-auto py-20 px-6 text-center space-y-6">
+                <main className={`${config.header?.contentPageMaxWidth || "max-w-4xl"} mx-auto py-20 px-6 text-center space-y-6`}>
                     <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center">
                         <span className="text-2xl">🔒</span>
                     </div>
@@ -404,8 +407,10 @@ export default async function Page({ params, searchParams }: Props) {
 
     const hasThemeOverride = content.themeOverride && Object.keys(content.themeOverride).length > 0;
 
+    const cw = config.header?.contentPageMaxWidth || "max-w-4xl";
+
     return (
-        <main className="max-w-4xl mx-auto py-12 px-6 relative">
+        <main className="py-12 relative">
             {/* SCHEMA INJECTION */}
             <Script
                 id="json-ld-schema"
@@ -437,16 +442,22 @@ export default async function Page({ params, searchParams }: Props) {
 
             {/* Title (Hide on Home) */}
             {content.title && slugPath !== "/" && (
-                <h1 className="text-4xl font-bold mb-8 text-foreground tracking-tight">
-                    {content.title}
-                </h1>
+                <div className={`${cw} mx-auto px-6`}>
+                    <h1 className="text-4xl font-bold mb-8 text-foreground tracking-tight">
+                        {content.title}
+                    </h1>
+                </div>
             )}
 
-            {!content.hideSharing && <SocialShare title={content.title} />}
+            {!content.hideSharing && (
+                <div className={`${cw} mx-auto px-6`}>
+                    <SocialShare title={content.title} />
+                </div>
+            )}
 
-            <RenderBlocks blocks={content.blocks} tenantId={config.id} />
+            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} />
 
-            <CommentsSection pageId={content.nodeId} mode={content.commentsMode} />
+            <CommentsSection pageId={content.nodeId} mode={content.commentsMode} contentMaxWidth={cw} />
         </main>
     );
 }
@@ -499,6 +510,7 @@ function Pagination({ page, total, limit, baseUrl }: { page: number; total: numb
 }
 
 function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean }) {
+    const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const jsonLd: any = {
         "@context": "https://schema.org",
         "@type": "Product",
@@ -521,7 +533,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
     }
 
     return (
-        <main className="max-w-6xl mx-auto py-12 px-6">
+        <main className={`${siteWidth} mx-auto py-12 px-6`}>
             <Script id="product-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
             {/* Breadcrumbs */}
@@ -685,7 +697,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
 
 function CategoryPageView({ category, products, total, page, config, prefixes }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any }) {
     return (
-        <main className="max-w-6xl mx-auto py-12 px-6">
+        <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
             {/* Breadcrumbs */}
             <nav className="text-sm text-muted-foreground mb-8">
                 <Link href="/" className="hover:text-primary">Home</Link>
@@ -720,7 +732,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes }:
 
 function ShopPageView({ products, categories, total, page, config, prefixes }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any }) {
     return (
-        <main className="max-w-6xl mx-auto py-12 px-6">
+        <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
             <h1 className="text-3xl font-bold tracking-tight mb-8">Shop</h1>
 
             {/* Category Navigation */}
@@ -754,10 +766,11 @@ function ShopPageView({ products, categories, total, page, config, prefixes }: {
 
 function ConfirmationPageView({ order, config, prefixes }: { order: any; config: any; prefixes: any }) {
     const bankTransfer = config.integrations?.bankTransfer;
+    const pageWidth = config.header?.contentPageMaxWidth || "max-w-4xl";
 
     if (!order) {
         return (
-            <main className="max-w-4xl mx-auto py-20 px-6 text-center">
+            <main className={`${pageWidth} mx-auto py-20 px-6 text-center`}>
                 <div className="text-6xl mb-6">✅</div>
                 <h1 className="text-3xl font-bold mb-4">Thank you for your order!</h1>
                 <p className="text-muted-foreground mb-8">Your order has been placed successfully. You will receive a confirmation email shortly.</p>
@@ -769,7 +782,7 @@ function ConfirmationPageView({ order, config, prefixes }: { order: any; config:
     }
 
     return (
-        <main className="max-w-4xl mx-auto py-12 px-6">
+        <main className={`${pageWidth} mx-auto py-12 px-6`}>
             <FBPurchaseEvent
                 orderId={order.id}
                 value={parseFloat(order.total) || 0}
@@ -858,9 +871,11 @@ function ConfirmationPageView({ order, config, prefixes }: { order: any; config:
 }
 
 function OrderTrackingView({ order, config, prefixes }: { order: any; config: any; prefixes: any }) {
+    const pageWidth = config.header?.contentPageMaxWidth || "max-w-4xl";
+
     if (!order) {
         return (
-            <main className="max-w-4xl mx-auto py-20 px-6 text-center">
+            <main className={`${pageWidth} mx-auto py-20 px-6 text-center`}>
                 <h1 className="text-3xl font-bold mb-4">Order Not Found</h1>
                 <p className="text-muted-foreground mb-8">Please check the order ID and email address.</p>
                 <Link href={prefixes.shop || "/magazin"} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
@@ -874,7 +889,7 @@ function OrderTrackingView({ order, config, prefixes }: { order: any; config: an
     const currentStepIndex = statusSteps.indexOf(order.status);
 
     return (
-        <main className="max-w-4xl mx-auto py-12 px-6">
+        <main className={`${pageWidth} mx-auto py-12 px-6`}>
             <h1 className="text-3xl font-bold tracking-tight mb-2">Order {order.orderNumber}</h1>
             <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString("ro-RO")}</p>
 

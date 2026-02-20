@@ -16,6 +16,7 @@ interface CommerceBarProps {
     socialLinks?: SocialLink[];
     ctaButton?: { text: string; url: string };
     currency?: string;
+    contentMaxWidth?: string;
 }
 
 function SocialIcon({ platform }: { platform: string }) {
@@ -76,12 +77,12 @@ function WhatsAppIcon({ className }: { className?: string }) {
     );
 }
 
-export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton, currency = "RON" }: CommerceBarProps) {
+export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton, currency = "RON", contentMaxWidth = "max-w-7xl" }: CommerceBarProps) {
     const { getUrl } = useTenantUrl();
 
     return (
         <div className="hidden md:block bg-muted/50 border-b text-sm">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8`}>
                 <div className="flex h-10 items-center justify-between">
                     {/* Left: Phone + WhatsApp */}
                     <div className="flex items-center gap-4">

@@ -51,12 +51,14 @@ export function AccountPageView({
     currency,
     checkoutPrefix,
     shopPrefix,
+    contentMaxWidth = "max-w-4xl",
 }: {
     orders: Order[];
     customer: CustomerData | null;
     currency: string;
     checkoutPrefix: string;
     shopPrefix: string;
+    contentMaxWidth?: string;
 }) {
     const { data: session } = useSession();
     const { getUrl } = useTenantUrl();
@@ -77,7 +79,7 @@ export function AccountPageView({
     }
 
     return (
-        <div className="max-w-4xl mx-auto py-12 px-4 space-y-8">
+        <div className={`${contentMaxWidth} mx-auto py-12 px-4 space-y-8`}>
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>

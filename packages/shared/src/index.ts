@@ -20,6 +20,13 @@ export const LinkSchema = z.object({
     })).optional(), // dropdown sub-items
 });
 
+// Block types that manage their own max-width (full-bleed capable).
+// These are NOT wrapped in the content-page constrainer by RenderBlocks.
+export const SELF_MANAGED_BLOCKS = new Set([
+    "hero", "pricing", "contact", "image", "video", "leadMagnet",
+    "features", "cta", "testimonials", "faq", "postGrid", "carousel",
+]);
+
 // SINGLE SOURCE OF TRUTH for URL prefix defaults — do NOT duplicate these elsewhere
 export const URL_PREFIX_DEFAULTS = {
     product: "/product",
@@ -378,15 +385,19 @@ export const IntegrationsSchema = z.object({
 export const HeaderConfigSchema = z.object({
     showLogo: z.boolean().default(true),
     showTitle: z.boolean().default(true),
-    // Navbar height (Tailwind class, e.g. "h-16", "h-20", "h-24")
+    // Navbar height (Tailwind class, e.g. "h-16", "h-20", "h-28")
     navHeight: z.string().default("h-16"),
     navHeightScrolled: z.string().default("h-12"),
-    // Logo height (Tailwind class)
+    // Logo height (Tailwind class, e.g. "h-12", "h-20", "h-28")
     logoHeight: z.string().default("h-12"),
     logoHeightScrolled: z.string().default("h-8"),
     // Title font size (Tailwind class)
     titleSize: z.string().default("text-xl"),
     titleSizeScrolled: z.string().default("text-lg"),
+    // Content max width (Tailwind class: "max-w-7xl", "max-w-screen-2xl", "max-w-full")
+    contentMaxWidth: z.string().default("max-w-7xl"),
+    // Content page max width — constrains prose blocks, titles, comments (not full-bleed blocks)
+    contentPageMaxWidth: z.string().default("max-w-4xl"),
 });
 
 // GDPR Cookie Consent Configuration
@@ -411,6 +422,8 @@ export const TenantConfigSchema = z.object({
         navHeight: "h-16", navHeightScrolled: "h-12",
         logoHeight: "h-12", logoHeightScrolled: "h-8",
         titleSize: "text-xl", titleSizeScrolled: "text-lg",
+        contentMaxWidth: "max-w-7xl",
+        contentPageMaxWidth: "max-w-4xl",
     }),
 
     // GDPR Cookie Consent

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { RENDER_MAP } from "@amodx/plugins/render";
+import { SELF_MANAGED_BLOCKS } from "@amodx/shared";
 import { useTenantUrl } from "@/lib/routing"; // Import
 import Link from "next/link"; // Use Next Link for prefetching
 
@@ -72,8 +73,8 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
     ...RENDER_MAP // Plugins
 };
 
-// UPDATE: Accept tenantId prop
-export function RenderBlocks({ blocks, tenantId }: { blocks: any[], tenantId?: string }) {
+// Accept tenantId + contentMaxWidth (for constraining prose blocks)
+export function RenderBlocks({ blocks, tenantId, contentMaxWidth }: { blocks: any[], tenantId?: string, contentMaxWidth?: string }) {
     const { getUrl } = useTenantUrl();
 
     if (!blocks || !Array.isArray(blocks)) return null;
@@ -104,8 +105,20 @@ export function RenderBlocks({ blocks, tenantId }: { blocks: any[], tenantId?: s
                     }));
                 }
 
-                // PASS TENANT ID DOWN
-                return <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} />;
+                const rendered = <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} />;
+
+                // When contentMaxWidth is set, wrap non-self-managed blocks in a constrainer.
+                // Self-managed blocks (hero, cta, testimonials, etc.) render full-width.
+                // When contentMaxWidth is NOT set (e.g. recursive RenderChildren calls), render bare.
+                if (contentMaxWidth && !SELF_MANAGED_BLOCKS.has(block.type)) {
+                    return (
+                        <div key={index} className={`${contentMaxWidth} mx-auto px-6`}>
+                            {rendered}
+                        </div>
+                    );
+                }
+
+                return rendered;
             })}
         </>
     );

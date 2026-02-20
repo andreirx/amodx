@@ -26,6 +26,7 @@ interface CheckoutProps {
     currency: string;
     bankTransfer?: { bankName?: string; accountHolder?: string; iban?: string; swift?: string; referencePrefix?: string };
     enabledPaymentMethods?: string[];
+    contentMaxWidth?: string;
 }
 
 // --- Inline delivery date picker ---
@@ -146,7 +147,7 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"] }: CheckoutProps) {
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl" }: CheckoutProps) {
     const { items, subtotal, clearCart, coupon } = useCart();
     const { getUrl } = useTenantUrl();
     const router = useRouter();
@@ -211,7 +212,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
     if (items.length === 0) {
         return (
-            <main className="max-w-4xl mx-auto py-20 px-6 text-center">
+            <main className={`${contentMaxWidth} mx-auto py-20 px-6 text-center`}>
                 <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
                 <p className="text-muted-foreground mb-8">Add some products before checking out.</p>
             </main>
@@ -299,7 +300,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
     }
 
     return (
-        <main className="max-w-6xl mx-auto py-12 px-6">
+        <main className={`${contentMaxWidth} mx-auto py-12 px-6`}>
             <h1 className="text-3xl font-bold tracking-tight mb-8">Checkout</h1>
 
             <form onSubmit={handleSubmit}>

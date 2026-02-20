@@ -116,6 +116,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             content={config.topBar.content}
                             quickContactPhone={config.topBar.quickContactPhone}
                             quickContactEmail={config.topBar.quickContactEmail}
+                            contentMaxWidth={config.header?.contentMaxWidth}
                         />
                     )}
 
@@ -127,6 +128,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             socialLinks={config.commerceBar.socialLinks}
                             ctaButton={config.commerceBar.ctaButton}
                             currency={config.currency || "RON"}
+                            contentMaxWidth={config.header?.contentMaxWidth}
                         />
                     )}
 
@@ -145,6 +147,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         logoHeightScrolled={config.header?.logoHeightScrolled}
                         titleSize={config.header?.titleSize}
                         titleSizeScrolled={config.header?.titleSizeScrolled}
+                        contentMaxWidth={config.header?.contentMaxWidth}
                     />
                 </div>
 
@@ -153,7 +156,7 @@ export default async function SiteLayout({ children, params }: Props) {
                 </div>
 
                 <footer className="border-t py-12 bg-muted/30">
-                    <div className="max-w-7xl mx-auto px-6">
+                    <div className={`${config.header?.contentMaxWidth || "max-w-7xl"} mx-auto px-6`}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">
                             {/* Column 1: Company Details */}
                             {(config.companyDetails?.legalName || config.companyDetails?.address || config.companyDetails?.cui) && (

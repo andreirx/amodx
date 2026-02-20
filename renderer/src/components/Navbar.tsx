@@ -27,6 +27,7 @@ export function Navbar({
                            logoHeightScrolled = "h-8",
                            titleSize = "text-xl",
                            titleSizeScrolled = "text-lg",
+                           contentMaxWidth = "max-w-7xl",
                        }: {
     siteName: string;
     logo?: string;
@@ -42,6 +43,7 @@ export function Navbar({
     logoHeightScrolled?: string;
     titleSize?: string;
     titleSizeScrolled?: string;
+    contentMaxWidth?: string;
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -56,7 +58,7 @@ export function Navbar({
 
     return (
         <nav className="border-b bg-background/80 backdrop-blur">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8`}>
                 <div className={`flex justify-between items-center transition-all duration-300 ${scrolled ? navHeightScrolled : navHeight}`}>
 
                     {/* --- LOGO AREA --- */}

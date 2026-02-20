@@ -12,7 +12,7 @@ interface Comment {
     createdAt: string;
 }
 
-export function CommentsSection({ pageId, mode }: { pageId: string, mode?: "Enabled" | "Locked" | "Hidden" }) {
+export function CommentsSection({ pageId, mode, contentMaxWidth = "max-w-4xl" }: { pageId: string, mode?: "Enabled" | "Locked" | "Hidden", contentMaxWidth?: string }) {
     const { data: session } = useSession();
     const [comments, setComments] = useState<Comment[]>([]);
     const [newComment, setNewComment] = useState("");
@@ -76,7 +76,7 @@ export function CommentsSection({ pageId, mode }: { pageId: string, mode?: "Enab
     if (safeMode === "Hidden") return null;
 
     return (
-        <section className="max-w-4xl mx-auto py-12 px-6 border-t border-border mt-12">
+        <section className={`${contentMaxWidth} mx-auto py-12 px-6 border-t border-border mt-12`}>
             <h3 className="text-2xl font-bold mb-8 flex items-center gap-2">
                 <MessageSquare className="w-6 h-6" />
                 Discussion ({comments.length})
