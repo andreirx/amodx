@@ -21,6 +21,12 @@ export function Navbar({
                            commerceEnabled = false,
                            hideContactButton = false,
                            accountPrefix,
+                           navHeight = "h-16",
+                           navHeightScrolled = "h-12",
+                           logoHeight = "h-12",
+                           logoHeightScrolled = "h-8",
+                           titleSize = "text-xl",
+                           titleSizeScrolled = "text-lg",
                        }: {
     siteName: string;
     logo?: string;
@@ -30,6 +36,12 @@ export function Navbar({
     commerceEnabled?: boolean;
     hideContactButton?: boolean;
     accountPrefix?: string;
+    navHeight?: string;
+    navHeightScrolled?: string;
+    logoHeight?: string;
+    logoHeightScrolled?: string;
+    titleSize?: string;
+    titleSizeScrolled?: string;
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -45,7 +57,7 @@ export function Navbar({
     return (
         <nav className="border-b bg-background/80 backdrop-blur">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div className={`flex justify-between items-center transition-all duration-300 ${scrolled ? "h-12" : "h-16"}`}>
+                <div className={`flex justify-between items-center transition-all duration-300 ${scrolled ? navHeightScrolled : navHeight}`}>
 
                     {/* --- LOGO AREA --- */}
                     <div className="flex shrink-0 items-center">
@@ -54,11 +66,11 @@ export function Navbar({
                                 <img
                                     src={logo}
                                     alt={siteName}
-                                    className={`w-auto object-contain transition-all duration-300 ${scrolled ? "h-8" : "h-12"}`}
+                                    className={`w-auto object-contain transition-all duration-300 ${scrolled ? logoHeightScrolled : logoHeight}`}
                                 />
                             )}
                             {showTitle && (
-                                <span className={`font-bold text-foreground tracking-tight transition-all duration-300 ${scrolled ? "text-lg" : "text-xl"}`}>
+                                <span className={`font-bold text-foreground tracking-tight transition-all duration-300 ${scrolled ? titleSizeScrolled : titleSize}`}>
                                     {siteName}
                                 </span>
                             )}
@@ -117,7 +129,7 @@ export function Navbar({
             {/* --- MOBILE MENU (Dropdown) --- */}
             {isMobileOpen && (
                 <div
-                    className={`md:hidden absolute left-0 w-full bg-background border-b shadow-xl animate-in slide-in-from-top-2 fade-in-20 ${scrolled ? "top-12" : "top-16"}`}>
+                    className={`md:hidden absolute left-0 w-full bg-background border-b shadow-xl animate-in slide-in-from-top-2 fade-in-20 ${scrolled ? navHeightScrolled.replace("h-", "top-") : navHeight.replace("h-", "top-")}`}>
                     <div className="space-y-1 px-4 pb-6 pt-2">
                         {links.map((link, i) => (
                             <Link

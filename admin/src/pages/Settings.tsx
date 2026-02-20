@@ -190,7 +190,7 @@ export default function SettingsPage() {
         }));
     };
 
-    const updateHeader = (key: string, val: boolean) => {
+    const updateHeader = (key: string, val: boolean | string) => {
         setConfig(prev => ({
             ...prev,
             header: { ...prev.header!, [key]: val }
@@ -374,6 +374,98 @@ export default function SettingsPage() {
                                     <a href={previewUrl} target="_blank" rel="noreferrer">Open <ExternalLink
                                         className="ml-2 h-3 w-3"/></a>
                                 </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* NAVBAR SIZES */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Navbar Sizes</CardTitle>
+                            <CardDescription>Control the navbar height, logo size, and title size — both at full size and after scrolling (shrunk).</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Navbar Height (full)</Label>
+                                    <Select value={config.header?.navHeight || "h-16"} onValueChange={v => updateHeader("navHeight", v)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="h-12">h-12 (48px)</SelectItem>
+                                            <SelectItem value="h-14">h-14 (56px)</SelectItem>
+                                            <SelectItem value="h-16">h-16 (64px)</SelectItem>
+                                            <SelectItem value="h-20">h-20 (80px)</SelectItem>
+                                            <SelectItem value="h-24">h-24 (96px)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Navbar Height (scrolled)</Label>
+                                    <Select value={config.header?.navHeightScrolled || "h-12"} onValueChange={v => updateHeader("navHeightScrolled", v)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="h-10">h-10 (40px)</SelectItem>
+                                            <SelectItem value="h-12">h-12 (48px)</SelectItem>
+                                            <SelectItem value="h-14">h-14 (56px)</SelectItem>
+                                            <SelectItem value="h-16">h-16 (64px)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Logo Height (full)</Label>
+                                    <Select value={config.header?.logoHeight || "h-12"} onValueChange={v => updateHeader("logoHeight", v)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="h-8">h-8 (32px)</SelectItem>
+                                            <SelectItem value="h-10">h-10 (40px)</SelectItem>
+                                            <SelectItem value="h-12">h-12 (48px)</SelectItem>
+                                            <SelectItem value="h-14">h-14 (56px)</SelectItem>
+                                            <SelectItem value="h-16">h-16 (64px)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Logo Height (scrolled)</Label>
+                                    <Select value={config.header?.logoHeightScrolled || "h-8"} onValueChange={v => updateHeader("logoHeightScrolled", v)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="h-6">h-6 (24px)</SelectItem>
+                                            <SelectItem value="h-8">h-8 (32px)</SelectItem>
+                                            <SelectItem value="h-10">h-10 (40px)</SelectItem>
+                                            <SelectItem value="h-12">h-12 (48px)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Title Size (full)</Label>
+                                    <Select value={config.header?.titleSize || "text-xl"} onValueChange={v => updateHeader("titleSize", v)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="text-base">Base (16px)</SelectItem>
+                                            <SelectItem value="text-lg">Large (18px)</SelectItem>
+                                            <SelectItem value="text-xl">XL (20px)</SelectItem>
+                                            <SelectItem value="text-2xl">2XL (24px)</SelectItem>
+                                            <SelectItem value="text-3xl">3XL (30px)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Title Size (scrolled)</Label>
+                                    <Select value={config.header?.titleSizeScrolled || "text-lg"} onValueChange={v => updateHeader("titleSizeScrolled", v)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="text-sm">Small (14px)</SelectItem>
+                                            <SelectItem value="text-base">Base (16px)</SelectItem>
+                                            <SelectItem value="text-lg">Large (18px)</SelectItem>
+                                            <SelectItem value="text-xl">XL (20px)</SelectItem>
+                                            <SelectItem value="text-2xl">2XL (24px)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>

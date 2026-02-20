@@ -378,6 +378,15 @@ export const IntegrationsSchema = z.object({
 export const HeaderConfigSchema = z.object({
     showLogo: z.boolean().default(true),
     showTitle: z.boolean().default(true),
+    // Navbar height (Tailwind class, e.g. "h-16", "h-20", "h-24")
+    navHeight: z.string().default("h-16"),
+    navHeightScrolled: z.string().default("h-12"),
+    // Logo height (Tailwind class)
+    logoHeight: z.string().default("h-12"),
+    logoHeightScrolled: z.string().default("h-8"),
+    // Title font size (Tailwind class)
+    titleSize: z.string().default("text-xl"),
+    titleSizeScrolled: z.string().default("text-lg"),
 });
 
 // GDPR Cookie Consent Configuration
@@ -397,7 +406,12 @@ export const TenantConfigSchema = z.object({
 
     // NEW FIELDS
     description: z.string().optional(), // SEO Meta + llms.txt intro
-    header: HeaderConfigSchema.default({ showLogo: true, showTitle: true }),
+    header: HeaderConfigSchema.default({
+        showLogo: true, showTitle: true,
+        navHeight: "h-16", navHeightScrolled: "h-12",
+        logoHeight: "h-12", logoHeightScrolled: "h-8",
+        titleSize: "text-xl", titleSizeScrolled: "text-lg",
+    }),
 
     // GDPR Cookie Consent
     gdpr: GDPRConfigSchema.default({

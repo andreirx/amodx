@@ -139,6 +139,12 @@ export default async function SiteLayout({ children, params }: Props) {
                         commerceEnabled={commerceEnabled}
                         hideContactButton={!!(config.commerceBar?.enabled && commerceEnabled)}
                         accountPrefix={config.urlPrefixes?.account || URL_PREFIX_DEFAULTS.account}
+                        navHeight={config.header?.navHeight}
+                        navHeightScrolled={config.header?.navHeightScrolled}
+                        logoHeight={config.header?.logoHeight}
+                        logoHeightScrolled={config.header?.logoHeightScrolled}
+                        titleSize={config.header?.titleSize}
+                        titleSizeScrolled={config.header?.titleSizeScrolled}
                     />
                 </div>
 
