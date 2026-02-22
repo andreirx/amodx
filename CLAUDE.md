@@ -54,6 +54,7 @@ Detailed patterns and business logic live in `docs/`:
 | `docs/frontend-patterns.md`       | Working on admin UI, renderer SSR, styling, or authentication |
 | `docs/growth-engine.md`           | Working on signals, research, social posting, or MCP tools |
 | `docs/lessons-learned-details.md` | Check this when planning a feature or refactor              |
+| `docs/authentication-architecture.md` | Auth system: 2 Cognito pools, NextAuth, master API key |
 
 
 # System Intent (WHY)
