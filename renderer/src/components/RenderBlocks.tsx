@@ -2,7 +2,7 @@
 
 import React from "react";
 import { RENDER_MAP } from "@amodx/plugins/render";
-import { SELF_MANAGED_BLOCKS } from "@amodx/shared";
+import { FULL_BLEED_DEFAULTS } from "@amodx/shared";
 import { useTenantUrl } from "@/lib/routing"; // Import
 import Link from "next/link"; // Use Next Link for prefetching
 
@@ -73,8 +73,8 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
     ...RENDER_MAP // Plugins
 };
 
-// Accept tenantId + contentMaxWidth (for constraining prose blocks)
-export function RenderBlocks({ blocks, tenantId, contentMaxWidth }: { blocks: any[], tenantId?: string, contentMaxWidth?: string }) {
+// Accept tenantId + contentMaxWidth (prose width) + siteMaxWidth (shell width)
+export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth }: { blocks: any[], tenantId?: string, contentMaxWidth?: string, siteMaxWidth?: string }) {
     const { getUrl } = useTenantUrl();
 
     if (!blocks || !Array.isArray(blocks)) return null;
@@ -107,15 +107,28 @@ export function RenderBlocks({ blocks, tenantId, contentMaxWidth }: { blocks: an
 
                 const rendered = <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} />;
 
-                // When contentMaxWidth is set, wrap non-self-managed blocks in a constrainer.
-                // Self-managed blocks (hero, cta, testimonials, etc.) render full-width.
-                // When contentMaxWidth is NOT set (e.g. recursive RenderChildren calls), render bare.
-                if (contentMaxWidth && !SELF_MANAGED_BLOCKS.has(block.type)) {
-                    return (
-                        <div key={index} className={`${contentMaxWidth} mx-auto px-6`}>
-                            {rendered}
-                        </div>
-                    );
+                // Width wrapping (only at top-level — recursive RenderChildren calls don't pass contentMaxWidth)
+                if (contentMaxWidth) {
+                    // Per-block blockWidth attr > FULL_BLEED_DEFAULTS fallback > "content" default
+                    const effectiveWidth = block.attrs?.blockWidth ||
+                        (FULL_BLEED_DEFAULTS.has(block.type) ? "full" : "content");
+
+                    if (effectiveWidth === "wide") {
+                        return (
+                            <div key={index} className={`${siteMaxWidth || "max-w-7xl"} mx-auto px-6`}>
+                                {rendered}
+                            </div>
+                        );
+                    }
+                    if (effectiveWidth === "content") {
+                        return (
+                            <div key={index} className={`${contentMaxWidth} mx-auto px-6`}>
+                                {rendered}
+                            </div>
+                        );
+                    }
+                    // "full" — no wrapper
+                    return rendered;
                 }
 
                 return rendered;

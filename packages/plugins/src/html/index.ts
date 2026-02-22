@@ -20,6 +20,7 @@ export const HtmlPlugin: PluginDefinition = {
         addAttributes() {
             return {
                 content: { default: '' },
+                blockWidth: { default: 'content' },
             };
         },
 

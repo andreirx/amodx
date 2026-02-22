@@ -24,6 +24,7 @@ export const ContactPlugin: PluginDefinition = {
                 buttonText: { default: 'Send Message' },
                 successMessage: { default: 'Thanks! We will be in touch.' },
                 tags: { default: 'contact-form' },
+                blockWidth: { default: 'content' },
             };
         },
 

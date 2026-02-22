@@ -23,6 +23,7 @@ export const CodeBlockPlugin: PluginDefinition = {
                 language: { default: 'plaintext' },
                 filename: { default: null },
                 showLineNumbers: { default: false },
+                blockWidth: { default: 'content' },
             };
         },
 

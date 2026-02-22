@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutGrid, Loader2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ value, onChange, placeholder, type = "text", list }: any) => (
     <input
@@ -14,7 +15,7 @@ const Input = ({ value, onChange, placeholder, type = "text", list }: any) => (
 );
 
 export function PostGridEditor(props: any) {
-    const { headline, filterTag, limit, layout } = props.node.attrs;
+    const { headline, filterTag, limit, layout, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     // Tag Fetching State
@@ -39,14 +40,18 @@ export function PostGridEditor(props: any) {
                         </div>
                         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Dynamic Post Grid</span>
                     </div>
-                    <select
-                        className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-indigo-500"
-                        value={layout || 'grid'}
-                        onChange={e => update('layout', e.target.value)}
-                    >
-                        <option value="grid">Grid Layout</option>
-                        <option value="list">List Layout</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
+                        <select
+                            className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-indigo-500"
+                            value={layout || 'grid'}
+                            onChange={e => update('layout', e.target.value)}
+                        >
+                            <option value="grid">Grid Layout</option>
+                            <option value="list">List Layout</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="p-5 space-y-4">

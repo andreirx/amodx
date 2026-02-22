@@ -32,4 +32,5 @@ export const TableSchema = z.object({
     ]),
     striped: z.boolean().default(true),
     bordered: z.boolean().default(true),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

@@ -6,4 +6,5 @@ export const CtaSchema = z.object({
     buttonText: z.string().default("Get Access"),
     buttonLink: z.string().default("/pricing"),
     style: z.enum(["simple", "card", "band"]).default("simple"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("full"),
 });

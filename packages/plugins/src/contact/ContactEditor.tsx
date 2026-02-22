@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Mail } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ label, value, onChange, placeholder }: any) => (
     <div className="space-y-1">
@@ -15,17 +16,20 @@ const Input = ({ label, value, onChange, placeholder }: any) => (
 );
 
 export function ContactEditor(props: any) {
-    const { headline, description, buttonText, tags } = props.node.attrs;
+    const { headline, description, buttonText, tags, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     return (
         <NodeViewWrapper className="my-8">
             <div className="border border-gray-200 bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center border-b border-gray-100 bg-gray-50/50 px-4 py-3 gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-50 text-blue-600">
-                        <Mail className="h-3.5 w-3.5" />
+                <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-50 text-blue-600">
+                            <Mail className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Contact Form</span>
                     </div>
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Contact Form</span>
+                    <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
                 </div>
 
                 <div className="p-5 space-y-4">

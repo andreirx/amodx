@@ -13,4 +13,5 @@ export const ColumnsSchema = z.object({
         { id: "1", width: "1/2", content: "Column 1 content" },
         { id: "2", width: "1/2", content: "Column 2 content" }
     ]),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

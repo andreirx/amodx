@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { UploadCloud, Image as ImageIcon, Loader2, Search, Maximize2, MoveHorizontal, Minimize2 } from 'lucide-react';
 import React, { useState } from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ value, onChange, placeholder }: any) => (
     <input
@@ -12,7 +13,7 @@ const Input = ({ value, onChange, placeholder }: any) => (
 );
 
 export function ImageEditor(props: any) {
-    const { src, alt, caption, width } = props.node.attrs;
+    const { src, alt, caption, width, blockWidth } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -47,21 +48,25 @@ export function ImageEditor(props: any) {
                         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Image</span>
                     </div>
 
-                    <div className="flex bg-gray-100 rounded-md p-0.5">
-                        {[
-                            { id: 'centered', icon: Minimize2, title: 'Centered' },
-                            { id: 'wide', icon: MoveHorizontal, title: 'Wide' },
-                            { id: 'full', icon: Maximize2, title: 'Full' }
-                        ].map((opt) => (
-                            <button
-                                key={opt.id}
-                                onClick={() => update('width', opt.id)}
-                                className={`p-1 rounded-sm transition-all ${width === opt.id ? 'bg-white shadow text-slate-800' : 'text-gray-400 hover:text-gray-600'}`}
-                                title={opt.title}
-                            >
-                                <opt.icon className="w-3.5 h-3.5" />
-                            </button>
-                        ))}
+                    <div className="flex items-center gap-2">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
+                        <div className="flex bg-gray-100 rounded-md p-0.5">
+                            {[
+                                { id: 'centered', icon: Minimize2, title: 'Centered' },
+                                { id: 'wide', icon: MoveHorizontal, title: 'Wide' },
+                                { id: 'full', icon: Maximize2, title: 'Full' }
+                            ].map((opt) => (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => update('width', opt.id)}
+                                    className={`p-1 rounded-sm transition-all ${width === opt.id ? 'bg-white shadow text-slate-800' : 'text-gray-400 hover:text-gray-600'}`}
+                                    title={opt.title}
+                                >
+                                    <opt.icon className="w-3.5 h-3.5" />
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 

@@ -48,6 +48,7 @@ export const PricingPlugin: PluginDefinition = {
                         }
                     ],
                 },
+                blockWidth: { default: 'content' },
             };
         },
 

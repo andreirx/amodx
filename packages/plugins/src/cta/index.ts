@@ -24,6 +24,7 @@ export const CtaPlugin: PluginDefinition = {
                 buttonText: { default: 'Get Started' },
                 buttonLink: { default: '#' },
                 style: { default: 'simple' },
+                blockWidth: { default: 'full' },
             };
         },
 

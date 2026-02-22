@@ -1,10 +1,11 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Code2, Hash, FileCode } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 import { LANGUAGES } from './schema';
 
 export function CodeBlockEditor(props: any) {
-    const { code, language, filename, showLineNumbers } = props.node.attrs;
+    const { code, language, filename, showLineNumbers, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     return (
@@ -19,6 +20,8 @@ export function CodeBlockEditor(props: any) {
                         <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Code Block</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
                         <button
                             onClick={() => update('showLineNumbers', !showLineNumbers)}
                             className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${showLineNumbers ? 'bg-slate-200 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}

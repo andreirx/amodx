@@ -7,4 +7,5 @@ export const HeroSchema = z.object({
     ctaLink: z.string().default("/contact"),
     imageSrc: z.string().optional(),
     style: z.enum(["center", "split", "minimal"]).default("center"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

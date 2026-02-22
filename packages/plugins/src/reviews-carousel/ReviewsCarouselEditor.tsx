@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Star, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import React, { useState } from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 function StarRating({ rating, onChange }: { rating: number; onChange: (r: number) => void }) {
     return (
@@ -15,7 +16,7 @@ function StarRating({ rating, onChange }: { rating: number; onChange: (r: number
 }
 
 export function ReviewsCarouselEditor(props: any) {
-    const { headline, items = [], showSource, autoScroll } = props.node.attrs;
+    const { headline, items = [], showSource, autoScroll, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -54,6 +55,8 @@ export function ReviewsCarouselEditor(props: any) {
                         <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Reviews Carousel</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
                         <label className="flex items-center gap-1.5 text-xs text-amber-700">
                             <input type="checkbox" checked={showSource} onChange={e => update('showSource', e.target.checked)} className="accent-amber-600" />
                             Source badges

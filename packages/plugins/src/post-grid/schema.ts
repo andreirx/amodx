@@ -7,5 +7,6 @@ export const PostGridSchema = z.object({
     showImages: z.boolean().default(true),
     // NEW: Layout option
     layout: z.enum(["grid", "list"]).default("list"),
-    columns: z.enum(["2", "3"]).default("3")
+    columns: z.enum(["2", "3"]).default("3"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

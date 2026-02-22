@@ -1,9 +1,10 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutGrid, RefreshCw } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 export function CategoryShowcaseEditor(props: any) {
-    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText } = props.node.attrs;
+    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     const [categories, setCategories] = useState<any[]>([]);
@@ -39,6 +40,8 @@ export function CategoryShowcaseEditor(props: any) {
                         <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">Category Showcase</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
                         <label className="flex items-center gap-1.5 text-xs text-emerald-700">
                             <input type="checkbox" checked={showPrice} onChange={e => update('showPrice', e.target.checked)} className="accent-emerald-600" />
                             Prices

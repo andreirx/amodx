@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Megaphone, Link as LinkIcon } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ label, value, onChange, placeholder, list }: any) => (
     <div className="space-y-1 w-full">
@@ -16,7 +17,7 @@ const Input = ({ label, value, onChange, placeholder, list }: any) => (
 );
 
 export function CtaEditor(props: any) {
-    const { headline, subheadline, buttonText, buttonLink, style } = props.node.attrs;
+    const { headline, subheadline, buttonText, buttonLink, style, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     return (
@@ -29,15 +30,19 @@ export function CtaEditor(props: any) {
                         </div>
                         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Call to Action</span>
                     </div>
-                    <select
-                        className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-pink-500 outline-none"
-                        value={style}
-                        onChange={e => update('style', e.target.value)}
-                    >
-                        <option value="simple">Simple</option>
-                        <option value="card">Card</option>
-                        <option value="band">Band</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
+                        <select
+                            className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-pink-500 outline-none"
+                            value={style}
+                            onChange={e => update('style', e.target.value)}
+                        >
+                            <option value="simple">Simple</option>
+                            <option value="card">Card</option>
+                            <option value="band">Band</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="p-5 space-y-4">

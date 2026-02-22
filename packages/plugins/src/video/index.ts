@@ -23,6 +23,7 @@ export const VideoPlugin: PluginDefinition = {
                 caption: { default: null },
                 width: { default: 'centered' },
                 autoplay: { default: false },
+                blockWidth: { default: 'content' },
             };
         },
 

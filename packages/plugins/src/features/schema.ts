@@ -16,4 +16,5 @@ export const FeaturesSchema = z.object({
         { id: '3', title: 'Scale', description: 'Grow without limits.', icon: 'TrendingUp' },
     ]),
     columns: z.enum(["2", "3", "4"]).default("3"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

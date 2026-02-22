@@ -16,4 +16,5 @@ export const TestimonialsSchema = z.object({
         { id: '2', quote: "Finally, no more plugin updates.", author: "John Smith", role: "Agency Owner" },
     ]),
     style: z.enum(["grid", "slider", "minimal"]).default("grid"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("full"),
 });

@@ -47,6 +47,9 @@ export const TablePlugin: PluginDefinition = {
                 },
                 bordered: {
                     default: true
+                },
+                blockWidth: {
+                    default: "content"
                 }
             };
         },

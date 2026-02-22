@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { GalleryHorizontal, Plus, Trash2, Image as ImageIcon } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ label, value, onChange, placeholder }: any) => (
     <div className="space-y-1 w-full">
@@ -15,7 +16,7 @@ const Input = ({ label, value, onChange, placeholder }: any) => (
 );
 
 export function CarouselEditor(props: any) {
-    const { headline, items, style } = props.node.attrs;
+    const { headline, items, style, blockWidth } = props.node.attrs;
     const safeItems = Array.isArray(items) ? items : [];
 
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
@@ -54,10 +55,11 @@ export function CarouselEditor(props: any) {
                         </div>
                         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Carousel</span>
                     </div>
-                    {/* Controls moved to Header */}
-                    <div className="w-32">
+                    <div className="flex items-center gap-2">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
                         <select
-                            className="h-7 w-full rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-cyan-500 cursor-pointer"
+                            className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-cyan-500 cursor-pointer"
                             value={style || 'standard'}
                             onChange={e => update('style', e.target.value)}
                         >

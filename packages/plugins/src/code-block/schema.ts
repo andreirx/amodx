@@ -11,4 +11,5 @@ export const CodeBlockSchema = z.object({
     language: z.string().default("plaintext"),
     filename: z.string().optional(),
     showLineNumbers: z.boolean().default(false),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

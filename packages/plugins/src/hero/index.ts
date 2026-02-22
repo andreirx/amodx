@@ -24,6 +24,7 @@ export const HeroPlugin: PluginDefinition = {
                 ctaLink: { default: '#' },
                 style: { default: 'center' },
                 imageSrc: { default: null },
+                blockWidth: { default: 'content' },
             };
         },
         parseHTML() { return [{ tag: 'app-hero' }]; },

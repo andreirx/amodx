@@ -30,6 +30,7 @@ export const ImagePlugin: PluginDefinition = {
                 alt: { default: null },
                 caption: { default: null },
                 width: { default: 'full' },
+                blockWidth: { default: 'content' },
             };
         },
 

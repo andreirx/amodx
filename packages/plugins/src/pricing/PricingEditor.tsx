@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { CreditCard, Plus, Trash2, Star } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ value, onChange, placeholder }: any) => (
     <input
@@ -21,7 +22,7 @@ const TextArea = ({ value, onChange, placeholder }: any) => (
 );
 
 export function PricingEditor(props: any) {
-    const { headline, subheadline, plans } = props.node.attrs;
+    const { headline, subheadline, plans, blockWidth } = props.node.attrs;
     const safePlans = Array.isArray(plans) ? plans : [];
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -36,11 +37,14 @@ export function PricingEditor(props: any) {
     return (
         <NodeViewWrapper className="my-8">
             <div className="border border-gray-200 bg-white rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center border-b border-gray-100 bg-gray-50/50 px-4 py-3 gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-50 text-emerald-600">
-                        <CreditCard className="h-3.5 w-3.5" />
+                <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-50 text-emerald-600">
+                            <CreditCard className="h-3.5 w-3.5" />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pricing Table</span>
                     </div>
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pricing Table</span>
+                    <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
                 </div>
 
                 <div className="p-5">

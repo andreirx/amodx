@@ -7,4 +7,5 @@ export const LeadMagnetSchema = z.object({
     // This ID comes from your Resources Page in Admin
     resourceId: z.string().default(""),
     tags: z.string().default("lead-magnet"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

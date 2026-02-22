@@ -11,5 +11,6 @@ export const FaqSchema = z.object({
     items: z.array(FaqItem).default([
         { id: '1', question: "Is this free?", answer: "Yes, for the basic plan." },
         { id: '2', question: "Can I cancel?", answer: "Anytime." }
-    ])
+    ]),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

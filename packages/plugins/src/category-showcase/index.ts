@@ -30,6 +30,7 @@ export const CategoryShowcasePlugin: PluginDefinition = {
                 columns: { default: '4' },
                 showPrice: { default: true },
                 ctaText: { default: 'View All Products' },
+                blockWidth: { default: 'content' },
             };
         },
 

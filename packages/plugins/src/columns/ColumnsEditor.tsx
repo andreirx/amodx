@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Columns as ColumnsIcon, Plus, Trash2 } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Label = ({ children }: any) => (
     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">{children}</label>
@@ -28,7 +29,7 @@ const TextArea = ({ value, onChange, placeholder }: any) => (
 );
 
 export function ColumnsEditor(props: any) {
-    const { columnCount, gap, columns } = props.node.attrs;
+    const { columnCount, gap, columns, blockWidth } = props.node.attrs;
 
     // Safety check
     const safeColumns = Array.isArray(columns) ? columns : [];
@@ -87,6 +88,8 @@ export function ColumnsEditor(props: any) {
                         <span className="text-xs font-semibold text-gray-700">Column Layout</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
                         <div className="flex items-center gap-2">
                             <Label>Gap:</Label>
                             <Select

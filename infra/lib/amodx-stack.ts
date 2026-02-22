@@ -101,9 +101,18 @@ export class AmodxStack extends cdk.Stack {
       }
     });
 
+    // READ CONFIG (Fallback to your verified email for safety)
+    const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
+
     const uploads = new AmodxUploads(this, 'Uploads', { bucketSuffix: suffix });
     const db = new AmodxDatabase(this, 'Database', { tableSuffix: suffix });
-    const auth = new AmodxAuth(this, 'Auth', { nameSuffix: suffix });
+    const adminUrl = rootDomain ? `https://admin.${rootDomain}` : undefined;
+    const auth = new AmodxAuth(this, 'Auth', {
+      nameSuffix: suffix,
+      sesEmail: sesEmail,
+      sesRegion: this.region,
+      adminUrl: adminUrl,
+    });
 
     // 2. API Domain Setup (Only if Root Domain exists)
     let apiDomain: apigw.DomainName | undefined;
@@ -131,9 +140,6 @@ export class AmodxStack extends cdk.Stack {
       auditFunction: auditWorker,
       busName: `AmodxSystemBus${suffix}`
     });
-
-    // READ CONFIG (Fallback to your verified email for safety)
-    const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
 
     // 3. API Layer
     const api = new AmodxApi(this, 'Api', {

@@ -6,4 +6,5 @@ export const ContactSchema = z.object({
     buttonText: z.string().default("Unlock Now"),
     successMessage: z.string().default("Success! Redirecting..."),
     tags: z.string().default("contact-form"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

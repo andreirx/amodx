@@ -22,7 +22,8 @@ export const CarouselPlugin: PluginDefinition = {
             headline: { default: 'Featured' },
             items: { default: [] },
             height: { default: 'medium' },
-            style: { default: 'coverflow' }
+            style: { default: 'coverflow' },
+            blockWidth: { default: 'full' },
         };
     },
 

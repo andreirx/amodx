@@ -30,6 +30,9 @@ export const ColumnsPlugin: PluginDefinition = {
                         { id: "1", width: "1/2", content: "" },
                         { id: "2", width: "1/2", content: "" }
                     ]
+                },
+                blockWidth: {
+                    default: "content"
                 }
             };
         },

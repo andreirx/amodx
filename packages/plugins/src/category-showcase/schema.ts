@@ -8,4 +8,5 @@ export const CategoryShowcaseSchema = z.object({
     columns: z.enum(["2", "3", "4"]).default("4"),
     showPrice: z.boolean().default(true),
     ctaText: z.string().default("View All Products"),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

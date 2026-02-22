@@ -25,6 +25,7 @@ export const LeadMagnetPlugin: PluginDefinition = {
                 resourceId: { default: '' },
                 fileName: { default: '' },
                 tags: { default: 'lead-magnet' },
+                blockWidth: { default: 'content' },
             };
         },
 

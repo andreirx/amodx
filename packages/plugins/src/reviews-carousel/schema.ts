@@ -18,4 +18,5 @@ export const ReviewsCarouselSchema = z.object({
     ]),
     showSource: z.boolean().default(true),
     autoScroll: z.boolean().default(false),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

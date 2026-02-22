@@ -5,6 +5,9 @@ import { Construct } from 'constructs';
 // Define Props Interface
 interface AmodxAuthProps {
     nameSuffix: string;
+    sesEmail?: string;     // Verified SES email for Cognito to send from
+    sesRegion?: string;    // Region where SES identity is verified
+    adminUrl?: string;     // Admin panel URL for invite emails
 }
 
 export class AmodxAuth extends Construct {
@@ -18,6 +21,9 @@ export class AmodxAuth extends Construct {
         super(scope, id);
 
         const suffix = props?.nameSuffix || '';
+        const sesEmail = props?.sesEmail;
+        const sesRegion = props?.sesRegion;
+        const adminUrl = props?.adminUrl || 'the admin panel';
 
         // ==========================================
         // 1. ADMIN POOL (Agency Owners)
@@ -33,6 +39,36 @@ export class AmodxAuth extends Construct {
                 'tenantId': new cognito.StringAttribute({ mutable: true }),
             },
             removalPolicy: cdk.RemovalPolicy.RETAIN,
+
+            // Custom invite email (replaces Cognito's bare default)
+            userInvitation: {
+                emailSubject: 'You have been invited to the AMODX Admin Panel',
+                emailBody: [
+                    'Hello,',
+                    '',
+                    'You have been invited to manage your website on the AMODX platform.',
+                    '',
+                    'Your login credentials:',
+                    'Email: {username}',
+                    'Temporary password: {####}',
+                    '',
+                    `Sign in at: ${adminUrl}`,
+                    '',
+                    'You will be asked to set a new password on your first login.',
+                    '',
+                    'Best regards,',
+                    'The AMODX Team',
+                ].join('\n'),
+            },
+
+            // Send from verified SES identity instead of Cognito default
+            ...(sesEmail && sesRegion ? {
+                email: cognito.UserPoolEmail.withSES({
+                    fromEmail: sesEmail,
+                    fromName: 'AMODX',
+                    sesRegion: sesRegion,
+                }),
+            } : {}),
         });
 
         this.adminClient = this.adminPool.addClient('AmodxAdminClient', {

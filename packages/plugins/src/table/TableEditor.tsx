@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Table as TableIcon, Plus, Trash2, Columns, Rows } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ value, onChange, className = "" }: any) => (
     <input
@@ -23,7 +24,7 @@ const Checkbox = ({ checked, onChange, label }: any) => (
 );
 
 export function TableEditor(props: any) {
-    const { headers, rows, striped, bordered } = props.node.attrs;
+    const { headers, rows, striped, bordered, blockWidth } = props.node.attrs;
 
     const safeHeaders = Array.isArray(headers) ? headers : ["Column 1", "Column 2"];
     const safeRows = Array.isArray(rows) ? rows : [];
@@ -99,6 +100,8 @@ export function TableEditor(props: any) {
                         <span className="text-xs font-semibold text-gray-700">Data Table</span>
                     </div>
                     <div className="flex items-center gap-4">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
                         <Checkbox
                             checked={striped}
                             onChange={(v: boolean) => update('striped', v)}

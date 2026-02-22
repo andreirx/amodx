@@ -408,6 +408,7 @@ export default async function Page({ params, searchParams }: Props) {
     const hasThemeOverride = content.themeOverride && Object.keys(content.themeOverride).length > 0;
 
     const cw = config.header?.contentPageMaxWidth || "max-w-4xl";
+    const sw = config.header?.contentMaxWidth || "max-w-7xl";
 
     return (
         <main className="py-12 relative">
@@ -455,7 +456,7 @@ export default async function Page({ params, searchParams }: Props) {
                 </div>
             )}
 
-            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} />
+            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} siteMaxWidth={sw} />
 
             <CommentsSection pageId={content.nodeId} mode={content.commentsMode} contentMaxWidth={cw} />
         </main>

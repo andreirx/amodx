@@ -1,17 +1,21 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { Code, Eye } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 export function HtmlEditor(props: any) {
-    const { content } = props.node.attrs;
+    const { content, blockWidth } = props.node.attrs;
     const update = (value: string) => props.updateAttributes({ content: value });
 
     return (
         <NodeViewWrapper className="my-6">
             <div className="border border-amber-200 bg-amber-50/30 rounded-xl overflow-hidden shadow-sm">
-                <div className="flex items-center gap-2 px-4 py-2 bg-amber-100/50 border-b border-amber-100">
-                    <Code className="w-4 h-4 text-amber-600" />
-                    <span className="text-xs font-bold text-amber-700 uppercase tracking-widest">Raw HTML / Embed</span>
+                <div className="flex items-center justify-between px-4 py-2 bg-amber-100/50 border-b border-amber-100">
+                    <div className="flex items-center gap-2">
+                        <Code className="w-4 h-4 text-amber-600" />
+                        <span className="text-xs font-bold text-amber-700 uppercase tracking-widest">Raw HTML / Embed</span>
+                    </div>
+                    <BlockWidthControl value={blockWidth} onChange={v => props.updateAttributes({ blockWidth: v })} />
                 </div>
                 <div className="p-0">
                     <textarea

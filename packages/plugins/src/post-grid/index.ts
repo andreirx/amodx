@@ -31,7 +31,8 @@ export const PostGridPlugin: PluginDefinition = {
             limit: { default: 6 },
             showImages: { default: true },
             layout: { default: 'list' },
-            columns: { default: '3' }
+            columns: { default: '3' },
+            blockWidth: { default: 'content' },
         };
     },
 

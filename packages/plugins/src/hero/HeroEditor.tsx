@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutTemplate, Link as LinkIcon, Image as ImageIcon, Upload, Search } from 'lucide-react';
 import React, { useState } from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 // Unified Input Helper
 const Input = ({ value, onChange, placeholder, className = "" }: any) => (
@@ -20,7 +21,7 @@ const Label = ({ children, icon: Icon }: any) => (
 );
 
 export function HeroEditor(props: any) {
-    const { headline, subheadline, ctaText, ctaLink, style, imageSrc } = props.node.attrs;
+    const { headline, subheadline, ctaText, ctaLink, style, imageSrc, blockWidth } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -52,15 +53,19 @@ export function HeroEditor(props: any) {
                         </div>
                         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Hero Section</span>
                     </div>
-                    <select
-                        className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-indigo-500"
-                        value={style}
-                        onChange={e => update('style', e.target.value)}
-                    >
-                        <option value="center">Center</option>
-                        <option value="split">Split</option>
-                        <option value="minimal">Minimal</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
+                        <select
+                            className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-indigo-500"
+                            value={style}
+                            onChange={e => update('style', e.target.value)}
+                        >
+                            <option value="center">Center</option>
+                            <option value="split">Split</option>
+                            <option value="minimal">Minimal</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">

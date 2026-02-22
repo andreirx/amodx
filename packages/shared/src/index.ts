@@ -20,12 +20,9 @@ export const LinkSchema = z.object({
     })).optional(), // dropdown sub-items
 });
 
-// Block types that manage their own max-width (full-bleed capable).
-// These are NOT wrapped in the content-page constrainer by RenderBlocks.
-export const SELF_MANAGED_BLOCKS = new Set([
-    "hero", "pricing", "contact", "image", "video", "leadMagnet",
-    "features", "cta", "testimonials", "faq", "postGrid", "carousel",
-]);
+// Plugin block types that default to full-bleed (no wrapper) when blockWidth attr is absent.
+// All other plugins default to "content" width (wrapped in contentPageMaxWidth).
+export const FULL_BLEED_DEFAULTS = new Set(["cta", "testimonials", "carousel"]);
 
 // SINGLE SOURCE OF TRUTH for URL prefix defaults — do NOT duplicate these elsewhere
 export const URL_PREFIX_DEFAULTS = {

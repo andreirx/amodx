@@ -23,6 +23,7 @@ export const ReviewsCarouselPlugin: PluginDefinition = {
                 items: { default: [] },
                 showSource: { default: true },
                 autoScroll: { default: false },
+                blockWidth: { default: 'content' },
             };
         },
 

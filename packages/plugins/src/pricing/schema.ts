@@ -36,4 +36,5 @@ export const PricingSchema = z.object({
             highlight: true
         }
     ]),
+    blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
 import React from 'react';
+import { BlockWidthControl } from '../BlockWidthControl';
 
 // ... Standard Inputs ...
 const Input = ({ value, onChange, placeholder }: any) => (
@@ -11,7 +12,7 @@ const TextArea = ({ value, onChange, placeholder }: any) => (
 );
 
 export function FeaturesEditor(props: any) {
-    const { headline, subheadline, items, columns } = props.node.attrs;
+    const { headline, subheadline, items, columns, blockWidth } = props.node.attrs;
     const safeItems = Array.isArray(items) ? items : [];
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -30,11 +31,15 @@ export function FeaturesEditor(props: any) {
                         </div>
                         <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Feature Grid</span>
                     </div>
-                    <select className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-blue-500" value={columns} onChange={e => update('columns', e.target.value)}>
-                        <option value="2">2 Cols</option>
-                        <option value="3">3 Cols</option>
-                        <option value="4">4 Cols</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                        <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
+                        <div className="w-px h-4 bg-gray-200" />
+                        <select className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-blue-500" value={columns} onChange={e => update('columns', e.target.value)}>
+                            <option value="2">2 Cols</option>
+                            <option value="3">3 Cols</option>
+                            <option value="4">4 Cols</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="p-5">
