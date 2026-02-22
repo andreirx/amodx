@@ -572,6 +572,47 @@ export default function SettingsPage() {
                             </label>
 
                             {config.commerceBar?.enabled && (<>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Bar Height</Label>
+                                    <select
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={config.commerceBar?.height || "h-10"}
+                                        onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, height: e.target.value } as any })}
+                                    >
+                                        <option value="h-8">32px</option>
+                                        <option value="h-10">40px (default)</option>
+                                        <option value="h-12">48px</option>
+                                        <option value="h-14">56px</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Font Size</Label>
+                                    <select
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={config.commerceBar?.fontSize || "text-sm"}
+                                        onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, fontSize: e.target.value } as any })}
+                                    >
+                                        <option value="text-xs">12px</option>
+                                        <option value="text-sm">14px (default)</option>
+                                        <option value="text-base">16px</option>
+                                        <option value="text-lg">18px</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Icon Size</Label>
+                                    <select
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={config.commerceBar?.iconSize || "h-5 w-5"}
+                                        onChange={e => setConfig({ ...config, commerceBar: { ...config.commerceBar, iconSize: e.target.value } as any })}
+                                    >
+                                        <option value="h-4 w-4">16px</option>
+                                        <option value="h-5 w-5">20px (default)</option>
+                                        <option value="h-6 w-6">24px</option>
+                                        <option value="h-7 w-7">28px</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Phone Number</Label>

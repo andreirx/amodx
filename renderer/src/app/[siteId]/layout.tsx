@@ -130,6 +130,9 @@ export default async function SiteLayout({ children, params }: Props) {
                             currency={config.currency || "RON"}
                             contentMaxWidth={config.header?.contentMaxWidth}
                             accountPrefix={config.urlPrefixes?.account || URL_PREFIX_DEFAULTS.account}
+                            height={config.commerceBar.height}
+                            fontSize={config.commerceBar.fontSize}
+                            iconSize={config.commerceBar.iconSize}
                         />
                     )}
 

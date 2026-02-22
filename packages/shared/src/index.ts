@@ -74,6 +74,10 @@ export const CommerceBarSchema = z.object({
         text: z.string(),
         url: z.string(),
     }).optional(),
+    // Formatting
+    height: z.string().default("h-10"),
+    fontSize: z.string().default("text-sm"),
+    iconSize: z.string().default("h-5 w-5"),
 });
 
 // ==========================================
@@ -451,7 +455,7 @@ export const TenantConfigSchema = z.object({
     topBar: TopBarSchema.default({ show: false }),
 
     // Commerce Bar (utility bar above navbar: phone, social, cart, CTA)
-    commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [] }),
+    commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [], height: "h-10", fontSize: "text-sm", iconSize: "h-5 w-5" }),
 
     // Order email templates (configurable per status)
     orderEmailConfig: OrderEmailConfigSchema.default({ templates: {} }),

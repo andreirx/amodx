@@ -12,7 +12,23 @@ import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Plus, User, Shield, MoreHorizontal, ShieldCheck, UserX, UserCheck } from "lucide-react";
+import { Loader2, Plus, User, Shield, MoreHorizontal, ShieldCheck, UserX, UserCheck, Trash2, Mail } from "lucide-react";
+
+const DEFAULT_INVITE_SUBJECT = "You've been invited to {{siteName}}";
+const DEFAULT_INVITE_BODY = `Hello,
+
+You have been invited to manage {{siteName}} as {{role}}.
+
+Your login credentials:
+Email: {{email}}
+Temporary password: {{password}}
+
+Sign in at: ${window.location.origin}
+
+You will be asked to set a new password on your first login.
+
+Best regards,
+The {{siteName}} Team`;
 
 // --- Role hierarchy ---
 const ROLE_HIERARCHY: Record<string, number> = {
@@ -53,10 +69,12 @@ export default function UsersPage() {
     const [newEmail, setNewEmail] = useState("");
     const [newRole, setNewRole] = useState("EDITOR");
     const [targetTenant, setTargetTenant] = useState("GLOBAL");
+    const [emailSubject, setEmailSubject] = useState(DEFAULT_INVITE_SUBJECT);
+    const [emailBody, setEmailBody] = useState(DEFAULT_INVITE_BODY);
 
     // Action state
     const [actionUser, setActionUser] = useState<any>(null);
-    const [actionType, setActionType] = useState<"role" | "disable" | "enable" | null>(null);
+    const [actionType, setActionType] = useState<"role" | "disable" | "enable" | "delete" | null>(null);
     const [selectedRole, setSelectedRole] = useState("");
     const [actionLoading, setActionLoading] = useState(false);
 
@@ -80,16 +98,23 @@ export default function UsersPage() {
         if (!newEmail) return;
         setInviting(true);
         try {
+            const tid = targetTenant === "GLOBAL" ? "" : targetTenant;
+            const t = tenants.find(t => t.id === tid);
             await apiRequest("/users", {
                 method: "POST",
                 body: JSON.stringify({
                     email: newEmail,
                     role: newRole,
-                    tenantId: targetTenant === "GLOBAL" ? "" : targetTenant
+                    tenantId: tid,
+                    emailSubject,
+                    emailBody,
+                    siteName: t?.name || "AMODX",
                 })
             });
             setIsOpen(false);
             setNewEmail("");
+            setEmailSubject(DEFAULT_INVITE_SUBJECT);
+            setEmailBody(DEFAULT_INVITE_BODY);
             loadUsers();
         } catch (e: any) {
             alert(e.message);
@@ -132,6 +157,22 @@ export default function UsersPage() {
         }
     }
 
+    async function handleDeleteUser() {
+        if (!actionUser) return;
+        setActionLoading(true);
+        try {
+            await apiRequest(`/users/${encodeURIComponent(actionUser.username)}`, {
+                method: "DELETE",
+            });
+            closeAction();
+            loadUsers();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
+        }
+    }
+
     function closeAction() {
         setActionUser(null);
         setActionType(null);
@@ -164,7 +205,10 @@ export default function UsersPage() {
                 </div>
 
                 {canInvite && (
-                    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                    <Dialog open={isOpen} onOpenChange={(open) => {
+                        setIsOpen(open);
+                        if (!open) { setEmailSubject(DEFAULT_INVITE_SUBJECT); setEmailBody(DEFAULT_INVITE_BODY); setNewEmail(""); }
+                    }}>
                         <DialogTrigger asChild>
                             <Button><Plus className="mr-2 h-4 w-4" /> Invite User</Button>
                         </DialogTrigger>
@@ -207,6 +251,31 @@ export default function UsersPage() {
                                     </Select>
                                     <p className="text-xs text-muted-foreground">
                                         If Global Admin, this MUST be "All Sites".
+                                    </p>
+                                </div>
+                                <div className="border-t pt-4 space-y-3">
+                                    <div className="flex items-center gap-2 text-sm font-medium">
+                                        <Mail className="h-4 w-4" />
+                                        Invite Email
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Subject</Label>
+                                        <Input
+                                            value={emailSubject}
+                                            onChange={e => setEmailSubject(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Body</Label>
+                                        <textarea
+                                            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            rows={8}
+                                            value={emailBody}
+                                            onChange={e => setEmailBody(e.target.value)}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        Available placeholders: {"{{email}}"}, {"{{password}}"}, {"{{role}}"}, {"{{siteName}}"}
                                     </p>
                                 </div>
                                 <Button onClick={handleInvite} disabled={inviting} className="w-full">
@@ -298,6 +367,14 @@ export default function UsersPage() {
                                                             Enable User
                                                         </DropdownMenuItem>
                                                     )}
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        onClick={() => { setActionUser(user); setActionType("delete"); }}
+                                                        className="text-destructive focus:text-destructive"
+                                                    >
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        Delete User
+                                                    </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         )}
@@ -340,7 +417,7 @@ export default function UsersPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Disable/Enable Confirmation Dialog */}
+            {/* Disable/Enable/Delete Confirmation Dialog */}
             <Dialog open={actionType === "disable" || actionType === "enable"} onOpenChange={(open) => { if (!open) closeAction(); }}>
                 <DialogContent>
                     <DialogHeader>
@@ -367,6 +444,35 @@ export default function UsersPage() {
                                 {actionLoading
                                     ? <Loader2 className="animate-spin mr-2 h-4 w-4" />
                                     : actionType === "disable" ? "Disable User" : "Enable User"
+                                }
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={actionType === "delete"} onOpenChange={(open) => { if (!open) closeAction(); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete {actionUser?.email}?</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <p className="text-sm text-muted-foreground">
+                            This will permanently remove the user from the system. This action cannot be undone. You can re-invite them later if needed.
+                        </p>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={closeAction} className="flex-1">
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={handleDeleteUser}
+                                disabled={actionLoading}
+                                className="flex-1"
+                            >
+                                {actionLoading
+                                    ? <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                                    : "Delete User"
                                 }
                             </Button>
                         </div>

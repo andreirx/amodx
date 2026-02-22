@@ -90,7 +90,7 @@ export function Navbar({
                                 {link.label}
                             </Link>
                         ))}
-                        {commerceEnabled && (
+                        {commerceEnabled && !hideContactButton && (
                             session ? (
                                 <Link href={getUrl(accountPrefix || "/account")} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                                     <User className="h-4 w-4" />

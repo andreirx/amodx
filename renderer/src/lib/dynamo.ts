@@ -87,6 +87,11 @@ function mapTenant(item: any): TenantConfig {
         footerLinks: item.footerLinks || [],
 
         commerceEnabled: item.commerceEnabled ?? false,
+        commerceBar: item.commerceBar || undefined,
+        currency: item.currency || undefined,
+        companyDetails: item.companyDetails || undefined,
+        gdpr: item.gdpr || undefined,
+        legalLinks: item.legalLinks || undefined,
         theme: theme || {},
         integrations: item.integrations || {},
         urlPrefixes: item.urlPrefixes || URL_PREFIX_DEFAULTS,

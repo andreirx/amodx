@@ -8,6 +8,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
+import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 
@@ -31,6 +32,17 @@ export class RendererHosting extends Construct {
         const openNextPath = path.join(rendererPath, '.open-next');
 
         console.log("Building Renderer with OpenNext...");
+        // Clean .open-next before build — shell rm + retry loop because macOS Spotlight/Finder
+        // can recreate .DS_Store mid-deletion, causing both rm -rf and fs.rmSync to fail
+        if (fs.existsSync(openNextPath)) {
+            for (let attempt = 0; attempt < 5; attempt++) {
+                try {
+                    execSync(`rm -rf "${openNextPath}"`, { stdio: 'inherit' });
+                    if (!fs.existsSync(openNextPath)) break;
+                } catch { /* retry */ }
+                execSync('sleep 1');
+            }
+        }
         try {
             execSync('npm run build:open', {
                 cwd: rendererPath,

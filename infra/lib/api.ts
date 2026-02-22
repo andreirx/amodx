@@ -594,11 +594,16 @@ export class AmodxApi extends Construct {
             environment: {
                 ...nodeProps.environment,
                 USER_POOL_ID: props.userPoolId,
+                SES_FROM_EMAIL: props.sesEmail,
             }
         });
         inviteUserFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['cognito-idp:AdminCreateUser'],
             resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
+        }));
+        inviteUserFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+            resources: ['*'],
         }));
 
         this.httpApi.addRoutes({
@@ -642,10 +647,30 @@ export class AmodxApi extends Construct {
             resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
         }));
 
+        // Delete User
+        const deleteUserFunc = new nodejs.NodejsFunction(this, 'DeleteUserFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/users/delete.ts'),
+            handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                USER_POOL_ID: props.userPoolId,
+            }
+        });
+        deleteUserFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['cognito-idp:AdminDeleteUser', 'cognito-idp:AdminGetUser'],
+            resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
+        }));
+
         this.httpApi.addRoutes({
             path: '/users/{username}',
             methods: [apigw.HttpMethod.PUT],
             integration: new integrations.HttpLambdaIntegration('UpdateUserInt', updateUserFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/users/{username}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteUserInt', deleteUserFunc),
         });
         this.httpApi.addRoutes({
             path: '/users/{username}/status',
