@@ -9,6 +9,7 @@ import ContentEditor from "@/pages/ContentEditor";
 import SettingsPage from "@/pages/Settings";
 import AdminLayout from "@/components/layout/AdminLayout";
 import { TenantProvider } from "@/context/TenantContext";
+import { AuthProvider } from "@/context/AuthContext";
 import MediaLibrary from "@/pages/MediaLibrary";
 import AuditLog from "@/pages/AuditLog";
 import Resources from "@/pages/Resources";
@@ -64,10 +65,12 @@ function AppShell() {
     }
 
     return (
-        <TenantProvider>
-            {/* AdminLayout renders <Outlet /> for the child routes */}
-            <AdminLayout />
-        </TenantProvider>
+        <AuthProvider>
+            <TenantProvider>
+                {/* AdminLayout renders <Outlet /> for the child routes */}
+                <AdminLayout />
+            </TenantProvider>
+        </AuthProvider>
     );
 }
 

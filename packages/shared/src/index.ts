@@ -323,7 +323,7 @@ export type LegalLinks = z.infer<typeof LegalLinksSchema>;
 // ==========================================
 
 export const TenantStatus = z.enum(["LIVE", "SUSPENDED", "OFF"]);
-export const UserRole = z.enum(["GLOBAL_ADMIN", "CLIENT_ADMIN", "EDITOR"]);
+export const UserRole = z.enum(["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"]);
 
 // Expanded Integrations
 export const IntegrationsSchema = z.object({

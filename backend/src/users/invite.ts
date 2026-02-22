@@ -1,7 +1,8 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { CognitoIdentityProviderClient, AdminCreateUserCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { AuthorizerContext } from "../auth/context.js";
-import {requireRole} from "../auth/policy.js";
+import { requireRole } from "../auth/policy.js";
+import { publishAudit } from "../lib/events.js";
 
 const cognito = new CognitoIdentityProviderClient({});
 const USER_POOL_ID = process.env.USER_POOL_ID!;
@@ -41,6 +42,14 @@ export const handler: Handler = async (event) => {
             ],
             DesiredDeliveryMediums: ["EMAIL"]
         }));
+
+        await publishAudit({
+            tenantId: tenantId || "GLOBAL",
+            actor: { id: auth.sub || "", email: auth.email },
+            action: "INVITE_USER",
+            target: { id: email, title: email },
+            details: { role: role || "EDITOR", tenantId: tenantId || "GLOBAL" },
+        });
 
         return { statusCode: 201, body: JSON.stringify({ message: "User invited" }) };
 

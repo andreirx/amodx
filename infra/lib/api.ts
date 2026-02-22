@@ -578,6 +578,7 @@ export class AmodxApi extends Construct {
             entry: path.join(__dirname, '../../backend/src/users/list.ts'),
             handler: 'handler',
             environment: {
+                ...nodeProps.environment,
                 USER_POOL_ID: props.userPoolId,
             }
         });
@@ -591,6 +592,7 @@ export class AmodxApi extends Construct {
             entry: path.join(__dirname, '../../backend/src/users/invite.ts'),
             handler: 'handler',
             environment: {
+                ...nodeProps.environment,
                 USER_POOL_ID: props.userPoolId,
             }
         });
@@ -608,6 +610,47 @@ export class AmodxApi extends Construct {
             path: '/users',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('InviteUserInt', inviteUserFunc),
+        });
+
+        // Update User (Role + Scope)
+        const updateUserFunc = new nodejs.NodejsFunction(this, 'UpdateUserFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/users/update.ts'),
+            handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                USER_POOL_ID: props.userPoolId,
+            }
+        });
+        updateUserFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['cognito-idp:AdminUpdateUserAttributes', 'cognito-idp:AdminGetUser'],
+            resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
+        }));
+
+        // Toggle User Status (Enable/Disable)
+        const toggleUserStatusFunc = new nodejs.NodejsFunction(this, 'ToggleUserStatusFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/users/toggle-status.ts'),
+            handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                USER_POOL_ID: props.userPoolId,
+            }
+        });
+        toggleUserStatusFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['cognito-idp:AdminDisableUser', 'cognito-idp:AdminEnableUser', 'cognito-idp:AdminGetUser'],
+            resources: [`arn:aws:cognito-idp:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:userpool/${props.userPoolId}`],
+        }));
+
+        this.httpApi.addRoutes({
+            path: '/users/{username}',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('UpdateUserInt', updateUserFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/users/{username}/status',
+            methods: [apigw.HttpMethod.PUT],
+            integration: new integrations.HttpLambdaIntegration('ToggleUserStatusInt', toggleUserStatusFunc),
         });
 
         // --- WEBHOOKS ---

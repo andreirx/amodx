@@ -1,16 +1,49 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
+import { useAuth } from "@/context/AuthContext";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, User, Shield } from "lucide-react";
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { Loader2, Plus, User, Shield, MoreHorizontal, ShieldCheck, UserX, UserCheck } from "lucide-react";
+
+// --- Role hierarchy ---
+const ROLE_HIERARCHY: Record<string, number> = {
+    GLOBAL_ADMIN: 3,
+    TENANT_ADMIN: 2,
+    EDITOR: 1,
+};
+
+const ROLE_LABELS: Record<string, string> = {
+    GLOBAL_ADMIN: "Global Admin",
+    TENANT_ADMIN: "Site Admin",
+    EDITOR: "Editor",
+};
+
+function canManageUser(actorRole: string, actorEmail: string, targetUser: any): boolean {
+    if ((ROLE_HIERARCHY[actorRole] || 0) < 2) return false; // EDITORs can't manage
+    if (actorEmail === targetUser.email) return false; // Can't manage self
+    const actorLevel = ROLE_HIERARCHY[actorRole] || 0;
+    const targetLevel = ROLE_HIERARCHY[targetUser.role] || 0;
+    return actorLevel >= targetLevel;
+}
+
+function getAllowedRoles(actorRole: string): string[] {
+    if (actorRole === "GLOBAL_ADMIN") return ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"];
+    if (actorRole === "TENANT_ADMIN") return ["TENANT_ADMIN", "EDITOR"];
+    return [];
+}
 
 export default function UsersPage() {
     const { tenants } = useTenant();
+    const { userRole, userEmail } = useAuth();
     const [users, setUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -20,6 +53,12 @@ export default function UsersPage() {
     const [newEmail, setNewEmail] = useState("");
     const [newRole, setNewRole] = useState("EDITOR");
     const [targetTenant, setTargetTenant] = useState("GLOBAL");
+
+    // Action state
+    const [actionUser, setActionUser] = useState<any>(null);
+    const [actionType, setActionType] = useState<"role" | "disable" | "enable" | null>(null);
+    const [selectedRole, setSelectedRole] = useState("");
+    const [actionLoading, setActionLoading] = useState(false);
 
     useEffect(() => {
         loadUsers();
@@ -59,12 +98,54 @@ export default function UsersPage() {
         }
     }
 
-    // Resolve Tenant Name helper
+    async function handleRoleChange() {
+        if (!actionUser || !selectedRole) return;
+        setActionLoading(true);
+        try {
+            await apiRequest(`/users/${encodeURIComponent(actionUser.username)}`, {
+                method: "PUT",
+                body: JSON.stringify({ role: selectedRole }),
+            });
+            closeAction();
+            loadUsers();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
+        }
+    }
+
+    async function handleToggleStatus(enable: boolean) {
+        if (!actionUser) return;
+        setActionLoading(true);
+        try {
+            await apiRequest(`/users/${encodeURIComponent(actionUser.username)}/status`, {
+                method: "PUT",
+                body: JSON.stringify({ enabled: enable }),
+            });
+            closeAction();
+            loadUsers();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setActionLoading(false);
+        }
+    }
+
+    function closeAction() {
+        setActionUser(null);
+        setActionType(null);
+        setSelectedRole("");
+    }
+
     const getTenantName = (id: string) => {
         if (id === 'GLOBAL' || !id) return <span className="text-purple-600 font-bold text-xs bg-purple-50 px-2 py-1 rounded">All Sites</span>;
         const t = tenants.find(t => t.id === id);
         return t ? t.name : id;
     };
+
+    const allowedRoles = getAllowedRoles(userRole);
+    const canInvite = allowedRoles.length > 0;
 
     if (loading) {
         return (
@@ -82,55 +163,59 @@ export default function UsersPage() {
                     <p className="text-muted-foreground">Manage access to the platform.</p>
                 </div>
 
-                <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                    <DialogTrigger asChild>
-                        <Button><Plus className="mr-2 h-4 w-4" /> Invite User</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Invite Team Member</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <Label>Email Address</Label>
-                                <Input
-                                    placeholder="colleague@agency.com"
-                                    value={newEmail}
-                                    onChange={e => setNewEmail(e.target.value)}
-                                />
+                {canInvite && (
+                    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                        <DialogTrigger asChild>
+                            <Button><Plus className="mr-2 h-4 w-4" /> Invite User</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Invite Team Member</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <Label>Email Address</Label>
+                                    <Input
+                                        placeholder="colleague@agency.com"
+                                        value={newEmail}
+                                        onChange={e => setNewEmail(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Role</Label>
+                                    <Select value={newRole} onValueChange={setNewRole}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {allowedRoles.map(r => (
+                                                <SelectItem key={r} value={r}>
+                                                    {ROLE_LABELS[r] || r}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Access Scope</Label>
+                                    <Select value={targetTenant} onValueChange={setTargetTenant}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="GLOBAL">Global (All Sites)</SelectItem>
+                                            {tenants.map(t => (
+                                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        If Global Admin, this MUST be "All Sites".
+                                    </p>
+                                </div>
+                                <Button onClick={handleInvite} disabled={inviting} className="w-full">
+                                    {inviting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : "Send Invitation"}
+                                </Button>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Role</Label>
-                                <Select value={newRole} onValueChange={setNewRole}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="GLOBAL_ADMIN">Global Admin (God Mode)</SelectItem>
-                                        <SelectItem value="TENANT_ADMIN">Site Admin (Specific Site)</SelectItem>
-                                        <SelectItem value="EDITOR">Editor (Can't change settings)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Access Scope</Label>
-                                <Select value={targetTenant} onValueChange={setTargetTenant}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="GLOBAL">Global (All Sites)</SelectItem>
-                                        {tenants.map(t => (
-                                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    If Global Admin, this MUST be "All Sites".
-                                </p>
-                            </div>
-                            <Button onClick={handleInvite} disabled={inviting} className="w-full">
-                                {inviting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : "Send Invitation"}
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
 
             <div className="border rounded-md bg-card">
@@ -141,11 +226,12 @@ export default function UsersPage() {
                             <TableHead>Role</TableHead>
                             <TableHead>Scope</TableHead>
                             <TableHead>Status</TableHead>
+                            {canInvite && <TableHead className="w-12" />}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {users.map((user) => (
-                            <TableRow key={user.username}>
+                            <TableRow key={user.username} className={!user.enabled ? "opacity-60" : ""}>
                                 <TableCell>
                                     <div className="flex items-center gap-3">
                                         <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
@@ -160,7 +246,7 @@ export default function UsersPage() {
                                 <TableCell>
                                     <div className="flex items-center gap-1">
                                         <Shield className="h-3 w-3 text-muted-foreground" />
-                                        <span className="text-sm font-medium">{user.role}</span>
+                                        <span className="text-sm font-medium">{ROLE_LABELS[user.role] || user.role}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell>
@@ -168,16 +254,125 @@ export default function UsersPage() {
                                 </TableCell>
                                 <TableCell>
                                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                        user.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                        !user.enabled
+                                            ? 'bg-red-100 text-red-700'
+                                            : user.status === 'CONFIRMED'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-amber-100 text-amber-700'
                                     }`}>
-                                        {user.status}
+                                        {!user.enabled ? 'DISABLED' : user.status}
                                     </span>
                                 </TableCell>
+                                {canInvite && (
+                                    <TableCell>
+                                        {canManageUser(userRole, userEmail, user) && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem onClick={() => {
+                                                        setActionUser(user);
+                                                        setActionType("role");
+                                                        setSelectedRole(user.role);
+                                                    }}>
+                                                        <ShieldCheck className="mr-2 h-4 w-4" />
+                                                        Change Role
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    {user.enabled ? (
+                                                        <DropdownMenuItem
+                                                            onClick={() => { setActionUser(user); setActionType("disable"); }}
+                                                            className="text-destructive focus:text-destructive"
+                                                        >
+                                                            <UserX className="mr-2 h-4 w-4" />
+                                                            Disable User
+                                                        </DropdownMenuItem>
+                                                    ) : (
+                                                        <DropdownMenuItem onClick={() => { setActionUser(user); setActionType("enable"); }}>
+                                                            <UserCheck className="mr-2 h-4 w-4" />
+                                                            Enable User
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+                                    </TableCell>
+                                )}
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
             </div>
+
+            {/* Role Change Dialog */}
+            <Dialog open={actionType === "role"} onOpenChange={(open) => { if (!open) closeAction(); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Change Role for {actionUser?.email}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>New Role</Label>
+                            <Select value={selectedRole} onValueChange={setSelectedRole}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {allowedRoles.map(r => (
+                                        <SelectItem key={r} value={r}>
+                                            {ROLE_LABELS[r] || r}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Button
+                            onClick={handleRoleChange}
+                            disabled={actionLoading || selectedRole === actionUser?.role}
+                            className="w-full"
+                        >
+                            {actionLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : "Confirm Role Change"}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Disable/Enable Confirmation Dialog */}
+            <Dialog open={actionType === "disable" || actionType === "enable"} onOpenChange={(open) => { if (!open) closeAction(); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {actionType === "disable" ? "Disable" : "Enable"} {actionUser?.email}?
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <p className="text-sm text-muted-foreground">
+                            {actionType === "disable"
+                                ? "This user will lose access immediately. They will not be deleted and can be re-enabled later."
+                                : "This will restore the user's access to the platform."}
+                        </p>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={closeAction} className="flex-1">
+                                Cancel
+                            </Button>
+                            <Button
+                                variant={actionType === "disable" ? "destructive" : "default"}
+                                onClick={() => handleToggleStatus(actionType === "enable")}
+                                disabled={actionLoading}
+                                className="flex-1"
+                            >
+                                {actionLoading
+                                    ? <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                                    : actionType === "disable" ? "Disable User" : "Enable User"
+                                }
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

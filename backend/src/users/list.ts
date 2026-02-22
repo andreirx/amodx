@@ -37,6 +37,7 @@ export const handler: Handler = async (event) => {
             return {
                 username: u.Username,
                 status: u.UserStatus,
+                enabled: u.Enabled !== false,
                 email: getAttr('email'),
                 role: getAttr('custom:role') || 'EDITOR',
                 tenantId: getAttr('custom:tenantId') || 'GLOBAL',
