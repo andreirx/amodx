@@ -129,6 +129,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             ctaButton={config.commerceBar.ctaButton}
                             currency={config.currency || "RON"}
                             contentMaxWidth={config.header?.contentMaxWidth}
+                            accountPrefix={config.urlPrefixes?.account || URL_PREFIX_DEFAULTS.account}
                         />
                     )}
 

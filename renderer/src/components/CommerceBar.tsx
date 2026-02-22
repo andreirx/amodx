@@ -1,9 +1,10 @@
 "use client";
 
-import { Phone } from "lucide-react";
+import { Phone, User } from "lucide-react";
 import { CartWidget } from "./CartWidget";
 import Link from "next/link";
 import { useTenantUrl } from "@/lib/routing";
+import { useSession } from "next-auth/react";
 
 interface SocialLink {
     platform: string;
@@ -17,6 +18,7 @@ interface CommerceBarProps {
     ctaButton?: { text: string; url: string };
     currency?: string;
     contentMaxWidth?: string;
+    accountPrefix?: string;
 }
 
 function SocialIcon({ platform }: { platform: string }) {
@@ -77,8 +79,9 @@ function WhatsAppIcon({ className }: { className?: string }) {
     );
 }
 
-export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton, currency = "RON", contentMaxWidth = "max-w-7xl" }: CommerceBarProps) {
+export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton, currency = "RON", contentMaxWidth = "max-w-7xl", accountPrefix = "/account" }: CommerceBarProps) {
     const { getUrl } = useTenantUrl();
+    const { data: session } = useSession();
 
     return (
         <div className="hidden md:block bg-muted/50 border-b text-sm">
@@ -123,6 +126,25 @@ export function CommerceBar({ phone, whatsappNumber, socialLinks = [], ctaButton
                                 <SocialIcon platform={link.platform} />
                             </a>
                         ))}
+
+                        {/* Account / Sign In */}
+                        {session ? (
+                            <Link
+                                href={getUrl(accountPrefix)}
+                                className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                <User className="h-4 w-4" />
+                                <span>{session.user?.name?.split(" ")[0] || "Account"}</span>
+                            </Link>
+                        ) : (
+                            <a
+                                href="/api/auth/signin"
+                                className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                <User className="h-4 w-4" />
+                                <span>Sign In</span>
+                            </a>
+                        )}
 
                         {/* Cart with total */}
                         <CartWidget showTotal currency={currency} />

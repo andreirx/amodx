@@ -24,12 +24,12 @@ No admin page for viewing order reports, revenue charts, or product performance 
 ### Form email notifications not implemented
 `backend/src/forms/public-submit.ts` saves submissions but doesn't send notification emails to `FormDefinition.notifyEmail`. Needs SES integration similar to existing contact form handler.
 
-### Customer accounts (Phase 5E)
-Reuse existing per-tenant NextAuth Google OAuth for customer login. Need:
-- Customer login UI in Navbar/CommerceBar
-- SSR account page with order history and saved address
-- Pre-fill checkout from session
-- Route handling for `/account` URL prefix (schema already added)
+### Email/Password Customer Accounts via Public Cognito Pool
+The public Cognito pool (`AmodxPublicPool`) is provisioned in CDK but dormant. Currently customer auth is Google-only via NextAuth. This task activates the public pool so tenants can offer email/password registration alongside Google OAuth.
+
+**See full implementation plan:** `docs/plan-public-pool-customer-auth.md`
+
+**Summary:** Wire the existing public Cognito pool as a NextAuth `CredentialsProvider` for sign-up/sign-in, add registration + login UI, link Cognito identities to existing `CUSTOMER#email` DynamoDB records, add password reset flow. Google OAuth continues working alongside it. Estimated effort: 3-5 days.
 
 ---
 
@@ -64,3 +64,4 @@ Several admin pages (Orders, Customers, Products, etc.) use `any` types for API 
 - ~~Payment methods config~~ — DONE (enabledPaymentMethods, bank transfer details in admin)
 - ~~Footer enhancement~~ — DONE (company details, footer links, legal links, multi-column layout)
 - ~~Product variants admin tab~~ — DONE (VariantsTab in ProductEditor with groups + options)
+- ~~Customer accounts (Phase 5E)~~ — DONE (NextAuth Google OAuth, account page, order history, checkout pre-fill)
