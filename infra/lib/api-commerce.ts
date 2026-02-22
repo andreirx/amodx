@@ -7,6 +7,7 @@ import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -16,6 +17,9 @@ interface CommerceApiProps extends NestedStackProps {
     table: dynamodb.ITable;
     eventBus: events.IEventBus;
     sesEmail: string;
+    uploadsBucketName: string;
+    uploadsCdnUrl: string;
+    uploadsBucket: s3.IBucket;
 }
 
 export class CommerceApi extends NestedStack {
@@ -401,10 +405,16 @@ export class CommerceApi extends NestedStack {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/import/woocommerce.ts'),
             handler: 'handler',
-            timeout: cdk.Duration.minutes(5),
-            memorySize: 512,
+            timeout: cdk.Duration.minutes(10),
+            memorySize: 1024,
+            environment: {
+                ...nodeProps.environment,
+                UPLOADS_BUCKET: props.uploadsBucketName,
+                UPLOADS_CDN_URL: props.uploadsCdnUrl,
+            },
         });
         table.grantReadWriteData(wooImportFunc);
+        props.uploadsBucket.grantReadWrite(wooImportFunc);
 
         addRoute('WooImport', 'POST /import/woocommerce', wooImportFunc);
 

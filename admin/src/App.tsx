@@ -37,6 +37,7 @@ import FormEditor from "@/pages/FormEditor";
 import FormSubmissions from "@/pages/FormSubmissions";
 import OrderEmails from "@/pages/OrderEmails";
 import Reports from "@/pages/Reports";
+import MigrationPage from "@/pages/Migration";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -115,6 +116,7 @@ const router = createBrowserRouter([
             { path: "resources", element: <Resources /> },
             { path: "users", element: <UsersPage /> },
             { path: "signals", element: <Signals /> },
+            { path: "migration", element: <MigrationPage /> },
             { path: "settings", element: <SettingsPage /> },
         ],
     },

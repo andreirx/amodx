@@ -174,6 +174,9 @@ export class AmodxStack extends cdk.Stack {
       table: db.table,
       eventBus: events.bus,
       sesEmail: sesEmail,
+      uploadsBucketName: uploads.bucket.bucketName,
+      uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
+      uploadsBucket: uploads.bucket,
     });
 
     // 3c. Engagement API (NestedStack — popups, forms)

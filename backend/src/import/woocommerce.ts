@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { writeCatProductItems } from "../lib/catprod.js";
 import { publishAudit } from "../lib/events.js";
+import { loadMediaMap } from "../lib/media-map.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -19,11 +20,84 @@ const slugify = (str: string) => {
         .replace(/^-|-$/g, '');
 };
 
-function parseCSV(csvText: string): Record<string, string>[] {
-    const lines = csvText.split('\n');
-    if (lines.length < 2) return [];
+// ===================== ROMANIAN → ENGLISH COLUMN MAP =====================
+const COLUMN_MAP: Record<string, string> = {
+    "Tip": "Type",
+    "Nume": "Name",
+    "Publicat": "Published",
+    "Este reprezentativ?": "Is featured?",
+    "Vizibilitate în catalog": "Catalog visibility",
+    "Descriere scurtă": "Short description",
+    "Descriere": "Description",
+    "Dată începere promoție": "Date sale price starts",
+    "Dată încheiere promoție": "Date sale price ends",
+    "Stare taxă": "Tax status",
+    "Clasă de impozitare": "Tax class",
+    "În stoc?": "In stock?",
+    "Stoc": "Stock",
+    "Cantitate mică în stoc": "Low stock amount",
+    "Precomenzile sunt permise?": "Backorders allowed?",
+    "Vândut individual?": "Sold individually?",
+    "Greutate (g)": "Weight (g)",
+    "Lungime (cm)": "Length (cm)",
+    "Lățime (cm)": "Width (cm)",
+    "Înălțime (cm)": "Height (cm)",
+    "Permiți recenzii de la clienți?": "Reviews allowed?",
+    "Notă de cumpărare": "Purchase note",
+    "Preț promoțional": "Sale price",
+    "Preț obișnuit": "Regular price",
+    "Categorii": "Categories",
+    "Etichete": "Tags",
+    "Clasă de livrare": "Shipping class",
+    "Imagini": "Images",
+    "Limită de descărcări": "Download limit",
+    "Zile de expirare descărcare": "Download expiry days",
+    "Părinte": "Parent",
+    "Produse grupate": "Grouped products",
+    "Upsells": "Upsells",
+    "Vânzări încrucișate": "Cross-sells",
+    "URL extern": "External URL",
+    "Text buton": "Button text",
+    "Poziție": "Position",
+    "Branduri": "Brand",
+    "GTIN, UPC, EAN sau ISBN": "GTIN, UPC, EAN, or ISBN",
+};
 
-    const headers = parseCSVLine(lines[0]);
+/** Map a single header to English. Handles both static map and dynamic attribute patterns. */
+function normalizeHeader(header: string): string {
+    // Static lookup first
+    if (COLUMN_MAP[header]) return COLUMN_MAP[header];
+
+    // Dynamic attribute columns: "Nume atribut N" → "Attribute N name"
+    let m = header.match(/^Nume atribut (\d+)$/);
+    if (m) return `Attribute ${m[1]} name`;
+
+    m = header.match(/^Valoare \(valori\) atribut (\d+)$/);
+    if (m) return `Attribute ${m[1]} value(s)`;
+
+    m = header.match(/^Vizibilitate atribut (\d+)$/);
+    if (m) return `Attribute ${m[1]} visible`;
+
+    m = header.match(/^Atribut (\d+) global$/);
+    if (m) return `Attribute ${m[1]} global`;
+
+    // Already English or unknown — pass through
+    return header;
+}
+
+function parseCSV(csvText: string): { rows: Record<string, string>[]; weightInGrams: boolean } {
+    // Strip UTF-8 BOM
+    if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
+
+    const lines = csvText.split('\n');
+    if (lines.length < 2) return { rows: [], weightInGrams: false };
+
+    const rawHeaders = parseCSVLine(lines[0]);
+    const headers = rawHeaders.map(h => normalizeHeader(h.trim()));
+
+    // Detect weight unit from header
+    const weightInGrams = rawHeaders.some(h => h.includes('(g)'));
+
     const rows: Record<string, string>[] = [];
 
     for (let i = 1; i < lines.length; i++) {
@@ -32,11 +106,11 @@ function parseCSV(csvText: string): Record<string, string>[] {
         const values = parseCSVLine(line);
         const row: Record<string, string> = {};
         for (let j = 0; j < headers.length; j++) {
-            row[headers[j].trim()] = (values[j] || '').trim();
+            row[headers[j]] = (values[j] || '').trim();
         }
         rows.push(row);
     }
-    return rows;
+    return { rows, weightInGrams };
 }
 
 function parseCSVLine(line: string): string[] {
@@ -75,7 +149,7 @@ function parseCSVLine(line: string): string[] {
 function mapAvailability(stockQty: string, stockStatus: string): string {
     const lower = stockStatus.toLowerCase();
     if (lower === 'outofstock' || lower === '0') return 'out_of_stock';
-    if (lower === 'onbackorder') return 'preorder';
+    if (lower === 'onbackorder' || lower === 'backorder') return 'preorder';
     return 'in_stock';
 }
 
@@ -95,9 +169,15 @@ function extractAttributes(row: Record<string, string>): { key: string; value: s
     return attrs;
 }
 
+/** Rewrite a URL using the media map. Returns original if not found. */
+function rewriteUrl(url: string, mediaMap: Map<string, string>): string {
+    return mediaMap.get(url) || url;
+}
+
 interface ImportResult {
     imported: number;
     skipped: number;
+    drafts: number;
     categoriesCreated: number;
     errors: string[];
 }
@@ -123,15 +203,22 @@ export const handler: Handler = async (event) => {
             return { statusCode: 400, body: JSON.stringify({ error: "csvContent is required" }) };
         }
 
-        const rows = parseCSV(csvContent);
+        const { rows, weightInGrams } = parseCSV(csvContent);
         if (rows.length === 0) {
             return { statusCode: 400, body: JSON.stringify({ error: "No data rows found in CSV" }) };
         }
 
-        const result: ImportResult = { imported: 0, skipped: 0, categoriesCreated: 0, errors: [] };
+        // Load media URL map (from prior media import step)
+        const mediaMap = await loadMediaMap(tenantId);
+        console.log(`Loaded ${mediaMap.size} media URL mappings`);
+
+        const result: ImportResult = { imported: 0, skipped: 0, drafts: 0, categoriesCreated: 0, errors: [] };
         const categoryCache: Record<string, string> = {}; // name → id
 
         // === Two-pass approach for variable products + variations ===
+
+        // Build WooCommerce ID → slug map for parent-by-ID lookups
+        const wooIdToSlug: Map<string, string> = new Map();
 
         // Pass 1: Separate parents (simple/variable) and variations
         const parents: Record<string, string>[] = [];
@@ -139,17 +226,32 @@ export const handler: Handler = async (event) => {
 
         for (const row of rows) {
             const type = (row['Type'] || row['type'] || 'simple').toLowerCase();
-            if (type === 'variation') {
-                const parentSlug = row['Parent'] || row['parent'] || '';
-                if (parentSlug) {
-                    const existing = variationsByParent.get(parentSlug) || [];
+
+            // Build ID→slug map for all non-variation rows
+            if (type !== 'variation') {
+                const wooId = row['ID'] || '';
+                const title = row['Name'] || row['name'] || row['post_title'] || '';
+                const wooSlug = row['Slug'] || row['slug'] || '';
+                const slug = wooSlug || slugify(title);
+                if (wooId && slug) wooIdToSlug.set(wooId, slug);
+                parents.push(row);
+            } else {
+                // Variation — resolve parent reference
+                let parentRef = row['Parent'] || row['parent'] || '';
+
+                // Handle "id:XXXX" format
+                if (parentRef.startsWith('id:')) {
+                    const wooId = parentRef.slice(3);
+                    parentRef = wooIdToSlug.get(wooId) || parentRef;
+                }
+
+                if (parentRef) {
+                    const existing = variationsByParent.get(parentRef) || [];
                     existing.push(row);
-                    variationsByParent.set(parentSlug, existing);
+                    variationsByParent.set(parentRef, existing);
                 } else {
                     result.skipped++;
                 }
-            } else {
-                parents.push(row);
             }
         }
 
@@ -167,6 +269,14 @@ export const handler: Handler = async (event) => {
                 const wooSlug = row['Slug'] || row['slug'] || '';
                 const productSlug = wooSlug || slugify(title);
                 const sku = row['SKU'] || row['sku'] || '';
+
+                // Determine status from Published column
+                const published = row['Published'] || '';
+                let status = defaultStatus;
+                if (published === '-1' || published === '0') {
+                    status = 'draft';
+                    result.drafts++;
+                }
 
                 // Parse price
                 const regularPrice = row['Regular price'] || row['regular_price'] || '0';
@@ -224,11 +334,11 @@ export const handler: Handler = async (event) => {
                     }
                 }
 
-                // Parse images
+                // Parse images — rewrite URLs via media map
                 const mainImage = row['Images'] || row['images'] || row['image'] || '';
                 const images = mainImage.split(',').map((img: string) => img.trim()).filter(Boolean);
-                const imageLink = images[0] || '';
-                const additionalImageLinks = images.slice(1);
+                const imageLink = rewriteUrl(images[0] || '', mediaMap);
+                const additionalImageLinks = images.slice(1).map(url => rewriteUrl(url, mediaMap));
 
                 // Parse tags
                 const tagsStr = row['Tags'] || row['tags'] || '';
@@ -238,9 +348,15 @@ export const handler: Handler = async (event) => {
                 const shortDescription = row['Short description'] || row['short_description'] || '';
                 const longDescription = row['Description'] || row['description'] || row['post_content'] || '';
 
-                // Parse weight
-                const weightStr = row['Weight (kg)'] || row['weight'] || '';
-                const weight = weightStr ? Math.round(parseFloat(weightStr) * 1000) : undefined;
+                // Parse weight — detect grams vs kg
+                const weightStr = row['Weight (g)'] || row['Weight (kg)'] || row['weight'] || '';
+                let weight: number | undefined;
+                if (weightStr) {
+                    const parsed = parseFloat(weightStr);
+                    if (!isNaN(parsed)) {
+                        weight = weightInGrams ? Math.round(parsed) : Math.round(parsed * 1000);
+                    }
+                }
 
                 // Parse stock
                 const stockStatus = row['In stock?'] || row['stock_status'] || '1';
@@ -266,13 +382,14 @@ export const handler: Handler = async (event) => {
                                 dimensionMap.set(attr.key, new Map());
                             }
                             const optionMap = dimensionMap.get(attr.key)!;
-                            // Split pipe-separated values (WooCommerce uses pipes for multi-value)
-                            const values = attr.value.split('|').map(v => v.trim());
+                            // Split pipe-separated or comma-separated values
+                            const values = attr.value.split(/[|,]/).map(v => v.trim());
                             for (const val of values) {
                                 if (!optionMap.has(val)) {
                                     const varPrice = varRow['Regular price'] || varRow['regular_price'] || '';
                                     const varSalePrice = varRow['Sale price'] || varRow['sale_price'] || '';
-                                    const varImage = (varRow['Images'] || varRow['images'] || '').split(',')[0]?.trim() || '';
+                                    const varImageRaw = (varRow['Images'] || varRow['images'] || '').split(',')[0]?.trim() || '';
+                                    const varImage = rewriteUrl(varImageRaw, mediaMap);
                                     const varStockStatus = varRow['In stock?'] || varRow['stock_status'] || '1';
                                     const varAvailability = mapAvailability('', varStockStatus);
 
@@ -304,7 +421,7 @@ export const handler: Handler = async (event) => {
                     Type: "Product",
                     id,
                     tenantId,
-                    status: defaultStatus,
+                    status,
                     title,
                     slug: productSlug,
                     sku: sku || undefined,
@@ -364,7 +481,9 @@ export const handler: Handler = async (event) => {
                 imported: result.imported,
                 categoriesCreated: result.categoriesCreated,
                 skipped: result.skipped,
-                errors: result.errors.length > 0 ? result.errors : undefined,
+                drafts: result.drafts,
+                mediaMapUsed: mediaMap.size,
+                errors: result.errors.length > 0 ? result.errors.slice(0, 20) : undefined,
             },
             ip: event.requestContext.http.sourceIp
         });
@@ -372,7 +491,7 @@ export const handler: Handler = async (event) => {
         return {
             statusCode: 200,
             body: JSON.stringify({
-                message: `Import complete: ${result.imported} products imported, ${result.categoriesCreated} categories created, ${result.skipped} skipped`,
+                message: `Import complete: ${result.imported} products imported, ${result.categoriesCreated} categories created, ${result.skipped} skipped, ${result.drafts} drafts`,
                 ...result,
             })
         };

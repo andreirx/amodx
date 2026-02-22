@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { detectHeaderMappings, type HeaderMapping } from "@/lib/csv-headers";
 
 export default function Products() {
     const { currentTenant } = useTenant();
@@ -22,6 +23,8 @@ export default function Products() {
     const [showImport, setShowImport] = useState(false);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState<any>(null);
+    const [headerMappings, setHeaderMappings] = useState<HeaderMapping[] | null>(null);
+    const [pendingCsvContent, setPendingCsvContent] = useState<string>("");
     const [bulkOpen, setBulkOpen] = useState(false);
     const [bulkPercent, setBulkPercent] = useState("");
     const [bulkRoundTo, setBulkRoundTo] = useState("0");
@@ -82,10 +85,30 @@ export default function Products() {
     async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
         const file = e.target.files?.[0];
         if (!file) return;
-        setImporting(true);
         setImportResult(null);
         try {
             const csvContent = await file.text();
+            const firstLine = csvContent.split('\n')[0] || '';
+            const mappings = detectHeaderMappings(firstLine);
+            if (mappings) {
+                // Non-English headers detected — show confirmation
+                setPendingCsvContent(csvContent);
+                setHeaderMappings(mappings);
+            } else {
+                // English headers — import directly
+                await doImport(csvContent);
+            }
+        } catch (err: any) {
+            setImportResult({ error: err.message });
+        } finally {
+            e.target.value = "";
+        }
+    }
+
+    async function doImport(csvContent: string) {
+        setImporting(true);
+        setImportResult(null);
+        try {
             const res = await apiRequest("/import/woocommerce", {
                 method: "POST",
                 body: JSON.stringify({ csvContent, currency: (currentTenant as any).currency || "RON" }),
@@ -96,7 +119,6 @@ export default function Products() {
             setImportResult({ error: err.message });
         } finally {
             setImporting(false);
-            e.target.value = "";
         }
     }
 
@@ -437,6 +459,44 @@ export default function Products() {
                     </Table>
                 </CardContent>
             </Card>
+
+            {/* Header Mapping Confirmation Dialog */}
+            <Dialog open={headerMappings !== null} onOpenChange={(open) => { if (!open) { setHeaderMappings(null); setPendingCsvContent(""); } }}>
+                <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>CSV Header Mapping</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                        We detected non-English column headers in your CSV. Please confirm these mappings are correct before importing.
+                    </p>
+                    <div className="border rounded-md overflow-hidden mt-2">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-xs">Your CSV Header</TableHead>
+                                    <TableHead className="text-xs">Mapped To</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {headerMappings?.filter(m => m.original !== m.mapped).map((m, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell className="text-xs font-mono py-1">{m.original}</TableCell>
+                                        <TableCell className="text-xs font-mono py-1 text-green-700">{m.mapped}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                        <Button variant="outline" onClick={() => { setHeaderMappings(null); setPendingCsvContent(""); }} className="flex-1">
+                            Cancel
+                        </Button>
+                        <Button onClick={() => { setHeaderMappings(null); doImport(pendingCsvContent); setPendingCsvContent(""); }} className="flex-1">
+                            Confirm & Import
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

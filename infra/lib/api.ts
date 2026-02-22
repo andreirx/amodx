@@ -307,6 +307,28 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ImportInt', importFunc),
         });
 
+        // --- MEDIA IMPORT ---
+        const mediaImportFunc = new nodejs.NodejsFunction(this, 'MediaImportFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/import/media.ts'),
+            handler: 'handler',
+            timeout: cdk.Duration.minutes(15),
+            memorySize: 3008,
+            environment: {
+                ...nodeProps.environment,
+                UPLOADS_BUCKET: props.uploadsBucket.bucketName,
+                UPLOADS_CDN_URL: props.uploadsCdnUrl,
+            }
+        });
+        props.table.grantReadWriteData(mediaImportFunc);
+        props.uploadsBucket.grantReadWrite(mediaImportFunc);
+
+        this.httpApi.addRoutes({
+            path: '/import/media',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('MediaImportInt', mediaImportFunc),
+        });
+
         // --- TENANTS ---
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {
             ...nodeProps,
