@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Input } from "./input";
-import { Link as LinkIcon, FileText, Globe } from "lucide-react";
+import { Link as LinkIcon, FileText, Globe, ShoppingBag, FolderTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SmartLinkInputProps {
@@ -80,19 +80,26 @@ export function SmartLinkInput({ value, onChange, placeholder, className }: Smar
             {isFocused && (
                 <div className="absolute top-full left-0 w-full mt-1 bg-popover border shadow-lg rounded-md max-h-60 overflow-y-auto z-50 animate-in fade-in slide-in-from-top-1">
                     {filtered.length > 0 ? (
-                        filtered.map((page) => (
-                            <button
-                                key={page.slug}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2 group border-b border-border/50 last:border-0"
-                                onClick={() => handleSelect(page.slug)}
-                            >
-                                <FileText className="h-3 w-3 text-muted-foreground group-hover:text-primary shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                    <div className="truncate font-medium">{page.title}</div>
-                                    <div className="text-xs text-muted-foreground font-mono truncate">{page.slug}</div>
-                                </div>
-                            </button>
-                        ))
+                        filtered.map((page) => {
+                            // Determine icon based on slug pattern
+                            const isProduct = page.slug.startsWith('/product/');
+                            const isCategory = page.slug.startsWith('/category/');
+                            const IconComponent = isProduct ? ShoppingBag : isCategory ? FolderTree : FileText;
+
+                            return (
+                                <button
+                                    key={page.slug}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2 group border-b border-border/50 last:border-0"
+                                    onClick={() => handleSelect(page.slug)}
+                                >
+                                    <IconComponent className="h-3 w-3 text-muted-foreground group-hover:text-primary shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate font-medium">{page.title}</div>
+                                        <div className="text-xs text-muted-foreground font-mono truncate">{page.slug}</div>
+                                    </div>
+                                </button>
+                            );
+                        })
                     ) : (
                         <div className="px-3 py-3 text-xs text-muted-foreground flex items-center gap-2">
                             <Globe className="h-3 w-3" />

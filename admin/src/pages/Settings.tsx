@@ -137,6 +137,48 @@ export default function SettingsPage() {
         setConfig({ ...config, [field]: current });
     };
 
+    // Convert a simple link to a dropdown menu
+    const toggleLinkDropdown = (index: number, isDropdown: boolean) => {
+        const current = [...(config.navLinks || [])];
+        if (isDropdown) {
+            // Convert to dropdown - add empty children array
+            current[index] = { ...current[index], children: [] };
+        } else {
+            // Convert to simple link - remove children
+            const { children, ...rest } = current[index] as any;
+            current[index] = rest;
+        }
+        setConfig({ ...config, navLinks: current });
+    };
+
+    // Add a child link to a dropdown menu
+    const addChildLink = (parentIndex: number) => {
+        const current = [...(config.navLinks || [])];
+        const children = current[parentIndex].children || [];
+        current[parentIndex] = {
+            ...current[parentIndex],
+            children: [...children, { label: "Sub-link", href: "/" }]
+        };
+        setConfig({ ...config, navLinks: current });
+    };
+
+    // Update a child link
+    const updateChildLink = (parentIndex: number, childIndex: number, key: 'label' | 'href', val: string) => {
+        const current = [...(config.navLinks || [])];
+        const children = [...(current[parentIndex].children || [])];
+        children[childIndex] = { ...children[childIndex], [key]: val };
+        current[parentIndex] = { ...current[parentIndex], children };
+        setConfig({ ...config, navLinks: current });
+    };
+
+    // Remove a child link
+    const removeChildLink = (parentIndex: number, childIndex: number) => {
+        const current = [...(config.navLinks || [])];
+        const children = (current[parentIndex].children || []).filter((_, i) => i !== childIndex);
+        current[parentIndex] = { ...current[parentIndex], children };
+        setConfig({ ...config, navLinks: current });
+    };
+
 // Smart Theme Updater (Targeting correct tab)
     const updateTheme = (key: string, val: string) => {
         if (activeTab === 'light') {
@@ -519,6 +561,35 @@ export default function SettingsPage() {
                                     </Select>
                                 </div>
                             </div>
+
+                            {/* Social Sharing */}
+                            <div className="pt-4 border-t">
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={config.hideSocialSharing ?? false}
+                                        onChange={e => setConfig({ ...config, hideSocialSharing: e.target.checked })}
+                                        className="rounded border-gray-300 h-5 w-5"
+                                    />
+                                    <div>
+                                        <span className="font-medium text-sm">Hide Social Sharing</span>
+                                        <p className="text-xs text-muted-foreground">Disable share buttons (Twitter, Facebook, LinkedIn, etc.) on all pages. Individual pages can still override this setting.</p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            {/* Home Page Slug */}
+                            <div className="pt-4 border-t space-y-2">
+                                <Label>Home Page Slug</Label>
+                                <Input
+                                    value={config.homePageSlug || ""}
+                                    onChange={e => setConfig({ ...config, homePageSlug: e.target.value || undefined })}
+                                    placeholder="/home"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Map the root URL (/) to a different page. Enter the slug including the leading slash (e.g., "/home"). Leave empty to use the default / page.
+                                </p>
+                            </div>
                         </CardContent>
                     </Card>
 
@@ -714,6 +785,40 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
+                    {/* PRODUCT SEARCH BAR */}
+                    {config.commerceEnabled && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Product Search</CardTitle>
+                            <CardDescription>A dedicated search bar below the navbar for finding products.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.searchBar?.enabled ?? false}
+                                    onChange={e => setConfig({ ...config, searchBar: { ...config.searchBar, enabled: e.target.checked } as any })}
+                                    className="rounded border-gray-300 h-5 w-5"
+                                />
+                                <div>
+                                    <span className="font-medium text-sm">Enable Search Bar</span>
+                                    <p className="text-xs text-muted-foreground">Shows a full-width search input below the navbar on all pages.</p>
+                                </div>
+                            </label>
+                            {config.searchBar?.enabled && (
+                                <div className="space-y-2">
+                                    <Label>Placeholder Text</Label>
+                                    <Input
+                                        value={config.searchBar?.placeholder || ""}
+                                        onChange={e => setConfig({ ...config, searchBar: { ...config.searchBar, placeholder: e.target.value } as any })}
+                                        placeholder="Search products..."
+                                    />
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                    )}
+
                     {/* CURRENCY */}
                     {config.commerceEnabled && (
                     <Card>
@@ -728,6 +833,116 @@ export default function SettingsPage() {
                                 placeholder="RON"
                                 className="w-32"
                             />
+                        </CardContent>
+                    </Card>
+                    )}
+
+                    {/* COMMERCE STRINGS (i18n) */}
+                    {config.commerceEnabled && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Commerce Labels</CardTitle>
+                            <CardDescription>Customize the labels shown on product pages, cart, and checkout. Leave blank to use English defaults.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Description</Label>
+                                    <Input
+                                        value={config.commerceStrings?.description || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, description: e.target.value || undefined } })}
+                                        placeholder="Description"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Add to Cart</Label>
+                                    <Input
+                                        value={config.commerceStrings?.addToCart || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, addToCart: e.target.value || undefined } })}
+                                        placeholder="Add to Cart"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>In Stock</Label>
+                                    <Input
+                                        value={config.commerceStrings?.inStock || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, inStock: e.target.value || undefined } })}
+                                        placeholder="In Stock"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Out of Stock</Label>
+                                    <Input
+                                        value={config.commerceStrings?.outOfStock || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, outOfStock: e.target.value || undefined } })}
+                                        placeholder="Out of Stock"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Shopping Cart</Label>
+                                    <Input
+                                        value={config.commerceStrings?.shoppingCart || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, shoppingCart: e.target.value || undefined } })}
+                                        placeholder="Shopping Cart"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Continue Shopping</Label>
+                                    <Input
+                                        value={config.commerceStrings?.continueShopping || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, continueShopping: e.target.value || undefined } })}
+                                        placeholder="Continue Shopping"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Order Summary</Label>
+                                    <Input
+                                        value={config.commerceStrings?.orderSummary || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, orderSummary: e.target.value || undefined } })}
+                                        placeholder="Order Summary"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Subtotal</Label>
+                                    <Input
+                                        value={config.commerceStrings?.subtotal || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, subtotal: e.target.value || undefined } })}
+                                        placeholder="Subtotal"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Shipping</Label>
+                                    <Input
+                                        value={config.commerceStrings?.shipping || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, shipping: e.target.value || undefined } })}
+                                        placeholder="Shipping"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Total</Label>
+                                    <Input
+                                        value={config.commerceStrings?.total || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, total: e.target.value || undefined } })}
+                                        placeholder="Total"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Apply (coupon button)</Label>
+                                    <Input
+                                        value={config.commerceStrings?.apply || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, apply: e.target.value || undefined } })}
+                                        placeholder="Apply"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Proceed to Checkout</Label>
+                                    <Input
+                                        value={config.commerceStrings?.proceedToCheckout || ""}
+                                        onChange={e => setConfig({ ...config, commerceStrings: { ...config.commerceStrings, proceedToCheckout: e.target.value || undefined } })}
+                                        placeholder="Proceed to Checkout"
+                                    />
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
                     )}
@@ -1047,25 +1262,91 @@ export default function SettingsPage() {
                                     <Plus className="h-4 w-4 mr-2"/> Add Link
                                 </Button>
                             </div>
+                            <CardDescription>
+                                Create simple links or dropdown menus. Dropdown menus show sub-links on hover/click.
+                            </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-3">
-                            {(config.navLinks || []).map((link, i) => (
-                                <div key={i} className="flex gap-2">
-                                    <Input value={link.label}
-                                           onChange={e => updateLink('navLinks', i, 'label', e.target.value)}
-                                           placeholder="Label" className="flex-1"/>
-                                    <div className="flex-1">
-                                        <SmartLinkInput
-                                            value={link.href}
-                                            onChange={val => updateLink('navLinks', i, 'href', val)}
-                                            placeholder="/path"
-                                        />
+                        <CardContent className="space-y-4">
+                            {(config.navLinks || []).map((link, i) => {
+                                const hasChildren = Array.isArray(link.children);
+                                return (
+                                    <div key={i} className="border rounded-lg p-3 space-y-3">
+                                        {/* Main link row */}
+                                        <div className="flex gap-2 items-center">
+                                            <Input
+                                                value={link.label}
+                                                onChange={e => updateLink('navLinks', i, 'label', e.target.value)}
+                                                placeholder="Label"
+                                                className="flex-1"
+                                            />
+                                            <div className="flex-1">
+                                                <SmartLinkInput
+                                                    value={link.href}
+                                                    onChange={val => updateLink('navLinks', i, 'href', val)}
+                                                    placeholder={hasChildren ? "/optional-parent-link" : "/path"}
+                                                />
+                                            </div>
+                                            <Select
+                                                value={hasChildren ? "dropdown" : "link"}
+                                                onValueChange={v => toggleLinkDropdown(i, v === "dropdown")}
+                                            >
+                                                <SelectTrigger className="w-[120px]">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="link">Link</SelectItem>
+                                                    <SelectItem value="dropdown">Dropdown</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => removeLink('navLinks', i)}
+                                            >
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                        </div>
+
+                                        {/* Children (sub-links) for dropdowns */}
+                                        {hasChildren && (
+                                            <div className="ml-6 pl-4 border-l-2 border-muted space-y-2">
+                                                {(link.children || []).map((child, j) => (
+                                                    <div key={j} className="flex gap-2 items-center">
+                                                        <Input
+                                                            value={child.label}
+                                                            onChange={e => updateChildLink(i, j, 'label', e.target.value)}
+                                                            placeholder="Sub-link label"
+                                                            className="flex-1"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <SmartLinkInput
+                                                                value={child.href}
+                                                                onChange={val => updateChildLink(i, j, 'href', val)}
+                                                                placeholder="/path"
+                                                            />
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => removeChildLink(i, j)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => addChildLink(i)}
+                                                    className="mt-2"
+                                                >
+                                                    <Plus className="h-3 w-3 mr-1" /> Add Sub-link
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
-                                    <Button variant="ghost" size="icon"
-                                            onClick={() => removeLink('navLinks', i)}><Trash2
-                                        className="h-4 w-4 text-destructive"/></Button>
-                                </div>
-                            ))}
+                                );
+                            })}
                             {(config.navLinks?.length === 0) &&
                                 <p className="text-sm text-muted-foreground italic">No links added.</p>}
                         </CardContent>
@@ -1125,6 +1406,14 @@ export default function SettingsPage() {
                                         value={config.urlPrefixes?.account || ""}
                                         onChange={e => updateUrlPrefix("account", e.target.value)}
                                         placeholder="/account"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Search</Label>
+                                    <Input
+                                        value={config.urlPrefixes?.search || ""}
+                                        onChange={e => updateUrlPrefix("search", e.target.value)}
+                                        placeholder="/search"
                                     />
                                 </div>
                             </div>

@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { trackFBEvent } from "@/lib/fbpixel";
+import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
-const ROMANIAN_COUNTIES = [
+// Fallback Romanian counties if none configured
+const DEFAULT_COUNTIES = [
     "Alba", "Arad", "Arges", "Bacau", "Bihor", "Bistrita-Nasaud", "Botosani",
     "Brasov", "Braila", "Bucuresti", "Buzau", "Caras-Severin", "Calarasi",
     "Cluj", "Constanta", "Covasna", "Dambovita", "Dolj", "Galati", "Giurgiu",
@@ -27,6 +29,10 @@ interface CheckoutProps {
     bankTransfer?: { bankName?: string; accountHolder?: string; iban?: string; swift?: string; referencePrefix?: string };
     enabledPaymentMethods?: string[];
     contentMaxWidth?: string;
+    strings?: Required<CommerceStrings>;
+    defaultCountry?: string;
+    availableCountries?: string[];
+    availableCounties?: string[];
 }
 
 // --- Inline delivery date picker ---
@@ -147,7 +153,10 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl" }: CheckoutProps) {
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "Romania", availableCountries = [], availableCounties = [] }: CheckoutProps) {
+    // Use configured counties or fallback to Romanian counties
+    const counties = availableCounties.length > 0 ? availableCounties : DEFAULT_COUNTIES;
+    const showCountryField = availableCountries.length > 1;
     const { items, subtotal, clearCart, coupon } = useCart();
     const { getUrl } = useTenantUrl();
     const router = useRouter();
@@ -165,6 +174,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
         street: "",
         city: "",
         county: "",
+        country: defaultCountry,
         postalCode: "",
         notes: "",
         paymentMethod: (enabledPaymentMethods[0] || "cash_on_delivery") as "cash_on_delivery" | "bank_transfer",
@@ -250,7 +260,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                     city: form.city,
                     county: form.county,
                     postalCode: form.postalCode,
-                    country: "Romania",
+                    country: form.country,
                     notes: form.notes,
                 },
                 items: orderItems,
@@ -301,7 +311,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
     return (
         <main className={`${contentMaxWidth} mx-auto py-12 px-6`}>
-            <h1 className="text-3xl font-bold tracking-tight mb-8">Checkout</h1>
+            <h1 className="text-3xl font-bold tracking-tight mb-8">{strings.checkout}</h1>
 
             <form onSubmit={handleSubmit}>
                 <div className="grid lg:grid-cols-3 gap-12">
@@ -309,49 +319,58 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                     <div className="lg:col-span-2 space-y-8">
                         {/* Contact */}
                         <section>
-                            <h2 className="text-lg font-bold mb-4">Contact Information</h2>
+                            <h2 className="text-lg font-bold mb-4">{strings.contactInformation}</h2>
                             <div className="grid sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Full Name *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.fullName} *</label>
                                     <input required value={form.customerName} onChange={e => update("customerName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Email *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.email} *</label>
                                     <input required type="email" value={form.customerEmail} onChange={e => update("customerEmail", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div className="sm:col-span-2">
-                                    <label className="block text-sm font-medium mb-1">Phone</label>
-                                    <input value={form.customerPhone} onChange={e => update("customerPhone", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder="+40..." />
+                                    <label className="block text-sm font-medium mb-1">{strings.phone}</label>
+                                    <input value={form.customerPhone} onChange={e => update("customerPhone", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.phonePlaceholder} />
                                 </div>
                             </div>
                         </section>
 
                         {/* Shipping Address */}
                         <section>
-                            <h2 className="text-lg font-bold mb-4">Shipping Address</h2>
+                            <h2 className="text-lg font-bold mb-4">{strings.shippingAddress}</h2>
                             <div className="grid sm:grid-cols-2 gap-4">
+                                {showCountryField && (
+                                    <div className="sm:col-span-2">
+                                        <label className="block text-sm font-medium mb-1">{strings.country} *</label>
+                                        <select required value={form.country} onChange={e => update("country", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
+                                            <option value="">{strings.selectCountry}</option>
+                                            {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="sm:col-span-2">
-                                    <label className="block text-sm font-medium mb-1">Street Address *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.streetAddress} *</label>
                                     <input required value={form.street} onChange={e => update("street", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">City *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.city} *</label>
                                     <input required value={form.city} onChange={e => update("city", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">County *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.county} *</label>
                                     <select required value={form.county} onChange={e => update("county", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
-                                        <option value="">Select county...</option>
-                                        {ROMANIAN_COUNTIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                        <option value="">{strings.selectCounty}</option>
+                                        {counties.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Postal Code</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.postalCode}</label>
                                     <input value={form.postalCode} onChange={e => update("postalCode", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Delivery Notes</label>
-                                    <input value={form.notes} onChange={e => update("notes", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder="Apartment, floor, etc." />
+                                    <label className="block text-sm font-medium mb-1">{strings.deliveryNotes}</label>
+                                    <input value={form.notes} onChange={e => update("notes", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.deliveryNotesPlaceholder} />
                                 </div>
                             </div>
                         </section>
@@ -359,7 +378,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                         {/* Delivery Date */}
                         {!datesLoading && availableDates.length > 0 && (
                             <section>
-                                <h2 className="text-lg font-bold mb-4">Preferred Delivery Date</h2>
+                                <h2 className="text-lg font-bold mb-4">{strings.preferredDeliveryDate}</h2>
                                 <DeliveryDatePicker
                                     availableDates={availableDates}
                                     selectedDate={form.requestedDeliveryDate}
@@ -376,14 +395,14 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
                         {/* Payment Method */}
                         <section>
-                            <h2 className="text-lg font-bold mb-4">Payment Method</h2>
+                            <h2 className="text-lg font-bold mb-4">{strings.paymentMethod}</h2>
                             <div className="space-y-3">
                                 {enabledPaymentMethods.includes("cash_on_delivery") && (
                                     <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${form.paymentMethod === "cash_on_delivery" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
                                         <input type="radio" name="paymentMethod" value="cash_on_delivery" checked={form.paymentMethod === "cash_on_delivery"} onChange={e => update("paymentMethod", e.target.value)} className="accent-primary" />
                                         <div>
-                                            <p className="font-medium text-sm">Cash on Delivery</p>
-                                            <p className="text-xs text-muted-foreground">Pay when you receive your order</p>
+                                            <p className="font-medium text-sm">{strings.cashOnDelivery}</p>
+                                            <p className="text-xs text-muted-foreground">{strings.cashOnDeliveryDesc}</p>
                                         </div>
                                     </label>
                                 )}
@@ -391,7 +410,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                     <label className={`flex items-center gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${form.paymentMethod === "bank_transfer" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}>
                                         <input type="radio" name="paymentMethod" value="bank_transfer" checked={form.paymentMethod === "bank_transfer"} onChange={e => update("paymentMethod", e.target.value)} className="accent-primary" />
                                         <div>
-                                            <p className="font-medium text-sm">Bank Transfer</p>
+                                            <p className="font-medium text-sm">{strings.bankTransfer}</p>
                                             <p className="text-xs text-muted-foreground">Transfer to {bankTransfer.bankName} - {bankTransfer.iban}</p>
                                         </div>
                                     </label>
@@ -403,7 +422,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                     {/* Order Summary */}
                     <div className="lg:col-span-1">
                         <div className="border rounded-lg p-6 sticky top-24 space-y-4">
-                            <h2 className="font-bold text-lg">Order Summary</h2>
+                            <h2 className="font-bold text-lg">{strings.orderSummary}</h2>
 
                             <div className="space-y-3 max-h-64 overflow-y-auto">
                                 {items.map((item) => {
@@ -426,27 +445,27 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
                             <div className="border-t pt-3 space-y-2 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Subtotal</span>
+                                    <span className="text-muted-foreground">{strings.subtotal}</span>
                                     <span>{subtotal.toFixed(2)} {currency}</span>
                                 </div>
                                 {couponDiscount > 0 && (
                                     <div className="flex justify-between text-green-600">
-                                        <span>Discount ({coupon?.code})</span>
+                                        <span>{strings.discount} ({coupon?.code})</span>
                                         <span>-{couponDiscount.toFixed(2)} {currency}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Shipping</span>
-                                    <span>{shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`}</span>
+                                    <span className="text-muted-foreground">{strings.shipping}</span>
+                                    <span>{shippingCost === 0 ? strings.freeShipping : `${shippingCost.toFixed(2)} ${currency}`}</span>
                                 </div>
                                 {form.requestedDeliveryDate && (
                                     <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Delivery</span>
+                                        <span className="text-muted-foreground">{strings.preferredDeliveryDate}</span>
                                         <span className="text-xs">{new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString("ro-RO", { day: "numeric", month: "short" })}</span>
                                     </div>
                                 )}
                                 <div className="border-t pt-2 flex justify-between font-bold text-base">
-                                    <span>Total</span>
+                                    <span>{strings.total}</span>
                                     <span>{total.toFixed(2)} {currency}</span>
                                 </div>
                             </div>
@@ -462,11 +481,11 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 disabled={loading}
                                 className="block w-full text-center py-3 rounded-md font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
                             >
-                                {loading ? "Placing Order..." : "Place Order"}
+                                {loading ? strings.placingOrder : strings.placeOrder}
                             </button>
 
                             <p className="text-xs text-muted-foreground text-center">
-                                By placing your order, you agree to our terms and conditions.
+                                {strings.termsAgreement}
                             </p>
                         </div>
                     </div>

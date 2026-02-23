@@ -88,9 +88,12 @@ function mapTenant(item: any): TenantConfig {
 
         commerceEnabled: item.commerceEnabled ?? false,
         commerceBar: item.commerceBar || undefined,
+        commerceStrings: item.commerceStrings || undefined,
         currency: item.currency || undefined,
         companyDetails: item.companyDetails || undefined,
         gdpr: item.gdpr || undefined,
+        hideSocialSharing: item.hideSocialSharing ?? false,
+        homePageSlug: item.homePageSlug || undefined,
         legalLinks: item.legalLinks || undefined,
         theme: theme || {},
         integrations: item.integrations || {},
@@ -228,6 +231,8 @@ export async function getProductsByCategory(tenantId: string, categoryId: string
         }));
 
         const allProducts = (result.Items || [])
+            // Filter out non-active products (draft, etc.) - only show active or items without status (legacy)
+            .filter((p: any) => !p.status || p.status === "active")
             .filter((p: any) => isProductAvailable(p))
             .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
         const start = (page - 1) * limit;
@@ -255,7 +260,7 @@ export async function getAllCategories(tenantId: string): Promise<Category[]> {
                 ":sk": "CATEGORY#",
                 ":active": "active"
             },
-            ExpressionAttributeNames: { "#s": "status" },
+            ExpressionAttributeNames: { "#s": "status", "#n": "name" },
             ProjectionExpression: "id, #n, slug, parentId, sortOrder, productCount, imageLink, seoTitle, seoDescription",
         }));
 
@@ -267,7 +272,7 @@ export async function getAllCategories(tenantId: string): Promise<Category[]> {
 }
 
 // 8. Fetch All Active Products (for shop page)
-export async function getActiveProducts(tenantId: string, page: number = 1, limit: number = 24) {
+export async function getActiveProducts(tenantId: string, page: number = 1, limit: number = 24, availability?: string) {
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return { items: [], total: 0 };
 
@@ -285,15 +290,63 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
             ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil"
         }));
 
-        const allProducts = (result.Items || [])
+        let allProducts = (result.Items || [])
             .filter((p: any) => isProductAvailable(p))
             .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+        // Filter by availability if specified (e.g., "in_stock")
+        if (availability) {
+            allProducts = allProducts.filter((p: any) => p.availability === availability);
+        }
+
         const start = (page - 1) * limit;
         const items = allProducts.slice(start, start + limit);
 
         return { items, total: allProducts.length };
     } catch (error) {
         console.error("DynamoDB Active Products Error:", error);
+        return { items: [], total: 0 };
+    }
+}
+
+// Search products by text query (title, description, sku, tags)
+export async function searchProducts(tenantId: string, query: string, page: number = 1, limit: number = 24) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName || !query.trim()) return { items: [], total: 0 };
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :active",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "PRODUCT#",
+                ":active": "active"
+            },
+            ExpressionAttributeNames: { "#s": "status" },
+            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, description, sku"
+        }));
+
+        const searchLower = query.toLowerCase();
+        const allProducts = (result.Items || [])
+            .filter((p: any) => isProductAvailable(p))
+            .filter((p: any) => {
+                const title = (p.title || "").toLowerCase();
+                const desc = (p.description || "").toLowerCase();
+                const sku = (p.sku || "").toLowerCase();
+                const tags = (p.tags || []).join(" ").toLowerCase();
+                return title.includes(searchLower) || desc.includes(searchLower) ||
+                       sku.includes(searchLower) || tags.includes(searchLower);
+            })
+            .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+        const start = (page - 1) * limit;
+        const items = allProducts.slice(start, start + limit);
+
+        return { items, total: allProducts.length };
+    } catch (error) {
+        console.error("DynamoDB Search Error:", error);
         return { items: [], total: 0 };
     }
 }

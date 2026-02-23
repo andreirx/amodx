@@ -66,6 +66,12 @@ export default function DeliverySettings() {
         blockedDates: "",
         yearlyOffDays: "",
         unblockedDates: [] as string[],
+        restrictDeliveryZones: false,
+        allowedCountries: "",
+        allowedCounties: "",
+        defaultCountry: "Romania",
+        availableCountries: "",
+        availableCounties: "",
     });
 
     useEffect(() => {
@@ -91,6 +97,20 @@ export default function DeliverySettings() {
                 unblockedDates: Array.isArray(res.unblockedDates)
                     ? res.unblockedDates
                     : [],
+                restrictDeliveryZones: res.restrictDeliveryZones || false,
+                allowedCountries: Array.isArray(res.allowedCountries)
+                    ? res.allowedCountries.join("\n")
+                    : "",
+                allowedCounties: Array.isArray(res.allowedCounties)
+                    ? res.allowedCounties.join("\n")
+                    : "",
+                defaultCountry: res.defaultCountry || "Romania",
+                availableCountries: Array.isArray(res.availableCountries)
+                    ? res.availableCountries.join("\n")
+                    : "",
+                availableCounties: Array.isArray(res.availableCounties)
+                    ? res.availableCounties.join("\n")
+                    : "",
             });
         } catch (e) {
             console.error(e);
@@ -107,6 +127,15 @@ export default function DeliverySettings() {
                 .split("\n").map(d => d.trim()).filter(Boolean);
             const yearlyOffDaysArray = form.yearlyOffDays
                 .split("\n").map(d => d.trim()).filter(Boolean);
+            const allowedCountriesArray = form.allowedCountries
+                .split("\n").map(d => d.trim()).filter(Boolean);
+            const allowedCountiesArray = form.allowedCounties
+                .split("\n").map(d => d.trim()).filter(Boolean);
+
+            const availableCountriesArray = form.availableCountries
+                .split("\n").map(d => d.trim()).filter(Boolean);
+            const availableCountiesArray = form.availableCounties
+                .split("\n").map(d => d.trim()).filter(Boolean);
 
             await apiRequest("/delivery/config", {
                 method: "PUT",
@@ -119,6 +148,12 @@ export default function DeliverySettings() {
                     blockedDates: blockedDatesArray,
                     yearlyOffDays: yearlyOffDaysArray,
                     unblockedDates: form.unblockedDates,
+                    restrictDeliveryZones: form.restrictDeliveryZones,
+                    allowedCountries: allowedCountriesArray,
+                    allowedCounties: allowedCountiesArray,
+                    defaultCountry: form.defaultCountry,
+                    availableCountries: availableCountriesArray,
+                    availableCounties: availableCountiesArray,
                 }),
             });
             setSuccessMessage("Delivery settings saved successfully.");
@@ -321,6 +356,103 @@ export default function DeliverySettings() {
                         <p className="text-xs text-muted-foreground">
                             Customers cannot place orders below this amount. Set to 0 to disable.
                         </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Delivery Zones */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Delivery Zones</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={form.restrictDeliveryZones}
+                            onChange={e => setForm({ ...form, restrictDeliveryZones: e.target.checked })}
+                            className="rounded border-gray-300 h-5 w-5"
+                        />
+                        <div>
+                            <span className="font-medium text-sm">Restrict delivery to specific zones</span>
+                            <p className="text-xs text-muted-foreground">Only accept orders from the specified countries/counties below.</p>
+                        </div>
+                    </label>
+
+                    {form.restrictDeliveryZones && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            <div className="space-y-2">
+                                <Label>Allowed Countries</Label>
+                                <Textarea
+                                    value={form.allowedCountries}
+                                    onChange={(e) => setForm({ ...form, allowedCountries: e.target.value })}
+                                    rows={3}
+                                    placeholder={"Romania"}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    One country per line. Leave empty to allow all countries.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Allowed Counties / Regions</Label>
+                                <Textarea
+                                    value={form.allowedCounties}
+                                    onChange={(e) => setForm({ ...form, allowedCounties: e.target.value })}
+                                    rows={3}
+                                    placeholder={"București\nIlfov\nPrahova"}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    One county/region per line. Leave empty to allow all within the allowed countries.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Checkout Address Fields */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Checkout Address Fields</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label>Default Country</Label>
+                        <Input
+                            value={form.defaultCountry}
+                            onChange={(e) => setForm({ ...form, defaultCountry: e.target.value })}
+                            placeholder="Romania"
+                            className="max-w-[300px]"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Default country pre-filled in checkout form.
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Available Countries (Dropdown)</Label>
+                            <Textarea
+                                value={form.availableCountries}
+                                onChange={(e) => setForm({ ...form, availableCountries: e.target.value })}
+                                rows={3}
+                                placeholder={"Romania\nMoldova\nGermany"}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                One country per line. If more than one, shows a dropdown. Leave empty to hide country field (uses default).
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Available Counties / Regions (Dropdown)</Label>
+                            <Textarea
+                                value={form.availableCounties}
+                                onChange={(e) => setForm({ ...form, availableCounties: e.target.value })}
+                                rows={3}
+                                placeholder={"București\nIlfov\nPrahova"}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                One county per line. Shows in county dropdown. Leave empty to use Romanian counties as default.
+                            </p>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

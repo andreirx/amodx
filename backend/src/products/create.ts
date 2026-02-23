@@ -68,6 +68,7 @@ export const handler: Handler = async (event) => {
             id, title: input.title, slug: input.slug, sku: input.sku,
             price: input.price, currency: input.currency, salePrice: input.salePrice,
             imageLink: input.imageLink, availability: input.availability,
+            status: input.status,
             sortOrder: input.sortOrder || 0, tags: input.tags || [],
             volumePricing: input.volumePricing || [],
             categoryIds: input.categoryIds || [],

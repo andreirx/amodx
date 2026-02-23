@@ -37,14 +37,14 @@ export default function MediaLibrary() {
                 {assets.map((asset) => (
                     <Card key={asset.id} className="group relative overflow-hidden">
                         <div className="aspect-square bg-muted flex items-center justify-center relative">
-                            {asset.fileType?.startsWith('image/') ? (
-                                <img src={asset.publicUrl} alt={asset.fileName} className="w-full h-full object-cover" />
+                            {asset.fileType?.startsWith('image/') || asset.contentType?.startsWith('image/') ? (
+                                <img src={asset.publicUrl || asset.url} alt={asset.fileName || asset.filename} className="w-full h-full object-cover" />
                             ) : (
                                 <ImageIcon className="h-8 w-8 text-muted-foreground" />
                             )}
 
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <Button size="icon" variant="secondary" onClick={() => navigator.clipboard.writeText(asset.publicUrl)}>
+                                <Button size="icon" variant="secondary" onClick={() => navigator.clipboard.writeText(asset.publicUrl || asset.url)}>
                                     <Copy className="h-4 w-4" />
                                 </Button>
                             </div>

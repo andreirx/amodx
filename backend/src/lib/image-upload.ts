@@ -46,6 +46,7 @@ export async function downloadAndUploadImage(
         ContentType: contentType,
     }));
 
+    const publicUrl = `${cdnUrl}/${s3Key}`;
     await db.send(new PutCommand({
         TableName: TABLE_NAME,
         Item: {
@@ -53,10 +54,13 @@ export async function downloadAndUploadImage(
             SK: `ASSET#${assetId}`,
             id: assetId,
             tenantId,
-            filename,
+            fileName: filename,
+            filename, // keep for backward compat
             s3Key,
-            url: `${cdnUrl}/${s3Key}`,
-            contentType,
+            publicUrl,
+            url: publicUrl, // keep for backward compat
+            fileType: contentType,
+            contentType, // keep for backward compat
             uploadedBy: "wordpress-importer",
             createdAt: new Date().toISOString(),
             Type: "Asset",

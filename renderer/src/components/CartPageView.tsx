@@ -5,6 +5,7 @@ import { useTenantUrl } from "@/lib/routing";
 import Link from "next/link";
 import { Minus, Plus, Trash2, Tag } from "lucide-react";
 import { useState } from "react";
+import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
 interface CartPageProps {
     checkoutPrefix: string;
@@ -16,9 +17,10 @@ interface CartPageProps {
     tenantId: string;
     apiUrl: string;
     contentMaxWidth?: string;
+    strings?: Required<CommerceStrings>;
 }
 
-export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl, contentMaxWidth = "max-w-6xl" }: CartPageProps) {
+export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl, contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS }: CartPageProps) {
     const { items, removeItem, updateQuantity, subtotal, itemCount, coupon, setCoupon } = useCart();
     const { getUrl } = useTenantUrl();
 
@@ -65,10 +67,10 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
         return (
             <main className={`${contentMaxWidth} mx-auto py-20 px-6 text-center`}>
                 <div className="text-6xl mb-6">🛒</div>
-                <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
-                <p className="text-muted-foreground mb-8">Browse our products and add something you like.</p>
+                <h1 className="text-3xl font-bold mb-4">{strings.emptyCart}</h1>
+                <p className="text-muted-foreground mb-8">{strings.emptyCartMessage}</p>
                 <Link href={getUrl(shopPrefix)} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
-                    Continue Shopping
+                    {strings.continueShopping}
                 </Link>
             </main>
         );
@@ -76,7 +78,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
 
     return (
         <main className={`${contentMaxWidth} mx-auto py-12 px-6`}>
-            <h1 className="text-3xl font-bold tracking-tight mb-8">Shopping Cart ({itemCount})</h1>
+            <h1 className="text-3xl font-bold tracking-tight mb-8">{strings.shoppingCart} ({itemCount})</h1>
 
             <div className="grid lg:grid-cols-3 gap-12">
                 {/* Items */}
@@ -136,14 +138,14 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
                     })}
 
                     <Link href={getUrl(shopPrefix)} className="inline-flex items-center text-sm text-primary hover:underline mt-4">
-                        &larr; Continue Shopping
+                        &larr; {strings.continueShopping}
                     </Link>
                 </div>
 
                 {/* Order Summary */}
                 <div className="lg:col-span-1">
                     <div className="border rounded-lg p-6 sticky top-24 space-y-4">
-                        <h2 className="font-bold text-lg">Order Summary</h2>
+                        <h2 className="font-bold text-lg">{strings.orderSummary}</h2>
 
                         {/* Coupon Input */}
                         <div>
@@ -154,19 +156,19 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
                                         <span className="font-medium text-green-700">{coupon.code}</span>
                                         <span className="text-green-600">-{coupon.discount.toFixed(2)} {currency}</span>
                                     </div>
-                                    <button onClick={removeCoupon} className="text-green-600 hover:text-red-500 text-xs underline">Remove</button>
+                                    <button onClick={removeCoupon} className="text-green-600 hover:text-red-500 text-xs underline">{strings.remove}</button>
                                 </div>
                             ) : (
                                 <div className="flex gap-2">
                                     <input
                                         value={couponCode}
                                         onChange={e => setCouponCode(e.target.value.toUpperCase())}
-                                        placeholder="Coupon code"
+                                        placeholder={strings.couponCode}
                                         className="flex-1 border rounded-md px-3 py-2 text-sm"
                                         onKeyDown={e => e.key === "Enter" && applyCoupon()}
                                     />
                                     <button onClick={applyCoupon} disabled={couponLoading} className="px-3 py-2 border rounded-md text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
-                                        {couponLoading ? "..." : "Apply"}
+                                        {couponLoading ? "..." : strings.apply}
                                     </button>
                                 </div>
                             )}
@@ -175,21 +177,21 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
 
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                                <span className="text-muted-foreground">Subtotal</span>
+                                <span className="text-muted-foreground">{strings.subtotal}</span>
                                 <span>{subtotal.toFixed(2)} {currency}</span>
                             </div>
                             {couponDiscount > 0 && (
                                 <div className="flex justify-between text-green-600">
-                                    <span>Discount</span>
+                                    <span>{strings.discount}</span>
                                     <span>-{couponDiscount.toFixed(2)} {currency}</span>
                                 </div>
                             )}
                             <div className="flex justify-between">
-                                <span className="text-muted-foreground">Shipping</span>
-                                <span>{shippingCost === 0 ? "Free" : `${shippingCost.toFixed(2)} ${currency}`}</span>
+                                <span className="text-muted-foreground">{strings.shipping}</span>
+                                <span>{shippingCost === 0 ? strings.freeShipping : `${shippingCost.toFixed(2)} ${currency}`}</span>
                             </div>
                             <div className="border-t pt-2 flex justify-between font-bold text-base">
-                                <span>Total</span>
+                                <span>{strings.total}</span>
                                 <span>{total.toFixed(2)} {currency}</span>
                             </div>
                         </div>
@@ -198,21 +200,21 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
                         {freeDeliveryThreshold > 0 && subtotal < freeDeliveryThreshold && (
                             <div className="text-sm">
                                 <div className="flex justify-between text-muted-foreground mb-1">
-                                    <span>Free delivery from {freeDeliveryThreshold} {currency}</span>
+                                    <span>{strings.freeDeliveryFrom} {freeDeliveryThreshold} {currency}</span>
                                     <span>{((subtotal / freeDeliveryThreshold) * 100).toFixed(0)}%</span>
                                 </div>
                                 <div className="w-full bg-muted rounded-full h-2">
                                     <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${Math.min((subtotal / freeDeliveryThreshold) * 100, 100)}%` }} />
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    Add {(freeDeliveryThreshold - subtotal).toFixed(2)} {currency} more for free delivery
+                                    {strings.addMoreForFreeDelivery.replace("{amount}", (freeDeliveryThreshold - subtotal).toFixed(2))} {currency}
                                 </p>
                             </div>
                         )}
 
                         {!meetsMinimum && (
                             <p className="text-sm text-amber-600">
-                                Minimum order: {minimumOrderAmount} {currency}. Add {(minimumOrderAmount - subtotal).toFixed(2)} {currency} more.
+                                {strings.minimumOrder}: {minimumOrderAmount} {currency}
                             </p>
                         )}
 
@@ -221,7 +223,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
                             className={`block w-full text-center py-3 rounded-md font-medium transition-opacity ${meetsMinimum ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed"}`}
                             onClick={(e) => !meetsMinimum && e.preventDefault()}
                         >
-                            Proceed to Checkout
+                            {strings.proceedToCheckout}
                         </Link>
                     </div>
                 </div>

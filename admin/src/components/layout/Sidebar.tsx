@@ -122,7 +122,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     }
 
     return (
-        <div className={cn("pb-12 min-h-screen bg-card flex flex-col border-r", className)}>
+        <div className={cn("h-screen bg-card flex flex-col border-r", className)}>
 
             {/* SITE SWITCHER / HEADER */}
             <div className="p-4 border-b">
@@ -177,7 +177,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             </div>
 
             {/* NAVIGATION */}
-            <div className="p-4 flex-1 space-y-4">
+            <div className="p-4 flex-1 space-y-4 overflow-y-auto">
                 {navSections.map((section) => (
                     <div key={section.label}>
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-3 mb-1">{section.label}</p>

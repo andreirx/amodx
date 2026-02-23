@@ -106,7 +106,7 @@ export function CommerceBar({
     const smallIcon = smallerIcon(iconSize);
 
     return (
-        <div className={`hidden md:block bg-muted/50 border-b ${fontSize}`}>
+        <div className={`hidden md:block bg-background/80 backdrop-blur border-b ${fontSize}`}>
             <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8`}>
                 <div className={`flex ${height} items-center justify-between`}>
                     {/* Left: Phone + WhatsApp */}

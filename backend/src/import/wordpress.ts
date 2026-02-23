@@ -1,11 +1,50 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { parseWXR, WordPressPost } from "./wxr-parser.js";
 import { HTMLToTiptapConverter } from "./html-to-tiptap.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { loadMediaMap } from "../lib/media-map.js";
+
+/** Find existing content by slug using ROUTE# lookup */
+async function findContentBySlug(tenantId: string, slug: string): Promise<{ nodeId: string; contentId: string; createdAt: string } | null> {
+    const routeResult = await db.send(new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: "PK = :pk AND SK = :sk",
+        ExpressionAttributeValues: {
+            ":pk": `TENANT#${tenantId}`,
+            ":sk": `ROUTE#${slug}`
+        }
+    }));
+
+    if (!routeResult.Items || routeResult.Items.length === 0) return null;
+
+    const route = routeResult.Items[0];
+    const targetNode = route.TargetNode as string;
+    if (!targetNode) return null;
+
+    const nodeId = targetNode.replace('NODE#', '');
+
+    // Get existing content record
+    const contentResult = await db.send(new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+        ExpressionAttributeValues: {
+            ":pk": `TENANT#${tenantId}`,
+            ":sk": `CONTENT#${nodeId}#`
+        },
+        Limit: 1
+    }));
+
+    if (!contentResult.Items || contentResult.Items.length === 0) return null;
+
+    return {
+        nodeId,
+        contentId: contentResult.Items[0].id,
+        createdAt: contentResult.Items[0].createdAt
+    };
+}
 
 const s3 = new S3Client({});
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET;
@@ -21,6 +60,8 @@ interface ImportRequest {
 
 interface ImportResponse {
     processedCount: number;
+    createdCount: number;
+    updatedCount: number;
     totalCount: number;
     nextBatchStart?: number;
     complete: boolean;
@@ -71,6 +112,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         // Get the batch to process
         const postsToProcess = allPosts.slice(batchStart, batchStart + batchSize);
         const errors: string[] = [];
+        let createdCount = 0;
+        let updatedCount = 0;
 
         // Process each post
         for (let i = 0; i < postsToProcess.length; i++) {
@@ -78,8 +121,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             const itemIndex = batchStart + i;
 
             try {
-                await processPost(tenantId, post, mediaMap);
-                console.log(`Processed item ${itemIndex + 1}/${totalCount}: ${post.title}`);
+                const wasUpdate = await processPost(tenantId, post, mediaMap);
+                if (wasUpdate) {
+                    updatedCount++;
+                    console.log(`Updated item ${itemIndex + 1}/${totalCount}: ${post.title}`);
+                } else {
+                    createdCount++;
+                    console.log(`Created item ${itemIndex + 1}/${totalCount}: ${post.title}`);
+                }
             } catch (error: any) {
                 const errorMsg = `Failed to process "${post.title}": ${error.message}`;
                 console.error(errorMsg);
@@ -93,6 +142,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const response: ImportResponse = {
             processedCount,
+            createdCount,
+            updatedCount,
             totalCount,
             nextBatchStart,
             complete,
@@ -117,7 +168,18 @@ async function processPost(
     tenantId: string,
     post: WordPressPost,
     mediaMap: Map<string, string>,
-): Promise<void> {
+): Promise<boolean> {
+    // Build slug path - FLATTEN everything instead of keeping the blog
+    const slugPath = `/${post.slug}`;
+
+    // Check for existing content by slug
+    const existing = await findContentBySlug(tenantId, slugPath);
+    const isUpdate = !!existing;
+
+    // Use existing IDs for update, or generate new ones for create
+    const nodeId = existing?.nodeId || crypto.randomUUID();
+    const contentId = existing?.contentId || crypto.randomUUID();
+
     // 1. Rewrite image URLs in HTML content before converting
     let htmlContent = post.content;
     for (const [oldUrl, newUrl] of mediaMap) {
@@ -130,8 +192,8 @@ async function processPost(
         htmlContent = htmlContent.replace(pattern, newUrl);
     }
 
-    // 2. Convert HTML to Tiptap JSON
-    const converter = new HTMLToTiptapConverter();
+    // 2. Convert HTML to Tiptap JSON (pass media map for URL rewriting)
+    const converter = new HTMLToTiptapConverter(mediaMap);
     const { blocks } = converter.convert(htmlContent);
 
     // 3. Handle featured image
@@ -152,18 +214,14 @@ async function processPost(
         }
     }
 
-    // 4. Create content record
-    const contentId = crypto.randomUUID();
-    const nodeId = crypto.randomUUID();
-
     // Map WordPress status to AMODX status
     const status = post.status === 'publish' ? 'Published' : 'Draft';
 
-    // Build slug path - FLATTEN everything instead of keeping the blog
-    const slugPath = `/${post.slug}`;
-
     // Determine Comments Mode
     const commentsMode = post.comments.length > 0 ? "Enabled" : "Hidden";
+
+    // Preserve original createdAt for updates
+    const createdAt = existing?.createdAt || post.publishedAt || new Date().toISOString();
 
     await db.send(new PutCommand({
         TableName: TABLE_NAME,
@@ -177,7 +235,7 @@ async function processPost(
             status,
             version: 1,
             author: "wordpress-importer",
-            createdAt: post.publishedAt || new Date().toISOString(),
+            createdAt,
             updatedAt: new Date().toISOString(),
             Type: "Page",
             blocks,
@@ -227,5 +285,6 @@ async function processPost(
 
         await Promise.all(commentPromises);
     }
-    console.log(`Created content and route for "${post.title}" at ${slugPath}`);
+    console.log(`${isUpdate ? 'Updated' : 'Created'} content and route for "${post.title}" at ${slugPath}`);
+    return isUpdate;
 }

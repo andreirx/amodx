@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { Menu, X, User } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Menu, X, User, ChevronDown } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useTenantUrl } from "@/lib/routing";
 import { CartWidget } from "./CartWidget";
@@ -10,6 +10,7 @@ import { CartWidget } from "./CartWidget";
 interface LinkItem {
     label: string;
     href: string;
+    children?: { label: string; href: string }[];
 }
 
 export function Navbar({
@@ -49,11 +50,24 @@ export function Navbar({
     const { data: session } = useSession();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
+    const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20);
         window.addEventListener("scroll", onScroll, { passive: true });
         return () => window.removeEventListener("scroll", onScroll);
+    }, []);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setOpenDropdown(null);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
     return (
@@ -80,15 +94,52 @@ export function Navbar({
                     </div>
 
                     {/* --- DESKTOP NAV --- */}
-                    <div className="hidden md:flex items-center gap-8">
+                    <div className="hidden md:flex items-center gap-8" ref={dropdownRef}>
                         {links.map((link, i) => (
-                            <Link
-                                key={i}
-                                href={getUrl(link.href)}
-                                className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-                            >
-                                {link.label}
-                            </Link>
+                            link.children && link.children.length > 0 ? (
+                                // Dropdown menu
+                                <div key={i} className="relative">
+                                    <button
+                                        onClick={() => setOpenDropdown(openDropdown === i ? null : i)}
+                                        className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+                                    >
+                                        {link.label}
+                                        <ChevronDown className={`h-4 w-4 transition-transform ${openDropdown === i ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {openDropdown === i && (
+                                        <div className="absolute top-full left-0 mt-2 w-56 bg-background border rounded-lg shadow-lg py-2 z-50">
+                                            {link.href && (
+                                                <Link
+                                                    href={getUrl(link.href)}
+                                                    className="block px-4 py-2 text-sm text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                                                    onClick={() => setOpenDropdown(null)}
+                                                >
+                                                    {link.label} (All)
+                                                </Link>
+                                            )}
+                                            {link.children.map((child, j) => (
+                                                <Link
+                                                    key={j}
+                                                    href={getUrl(child.href)}
+                                                    className="block px-4 py-2 text-sm text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
+                                                    onClick={() => setOpenDropdown(null)}
+                                                >
+                                                    {child.label}
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                // Simple link
+                                <Link
+                                    key={i}
+                                    href={getUrl(link.href)}
+                                    className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+                                >
+                                    {link.label}
+                                </Link>
+                            )
                         ))}
                         {commerceEnabled && !hideContactButton && (
                             session ? (
@@ -134,14 +185,50 @@ export function Navbar({
                     className={`md:hidden absolute left-0 w-full bg-background border-b shadow-xl animate-in slide-in-from-top-2 fade-in-20 ${scrolled ? navHeightScrolled.replace("h-", "top-") : navHeight.replace("h-", "top-")}`}>
                     <div className="space-y-1 px-4 pb-6 pt-2">
                         {links.map((link, i) => (
-                            <Link
-                                key={i}
-                                href={link.href}
-                                className="block py-3 text-base font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 px-3 rounded-md transition-colors"
-                                onClick={() => setIsMobileOpen(false)}
-                            >
-                                {link.label}
-                            </Link>
+                            link.children && link.children.length > 0 ? (
+                                // Mobile dropdown
+                                <div key={i}>
+                                    <button
+                                        onClick={() => setOpenDropdown(openDropdown === i ? null : i)}
+                                        className="flex items-center justify-between w-full py-3 text-base font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 px-3 rounded-md transition-colors"
+                                    >
+                                        {link.label}
+                                        <ChevronDown className={`h-4 w-4 transition-transform ${openDropdown === i ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {openDropdown === i && (
+                                        <div className="ml-4 mt-1 space-y-1 border-l-2 border-muted pl-3">
+                                            {link.href && (
+                                                <Link
+                                                    href={getUrl(link.href)}
+                                                    className="block py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                                                    onClick={() => setIsMobileOpen(false)}
+                                                >
+                                                    View All
+                                                </Link>
+                                            )}
+                                            {link.children.map((child, j) => (
+                                                <Link
+                                                    key={j}
+                                                    href={getUrl(child.href)}
+                                                    className="block py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                                                    onClick={() => setIsMobileOpen(false)}
+                                                >
+                                                    {child.label}
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <Link
+                                    key={i}
+                                    href={getUrl(link.href)}
+                                    className="block py-3 text-base font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 px-3 rounded-md transition-colors"
+                                    onClick={() => setIsMobileOpen(false)}
+                                >
+                                    {link.label}
+                                </Link>
+                            )
                         ))}
                         {commerceEnabled && (
                             <div className="pt-2 border-t border-border">
@@ -167,7 +254,7 @@ export function Navbar({
                         {!hideContactButton && (
                             <div className="pt-4 mt-2 border-t border-border">
                                 <Link
-                                    href="/contact"
+                                    href={getUrl("/contact")}
                                     className="block w-full text-center bg-primary text-primary-foreground px-4 py-3 rounded-md text-base font-medium hover:opacity-90"
                                     onClick={() => setIsMobileOpen(false)}
                                 >

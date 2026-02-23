@@ -5,7 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
-import { writeMediaMapEntry } from "../lib/media-map.js";
+import { writeMediaMapEntry, loadMediaMap } from "../lib/media-map.js";
 
 const s3 = new S3Client({});
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET!;
@@ -100,7 +100,7 @@ export const handler: Handler = async (event) => {
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
 
         const body = JSON.parse(event.body);
-        const { s3Key } = body;
+        const { s3Key, batchStart = 0, batchSize = 50 } = body;
         if (!s3Key) {
             return { statusCode: 400, body: JSON.stringify({ error: "s3Key is required" }) };
         }
@@ -114,49 +114,73 @@ export const handler: Handler = async (event) => {
         const xmlContent = await s3Obj.Body!.transformToString("utf-8");
 
         // Parse attachments
-        const attachments = parseMediaXml(xmlContent);
-        console.log(`Found ${attachments.length} media attachments to import`);
+        const allAttachments = parseMediaXml(xmlContent);
+        const totalInXml = allAttachments.length;
+        console.log(`Found ${totalInXml} media attachments in XML`);
 
-        if (attachments.length === 0) {
+        // Load existing media map to skip duplicates
+        const existingMap = await loadMediaMap(tenantId);
+        const newAttachments = allAttachments.filter(a => !existingMap.has(a.url));
+        const alreadyImported = totalInXml - newAttachments.length;
+
+        console.log(`${alreadyImported} already imported, ${newAttachments.length} new to download`);
+
+        // Get the batch to process (from the NEW attachments list)
+        const batchToProcess = newAttachments.slice(batchStart, batchStart + batchSize);
+
+        if (batchToProcess.length === 0) {
+            // Nothing left to do
             return {
                 statusCode: 200,
-                body: JSON.stringify({ total: 0, downloaded: 0, failed: 0, errors: [] }),
+                body: JSON.stringify({
+                    total: totalInXml,
+                    newTotal: newAttachments.length,
+                    alreadyImported,
+                    downloaded: 0,
+                    failed: 0,
+                    complete: true,
+                    errors: [],
+                }),
             };
         }
 
-        // Process in parallel batches of 10
-        const BATCH_SIZE = 10;
+        // Process this batch
         const errors: string[] = [];
-        let totalDownloaded = 0;
+        const downloaded = await processBatch(tenantId, batchToProcess, errors);
+        const processedSoFar = batchStart + batchToProcess.length;
+        const complete = processedSoFar >= newAttachments.length;
+        const nextBatchStart = complete ? undefined : processedSoFar;
 
-        for (let i = 0; i < attachments.length; i += BATCH_SIZE) {
-            const batch = attachments.slice(i, i + BATCH_SIZE);
-            const downloaded = await processBatch(tenantId, batch, errors);
-            totalDownloaded += downloaded;
-            console.log(`Progress: ${i + batch.length}/${attachments.length} (${totalDownloaded} downloaded, ${errors.length} failed)`);
+        console.log(`Batch ${batchStart}-${processedSoFar}/${newAttachments.length}: ${downloaded} downloaded, ${errors.length} failed`);
+
+        // Only audit on completion
+        if (complete) {
+            await publishAudit({
+                tenantId,
+                actor: { id: auth.sub, email: auth.email },
+                action: "MEDIA_IMPORT",
+                target: { title: "WordPress Media Import", id: "media-import" },
+                details: {
+                    total: totalInXml,
+                    newTotal: newAttachments.length,
+                    alreadyImported,
+                },
+                ip: event.requestContext.http.sourceIp,
+            });
         }
-
-        await publishAudit({
-            tenantId,
-            actor: { id: auth.sub, email: auth.email },
-            action: "MEDIA_IMPORT",
-            target: { title: "WordPress Media Import", id: "media-import" },
-            details: {
-                total: attachments.length,
-                downloaded: totalDownloaded,
-                failed: errors.length,
-                errors: errors.length > 0 ? errors.slice(0, 20) : undefined,
-            },
-            ip: event.requestContext.http.sourceIp,
-        });
 
         return {
             statusCode: 200,
             body: JSON.stringify({
-                total: attachments.length,
-                downloaded: totalDownloaded,
-                failed: errors.length,
-                errors: errors.slice(0, 50),
+                total: totalInXml,
+                newTotal: newAttachments.length,
+                alreadyImported,
+                batchDownloaded: downloaded,
+                batchFailed: errors.length,
+                processedSoFar,
+                nextBatchStart,
+                complete,
+                errors: errors.slice(0, 20),
             }),
         };
     } catch (e: any) {

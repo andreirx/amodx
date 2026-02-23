@@ -90,6 +90,47 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         if (deliveryResult.Item) {
             const config = deliveryResult.Item;
+
+            // --- Validate delivery zone restrictions ---
+            if (config.restrictDeliveryZones && shippingAddress) {
+                const allowedCountries: string[] = config.allowedCountries || [];
+                const allowedCounties: string[] = config.allowedCounties || [];
+
+                // Check country (case-insensitive)
+                if (allowedCountries.length > 0) {
+                    const customerCountry = (shippingAddress.country || "").toLowerCase().trim();
+                    const isCountryAllowed = allowedCountries.some(
+                        (c: string) => c.toLowerCase().trim() === customerCountry
+                    );
+                    if (!isCountryAllowed) {
+                        return {
+                            statusCode: 400,
+                            body: JSON.stringify({
+                                error: "Delivery not available",
+                                message: `We don't deliver to ${shippingAddress.country}. Allowed countries: ${allowedCountries.join(", ")}`
+                            })
+                        };
+                    }
+                }
+
+                // Check county/region (case-insensitive)
+                if (allowedCounties.length > 0) {
+                    const customerCounty = (shippingAddress.county || "").toLowerCase().trim();
+                    const isCountyAllowed = allowedCounties.some(
+                        (c: string) => c.toLowerCase().trim() === customerCounty
+                    );
+                    if (!isCountyAllowed) {
+                        return {
+                            statusCode: 400,
+                            body: JSON.stringify({
+                                error: "Delivery not available",
+                                message: `We don't deliver to ${shippingAddress.county}. Allowed regions: ${allowedCounties.join(", ")}`
+                            })
+                        };
+                    }
+                }
+            }
+
             if (config.freeDeliveryThreshold && subtotal >= config.freeDeliveryThreshold) {
                 shippingCost = 0;
             } else {

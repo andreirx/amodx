@@ -32,6 +32,7 @@ export const URL_PREFIX_DEFAULTS = {
     checkout: "/checkout",
     shop: "/shop",
     account: "/account",
+    search: "/search",
 } as const;
 
 // Configurable URL prefixes per tenant (for i18n-friendly URLs)
@@ -42,6 +43,7 @@ export const UrlPrefixesSchema = z.object({
     checkout: z.string().default(URL_PREFIX_DEFAULTS.checkout),
     shop: z.string().default(URL_PREFIX_DEFAULTS.shop),
     account: z.string().default(URL_PREFIX_DEFAULTS.account),
+    search: z.string().default(URL_PREFIX_DEFAULTS.search),
 });
 
 // Quick Contact widget config
@@ -78,6 +80,12 @@ export const CommerceBarSchema = z.object({
     height: z.string().default("h-10"),
     fontSize: z.string().default("text-sm"),
     iconSize: z.string().default("h-5 w-5"),
+});
+
+// Search Bar config (dedicated search bar below navbar)
+export const SearchBarSchema = z.object({
+    enabled: z.boolean().default(false),
+    placeholder: z.string().default("Search products..."),
 });
 
 // ==========================================
@@ -411,6 +419,127 @@ export const GDPRConfigSchema = z.object({
 
 export type GDPRConfig = z.infer<typeof GDPRConfigSchema>;
 
+// Commerce UI Strings (i18n) - all optional, defaults applied at runtime
+export const CommerceStringsSchema = z.object({
+    // Product page
+    description: z.string().optional(),         // "Description"
+    addToCart: z.string().optional(),           // "Add to Cart"
+    addedToCart: z.string().optional(),         // "Added to Cart!"
+    viewCart: z.string().optional(),            // "View Cart"
+    inStock: z.string().optional(),             // "In Stock"
+    outOfStock: z.string().optional(),          // "Out of Stock"
+    variantUnavailable: z.string().optional(),  // "Variant Unavailable"
+    units: z.string().optional(),               // "units"
+
+    // Cart page
+    cart: z.string().optional(),                // "Cart"
+    shoppingCart: z.string().optional(),        // "Shopping Cart"
+    emptyCart: z.string().optional(),           // "Your cart is empty"
+    emptyCartMessage: z.string().optional(),    // "Browse our products and add something you like."
+    continueShopping: z.string().optional(),    // "Continue Shopping"
+    orderSummary: z.string().optional(),        // "Order Summary"
+    subtotal: z.string().optional(),            // "Subtotal"
+    shipping: z.string().optional(),            // "Shipping"
+    discount: z.string().optional(),            // "Discount"
+    total: z.string().optional(),               // "Total"
+    freeShipping: z.string().optional(),        // "Free"
+    freeDeliveryFrom: z.string().optional(),    // "Free delivery from"
+    addMoreForFreeDelivery: z.string().optional(), // "Add {amount} more for free delivery"
+    minimumOrder: z.string().optional(),        // "Minimum order"
+    proceedToCheckout: z.string().optional(),   // "Proceed to Checkout"
+
+    // Coupon
+    couponCode: z.string().optional(),          // "Coupon code"
+    apply: z.string().optional(),               // "Apply"
+    remove: z.string().optional(),              // "Remove"
+    invalidCoupon: z.string().optional(),       // "Invalid coupon"
+
+    // Checkout
+    checkout: z.string().optional(),            // "Checkout"
+    placeOrder: z.string().optional(),          // "Place Order"
+    placingOrder: z.string().optional(),        // "Placing Order..."
+    orderConfirmation: z.string().optional(),   // "Order Confirmation"
+    contactInformation: z.string().optional(),  // "Contact Information"
+    fullName: z.string().optional(),            // "Full Name"
+    email: z.string().optional(),               // "Email"
+    phone: z.string().optional(),               // "Phone"
+    phonePlaceholder: z.string().optional(),    // "+40..."
+    shippingAddress: z.string().optional(),     // "Shipping Address"
+    streetAddress: z.string().optional(),       // "Street Address"
+    city: z.string().optional(),                // "City"
+    county: z.string().optional(),              // "County"
+    selectCounty: z.string().optional(),        // "Select county..."
+    postalCode: z.string().optional(),          // "Postal Code"
+    deliveryNotes: z.string().optional(),       // "Delivery Notes"
+    deliveryNotesPlaceholder: z.string().optional(), // "Apartment, floor, etc."
+    paymentMethod: z.string().optional(),       // "Payment Method"
+    cashOnDelivery: z.string().optional(),      // "Cash on Delivery"
+    cashOnDeliveryDesc: z.string().optional(),  // "Pay when you receive your order"
+    bankTransfer: z.string().optional(),        // "Bank Transfer"
+    termsAgreement: z.string().optional(),      // "By placing your order, you agree to our terms and conditions."
+    preferredDeliveryDate: z.string().optional(), // "Preferred Delivery Date"
+    country: z.string().optional(),             // "Country"
+    selectCountry: z.string().optional(),       // "Select country..."
+});
+
+export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
+
+// Default commerce strings (English)
+export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = {
+    description: "Description",
+    addToCart: "Add to Cart",
+    addedToCart: "Added to Cart!",
+    viewCart: "View Cart",
+    inStock: "In Stock",
+    outOfStock: "Out of Stock",
+    variantUnavailable: "Variant Unavailable",
+    units: "units",
+    cart: "Cart",
+    shoppingCart: "Shopping Cart",
+    emptyCart: "Your cart is empty",
+    emptyCartMessage: "Browse our products and add something you like.",
+    continueShopping: "Continue Shopping",
+    orderSummary: "Order Summary",
+    subtotal: "Subtotal",
+    shipping: "Shipping",
+    discount: "Discount",
+    total: "Total",
+    freeShipping: "Free",
+    freeDeliveryFrom: "Free delivery from",
+    addMoreForFreeDelivery: "Add {amount} more for free delivery",
+    minimumOrder: "Minimum order",
+    proceedToCheckout: "Proceed to Checkout",
+    couponCode: "Coupon code",
+    apply: "Apply",
+    remove: "Remove",
+    invalidCoupon: "Invalid coupon",
+    checkout: "Checkout",
+    placeOrder: "Place Order",
+    placingOrder: "Placing Order...",
+    orderConfirmation: "Order Confirmation",
+    contactInformation: "Contact Information",
+    fullName: "Full Name",
+    email: "Email",
+    phone: "Phone",
+    phonePlaceholder: "",
+    shippingAddress: "Shipping Address",
+    streetAddress: "Street Address",
+    city: "City",
+    county: "County",
+    selectCounty: "Select county...",
+    postalCode: "Postal Code",
+    deliveryNotes: "Delivery Notes",
+    deliveryNotesPlaceholder: "Apartment, floor, etc.",
+    paymentMethod: "Payment Method",
+    cashOnDelivery: "Cash on Delivery",
+    cashOnDeliveryDesc: "Pay when you receive your order",
+    bankTransfer: "Bank Transfer",
+    termsAgreement: "By placing your order, you agree to our terms and conditions.",
+    preferredDeliveryDate: "Preferred Delivery Date",
+    country: "Country",
+    selectCountry: "Select country...",
+};
+
 export const TenantConfigSchema = z.object({
     id: z.string(), // e.g., "client-bob"
     domain: z.string(), // e.g., "dental-pros.com"
@@ -432,6 +561,12 @@ export const TenantConfigSchema = z.object({
         position: "bottom",
         enabled: true
     }),
+
+    // Hide social sharing buttons globally (can still be overridden per-page)
+    hideSocialSharing: z.boolean().default(false),
+
+    // Home page slug mapping (e.g., "/home" makes / show the /home page content)
+    homePageSlug: z.string().optional(),
 
     // Global Schema Settings
     schemaType: SchemaType.default("Organization"),
@@ -457,6 +592,9 @@ export const TenantConfigSchema = z.object({
     // Commerce Bar (utility bar above navbar: phone, social, cart, CTA)
     commerceBar: CommerceBarSchema.default({ enabled: false, socialLinks: [], height: "h-10", fontSize: "text-sm", iconSize: "h-5 w-5" }),
 
+    // Search Bar (dedicated product search bar below navbar)
+    searchBar: SearchBarSchema.default({ enabled: false, placeholder: "Search products..." }),
+
     // Order email templates (configurable per status)
     orderEmailConfig: OrderEmailConfigSchema.default({ templates: {} }),
 
@@ -465,6 +603,9 @@ export const TenantConfigSchema = z.object({
 
     // Default currency for commerce (products inherit this)
     currency: z.string().default("RON"),
+
+    // Commerce UI strings (i18n)
+    commerceStrings: CommerceStringsSchema.default({}),
 
     // Company details (footer, invoices)
     companyDetails: CompanyDetailsSchema.default({}),
@@ -749,6 +890,16 @@ export const DeliveryConfigSchema = z.object({
     yearlyOffDays: z.array(z.string()).default([]),  // MM-DD recurring yearly (e.g. "12-25", "01-01")
     unblockedDates: z.array(z.string()).default([]), // YYYY-MM-DD forced available (overrides weekly/yearly)
     deliveryDaysOfWeek: z.array(z.number()).default([1, 2, 3, 4, 5]), // 0=Sun..6=Sat
+
+    // Delivery zone restrictions
+    restrictDeliveryZones: z.boolean().default(false),  // if true, only deliver to allowed zones
+    allowedCountries: z.array(z.string()).default([]),  // e.g. ["Romania"]
+    allowedCounties: z.array(z.string()).default([]),   // e.g. ["București", "Ilfov"] - empty = all counties in allowed countries
+
+    // Checkout address configuration
+    defaultCountry: z.string().default("Romania"),      // Default country in checkout form
+    availableCountries: z.array(z.string()).default([]), // Countries shown in dropdown (empty = just default)
+    availableCounties: z.array(z.string()).default([]),  // Counties shown in dropdown (empty = text input)
 
     updatedAt: z.string(),
 });

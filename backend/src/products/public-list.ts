@@ -11,6 +11,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const categoryFilter = event.queryStringParameters?.category;
         const tag = event.queryStringParameters?.tag;
+        const search = event.queryStringParameters?.search?.toLowerCase().trim();
         const page = parseInt(event.queryStringParameters?.page || "1");
         const limit = Math.min(parseInt(event.queryStringParameters?.limit || "24"), 100);
 
@@ -44,10 +45,24 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 FilterExpression: filterParts.join(" AND "),
                 ExpressionAttributeValues: exprValues,
                 ExpressionAttributeNames: { "#s": "status" },
-                ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil"
+                ProjectionExpression: search
+                    ? "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, description, sku"
+                    : "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil"
             }));
 
             allProducts = (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        }
+
+        // Text search filter (in-memory, case-insensitive)
+        if (search) {
+            allProducts = allProducts.filter((p: any) => {
+                const title = (p.title || "").toLowerCase();
+                const desc = (p.description || "").toLowerCase();
+                const sku = (p.sku || "").toLowerCase();
+                const tags = (p.tags || []).join(" ").toLowerCase();
+                return title.includes(search) || desc.includes(search) ||
+                       sku.includes(search) || tags.includes(search);
+            });
         }
 
         // Filter by availability dates

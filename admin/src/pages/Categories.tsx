@@ -4,8 +4,25 @@ import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, FolderTree, Edit, Trash2, Eye, EyeOff, ChevronRight } from "lucide-react";
+import { Loader2, Plus, FolderTree, Edit, Trash2, Eye, EyeOff, ChevronRight, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+// Helper to get the base Renderer URL (CloudFront)
+const getRendererUrl = () => {
+    // @ts-ignore
+    const url = window.AMODX_CONFIG?.VITE_RENDERER_URL || import.meta.env.VITE_RENDERER_URL || "";
+    return url.replace(/\/$/, "");
+};
+
+// Build public URL for a tenant - use real domain if wired, otherwise /_site/ fallback
+const getTenantUrl = (tenant: { id: string; domain?: string }, path: string) => {
+    // .localhost suffix means it's a placeholder, not a real domain
+    if (tenant.domain && !tenant.domain.endsWith('.localhost')) {
+        return `https://${tenant.domain}${path}`;
+    }
+    // Fallback to CloudFront /_site/ routing
+    return `${getRendererUrl()}/_site/${tenant.id}${path}`;
+};
 
 interface Category {
     id: string;
@@ -144,6 +161,22 @@ export default function Categories() {
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => {
+                                                    if (!currentTenant) return;
+                                                    let url = getTenantUrl(currentTenant, `/category/${cat.slug}`);
+                                                    // Add preview param for hidden categories
+                                                    if (cat.status !== 'active') {
+                                                        url += url.includes('?') ? '&preview=true' : '?preview=true';
+                                                    }
+                                                    window.open(url, "_blank");
+                                                }}
+                                                title="View category page"
+                                            >
+                                                <ExternalLink className="h-4 w-4" />
+                                            </Button>
                                             <Button variant="ghost" size="icon" onClick={() => navigate(`/categories/${cat.id}`)}>
                                                 <Edit className="h-4 w-4" />
                                             </Button>

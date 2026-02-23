@@ -18,6 +18,7 @@ interface ProductCardProjection {
     salePrice?: string;
     imageLink?: string;
     availability: string;
+    status?: string;
     sortOrder: number;
     tags: string[];
     volumePricing: any[];
@@ -39,6 +40,7 @@ function buildCatProdItem(tenantId: string, categoryId: string, product: Product
         salePrice: product.salePrice,
         imageLink: product.imageLink,
         availability: product.availability,
+        status: product.status || "active",
         sortOrder: product.sortOrder || 0,
         tags: product.tags || [],
         volumePricing: product.volumePricing || [],

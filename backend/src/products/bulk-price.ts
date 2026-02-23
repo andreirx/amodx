@@ -170,6 +170,7 @@ export const handler: Handler = async (event) => {
                     id: product.id, title: merged.title, slug: merged.slug, sku: merged.sku,
                     price: merged.price, currency: merged.currency, salePrice: merged.salePrice,
                     imageLink: merged.imageLink, availability: merged.availability,
+                    status: merged.status,
                     sortOrder: merged.sortOrder || 0, tags: merged.tags || [],
                     volumePricing: merged.volumePricing || [],
                     categoryIds,

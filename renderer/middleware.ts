@@ -52,6 +52,17 @@ export function middleware(request: NextRequest) {
             const url = request.nextUrl.clone();
             url.pathname = `/${tenantId}${restOfPath}`;
             rewriteUrl = url;
+
+            // Set cookie with preview base path for link generation
+            const response = NextResponse.rewrite(url);
+            response.cookies.set('amodx_preview_base', `/_site/${tenantId}`, {
+                httpOnly: false, // Needs to be readable client-side
+                secure: false,
+                maxAge: 60 * 60, // 1 hour
+                path: '/',
+                sameSite: 'lax'
+            });
+            return response;
         }
     } else {
         // PRODUCTION MODE: Domain Mapping

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Upload, CheckCircle2, AlertCircle, ImageIcon, ShoppingBag, FileText } from "lucide-react";
 import { detectHeaderMappings, type HeaderMapping } from "@/lib/csv-headers";
+import { useTenant } from "@/context/TenantContext";
 
 interface StepResult {
     success: boolean;
@@ -15,10 +16,13 @@ interface StepResult {
 }
 
 export default function MigrationPage() {
+    const { currentTenant } = useTenant();
+
     // Step 1: Media
     const [mediaFile, setMediaFile] = useState<File | null>(null);
     const [mediaLoading, setMediaLoading] = useState(false);
     const [mediaResult, setMediaResult] = useState<StepResult | null>(null);
+    const [existingMediaCount, setExistingMediaCount] = useState<number | null>(null);
 
     // Step 2: Products
     const [productsFile, setProductsFile] = useState<File | null>(null);
@@ -32,7 +36,17 @@ export default function MigrationPage() {
     const [pagesLoading, setPagesLoading] = useState(false);
     const [pagesResult, setPagesResult] = useState<StepResult | null>(null);
 
-    const mediaComplete = mediaResult?.success === true;
+    // Check if media already imported on page load
+    useEffect(() => {
+        if (currentTenant) {
+            apiRequest("/assets").then(res => {
+                setExistingMediaCount(res.items?.length || 0);
+            }).catch(() => setExistingMediaCount(0));
+        }
+    }, [currentTenant?.id]);
+
+    // Unlock steps 2/3 if media import succeeded OR if media already exists
+    const mediaComplete = mediaResult?.success === true || (existingMediaCount !== null && existingMediaCount > 0);
 
     async function uploadToS3(file: File): Promise<string> {
         // 1. Get presigned URL
@@ -56,25 +70,57 @@ export default function MigrationPage() {
 
         // Return the S3 key (extract from publicUrl)
         // publicUrl format: https://cdn.../tenantId/assetId-filename
+        // decodeURIComponent handles filenames with spaces/special chars
         const url = new URL(res.publicUrl);
-        return url.pathname.slice(1); // Remove leading /
+        return decodeURIComponent(url.pathname.slice(1));
     }
 
     async function handleMediaImport() {
         if (!mediaFile) return;
         setMediaLoading(true);
         setMediaResult(null);
+
         try {
             const s3Key = await uploadToS3(mediaFile);
-            const res = await apiRequest("/import/media", {
-                method: "POST",
-                body: JSON.stringify({ s3Key }),
-            });
-            setMediaResult({
-                success: true,
-                message: `Downloaded ${res.downloaded} of ${res.total} images (${res.failed} failed)`,
-                details: res,
-            });
+
+            // Process in batches to avoid API Gateway timeout
+            let batchStart = 0;
+            let totalDownloaded = 0;
+            let totalFailed = 0;
+            let totalInXml = 0;
+            let alreadyImported = 0;
+            const allErrors: string[] = [];
+
+            while (true) {
+                const res = await apiRequest("/import/media", {
+                    method: "POST",
+                    body: JSON.stringify({ s3Key, batchStart, batchSize: 50 }),
+                });
+
+                totalInXml = res.total;
+                alreadyImported = res.alreadyImported || 0;
+                totalDownloaded += res.batchDownloaded || 0;
+                totalFailed += res.batchFailed || 0;
+                if (res.errors) allErrors.push(...res.errors);
+
+                // Update progress message
+                setMediaResult({
+                    success: true,
+                    message: `Progress: ${res.processedSoFar || 0}/${res.newTotal || 0} new images (${alreadyImported} already imported)...`,
+                    details: res,
+                });
+
+                if (res.complete) {
+                    setMediaResult({
+                        success: true,
+                        message: `Downloaded ${totalDownloaded} of ${totalInXml} images (${alreadyImported} skipped, ${totalFailed} failed)`,
+                        details: { ...res, errors: allErrors },
+                    });
+                    break;
+                }
+
+                batchStart = res.nextBatchStart;
+            }
         } catch (e: any) {
             setMediaResult({ success: false, message: e.message });
         } finally {
@@ -184,11 +230,18 @@ export default function MigrationPage() {
 
                     <Button onClick={handleMediaImport} disabled={!mediaFile || mediaLoading} className="w-full">
                         {mediaLoading
-                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing media (this may take several minutes)...</>
+                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing media...</>
                             : <><Upload className="mr-2 h-4 w-4" /> Import Media</>}
                     </Button>
 
                     {mediaResult && <ResultBanner result={mediaResult} />}
+
+                    {!mediaResult && existingMediaCount !== null && existingMediaCount > 0 && (
+                        <div className="rounded-md p-3 text-sm flex items-start gap-2 bg-green-50 text-green-800 border border-green-200">
+                            <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+                            <p>{existingMediaCount.toLocaleString()} media files already imported. You can proceed to Steps 2 & 3, or re-import to add new files.</p>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

@@ -24,6 +24,15 @@ No admin page for viewing order reports, revenue charts, or product performance 
 ### Form email notifications not implemented
 `backend/src/forms/public-submit.ts` saves submissions but doesn't send notification emails to `FormDefinition.notifyEmail`. Needs SES integration similar to existing contact form handler.
 
+### WordPress page import is text-only
+`backend/src/import/wordpress.ts` converts WordPress pages to Tiptap blocks, but the conversion is shallow:
+- **Images**: Converted to `[Image: url]` text placeholders instead of actual image blocks. Should check MEDIAMAP# for imported media URLs and create proper image nodes.
+- **Forms**: Contact Form 7 / WPForms are converted to plain text (field labels only). Could potentially map to FormDefinition or at least create a form embed placeholder.
+- **Buttons/CTAs**: Converted to plain text. Should detect `<a class="button">` patterns and create CTA blocks.
+- **Layout blocks**: Gutenberg columns, hero sections, galleries are flattened to text. Complex to reverse-engineer but could detect common patterns.
+- **Current state**: Acceptable for content migration (text + paragraphs work), but requires manual cleanup for rich layouts.
+- **Estimated effort**: High (3-5 days for meaningful improvement)
+
 ### Email/Password Customer Accounts via Public Cognito Pool
 The public Cognito pool (`AmodxPublicPool`) is provisioned in CDK but dormant. Currently customer auth is Google-only via NextAuth. This task activates the public pool so tenants can offer email/password registration alongside Google OAuth.
 

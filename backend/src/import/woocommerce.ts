@@ -1,11 +1,22 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
-import { writeCatProductItems } from "../lib/catprod.js";
+import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { publishAudit } from "../lib/events.js";
 import { loadMediaMap } from "../lib/media-map.js";
+
+/** Look up existing product by slug using GSI_Slug */
+async function findProductBySlug(tenantId: string, slug: string): Promise<any | null> {
+    const result = await db.send(new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: "GSI_Slug",
+        KeyConditionExpression: "TenantSlug = :ts",
+        ExpressionAttributeValues: { ":ts": `${tenantId}#${slug}` },
+    }));
+    return result.Items?.find((item: any) => item.SK?.startsWith("PRODUCT#")) || null;
+}
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -18,6 +29,17 @@ const slugify = (str: string) => {
         .replace(/[\s_]+/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
+};
+
+/** Clean up description text: convert literal \n to actual newlines, strip excessive whitespace */
+const cleanDescription = (str: string) => {
+    if (!str) return '';
+    return str
+        .replace(/\\n/g, '\n')           // literal \n → actual newline
+        .replace(/\\r/g, '')             // remove \r
+        .replace(/\\t/g, '  ')           // literal \t → spaces
+        .replace(/\n{3,}/g, '\n\n')      // collapse 3+ newlines to 2
+        .trim();
 };
 
 // ===================== ROMANIAN → ENGLISH COLUMN MAP =====================
@@ -176,6 +198,7 @@ function rewriteUrl(url: string, mediaMap: Map<string, string>): string {
 
 interface ImportResult {
     imported: number;
+    updated: number;
     skipped: number;
     drafts: number;
     categoriesCreated: number;
@@ -212,7 +235,7 @@ export const handler: Handler = async (event) => {
         const mediaMap = await loadMediaMap(tenantId);
         console.log(`Loaded ${mediaMap.size} media URL mappings`);
 
-        const result: ImportResult = { imported: 0, skipped: 0, drafts: 0, categoriesCreated: 0, errors: [] };
+        const result: ImportResult = { imported: 0, updated: 0, skipped: 0, drafts: 0, categoriesCreated: 0, errors: [] };
         const categoryCache: Record<string, string> = {}; // name → id
 
         // === Two-pass approach for variable products + variations ===
@@ -264,11 +287,16 @@ export const handler: Handler = async (event) => {
                     continue;
                 }
 
-                const id = crypto.randomUUID();
                 const now = new Date().toISOString();
                 const wooSlug = row['Slug'] || row['slug'] || '';
                 const productSlug = wooSlug || slugify(title);
                 const sku = row['SKU'] || row['sku'] || '';
+
+                // Check for existing product by slug
+                const existingProduct = await findProductBySlug(tenantId, productSlug);
+                const id = existingProduct?.id || crypto.randomUUID();
+                const isUpdate = !!existingProduct;
+                const oldCategoryIds: string[] = existingProduct?.categoryIds || [];
 
                 // Determine status from Published column
                 const published = row['Published'] || '';
@@ -344,9 +372,9 @@ export const handler: Handler = async (event) => {
                 const tagsStr = row['Tags'] || row['tags'] || '';
                 const tags = tagsStr ? tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
 
-                // Parse description
-                const shortDescription = row['Short description'] || row['short_description'] || '';
-                const longDescription = row['Description'] || row['description'] || row['post_content'] || '';
+                // Parse description — clean up literal \n escape sequences
+                const shortDescription = cleanDescription(row['Short description'] || row['short_description'] || '');
+                const longDescription = cleanDescription(row['Description'] || row['description'] || row['post_content'] || '');
 
                 // Parse weight — detect grams vs kg
                 const weightStr = row['Weight (g)'] || row['Weight (kg)'] || row['weight'] || '';
@@ -445,9 +473,9 @@ export const handler: Handler = async (event) => {
                     personalizations: [],
                     variants,
                     nutritionalValues: [],
-                    sortOrder: 0,
+                    sortOrder: existingProduct?.sortOrder || 0,
                     condition: "new",
-                    createdAt: now,
+                    createdAt: existingProduct?.createdAt || now,
                     updatedAt: now,
                 };
 
@@ -456,17 +484,24 @@ export const handler: Handler = async (event) => {
                     Item: item,
                 }));
 
-                // Write CATPROD# adjacency items
+                // Update CATPROD# adjacency items (delete old, write new)
+                if (isUpdate && oldCategoryIds.length > 0) {
+                    await deleteCatProductItems(tenantId, id, oldCategoryIds);
+                }
                 if (categoryIds.length > 0) {
                     await writeCatProductItems(tenantId, {
                         id, title, slug: productSlug, price: regularPrice || '0',
                         currency, salePrice: salePrice || undefined,
-                        imageLink, availability, sortOrder: 0,
+                        imageLink, availability, status, sortOrder: 0,
                         tags, volumePricing: [], categoryIds,
                     });
                 }
 
-                result.imported++;
+                if (isUpdate) {
+                    result.updated = (result.updated || 0) + 1;
+                } else {
+                    result.imported++;
+                }
             } catch (rowErr: any) {
                 result.errors.push(`Row "${row['Name'] || 'unknown'}": ${rowErr.message}`);
             }

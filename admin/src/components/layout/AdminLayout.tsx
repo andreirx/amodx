@@ -10,48 +10,87 @@ import {
     SheetDescription
 } from "@/components/ui/sheet";
 import { apiRequest } from "@/lib/api";
-import { useEffect, useState } from "react";
-import { useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useTenant } from "@/context/TenantContext";
+
+interface LinkSuggestion {
+    title: string;
+    slug: string;
+    type: 'page' | 'product' | 'category';
+}
 
 export default function AdminLayout() {
+    const { currentTenant } = useTenant();
     const [isMobileOpen, setIsMobileOpen] = useState(false);
-    const [links, setLinks] = useState<{ title: string, slug: string }[]>([]);
+    const [links, setLinks] = useState<LinkSuggestion[]>([]);
 
-    // Define fetch function
+    // Define fetch function - fetches pages, and products/categories if commerce is enabled
     const fetchLinks = useCallback(async () => {
         try {
-            const res = await apiRequest("/content");
-            if (res.items) {
-                const pages = res.items.map((p: any) => ({
+            const allLinks: LinkSuggestion[] = [];
+
+            // Fetch content pages
+            const contentRes = await apiRequest("/content");
+            if (contentRes.items) {
+                const pages = contentRes.items.map((p: any) => ({
                     title: p.title,
-                    slug: p.slug
+                    slug: p.slug,
+                    type: 'page' as const
                 }));
-                // Sort by title for easier searching
-                pages.sort((a: any, b: any) => a.title.localeCompare(b.title));
-                setLinks(pages);
+                allLinks.push(...pages);
             }
+
+            // Fetch products and categories if commerce is enabled
+            if (currentTenant?.commerceEnabled) {
+                try {
+                    const [productsRes, categoriesRes] = await Promise.all([
+                        apiRequest("/products"),
+                        apiRequest("/categories")
+                    ]);
+
+                    if (productsRes.items) {
+                        const products = productsRes.items.map((p: any) => ({
+                            title: `[Product] ${p.title}`,
+                            slug: `/product/${p.slug}`,
+                            type: 'product' as const
+                        }));
+                        allLinks.push(...products);
+                    }
+
+                    if (categoriesRes.items) {
+                        const categories = categoriesRes.items.map((c: any) => ({
+                            title: `[Category] ${c.name}`,
+                            slug: `/category/${c.slug}`,
+                            type: 'category' as const
+                        }));
+                        allLinks.push(...categories);
+                    }
+                } catch (e) {
+                    console.warn("Commerce links fetch failed", e);
+                }
+            }
+
+            // Sort by title for easier searching
+            allLinks.sort((a, b) => a.title.localeCompare(b.title));
+            setLinks(allLinks);
         } catch (e) {
             console.warn("Autolink fetch failed", e);
         }
-    }, []);
+    }, [currentTenant?.commerceEnabled]);
 
     // Initial Load + Event Listener
     useEffect(() => {
         fetchLinks(); // Initial load
 
-        // Listen for updates
+        // Listen for updates (e.g., when content is edited)
         const handleRefresh = (e: Event) => {
             // Check if the event carries data (CustomEvent)
             const detail = (e as CustomEvent).detail;
 
             if (detail && Array.isArray(detail)) {
-                // OPTIMIZATION: Use the data passed by ContentList
-                const pages = detail.map((p: any) => ({
-                    title: p.title,
-                    slug: p.slug
-                }));
-                pages.sort((a: any, b: any) => a.title.localeCompare(b.title));
-                setLinks(pages);
+                // OPTIMIZATION: Use the data passed by ContentList for pages
+                // But we still need to refetch to get products/categories
+                fetchLinks();
             } else {
                 // Fallback: Fetch from API if no data provided
                 fetchLinks();

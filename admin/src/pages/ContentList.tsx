@@ -39,6 +39,17 @@ export default function ContentList() {
         return url.replace(/\/$/, "");
     };
 
+    // Build public URL for a tenant - use real domain if wired, otherwise /_site/ fallback
+    const getTenantUrl = (path: string) => {
+        if (!currentTenant) return '';
+        // .localhost suffix means it's a placeholder, not a real domain
+        if (currentTenant.domain && !currentTenant.domain.endsWith('.localhost')) {
+            return `https://${currentTenant.domain}${path}`;
+        }
+        // Fallback to CloudFront /_site/ routing
+        return `${getRendererUrl()}/_site/${currentTenant.id}${path}`;
+    };
+
     useEffect(() => {
         if (currentTenant) {
             setLoading(true);
@@ -289,15 +300,12 @@ export default function ContentList() {
                                             variant="ghost"
                                             size="icon"
                                             className="h-8 w-8"
-                                            // Use Renderer URL + /_site/ + tenant + slug
+                                            // Use real domain if wired, otherwise /_site/ fallback
                                             onClick={() => {
-                                                const rendererUrl = getRendererUrl();
-                                                // 1. Base URL
-                                                let url = `${rendererUrl}/_site/${currentTenant.id}${item.slug}`;
+                                                let url = getTenantUrl(item.slug || '/');
 
-                                                // 2. Append Preview Query Param if Draft
+                                                // Append Preview Query Param if Draft
                                                 if (item.status === 'Draft') {
-                                                    // Check if slug already has params (edge case)
                                                     url += url.includes('?') ? '&preview=true' : '?preview=true';
                                                 }
 

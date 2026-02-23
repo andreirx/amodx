@@ -5,18 +5,75 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Star, Check, EyeOff, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Loader2, Star, Check, EyeOff, Trash2, Plus } from "lucide-react";
 
 export default function Reviews() {
     const { currentTenant } = useTenant();
     const [reviews, setReviews] = useState<any[]>([]);
+    const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState("");
     const [productFilter] = useState("");
 
+    // Create review dialog state
+    const [createOpen, setCreateOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [newReview, setNewReview] = useState({
+        productId: "",
+        authorName: "",
+        rating: 5,
+        content: "",
+        source: "internal" as "internal" | "google" | "imported",
+        status: "approved" as "approved" | "pending" | "hidden",
+    });
+
     useEffect(() => {
-        if (currentTenant) loadReviews();
+        if (currentTenant) {
+            loadReviews();
+            loadProducts();
+        }
     }, [currentTenant?.id]);
+
+    async function loadProducts() {
+        try {
+            const res = await apiRequest("/products");
+            setProducts(res.items || []);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async function createReview() {
+        if (!newReview.productId || !newReview.authorName) {
+            alert("Please select a product and enter an author name.");
+            return;
+        }
+        setCreating(true);
+        try {
+            await apiRequest("/reviews", {
+                method: "POST",
+                body: JSON.stringify(newReview),
+            });
+            setCreateOpen(false);
+            setNewReview({
+                productId: "",
+                authorName: "",
+                rating: 5,
+                content: "",
+                source: "internal",
+                status: "approved",
+            });
+            loadReviews();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setCreating(false);
+        }
+    }
 
     useEffect(() => {
         if (currentTenant) loadReviews();
@@ -112,6 +169,91 @@ export default function Reviews() {
                     <h1 className="text-3xl font-bold tracking-tight">Reviews</h1>
                     <p className="text-muted-foreground">Moderate customer reviews.</p>
                 </div>
+                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                    <DialogTrigger asChild>
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4" /> Add Review
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add Review</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label>Product *</Label>
+                                <Select value={newReview.productId} onValueChange={v => setNewReview({ ...newReview, productId: v })}>
+                                    <SelectTrigger><SelectValue placeholder="Select a product" /></SelectTrigger>
+                                    <SelectContent>
+                                        {products.map((p: any) => (
+                                            <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Author Name *</Label>
+                                <Input
+                                    value={newReview.authorName}
+                                    onChange={e => setNewReview({ ...newReview, authorName: e.target.value })}
+                                    placeholder="John Doe"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Rating</Label>
+                                <div className="flex gap-1">
+                                    {[1, 2, 3, 4, 5].map(r => (
+                                        <button
+                                            key={r}
+                                            type="button"
+                                            onClick={() => setNewReview({ ...newReview, rating: r })}
+                                            className="p-1"
+                                        >
+                                            <Star className={`h-6 w-6 ${r <= newReview.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Review Content</Label>
+                                <Textarea
+                                    value={newReview.content}
+                                    onChange={e => setNewReview({ ...newReview, content: e.target.value })}
+                                    placeholder="Write the review..."
+                                    rows={4}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Source</Label>
+                                    <Select value={newReview.source} onValueChange={v => setNewReview({ ...newReview, source: v as any })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="internal">Internal</SelectItem>
+                                            <SelectItem value="google">Google</SelectItem>
+                                            <SelectItem value="imported">Imported</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <Select value={newReview.status} onValueChange={v => setNewReview({ ...newReview, status: v as any })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="approved">Approved</SelectItem>
+                                            <SelectItem value="pending">Pending</SelectItem>
+                                            <SelectItem value="hidden">Hidden</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <Button onClick={createReview} disabled={creating} className="w-full">
+                                {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Create Review
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
 
             <div className="flex gap-3">
