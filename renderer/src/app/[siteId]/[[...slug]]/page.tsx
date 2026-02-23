@@ -15,6 +15,7 @@ import { AddToCartButton } from "@/components/AddToCartButton";
 import { FBPurchaseEvent } from "@/components/FBPurchaseEvent";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { AccountPageView } from "@/components/AccountPageView";
+import { SearchBar } from "@/components/SearchBar";
 
 // NEW: Auth Imports
 import { decode } from "next-auth/jwt";
@@ -598,6 +599,7 @@ function Pagination({ page, total, limit, baseUrl, basePath = "" }: { page: numb
 
 function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [], strings }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[]; strings: Required<CommerceStrings> }) {
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const jsonLd: any = {
         "@context": "https://schema.org",
         "@type": "Product",
@@ -620,8 +622,19 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
     }
 
     return (
-        <main className={`${siteWidth} mx-auto py-12 px-6`}>
-            <Script id="product-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        <>
+            {config.searchBar?.enabled && (
+                <SearchBar
+                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    searchPrefix={prefixes.search || "/search"}
+                    productPrefix={prefixes.product || "/product"}
+                    tenantId={config.id}
+                    apiUrl={apiUrl}
+                    contentMaxWidth={siteWidth}
+                />
+            )}
+            <main className={`${siteWidth} mx-auto py-12 px-6`}>
+                <Script id="product-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
             {/* Breadcrumbs */}
             <nav className="text-sm text-muted-foreground mb-8">
@@ -817,15 +830,28 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     </div>
                 </div>
             )}
-        </main>
+            </main>
+        </>
     );
 }
 
 function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "" }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string }) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     return (
-        <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
-            {/* Breadcrumbs */}
-            <nav className="text-sm text-muted-foreground mb-8">
+        <>
+            {config.searchBar?.enabled && (
+                <SearchBar
+                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    searchPrefix={prefixes.search || "/search"}
+                    productPrefix={prefixes.product || "/product"}
+                    tenantId={config.id}
+                    apiUrl={apiUrl}
+                    contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
+                />
+            )}
+            <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
+                {/* Breadcrumbs */}
+                <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">Home</Link>
                 <span className="mx-2">/</span>
                 <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">Shop</Link>
@@ -851,16 +877,29 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                 </div>
             )}
 
-            <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.category}/${category.slug}`} basePath={basePath} />
-        </main>
+                <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.category}/${category.slug}`} basePath={basePath} />
+            </main>
+        </>
     );
 }
 
 function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string }) {
     const shopUrl = prefixes.shop || "/magazin";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     return (
-        <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
-            <h1 className="text-3xl font-bold tracking-tight mb-4">Shop</h1>
+        <>
+            {config.searchBar?.enabled && (
+                <SearchBar
+                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    searchPrefix={prefixes.search || "/search"}
+                    productPrefix={prefixes.product || "/product"}
+                    tenantId={config.id}
+                    apiUrl={apiUrl}
+                    contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
+                />
+            )}
+            <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
+                <h1 className="text-3xl font-bold tracking-tight mb-4">Shop</h1>
 
             {/* Availability Filter */}
             <div className="flex flex-wrap gap-2 mb-4">
@@ -902,15 +941,28 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
             )}
 
             <Pagination page={page} total={total} limit={24} baseUrl={availability ? `${shopUrl}?availability=${availability}` : shopUrl} basePath={basePath} />
-        </main>
+            </main>
+        </>
     );
 }
 
 function SearchPageView({ query, products, total, page, config, prefixes, basePath = "" }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string }) {
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     return (
-        <main className={`${siteWidth} mx-auto py-12 px-6`}>
-            <nav className="text-sm text-muted-foreground mb-8">
+        <>
+            {config.searchBar?.enabled && (
+                <SearchBar
+                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    searchPrefix={prefixes.search || "/search"}
+                    productPrefix={prefixes.product || "/product"}
+                    tenantId={config.id}
+                    apiUrl={apiUrl}
+                    contentMaxWidth={siteWidth}
+                />
+            )}
+            <main className={`${siteWidth} mx-auto py-12 px-6`}>
+                <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">Home</Link>
                 <span className="mx-2">/</span>
                 <Link href={`${basePath}${prefixes.shop || "/shop"}`} className="hover:text-primary">Shop</Link>
@@ -935,8 +987,9 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
                 </div>
             )}
 
-            <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.search || "/search"}?q=${encodeURIComponent(query)}`} basePath={basePath} />
-        </main>
+                <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.search || "/search"}?q=${encodeURIComponent(query)}`} basePath={basePath} />
+            </main>
+        </>
     );
 }
 

@@ -88,8 +88,11 @@ function mapTenant(item: any): TenantConfig {
 
         commerceEnabled: item.commerceEnabled ?? false,
         commerceBar: item.commerceBar || undefined,
+        searchBar: item.searchBar || undefined,
         commerceStrings: item.commerceStrings || undefined,
         currency: item.currency || undefined,
+        askBirthdayOnAccount: item.askBirthdayOnAccount ?? true,
+        askBirthdayOnCheckout: item.askBirthdayOnCheckout ?? true,
         companyDetails: item.companyDetails || undefined,
         gdpr: item.gdpr || undefined,
         hideSocialSharing: item.hideSocialSharing ?? false,

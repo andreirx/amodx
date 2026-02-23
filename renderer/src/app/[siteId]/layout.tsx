@@ -9,7 +9,6 @@ import { CookieConsent } from "@/components/CookieConsent";
 import { QuickContact } from "@/components/QuickContact";
 import { TopBar } from "@/components/TopBar";
 import { CommerceBar } from "@/components/CommerceBar";
-import { SearchBar } from "@/components/SearchBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
@@ -155,17 +154,6 @@ export default async function SiteLayout({ children, params }: Props) {
                         contentMaxWidth={config.header?.contentMaxWidth}
                     />
 
-                    {/* Product Search Bar (below navbar) */}
-                    {config.searchBar?.enabled && commerceEnabled && (
-                        <SearchBar
-                            placeholder={config.searchBar?.placeholder || "Search products..."}
-                            searchPrefix={config.urlPrefixes?.search || URL_PREFIX_DEFAULTS.search}
-                            productPrefix={config.urlPrefixes?.product || URL_PREFIX_DEFAULTS.product}
-                            tenantId={config.id}
-                            apiUrl={process.env.NEXT_PUBLIC_API_URL || ""}
-                            contentMaxWidth={config.header?.contentMaxWidth}
-                        />
-                    )}
                 </div>
 
                 <div className="flex-1">

@@ -105,14 +105,14 @@ export function SearchBar({
     }
 
     return (
-        <div className="bg-muted/30 border-b">
-            <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8 py-2`}>
-                <div ref={wrapperRef} className="relative max-w-xl mx-auto">
-                    <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <div className="bg-primary w-full">
+            <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8 py-4`}>
+                <div ref={wrapperRef} className="relative max-w-2xl mx-auto">
+                    <form onSubmit={handleSubmit} className="flex items-center gap-3">
                         <div className="relative flex-1">
                             {/* Search icon */}
                             <svg
-                                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                                className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 stroke="currentColor"
@@ -130,16 +130,16 @@ export function SearchBar({
                                 onKeyDown={handleKeyDown}
                                 onFocus={() => { if (results.length > 0) setShowDropdown(true); }}
                                 placeholder={placeholder}
-                                className="w-full pl-10 pr-8 py-2 text-sm border rounded-full bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                                className="w-full pl-12 pr-10 py-3 text-base border-0 rounded-full bg-background shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-foreground/30 transition-colors"
                             />
                             {/* Clear button */}
                             {query && (
                                 <button
                                     type="button"
                                     onClick={() => { setQuery(""); setResults([]); setShowDropdown(false); }}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                                 >
-                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                                     </svg>
                                 </button>
@@ -147,7 +147,7 @@ export function SearchBar({
                         </div>
                         <button
                             type="submit"
-                            className="bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
+                            className="bg-background text-foreground px-6 py-3 rounded-full text-sm font-semibold hover:bg-background/90 transition-opacity shrink-0 shadow-sm"
                         >
                             Search
                         </button>
