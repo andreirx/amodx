@@ -246,6 +246,8 @@ export default async function Page({ params, searchParams }: Props) {
                     getCustomerProfile(config.id, userEmail),
                 ]);
             }
+            const strings = getCommerceStrings(config);
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
             return (
                 <AccountPageView
                     orders={orders}
@@ -254,6 +256,10 @@ export default async function Page({ params, searchParams }: Props) {
                     checkoutPrefix={prefixes.checkout || "/checkout"}
                     shopPrefix={prefixes.shop || "/shop"}
                     contentMaxWidth={config.header?.contentPageMaxWidth || "max-w-4xl"}
+                    askBirthday={config.askBirthdayOnAccount ?? true}
+                    strings={strings}
+                    apiUrl={apiUrl}
+                    tenantId={config.id}
                 />
             );
         }
@@ -298,6 +304,7 @@ export default async function Page({ params, searchParams }: Props) {
                     defaultCountry={deliveryConfig?.defaultCountry || "Romania"}
                     availableCountries={deliveryConfig?.availableCountries || []}
                     availableCounties={deliveryConfig?.availableCounties || []}
+                    askBirthday={config.askBirthdayOnCheckout ?? true}
                 />
             );
         }

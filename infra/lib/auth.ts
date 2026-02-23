@@ -94,7 +94,7 @@ export class AmodxAuth extends Construct {
             selfSignUpEnabled: true, // Allow visitors to register
             signInAliases: { email: true, username: true }, // We will use custom usernames
             autoVerify: { email: true },
-            passwordPolicy: { minLength: 6, requireSymbols: false },
+            passwordPolicy: { minLength: 8, requireSymbols: false },
             // We need custom attributes to know WHICH tenant they belong to
             customAttributes: {
                 'tenant_id': new cognito.StringAttribute({ mutable: true }),

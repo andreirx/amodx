@@ -15,8 +15,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const body = JSON.parse(event.body);
         const {
-            items, customerEmail, customerName, customerPhone,
-            shippingAddress, paymentMethod, requestedDeliveryDate,
+            items, customerEmail, customerName, customerPhone, customerBirthday,
+            shippingAddress, billingDetails, paymentMethod, requestedDeliveryDate,
             couponCode
         } = body;
 
@@ -239,6 +239,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         customerName,
                         customerPhone: customerPhone || null,
                         shippingAddress: shippingAddress || null,
+                        billingDetails: billingDetails || null,
                         paymentMethod: paymentMethod || null,
                         requestedDeliveryDate: requestedDeliveryDate || null,
                         subtotal,
@@ -272,7 +273,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                     }
                 }
             },
-            // 3. Customer upsert
+            // 3. Customer upsert (with birthday, billing details, loyalty points)
             {
                 Update: {
                     TableName: TABLE_NAME,
@@ -280,7 +281,19 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         PK: `TENANT#${tenantId}`,
                         SK: `CUSTOMER#${customerEmail.toLowerCase()}`
                     },
-                    UpdateExpression: "SET #n = :name, phone = :phone, orderCount = if_not_exists(orderCount, :zero) + :one, totalSpent = if_not_exists(totalSpent, :zero) + :total, lastOrderDate = :now, defaultAddress = :address, #t = :type",
+                    UpdateExpression: [
+                        "SET #n = :name",
+                        "phone = :phone",
+                        "orderCount = if_not_exists(orderCount, :zero) + :one",
+                        "totalSpent = if_not_exists(totalSpent, :zero) + :total",
+                        "loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points",
+                        "lastOrderDate = :now",
+                        "defaultAddress = :address",
+                        "#t = :type",
+                        // Only set birthday/billingDetails if provided (don't overwrite with null)
+                        ...(customerBirthday ? ["birthday = :birthday"] : []),
+                        ...(billingDetails?.isCompany ? ["defaultBillingDetails = :billing"] : []),
+                    ].join(", "),
                     ExpressionAttributeNames: {
                         "#n": "name",
                         "#t": "Type"
@@ -291,9 +304,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         ":zero": 0,
                         ":one": 1,
                         ":total": total,
+                        ":points": Math.floor(total), // 1 loyalty point per currency unit spent
                         ":now": now,
                         ":address": shippingAddress || null,
-                        ":type": "Customer"
+                        ":type": "Customer",
+                        ...(customerBirthday ? { ":birthday": customerBirthday } : {}),
+                        ...(billingDetails?.isCompany ? { ":billing": billingDetails } : {}),
                     }
                 }
             }

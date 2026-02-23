@@ -32,16 +32,17 @@ export class AmodxApi extends Construct {
     constructor(scope: Construct, id: string, props: AmodxApiProps) {
         super(scope, id);
 
+        // SECURITY: Explicit origins only - no wildcard fallback
         const allowedOrigins = [
             'http://localhost:3000',
-            'http://localhost:5173'
+            'http://localhost:5173',
+            'http://localhost:4321', // Astro dev
         ];
 
         if (props.adminDomain) {
             allowedOrigins.push(`https://${props.adminDomain}`);
-        } else {
-            allowedOrigins.push('*');
         }
+        // Note: In production, adminDomain should always be set
 
         // 1. Authorizer
         const authorizerFunc = new nodejs.NodejsFunction(this, 'AuthorizerFunc', {
@@ -64,7 +65,7 @@ export class AmodxApi extends Construct {
         });
         this.authorizerFuncArn = authorizerFunc.functionArn;
 
-        // 2. HTTP API
+        // 2. HTTP API with rate limiting
         this.httpApi = new apigw.HttpApi(this, 'AmodxHttpApi', {
             defaultAuthorizer: authorizer,
             corsPreflight: {
@@ -73,6 +74,15 @@ export class AmodxApi extends Construct {
                 allowHeaders: ['Content-Type', 'Authorization', 'x-tenant-id', 'x-api-key'],
             },
         });
+
+        // SECURITY: Add rate limiting via default stage throttling
+        const stage = this.httpApi.defaultStage?.node.defaultChild as apigw.CfnStage;
+        if (stage) {
+            stage.defaultRouteSettings = {
+                throttlingBurstLimit: 100,  // Max concurrent requests
+                throttlingRateLimit: 50,    // Requests per second
+            };
+        }
 
         // --- SHARED PROPS (THE FIX) ---
         const nodeProps = {
@@ -259,9 +269,11 @@ export class AmodxApi extends Construct {
                 SES_FROM_EMAIL: props.sesEmail,
             }
         });
+        // SECURITY: Scope SES to verified identity only
+        const sesIdentityArn = `arn:aws:ses:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:identity/${props.sesEmail}`;
         contactFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-            resources: ['*'],
+            resources: [sesIdentityArn],
         }));
         props.table.grantReadData(contactFunc);
 
@@ -625,7 +637,7 @@ export class AmodxApi extends Construct {
         }));
         inviteUserFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-            resources: ['*'],
+            resources: [sesIdentityArn],
         }));
 
         this.httpApi.addRoutes({
@@ -714,7 +726,7 @@ export class AmodxApi extends Construct {
         props.table.grantReadData(paddleFunc);
         paddleFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-            resources: ['*'],
+            resources: [sesIdentityArn],
         }));
 
         this.httpApi.addRoutes({

@@ -180,9 +180,11 @@ export class CommerceApi extends NestedStack {
             },
         });
         table.grantReadWriteData(createOrderFunc);
+        // SECURITY: Scope SES to verified identity only
+        const sesIdentityArn = `arn:aws:ses:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:identity/${sesEmail}`;
         createOrderFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail'],
-            resources: ['*'],
+            resources: [sesIdentityArn],
         }));
 
         const listOrdersFunc = new nodejs.NodejsFunction(this, 'ListOrdersFunc', {
@@ -211,7 +213,7 @@ export class CommerceApi extends NestedStack {
         table.grantReadWriteData(updateOrderStatusFunc);
         updateOrderStatusFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail'],
-            resources: ['*'],
+            resources: [sesIdentityArn],
         }));
 
         const updateOrderFunc = new nodejs.NodejsFunction(this, 'UpdateOrderFunc', {
@@ -260,6 +262,16 @@ export class CommerceApi extends NestedStack {
         addRoute('ListCustomers', 'GET /customers', listCustomersFunc);
         addRoute('GetCustomer', 'GET /customers/{email}', getCustomerFunc);
         addRoute('UpdateCustomer', 'PUT /customers/{email}', updateCustomerFunc);
+
+        // Public customer profile update (self-service)
+        const publicUpdateCustomerFunc = new nodejs.NodejsFunction(this, 'PublicUpdateCustomerFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/customers/public-update.ts'),
+            handler: 'handler',
+        });
+        table.grantReadWriteData(publicUpdateCustomerFunc);
+
+        addRoute('PublicUpdateCustomer', 'POST /public/customers/profile', publicUpdateCustomerFunc, { noAuth: true });
 
         // ===================== DELIVERY =====================
         const getDeliveryConfigFunc = new nodejs.NodejsFunction(this, 'GetDeliveryConfigFunc', {

@@ -42,6 +42,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         const body = JSON.parse(event.body || "{}");
         const data = body.data || {};
 
+        // SECURITY: Validate email format if provided (prevents header injection)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const submitterEmail = data.email || body.email;
+        if (submitterEmail && !emailRegex.test(submitterEmail)) {
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid email format" }) };
+        }
+
         // Validate required fields
         const missingFields: string[] = [];
         for (const field of (form.fields || [])) {
@@ -75,7 +82,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 formId,
                 formName: form.name,
                 data,
-                submitterEmail: data.email || body.email,
+                submitterEmail: submitterEmail || null,
                 status: "new",
                 createdAt: now,
             }
@@ -91,7 +98,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 await ses.send(new SendEmailCommand({
                     Source: FROM_EMAIL,
                     Destination: { ToAddresses: [form.notifyEmail] },
-                    ReplyToAddresses: data.email ? [data.email] : undefined,
+                    ReplyToAddresses: submitterEmail ? [submitterEmail] : undefined,
                     Message: {
                         Subject: { Data: `New submission: ${form.name}` },
                         Body: {

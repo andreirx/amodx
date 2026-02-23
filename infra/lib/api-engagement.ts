@@ -192,9 +192,11 @@ export class EngagementApi extends NestedStack {
             },
         });
         table.grantReadWriteData(publicSubmitFormFunc);
+        // SECURITY: Scope SES to verified identity only
+        const sesIdentityArn = `arn:aws:ses:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:identity/${sesEmail}`;
         publicSubmitFormFunc.addToRolePolicy(new iam.PolicyStatement({
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-            resources: ['*'],
+            resources: [sesIdentityArn],
         }));
 
         addRoute('CreateForm', 'POST /forms', createFormFunc);

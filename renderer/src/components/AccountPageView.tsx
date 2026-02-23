@@ -2,7 +2,9 @@
 
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
+import { useState } from "react";
 import { useTenantUrl } from "@/lib/routing";
+import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
 interface Order {
     orderNumber: string;
@@ -16,6 +18,8 @@ interface CustomerData {
     email: string;
     name: string;
     phone: string;
+    birthday?: string;
+    loyaltyPoints?: number;
     defaultAddress?: {
         street: string;
         city: string;
@@ -52,6 +56,10 @@ export function AccountPageView({
     checkoutPrefix,
     shopPrefix,
     contentMaxWidth = "max-w-4xl",
+    askBirthday = true,
+    strings = COMMERCE_STRINGS_DEFAULTS,
+    apiUrl,
+    tenantId,
 }: {
     orders: Order[];
     customer: CustomerData | null;
@@ -59,9 +67,21 @@ export function AccountPageView({
     checkoutPrefix: string;
     shopPrefix: string;
     contentMaxWidth?: string;
+    askBirthday?: boolean;
+    strings?: CommerceStrings;
+    apiUrl: string;
+    tenantId: string;
 }) {
     const { data: session } = useSession();
     const { getUrl } = useTenantUrl();
+
+    // Edit mode state
+    const [isEditing, setIsEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [editForm, setEditForm] = useState({
+        phone: customer?.phone || "",
+        birthday: customer?.birthday || "",
+    });
 
     if (!session) {
         return (
@@ -96,32 +116,146 @@ export function AccountPageView({
 
             {/* Profile */}
             <div className="border border-border rounded-lg p-6">
-                <h2 className="text-lg font-semibold mb-4">Profile</h2>
-                <div className="grid sm:grid-cols-2 gap-4 text-sm">
-                    <div>
-                        <span className="text-muted-foreground">Name</span>
-                        <p className="font-medium">{customer?.name || session.user?.name || "—"}</p>
-                    </div>
-                    <div>
-                        <span className="text-muted-foreground">Email</span>
-                        <p className="font-medium">{customer?.email || session.user?.email || "—"}</p>
-                    </div>
-                    {customer?.phone && (
-                        <div>
-                            <span className="text-muted-foreground">Phone</span>
-                            <p className="font-medium">{customer.phone}</p>
-                        </div>
-                    )}
-                    {customer?.defaultAddress && (
-                        <div className="sm:col-span-2">
-                            <span className="text-muted-foreground">Default Address</span>
-                            <p className="font-medium">
-                                {customer.defaultAddress.street}, {customer.defaultAddress.city}, {customer.defaultAddress.county}
-                                {customer.defaultAddress.postalCode ? ` ${customer.defaultAddress.postalCode}` : ""}
-                            </p>
-                        </div>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">Profile</h2>
+                    {!isEditing && (
+                        <button
+                            onClick={() => setIsEditing(true)}
+                            className="text-sm text-primary hover:underline"
+                        >
+                            Edit
+                        </button>
                     )}
                 </div>
+
+                {isEditing ? (
+                    <form
+                        onSubmit={async (e) => {
+                            e.preventDefault();
+                            setSaving(true);
+                            try {
+                                const res = await fetch(`${apiUrl}/public/customers/profile`, {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                        "x-tenant-id": tenantId,
+                                    },
+                                    body: JSON.stringify({
+                                        email: customer?.email || session?.user?.email,
+                                        phone: editForm.phone,
+                                        birthday: editForm.birthday || null,
+                                    }),
+                                });
+                                if (res.ok) {
+                                    setIsEditing(false);
+                                    // Refresh the page to show updated data
+                                    window.location.reload();
+                                }
+                            } catch (err) {
+                                console.error("Failed to update profile", err);
+                            } finally {
+                                setSaving(false);
+                            }
+                        }}
+                        className="space-y-4"
+                    >
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm text-muted-foreground mb-1">Name</label>
+                                <p className="font-medium text-sm">{customer?.name || session?.user?.name || "—"}</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm text-muted-foreground mb-1">Email</label>
+                                <p className="font-medium text-sm">{customer?.email || session?.user?.email || "—"}</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm text-muted-foreground mb-1">{strings.phone || "Phone"}</label>
+                                <input
+                                    type="tel"
+                                    value={editForm.phone}
+                                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                                    className="w-full border rounded-md px-3 py-2 text-sm"
+                                    placeholder={strings.phonePlaceholder || ""}
+                                />
+                            </div>
+                            {askBirthday && (
+                                <div>
+                                    <label className="block text-sm text-muted-foreground mb-1">{strings.birthday || "Birthday"}</label>
+                                    <input
+                                        type="date"
+                                        value={editForm.birthday}
+                                        onChange={(e) => setEditForm({ ...editForm, birthday: e.target.value })}
+                                        className="w-full border rounded-md px-3 py-2 text-sm"
+                                    />
+                                    {strings.birthdayHint && (
+                                        <p className="text-xs text-muted-foreground mt-1">{strings.birthdayHint}</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                            >
+                                {saving ? "Saving..." : "Save"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsEditing(false)}
+                                className="border px-4 py-2 rounded-md text-sm hover:bg-muted"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                ) : (
+                    <div className="grid sm:grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span className="text-muted-foreground">Name</span>
+                            <p className="font-medium">{customer?.name || session?.user?.name || "—"}</p>
+                        </div>
+                        <div>
+                            <span className="text-muted-foreground">Email</span>
+                            <p className="font-medium">{customer?.email || session?.user?.email || "—"}</p>
+                        </div>
+                        <div>
+                            <span className="text-muted-foreground">{strings.phone || "Phone"}</span>
+                            <p className="font-medium">{customer?.phone || "—"}</p>
+                        </div>
+                        {askBirthday && (
+                            <div>
+                                <span className="text-muted-foreground">{strings.birthday || "Birthday"}</span>
+                                <p className="font-medium">
+                                    {customer?.birthday
+                                        ? new Date(customer.birthday + "T00:00:00").toLocaleDateString()
+                                        : "—"}
+                                </p>
+                                {!customer?.birthday && strings.birthdayHint && (
+                                    <p className="text-xs text-primary mt-1 cursor-pointer hover:underline" onClick={() => setIsEditing(true)}>
+                                        {strings.birthdayHint}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                        {customer?.loyaltyPoints !== undefined && customer.loyaltyPoints > 0 && (
+                            <div>
+                                <span className="text-muted-foreground">Loyalty Points</span>
+                                <p className="font-medium">{customer.loyaltyPoints.toLocaleString()}</p>
+                            </div>
+                        )}
+                        {customer?.defaultAddress && (
+                            <div className="sm:col-span-2">
+                                <span className="text-muted-foreground">Default Address</span>
+                                <p className="font-medium">
+                                    {customer.defaultAddress.street}, {customer.defaultAddress.city}, {customer.defaultAddress.county}
+                                    {customer.defaultAddress.postalCode ? ` ${customer.defaultAddress.postalCode}` : ""}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Orders */}

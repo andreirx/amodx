@@ -480,6 +480,25 @@ export const CommerceStringsSchema = z.object({
     preferredDeliveryDate: z.string().optional(), // "Preferred Delivery Date"
     country: z.string().optional(),             // "Country"
     selectCountry: z.string().optional(),       // "Select country..."
+
+    // Customer extras
+    birthday: z.string().optional(),            // "Birthday"
+    birthdayHint: z.string().optional(),        // "For a birthday surprise!"
+
+    // Billing / Company (B2B) - generic labels, customizable per locale
+    billingDetails: z.string().optional(),      // "Billing Details"
+    firstName: z.string().optional(),           // "First Name"
+    lastName: z.string().optional(),            // "Last Name"
+    orderAsCompany: z.string().optional(),      // "Order as a company"
+    companyName: z.string().optional(),         // "Company Name"
+    taxId: z.string().optional(),               // "Tax ID" (CUI/CIF in Romania, EIN in US, etc.)
+    taxIdPlaceholder: z.string().optional(),    // "e.g. 12345678"
+    vatNumber: z.string().optional(),           // "VAT Number"
+    vatNumberPlaceholder: z.string().optional(), // "e.g. RO12345678"
+    registrationNumber: z.string().optional(),  // "Registration No." (Trade Register in Romania)
+    registrationNumberPlaceholder: z.string().optional(), // "e.g. J40/1234/2020"
+    useSameAsShipping: z.string().optional(),   // "Use same address for billing"
+    billingAddress: z.string().optional(),      // "Billing Address"
 });
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
@@ -538,6 +557,24 @@ export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = {
     preferredDeliveryDate: "Preferred Delivery Date",
     country: "Country",
     selectCountry: "Select country...",
+    // Customer extras
+    birthday: "Birthday",
+    birthdayHint: "For a birthday surprise!",
+
+    // Billing / Company (B2B) - generic defaults, customizable per locale
+    billingDetails: "Billing Details",
+    firstName: "First Name",
+    lastName: "Last Name",
+    orderAsCompany: "Order as a company",
+    companyName: "Company Name",
+    taxId: "Tax ID",
+    taxIdPlaceholder: "",
+    vatNumber: "VAT Number",
+    vatNumberPlaceholder: "",
+    registrationNumber: "Registration No.",
+    registrationNumberPlaceholder: "",
+    useSameAsShipping: "Use same address for billing",
+    billingAddress: "Billing Address",
 };
 
 export const TenantConfigSchema = z.object({
@@ -579,6 +616,10 @@ export const TenantConfigSchema = z.object({
 
     // Commerce toggle — enables cart, checkout, orders flow. Products/categories/Paddle still work without it.
     commerceEnabled: z.boolean().default(false),
+
+    // Customer profile settings
+    askBirthdayOnAccount: z.boolean().default(true),  // Show birthday field on account page
+    askBirthdayOnCheckout: z.boolean().default(true), // Show birthday field on checkout
 
     // Commerce URL Prefixes (configurable per tenant for i18n)
     urlPrefixes: UrlPrefixesSchema.default(URL_PREFIX_DEFAULTS),
@@ -918,6 +959,28 @@ export const ShippingAddressSchema = z.object({
 });
 export type ShippingAddress = z.infer<typeof ShippingAddressSchema>;
 
+// Billing details for B2B / company orders (invoicing)
+// Generic field names - labels are customized per tenant via commerceStrings
+export const BillingDetailsSchema = z.object({
+    // Individual name split for invoicing
+    firstName: z.string().default(""),
+    lastName: z.string().default(""),
+    // Company fields (optional - for B2B)
+    isCompany: z.boolean().default(false),
+    companyName: z.string().default(""),
+    taxId: z.string().default(""),              // Generic: CUI/CIF (RO), EIN (US), Company Number (UK), etc.
+    vatNumber: z.string().default(""),          // Generic: VAT/TVA number (RO prefix for EU)
+    registrationNumber: z.string().default(""), // Generic: Trade Register (RO J-number), Company House Number (UK), etc.
+    // Billing address (can differ from shipping)
+    useSameAsShipping: z.boolean().default(true),
+    billingStreet: z.string().default(""),
+    billingCity: z.string().default(""),
+    billingCounty: z.string().default(""),
+    billingPostalCode: z.string().default(""),
+    billingCountry: z.string().default(""),
+});
+export type BillingDetails = z.infer<typeof BillingDetailsSchema>;
+
 export const OrderItemSchema = z.object({
     productId: z.string(),
     productTitle: z.string(),
@@ -949,6 +1012,7 @@ export const OrderSchema = z.object({
     customerName: z.string().min(1),
     customerPhone: z.string().default(""),
     shippingAddress: ShippingAddressSchema,
+    billingDetails: BillingDetailsSchema.optional(), // B2B / company invoice details
     items: z.array(OrderItemSchema).min(1),
     subtotal: z.string(),
     shippingCost: z.string().default("0"),
@@ -976,10 +1040,13 @@ export const CustomerSchema = z.object({
     email: z.string().email(),
     name: z.string().min(1),
     phone: z.string().default(""),
+    birthday: z.string().optional(),           // YYYY-MM-DD format for birthday vouchers
+    loyaltyPoints: z.number().default(0),      // Accumulated points from orders
     orderCount: z.number().default(0),
     totalSpent: z.string().default("0"),
     lastOrderDate: z.string().optional(),
     defaultAddress: ShippingAddressSchema.optional(),
+    defaultBillingDetails: BillingDetailsSchema.optional(), // Save company details for repeat orders
     notes: z.string().default(""),
     createdAt: z.string(),
     updatedAt: z.string(),

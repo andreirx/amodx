@@ -33,6 +33,7 @@ interface CheckoutProps {
     defaultCountry?: string;
     availableCountries?: string[];
     availableCounties?: string[];
+    askBirthday?: boolean;
 }
 
 // --- Inline delivery date picker ---
@@ -153,7 +154,7 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "Romania", availableCountries = [], availableCounties = [] }: CheckoutProps) {
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "Romania", availableCountries = [], availableCounties = [], askBirthday = true }: CheckoutProps) {
     // Use configured counties or fallback to Romanian counties
     const counties = availableCounties.length > 0 ? availableCounties : DEFAULT_COUNTIES;
     const showCountryField = availableCountries.length > 1;
@@ -179,6 +180,22 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
         notes: "",
         paymentMethod: (enabledPaymentMethods[0] || "cash_on_delivery") as "cash_on_delivery" | "bank_transfer",
         requestedDeliveryDate: "",
+        // Customer extras
+        birthday: "",
+        // Billing details (generic field names)
+        firstName: "",
+        lastName: "",
+        isCompany: false,
+        companyName: "",
+        taxId: "",
+        vatNumber: "",
+        registrationNumber: "",
+        useSameAsShipping: true,
+        billingStreet: "",
+        billingCity: "",
+        billingCounty: "",
+        billingPostalCode: "",
+        billingCountry: defaultCountry,
     });
 
     // Pre-fill from session (logged-in customer)
@@ -218,7 +235,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
     const shippingCost = freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost;
     const total = subtotal + shippingCost - couponDiscount;
 
-    const update = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
+    const update = (field: string, value: string | boolean) => setForm(prev => ({ ...prev, [field]: value }));
 
     if (items.length === 0) {
         return (
@@ -251,10 +268,16 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 selectedVariant: item.selectedVariant,
             }));
 
+            // Combine first + last name, or use legacy customerName field
+            const fullName = (form.firstName && form.lastName)
+                ? `${form.firstName} ${form.lastName}`.trim()
+                : form.customerName;
+
             const body: any = {
-                customerName: form.customerName,
+                customerName: fullName,
                 customerEmail: form.customerEmail,
                 customerPhone: form.customerPhone,
+                customerBirthday: form.birthday || undefined,
                 shippingAddress: {
                     street: form.street,
                     city: form.city,
@@ -262,6 +285,22 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                     postalCode: form.postalCode,
                     country: form.country,
                     notes: form.notes,
+                },
+                // Billing details for invoicing (generic field names)
+                billingDetails: {
+                    firstName: form.firstName,
+                    lastName: form.lastName,
+                    isCompany: form.isCompany,
+                    companyName: form.isCompany ? form.companyName : "",
+                    taxId: form.isCompany ? form.taxId : "",
+                    vatNumber: form.isCompany ? form.vatNumber : "",
+                    registrationNumber: form.isCompany ? form.registrationNumber : "",
+                    useSameAsShipping: form.useSameAsShipping,
+                    billingStreet: form.useSameAsShipping ? form.street : form.billingStreet,
+                    billingCity: form.useSameAsShipping ? form.city : form.billingCity,
+                    billingCounty: form.useSameAsShipping ? form.county : form.billingCounty,
+                    billingPostalCode: form.useSameAsShipping ? form.postalCode : form.billingPostalCode,
+                    billingCountry: form.useSameAsShipping ? form.country : form.billingCountry,
                 },
                 items: orderItems,
                 paymentMethod: form.paymentMethod,
@@ -317,22 +356,68 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 <div className="grid lg:grid-cols-3 gap-12">
                     {/* Form */}
                     <div className="lg:col-span-2 space-y-8">
-                        {/* Contact */}
+                        {/* Contact & Billing Details */}
                         <section>
-                            <h2 className="text-lg font-bold mb-4">{strings.contactInformation}</h2>
+                            <h2 className="text-lg font-bold mb-4">{strings.billingDetails || "Billing Details"}</h2>
                             <div className="grid sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">{strings.fullName} *</label>
-                                    <input required value={form.customerName} onChange={e => update("customerName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                    <label className="block text-sm font-medium mb-1">{strings.firstName || "First Name"} *</label>
+                                    <input required value={form.firstName} onChange={e => update("firstName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">{strings.lastName || "Last Name"} *</label>
+                                    <input required value={form.lastName} onChange={e => update("lastName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">{strings.email} *</label>
                                     <input required type="email" value={form.customerEmail} onChange={e => update("customerEmail", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
-                                <div className="sm:col-span-2">
+                                <div>
                                     <label className="block text-sm font-medium mb-1">{strings.phone}</label>
                                     <input value={form.customerPhone} onChange={e => update("customerPhone", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.phonePlaceholder} />
                                 </div>
+                                {askBirthday && (
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">{strings.birthday || "Birthday"}</label>
+                                        <input type="date" value={form.birthday} onChange={e => update("birthday", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                        {strings.birthdayHint && <p className="text-xs text-muted-foreground mt-1">{strings.birthdayHint}</p>}
+                                    </div>
+                                )}
+
+                                {/* Company toggle */}
+                                <div className="sm:col-span-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.isCompany}
+                                            onChange={e => update("isCompany", e.target.checked)}
+                                            className="rounded border-gray-300"
+                                        />
+                                        <span className="text-sm font-medium">{strings.orderAsCompany || "Order as a company"}</span>
+                                    </label>
+                                </div>
+
+                                {/* Company fields (shown when isCompany is true) */}
+                                {form.isCompany && (
+                                    <>
+                                        <div className="sm:col-span-2">
+                                            <label className="block text-sm font-medium mb-1">{strings.companyName || "Company Name"}</label>
+                                            <input value={form.companyName} onChange={e => update("companyName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">{strings.taxId || "Tax ID"}</label>
+                                            <input value={form.taxId} onChange={e => update("taxId", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.taxIdPlaceholder || ""} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">{strings.registrationNumber || "Registration No."}</label>
+                                            <input value={form.registrationNumber} onChange={e => update("registrationNumber", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.registrationNumberPlaceholder || ""} />
+                                        </div>
+                                        <div className="sm:col-span-2">
+                                            <label className="block text-sm font-medium mb-1">{strings.vatNumber || "VAT Number"}</label>
+                                            <input value={form.vatNumber} onChange={e => update("vatNumber", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.vatNumberPlaceholder || ""} />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </section>
 
@@ -372,6 +457,55 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                     <label className="block text-sm font-medium mb-1">{strings.deliveryNotes}</label>
                                     <input value={form.notes} onChange={e => update("notes", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.deliveryNotesPlaceholder} />
                                 </div>
+
+                                {/* Billing address toggle */}
+                                <div className="sm:col-span-2 pt-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.useSameAsShipping}
+                                            onChange={e => update("useSameAsShipping", e.target.checked)}
+                                            className="rounded border-gray-300"
+                                        />
+                                        <span className="text-sm font-medium">{strings.useSameAsShipping || "Use same address for billing"}</span>
+                                    </label>
+                                </div>
+
+                                {/* Separate billing address (shown when useSameAsShipping is false) */}
+                                {!form.useSameAsShipping && (
+                                    <>
+                                        <div className="sm:col-span-2 pt-4">
+                                            <h3 className="text-md font-semibold mb-3">{strings.billingAddress || "Billing Address"}</h3>
+                                        </div>
+                                        <div className="sm:col-span-2">
+                                            <label className="block text-sm font-medium mb-1">{strings.streetAddress} *</label>
+                                            <input required value={form.billingStreet} onChange={e => update("billingStreet", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">{strings.city} *</label>
+                                            <input required value={form.billingCity} onChange={e => update("billingCity", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">{strings.county} *</label>
+                                            <select required value={form.billingCounty} onChange={e => update("billingCounty", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
+                                                <option value="">{strings.selectCounty}</option>
+                                                {counties.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">{strings.postalCode}</label>
+                                            <input value={form.billingPostalCode} onChange={e => update("billingPostalCode", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                        </div>
+                                        {showCountryField && (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">{strings.country}</label>
+                                                <select value={form.billingCountry} onChange={e => update("billingCountry", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
+                                                    {availableCountries.map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </section>
 
