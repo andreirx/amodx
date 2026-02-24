@@ -36,6 +36,7 @@ import Forms from "@/pages/Forms";
 import FormEditor from "@/pages/FormEditor";
 import FormSubmissions from "@/pages/FormSubmissions";
 import OrderEmails from "@/pages/OrderEmails";
+import Labels from "@/pages/Labels";
 import Reports from "@/pages/Reports";
 import MigrationPage from "@/pages/Migration";
 
@@ -99,6 +100,7 @@ const router = createBrowserRouter([
             { path: "customers/:email", element: <CustomerDetail /> },
             { path: "delivery", element: <DeliverySettings /> },
             { path: "order-emails", element: <OrderEmails /> },
+            { path: "labels", element: <Labels /> },
             { path: "coupons", element: <Coupons /> },
             { path: "coupons/:id", element: <CouponEditor /> },
             { path: "reviews", element: <Reviews /> },

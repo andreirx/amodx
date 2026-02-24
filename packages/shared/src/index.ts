@@ -465,7 +465,9 @@ export const CommerceStringsSchema = z.object({
     phone: z.string().optional(),               // "Phone"
     phonePlaceholder: z.string().optional(),    // "+40..."
     shippingAddress: z.string().optional(),     // "Shipping Address"
-    streetAddress: z.string().optional(),       // "Street Address"
+    shippingStreetAddress: z.string().optional(), // "Street Address" (under shipping section)
+    streetAddress: z.string().optional(),       // "Street Address" (deprecated, use specific ones)
+    billingStreetAddress: z.string().optional(), // "Street Address" (under billing section)
     city: z.string().optional(),                // "City"
     county: z.string().optional(),              // "County"
     selectCounty: z.string().optional(),        // "Select county..."
@@ -542,7 +544,9 @@ export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = {
     phone: "Phone",
     phonePlaceholder: "",
     shippingAddress: "Shipping Address",
+    shippingStreetAddress: "",  // Empty = fallback to streetAddress
     streetAddress: "Street Address",
+    billingStreetAddress: "",   // Empty = fallback to streetAddress
     city: "City",
     county: "County",
     selectCounty: "Select county...",
