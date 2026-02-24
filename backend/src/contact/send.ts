@@ -3,6 +3,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
+import { verifyRecaptcha, getRecaptchaErrorMessage } from "../lib/recaptcha.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
@@ -35,6 +36,30 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }));
 
         const config = tenantRes.Item;
+
+        // reCAPTCHA verification (if enabled for tenant)
+        if (config?.recaptcha?.enabled && config.recaptcha.secretKey) {
+            const recaptchaToken = body.recaptchaToken;
+
+            if (!recaptchaToken) {
+                return { statusCode: 400, body: JSON.stringify({ error: "CAPTCHA verification required" }) };
+            }
+
+            const result = await verifyRecaptcha(
+                recaptchaToken,
+                config.recaptcha.secretKey,
+                event.requestContext?.http?.sourceIp
+            );
+
+            const threshold = config.recaptcha.threshold ?? 0.5;
+
+            if (!result.success || result.score < threshold) {
+                console.warn(`reCAPTCHA BLOCKED: score=${result.score}, ip=${event.requestContext?.http?.sourceIp}, form=contact`);
+                return { statusCode: 403, body: JSON.stringify({ error: getRecaptchaErrorMessage(result) }) };
+            }
+
+            console.log(`reCAPTCHA passed: score=${result.score}, action=${result.action}`);
+        }
 
         // 2. Determine Recipient
         const recipient = config?.integrations?.contactEmail || FROM_EMAIL;

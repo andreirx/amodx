@@ -11,6 +11,7 @@ import { TopBar } from "@/components/TopBar";
 import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
+import { RecaptchaProvider } from "@/components/RecaptchaProvider";
 import { URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
 
 export const revalidate = 3600;
@@ -82,7 +83,11 @@ export default async function SiteLayout({ children, params }: Props) {
     return (
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
             <div className="site-wrapper flex flex-col min-h-screen">
-                <ThemeInjector theme={config.theme} tenantId={config.id} />
+                <ThemeInjector
+                    theme={config.theme}
+                    tenantId={config.id}
+                    recaptchaSiteKey={config.recaptcha?.enabled ? config.recaptcha.siteKey : undefined}
+                />
 
                 {/* ANALYTICS INJECTION */}
                 <Analytics config={{
@@ -97,16 +102,29 @@ export default async function SiteLayout({ children, params }: Props) {
                     <FBPixel pixelId={config.integrations.fbPixelId} />
                 )}
 
+                {/* reCAPTCHA v3 Script (bot protection for public forms) */}
+                {config.recaptcha?.enabled && config.recaptcha.siteKey && (
+                    <RecaptchaProvider siteKey={config.recaptcha.siteKey} />
+                )}
+
                 {/* GDPR Cookie Consent Banner */}
-                <CookieConsent
-                    tenantId={config.id}
-                    config={{
-                        headline: config.gdpr?.headline,
-                        description: config.gdpr?.description,
-                        position: config.gdpr?.position || "bottom",
-                        primaryColor: config.theme?.primaryColor,
-                    }}
-                />
+                {(() => {
+                    const gdprPack = getCountryPack(config.countryCode || "RO").gdpr;
+                    return (
+                        <CookieConsent
+                            tenantId={config.id}
+                            config={{
+                                headline: config.gdpr?.headline || gdprPack.headline,
+                                description: config.gdpr?.description || gdprPack.description,
+                                denyAll: config.gdpr?.denyAll || gdprPack.denyAll,
+                                necessaryOnly: config.gdpr?.necessaryOnly || gdprPack.necessaryOnly,
+                                acceptAll: config.gdpr?.acceptAll || gdprPack.acceptAll,
+                                position: config.gdpr?.position || "bottom",
+                                primaryColor: config.theme?.primaryColor,
+                            }}
+                        />
+                    );
+                })()}
 
                 {/* Sticky Header Wrapper */}
                 <div className="sticky top-0 z-50">

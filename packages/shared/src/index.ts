@@ -88,6 +88,15 @@ export const SearchBarSchema = z.object({
     placeholder: z.string().default("Search products..."),
 });
 
+// reCAPTCHA v3 configuration (bot protection for public forms)
+export const RecaptchaConfigSchema = z.object({
+    enabled: z.boolean().default(false),
+    siteKey: z.string().optional(),      // Public - used in frontend
+    secretKey: z.string().optional(),     // Private - used in backend verification
+    threshold: z.number().min(0).max(1).default(0.5), // Score threshold (0.0 = bot, 1.0 = human)
+});
+export type RecaptchaConfig = z.infer<typeof RecaptchaConfigSchema>;
+
 // ==========================================
 // 2. ACCESS CONTROL (The Gatekeeper)
 // ==========================================
@@ -417,6 +426,9 @@ export const HeaderConfigSchema = z.object({
 export const GDPRConfigSchema = z.object({
     headline: z.string().optional(),
     description: z.string().optional(),
+    denyAll: z.string().optional(),
+    necessaryOnly: z.string().optional(),
+    acceptAll: z.string().optional(),
     position: z.enum(["bottom", "top"]).default("bottom"),
     enabled: z.boolean().default(true),
 });
@@ -667,6 +679,9 @@ export const TenantConfigSchema = z.object({
 
     // Search Bar (dedicated product search bar below navbar)
     searchBar: SearchBarSchema.default({ enabled: false, placeholder: "Search products..." }),
+
+    // reCAPTCHA v3 bot protection for public forms
+    recaptcha: RecaptchaConfigSchema.default({ enabled: false, threshold: 0.5 }),
 
     // Order email templates (configurable per status)
     orderEmailConfig: OrderEmailConfigSchema.default({ templates: {} }),

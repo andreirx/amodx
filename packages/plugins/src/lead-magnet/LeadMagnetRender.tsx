@@ -6,6 +6,26 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
     const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [downloadUrl, setDownloadUrl] = useState("");
 
+    // Get reCAPTCHA token if configured
+    const getRecaptchaToken = async (): Promise<string | null> => {
+        if (typeof window === "undefined") return null;
+        // @ts-ignore
+        const siteKey = window.AMODX_RECAPTCHA_KEY;
+        if (!siteKey) return null;
+        // @ts-ignore
+        const grecaptcha = window.grecaptcha;
+        if (!grecaptcha) return null;
+
+        return new Promise((resolve) => {
+            grecaptcha.ready(() => {
+                grecaptcha
+                    .execute(siteKey, { action: "lead_magnet" })
+                    .then((token: string) => resolve(token))
+                    .catch(() => resolve(null));
+            });
+        });
+    };
+
     const handleSubmit = async (e: any) => {
         e.preventDefault();
         setStatus("loading");
@@ -14,6 +34,9 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
 
         // @ts-ignore
         const tenantId = typeof window !== 'undefined' ? window.AMODX_TENANT_ID : "";
+
+        // Get reCAPTCHA token (null if not configured)
+        const recaptchaToken = await getRecaptchaToken();
 
         try {
             const res = await fetch('/api/leads', {
@@ -25,7 +48,8 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                 body: JSON.stringify({
                     email,
                     resourceId: attrs.resourceId,
-                    tags: attrs.tags
+                    tags: attrs.tags,
+                    recaptchaToken
                 })
             });
 

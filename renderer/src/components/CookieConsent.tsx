@@ -12,6 +12,9 @@ interface CookieConsentProps {
     config?: {
         headline?: string;
         description?: string;
+        denyAll?: string;
+        necessaryOnly?: string;
+        acceptAll?: string;
         position?: "bottom" | "top";
         primaryColor?: string;
     };
@@ -141,6 +144,9 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
 
     const headline = config?.headline || "We value your privacy";
     const description = config?.description || "We use cookies to enhance your browsing experience and analyze our traffic. Choose your preference below.";
+    const denyAllLabel = config?.denyAll || "Deny All";
+    const necessaryOnlyLabel = config?.necessaryOnly || "Necessary Only";
+    const acceptAllLabel = config?.acceptAll || "Accept All";
     const position = config?.position || "bottom";
 
     useEffect(() => {
@@ -208,20 +214,20 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
                             onClick={() => handleChoice('denied')}
                             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                         >
-                            Deny All
+                            {denyAllLabel}
                         </button>
                         <button
                             onClick={() => handleChoice('necessary')}
                             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                         >
-                            Necessary Only
+                            {necessaryOnlyLabel}
                         </button>
                         <button
                             onClick={() => handleChoice('all')}
                             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
                             style={config?.primaryColor ? { backgroundColor: config.primaryColor } : {}}
                         >
-                            Accept All
+                            {acceptAllLabel}
                         </button>
                     </div>
                 </div>

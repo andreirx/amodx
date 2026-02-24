@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, CheckCircle } from "lucide-react";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 
 interface FormField {
     id: string;
@@ -27,6 +28,7 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [error, setError] = useState("");
+    const { execute: executeRecaptcha } = useRecaptcha("form_submit");
 
     function updateValue(fieldId: string, value: any) {
         setValues(prev => ({ ...prev, [fieldId]: value }));
@@ -47,11 +49,14 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
         const emailField = fields.find(f => f.type === "email");
         const submitterEmail = emailField ? values[emailField.id] : undefined;
 
+        // Get reCAPTCHA token (null if not configured)
+        const recaptchaToken = await executeRecaptcha();
+
         try {
             const res = await fetch(`${apiUrl}/public/forms/${formSlug}/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
-                body: JSON.stringify({ data, submitterEmail }),
+                body: JSON.stringify({ data, submitterEmail, recaptchaToken }),
             });
 
             if (!res.ok) {

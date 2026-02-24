@@ -43,6 +43,9 @@ export default function SettingsPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Country pack apply dialog
+    const [pendingPackCode, setPendingPackCode] = useState<string | null>(null);
+
     // Theme Engine State
     const [activeTab, setActiveTab] = useState<'light' | 'dark'>('light');
     const [customThemes, setCustomThemes] = useState<any[]>([]);
@@ -878,27 +881,29 @@ export default function SettingsPage() {
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label>Country Pack</Label>
-                                    <Select
-                                        value={config.countryCode || "RO"}
-                                        onValueChange={code => {
-                                            const pack = getCountryPack(code);
-                                            setConfig({
-                                                ...config,
-                                                countryCode: code,
-                                                locale: pack.locale,
-                                                currency: pack.currency.code,
-                                            });
-                                        }}
-                                    >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            {Object.values(COUNTRY_PACKS).map(pack => (
-                                                <SelectItem key={pack.code} value={pack.code}>
-                                                    {pack.name} ({pack.code})
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="flex gap-2">
+                                        <Select
+                                            value={config.countryCode || "RO"}
+                                            onValueChange={code => setPendingPackCode(code)}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {Object.values(COUNTRY_PACKS).map(pack => (
+                                                    <SelectItem key={pack.code} value={pack.code}>
+                                                        {pack.name} ({pack.code})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="shrink-0 self-center"
+                                            onClick={() => setPendingPackCode(config.countryCode || "RO")}
+                                        >
+                                            Apply
+                                        </Button>
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Locale</Label>
@@ -1600,6 +1605,43 @@ export default function SettingsPage() {
                                 />
                             </div>
 
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Deny All Button</Label>
+                                    <Input
+                                        value={config.gdpr?.denyAll || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            gdpr: { ...config.gdpr!, denyAll: e.target.value }
+                                        })}
+                                        placeholder="Deny All"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Necessary Only Button</Label>
+                                    <Input
+                                        value={config.gdpr?.necessaryOnly || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            gdpr: { ...config.gdpr!, necessaryOnly: e.target.value }
+                                        })}
+                                        placeholder="Necessary Only"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Accept All Button</Label>
+                                    <Input
+                                        value={config.gdpr?.acceptAll || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            gdpr: { ...config.gdpr!, acceptAll: e.target.value }
+                                        })}
+                                        placeholder="Accept All"
+                                    />
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Leave blank to use defaults from country pack.</p>
+
                             <div className="space-y-2">
                                 <Label>Position</Label>
                                 <select
@@ -1613,6 +1655,91 @@ export default function SettingsPage() {
                                     <option value="bottom">Bottom</option>
                                     <option value="top">Top</option>
                                 </select>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* BOT PROTECTION (reCAPTCHA v3) */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Bot Protection (reCAPTCHA v3)</CardTitle>
+                            </div>
+                            <CardDescription>Invisible bot protection for public forms (Contact, Lead Magnets, Dynamic Forms).</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    id="recaptcha-enabled"
+                                    className="rounded border-gray-300"
+                                    checked={config.recaptcha?.enabled ?? false}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        recaptcha: { ...config.recaptcha!, enabled: e.target.checked }
+                                    })}
+                                />
+                                <Label htmlFor="recaptcha-enabled">Enable reCAPTCHA</Label>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Site Key (Public)</Label>
+                                <Input
+                                    value={config.recaptcha?.siteKey || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        recaptcha: { ...config.recaptcha!, siteKey: e.target.value }
+                                    })}
+                                    placeholder="6Le..."
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Secret Key (Private)</Label>
+                                <Input
+                                    type="password"
+                                    value={config.recaptcha?.secretKey || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        recaptcha: { ...config.recaptcha!, secretKey: e.target.value }
+                                    })}
+                                    placeholder="6Le..."
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Score Threshold (0.0 - 1.0)</Label>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.1"
+                                        className="flex-1"
+                                        value={config.recaptcha?.threshold ?? 0.5}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            recaptcha: { ...config.recaptcha!, threshold: parseFloat(e.target.value) }
+                                        })}
+                                    />
+                                    <span className="text-sm font-mono w-10 text-center">{config.recaptcha?.threshold ?? 0.5}</span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">
+                                    Lower = more lenient, Higher = stricter. Default is 0.5. Scores below this block the form submission.
+                                </p>
+                            </div>
+
+                            <div className="pt-2 border-t">
+                                <a
+                                    href="https://www.google.com/recaptcha/admin"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Get keys from Google reCAPTCHA Console
+                                </a>
                             </div>
                         </CardContent>
                     </Card>
@@ -1798,6 +1925,67 @@ export default function SettingsPage() {
                     </Card>
                 </div>
             </div>
+
+            {/* Country Pack Apply Confirmation Dialog */}
+            <Dialog open={pendingPackCode !== null} onOpenChange={open => { if (!open) setPendingPackCode(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Apply Country Pack: {pendingPackCode ? getCountryPack(pendingPackCode).name : ""}</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                        This will update locale and currency. Do you also want to overwrite your existing commerce labels, GDPR texts, and legal link labels with the country pack defaults?
+                    </p>
+                    <div className="flex flex-col gap-2 pt-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                if (!pendingPackCode) return;
+                                const pack = getCountryPack(pendingPackCode);
+                                setConfig(prev => ({
+                                    ...prev,
+                                    countryCode: pendingPackCode,
+                                    locale: pack.locale,
+                                    currency: pack.currency.code,
+                                }));
+                                setPendingPackCode(null);
+                            }}
+                        >
+                            Locale & Currency Only
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                if (!pendingPackCode) return;
+                                const pack = getCountryPack(pendingPackCode);
+                                setConfig(prev => ({
+                                    ...prev,
+                                    countryCode: pendingPackCode,
+                                    locale: pack.locale,
+                                    currency: pack.currency.code,
+                                    commerceStrings: pack.defaultStrings as any,
+                                    gdpr: {
+                                        ...prev.gdpr!,
+                                        headline: pack.gdpr.headline,
+                                        description: pack.gdpr.description,
+                                        denyAll: pack.gdpr.denyAll,
+                                        necessaryOnly: pack.gdpr.necessaryOnly,
+                                        acceptAll: pack.gdpr.acceptAll,
+                                    },
+                                    legalLinks: {
+                                        ...prev.legalLinks,
+                                        termsLabel: pack.legal.termsLabel,
+                                        privacyLabel: pack.legal.privacyLabel,
+                                        anpcLabel: pack.legal.consumerProtectionLabel || "",
+                                        anpcSalLabel: pack.legal.disputeResolutionLabel || "",
+                                    },
+                                }));
+                                setPendingPackCode(null);
+                            }}
+                        >
+                            Overwrite All Texts
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

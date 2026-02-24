@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { verifyRecaptcha, getRecaptchaErrorMessage } from "../lib/recaptcha.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
@@ -10,6 +11,37 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // reCAPTCHA verification (if enabled for tenant)
+        const tenantRes = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
+        }));
+        const tenantConfig = tenantRes.Item;
+
+        if (tenantConfig?.recaptcha?.enabled && tenantConfig.recaptcha.secretKey) {
+            const body = JSON.parse(event.body || "{}");
+            const recaptchaToken = body.recaptchaToken;
+
+            if (!recaptchaToken) {
+                return { statusCode: 400, body: JSON.stringify({ error: "CAPTCHA verification required" }) };
+            }
+
+            const result = await verifyRecaptcha(
+                recaptchaToken,
+                tenantConfig.recaptcha.secretKey,
+                event.requestContext?.http?.sourceIp
+            );
+
+            const threshold = tenantConfig.recaptcha.threshold ?? 0.5;
+
+            if (!result.success || result.score < threshold) {
+                console.warn(`reCAPTCHA BLOCKED: score=${result.score}, ip=${event.requestContext?.http?.sourceIp}, form=public-submit`);
+                return { statusCode: 403, body: JSON.stringify({ error: getRecaptchaErrorMessage(result) }) };
+            }
+
+            console.log(`reCAPTCHA passed: score=${result.score}, action=${result.action}`);
+        }
 
         const slug = event.pathParameters?.slug;
         if (!slug) return { statusCode: 400, body: JSON.stringify({ error: "Missing form slug" }) };

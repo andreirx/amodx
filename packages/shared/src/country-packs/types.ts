@@ -28,6 +28,14 @@ export interface CountryPackLegal {
     disputeResolutionLabel?: string;
 }
 
+export interface CountryPackGdpr {
+    headline: string;
+    description: string;
+    denyAll: string;
+    necessaryOnly: string;
+    acceptAll: string;
+}
+
 export interface CountryPack {
     code: string;               // ISO 3166-1 alpha-2: "RO", "DE", "US"
     name: string;               // "Romania", "Germany", "United States"
@@ -35,5 +43,6 @@ export interface CountryPack {
     locale: string;             // BCP 47: "ro-RO", "de-DE", "en-US"
     address: CountryPackAddress;
     legal: CountryPackLegal;
+    gdpr: CountryPackGdpr;
     defaultStrings: Partial<CommerceStrings>;
 }

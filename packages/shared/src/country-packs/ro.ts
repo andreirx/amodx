@@ -67,6 +67,13 @@ export const RO_PACK: CountryPack = {
         consumerProtectionLabel: "ANPC",
         disputeResolutionLabel: "Solu\u021Bionare alternativ\u0103 a litigiilor",
     },
+    gdpr: {
+        headline: "Respect\u0103m confiden\u021Bialitatea ta",
+        description: "Folosim cookie-uri pentru a \u00EEmbun\u0103t\u0103\u021Bi experien\u021Ba ta de navigare \u0219i pentru a analiza traficul. Alege preferin\u021Ba ta mai jos.",
+        denyAll: "Refuz\u0103 toate",
+        necessaryOnly: "Doar necesare",
+        acceptAll: "Accept\u0103 toate",
+    },
     defaultStrings: {
         description: "Descriere",
         addToCart: "Adaug\u0103 \u00EEn co\u0219",

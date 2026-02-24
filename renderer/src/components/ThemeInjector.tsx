@@ -3,7 +3,13 @@
 import React from "react";
 import { sanitizeCssColor, sanitizeFontFamily, sanitizeCssLength } from "@/lib/sanitize";
 
-export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: string }) {
+interface ThemeInjectorProps {
+    theme?: any;
+    tenantId?: string;
+    recaptchaSiteKey?: string;
+}
+
+export function ThemeInjector({ theme, tenantId, recaptchaSiteKey }: ThemeInjectorProps) {
     if (!theme) return null;
 
     // Sanitize all theme values to prevent CSS injection
@@ -93,11 +99,13 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
 
     // Sanitize tenantId for JS injection (only allow alphanumeric, hyphen, underscore)
     const safeTenantId = (tenantId || "").replace(/[^a-zA-Z0-9\-_]/g, "");
+    // Sanitize reCAPTCHA key (only allow alphanumeric, hyphen, underscore)
+    const safeRecaptchaKey = (recaptchaSiteKey || "").replace(/[^a-zA-Z0-9\-_]/g, "");
 
     return (
         <>
             <script dangerouslySetInnerHTML={{
-                __html: `window.AMODX_TENANT_ID = ${JSON.stringify(safeTenantId)};`
+                __html: `window.AMODX_TENANT_ID = ${JSON.stringify(safeTenantId)};${safeRecaptchaKey ? `\nwindow.AMODX_RECAPTCHA_KEY = ${JSON.stringify(safeRecaptchaKey)};` : ""}`
             }}/>
 
             {/* Injected Font Loader (Hidden container) */}
