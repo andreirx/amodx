@@ -1,4 +1,5 @@
 import { Phone, Mail } from "lucide-react";
+import { sanitizeInlineHtml } from "@/lib/sanitize";
 
 interface TopBarProps {
     content?: string;
@@ -12,7 +13,7 @@ export function TopBar({ content, quickContactPhone, quickContactEmail, contentM
         <div className="bg-primary text-primary-foreground text-xs py-2 px-4">
             <div className={`${contentMaxWidth} mx-auto flex items-center justify-between`}>
                 {content ? (
-                    <span dangerouslySetInnerHTML={{ __html: content }} />
+                    <span dangerouslySetInnerHTML={{ __html: sanitizeInlineHtml(content) }} />
                 ) : (
                     <span />
                 )}

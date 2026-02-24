@@ -501,6 +501,18 @@ export const CommerceStringsSchema = z.object({
     registrationNumberPlaceholder: z.string().optional(), // "e.g. J40/1234/2020"
     useSameAsShipping: z.string().optional(),   // "Use same address for billing"
     billingAddress: z.string().optional(),      // "Billing Address"
+
+    // Search
+    searchButton: z.string().optional(),       // "Search"
+    searchNoResults: z.string().optional(),    // "No products found"
+    searchSearching: z.string().optional(),    // "Searching..."
+    viewAllResults: z.string().optional(),     // "View all results"
+    resultsFor: z.string().optional(),         // "Results for"
+    searchProducts: z.string().optional(),     // "Search Products"
+
+    // Account / Auth
+    signIn: z.string().optional(),             // "Sign In"
+    accountLabel: z.string().optional(),       // "Account"
 });
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
@@ -579,6 +591,18 @@ export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = {
     registrationNumberPlaceholder: "",
     useSameAsShipping: "Use same address for billing",
     billingAddress: "Billing Address",
+
+    // Search
+    searchButton: "Search",
+    searchNoResults: "No products found",
+    searchSearching: "Searching...",
+    viewAllResults: "View all results",
+    resultsFor: "Results for",
+    searchProducts: "Search Products",
+
+    // Account / Auth
+    signIn: "Sign In",
+    accountLabel: "Account",
 };
 
 export const TenantConfigSchema = z.object({

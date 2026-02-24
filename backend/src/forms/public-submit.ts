@@ -42,11 +42,15 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         const body = JSON.parse(event.body || "{}");
         const data = body.data || {};
 
-        // SECURITY: Validate email format if provided (prevents header injection)
+        // SECURITY: Validate and sanitize email (prevents header injection)
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const submitterEmail = data.email || body.email;
-        if (submitterEmail && !emailRegex.test(submitterEmail)) {
-            return { statusCode: 400, body: JSON.stringify({ error: "Invalid email format" }) };
+        let submitterEmail = data.email || body.email;
+        if (submitterEmail) {
+            // Strip newlines/carriage returns to prevent email header injection
+            submitterEmail = submitterEmail.replace(/[\r\n]/g, '').trim();
+            if (!emailRegex.test(submitterEmail)) {
+                return { statusCode: 400, body: JSON.stringify({ error: "Invalid email format" }) };
+            }
         }
 
         // Validate required fields

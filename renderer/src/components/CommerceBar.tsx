@@ -22,6 +22,10 @@ interface CommerceBarProps {
     height?: string;
     fontSize?: string;
     iconSize?: string;
+    labels?: {
+        signIn?: string;
+        accountLabel?: string;
+    };
 }
 
 // Derive a smaller icon class for inline icons (phone, user) from the main iconSize
@@ -100,6 +104,7 @@ export function CommerceBar({
     height = "h-10",
     fontSize = "text-sm",
     iconSize = "h-5 w-5",
+    labels,
 }: CommerceBarProps) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -156,7 +161,7 @@ export function CommerceBar({
                                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <User className={smallIcon} />
-                                <span>{session.user?.name?.split(" ")[0] || "Account"}</span>
+                                <span>{session.user?.name?.split(" ")[0] || labels?.accountLabel || "Account"}</span>
                             </Link>
                         ) : (
                             <a
@@ -164,7 +169,7 @@ export function CommerceBar({
                                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <User className={smallIcon} />
-                                <span>Sign In</span>
+                                <span>{labels?.signIn || "Sign In"}</span>
                             </a>
                         )}
 

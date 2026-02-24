@@ -134,14 +134,14 @@ export function AccountPageView({
                             e.preventDefault();
                             setSaving(true);
                             try {
-                                const res = await fetch(`${apiUrl}/public/customers/profile`, {
+                                // Use secure server-side proxy that validates session
+                                const res = await fetch(`/api/profile`, {
                                     method: "POST",
                                     headers: {
                                         "Content-Type": "application/json",
-                                        "x-tenant-id": tenantId,
                                     },
                                     body: JSON.stringify({
-                                        email: customer?.email || session?.user?.email,
+                                        // Note: email is taken from session server-side for security
                                         phone: editForm.phone,
                                         birthday: editForm.birthday || null,
                                     }),

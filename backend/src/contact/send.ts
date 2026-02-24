@@ -21,7 +21,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         const body = JSON.parse(event.body || "{}");
-        const { name, email, message, tags } = body;
+        const { name, message, tags } = body;
+
+        // SECURITY: Sanitize email to prevent header injection
+        const email = (body.email || "").replace(/[\r\n]/g, '').trim();
 
         console.log(`Processing contact for Tenant: ${tenantId}, Email: ${email}`);
 

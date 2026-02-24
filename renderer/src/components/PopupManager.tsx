@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { X } from "lucide-react";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 interface PopupData {
     id: string;
@@ -158,7 +159,7 @@ export function PopupManager({ tenantId, apiUrl, currentPath }: PopupManagerProp
                         <h2 className="text-xl font-bold tracking-tight">{activePopup.headline}</h2>
                     )}
                     {activePopup.body && (
-                        <div className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: activePopup.body }} />
+                        <div className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: sanitizeHtml(activePopup.body) }} />
                     )}
                     {activePopup.ctaText && activePopup.ctaLink && (
                         <a

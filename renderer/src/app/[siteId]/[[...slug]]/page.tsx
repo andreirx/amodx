@@ -16,6 +16,7 @@ import { FBPurchaseEvent } from "@/components/FBPurchaseEvent";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { AccountPageView } from "@/components/AccountPageView";
 import { SearchBar } from "@/components/SearchBar";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 // NEW: Auth Imports
 import { decode } from "next-auth/jwt";
@@ -31,6 +32,16 @@ type Props = {
 // Helper to get commerce strings with defaults
 function getCommerceStrings(config: any): Required<CommerceStrings> {
     return { ...COMMERCE_STRINGS_DEFAULTS, ...config.commerceStrings };
+}
+
+function getSearchLabels(config: any) {
+    const s = config.commerceStrings || {};
+    return {
+        searchButton: s.searchButton,
+        searchNoResults: s.searchNoResults,
+        searchSearching: s.searchSearching,
+        viewAllResults: s.viewAllResults,
+    };
 }
 
 // Commerce prefix matching helper
@@ -631,6 +642,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={siteWidth}
+                    labels={getSearchLabels(config)}
                 />
             )}
             <main className={`${siteWidth} mx-auto py-12 px-6`}>
@@ -730,9 +742,11 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         <div
                             className="text-muted-foreground prose prose-sm max-w-none"
                             dangerouslySetInnerHTML={{
-                                __html: product.description
-                                    .replace(/\\n/g, '<br>')
-                                    .replace(/&nbsp;/g, ' ')
+                                __html: sanitizeHtml(
+                                    product.description
+                                        .replace(/\\n/g, '<br>')
+                                        .replace(/&nbsp;/g, ' ')
+                                )
                             }}
                         />
                     )}
@@ -751,6 +765,13 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                             variants={product.variants || []}
                             personalizations={product.personalizations || []}
                             volumePricing={product.volumePricing || []}
+                            strings={{
+                                addToCart: strings.addToCart,
+                                addedToCart: strings.addedToCart,
+                                viewCart: strings.viewCart,
+                                outOfStock: strings.outOfStock,
+                                variantUnavailable: strings.variantUnavailable,
+                            }}
                         />
                     )}
 
@@ -772,9 +793,11 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         <div className="prose max-w-none mb-12">
                             <h2 className="text-xl font-bold mb-4">{strings.description}</h2>
                             <div dangerouslySetInnerHTML={{
-                                __html: product.longDescription
-                                    .replace(/\\n/g, '')
-                                    .replace(/&nbsp;/g, ' ')
+                                __html: sanitizeHtml(
+                                    product.longDescription
+                                        .replace(/\\n/g, '')
+                                        .replace(/&nbsp;/g, ' ')
+                                )
                             }} />
                         </div>
                     )}
@@ -847,6 +870,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
+                    labels={getSearchLabels(config)}
                 />
             )}
             <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
@@ -896,6 +920,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
+                    labels={getSearchLabels(config)}
                 />
             )}
             <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
@@ -949,6 +974,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
 function SearchPageView({ query, products, total, page, config, prefixes, basePath = "" }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string }) {
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const strings = getCommerceStrings(config);
     return (
         <>
             {config.searchBar?.enabled && (
@@ -959,6 +985,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={siteWidth}
+                    labels={getSearchLabels(config)}
                 />
             )}
             <main className={`${siteWidth} mx-auto py-12 px-6`}>
@@ -971,14 +998,14 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
             </nav>
 
             <h1 className="text-3xl font-bold tracking-tight mb-2">
-                {query ? `Results for "${query}"` : "Search Products"}
+                {query ? `${strings.resultsFor} "${query}"` : strings.searchProducts}
             </h1>
             {query && <p className="text-sm text-muted-foreground mb-8">{total} result{total !== 1 ? 's' : ''}</p>}
 
             {!query ? (
                 <p className="text-muted-foreground py-12 text-center">Enter a search term to find products.</p>
             ) : products.length === 0 ? (
-                <p className="text-muted-foreground py-12 text-center">No products found for &ldquo;{query}&rdquo;.</p>
+                <p className="text-muted-foreground py-12 text-center">{strings.searchNoResults} &ldquo;{query}&rdquo;.</p>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (

@@ -1,29 +1,25 @@
 "use client";
 
 import React from "react";
+import { sanitizeCssColor, sanitizeFontFamily, sanitizeCssLength } from "@/lib/sanitize";
 
 export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: string }) {
     if (!theme) return null;
 
-    const {
-        primaryColor = "#000000",
-        primaryForeground = "#ffffff",
-
-        secondaryColor = "#ffffff",
-        secondaryForeground = "#000000",
-
-        backgroundColor = "#ffffff",
-        textColor = "#020817",
-
-        surfaceColor = "#f4f4f5",
-
-        fontHeading = "Prata",
-        fontBody = "Lato",
-        radius = "0.5rem"
-    } = theme;
+    // Sanitize all theme values to prevent CSS injection
+    const primaryColor = sanitizeCssColor(theme.primaryColor, "#000000");
+    const primaryForeground = sanitizeCssColor(theme.primaryForeground, "#ffffff");
+    const secondaryColor = sanitizeCssColor(theme.secondaryColor, "#ffffff");
+    const secondaryForeground = sanitizeCssColor(theme.secondaryForeground, "#000000");
+    const backgroundColor = sanitizeCssColor(theme.backgroundColor, "#ffffff");
+    const textColor = sanitizeCssColor(theme.textColor, "#020817");
+    const surfaceColor = sanitizeCssColor(theme.surfaceColor, "#f4f4f5");
+    const fontHeading = sanitizeFontFamily(theme.fontHeading, "Prata");
+    const fontBody = sanitizeFontFamily(theme.fontBody, "Lato");
+    const radius = sanitizeCssLength(theme.radius, "0.5rem");
 
     const fonts = Array.from(new Set([fontHeading, fontBody]));
-    const fontQuery = fonts.map(f => `family=${f.replace(/ /g, "+")}:wght@400;700`).join("&");
+    const fontQuery = fonts.map(f => `family=${encodeURIComponent(f).replace(/%20/g, "+")}:wght@400;700`).join("&");
 
     // 1. Ensure display=swap is present (Google supports this natively)
     const fontUrl = `https://fonts.googleapis.com/css2?${fontQuery}&display=swap`;
@@ -95,10 +91,13 @@ export function ThemeInjector({ theme, tenantId }: { theme?: any, tenantId?: str
       </noscript>
     `;
 
+    // Sanitize tenantId for JS injection (only allow alphanumeric, hyphen, underscore)
+    const safeTenantId = (tenantId || "").replace(/[^a-zA-Z0-9\-_]/g, "");
+
     return (
         <>
             <script dangerouslySetInnerHTML={{
-                __html: `window.AMODX_TENANT_ID = "${tenantId || ''}";`
+                __html: `window.AMODX_TENANT_ID = ${JSON.stringify(safeTenantId)};`
             }}/>
 
             {/* Injected Font Loader (Hidden container) */}

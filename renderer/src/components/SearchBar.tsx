@@ -11,6 +11,12 @@ interface SearchBarProps {
     tenantId?: string;
     apiUrl?: string;
     contentMaxWidth?: string;
+    labels?: {
+        searchButton?: string;
+        searchNoResults?: string;
+        searchSearching?: string;
+        viewAllResults?: string;
+    };
 }
 
 interface SearchResult {
@@ -30,6 +36,7 @@ export function SearchBar({
     tenantId,
     apiUrl = "",
     contentMaxWidth = "max-w-7xl",
+    labels,
 }: SearchBarProps) {
     const router = useRouter();
     const { getUrl } = useTenantUrl();
@@ -149,7 +156,7 @@ export function SearchBar({
                             type="submit"
                             className="bg-background text-foreground px-6 py-3 rounded-full text-sm font-semibold hover:bg-background/90 transition-opacity shrink-0 shadow-sm"
                         >
-                            Search
+                            {labels?.searchButton || "Search"}
                         </button>
                     </form>
 
@@ -159,11 +166,11 @@ export function SearchBar({
                             {loading ? (
                                 <div className="p-4 text-center text-sm text-muted-foreground">
                                     <div className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
-                                    Searching...
+                                    {labels?.searchSearching || "Searching..."}
                                 </div>
                             ) : results.length === 0 ? (
                                 <div className="p-4 text-center text-sm text-muted-foreground">
-                                    No products found
+                                    {labels?.searchNoResults || "No products found"}
                                 </div>
                             ) : (
                                 <>
@@ -203,7 +210,7 @@ export function SearchBar({
                                         }}
                                         className="w-full px-4 py-2.5 text-center text-sm text-primary font-medium border-t hover:bg-muted transition-colors"
                                     >
-                                        View all results
+                                        {labels?.viewAllResults || "View all results"}
                                     </button>
                                 </>
                             )}

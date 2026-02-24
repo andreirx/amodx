@@ -133,6 +133,10 @@ export default async function SiteLayout({ children, params }: Props) {
                             height={config.commerceBar.height}
                             fontSize={config.commerceBar.fontSize}
                             iconSize={config.commerceBar.iconSize}
+                            labels={{
+                                signIn: config.commerceStrings?.signIn,
+                                accountLabel: config.commerceStrings?.accountLabel,
+                            }}
                         />
                     )}
 

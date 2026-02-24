@@ -6,20 +6,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Save } from "lucide-react";
-import { TenantConfig, CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
+import type { CommerceStrings } from "@amodx/shared";
+import { COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
 export default function Labels() {
-    const { currentTenant, refreshTenant } = useTenant();
+    const { currentTenant } = useTenant();
     const [strings, setStrings] = useState<Partial<CommerceStrings>>({});
     const [saving, setSaving] = useState(false);
-    const [loaded, setLoaded] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (currentTenant?.commerceStrings) {
-            setStrings(currentTenant.commerceStrings);
+        if (currentTenant?.id) {
+            loadConfig();
         }
-        setLoaded(true);
-    }, [currentTenant]);
+    }, [currentTenant?.id]);
+
+    async function loadConfig() {
+        if (!currentTenant?.id) return;
+        setLoading(true);
+        try {
+            const config = await apiRequest("/settings");
+            setStrings(config.commerceStrings || {});
+        } catch (err) {
+            console.error("Failed to load config", err);
+        } finally {
+            setLoading(false);
+        }
+    }
 
     const update = (key: keyof CommerceStrings, value: string) => {
         setStrings(prev => ({ ...prev, [key]: value || undefined }));
@@ -29,11 +42,10 @@ export default function Labels() {
         if (!currentTenant) return;
         setSaving(true);
         try {
-            await apiRequest(`/tenants/${currentTenant.id}`, {
+            await apiRequest("/settings", {
                 method: "PUT",
                 body: JSON.stringify({ commerceStrings: strings }),
             });
-            await refreshTenant();
         } catch (err) {
             console.error("Failed to save labels", err);
         } finally {
@@ -41,7 +53,7 @@ export default function Labels() {
         }
     };
 
-    if (!loaded) {
+    if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -109,8 +121,6 @@ export default function Labels() {
                         <Field label="Total" field="total" />
                         <Field label="Apply (coupon)" field="apply" />
                         <Field label="Proceed to Checkout" field="proceedToCheckout" />
-                        <Field label="Coupon Code placeholder" field="couponCodePlaceholder" />
-                        <Field label="Minimum Order Message" field="minimumOrderMessage" />
                     </div>
                 </CardContent>
             </Card>
@@ -204,6 +214,36 @@ export default function Labels() {
                         <Field label="Place Order" field="placeOrder" />
                         <Field label="Placing Order..." field="placingOrder" />
                         <Field label="Terms Agreement" field="termsAgreement" />
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Search */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Search</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <Field label="Search Button" field="searchButton" />
+                        <Field label="No Results" field="searchNoResults" />
+                        <Field label="Searching..." field="searchSearching" />
+                        <Field label="View All Results" field="viewAllResults" />
+                        <Field label="Results For (heading)" field="resultsFor" />
+                        <Field label="Search Products (heading)" field="searchProducts" />
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Account / Auth */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Account / Authentication</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <Field label="Sign In" field="signIn" />
+                        <Field label="Account" field="accountLabel" />
                     </div>
                 </CardContent>
             </Card>

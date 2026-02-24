@@ -34,6 +34,14 @@ interface VolumePricingTier {
     price: string;
 }
 
+interface AddToCartStrings {
+    addToCart?: string;
+    addedToCart?: string;
+    viewCart?: string;
+    outOfStock?: string;
+    variantUnavailable?: string;
+}
+
 interface AddToCartProps {
     productId: string;
     title: string;
@@ -46,11 +54,13 @@ interface AddToCartProps {
     variants: Variant[];
     personalizations: PersonalizationOption[];
     volumePricing: VolumePricingTier[];
+    strings?: AddToCartStrings;
 }
 
 export function AddToCartButton({
     productId, title, slug, imageLink, price, salePrice,
     currency, availability, variants, personalizations, volumePricing,
+    strings = {},
 }: AddToCartProps) {
     const { addItem, cartPrefix } = useCart();
     const { getUrl } = useTenantUrl();
@@ -252,14 +262,14 @@ export function AddToCartButton({
                     {added ? (
                         <>
                             <Check className="h-4 w-4" />
-                            Added to Cart!
+                            {strings.addedToCart || "Added to Cart!"}
                         </>
                     ) : !canAdd ? (
-                        variantOutOfStock ? "Variant Unavailable" : "Out of Stock"
+                        variantOutOfStock ? (strings.variantUnavailable || "Variant Unavailable") : (strings.outOfStock || "Out of Stock")
                     ) : (
                         <>
                             <ShoppingCart className="h-4 w-4" />
-                            Add to Cart — {lineTotal.toFixed(2)} {currency}
+                            {strings.addToCart || "Add to Cart"} — {lineTotal.toFixed(2)} {currency}
                         </>
                     )}
                 </button>
@@ -271,7 +281,7 @@ export function AddToCartButton({
                     href={getUrl(cartPrefix)}
                     className="block text-center text-sm text-primary hover:underline"
                 >
-                    View Cart
+                    {strings.viewCart || "View Cart"}
                 </a>
             )}
 
