@@ -327,6 +327,10 @@ export const LegalLinksSchema = z.object({
     privacyUrl: z.string().optional(),       // Privacy Policy page URL
     anpcUrl: z.string().optional(),          // ANPC complaints link
     anpcSalUrl: z.string().optional(),       // ANPC SAL (online dispute) link
+    termsLabel: z.string().optional(),
+    privacyLabel: z.string().optional(),
+    anpcLabel: z.string().optional(),
+    anpcSalLabel: z.string().optional(),
 });
 export type LegalLinks = z.infer<typeof LegalLinksSchema>;
 
@@ -673,6 +677,10 @@ export const TenantConfigSchema = z.object({
     // Default currency for commerce (products inherit this)
     currency: z.string().default("RON"),
 
+    // Country pack & locale
+    countryCode: z.string().default("RO"),
+    locale: z.string().default("ro-RO"),
+
     // Commerce UI strings (i18n)
     commerceStrings: CommerceStringsSchema.default({}),
 
@@ -896,7 +904,10 @@ export const ProductSchema = z.object({
     imageLink: z.string().url(),
     additionalImageLinks: z.array(z.string().url()).default([]),
 
-    // Commerce Integration
+    // Product Type
+    productType: z.enum(["physical", "digital"]).default("physical"),
+
+    // Digital Commerce (Paddle)
     paymentLinkId: z.string().optional(),
     resourceId: z.string().optional(),
 
@@ -1258,3 +1269,6 @@ export const THEME_PRESETS: Record<string, Partial<Theme>> = {
         radius: "1rem"
     }
 };
+
+// Country Packs
+export * from "./country-packs/index.js";

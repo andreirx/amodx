@@ -32,6 +32,12 @@ export const handler: Handler = async (event) => {
             yearlyOffDays: body.yearlyOffDays ?? [],
             unblockedDates: body.unblockedDates ?? [],
             deliveryDaysOfWeek: body.deliveryDaysOfWeek ?? [1, 2, 3, 4, 5],
+            restrictDeliveryZones: body.restrictDeliveryZones ?? false,
+            allowedCountries: body.allowedCountries ?? [],
+            allowedCounties: body.allowedCounties ?? [],
+            defaultCountry: body.defaultCountry ?? "",
+            availableCountries: body.availableCountries ?? [],
+            availableCounties: body.availableCounties ?? [],
             updatedAt: new Date().toISOString()
         };
 

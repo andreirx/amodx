@@ -126,7 +126,7 @@ export default function CustomerDetail() {
                             <div>
                                 <span className="text-sm text-muted-foreground">Total Spent</span>
                                 <p className="font-medium text-lg">
-                                    {(customer.totalSpent || 0).toLocaleString("ro-RO", { minimumFractionDigits: 2 })} RON
+                                    {(customer.totalSpent || 0).toLocaleString(currentTenant?.locale || "ro-RO", { minimumFractionDigits: 2 })} {currentTenant?.currency || "RON"}
                                 </p>
                             </div>
                             <div>
@@ -183,11 +183,11 @@ export default function CustomerDetail() {
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">
                                         {o.createdAt
-                                            ? new Date(o.createdAt).toLocaleDateString("ro-RO")
+                                            ? new Date(o.createdAt).toLocaleDateString(currentTenant?.locale || "ro-RO")
                                             : "-"}
                                     </TableCell>
                                     <TableCell className="text-sm font-medium">
-                                        {(o.total || 0).toLocaleString("ro-RO", { minimumFractionDigits: 2 })} RON
+                                        {(o.total || 0).toLocaleString(currentTenant?.locale || "ro-RO", { minimumFractionDigits: 2 })} {currentTenant?.currency || "RON"}
                                     </TableCell>
                                     <TableCell>
                                         <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium capitalize ${

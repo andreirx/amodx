@@ -7,6 +7,9 @@ interface Tenant {
     name: string;
     domain: string;
     commerceEnabled?: boolean;
+    currency?: string;
+    locale?: string;
+    countryCode?: string;
 }
 
 interface TenantContextType {

@@ -102,10 +102,10 @@ export default function Coupons() {
                                         </span>
                                     </TableCell>
                                     <TableCell>
-                                        {c.type === "percentage" ? `${c.value}%` : `${c.value} RON`}
+                                        {c.type === "percentage" ? `${c.value}%` : `${c.value} ${currentTenant?.currency || "RON"}`}
                                     </TableCell>
                                     <TableCell>
-                                        {c.minOrderAmount ? `${c.minOrderAmount} RON` : "-"}
+                                        {c.minOrderAmount ? `${c.minOrderAmount} ${currentTenant?.currency || "RON"}` : "-"}
                                     </TableCell>
                                     <TableCell>
                                         {c.usageCount || 0}{c.usageLimit ? `/${c.usageLimit}` : ""}

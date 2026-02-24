@@ -11,7 +11,7 @@ import { TopBar } from "@/components/TopBar";
 import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
-import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
 
 export const revalidate = 3600;
 
@@ -192,23 +192,26 @@ export default async function SiteLayout({ children, params }: Props) {
                             )}
 
                             {/* Column 3: Legal Links */}
-                            {(config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (
+                            {(config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (() => {
+                                const pack = getCountryPack(config.countryCode || "RO");
+                                return (
                                 <div className="space-y-1">
                                     <p className="font-semibold text-foreground mb-2">Legal</p>
                                     {config.legalLinks?.termsUrl && (
-                                        <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">Termeni și condiții</a>
+                                        <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">{config.legalLinks.termsLabel || pack.legal.termsLabel || "Terms & Conditions"}</a>
                                     )}
                                     {config.legalLinks?.privacyUrl && (
-                                        <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">Politica de confidențialitate</a>
+                                        <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">{config.legalLinks.privacyLabel || pack.legal.privacyLabel || "Privacy Policy"}</a>
                                     )}
                                     {config.legalLinks?.anpcUrl && (
-                                        <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">ANPC</a>
+                                        <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{config.legalLinks.anpcLabel || pack.legal.consumerProtectionLabel || "Consumer Protection"}</a>
                                     )}
                                     {config.legalLinks?.anpcSalUrl && (
-                                        <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">Soluționare alternativă a litigiilor</a>
+                                        <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{config.legalLinks.anpcSalLabel || pack.legal.disputeResolutionLabel || "Dispute Resolution"}</a>
                                     )}
                                 </div>
-                            )}
+                                );
+                            })()}
                         </div>
                         <div className="mt-8 pt-4 border-t text-center text-xs text-muted-foreground">
                             <p>© {new Date().getFullYear()} {config.companyDetails?.legalName || config.name}. All rights reserved.</p>

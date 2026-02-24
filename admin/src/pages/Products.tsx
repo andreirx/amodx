@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, ShoppingBag, Edit, Trash2, FileBox, Upload, Percent, ExternalLink } from "lucide-react";
+import { Loader2, Plus, ShoppingBag, Edit, Trash2, Upload, Percent, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 // Helper to get the base Renderer URL (CloudFront)
@@ -70,7 +70,9 @@ export default function Products() {
             if (categoryFilter) params.set("category", categoryFilter);
             const qs = params.toString();
             const res = await apiRequest(`/products${qs ? `?${qs}` : ""}`);
-            setProducts(res.items || []);
+            // Filter to physical products only (exclude digital/Paddle products)
+            const all = res.items || [];
+            setProducts(all.filter((p: any) => p.productType !== "digital" && !p.paymentLinkId));
         } catch (e) {
             console.error(e);
         } finally {
@@ -196,7 +198,7 @@ export default function Products() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Products</h1>
-                    <p className="text-muted-foreground">Manage your AI-ready inventory.</p>
+                    <p className="text-muted-foreground">Manage physical products for your store.</p>
                 </div>
                 <div className="flex gap-2">
                     <Dialog open={bulkOpen} onOpenChange={(open) => { setBulkOpen(open); if (!open) { setBulkPreview(null); setBulkResult(null); } }}>
@@ -404,15 +406,7 @@ export default function Products() {
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-col">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-medium">{p.title}</span>
-                                                {/* NEW: Digital Product Indicator */}
-                                                {p.resourceId && (
-                                                    <span className="inline-flex items-center rounded-md bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">
-                                                        <FileBox className="mr-1 h-3 w-3" /> Digital
-                                                    </span>
-                                                )}
-                                            </div>
+                                            <span className="font-medium">{p.title}</span>
                                             <div className="flex flex-wrap gap-1 mt-0.5">
                                                 {(p.categoryIds || []).length > 0 ? (
                                                     (p.categoryIds as string[]).slice(0, 2).map((cid: string) => (

@@ -16,6 +16,8 @@ import Resources from "@/pages/Resources";
 import Leads from "@/pages/Leads";
 import Products from "@/pages/Products";
 import ProductEditor from "@/pages/ProductEditor";
+import DigitalProducts from "@/pages/DigitalProducts";
+import DigitalProductEditor from "@/pages/DigitalProductEditor";
 import UsersPage from "@/pages/Users";
 import Comments from "@/pages/Comments";
 import ContentGraph from "@/pages/ContentGraph";
@@ -91,6 +93,8 @@ const router = createBrowserRouter([
             { path: "content/:id", element: <ContentEditor /> },
             { path: "products", element: <Products /> },
             { path: "products/:id", element: <ProductEditor /> },
+            { path: "digital-products", element: <DigitalProducts /> },
+            { path: "digital-products/:id", element: <DigitalProductEditor /> },
             { path: "categories", element: <Categories /> },
             { path: "categories/:id", element: <CategoryEditor /> },
             { path: "reports", element: <Reports /> },

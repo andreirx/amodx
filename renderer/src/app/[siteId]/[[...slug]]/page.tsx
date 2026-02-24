@@ -2,7 +2,7 @@ import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCateg
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack } from "@amodx/shared";
 import Link from "next/link";
 import { getPreviewBase } from "@/lib/routing-server";
 import { CommentsSection } from "@/components/CommentsSection";
@@ -30,8 +30,10 @@ type Props = {
 };
 
 // Helper to get commerce strings with defaults
+// 3-tier merge: English defaults → country pack language → admin overrides
 function getCommerceStrings(config: any): Required<CommerceStrings> {
-    return { ...COMMERCE_STRINGS_DEFAULTS, ...config.commerceStrings };
+    const pack = getCountryPack(config.countryCode || "RO");
+    return { ...COMMERCE_STRINGS_DEFAULTS, ...pack.defaultStrings, ...config.commerceStrings };
 }
 
 function getSearchLabels(config: any) {
@@ -317,6 +319,8 @@ export default async function Page({ params, searchParams }: Props) {
                     availableCountries={deliveryConfig?.availableCountries || []}
                     availableCounties={deliveryConfig?.availableCounties || []}
                     askBirthday={config.askBirthdayOnCheckout ?? true}
+                    defaultRegions={getCountryPack(config.countryCode || "RO").address.regions.map(r => r.name)}
+                    locale={config.locale || "ro-RO"}
                 />
             );
         }
@@ -751,8 +755,19 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         />
                     )}
 
-                    {/* Add to Cart — only shown when commerce is enabled */}
-                    {commerceEnabled && (
+                    {/* Digital product: Paddle button — always, regardless of commerceEnabled */}
+                    {product.paymentLinkId && (
+                        <a
+                            href="#"
+                            className="paddle_button inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-11 px-8 hover:opacity-90 transition-opacity"
+                            data-product={product.paymentLinkId}
+                        >
+                            Buy Now
+                        </a>
+                    )}
+
+                    {/* Physical product: Add to Cart — only when commerceEnabled AND not a digital product */}
+                    {commerceEnabled && !product.paymentLinkId && (
                         <AddToCartButton
                             productId={product.id}
                             title={product.title}
@@ -844,7 +859,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                                         <span className="font-medium text-sm">{review.authorName}</span>
                                         {review.source === "google" && <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">Google</span>}
                                     </div>
-                                    <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString("ro-RO")}</span>
+                                    <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString(config.locale || "ro-RO")}</span>
                                 </div>
                                 <div className="text-amber-500 text-sm mb-2">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
                                 {review.content && <p className="text-sm text-muted-foreground">{review.content}</p>}
@@ -1147,7 +1162,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
     return (
         <main className={`${pageWidth} mx-auto py-12 px-6`}>
             <h1 className="text-3xl font-bold tracking-tight mb-2">Order {order.orderNumber}</h1>
-            <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString("ro-RO")}</p>
+            <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString(config.locale || "ro-RO")}</p>
 
             {/* Status Timeline */}
             <div className="mb-12">
@@ -1177,7 +1192,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
                     <div className="space-y-3">
                         {order.statusHistory.map((entry: any, i: number) => (
                             <div key={i} className="flex gap-3 text-sm">
-                                <span className="text-muted-foreground whitespace-nowrap">{new Date(entry.timestamp).toLocaleString("ro-RO")}</span>
+                                <span className="text-muted-foreground whitespace-nowrap">{new Date(entry.timestamp).toLocaleString(config.locale || "ro-RO")}</span>
                                 <span className="capitalize font-medium">{entry.status}</span>
                                 {entry.note && <span className="text-muted-foreground">- {entry.note}</span>}
                             </div>

@@ -97,11 +97,11 @@ export default function Customers() {
                                     <TableCell className="text-sm">{c.phone || "-"}</TableCell>
                                     <TableCell className="text-sm">{c.orderCount || 0}</TableCell>
                                     <TableCell className="text-sm font-medium">
-                                        {(c.totalSpent || 0).toLocaleString("ro-RO", { minimumFractionDigits: 2 })} RON
+                                        {(c.totalSpent || 0).toLocaleString(currentTenant?.locale || "ro-RO", { minimumFractionDigits: 2 })} {currentTenant?.currency || "RON"}
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">
                                         {c.lastOrderAt
-                                            ? new Date(c.lastOrderAt).toLocaleDateString("ro-RO")
+                                            ? new Date(c.lastOrderAt).toLocaleDateString(currentTenant?.locale || "ro-RO")
                                             : "-"}
                                     </TableCell>
                                     <TableCell className="text-right">

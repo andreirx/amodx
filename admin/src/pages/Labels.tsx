@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useTenant } from "@/context/TenantContext";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, Save } from "lucide-react";
 import type { CommerceStrings } from "@amodx/shared";
 import { COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
+
+// Context so F can live outside the component (stable identity = no focus loss)
+const LabelsCtx = createContext<{
+    strings: Partial<CommerceStrings>;
+    update: (key: keyof CommerceStrings, value: string) => void;
+}>({ strings: {}, update: () => {} });
+
+function F({ label, field, placeholder }: { label: string; field: keyof CommerceStrings; placeholder?: string }) {
+    const { strings, update } = useContext(LabelsCtx);
+    return (
+        <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{label}</Label>
+            <Input
+                value={strings[field] || ""}
+                onChange={e => update(field, e.target.value)}
+                placeholder={placeholder || COMMERCE_STRINGS_DEFAULTS[field] || ""}
+                className="h-9"
+            />
+        </div>
+    );
+}
 
 export default function Labels() {
     const { currentTenant } = useTenant();
@@ -61,19 +82,8 @@ export default function Labels() {
         );
     }
 
-    const Field = ({ label, field, placeholder }: { label: string; field: keyof CommerceStrings; placeholder?: string }) => (
-        <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">{label}</Label>
-            <Input
-                value={strings[field] || ""}
-                onChange={e => update(field, e.target.value)}
-                placeholder={placeholder || COMMERCE_STRINGS_DEFAULTS[field] || ""}
-                className="h-9"
-            />
-        </div>
-    );
-
     return (
+        <LabelsCtx.Provider value={{ strings, update }}>
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
@@ -95,11 +105,11 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Description" field="description" />
-                        <Field label="Add to Cart" field="addToCart" />
-                        <Field label="In Stock" field="inStock" />
-                        <Field label="Out of Stock" field="outOfStock" />
-                        <Field label="Units (volume pricing)" field="units" />
+                        <F label="Description" field="description" />
+                        <F label="Add to Cart" field="addToCart" />
+                        <F label="In Stock" field="inStock" />
+                        <F label="Out of Stock" field="outOfStock" />
+                        <F label="Units (volume pricing)" field="units" />
                     </div>
                 </CardContent>
             </Card>
@@ -111,16 +121,16 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Shopping Cart" field="shoppingCart" />
-                        <Field label="Continue Shopping" field="continueShopping" />
-                        <Field label="Order Summary" field="orderSummary" />
-                        <Field label="Subtotal" field="subtotal" />
-                        <Field label="Shipping" field="shipping" />
-                        <Field label="Free Shipping" field="freeShipping" />
-                        <Field label="Discount" field="discount" />
-                        <Field label="Total" field="total" />
-                        <Field label="Apply (coupon)" field="apply" />
-                        <Field label="Proceed to Checkout" field="proceedToCheckout" />
+                        <F label="Shopping Cart" field="shoppingCart" />
+                        <F label="Continue Shopping" field="continueShopping" />
+                        <F label="Order Summary" field="orderSummary" />
+                        <F label="Subtotal" field="subtotal" />
+                        <F label="Shipping" field="shipping" />
+                        <F label="Free Shipping" field="freeShipping" />
+                        <F label="Discount" field="discount" />
+                        <F label="Total" field="total" />
+                        <F label="Apply (coupon)" field="apply" />
+                        <F label="Proceed to Checkout" field="proceedToCheckout" />
                     </div>
                 </CardContent>
             </Card>
@@ -132,15 +142,15 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Checkout (page title)" field="checkout" />
-                        <Field label="Billing Details (section)" field="billingDetails" />
-                        <Field label="First Name" field="firstName" />
-                        <Field label="Last Name" field="lastName" />
-                        <Field label="Email" field="email" />
-                        <Field label="Phone" field="phone" />
-                        <Field label="Phone placeholder" field="phonePlaceholder" />
-                        <Field label="Birthday" field="birthday" />
-                        <Field label="Birthday hint" field="birthdayHint" placeholder="For a birthday surprise!" />
+                        <F label="Checkout (page title)" field="checkout" />
+                        <F label="Billing Details (section)" field="billingDetails" />
+                        <F label="First Name" field="firstName" />
+                        <F label="Last Name" field="lastName" />
+                        <F label="Email" field="email" />
+                        <F label="Phone" field="phone" />
+                        <F label="Phone placeholder" field="phonePlaceholder" />
+                        <F label="Birthday" field="birthday" />
+                        <F label="Birthday hint" field="birthdayHint" placeholder="For a birthday surprise!" />
                     </div>
                 </CardContent>
             </Card>
@@ -153,14 +163,14 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Order as Company" field="orderAsCompany" />
-                        <Field label="Company Name" field="companyName" />
-                        <Field label="Tax ID (e.g. CUI)" field="taxId" />
-                        <Field label="Tax ID placeholder" field="taxIdPlaceholder" placeholder="e.g. 12345678" />
-                        <Field label="VAT Number" field="vatNumber" />
-                        <Field label="VAT placeholder" field="vatNumberPlaceholder" placeholder="e.g. RO12345678" />
-                        <Field label="Registration No." field="registrationNumber" />
-                        <Field label="Registration placeholder" field="registrationNumberPlaceholder" />
+                        <F label="Order as Company" field="orderAsCompany" />
+                        <F label="Company Name" field="companyName" />
+                        <F label="Tax ID (e.g. CUI)" field="taxId" />
+                        <F label="Tax ID placeholder" field="taxIdPlaceholder" placeholder="e.g. 12345678" />
+                        <F label="VAT Number" field="vatNumber" />
+                        <F label="VAT placeholder" field="vatNumberPlaceholder" placeholder="e.g. RO12345678" />
+                        <F label="Registration No." field="registrationNumber" />
+                        <F label="Registration placeholder" field="registrationNumberPlaceholder" />
                     </div>
                 </CardContent>
             </Card>
@@ -172,16 +182,16 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Shipping Address (section)" field="shippingAddress" />
-                        <Field label="Street Address" field="streetAddress" />
-                        <Field label="City" field="city" />
-                        <Field label="County / Region" field="county" />
-                        <Field label="Select County..." field="selectCounty" />
-                        <Field label="Country" field="country" />
-                        <Field label="Select Country..." field="selectCountry" />
-                        <Field label="Postal Code" field="postalCode" />
-                        <Field label="Delivery Notes" field="deliveryNotes" />
-                        <Field label="Delivery Notes placeholder" field="deliveryNotesPlaceholder" placeholder="Apartment, floor, etc." />
+                        <F label="Shipping Address (section)" field="shippingAddress" />
+                        <F label="Street Address" field="streetAddress" />
+                        <F label="City" field="city" />
+                        <F label="County / Region" field="county" />
+                        <F label="Select County..." field="selectCounty" />
+                        <F label="Country" field="country" />
+                        <F label="Select Country..." field="selectCountry" />
+                        <F label="Postal Code" field="postalCode" />
+                        <F label="Delivery Notes" field="deliveryNotes" />
+                        <F label="Delivery Notes placeholder" field="deliveryNotesPlaceholder" placeholder="Apartment, floor, etc." />
                     </div>
                 </CardContent>
             </Card>
@@ -193,8 +203,8 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Use same for billing" field="useSameAsShipping" />
-                        <Field label="Billing Address (section)" field="billingAddress" />
+                        <F label="Use same for billing" field="useSameAsShipping" />
+                        <F label="Billing Address (section)" field="billingAddress" />
                     </div>
                 </CardContent>
             </Card>
@@ -206,14 +216,14 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Payment Method" field="paymentMethod" />
-                        <Field label="Cash on Delivery" field="cashOnDelivery" />
-                        <Field label="COD description" field="cashOnDeliveryDesc" />
-                        <Field label="Bank Transfer" field="bankTransfer" />
-                        <Field label="Preferred Delivery Date" field="preferredDeliveryDate" />
-                        <Field label="Place Order" field="placeOrder" />
-                        <Field label="Placing Order..." field="placingOrder" />
-                        <Field label="Terms Agreement" field="termsAgreement" />
+                        <F label="Payment Method" field="paymentMethod" />
+                        <F label="Cash on Delivery" field="cashOnDelivery" />
+                        <F label="COD description" field="cashOnDeliveryDesc" />
+                        <F label="Bank Transfer" field="bankTransfer" />
+                        <F label="Preferred Delivery Date" field="preferredDeliveryDate" />
+                        <F label="Place Order" field="placeOrder" />
+                        <F label="Placing Order..." field="placingOrder" />
+                        <F label="Terms Agreement" field="termsAgreement" />
                     </div>
                 </CardContent>
             </Card>
@@ -225,12 +235,12 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Search Button" field="searchButton" />
-                        <Field label="No Results" field="searchNoResults" />
-                        <Field label="Searching..." field="searchSearching" />
-                        <Field label="View All Results" field="viewAllResults" />
-                        <Field label="Results For (heading)" field="resultsFor" />
-                        <Field label="Search Products (heading)" field="searchProducts" />
+                        <F label="Search Button" field="searchButton" />
+                        <F label="No Results" field="searchNoResults" />
+                        <F label="Searching..." field="searchSearching" />
+                        <F label="View All Results" field="viewAllResults" />
+                        <F label="Results For (heading)" field="resultsFor" />
+                        <F label="Search Products (heading)" field="searchProducts" />
                     </div>
                 </CardContent>
             </Card>
@@ -242,8 +252,8 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Sign In" field="signIn" />
-                        <Field label="Account" field="accountLabel" />
+                        <F label="Sign In" field="signIn" />
+                        <F label="Account" field="accountLabel" />
                     </div>
                 </CardContent>
             </Card>
@@ -255,7 +265,7 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Field label="Order Confirmation" field="orderConfirmation" />
+                        <F label="Order Confirmation" field="orderConfirmation" />
                     </div>
                 </CardContent>
             </Card>
@@ -267,5 +277,6 @@ export default function Labels() {
                 </Button>
             </div>
         </div>
+        </LabelsCtx.Provider>
     );
 }

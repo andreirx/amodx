@@ -53,6 +53,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             label: "Commerce",
             items: [
                 { name: "Products", href: "/products", icon: ShoppingBag },
+                { name: "Digital Products", href: "/digital-products", icon: FileBox },
                 { name: "Categories", href: "/categories", icon: FolderTree },
                 ...(isCommerce ? [
                     { name: "Reports", href: "/reports", icon: BarChart3 },

@@ -30,6 +30,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         const now = new Date().toISOString();
         const orderId = crypto.randomUUID();
 
+        // --- Fetch tenant config for currency ---
+        const tenantResult = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
+        }));
+        const tenantConfig = tenantResult.Item || {};
+
         // --- Server-side price validation ---
         const validatedItems = [];
         let subtotal = 0;
@@ -205,7 +212,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         const total = subtotal + shippingCost - couponDiscount;
-        const currency = "RON";
+        const currency = tenantConfig.currency || "RON";
 
         // --- Generate order number via atomic counter ---
         const counterResult = await db.send(new UpdateCommand({

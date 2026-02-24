@@ -474,6 +474,7 @@ export const handler: Handler = async (event) => {
                     variants,
                     nutritionalValues: [],
                     sortOrder: existingProduct?.sortOrder || 0,
+                    productType: "physical",
                     condition: "new",
                     createdAt: existingProduct?.createdAt || now,
                     updatedAt: now,

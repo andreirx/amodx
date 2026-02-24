@@ -23,7 +23,7 @@ import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload, ShoppingBag } from "lucide-react";
 import { ShieldCheck } from "lucide-react";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
-import { THEME_PRESETS } from "@amodx/shared";
+import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack } from "@amodx/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
@@ -618,6 +618,54 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {/* DIGITAL SALES (PADDLE) */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Digital Sales (Paddle)</CardTitle>
+                            <CardDescription>Configure Paddle for selling digital products. Currency, geofencing, and pricing are managed in your Paddle dashboard.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Environment</Label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                                    value={config.integrations?.paddle?.environment || "sandbox"}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            paddle: {
+                                                ...config.integrations?.paddle,
+                                                environment: e.target.value as "sandbox" | "production"
+                                            }
+                                        }
+                                    })}
+                                >
+                                    <option value="sandbox">Sandbox (Testing)</option>
+                                    <option value="production">Production (Live)</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Client Token</Label>
+                                <Input
+                                    value={config.integrations?.paddle?.clientToken || ""}
+                                    onChange={e => setConfig({
+                                        ...config,
+                                        integrations: {
+                                            ...config.integrations!,
+                                            paddle: {
+                                                environment: config.integrations?.paddle?.environment || "sandbox",
+                                                ...config.integrations?.paddle,
+                                                clientToken: e.target.value
+                                            }
+                                        }
+                                    })}
+                                    placeholder="test_..."
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
                     {/* COMMERCE BAR */}
                     {config.commerceEnabled && (
                     <Card>
@@ -819,20 +867,58 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
-                    {/* CURRENCY */}
+                    {/* COUNTRY, LOCALE & CURRENCY */}
                     {config.commerceEnabled && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Currency</CardTitle>
-                            <CardDescription>Default currency for products and checkout (e.g. RON, EUR, USD).</CardDescription>
+                            <CardTitle>Country & Locale</CardTitle>
+                            <CardDescription>Selecting a country pack auto-fills locale, currency, checkout regions, legal labels, and commerce translations.</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <Input
-                                value={config.currency || "RON"}
-                                onChange={e => setConfig({ ...config, currency: e.target.value })}
-                                placeholder="RON"
-                                className="w-32"
-                            />
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Country Pack</Label>
+                                    <Select
+                                        value={config.countryCode || "RO"}
+                                        onValueChange={code => {
+                                            const pack = getCountryPack(code);
+                                            setConfig({
+                                                ...config,
+                                                countryCode: code,
+                                                locale: pack.locale,
+                                                currency: pack.currency.code,
+                                            });
+                                        }}
+                                    >
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {Object.values(COUNTRY_PACKS).map(pack => (
+                                                <SelectItem key={pack.code} value={pack.code}>
+                                                    {pack.name} ({pack.code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Locale</Label>
+                                    <Input
+                                        value={config.locale || "ro-RO"}
+                                        onChange={e => setConfig({ ...config, locale: e.target.value })}
+                                        placeholder="ro-RO"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Currency</Label>
+                                    <Input
+                                        value={config.currency || "RON"}
+                                        onChange={e => setConfig({ ...config, currency: e.target.value })}
+                                        placeholder="RON"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
                     )}
@@ -1069,12 +1155,12 @@ export default function SettingsPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Legal Links</CardTitle>
-                            <CardDescription>Required for Romanian e-commerce compliance. Shown in the footer.</CardDescription>
+                            <CardDescription>Shown in the footer. Labels default to the country pack language.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Terms & Conditions</Label>
+                                    <Label>Terms & Conditions URL</Label>
                                     <SmartLinkInput
                                         value={config.legalLinks?.termsUrl || ""}
                                         onChange={val => setConfig({ ...config, legalLinks: { ...config.legalLinks, termsUrl: val } })}
@@ -1082,7 +1168,15 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Privacy Policy</Label>
+                                    <Label>Terms Label (footer)</Label>
+                                    <Input
+                                        value={config.legalLinks?.termsLabel || ""}
+                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, termsLabel: e.target.value } })}
+                                        placeholder="Auto from country pack"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Privacy Policy URL</Label>
                                     <SmartLinkInput
                                         value={config.legalLinks?.privacyUrl || ""}
                                         onChange={val => setConfig({ ...config, legalLinks: { ...config.legalLinks, privacyUrl: val } })}
@@ -1090,7 +1184,15 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>ANPC (Consumer Protection)</Label>
+                                    <Label>Privacy Label (footer)</Label>
+                                    <Input
+                                        value={config.legalLinks?.privacyLabel || ""}
+                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, privacyLabel: e.target.value } })}
+                                        placeholder="Auto from country pack"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Consumer Protection URL</Label>
                                     <Input
                                         value={config.legalLinks?.anpcUrl || ""}
                                         onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcUrl: e.target.value } })}
@@ -1098,11 +1200,27 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>ANPC SAL (Online Dispute)</Label>
+                                    <Label>Consumer Protection Label</Label>
+                                    <Input
+                                        value={config.legalLinks?.anpcLabel || ""}
+                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcLabel: e.target.value } })}
+                                        placeholder="Auto from country pack"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Dispute Resolution URL</Label>
                                     <Input
                                         value={config.legalLinks?.anpcSalUrl || ""}
                                         onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcSalUrl: e.target.value } })}
                                         placeholder="https://ec.europa.eu/consumers/odr"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Dispute Resolution Label</Label>
+                                    <Input
+                                        value={config.legalLinks?.anpcSalLabel || ""}
+                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcSalLabel: e.target.value } })}
+                                        placeholder="Auto from country pack"
                                     />
                                 </div>
                             </div>
@@ -1432,54 +1550,6 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* MERCHANT settings (paddle) */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Payments (Paddle)</CardTitle>
-                            <CardDescription>Merchant of Record configuration.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Environment</Label>
-                                <select
-                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                                    value={config.integrations?.paddle?.environment || "sandbox"}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        integrations: {
-                                            ...config.integrations!,
-                                            paddle: {
-                                                ...config.integrations?.paddle,
-                                                environment: e.target.value as "sandbox" | "production"
-                                            }
-                                        }
-                                    })}
-                                >
-                                    <option value="sandbox">Sandbox (Testing)</option>
-                                    <option value="production">Production (Live)</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Client Token</Label>
-                                <Input
-                                    value={config.integrations?.paddle?.clientToken || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        integrations: {
-                                            ...config.integrations!,
-                                            paddle: {
-                                                // FIX: Ensure environment exists by defaulting it explicitly
-                                                environment: config.integrations?.paddle?.environment || "sandbox",
-                                                ...config.integrations?.paddle,
-                                                clientToken: e.target.value
-                                            }
-                                        }
-                                    })}
-                                    placeholder="test_..."
-                                />
-                            </div>
-                        </CardContent>
-                    </Card>
 
                     {/* GDPR / PRIVACY */}
                     <Card>

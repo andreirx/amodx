@@ -40,17 +40,17 @@ const FacebookBadge = () => (
     </svg>
 );
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr: string, locale = "ro-RO") {
     if (!dateStr) return "";
     try {
         const d = new Date(dateStr);
-        return d.toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" });
+        return d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
     } catch {
         return dateStr;
     }
 }
 
-function ReviewCard({ item, showSource }: { item: any; showSource: boolean }) {
+function ReviewCard({ item, showSource, locale }: { item: any; showSource: boolean; locale?: string }) {
     const initial = item.name?.charAt(0)?.toUpperCase() || "?";
     const color = getInitialColor(item.name || "");
 
@@ -68,7 +68,7 @@ function ReviewCard({ item, showSource }: { item: any; showSource: boolean }) {
                     )}
                     <div>
                         <p className="font-semibold text-sm leading-tight">{item.name}</p>
-                        {item.date && <p className="text-xs text-muted-foreground">{formatDate(item.date)}</p>}
+                        {item.date && <p className="text-xs text-muted-foreground">{formatDate(item.date, locale)}</p>}
                     </div>
                 </div>
                 {showSource && item.source === "google" && <GoogleBadge />}
@@ -92,7 +92,7 @@ function ReviewCard({ item, showSource }: { item: any; showSource: boolean }) {
 }
 
 export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
-    const { headline, items = [], showSource, autoScroll } = attrs;
+    const { headline, items = [], showSource, autoScroll, locale } = attrs;
     const scrollRef = useRef<HTMLDivElement>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
@@ -146,7 +146,7 @@ export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
                 {/* Scrollable container */}
                 <div ref={scrollRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-hide px-1 py-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {items.map((item: any) => (
-                        <ReviewCard key={item.id} item={item} showSource={showSource} />
+                        <ReviewCard key={item.id} item={item} showSource={showSource} locale={locale} />
                     ))}
                 </div>
 

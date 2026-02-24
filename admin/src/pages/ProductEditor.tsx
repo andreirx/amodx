@@ -114,10 +114,11 @@ export default function ProductEditor() {
 
         setSaving(true);
         try {
+            const payload = { ...form, productType: "physical" };
             if (isNew) {
-                await apiRequest("/products", { method: "POST", body: JSON.stringify(form) });
+                await apiRequest("/products", { method: "POST", body: JSON.stringify(payload) });
             } else {
-                await apiRequest(`/products/${id}`, { method: "PUT", body: JSON.stringify(form) });
+                await apiRequest(`/products/${id}`, { method: "PUT", body: JSON.stringify(payload) });
             }
             navigate("/products");
         } catch (e: any) {
@@ -791,19 +792,6 @@ function MediaTab({ form, setForm, onImageUpload }: any) {
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader><CardTitle>Digital Delivery</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                    <Label>Resource ID (Optional)</Label>
-                    <div className="flex gap-2">
-                        <Input value={form.resourceId || ""} onChange={e => setForm({ ...form, resourceId: e.target.value })} placeholder="Paste ID from Resources" />
-                        <Button variant="outline" size="icon" onClick={() => window.open('/resources', '_blank')}>
-                            <Upload className="h-4 w-4" />
-                        </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">If set, the system will email a secure download link after purchase.</p>
-                </CardContent>
-            </Card>
         </div>
     );
 }

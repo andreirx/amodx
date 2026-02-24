@@ -27,7 +27,13 @@ export const handler: Handler = async (event) => {
             blockedDates: [],
             yearlyOffDays: [],
             unblockedDates: [],
-            deliveryDaysOfWeek: [1, 2, 3, 4, 5]
+            deliveryDaysOfWeek: [1, 2, 3, 4, 5],
+            restrictDeliveryZones: false,
+            allowedCountries: [],
+            allowedCounties: [],
+            defaultCountry: "",
+            availableCountries: [],
+            availableCounties: [],
         };
 
         return { statusCode: 200, body: JSON.stringify(config) };

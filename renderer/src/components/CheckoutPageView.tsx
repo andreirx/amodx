@@ -8,16 +8,6 @@ import { useSession } from "next-auth/react";
 import { trackFBEvent } from "@/lib/fbpixel";
 import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
-// Fallback Romanian counties if none configured
-const DEFAULT_COUNTIES = [
-    "Alba", "Arad", "Arges", "Bacau", "Bihor", "Bistrita-Nasaud", "Botosani",
-    "Brasov", "Braila", "Bucuresti", "Buzau", "Caras-Severin", "Calarasi",
-    "Cluj", "Constanta", "Covasna", "Dambovita", "Dolj", "Galati", "Giurgiu",
-    "Gorj", "Harghita", "Hunedoara", "Ialomita", "Iasi", "Ilfov", "Maramures",
-    "Mehedinti", "Mures", "Neamt", "Olt", "Prahova", "Satu Mare", "Salaj",
-    "Sibiu", "Suceava", "Teleorman", "Timis", "Tulcea", "Vaslui", "Valcea", "Vrancea"
-];
-
 interface CheckoutProps {
     tenantId: string;
     apiUrl: string;
@@ -34,6 +24,8 @@ interface CheckoutProps {
     availableCountries?: string[];
     availableCounties?: string[];
     askBirthday?: boolean;
+    defaultRegions?: string[];
+    locale?: string;
 }
 
 // --- Inline delivery date picker ---
@@ -154,9 +146,9 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "Romania", availableCountries = [], availableCounties = [], askBirthday = true }: CheckoutProps) {
-    // Use configured counties or fallback to Romanian counties
-    const counties = availableCounties.length > 0 ? availableCounties : DEFAULT_COUNTIES;
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "Romania", availableCountries = [], availableCounties = [], askBirthday = true, defaultRegions = [], locale = "ro-RO" }: CheckoutProps) {
+    // Use configured counties, or country pack regions as fallback
+    const counties = availableCounties.length > 0 ? availableCounties : defaultRegions;
     const showCountryField = availableCountries.length > 1;
     const { items, subtotal, clearCart, coupon } = useCart();
     const { getUrl } = useTenantUrl();
@@ -521,7 +513,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 />
                                 {form.requestedDeliveryDate && (
                                     <p className="text-sm text-green-700 mt-2">
-                                        Selected: {new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString("ro-RO", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                                        Selected: {new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
                                     </p>
                                 )}
                             </section>
@@ -595,7 +587,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 {form.requestedDeliveryDate && (
                                     <div className="flex justify-between">
                                         <span className="text-muted-foreground">{strings.preferredDeliveryDate}</span>
-                                        <span className="text-xs">{new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString("ro-RO", { day: "numeric", month: "short" })}</span>
+                                        <span className="text-xs">{new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString(locale, { day: "numeric", month: "short" })}</span>
                                     </div>
                                 )}
                                 <div className="border-t pt-2 flex justify-between font-bold text-base">

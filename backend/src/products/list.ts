@@ -17,6 +17,7 @@ export const handler: Handler = async (event) => {
 
         const statusFilter = event.queryStringParameters?.status;
         const categoryFilter = event.queryStringParameters?.category;
+        const typeFilter = event.queryStringParameters?.type;
 
         let items: any[];
 
@@ -47,10 +48,15 @@ export const handler: Handler = async (event) => {
                 ...(filterParts.length > 0 ? { FilterExpression: filterParts.join(" AND ") } : {}),
                 ExpressionAttributeValues: exprValues,
                 ExpressionAttributeNames: { "#s": "status" },
-                ProjectionExpression: "id, title, slug, price, currency, salePrice, #s, availability, inventoryQuantity, imageLink, categoryIds, tags, brand, sortOrder, createdAt, updatedAt",
+                ProjectionExpression: "id, title, slug, price, currency, salePrice, #s, availability, inventoryQuantity, imageLink, categoryIds, tags, brand, sortOrder, productType, paymentLinkId, resourceId, createdAt, updatedAt",
             }));
 
             items = result.Items || [];
+        }
+
+        // Apply type filter (products without productType default to "physical")
+        if (typeFilter) {
+            items = items.filter((p: any) => (p.productType || "physical") === typeFilter);
         }
 
         return { statusCode: 200, body: JSON.stringify({ items }) };
