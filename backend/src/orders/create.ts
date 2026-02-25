@@ -212,7 +212,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         const total = subtotal + shippingCost - couponDiscount;
-        const currency = tenantConfig.currency || "RON";
+        const currency = tenantConfig.currency || "USD";
 
         // --- Generate order number via atomic counter ---
         const counterResult = await db.send(new UpdateCommand({

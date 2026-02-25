@@ -107,7 +107,7 @@ export const handler: Handler = async (event) => {
                 if (template) {
                     const order = existing.Item;
                     const itemLines = (order.items || []).map((i: any) =>
-                        `  ${i.productTitle || i.title} x${i.quantity} — ${(parseFloat(i.totalPrice || 0)).toFixed(2)} ${order.currency || "RON"}`
+                        `  ${i.productTitle || i.title} x${i.quantity} — ${(parseFloat(i.totalPrice || 0)).toFixed(2)} ${order.currency || "USD"}`
                     ).join("\n");
 
                     const addressLine = order.shippingAddress
@@ -125,7 +125,7 @@ export const handler: Handler = async (event) => {
                         items: itemLines,
                         subtotal: (parseFloat(order.subtotal || 0)).toFixed(2),
                         total: (parseFloat(order.total || 0)).toFixed(2),
-                        currency: order.currency || "RON",
+                        currency: order.currency || "USD",
                         shippingCost: (parseFloat(order.shippingCost || 0)).toFixed(2),
                         couponDiscount: order.couponDiscount ? `${parseFloat(order.couponDiscount).toFixed(2)}` : "",
                         paymentMethod: order.paymentMethod === "bank_transfer" ? "Bank Transfer" : "Cash on Delivery",

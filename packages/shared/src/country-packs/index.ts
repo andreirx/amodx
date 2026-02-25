@@ -12,7 +12,7 @@ const COUNTRY_PACKS: Record<string, CountryPack> = {
 };
 
 export function getCountryPack(code: string): CountryPack {
-    return COUNTRY_PACKS[code.toUpperCase()] || COUNTRY_PACKS.RO;
+    return COUNTRY_PACKS[code.toUpperCase()] || COUNTRY_PACKS.EN;
 }
 
 export { COUNTRY_PACKS };

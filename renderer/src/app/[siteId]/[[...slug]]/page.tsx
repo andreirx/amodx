@@ -32,7 +32,7 @@ type Props = {
 // Helper to get commerce strings with defaults
 // 3-tier merge: English defaults → country pack language → admin overrides
 function getCommerceStrings(config: any): Required<CommerceStrings> {
-    const pack = getCountryPack(config.countryCode || "RO");
+    const pack = getCountryPack(config.countryCode || "EN");
     return { ...COMMERCE_STRINGS_DEFAULTS, ...pack.defaultStrings, ...config.commerceStrings };
 }
 
@@ -266,7 +266,7 @@ export default async function Page({ params, searchParams }: Props) {
                 <AccountPageView
                     orders={orders}
                     customer={customer}
-                    currency={config.currency || "RON"}
+                    currency={config.currency || "USD"}
                     checkoutPrefix={prefixes.checkout || "/checkout"}
                     shopPrefix={prefixes.shop || "/shop"}
                     contentMaxWidth={config.header?.contentPageMaxWidth || "max-w-4xl"}
@@ -289,7 +289,7 @@ export default async function Page({ params, searchParams }: Props) {
                     freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
                     minimumOrderAmount={deliveryConfig?.minimumOrderAmount || 0}
-                    currency={config.currency || "RON"}
+                    currency={config.currency || "USD"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
@@ -310,17 +310,17 @@ export default async function Page({ params, searchParams }: Props) {
                     cartPrefix={prefixes.cart || "/cos"}
                     freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
-                    currency={config.currency || "RON"}
+                    currency={config.currency || "USD"}
                     bankTransfer={config.integrations?.bankTransfer}
                     enabledPaymentMethods={config.enabledPaymentMethods}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
                     strings={strings}
-                    defaultCountry={deliveryConfig?.defaultCountry || "Romania"}
+                    defaultCountry={deliveryConfig?.defaultCountry || ""}
                     availableCountries={deliveryConfig?.availableCountries || []}
                     availableCounties={deliveryConfig?.availableCounties || []}
                     askBirthday={config.askBirthdayOnCheckout ?? true}
                     defaultRegions={getCountryPack(config.countryCode || "RO").address.regions.map(r => r.name)}
-                    locale={config.locale || "ro-RO"}
+                    locale={config.locale || "en-US"}
                 />
             );
         }
@@ -624,7 +624,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
         "offers": {
             "@type": "Offer",
             "price": product.salePrice || product.price,
-            "priceCurrency": product.currency || "RON",
+            "priceCurrency": product.currency || "USD",
             "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
         }
     };
@@ -775,7 +775,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                             imageLink={product.imageLink || ""}
                             price={product.price}
                             salePrice={product.salePrice}
-                            currency={product.currency || "RON"}
+                            currency={product.currency || "USD"}
                             availability={product.availability || "in_stock"}
                             variants={product.variants || []}
                             personalizations={product.personalizations || []}
@@ -859,7 +859,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                                         <span className="font-medium text-sm">{review.authorName}</span>
                                         {review.source === "google" && <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">Google</span>}
                                     </div>
-                                    <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString(config.locale || "ro-RO")}</span>
+                                    <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString(config.locale || "en-US")}</span>
                                 </div>
                                 <div className="text-amber-500 text-sm mb-2">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
                                 {review.content && <p className="text-sm text-muted-foreground">{review.content}</p>}
@@ -1057,7 +1057,7 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
             <FBPurchaseEvent
                 orderId={order.id}
                 value={parseFloat(order.total) || 0}
-                currency={order.currency || "RON"}
+                currency={order.currency || "USD"}
                 items={(order.items || []).map((i: any) => ({ id: i.productId, quantity: i.quantity }))}
             />
             <div className="text-center mb-12">
@@ -1162,7 +1162,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
     return (
         <main className={`${pageWidth} mx-auto py-12 px-6`}>
             <h1 className="text-3xl font-bold tracking-tight mb-2">Order {order.orderNumber}</h1>
-            <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString(config.locale || "ro-RO")}</p>
+            <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString(config.locale || "en-US")}</p>
 
             {/* Status Timeline */}
             <div className="mb-12">
@@ -1192,7 +1192,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
                     <div className="space-y-3">
                         {order.statusHistory.map((entry: any, i: number) => (
                             <div key={i} className="flex gap-3 text-sm">
-                                <span className="text-muted-foreground whitespace-nowrap">{new Date(entry.timestamp).toLocaleString(config.locale || "ro-RO")}</span>
+                                <span className="text-muted-foreground whitespace-nowrap">{new Date(entry.timestamp).toLocaleString(config.locale || "en-US")}</span>
                                 <span className="capitalize font-medium">{entry.status}</span>
                                 {entry.note && <span className="text-muted-foreground">- {entry.note}</span>}
                             </div>

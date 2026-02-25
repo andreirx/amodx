@@ -146,7 +146,7 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "Romania", availableCountries = [], availableCounties = [], askBirthday = true, defaultRegions = [], locale = "ro-RO" }: CheckoutProps) {
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "", availableCountries = [], availableCounties = [], askBirthday = true, defaultRegions = [], locale = "en-US" }: CheckoutProps) {
     // Use configured counties, or country pack regions as fallback
     const counties = availableCounties.length > 0 ? availableCounties : defaultRegions;
     const showCountryField = availableCountries.length > 1;

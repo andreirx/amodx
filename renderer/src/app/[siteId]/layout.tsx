@@ -109,7 +109,7 @@ export default async function SiteLayout({ children, params }: Props) {
 
                 {/* GDPR Cookie Consent Banner */}
                 {(() => {
-                    const gdprPack = getCountryPack(config.countryCode || "RO").gdpr;
+                    const gdprPack = getCountryPack(config.countryCode || "EN").gdpr;
                     return (
                         <CookieConsent
                             tenantId={config.id}
@@ -145,7 +145,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             whatsappNumber={config.commerceBar.whatsappNumber}
                             socialLinks={config.commerceBar.socialLinks}
                             ctaButton={config.commerceBar.ctaButton}
-                            currency={config.currency || "RON"}
+                            currency={config.currency || "USD"}
                             contentMaxWidth={config.header?.contentMaxWidth}
                             accountPrefix={config.urlPrefixes?.account || URL_PREFIX_DEFAULTS.account}
                             height={config.commerceBar.height}
@@ -211,7 +211,7 @@ export default async function SiteLayout({ children, params }: Props) {
 
                             {/* Column 3: Legal Links */}
                             {(config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (() => {
-                                const pack = getCountryPack(config.countryCode || "RO");
+                                const pack = getCountryPack(config.countryCode || "EN");
                                 return (
                                 <div className="space-y-1">
                                     <p className="font-semibold text-foreground mb-2">Legal</p>

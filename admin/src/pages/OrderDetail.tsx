@@ -152,7 +152,7 @@ export default function OrderDetail() {
                         Order {order.orderNumber || order.id?.slice(0, 8)}
                     </h1>
                     <p className="text-muted-foreground">
-                        Placed on {order.createdAt ? new Date(order.createdAt).toLocaleDateString(currentTenant?.locale || "ro-RO") : "-"}
+                        Placed on {order.createdAt ? new Date(order.createdAt).toLocaleDateString(currentTenant?.locale || "en-US") : "-"}
                     </p>
                 </div>
                 <span className={`ml-auto inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium ${STATUS_COLORS[order.status] || "bg-gray-100 text-gray-700"}`}>
@@ -209,8 +209,8 @@ export default function OrderDetail() {
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-center">{qty}</TableCell>
-                                                <TableCell className="text-right">{price.toFixed(2)} {order.currency || "RON"}</TableCell>
-                                                <TableCell className="text-right font-medium">{lineTotal.toFixed(2)} {order.currency || "RON"}</TableCell>
+                                                <TableCell className="text-right">{price.toFixed(2)} {order.currency || "USD"}</TableCell>
+                                                <TableCell className="text-right font-medium">{lineTotal.toFixed(2)} {order.currency || "USD"}</TableCell>
                                             </TableRow>
                                         );
                                     })}
@@ -233,21 +233,21 @@ export default function OrderDetail() {
                             <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Subtotal</span>
-                                    <span>{subtotal.toFixed(2)} {order.currency || "RON"}</span>
+                                    <span>{subtotal.toFixed(2)} {order.currency || "USD"}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">Shipping</span>
-                                    <span>{parseFloat(order.shippingCost || 0).toFixed(2)} {order.currency || "RON"}</span>
+                                    <span>{parseFloat(order.shippingCost || 0).toFixed(2)} {order.currency || "USD"}</span>
                                 </div>
                                 {(order.discount || order.discountAmount) && (
                                     <div className="flex justify-between text-red-600">
                                         <span>Discount</span>
-                                        <span>-{parseFloat(order.discount || order.discountAmount || 0).toFixed(2)} {order.currency || "RON"}</span>
+                                        <span>-{parseFloat(order.discount || order.discountAmount || 0).toFixed(2)} {order.currency || "USD"}</span>
                                     </div>
                                 )}
                                 <div className="border-t pt-2 flex justify-between font-bold text-base">
                                     <span>Total</span>
-                                    <span>{parseFloat(order.total || order.totalAmount || 0).toFixed(2)} {order.currency || "RON"}</span>
+                                    <span>{parseFloat(order.total || order.totalAmount || 0).toFixed(2)} {order.currency || "USD"}</span>
                                 </div>
                             </div>
                         </CardContent>
@@ -427,7 +427,7 @@ export default function OrderDetail() {
                                                         {STATUS_LABELS[entry.status] || entry.status}
                                                     </span>
                                                     <span className="text-xs text-muted-foreground">
-                                                        {entry.timestamp ? new Date(entry.timestamp).toLocaleDateString(currentTenant?.locale || "ro-RO", {
+                                                        {entry.timestamp ? new Date(entry.timestamp).toLocaleDateString(currentTenant?.locale || "en-US", {
                                                             day: "2-digit",
                                                             month: "2-digit",
                                                             year: "numeric",

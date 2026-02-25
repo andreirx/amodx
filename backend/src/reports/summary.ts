@@ -122,7 +122,7 @@ export const handler: Handler = async (event) => {
             .slice(0, 12);
 
         const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-        const currency = orders[0]?.currency || "RON";
+        const currency = orders[0]?.currency || "USD";
 
         return {
             statusCode: 200,

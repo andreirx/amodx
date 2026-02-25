@@ -98,7 +98,7 @@ export function CommerceBar({
     whatsappNumber,
     socialLinks = [],
     ctaButton,
-    currency = "RON",
+    currency = "USD",
     contentMaxWidth = "max-w-7xl",
     accountPrefix = "/account",
     height = "h-10",

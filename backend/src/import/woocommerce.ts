@@ -220,7 +220,7 @@ export const handler: Handler = async (event) => {
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing Body" }) };
 
         const body = JSON.parse(event.body);
-        const { csvContent, currency = "RON", defaultStatus = "active" } = body;
+        const { csvContent, currency = "USD", defaultStatus = "active" } = body;
 
         if (!csvContent) {
             return { statusCode: 400, body: JSON.stringify({ error: "csvContent is required" }) };

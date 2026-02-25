@@ -870,63 +870,7 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
-                    {/* COUNTRY, LOCALE & CURRENCY */}
-                    {config.commerceEnabled && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Country & Locale</CardTitle>
-                            <CardDescription>Selecting a country pack auto-fills locale, currency, checkout regions, legal labels, and commerce translations.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Country Pack</Label>
-                                    <div className="flex gap-2">
-                                        <Select
-                                            value={config.countryCode || "RO"}
-                                            onValueChange={code => setPendingPackCode(code)}
-                                        >
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {Object.values(COUNTRY_PACKS).map(pack => (
-                                                    <SelectItem key={pack.code} value={pack.code}>
-                                                        {pack.name} ({pack.code})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="shrink-0 self-center"
-                                            onClick={() => setPendingPackCode(config.countryCode || "RO")}
-                                        >
-                                            Apply
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Locale</Label>
-                                    <Input
-                                        value={config.locale || "ro-RO"}
-                                        onChange={e => setConfig({ ...config, locale: e.target.value })}
-                                        placeholder="ro-RO"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Currency</Label>
-                                    <Input
-                                        value={config.currency || "RON"}
-                                        onChange={e => setConfig({ ...config, currency: e.target.value })}
-                                        placeholder="RON"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    )}
+                    {/* COUNTRY, LOCALE & CURRENCY — moved to general section (before GDPR) */}
 
                     {/* PAYMENT METHODS */}
                     {config.commerceEnabled && (
@@ -1555,6 +1499,62 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+
+                    {/* COUNTRY, LOCALE & CURRENCY — always visible (drives GDPR texts, date formats, etc.) */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Country & Locale</CardTitle>
+                            <CardDescription>Selecting a country pack auto-fills locale, currency, GDPR texts, legal labels, and commerce translations.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Country Pack</Label>
+                                    <div className="flex gap-2">
+                                        <Select
+                                            value={config.countryCode || "EN"}
+                                            onValueChange={code => setPendingPackCode(code)}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {Object.values(COUNTRY_PACKS).map(pack => (
+                                                    <SelectItem key={pack.code} value={pack.code}>
+                                                        {pack.name} ({pack.code})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="shrink-0 self-center"
+                                            onClick={() => setPendingPackCode(config.countryCode || "EN")}
+                                        >
+                                            Apply
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Locale</Label>
+                                    <Input
+                                        value={config.locale || "en-US"}
+                                        onChange={e => setConfig({ ...config, locale: e.target.value })}
+                                        placeholder="en-US"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Currency</Label>
+                                    <Input
+                                        value={config.currency || "USD"}
+                                        onChange={e => setConfig({ ...config, currency: e.target.value })}
+                                        placeholder="USD"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     {/* GDPR / PRIVACY */}
                     <Card>

@@ -69,7 +69,7 @@ export default function DeliverySettings() {
         restrictDeliveryZones: false,
         allowedCountries: "",
         allowedCounties: "",
-        defaultCountry: "Romania",
+        defaultCountry: "",
         availableCountries: "",
         availableCounties: "",
     });
@@ -104,7 +104,7 @@ export default function DeliverySettings() {
                 allowedCounties: Array.isArray(res.allowedCounties)
                     ? res.allowedCounties.join("\n")
                     : "",
-                defaultCountry: res.defaultCountry || "Romania",
+                defaultCountry: res.defaultCountry || "",
                 availableCountries: Array.isArray(res.availableCountries)
                     ? res.availableCountries.join("\n")
                     : "",

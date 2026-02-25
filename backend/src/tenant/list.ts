@@ -27,9 +27,9 @@ export const handler: AmodxHandler = async (event) => {
                 domain: item.domain,
                 status: item.status,
                 commerceEnabled: item.commerceEnabled ?? false,
-                currency: item.currency || "RON",
-                locale: item.locale || "ro-RO",
-                countryCode: item.countryCode || "RO",
+                currency: item.currency || "USD",
+                locale: item.locale || "en-US",
+                countryCode: item.countryCode || "EN",
             })) || [];
 
             return { statusCode: 200, body: JSON.stringify({ items: tenants }) };
@@ -54,9 +54,9 @@ export const handler: AmodxHandler = async (event) => {
                 domain: result.Item.domain,
                 status: result.Item.status,
                 commerceEnabled: result.Item.commerceEnabled ?? false,
-                currency: result.Item.currency || "RON",
-                locale: result.Item.locale || "ro-RO",
-                countryCode: result.Item.countryCode || "RO",
+                currency: result.Item.currency || "USD",
+                locale: result.Item.locale || "en-US",
+                countryCode: result.Item.countryCode || "EN",
             };
 
             return { statusCode: 200, body: JSON.stringify({ items: [tenant] }) };

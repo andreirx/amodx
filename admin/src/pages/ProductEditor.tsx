@@ -69,7 +69,7 @@ export default function ProductEditor() {
         if (currentTenant) {
             loadCategories();
             if (!isNew && id) loadProduct();
-            else setForm(prev => ({ ...prev, currency: prev.currency || (currentTenant as any).currency || "RON" }));
+            else setForm(prev => ({ ...prev, currency: prev.currency || (currentTenant as any).currency || "USD" }));
         }
     }, [id, currentTenant?.id]);
 

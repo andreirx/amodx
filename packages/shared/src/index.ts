@@ -690,11 +690,11 @@ export const TenantConfigSchema = z.object({
     enabledPaymentMethods: z.array(z.enum(["cash_on_delivery", "bank_transfer"])).default(["cash_on_delivery"]),
 
     // Default currency for commerce (products inherit this)
-    currency: z.string().default("RON"),
+    currency: z.string().default("USD"),
 
     // Country pack & locale
-    countryCode: z.string().default("RO"),
-    locale: z.string().default("ro-RO"),
+    countryCode: z.string().default("EN"),
+    locale: z.string().default("en-US"),
 
     // Commerce UI strings (i18n)
     commerceStrings: CommerceStringsSchema.default({}),
@@ -880,7 +880,7 @@ export const ProductSchema = z.object({
 
     // Pricing
     price: z.string(),
-    currency: z.string().default("RON"),
+    currency: z.string().default("USD"),
     salePrice: z.string().optional(),
     volumePricing: z.array(VolumePricingTierSchema).default([]),
 
@@ -1072,7 +1072,7 @@ export const OrderSchema = z.object({
     shippingCost: z.string().default("0"),
     discount: z.string().default("0"),
     total: z.string(),
-    currency: z.string().default("RON"),
+    currency: z.string().default("USD"),
     couponCode: z.string().optional(),
     couponDiscount: z.string().default("0"),
     paymentMethod: z.enum(["cash_on_delivery", "bank_transfer"]).default("cash_on_delivery"),
