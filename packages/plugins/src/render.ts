@@ -17,6 +17,7 @@ import { CarouselRender } from './carousel/CarouselRender';
 import { CodeBlockRender } from './code-block/CodeBlockRender';
 import { ReviewsCarouselRender } from './reviews-carousel/ReviewsCarouselRender';
 import { CategoryShowcaseRender } from './category-showcase/CategoryShowcaseRender';
+import { MarkdownRender } from './markdown/MarkdownRender';
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
@@ -36,5 +37,6 @@ export const RENDER_MAP: Record<string, React.FC<any>> = {
     'carousel': CarouselRender,
     'codeBlock': CodeBlockRender,
     'reviewsCarousel': ReviewsCarouselRender,
-    'categoryShowcase': CategoryShowcaseRender
+    'categoryShowcase': CategoryShowcaseRender,
+    'markdown': MarkdownRender
 };

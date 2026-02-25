@@ -17,6 +17,7 @@ import { CarouselPlugin } from './carousel';
 import { CodeBlockPlugin } from './code-block';
 import { ReviewsCarouselPlugin } from './reviews-carousel';
 import { CategoryShowcasePlugin } from './category-showcase';
+import { MarkdownPlugin } from './markdown';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -36,7 +37,8 @@ const REGISTRY: PluginDefinition[] = [
     CarouselPlugin,
     CodeBlockPlugin,
     ReviewsCarouselPlugin,
-    CategoryShowcasePlugin
+    CategoryShowcasePlugin,
+    MarkdownPlugin
 ];
 
 
