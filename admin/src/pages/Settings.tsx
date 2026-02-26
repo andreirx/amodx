@@ -1510,29 +1510,27 @@ export default function SettingsPage() {
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label>Country Pack</Label>
-                                    <div className="flex gap-2">
-                                        <Select
-                                            value={config.countryCode || "EN"}
-                                            onValueChange={code => setPendingPackCode(code)}
-                                        >
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {Object.values(COUNTRY_PACKS).map(pack => (
-                                                    <SelectItem key={pack.code} value={pack.code}>
-                                                        {pack.name} ({pack.code})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="shrink-0 self-center"
-                                            onClick={() => setPendingPackCode(config.countryCode || "EN")}
-                                        >
-                                            Apply
-                                        </Button>
-                                    </div>
+                                    <Select
+                                        value={config.countryCode || "EN"}
+                                        onValueChange={code => setPendingPackCode(code)}
+                                    >
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {Object.values(COUNTRY_PACKS).map(pack => (
+                                                <SelectItem key={pack.code} value={pack.code}>
+                                                    {pack.name} ({pack.code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full"
+                                        onClick={() => setPendingPackCode(config.countryCode || "EN")}
+                                    >
+                                        Apply Pack
+                                    </Button>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Locale</Label>

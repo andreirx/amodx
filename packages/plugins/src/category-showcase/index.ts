@@ -11,6 +11,7 @@ export const CategoryShowcasePlugin: PluginDefinition = {
     label: 'Category Showcase',
     icon: LayoutGrid,
     schema: CategoryShowcaseSchema,
+    commerce: true,
 
     editorExtension: Node.create({
         name: 'categoryShowcase',

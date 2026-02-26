@@ -9,6 +9,9 @@ export interface PluginDefinition {
     icon: LucideIcon;
     schema: z.ZodObject<any>;
 
+    // If true, only shown in the block inserter when commerceEnabled is true
+    commerce?: boolean;
+
     // The Admin Tiptap Extension
     editorExtension: Node;
 

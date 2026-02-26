@@ -8,15 +8,18 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getPluginList } from "@amodx/plugins/admin";
+import { useTenant } from "@/context/TenantContext";
 
 interface ToolbarProps {
     editor: Editor | null;
 }
 
 export function Toolbar({ editor }: ToolbarProps) {
+    const { currentTenant } = useTenant();
     if (!editor) return null;
 
-    const plugins = getPluginList();
+    const commerceEnabled = (currentTenant as any)?.commerceEnabled ?? false;
+    const plugins = getPluginList().filter(p => !p.commerce || commerceEnabled);
 
     const [isLinking, setIsLinking] = useState(false);
     const [linkUrl, setLinkUrl] = useState("");

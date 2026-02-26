@@ -11,6 +11,7 @@ export const ReviewsCarouselPlugin: PluginDefinition = {
     label: 'Reviews Carousel',
     icon: Star,
     schema: ReviewsCarouselSchema,
+    commerce: true,
 
     editorExtension: Node.create({
         name: 'reviewsCarousel',
