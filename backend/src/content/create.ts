@@ -13,7 +13,11 @@ type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerConte
 
 // Helper: Ensure slug format (lowercase, hyphens, leading slash)
 const cleanSlug = (str: string) => {
-    const cleaned = str.toLowerCase().trim().replace(/[^a-z0-9-\/]/g, '').replace(/[\s_-]+/g, '-');
+    const cleaned = str.toLowerCase().trim()
+        .replace(/[\s_]+/g, '-')       // spaces & underscores → dashes FIRST
+        .replace(/[^a-z0-9-\/]/g, '')  // then strip invalid chars
+        .replace(/-+/g, '-')           // collapse multiple dashes
+        .replace(/-+$/g, '');          // strip trailing dash
     return cleaned.startsWith('/') ? cleaned : '/' + cleaned;
 };
 
