@@ -421,23 +421,5 @@ This is not "freemium SaaS." This is **infrastructure ownership with optional co
 
 ---
 
-## The ARDA Architecture (Future Direction)
-
-AMODX is positioning to become an **Agency Operating System** with integrated AI workflow:
-
-**A**gent: Research signals (Brave Search), draft content (LLM), execute posts (Playwright MCP)
-
-**R**esearch: Find Reddit threads, Twitter conversations, forum posts where target customers ask questions
-
-**D**raft: Generate responses aligned with brand context, product positioning, tone guidelines
-
-**A**pprove: Human-in-the-loop cockpit. AI proposes, human approves, system executes.
-
-This turns the "agency manual labor" problem (research keywords, write content, post to channels, track engagement) into an **automated workflow with human judgment gates**.
-
-The missing piece: Using the tool for AMODX's own marketing, not just building the capability.
-
----
-
 ## Repo
 https://github.com/andreirx/amodx
