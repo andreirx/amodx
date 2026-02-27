@@ -332,7 +332,7 @@ JSON dumps are useless. Activity feeds with Actor/Target/Timestamp are useful. L
 
 ## What This Architecture Enables
 
-**Zero Idle Cost**: Lambda scales to zero. DynamoDB charges per request. Idle sites cost $0-5/month. WordPress sites cost $10-30/month idle.
+**Zero Idle Cost**: Lambda scales to zero. DynamoDB charges per request. Idle sites cost $0-5/month. WordPress shared hosting starts at $5-15/month, managed WordPress hosting $25-50/month.
 
 **Multi-Tenant by Design**: One deployment handles unlimited clients. Add client through admin panel in 10 minutes.
 
@@ -391,7 +391,7 @@ AMODX is not "better WordPress." It's a different category: **Agency Operating S
 ### The Target Market
 Technical agency owners managing 5-20 client sites who are:
 - Tired of WordPress plugin updates
-- Tired of $500-2000/month hosting costs
+- Tired of mounting hosting and plugin licensing costs
 - Want infrastructure margins, not pixel-pushing margins
 - Can learn AWS basics
 - Charge $2000+ per site
@@ -400,7 +400,8 @@ Technical agency owners managing 5-20 client sites who are:
 - Non-technical users expecting drag-and-drop
 - Shared hosting users (AMODX requires AWS)
 - Teams married to WordPress familiarity
-- Projects needing WooCommerce complexity
+
+Note: The commerce extension covers the full WooCommerce feature set — product variants, personalizations, coupons, delivery scheduling, order management, customer accounts, email templates, bulk pricing, and WooCommerce CSV import with automatic data migration. See `docs/commerce.md`.
 
 ---
 
