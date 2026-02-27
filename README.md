@@ -1,84 +1,70 @@
-# AMODX: Serverless CMS & Agency Operating System
+# AMODX
 
-> **Turn your agency into a software company.**
+Serverless multi-tenant CMS and commerce platform on AWS. One deployment serves up to 99 tenant websites with full data isolation.
 
-![AMODX Architecture](WP-vs-AMODX.jpg)
+**Stack**: Next.js 16 + React 19 + Vite 7 + Tailwind v4 + Tiptap 3 + DynamoDB + Lambda (Node.js 22) + OpenNext 3 + CDK
 
-AMODX is a **Serverless Command Center** that allows you to manage up to 99 client sites, generate high-fidelity content via AI, and control access gates (paywalls/logins) from **one single dashboard.**
-It is currently used to host and manage https://amodx.net and https://blog.bijup.com.
+**Live**: [amodx.net](https://amodx.net), [blog.bijup.com](https://blog.bijup.com)
 
-* Clean, secure, and modern.
-* Extremely cheap to run: AWS Lambdas, Cognito, DynamoDB, EventBridge, S3.
-* AI first: capture context in the platform and hook up Claude to the MCP server to generate content.
+## What It Does
 
-**One Deployment = One Agency.** You manage 99 client sites ("Tenants") from a single dashboard.
+- **Multi-tenant CMS** — block-based editor (19 custom plugins), content versioning, SEO engine (robots.txt, sitemap.xml, llms.txt)
+- **Commerce** — products, categories, cart, checkout, orders, coupons, reviews, delivery scheduling, email templates
+- **Engagement** — dynamic forms, marketing popups, lead capture, contact forms
+- **MCP integration** — Claude Desktop controls tenants, content, and context via Model Context Protocol
+- **i18n** — country packs with 3-tier merge (English defaults → pack language → admin overrides)
 
-This is not for everyone. It's for you if you are technically inclined, you appreciate precision and you want to iterate fast - and don't want headaches.
+## Monorepo
 
----
+npm workspaces. Build order: `shared → plugins → backend/admin/renderer`.
 
-## ⚡ Why AMODX?
+```
+packages/shared/     Zod schemas, types, country packs
+packages/plugins/    19 block plugins (split admin/render entry)
+backend/             100+ Lambda handlers, 30 modules
+admin/               React 19 SPA, 39 pages, shadcn/ui
+renderer/            Next.js 16, OpenNext, multi-tenant SSR
+infra/               CDK stacks (main + 2 nested)
+tools/mcp-server/    Claude Desktop MCP server + Playwright
+scripts/             Setup, domain management, post-deploy sync
+```
 
-### 1. Chat with your Business (The AI Bridge)
-This is the killer feature. Because AMODX runs on an open protocol (MCP), you can connect **Claude Desktop** directly to your agency's infrastructure.
-
-*   **Don't click buttons.** Just type: *"Create a new site for Dr. Smith, apply the 'Blue Medical' theme, and write a landing page based on our Dental Implants Strategy."*
-*   **Context-Aware.** The AI knows your strategy, personas, and brand voice. It doesn't write generic fluff; it writes *your* content.
-
-### 2. Infinite Scale, Zero Gunk
-*   **No Servers:** We use AWS Serverless. You pay only for what you use. No idle costs.
-*   **No Maintenance:** No plugins to update. No PHP versions to manage. No security patches for 50 different WordPress installs.
-*   **Instant Publishing:** Changes go live instantly globally via our warm-cache architecture.
-
-### 3. SEO Native
-*   **Performance:** Sites score 100/100 on Core Web Vitals because they are pre-rendered static HTML.
-*   **AI Ready:** Automatically generates `/llms.txt` so AI Search Engines (Perplexity, SearchGPT) rank your clients higher.
-
----
-
-## 🚀 Getting Started
-
-### 1. Setup Your Environment
-If this is your first time using AWS tools (and even if it isn't), read the **[Installation Guide](INSTALL.md)**.
-
-### 2. Zero-Config Deployment
-Run one command to provision your entire agency backend, configure the environment, and create your Admin account.
+## Quick Start
 
 ```bash
 npm install
-npm run setup
+npm run build
+cd admin && npm run dev        # localhost:5173
+cd renderer && npm run dev     # localhost:3000
+cd backend && npm test         # Vitest against staging DynamoDB
 ```
 
-The interactive wizard will:
-1.  Verify your AWS Identity.
-2.  Generate your Configuration.
-3.  Deploy the Infrastructure (CloudFormation).
-4.  Create and Promote your Global Admin User.
+### Deploy
 
-*The terminal will output your **Admin URL** and login credentials.*
+```bash
+cd infra && npm run cdk deploy
+npm run post-deploy            # sync .env files from CloudFormation outputs
+```
 
-### 3. Connect With Claude Desktop
-To enable the AI capabilities:
-1.  Get your Master API Key from AWS Secrets Manager (created during deploy).
-2.  Run the setup script:
-    ```bash
-    cd tools/mcp-server
-    npm run build
-    npm run setup
-    ```
+### Add a Tenant Domain
 
-### 4. Running a Business
-Read the **[Agency Operations Manual](AGENCY-MANAGEMENT.md)** for details on:
-*   Connecting Custom Domains (e.g., `client.com`).
-*   Managing SSL Certificates.
-*   Scaling past 100 clients.
+1. Add domain to `amodx.config.json` → `tenants` array
+2. `npm run manage-domains` — request ACM cert, add DNS CNAMEs
+3. `npx cdk deploy` — update CloudFront
+4. `npm run post-deploy` — sync local env
 
-Read the **[Tenant Integrations Manual](INTEGRATION-MANUAL.md)** for details on:
-*   Integrating Google OAuth2 for your clients to enable comments and other private site sections.
-*   Supporting Paddle as Merchant of Record for your tenants so they can sell their items worldwide.
+### Connect Claude Desktop
 
----
+```bash
+cd tools/mcp-server && npm run build && npm run setup
+```
 
-## 📜 License
+Requires master API key from Secrets Manager.
 
-Licensed under the **Apache 2.0 License**.
+## Architecture
+
+See [SDS.md](SDS.md) for the full system design specification — database schema, all Lambda modules, plugin reference, CDK stack structure, commerce workflow, and authentication flow.
+
+## License
+
+Apache 2.0

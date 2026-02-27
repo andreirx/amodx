@@ -1,30 +1,33 @@
-# AMODX Plugins (The Block Registry)
+# Packages
 
-This workspace contains the UI definitions for the Content Blocks (Hero, Pricing, Contact, etc.).
+Shared npm workspaces consumed by backend, admin, and renderer.
 
-## 🏗 Architecture: Split Entry Points
+## `shared/`
 
-To prevents Server-Side Rendering crashes in Next.js, we split the exports:
+Single source of truth for types and Zod schemas. 30+ schemas including TenantConfig, ProductSchema, OrderSchema, ContentItemSchema, country packs.
 
-1.  **`src/admin.ts`**: Exports Tiptap Extensions (uses `window`, DOM access). Used ONLY by Admin.
-2.  **`src/render.ts`**: Exports React Components. Used by Renderer.
+Build first — everything depends on it.
 
-**⚠️ NEVER import from `src/index.ts` directly in the apps.**
+```bash
+cd packages/shared && npm run build
+```
 
-## 🧩 How to Create a New Block
+## `plugins/`
 
-1.  **Folder:** Create `src/my-block/`.
-2.  **Schema:** Define Zod schema in `schema.ts`.
-3.  **Render:** Create `MyBlockRender.tsx` (Pure React).
-4.  **Editor:** Create `MyBlockEditor.tsx` (Tiptap Node View).
-5.  **Index:** Bundle it into a `PluginDefinition` object.
-6.  **Register:** Add to `REGISTRY` in `src/admin.ts` AND `RENDER_MAP` in `src/render.ts`.
-7.  **Build:** Run `npm run build` in this folder.
+19 block plugins with split entry points to prevent SSR crashes:
 
-## 📦 Available Blocks
-*   **Hero:** Headline, Image, CTA.
-*   **Pricing:** Multi-column plans grid.
-*   **Image:** S3-backed image with alignment/caption.
-*   **Video:** YouTube/Vimeo embed.
-*   **Contact:** Lead capture form (Public).
-*   **Lead Magnet:** Gated content form (Private).
+- `@amodx/plugins/admin` — Tiptap extensions (browser-only). Used by admin.
+- `@amodx/plugins/render` — React components (SSR-safe). Used by renderer.
+
+Each plugin: `schema.ts` (Zod) + `*Editor.tsx` (NodeViewWrapper) + `*Render.tsx` (pure React) + `index.ts` (PluginDefinition).
+
+Plugins: hero, pricing, image, contact, video, leadMagnet, cta, features, testimonials, columns, table, html, faq, postGrid, carousel, codeBlock, reviewsCarousel (commerce), categoryShowcase (commerce), markdown.
+
+Dependencies: highlight.js (syntax highlighting), marked (markdown parsing), swiper (carousel).
+
+### Adding a Plugin
+
+1. Create `src/my-plugin/` with schema.ts, Editor.tsx, Render.tsx, index.ts
+2. Add to `REGISTRY` in `src/admin.ts`
+3. Add to `RENDER_MAP` in `src/render.ts`
+4. `npm run build`

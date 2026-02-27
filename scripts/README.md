@@ -1,73 +1,47 @@
-# AMODX Operations Scripts
+# Scripts
 
-These utility scripts automate the tedious parts of AWS infrastructure management: configuration, domains, and environment syncing.
+Utility scripts for AWS infrastructure management.
 
-## 🛠 `npm run setup-config`
-**Purpose:** Bootstraps the `amodx.config.json` file.
-*   Detects your AWS Account ID and Region via STS.
-*   Creates the config file used by the CDK to determine stack names and domains.
-*   **Run this once** when setting up a new repo or account.
+## `npm run setup-config`
 
-## 🌐 `npm run manage-domains`
-**Purpose:** Automates the SSL Certificate Dance.
-*   Reads domains from `amodx.config.json` (Root + Tenants).
-*   Requests a single ACM Certificate in `us-east-1` (required for CloudFront).
-*   **Interactive:** It polls AWS validation status and prints the CNAME records you need to add to your DNS provider (GoDaddy/Namecheap) to verify ownership.
-*   **Result:** Updates `amodx.config.json` with the validated `globalCertArn`.
+Bootstraps `amodx.config.json`. Detects AWS account ID and region via STS. Creates the config file used by CDK for stack names and domains. Run once per new environment.
 
-## 🔄 `npm run post-deploy`
-**Purpose:** Syncs Cloud infrastructure with Local Development.
-*   Fetches CloudFormation Outputs (API URLs, User Pool IDs).
-*   Fetches Secrets (Master API Key) from Secrets Manager.
-*   **Generates:**
-    *   `admin/.env.local`
-    *   `renderer/.env.local`
-    *   `tools/mcp-server/.env`
-*   **Run this after every `cdk deploy`** to ensure your local apps can talk to the deployed backend.
+## `npm run manage-domains`
 
----
+Requests a single ACM certificate in `us-east-1` covering all domains from `amodx.config.json`. Interactive — polls validation status and prints CNAME records for DNS verification. Updates config with `globalCertArn`.
 
-##  Workflow Example: Adding a Client Domain
+## `npm run post-deploy`
 
-1.  Add domain to `amodx.config.json`:
-    ```json
-    "tenants": ["dental-clinic.com"]
-    ```
-2.  Request Certs:
-    ```bash
-    npm run manage-domains
-    # Add the CNAME records it gives you to the client's DNS
-    ```
-3.  Deploy Infrastructure:
-    ```bash
-    npx cdk deploy
-    ```
-4.  Sync Local Env (Optional, if secrets changed):
-    ```bash
-    npm run post-deploy
-    ```
+Syncs CloudFormation outputs and secrets to local `.env` files:
+- `admin/.env.local` — Cognito pool IDs, API URL
+- `renderer/.env.local` — table name, API URL, NextAuth secret
+- `tools/mcp-server/.env` — API URL, master API key
 
----
+Run after every `cdk deploy`.
 
-## Database restore script
+## Adding a Tenant Domain
 
-If you ever need to restore a dynamodb backup (dynamo will make backups), use the restore-data.ts script. Follow these steps: 
+```bash
+# 1. Add to config
+vim amodx.config.json  # add domain to "tenants" array
 
-Step 1: Restore the Backup
-- Go to AWS Console > DynamoDB > Backups. 
-- Select the backup: AmodxStack-AmodxTable...(name of the backup)
-- Click Restore. 
-- New table name: Enter **Amodx-Rescue**.
-- Click Restore.
-  - This will take 5–10 minutes.
+# 2. Request SSL cert
+npm run manage-domains  # add CNAME records it provides
 
-Step 2: Verify the "Live" Table
-- Go to DynamoDB > Tables.
-- You should see AmodxTable or whatever name you gave it.
-- You should see Amodx-Rescue (The one being restored).
+# 3. Deploy
+cd infra && npm run cdk deploy
 
-Step 3: Copy Data (Rescue -> Live)
+# 4. Sync env (if secrets changed)
+npm run post-deploy
+```
+
+## Database Restore
+
+If restoring from DynamoDB backup:
+
+1. AWS Console → DynamoDB → Backups → select backup → Restore to new table `Amodx-Rescue`
+2. Wait 5-10 minutes for restore
+3. Copy data from rescue table to live table:
 ```bash
 npx tsx scripts/restore-data.ts
 ```
-The script assumes the backup is called Amodx-Rescue.

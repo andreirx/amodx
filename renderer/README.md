@@ -1,51 +1,77 @@
-# AMODX Renderer (Public Engine)
+# Renderer
 
-The Renderer is a **Next.js 16 (OpenNext)** application responsible for serving all tenant sites from a single deployment.
+Next.js 16 multi-tenant public site engine. Deployed to Lambda via OpenNext 3. Serves all tenant websites from a single deployment.
 
-## 🏗 Architecture
+## Stack
 
-### 1. Multi-Tenant Routing (Middleware)
-We do not use wildcard domains in Next.js config. We use **Edge Middleware** (`middleware.ts`).
-1.  **Incoming Request:** `https://client.com/about`
-2.  **Lookup:** Middleware extracts hostname.
-3.  **Rewrite:** Rewrites request to internal path: `/_site/[tenantId]/about`.
-4.  **Result:** The Page Component receives `params.siteId` = `tenantId`.
+- **Next.js 16** (React 19) + **OpenNext 3** (AWS Lambda adapter)
+- **Tailwind CSS v4** with PostCSS plugin
+- **NextAuth.js 4** — per-tenant Google OAuth
+- **DOMPurify** — HTML sanitization
+- **Direct DynamoDB reads** — no API calls, server-side only
+- **`@amodx/plugins/render`** — 19 block render components
 
-### 2. Incremental Static Regeneration (Warm Cache)
-*   **Default:** Pages are cached for 1 hour (`revalidate = 3600`).
-*   **On-Demand:** When Admin saves content, Backend triggers `/api/revalidate`.
-*   **Result:** 0ms start time for visitors.
+## Multi-Tenant Routing
 
-### 3. Authentication & Actors
+Middleware (`src/middleware.ts`) rewrites requests based on hostname:
 
-The Renderer acts as the **Trusted Proxy** between the Public Internet and the Secure Backend.
+| Mode | Input | Rewrite |
+|------|-------|---------|
+| Production | `client.com/about` | `/{domain}/about` (via `X-Forwarded-Host`) |
+| Test | `/tenant/{id}/about` | `/{id}/about` |
+| Preview | `/_site/{id}/about` | `/{id}/about` (admin domains only) |
 
-| Actor | Interface | Auth Method | Headers Sent to Backend |
-| :--- | :--- | :--- | :--- |
-| **Tenant Visitor** | Browser | Public / NextAuth | `x-tenant-id: <ID>` (Injected) |
-| **Renderer (Server)** | API Route | Master Key | `x-api-key: <SECRET>`, `Authorization: Bearer robot` |
+CloudFront Function preserves `X-Forwarded-Host` header for production routing.
 
-### 4. Global Context
-To avoid prop-drilling Tenant IDs into every interactive component (like Forms), we inject it globally at build time.
-*   **Source:** `src/components/ThemeInjector.tsx`
-*   **Variable:** `window.AMODX_TENANT_ID`
+Commerce routes matched by `matchCommercePrefix()` against tenant URL prefixes (`/product/*`, `/category/*`, `/cart`, `/checkout`, `/shop`, `/account`, `/search`).
 
----
+## Data Fetching
 
-## 🔐 Identity (NextAuth.js)
+Server components query DynamoDB directly via `@aws-sdk/lib-dynamodb` (no API roundtrip). Key functions in `src/lib/dynamo.ts`:
 
-We use a **Dynamic Provider** strategy.
-*   **Route:** `src/app/api/auth/[...nextauth]/route.ts`
-*   **Logic:**
-    1.  User clicks "Login with Google".
-    2.  Handler looks up `TenantConfig` from DynamoDB.
-    3.  Initializes Google Provider with **Tenant's Specific Client ID**.
-    4.  Session is scoped to that domain.
+- `getTenantConfig(siteId)` — reads tenant from `SYSTEM / TENANT#<id>` or `GSI_Domain`
+- `getContentBySlug(tenantId, slug)` — reads `ROUTE#<slug>` then `CONTENT#<id>#LATEST`
+- `getProductBySlug(tenantId, slug)` — reads `GSI_Slug` with `<tenantId>#<slug>`
+- `getProductsByCategory(tenantId, catId)` — queries `CATPROD#<catId>#*`
+- `getActiveProducts(tenantId)` — queries `PRODUCT#*` with availability filter
 
----
+## Caching
 
-## 🛠 SEO Engine
+- **ISR**: `revalidate = 3600` (1 hour). On-demand revalidation via `/api/revalidate`
+- **S3 warm cache**: ISR pages cached in S3 (`_cache/` prefix) for instant cold starts
+- **CloudFront**: Disabled for dynamic routes (Lambda). Cached for `_next/static/*` and `assets/*`
 
-*   `robots.txt`: Dynamically generated based on `TenantConfig.status`.
-*   `sitemap.xml`: XML generated from `GET /content` (Published pages only).
-*   `llms.txt`: Markdown summary of the site for AI Agents/Crawlers.
+## Auth (NextAuth.js)
+
+Dynamic per-tenant provider. Route: `src/app/api/auth/[...nextauth]/route.ts`.
+
+1. User clicks "Sign In" → handler reads tenant config from DynamoDB
+2. Initializes Google OAuth with tenant-specific client ID/secret
+3. Session scoped to domain, includes `tenantId`
+
+## SEO Engine
+
+Auto-generated per tenant:
+- `robots.txt` — based on `TenantConfig.status` (draft sites blocked)
+- `sitemap.xml` — published pages from `GET /content`
+- `llms.txt` — markdown summary for AI crawlers
+- `openai-feed` — JSON product feed for AI agents
+
+## Theme System
+
+`ThemeInjector` component writes CSS custom properties (`--primary`, `--background`, etc.) from tenant theme config. All components use `bg-primary`, `text-muted-foreground` etc.
+
+## Layout
+
+- **Sticky header**: TopBar (announcement) + CommerceBar (phone, social, cart, CTA) + Navbar
+- **Footer**: Company details + footer links + legal links (labels from country pack)
+- **Full-bleed blocks**: `RenderBlocks` wraps each block individually. `FULL_BLEED_DEFAULTS` (cta, testimonials, carousel) get no wrapper. Others wrapped in `contentPageMaxWidth`
+- **Width settings**: `contentMaxWidth` (site shell, default max-w-7xl) vs `contentPageMaxWidth` (prose blocks, default max-w-4xl)
+
+## Commands
+
+```bash
+npm run dev          # Next.js dev server (port 3000)
+npm run build        # Next.js build
+npm run build:open   # OpenNext build → .open-next/
+```
