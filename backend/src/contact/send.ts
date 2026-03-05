@@ -1,7 +1,7 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
 import { verifyRecaptcha, getRecaptchaErrorMessage } from "../lib/recaptcha.js";
 
@@ -79,6 +79,26 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }));
 
         console.log("✅ Email dispatched to SES");
+
+        // Create Lead record for CRM
+        const leadId = crypto.randomUUID();
+        await db.send(new PutCommand({
+            TableName: TABLE_NAME,
+            Item: {
+                PK: `TENANT#${tenantId}`,
+                SK: `LEAD#${email}`,
+                id: leadId,
+                tenantId,
+                email,
+                name,
+                source: tags || "contact-form",
+                status: "New",
+                data: { message },
+                createdAt: new Date().toISOString(),
+                Type: "Lead"
+            }
+        }));
+        console.log("✅ Lead record created");
 
         await publishAudit({
             tenantId,

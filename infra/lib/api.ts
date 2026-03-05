@@ -275,7 +275,7 @@ export class AmodxApi extends Construct {
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
             resources: [sesIdentityArn],
         }));
-        props.table.grantReadData(contactFunc);
+        props.table.grantReadWriteData(contactFunc); // Reads tenant config + writes Lead record
 
         this.httpApi.addRoutes({
             path: '/contact',
@@ -504,6 +504,18 @@ export class AmodxApi extends Construct {
             path: '/leads',
             methods: [apigw.HttpMethod.GET],
             integration: new integrations.HttpLambdaIntegration('ListLeadsInt', listLeadsFunc),
+        });
+
+        const deleteLeadFunc = new nodejs.NodejsFunction(this, 'DeleteLeadFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/leads/delete.ts'),
+            handler: 'handler',
+        });
+        props.table.grantWriteData(deleteLeadFunc);
+        this.httpApi.addRoutes({
+            path: '/leads/{email}',
+            methods: [apigw.HttpMethod.DELETE],
+            integration: new integrations.HttpLambdaIntegration('DeleteLeadInt', deleteLeadFunc),
         });
 
         // --- COMMENTS ---

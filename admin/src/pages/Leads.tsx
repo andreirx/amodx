@@ -3,7 +3,7 @@ import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Download } from "lucide-react";
+import { Loader2, Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function Leads() {
@@ -24,6 +24,17 @@ export default function Leads() {
             console.error(e);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function deleteLead(email: string) {
+        if (!confirm(`Delete lead ${email}?`)) return;
+        try {
+            await apiRequest(`/leads/${encodeURIComponent(email)}`, { method: "DELETE" });
+            setLeads(leads.filter(l => l.email !== email));
+        } catch (e) {
+            console.error(e);
+            alert("Failed to delete lead");
         }
     }
 
@@ -72,6 +83,7 @@ export default function Leads() {
                                 <TableHead>Status</TableHead>
                                 <TableHead>Date</TableHead>
                                 <TableHead>Context</TableHead>
+                                <TableHead className="w-[60px]"></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -98,11 +110,21 @@ export default function Leads() {
                                         {/* Show resource ID if they downloaded something */}
                                         {lead.resourceId ? `Downloaded: ${lead.resourceId}` : JSON.stringify(lead.data)}
                                     </TableCell>
+                                    <TableCell>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                            onClick={() => deleteLead(lead.email)}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
                             ))}
                             {leads.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                                         No leads yet. Check your forms!
                                     </TableCell>
                                 </TableRow>
