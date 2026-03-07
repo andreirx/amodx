@@ -162,18 +162,24 @@ export class AmodxStack extends cdk.Stack {
     });
 
     // 3. API Layer
+    // Phase 4: Renderer URL for cache revalidation
+    // Use the root domain if available, otherwise the CloudFront distribution domain
+    const rendererBaseUrl = rootDomain ? `https://${rootDomain}` : undefined;
+
     const api = new AmodxApi(this, 'Api', {
       table: db.table,
       userPoolId: auth.adminPool.userPoolId,
       userPoolClientId: auth.adminClient.userPoolClientId,
       masterKeySecret: masterKeySecret,
       rendererKeySecret: rendererKeySecret, // Phase 2.1: Restricted key for renderer
+      revalidationSecret: revalidationSecret, // Phase 4: Cache invalidation
       uploadsBucket: uploads.bucket,
       privateBucket: uploads.privateBucket,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
       eventBus: events.bus,
       sesEmail: sesEmail,
       adminDomain: rootDomain ? `admin.${rootDomain}` : undefined,
+      rendererUrl: rendererBaseUrl, // Phase 4: For cache revalidation
     });
 
     if (apiDomain && domains) {

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
+import { revalidatePath } from "../lib/revalidate.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -183,6 +184,14 @@ export const handler: AmodxHandler = async (event) => {
             },
             ip: event.requestContext.http.sourceIp
         });
+
+        // Phase 4: Bust CloudFront cache for updated page
+        // Use tenantId as domain - renderer routing supports both domain and tenantId
+        await revalidatePath(tenantId, newSlug);
+        // If slug changed, also invalidate the old slug
+        if (slugChanged && oldSlug) {
+            await revalidatePath(tenantId, oldSlug);
+        }
 
         return { statusCode: 200, body: JSON.stringify({ message: "Updated", version: currentVersion + 1, slug: newSlug }) };
     } catch (error: any) {

@@ -18,12 +18,14 @@ interface AmodxApiProps {
     userPoolClientId: string;
     masterKeySecret: secretsmanager.ISecret;
     rendererKeySecret: secretsmanager.ISecret; // Phase 2.1: Restricted key for renderer
+    revalidationSecret: secretsmanager.ISecret; // Phase 4: Cache invalidation auth
     uploadsBucket: s3.IBucket;
     privateBucket: s3.IBucket;
     uploadsCdnUrl: string;
     eventBus: events.IEventBus;
     sesEmail: string;
     adminDomain?: string;
+    rendererUrl?: string; // Phase 4: For cache revalidation calls
 }
 
 export class AmodxApi extends Construct {
@@ -92,7 +94,10 @@ export class AmodxApi extends Construct {
             runtime: lambda.Runtime.NODEJS_22_X,
             environment: {
                 TABLE_NAME: props.table.tableName,
-                EVENT_BUS_NAME: props.eventBus.eventBusName
+                EVENT_BUS_NAME: props.eventBus.eventBusName,
+                // Phase 4: Cache revalidation
+                RENDERER_URL: props.rendererUrl || '',
+                REVALIDATION_SECRET_NAME: props.revalidationSecret.secretName,
             },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
             memorySize: 1024,           // <--- 1024MB RAM
@@ -127,6 +132,7 @@ export class AmodxApi extends Construct {
             handler: 'handler',
         });
         props.table.grantReadWriteData(updateContentFunc);
+        props.revalidationSecret.grantRead(updateContentFunc);  // Phase 4: Cache invalidation
 
         // History & Restore
         const listHistoryFunc = new nodejs.NodejsFunction(this, 'ListHistoryFunc', {
