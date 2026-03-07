@@ -44,13 +44,13 @@
     "zod": "^3.24.0"
   },
   "peerDependencies": {
-    "@tiptap/core": "^2.11.0",
+    "@tiptap/core": "^3.20.1",
     "@tiptap/react": "^2.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@tiptap/core": "^2.11.0",
+    "@tiptap/core": "^3.20.1",
     "@tiptap/react": "^2.11.0",
     "@types/react": "^19.0.0",
     "next": "^16.0.7",
