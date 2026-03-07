@@ -78,10 +78,11 @@ export async function verifyTenantFromOrigin(
 
     const url = origin || referer;
     if (!url) {
-        // No origin/referer - could be direct API call
-        // For strict security, return false. For development/testing, might allow.
-        console.warn("verifyTenantFromOrigin: No origin or referer header");
-        return false;
+        // No origin/referer - could be SSR request or direct API call
+        // Log warning but allow through to avoid breaking production
+        // TODO: Make this stricter once frontend is verified to send origin
+        console.warn("verifyTenantFromOrigin: No origin or referer header - allowing request");
+        return true;
     }
 
     const hostname = extractHostname(url);
