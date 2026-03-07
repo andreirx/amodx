@@ -15,10 +15,9 @@ jobs:
           node-version: lts/*
 
       - name: Install dependencies
-        # Use npm install instead of npm ci because esbuild has platform-specific
-        # optional deps that differ between macOS (where lock file was generated)
-        # and Linux (where CI runs)
-        run: npm install --ignore-scripts && npm rebuild esbuild
+        # Delete lock file and reinstall - esbuild/rollup have platform-specific
+        # optional deps that differ between macOS (dev) and Linux (CI)
+        run: rm -f package-lock.json && npm install
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
