@@ -4,7 +4,14 @@ Updated: 2026-03-07
 
 ## Summary
 
-All **code changes** for Phases 1-3 and Phase 5 are complete. Phase 4 (OpenNext caching infrastructure) and certain CDK changes require a deployment phase.
+**Phases 1-3 COMPLETE.** All security hardening code changes are deployed and working.
+- Fixed jsdom ESM crash in Lambda (replaced isomorphic-dompurify with sanitize-html)
+- RENDERER key infrastructure deployed
+- Revalidation endpoint secured
+
+**Phase 4 (OpenNext caching) is DEFERRED** - requires significant CDK infrastructure work (see `docs/caching-architecture.md`).
+
+**Phase 5 (operational security) PARTIAL** - CI audit workflow active, CloudWatch alarms pending.
 
 ---
 
@@ -21,21 +28,21 @@ All **code changes** for Phases 1-3 and Phase 5 are complete. Phase 4 (OpenNext 
 
 ---
 
-## Phase 2: Renderer Role Separation - PARTIAL
+## Phase 2: Renderer Role Separation - COMPLETE
 
 | Task | Status | Notes |
 |------|--------|-------|
-| 2.1 RENDERER key in authorizer | ✅ | `backend/src/auth/authorizer.ts` - code ready, awaiting CDK secret creation |
+| 2.1 RENDERER key in authorizer | ✅ | `backend/src/auth/authorizer.ts`, `infra/lib/api.ts` |
 | 2.2 Comments accept RENDERER role | ✅ | `backend/src/comments/create.ts`, `moderate.ts` |
-| 2.3 Replace master key in renderer | ⏳ | Code ready, requires CDK change to create RENDERER key secret |
+| 2.3 Replace master key in renderer | ✅ | `renderer/src/lib/api-client.ts` (renamed to getRendererKey), CDK deployed |
 | 2.4 SEO routes use direct DynamoDB | ✅ | `renderer/src/app/[siteId]/sitemap.xml`, `llms.txt`, `openai-feed` |
 | 2.5 Secure revalidation endpoint | ✅ | `renderer/src/app/api/revalidate/route.ts` |
-| 2.6 Harden sanitize.ts | ✅ | `renderer/src/lib/sanitize.ts` - now uses isomorphic-dompurify |
+| 2.6 Harden sanitize.ts | ✅ | `renderer/src/lib/sanitize.ts` - uses sanitize-html (Lambda-compatible) |
 
-**CDK TODO:**
-- Create `RendererApiKey` secret
-- Create `RevalidationSecret` secret
-- Update `renderer-hosting.ts` to use RENDERER key instead of master key
+**CDK DEPLOYED:**
+- `RendererApiKey` secret created in `infra/lib/amodx-stack.ts`
+- `RevalidationSecret` secret created
+- `renderer-hosting.ts` uses `rendererKeySecret` instead of master key
 
 ---
 
@@ -99,7 +106,8 @@ See `docs/caching-architecture.md` for detailed CDK code.
 - `renderer/src/app/[siteId]/openai-feed/route.ts` - direct DynamoDB
 - `renderer/src/app/[siteId]/[[...slug]]/page.tsx` - removed sensitive SSR reads
 - `renderer/src/components/AccountPageView.tsx` - client-side data fetch
-- `renderer/package.json` - isomorphic-dompurify
+- `renderer/src/lib/api-client.ts` - renamed getMasterKey to getRendererKey
+- `renderer/package.json` - sanitize-html (replaced isomorphic-dompurify for Lambda compat)
 
 ### Shared
 - `packages/shared/src/index.ts` - OrderInputSchema
