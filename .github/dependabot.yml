@@ -1,76 +1,21 @@
 version: 2
 updates:
-  # Root package.json (monorepo root)
+  # Single config for monorepo - npm workspaces handles subdirectories
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     groups:
-      # Group minor/patch updates together
-      npm-dependencies:
+      # Group ALL updates into fewer PRs
+      all-dependencies:
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
-
-  # Backend
-  - package-ecosystem: "npm"
-    directory: "/backend"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    groups:
-      backend-deps:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Renderer (Next.js)
-  - package-ecosystem: "npm"
-    directory: "/renderer"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    groups:
-      renderer-deps:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Admin (Vite/React)
-  - package-ecosystem: "npm"
-    directory: "/admin"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    groups:
-      admin-deps:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-
-  # Infrastructure (CDK)
-  - package-ecosystem: "npm"
-    directory: "/infra"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    groups:
-      cdk-deps:
-        patterns:
-          - "aws-cdk*"
-          - "@aws-cdk/*"
-          - "constructs"
+    # Ignore major version bumps - review manually
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
