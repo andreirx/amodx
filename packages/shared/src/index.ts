@@ -1107,6 +1107,34 @@ export const CustomerSchema = z.object({
 });
 export type Customer = z.infer<typeof CustomerSchema>;
 
+// --- ORDER INPUT VALIDATION (for public checkout API) ---
+
+export const OrderItemInputSchema = z.object({
+    productId: z.string().uuid(),
+    quantity: z.number().int().min(1).max(100),
+    selectedVariant: z.string().optional(),
+    personalizations: z.array(z.object({
+        id: z.string(),
+        label: z.string(),
+        value: z.string().max(500)
+    })).optional()
+});
+
+export const OrderInputSchema = z.object({
+    items: z.array(OrderItemInputSchema).min(1).max(50),
+    customerEmail: z.string().email().max(254),
+    customerName: z.string().min(1).max(200),
+    customerPhone: z.string().max(30).optional(),
+    customerBirthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    shippingAddress: ShippingAddressSchema.optional(),
+    billingDetails: BillingDetailsSchema.optional(),
+    paymentMethod: z.enum(["cod", "bank_transfer"]),
+    requestedDeliveryDate: z.string().optional(),
+    couponCode: z.string().max(50).optional(),
+    recaptchaToken: z.string().min(1).optional(), // Optional for backwards compat, enforced in handler when enabled
+});
+export type OrderInput = z.infer<typeof OrderInputSchema>;
+
 // --- COUPONS ---
 
 export const CouponSchema = z.object({

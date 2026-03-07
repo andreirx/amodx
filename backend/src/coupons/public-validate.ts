@@ -1,6 +1,8 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { verifyRecaptcha } from "../lib/recaptcha.js";
+import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -8,12 +10,54 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
 
+        // Phase 3.4: Verify tenant ID matches origin domain
+        const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId);
+        if (!tenantVerified) {
+            return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
+        }
+
         const body = JSON.parse(event.body);
-        const { code, subtotal, customerEmail, items } = body;
+        const { code, subtotal, customerEmail, items, recaptchaToken } = body;
 
         if (!code) return { statusCode: 400, body: JSON.stringify({ error: "Missing coupon code" }) };
         if (subtotal === undefined || subtotal === null) {
             return { statusCode: 400, body: JSON.stringify({ error: "Missing subtotal" }) };
+        }
+
+        // Phase 1.5: Fetch tenant config for reCAPTCHA settings
+        const tenantResult = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
+        }));
+        const tenantConfig = tenantResult.Item || {};
+
+        // reCAPTCHA verification to prevent coupon enumeration
+        const recaptchaConfig = tenantConfig.recaptcha;
+        if (recaptchaConfig?.enabled && recaptchaConfig?.secretKey) {
+            if (!recaptchaToken) {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ error: "Verification required" })
+                };
+            }
+
+            const recaptchaResult = await verifyRecaptcha(
+                recaptchaToken,
+                recaptchaConfig.secretKey,
+                event.requestContext?.http?.sourceIp
+            );
+
+            const threshold = recaptchaConfig.threshold ?? 0.5;
+            if (!recaptchaResult.success || recaptchaResult.score < threshold) {
+                console.warn("Coupon validate reCAPTCHA failed:", {
+                    success: recaptchaResult.success,
+                    score: recaptchaResult.score
+                });
+                return {
+                    statusCode: 403,
+                    body: JSON.stringify({ error: "Verification failed" })
+                };
+            }
         }
 
         const upperCode = code.toUpperCase();

@@ -3,9 +3,15 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
+import { verifyRecaptcha } from "../lib/recaptcha.js";
+import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
+import { OrderInputSchema } from "@amodx/shared";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
+
+// Email rate limiting: max emails per address per hour
+const EMAIL_RATE_LIMIT = 5;
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -13,29 +19,70 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
 
-        const body = JSON.parse(event.body);
+        // Phase 3.4: Verify tenant ID matches origin domain
+        const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId);
+        if (!tenantVerified) {
+            console.warn("Tenant verification failed", { tenantId, origin: event.headers['origin'] });
+            return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
+        }
+
+        // --- Zod validation (Phase 1.1) ---
+        const parseResult = OrderInputSchema.safeParse(JSON.parse(event.body));
+        if (!parseResult.success) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({
+                    error: "Invalid input",
+                    details: parseResult.error.flatten()
+                })
+            };
+        }
+
         const {
             items, customerEmail, customerName, customerPhone, customerBirthday,
             shippingAddress, billingDetails, paymentMethod, requestedDeliveryDate,
-            couponCode
-        } = body;
-
-        if (!items || !Array.isArray(items) || items.length === 0) {
-            return { statusCode: 400, body: JSON.stringify({ error: "Items are required" }) };
-        }
-        if (!customerEmail || !customerName) {
-            return { statusCode: 400, body: JSON.stringify({ error: "Customer email and name are required" }) };
-        }
+            couponCode, recaptchaToken
+        } = parseResult.data;
 
         const now = new Date().toISOString();
         const orderId = crypto.randomUUID();
 
-        // --- Fetch tenant config for currency ---
+        // --- Fetch tenant config for currency and reCAPTCHA ---
         const tenantResult = await db.send(new GetCommand({
             TableName: TABLE_NAME,
             Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
         }));
         const tenantConfig = tenantResult.Item || {};
+
+        // --- reCAPTCHA verification (Phase 1.3) ---
+        const recaptchaConfig = tenantConfig.recaptcha;
+        if (recaptchaConfig?.enabled && recaptchaConfig?.secretKey) {
+            if (!recaptchaToken) {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({ error: "Verification required" })
+                };
+            }
+
+            const recaptchaResult = await verifyRecaptcha(
+                recaptchaToken,
+                recaptchaConfig.secretKey,
+                event.requestContext?.http?.sourceIp
+            );
+
+            const threshold = recaptchaConfig.threshold ?? 0.5;
+            if (!recaptchaResult.success || recaptchaResult.score < threshold) {
+                console.warn("reCAPTCHA failed:", {
+                    success: recaptchaResult.success,
+                    score: recaptchaResult.score,
+                    errors: recaptchaResult["error-codes"]
+                });
+                return {
+                    statusCode: 403,
+                    body: JSON.stringify({ error: "Verification failed. Please try again." })
+                };
+            }
+        }
 
         // --- Server-side price validation ---
         const validatedItems = [];
@@ -110,11 +157,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         (c: string) => c.toLowerCase().trim() === customerCountry
                     );
                     if (!isCountryAllowed) {
+                        // Phase 1.6: Genericize error message to prevent zone enumeration
                         return {
                             statusCode: 400,
                             body: JSON.stringify({
                                 error: "Delivery not available",
-                                message: `We don't deliver to ${shippingAddress.country}. Allowed countries: ${allowedCountries.join(", ")}`
+                                message: "We don't deliver to this address. Please check our delivery information page."
                             })
                         };
                     }
@@ -127,11 +175,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         (c: string) => c.toLowerCase().trim() === customerCounty
                     );
                     if (!isCountyAllowed) {
+                        // Phase 1.6: Genericize error message to prevent zone enumeration
                         return {
                             statusCode: 400,
                             body: JSON.stringify({
                                 error: "Delivery not available",
-                                message: `We don't deliver to ${shippingAddress.county}. Allowed regions: ${allowedCounties.join(", ")}`
+                                message: "We don't deliver to this address. Please check our delivery information page."
                             })
                         };
                     }
@@ -280,7 +329,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                     }
                 }
             },
-            // 3. Customer upsert (with birthday, billing details, loyalty points)
+            // 3. Customer upsert (Phase 1.2: use if_not_exists for PII to prevent overwrite attacks)
             {
                 Update: {
                     TableName: TABLE_NAME,
@@ -289,17 +338,19 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                         SK: `CUSTOMER#${customerEmail.toLowerCase()}`
                     },
                     UpdateExpression: [
-                        "SET #n = :name",
-                        "phone = :phone",
+                        // Only set name/phone/address on FIRST order (protect existing customer data)
+                        "SET #n = if_not_exists(#n, :name)",
+                        "phone = if_not_exists(phone, :phone)",
+                        "defaultAddress = if_not_exists(defaultAddress, :address)",
+                        // Always increment counters
                         "orderCount = if_not_exists(orderCount, :zero) + :one",
                         "totalSpent = if_not_exists(totalSpent, :zero) + :total",
                         "loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points",
                         "lastOrderDate = :now",
-                        "defaultAddress = :address",
                         "#t = :type",
-                        // Only set birthday/billingDetails if provided (don't overwrite with null)
-                        ...(customerBirthday ? ["birthday = :birthday"] : []),
-                        ...(billingDetails?.isCompany ? ["defaultBillingDetails = :billing"] : []),
+                        // Only set birthday/billingDetails if provided AND not already set
+                        ...(customerBirthday ? ["birthday = if_not_exists(birthday, :birthday)"] : []),
+                        ...(billingDetails?.isCompany ? ["defaultBillingDetails = if_not_exists(defaultBillingDetails, :billing)"] : []),
                     ].join(", "),
                     ExpressionAttributeNames: {
                         "#n": "name",
@@ -339,6 +390,41 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         // --- Send confirmation emails via templates ---
         if (FROM_EMAIL && customerEmail) {
             try {
+                // Phase 1.4: Email rate limiting - prevent email bombing
+                const emailKey = `EMAILLIMIT#${customerEmail.toLowerCase()}`;
+                const hour = Math.floor(Date.now() / 3600000);
+
+                const emailLimitRes = await db.send(new GetCommand({
+                    TableName: TABLE_NAME,
+                    Key: { PK: 'SYSTEM', SK: emailKey }
+                }));
+
+                const currentHour = emailLimitRes.Item?.hour;
+                const emailCount = currentHour === hour ? (emailLimitRes.Item?.count || 0) : 0;
+
+                if (emailCount >= EMAIL_RATE_LIMIT) {
+                    console.warn(`Email rate limit exceeded for ${customerEmail}, skipping order confirmation email`);
+                    // Still return success - order is created, just skip email
+                    return {
+                        statusCode: 201,
+                        body: JSON.stringify({ orderId, orderNumber, couponDiscount })
+                    };
+                }
+
+                // Update email counter with TTL (expires in 2 hours)
+                await db.send(new UpdateCommand({
+                    TableName: TABLE_NAME,
+                    Key: { PK: 'SYSTEM', SK: emailKey },
+                    UpdateExpression: 'SET #h = :hour, #c = if_not_exists(#c, :zero) + :one, #ttl = :ttl',
+                    ExpressionAttributeNames: { '#h': 'hour', '#c': 'count', '#ttl': 'ttl' },
+                    ExpressionAttributeValues: {
+                        ':hour': hour,
+                        ':zero': 0,
+                        ':one': 1,
+                        ':ttl': Math.floor(Date.now() / 1000) + 7200 // 2 hour TTL
+                    }
+                }));
+
                 const tenantRes = await db.send(new GetCommand({
                     TableName: TABLE_NAME,
                     Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }

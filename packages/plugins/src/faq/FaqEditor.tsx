@@ -51,7 +51,7 @@ export function FaqEditor(props: any) {
                 <div className="p-5">
                     <div className="mb-6">
                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Headline</label>
-                        <Input value={headline} onChange={(e: any) => update('headline', e.target.value)} />
+                        <Input value={headline} onChange={(val: string) => update('headline', val)} />
                     </div>
 
                     <div className="space-y-3">
@@ -60,12 +60,12 @@ export function FaqEditor(props: any) {
                                 <div className="flex-1 space-y-2">
                                     <Input
                                         value={item.question}
-                                        onChange={(e: any) => updateItem(i, 'question', e.target.value)}
+                                        onChange={(val: string) => updateItem(i, 'question', val)}
                                         placeholder="Question"
                                     />
                                     <TextArea
                                         value={item.answer}
-                                        onChange={(e: any) => updateItem(i, 'answer', e.target.value)}
+                                        onChange={(val: string) => updateItem(i, 'answer', val)}
                                         placeholder="Answer"
                                     />
                                 </div>

@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTenantUrl } from "@/lib/routing";
 import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
@@ -49,39 +49,80 @@ const STATUS_COLORS: Record<string, string> = {
     annulled: "bg-gray-100 text-gray-700",
 };
 
+/**
+ * Phase 3.2: Account page now fetches orders via secure API route.
+ * The API route validates the session and uses email from session only.
+ */
 export function AccountPageView({
-    orders,
-    customer,
     currency,
     checkoutPrefix,
     shopPrefix,
     contentMaxWidth = "max-w-4xl",
     askBirthday = true,
     strings = COMMERCE_STRINGS_DEFAULTS,
-    apiUrl,
-    tenantId,
 }: {
-    orders: Order[];
-    customer: CustomerData | null;
     currency: string;
     checkoutPrefix: string;
     shopPrefix: string;
     contentMaxWidth?: string;
     askBirthday?: boolean;
     strings?: CommerceStrings;
-    apiUrl: string;
-    tenantId: string;
 }) {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const { getUrl } = useTenantUrl();
+
+    // Phase 3.2: Client-side fetch of sensitive data via secure API routes
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [customer, setCustomer] = useState<CustomerData | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (status === "authenticated" && session?.user?.email) {
+            // Fetch orders and profile via secure API routes
+            Promise.all([
+                fetch("/api/account/orders").then(r => r.ok ? r.json() : { orders: [] }),
+                fetch("/api/profile").then(r => r.ok ? r.json() : null)
+            ]).then(([ordersData, profileData]) => {
+                setOrders(ordersData.orders || []);
+                setCustomer(profileData);
+                setLoading(false);
+            }).catch(() => {
+                setLoading(false);
+            });
+        } else if (status !== "loading") {
+            setLoading(false);
+        }
+    }, [status, session?.user?.email]);
 
     // Edit mode state
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [editForm, setEditForm] = useState({
-        phone: customer?.phone || "",
-        birthday: customer?.birthday || "",
+        phone: "",
+        birthday: "",
     });
+
+    // Update edit form when customer data loads
+    useEffect(() => {
+        if (customer) {
+            setEditForm({
+                phone: customer.phone || "",
+                birthday: customer.birthday || "",
+            });
+        }
+    }, [customer]);
+
+    // Loading state
+    if (status === "loading" || loading) {
+        return (
+            <div className={`${contentMaxWidth} mx-auto py-20 px-4 text-center`}>
+                <div className="animate-pulse">
+                    <div className="h-8 bg-muted rounded w-48 mx-auto mb-4"></div>
+                    <div className="h-4 bg-muted rounded w-64 mx-auto"></div>
+                </div>
+            </div>
+        );
+    }
 
     if (!session) {
         return (

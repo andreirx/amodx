@@ -1,4 +1,6 @@
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getCustomerOrders, getCustomerProfile } from "@/lib/dynamo";
+// Phase 3.3: Removed getCustomerOrders, getCustomerProfile from direct SSR imports
+// These are now fetched via secure API routes that validate sessions
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews } from "@/lib/dynamo";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { notFound, permanentRedirect } from "next/navigation";
 import { Metadata } from "next";
@@ -241,39 +243,18 @@ export default async function Page({ params, searchParams }: Props) {
         if (!commerceEnabled) return notFound();
 
         if (commerce.type === 'account') {
-            // Decode session from JWT cookie server-side
-            let userEmail: string | null = null;
-            try {
-                const cookieStore = await cookies();
-                const token = cookieStore.get("next-auth.session-token")?.value;
-                if (token && process.env.NEXTAUTH_SECRET) {
-                    const decoded = await decode({ token, secret: process.env.NEXTAUTH_SECRET });
-                    userEmail = decoded?.email as string || null;
-                }
-            } catch {}
-
-            let orders: any[] = [];
-            let customer: any = null;
-            if (userEmail) {
-                [orders, customer] = await Promise.all([
-                    getCustomerOrders(config.id, userEmail),
-                    getCustomerProfile(config.id, userEmail),
-                ]);
-            }
+            // Phase 3.2: Account page now fetches sensitive data client-side
+            // via secure API routes (/api/account/orders, /api/profile)
+            // This removes direct DynamoDB access to customer/order data from SSR
             const strings = getCommerceStrings(config);
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
             return (
                 <AccountPageView
-                    orders={orders}
-                    customer={customer}
                     currency={config.currency || "USD"}
                     checkoutPrefix={prefixes.checkout || "/checkout"}
                     shopPrefix={prefixes.shop || "/shop"}
                     contentMaxWidth={config.header?.contentPageMaxWidth || "max-w-4xl"}
                     askBirthday={config.askBirthdayOnAccount ?? true}
                     strings={strings}
-                    apiUrl={apiUrl}
-                    tenantId={config.id}
                 />
             );
         }

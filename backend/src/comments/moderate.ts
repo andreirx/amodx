@@ -11,8 +11,9 @@ export const handler: Handler = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
 
-        // Security: Only staff can moderate
-        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+        // Security: Only staff (and RENDERER for delete) can moderate
+        // Phase 2.2: RENDERER role can delete comments it created
+        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR", "RENDERER"], tenantId);
 
         if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
         if (!event.body) return { statusCode: 400, body: "Missing Body" };

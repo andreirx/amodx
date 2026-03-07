@@ -1,19 +1,11 @@
-import DOMPurify from "dompurify";
+import DOMPurify from "isomorphic-dompurify";
 
 /**
  * Sanitize HTML to prevent XSS attacks.
- * Allows basic formatting tags only.
+ * Uses isomorphic-dompurify for SSR-safe sanitization.
+ * Phase 2.6: Replaced weak regex fallback with proper server-side DOM sanitization.
  */
 export function sanitizeHtml(dirty: string): string {
-    if (typeof window === "undefined") {
-        // Server-side: strip all HTML tags as fallback
-        // DOMPurify requires a DOM, so we do basic stripping
-        return dirty
-            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-            .replace(/<[^>]*on\w+\s*=/gi, "<") // Remove event handlers
-            .replace(/<(iframe|object|embed|form|input|button)/gi, "&lt;$1"); // Neuter dangerous tags
-    }
-
     return DOMPurify.sanitize(dirty, {
         ALLOWED_TAGS: [
             "b", "i", "em", "strong", "u", "s", "strike",
@@ -38,14 +30,9 @@ export function sanitizeHtml(dirty: string): string {
 /**
  * Sanitize HTML more strictly - only inline formatting allowed.
  * Use for short text like TopBar announcements.
+ * Phase 2.6: Uses isomorphic-dompurify for SSR safety.
  */
 export function sanitizeInlineHtml(dirty: string): string {
-    if (typeof window === "undefined") {
-        return dirty
-            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-            .replace(/<[^>]*on\w+\s*=/gi, "<");
-    }
-
     return DOMPurify.sanitize(dirty, {
         ALLOWED_TAGS: ["b", "i", "em", "strong", "u", "s", "span", "a", "br"],
         ALLOWED_ATTR: ["href", "target", "rel", "class", "style"],

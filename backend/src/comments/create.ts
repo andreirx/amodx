@@ -3,13 +3,25 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { CommentSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
+import { requireRole } from "../auth/policy.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+
+// Phase 2.2: RENDERER role can create comments (in addition to admin roles)
+const ALLOWED_ROLES = ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR", "RENDERER"];
 
 export const handler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
+
+        // Verify role (RENDERER role is allowed for comment creation)
+        const auth = event.requestContext.authorizer?.lambda as AuthorizerContext;
+        try {
+            requireRole(auth, ALLOWED_ROLES, tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         const body = JSON.parse(event.body || "{}");
 

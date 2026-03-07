@@ -1,5 +1,4 @@
-import { getTenantConfig } from "@/lib/dynamo";
-import { getMasterKey } from "@/lib/api-client";
+import { getTenantConfig, getProductsForFeed } from "@/lib/dynamo";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
@@ -13,30 +12,17 @@ export async function GET(
 
     if (!config) return new NextResponse("Site not found", { status: 404 });
 
-    const apiKey = await getMasterKey();
-    const apiUrl = process.env.API_URL;
-
-    const res = await fetch(`${apiUrl}/products`, {
-        headers: {
-            "x-tenant-id": config.id,
-            "x-api-key": apiKey || "",
-            "Authorization": "Bearer robot"
-        }
-    });
-
-    if (!res.ok) return new NextResponse("Error fetching products", { status: 500 });
-
-    const { items } = await res.json();
+    // Phase 2.4: Direct DynamoDB reads instead of API calls with master key
+    const items = await getProductsForFeed(config.id);
     const baseUrl = `https://${config.domain}`;
+    const productPrefix = config.urlPrefixes?.product || '/product';
 
-    // FILTER & TRANSFORM
-    const products = items
-        .filter((p: any) => p.status === 'active') // <--- STRICT FILTER
-        .map((p: any) => ({
+    // Transform to OpenAI/Google product feed format
+    const products = items.map((p: any) => ({
             id: p.id,
             title: p.title,
             description: p.description,
-            link: `${baseUrl}/products/${p.id}`,
+            link: `${baseUrl}${productPrefix}/${p.slug}`,
             image_link: p.imageLink,
             additional_image_links: p.additionalImageLinks,
             price: `${p.price} ${p.currency}`,

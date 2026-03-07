@@ -529,7 +529,85 @@ export async function getPosts(tenantId: string, tag?: string, limit: number = 6
     }
 }
 
-// 12. Fetch Form Definition by Slug
+// 12. Fetch all published content for SEO routes (sitemap, llms.txt)
+export async function getPublishedContent(tenantId: string) {
+    if (!process.env.TABLE_NAME) return [];
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: process.env.TABLE_NAME,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "CONTENT#",
+                ":pub": "Published"
+            },
+            FilterExpression: "#s = :pub",
+            ExpressionAttributeNames: { "#s": "status" },
+            ProjectionExpression: "id, title, slug, seoDescription, createdAt, updatedAt, #s",
+        }));
+
+        // Filter only LATEST versions
+        const items = (result.Items || []).filter((item: any) => item.SK?.endsWith("#LATEST"));
+
+        return items.map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            slug: p.slug,
+            seoDescription: p.seoDescription,
+            status: p.status,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt
+        }));
+    } catch (e) {
+        console.error("DynamoDB Published Content Error:", e);
+        return [];
+    }
+}
+
+// 13. Fetch all active products for SEO feed (openai-feed)
+export async function getProductsForFeed(tenantId: string) {
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) return [];
+
+    try {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :active",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "PRODUCT#",
+                ":active": "active"
+            },
+            ExpressionAttributeNames: { "#s": "status", "#c": "condition" },
+            // All fields needed for product feed
+            ProjectionExpression: "id, title, description, slug, price, currency, salePrice, availability, imageLink, additionalImageLinks, brand, #c, availableFrom, availableUntil",
+        }));
+
+        return (result.Items || [])
+            .filter((p: any) => isProductAvailable(p))
+            .map((p: any) => ({
+                id: p.id,
+                title: p.title,
+                description: p.description,
+                slug: p.slug,
+                price: p.price,
+                currency: p.currency,
+                salePrice: p.salePrice,
+                availability: p.availability,
+                imageLink: p.imageLink,
+                additionalImageLinks: p.additionalImageLinks,
+                brand: p.brand,
+                condition: p.condition
+            }));
+    } catch (e) {
+        console.error("DynamoDB Products Feed Error:", e);
+        return [];
+    }
+}
+
+// 14. Fetch Form Definition by Slug
 export async function getFormBySlug(tenantId: string, slug: string) {
     const tableName = process.env.TABLE_NAME;
     if (!tableName) return null;

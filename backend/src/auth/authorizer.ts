@@ -9,8 +9,10 @@ import { AuthorizerContext } from "./context.js";
 const userPoolId = process.env.USER_POOL_ID!;
 const clientId = process.env.USER_POOL_CLIENT_ID!;
 const secretName = process.env.MASTER_KEY_SECRET_NAME!;
+const rendererKeySecretName = process.env.RENDERER_KEY_SECRET_NAME; // Optional, for Phase 2.1
 
 let cachedMasterKey: string | null = null;
+let cachedRendererKey: string | null = null;
 const secretsClient = new SecretsManagerClient({});
 
 async function getMasterKey() {
@@ -31,6 +33,28 @@ async function getMasterKey() {
         }
     } catch (e) {
         console.error("Failed to fetch Master Key secret", e);
+    }
+    return null;
+}
+
+// Phase 2.1: Fetch restricted RENDERER key for renderer Lambda
+async function getRendererKey() {
+    if (!rendererKeySecretName) return null;
+    if (cachedRendererKey) return cachedRendererKey;
+    try {
+        const response = await secretsClient.send(new GetSecretValueCommand({ SecretId: rendererKeySecretName }));
+        if (response.SecretString) {
+            try {
+                const secret = JSON.parse(response.SecretString);
+                cachedRendererKey = secret.apiKey || response.SecretString;
+            } catch (e) {
+                cachedRendererKey = response.SecretString;
+            }
+            cachedRendererKey = cachedRendererKey?.trim() || null;
+            return cachedRendererKey;
+        }
+    } catch (e) {
+        console.error("Failed to fetch Renderer Key secret", e);
     }
     return null;
 }
@@ -110,7 +134,7 @@ export const handler = async (
         console.error("CRITICAL: Failed to retrieve Master Key from Secrets Manager.");
     }
 
-    // 2. Compare
+    // 2. Compare Master Key
     if (masterKey && apiKey) {
         if (apiKey === masterKey) {
             console.log("✅ Auth Success: Master Key Match");
@@ -119,9 +143,22 @@ export const handler = async (
                 context: { sub: "system-robot", role: "GLOBAL_ADMIN", tenantId: "ALL" }
             };
         } else {
-            // Log forensic details
-            logKeyMismatch(masterKey, apiKey);
+            // Log forensic details (only if not renderer key)
+            const rendererKey = await getRendererKey();
+            if (!rendererKey || apiKey !== rendererKey) {
+                logKeyMismatch(masterKey, apiKey);
+            }
         }
+    }
+
+    // 2b. Phase 2.1: Compare RENDERER Key (restricted role - can only POST/DELETE comments)
+    const rendererKey = await getRendererKey();
+    if (rendererKey && apiKey === rendererKey) {
+        console.log("✅ Auth Success: Renderer Key Match");
+        return {
+            isAuthorized: true,
+            context: { sub: "renderer", role: "RENDERER", tenantId: "ALL" }
+        };
     }
 
     // 3. Cognito Token Check

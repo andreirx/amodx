@@ -1,0 +1,83 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Mondays at 9am UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security audit (high severity)
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+      - name: Security audit report
+        if: failure()
+        run: |
+          echo "## Security Audit Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "High or critical vulnerabilities detected. Run \`npm audit\` locally for details." >> $GITHUB_STEP_SUMMARY
+          npm audit >> $GITHUB_STEP_SUMMARY 2>&1 || true
+
+  audit-backend:
+    name: Backend audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Security audit (backend)
+        working-directory: backend
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+  audit-renderer:
+    name: Renderer audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install renderer dependencies
+        working-directory: renderer
+        run: npm ci
+
+      - name: Security audit (renderer)
+        working-directory: renderer
+        run: npm audit --audit-level=high
+        continue-on-error: false

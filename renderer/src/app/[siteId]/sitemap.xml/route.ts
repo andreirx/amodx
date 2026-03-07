@@ -1,5 +1,4 @@
-import { getTenantConfig } from "@/lib/dynamo";
-import { getMasterKey } from "@/lib/api-client";
+import { getTenantConfig, getPublishedContent, getAllCategories, getActiveProducts } from "@/lib/dynamo";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic'; // Ensure fresh data
@@ -12,39 +11,26 @@ export async function GET(
     const config = await getTenantConfig(siteId);
     if (!config) return new NextResponse("Site not found", { status: 404 });
 
-    const apiKey = await getMasterKey();
-    const apiUrl = process.env.API_URL;
-
-    // 1. Fetch Pages from Backend
-    const res = await fetch(`${apiUrl}/content`, {
-        headers: {
-            "x-tenant-id": config.id,
-            "x-api-key": apiKey || "",
-            "Authorization": "Bearer robot"
-        }
-    });
-
-    if (!res.ok) {
-        console.error(`Sitemap fetch failed: ${res.status}`);
-        return new NextResponse("Error generating sitemap", { status: 500 });
-    }
-
-    const { items } = await res.json();
+    // Phase 2.4: Direct DynamoDB reads instead of API calls with master key
+    const [items, categories, productsResult] = await Promise.all([
+        getPublishedContent(config.id),
+        config.commerceEnabled ? getAllCategories(config.id) : Promise.resolve([]),
+        config.commerceEnabled ? getActiveProducts(config.id, 1, 1000) : Promise.resolve({ items: [] })
+    ]);
 
     // Ensure no trailing slash on domain
     const baseUrl = `https://${config.domain.replace(/\/$/, '')}`;
+    const prefixes = config.urlPrefixes || {};
+    const productPrefix = prefixes.product || '/product';
+    const categoryPrefix = prefixes.category || '/category';
 
-    // 2. Build URL Nodes
-    const urlNodes = items
+    // 2. Build URL Nodes for content pages
+    const contentNodes = items
         .filter((p: any) => p.status === "Published" || p.status === "Live")
         .map((page: any) => {
-            // Ensure slug has leading slash
             const slug = page.slug.startsWith('/') ? page.slug : `/${page.slug}`;
-            // Use update time or create time
             const lastMod = page.updatedAt || page.createdAt || new Date().toISOString();
-            // Higher priority for Homepage
             const priority = slug === '/' ? '1.0' : '0.8';
-
             return `
   <url>
     <loc>${baseUrl}${slug}</loc>
@@ -52,13 +38,30 @@ export async function GET(
     <changefreq>weekly</changefreq>
     <priority>${priority}</priority>
   </url>`;
-        })
-        .join("");
+        });
 
-    // 3. Wrap in XML (Trimmed to avoid whitespace errors)
+    // 3. Build URL Nodes for categories (if commerce enabled)
+    const categoryNodes = categories.map((cat: any) => `
+  <url>
+    <loc>${baseUrl}${categoryPrefix}/${cat.slug}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`);
+
+    // 4. Build URL Nodes for products (if commerce enabled)
+    const productNodes = productsResult.items.map((prod: any) => `
+  <url>
+    <loc>${baseUrl}${productPrefix}/${prod.slug}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`);
+
+    const allNodes = [...contentNodes, ...categoryNodes, ...productNodes].join("");
+
+    // 5. Wrap in XML (Trimmed to avoid whitespace errors)
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urlNodes}
+${allNodes}
 </urlset>`.trim();
 
     return new NextResponse(xml, {
