@@ -1,13 +1,13 @@
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtmlLib from "sanitize-html";
 
 /**
  * Sanitize HTML to prevent XSS attacks.
- * Uses isomorphic-dompurify for SSR-safe sanitization.
- * Phase 2.6: Replaced weak regex fallback with proper server-side DOM sanitization.
+ * Uses sanitize-html for Lambda-compatible, pure-JS sanitization.
+ * Phase 2.6: Replaced isomorphic-dompurify (jsdom native deps fail in Lambda ARM64).
  */
 export function sanitizeHtml(dirty: string): string {
-    return DOMPurify.sanitize(dirty, {
-        ALLOWED_TAGS: [
+    return sanitizeHtmlLib(dirty, {
+        allowedTags: [
             "b", "i", "em", "strong", "u", "s", "strike",
             "br", "p", "span", "div",
             "ul", "ol", "li",
@@ -16,27 +16,44 @@ export function sanitizeHtml(dirty: string): string {
             "table", "thead", "tbody", "tr", "th", "td",
             "img", "hr"
         ],
-        ALLOWED_ATTR: [
-            "href", "target", "rel", "src", "alt", "title",
-            "class", "style", "width", "height"
-        ],
-        ALLOW_DATA_ATTR: false,
-        ADD_ATTR: ["target"], // Allow target="_blank"
-        FORBID_TAGS: ["script", "iframe", "object", "embed", "form", "input", "button", "textarea", "select"],
-        FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur"]
+        allowedAttributes: {
+            "a": ["href", "target", "rel", "title", "class", "style"],
+            "img": ["src", "alt", "title", "width", "height", "class", "style"],
+            "span": ["class", "style"],
+            "div": ["class", "style"],
+            "p": ["class", "style"],
+            "table": ["class", "style"],
+            "th": ["class", "style"],
+            "td": ["class", "style"],
+            "h1": ["class", "style"],
+            "h2": ["class", "style"],
+            "h3": ["class", "style"],
+            "h4": ["class", "style"],
+            "h5": ["class", "style"],
+            "h6": ["class", "style"],
+            "blockquote": ["class", "style"],
+            "pre": ["class", "style"],
+            "code": ["class", "style"],
+            "ul": ["class", "style"],
+            "ol": ["class", "style"],
+            "li": ["class", "style"]
+        },
+        disallowedTagsMode: "discard"
     });
 }
 
 /**
  * Sanitize HTML more strictly - only inline formatting allowed.
  * Use for short text like TopBar announcements.
- * Phase 2.6: Uses isomorphic-dompurify for SSR safety.
  */
 export function sanitizeInlineHtml(dirty: string): string {
-    return DOMPurify.sanitize(dirty, {
-        ALLOWED_TAGS: ["b", "i", "em", "strong", "u", "s", "span", "a", "br"],
-        ALLOWED_ATTR: ["href", "target", "rel", "class", "style"],
-        ALLOW_DATA_ATTR: false
+    return sanitizeHtmlLib(dirty, {
+        allowedTags: ["b", "i", "em", "strong", "u", "s", "span", "a", "br"],
+        allowedAttributes: {
+            "a": ["href", "target", "rel", "class", "style"],
+            "span": ["class", "style"]
+        },
+        disallowedTagsMode: "discard"
     });
 }
 
