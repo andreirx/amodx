@@ -19,16 +19,16 @@
     "post-deploy-staging": "npx tsx scripts/post-deploy-staging.ts"
   },
   "dependencies": {
-    "autoprefixer": "^10.4.22",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.17"
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
-    "@aws-sdk/client-acm": "^3.952.0",
-    "@aws-sdk/client-cloudformation": "^3.948.0",
+    "@aws-sdk/client-acm": "^3.1004.0",
+    "@aws-sdk/client-cloudformation": "^3.1004.0",
     "@aws-sdk/client-secrets-manager": "^3.948.0",
-    "@aws-sdk/client-sts": "^3.952.0",
-    "@playwright/test": "^1.57.0",
+    "@aws-sdk/client-sts": "^3.1004.0",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.10.1",
     "prompts": "^2.4.2",
     "tsx": "^4.7.1"
