@@ -17,6 +17,7 @@ interface AmodxApiProps {
     userPoolId: string;
     userPoolClientId: string;
     masterKeySecret: secretsmanager.ISecret;
+    rendererKeySecret: secretsmanager.ISecret; // Phase 2.1: Restricted key for renderer
     uploadsBucket: s3.IBucket;
     privateBucket: s3.IBucket;
     uploadsCdnUrl: string;
@@ -53,10 +54,12 @@ export class AmodxApi extends Construct {
                 USER_POOL_ID: props.userPoolId,
                 USER_POOL_CLIENT_ID: props.userPoolClientId,
                 MASTER_KEY_SECRET_NAME: props.masterKeySecret.secretName,
+                RENDERER_KEY_SECRET_NAME: props.rendererKeySecret.secretName, // Phase 2.1
             },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         });
         props.masterKeySecret.grantRead(authorizerFunc);
+        props.rendererKeySecret.grantRead(authorizerFunc); // Phase 2.1
 
         const authorizer = new HttpLambdaAuthorizer('AmodxAuthorizer', authorizerFunc, {
             responseTypes: [HttpLambdaResponseType.SIMPLE],

@@ -46,7 +46,8 @@ All **code changes** for Phases 1-3 and Phase 5 are complete. Phase 4 (OpenNext 
 | 3.1 Customer API routes | ✅ | `renderer/src/app/api/account/orders/route.ts` |
 | 3.2 Account page client-side fetch | ✅ | `renderer/src/components/AccountPageView.tsx` |
 | 3.3 Remove sensitive SSR reads | ✅ | `renderer/src/app/[siteId]/[[...slug]]/page.tsx` |
-| 3.4 Tenant verification from origin | ✅ | `backend/src/lib/tenant-verify.ts`, `orders/create.ts`, `coupons/public-validate.ts` |
+| 3.4 Tenant verification from origin | ⚠️ | `backend/src/lib/tenant-verify.ts` - Currently permissive (logs warning, allows through). See 3.5 |
+| 3.5 Enforce strict origin check | ⏳ | After verifying frontend sends origin headers correctly |
 
 ---
 

@@ -101,6 +101,26 @@ export class AmodxStack extends cdk.Stack {
       }
     });
 
+    // C. Renderer API Key (Phase 2.1: Restricted key for renderer - can only POST/DELETE comments)
+    const rendererKeySecret = new secretsmanager.Secret(this, 'RendererApiKey', {
+      description: 'Restricted API key for renderer Lambda (comments only)',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: 'apiKey',
+        excludePunctuation: true,
+        includeSpace: false,
+      },
+    });
+
+    // D. Revalidation Secret (Phase 2.5: Secures cache purge endpoint)
+    const revalidationSecret = new secretsmanager.Secret(this, 'RevalidationSecret', {
+      description: 'Secret token for renderer cache revalidation endpoint',
+      generateSecretString: {
+        passwordLength: 64,
+        excludePunctuation: true,
+      },
+    });
+
     // READ CONFIG (Fallback to your verified email for safety)
     const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
 
@@ -147,6 +167,7 @@ export class AmodxStack extends cdk.Stack {
       userPoolId: auth.adminPool.userPoolId,
       userPoolClientId: auth.adminClient.userPoolClientId,
       masterKeySecret: masterKeySecret,
+      rendererKeySecret: rendererKeySecret, // Phase 2.1: Restricted key for renderer
       uploadsBucket: uploads.bucket,
       privateBucket: uploads.privateBucket,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
@@ -189,13 +210,15 @@ export class AmodxStack extends cdk.Stack {
     });
 
     // 4. Renderer Layer
+    // Phase 2.3: Use restricted rendererKeySecret instead of masterKeySecret
     const renderer = new RendererHosting(this, 'RendererHosting', {
       table: db.table,
       apiUrl: api.httpApi.url!,
-      masterKeySecret: masterKeySecret,
+      rendererKeySecret: rendererKeySecret,  // Restricted: can only POST/DELETE comments
+      revalidationSecret: revalidationSecret, // Phase 2.5: Secures cache purge
       nextAuthSecret: nextAuthSecret,
       certificate: globalCertificate,
-      domainNames: allDomains.length > 0 ? allDomains : undefined, // <--- FIX: Pass tenants even if root is missing
+      domainNames: allDomains.length > 0 ? allDomains : undefined,
     });
 
     // Wire DNS for Root (Agency) Domain only

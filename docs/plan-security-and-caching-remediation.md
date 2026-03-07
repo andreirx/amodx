@@ -536,6 +536,26 @@ if (!verified) {
 
 **Effort:** 4-6 hours
 
+### 3.5 Enforce Strict Origin Verification (Follow-up)
+
+**Current state:** Tenant verification logs a warning but allows requests without `origin`/`referer` headers. This is because SSR requests and some direct API calls don't include these headers.
+
+**TODO after deployment stabilizes:**
+1. Verify that all frontend checkout/coupon calls include `origin` header
+2. Add `credentials: 'include'` to fetch calls if needed
+3. Update CloudFront to forward `Origin` header to Lambda
+4. Then change `tenant-verify.ts` to `return false` for missing origin
+
+```typescript
+// In tenant-verify.ts - change back to strict mode:
+if (!url) {
+    console.warn("verifyTenantFromOrigin: No origin header - BLOCKING");
+    return false;  // Strict mode
+}
+```
+
+**Risk if not enforced:** Attacker can submit orders against any tenant by manipulating `x-tenant-id` header from a non-browser client (curl, scripts).
+
 ---
 
 ## Why NOT WAF

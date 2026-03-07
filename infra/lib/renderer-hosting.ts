@@ -15,7 +15,8 @@ import { execSync } from 'child_process';
 interface RendererHostingProps {
     table: dynamodb.Table;
     apiUrl: string;
-    masterKeySecret: secretsmanager.ISecret;
+    rendererKeySecret: secretsmanager.ISecret;  // Phase 2.3: Restricted key (replaces masterKeySecret)
+    revalidationSecret: secretsmanager.ISecret; // Phase 2.5: Cache purge endpoint auth
     nextAuthSecret: secretsmanager.ISecret;
     certificate?: acm.ICertificate;
     domainNames?: string[];
@@ -62,6 +63,7 @@ export class RendererHosting extends Construct {
         });
 
         // 3. The Server Lambda
+        // Phase 2.3: Uses restricted rendererKeySecret instead of masterKeySecret
         const serverFunction = new lambda.Function(this, 'RendererServer', {
             runtime: lambda.Runtime.NODEJS_22_X,
             handler: 'index.handler',
@@ -76,21 +78,21 @@ export class RendererHosting extends Construct {
                 CACHE_BUCKET_NAME: assetBucket.bucketName,
                 CACHE_BUCKET_KEY_PREFIX: '_cache',
                 CACHE_BUCKET_REGION: cdk.Stack.of(this).region,
-                AMODX_API_KEY_SECRET: props.masterKeySecret.secretName,
+                // Phase 2.3: Restricted key - can only POST/DELETE comments, not full admin access
+                AMODX_API_KEY_SECRET: props.rendererKeySecret.secretName,
+                // Phase 2.5: Secret for cache revalidation endpoint
+                REVALIDATION_SECRET: props.revalidationSecret.secretValue.unsafeUnwrap(),
                 // PRODUCTION CONFIGURATION FOR NEXTAUTH
-                // CloudFormation resolves this string at deploy time to the actual secret value
                 NEXTAUTH_SECRET: props.nextAuthSecret.secretValue.unsafeUnwrap(),
-                // Helps NextAuth determine the callback URL base
                 NEXTAUTH_URL: `https://${props.domainNames ? props.domainNames[0] : 'localhost'}`,
             },
         });
-        props.masterKeySecret.grantRead(serverFunction);
+        props.rendererKeySecret.grantRead(serverFunction);
 
         // Grant Permissions
         props.table.grantReadData(serverFunction);
         assetBucket.grantReadWrite(serverFunction);
-        props.masterKeySecret.grantRead(serverFunction);
-        // NextAuth secret is injected as ENV, so no runtime read permission needed for it
+        // NextAuth + Revalidation secrets are injected as ENV, no runtime read permission needed
 
         // 4. Lambda Function URL
         const fnUrl = serverFunction.addFunctionUrl({
