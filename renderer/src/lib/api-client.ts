@@ -2,8 +2,14 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
 
 let cachedKey: string | null = null;
 
-export async function getMasterKey() {
-    // FIX: Only return cache if it's a valid string. If empty, retry fetch.
+/**
+ * Get the renderer API key from AWS Secrets Manager.
+ * Phase 2.3: This is now a RESTRICTED key that can only:
+ * - POST /comments (create)
+ * - DELETE /comments (delete)
+ * It cannot access /orders, /customers, /tenants, or other admin APIs.
+ */
+export async function getRendererKey() {
     if (cachedKey && cachedKey.length > 0) return cachedKey;
 
     // 1. Local Development Fallback
@@ -17,7 +23,7 @@ export async function getMasterKey() {
     const region = process.env.AWS_REGION || "eu-central-1";
 
     if (secretName) {
-        console.log(`[API Client] Fetching secret '${secretName}'...`);
+        console.log(`[API Client] Fetching renderer key from '${secretName}'...`);
         try {
             const client = new SecretsManagerClient({ region });
             const res = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
@@ -33,17 +39,19 @@ export async function getMasterKey() {
 
                 cachedKey = cachedKey?.trim() || "";
 
-                if (cachedKey) console.log(`[API Client] Key cached. First 4 chars: ${cachedKey.substring(0, 4)}...`);
+                if (cachedKey) console.log(`[API Client] Renderer key cached`);
                 else console.warn("[API Client] Secret retrieved but key is empty.");
 
                 return cachedKey;
             }
         } catch (e: any) {
-            console.error("[API Client] CRITICAL: Failed to fetch Master Key", e.message);
-            // Return empty but DO NOT CACHE it as null, so next request tries again
+            console.error("[API Client] CRITICAL: Failed to fetch Renderer Key", e.message);
             return "";
         }
     }
 
     return "";
 }
+
+// Backwards compatibility alias
+export const getMasterKey = getRendererKey;
