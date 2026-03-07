@@ -14,7 +14,7 @@
     "cheerio": "^1.2.0",
     "dotenv": "^16.4.7",
     "playwright": "^1.57.0",
-    "zod": "^4.1.13"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
