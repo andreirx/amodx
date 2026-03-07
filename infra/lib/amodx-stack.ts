@@ -219,6 +219,7 @@ export class AmodxStack extends cdk.Stack {
       nextAuthSecret: nextAuthSecret,
       certificate: globalCertificate,
       domainNames: allDomains.length > 0 ? allDomains : undefined,
+      enableCaching: true,  // Phase 4: CloudFront caches pages, respects Cache-Control headers
     });
 
     // Wire DNS for Root (Agency) Domain only
