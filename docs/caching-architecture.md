@@ -2,11 +2,60 @@
 
 Deep dive into ISR, OpenNext, CloudFront, and on-demand revalidation.
 
+**Status: DEPLOYED** (2026-03-07)
+
 ---
 
-## Current State Analysis
+## Deployed Architecture
 
-### What AMODX Deploys Today
+### What AMODX Deploys Now
+
+```
+CloudFront Distribution
+├── Default Behavior → Lambda Function URL (Custom Cache Policy)
+│   └── Cache Key: X-Forwarded-Host + query strings (tenant isolation)
+├── _next/image* → Image Optimization Lambda (cached)
+├── _next/static/* → S3 (immutable cache)
+├── assets/* → S3 (immutable cache)
+└── favicon.ico → S3 (cached)
+
+Server Lambda
+├── Direct DynamoDB reads (main table + tag cache)
+├── S3 cache bucket (read/write)
+├── SQS revalidation queue (send messages)
+└── Renderer API key (restricted scope)
+
+Revalidation Lambda
+├── Polls SQS FIFO queue
+└── Sends HEAD requests to regenerate stale pages
+
+Image Optimization Lambda
+├── Resizes images on-demand
+└── Cached by CloudFront
+
+Warmer Lambda
+├── Scheduled every 5 minutes
+└── Prevents cold starts
+
+Tag Cache DynamoDB Table
+├── PK: tag, SK: path
+├── GSI: by-path (for reverse lookups)
+└── Tracks cache invalidation timestamps
+```
+
+### Infrastructure Resources
+
+| Resource | Name Pattern | Purpose |
+|----------|--------------|---------|
+| Tag Cache Table | `{stackName}-tag-cache` | Maps cache tags to page paths |
+| Revalidation Queue | `{stackName}-revalidation.fifo` | Background regeneration queue |
+| Cache Policy | `{stackName}-RendererCache` | Tenant-isolated caching |
+
+---
+
+## Historical Context (Pre-2026-03-07)
+
+### What Was Deployed Before
 
 ```
 CloudFront Distribution
@@ -21,16 +70,16 @@ Lambda (Server Function)
 └── Master API key (Secrets Manager)
 ```
 
-**Problems:**
-1. `CachePolicy.CACHING_DISABLED` - every request hits Lambda
-2. No SQS revalidation queue - ISR only works inline (stale-while-revalidate in same request)
-3. No DynamoDB tag cache - `revalidateTag()` doesn't work
-4. No revalidation worker Lambda
-5. No image optimization Lambda
-6. No warmer Lambda
-7. `/api/revalidate` endpoint has NO authentication
+**Problems (now fixed):**
+1. ✅ `CachePolicy.CACHING_DISABLED` - every request hit Lambda
+2. ✅ No SQS revalidation queue - ISR only worked inline
+3. ✅ No DynamoDB tag cache - `revalidateTag()` didn't work
+4. ✅ No revalidation worker Lambda
+5. ✅ No image optimization Lambda
+6. ✅ No warmer Lambda
+7. ✅ `/api/revalidate` endpoint had no authentication
 
-### What OpenNext 3.1.3 Provides (But We Don't Deploy)
+### OpenNext 3.x Components (All Deployed)
 
 From `.open-next/open-next.output.json`:
 
@@ -51,12 +100,12 @@ From `.open-next/open-next.output.json`:
 }
 ```
 
-OpenNext builds 5 Lambda functions:
-1. **server-functions/default** - Main SSR handler (deployed)
-2. **revalidation-function** - Processes SQS queue, sends HEAD requests to regenerate stale pages (NOT deployed)
-3. **image-optimization-function** - Handles `/_next/image` requests (NOT deployed)
-4. **warmer-function** - Keeps Lambdas warm via scheduled invocations (NOT deployed)
-5. **dynamodb-provider** - Custom resource that initializes the tag cache table (NOT deployed)
+OpenNext builds 5 Lambda functions — **all deployed**:
+1. **server-functions/default** - Main SSR handler ✅
+2. **revalidation-function** - Processes SQS queue, sends HEAD requests ✅
+3. **image-optimization-function** - Handles `/_next/image` requests ✅
+4. **warmer-function** - Keeps Lambdas warm via EventBridge ✅
+5. **dynamodb-provider** - Tag cache initialization (handled by CDK inline) ✅
 
 ---
 
@@ -348,11 +397,13 @@ User → CloudFront → Lambda
 
 ---
 
-## Implementation Plan
+## Implementation Reference
 
-### Phase 1: Deploy Full OpenNext Infrastructure
+> **Note:** The implementation plan below was completed on 2026-03-07. Keeping for reference.
 
-**CDK Changes to `renderer-hosting.ts`:**
+### Phase 1: Deploy Full OpenNext Infrastructure ✅
+
+**CDK Changes to `renderer-hosting.ts` (IMPLEMENTED):**
 
 ```typescript
 // 1. Tag Cache DynamoDB Table (separate from main table)
@@ -466,7 +517,7 @@ new cdk.CustomResource(this, 'TagCacheInit', {
 });
 ```
 
-### Phase 2: Enable CloudFront Caching
+### Phase 2: Enable CloudFront Caching ✅
 
 ```typescript
 // Custom cache policy
@@ -507,9 +558,9 @@ this.distribution = new cloudfront.Distribution(this, 'RendererDistribution', {
 });
 ```
 
-### Phase 3: Secure Revalidation Endpoint
+### Phase 3: Secure Revalidation Endpoint ✅
 
-**Create revalidation secret:**
+**Create revalidation secret (IMPLEMENTED in amodx-stack.ts):**
 ```typescript
 // In amodx-stack.ts
 const revalidationSecret = new secretsmanager.Secret(this, 'RevalidationSecret', {
@@ -565,9 +616,9 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-### Phase 4: Backend Integration
+### Phase 4: Backend Integration ✅
 
-**Add revalidation calls to content handlers:**
+**Revalidation calls in content handlers (IMPLEMENTED):**
 
 ```typescript
 // backend/src/lib/revalidate.ts
@@ -718,11 +769,15 @@ new cloudwatch.Alarm(this, 'RevalidationQueueBacklog', {
 
 ---
 
-## Migration Path
+## Migration Path (COMPLETED 2026-03-07)
 
-1. **Deploy infrastructure** - SQS, tag cache table, additional Lambdas
-2. **Keep CloudFront caching disabled** - Verify everything works
-3. **Enable CloudFront caching** - Monitor cache hit ratio
-4. **Add on-demand revalidation** - Wire up backend handlers
-5. **Add cache tags** - Implement tag strategy in page components
-6. **Remove warmer** (optional) - If cold starts are acceptable
+1. ✅ **Deploy infrastructure** - SQS, tag cache table, additional Lambdas
+2. ✅ **Keep CloudFront caching disabled** - Verified everything works
+3. ✅ **Enable CloudFront caching** - `enableCaching: true` in amodx-stack.ts
+4. ✅ **Add on-demand revalidation** - content/update.ts calls revalidatePath()
+5. ⏳ **Add cache tags** - Implement tag strategy in page components (future)
+6. ✅ **Warmer deployed** - EventBridge rule every 5 minutes
+
+**Remaining work:**
+- Implement `revalidateTag()` calls for products/categories
+- Add CloudWatch alarms for queue depth and cache metrics

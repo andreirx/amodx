@@ -6,6 +6,20 @@ For detailed caching implementation, see: `docs/caching-architecture.md`
 
 ---
 
+## Implementation Status
+
+| Phase | Status | Completed |
+|-------|--------|-----------|
+| Phase 1: Backend Hardening | ✅ COMPLETE | All 1.1-1.6 tasks done |
+| Phase 2: Renderer Role Separation | ✅ COMPLETE | All 2.1-2.6 tasks done |
+| Phase 3: Customer Data Access | ✅ COMPLETE | 3.1-3.4 done, 3.5 pending (strict origin check) |
+| Phase 4: OpenNext Caching | ✅ COMPLETE | Full infrastructure deployed 2026-03-07 |
+| Phase 5: Operational Security | ⏳ PARTIAL | CI/Dependabot done, CloudWatch alarms pending |
+
+See `docs/security-remediation-status.md` for detailed task-by-task status.
+
+---
+
 ## The Core Problem: Renderer Monolith
 
 The renderer Lambda is a monolith that does too many things with too much access:
@@ -583,18 +597,18 @@ The original plan included WAF for rate limiting. But:
 
 ---
 
-## Phase 4: Full OpenNext Caching (Week 3-4)
+## Phase 4: Full OpenNext Caching ✅ COMPLETE
 
 See `docs/caching-architecture.md` for detailed implementation.
 
-Summary:
-1. Deploy SQS FIFO revalidation queue
-2. Deploy revalidation Lambda
-3. Deploy DynamoDB tag cache table
-4. Deploy image optimization Lambda
-5. Deploy warmer Lambda
-6. Enable CloudFront caching with multi-tenant cache key
-7. Wire on-demand revalidation from backend handlers
+**Deployed 2026-03-07:**
+1. ✅ SQS FIFO revalidation queue (`{stackName}-revalidation.fifo`)
+2. ✅ Revalidation Lambda (polls SQS, sends HEAD requests)
+3. ✅ DynamoDB tag cache table (`{stackName}-tag-cache`)
+4. ✅ Image optimization Lambda (`/_next/image*` route)
+5. ✅ Warmer Lambda (EventBridge every 5 minutes)
+6. ✅ CloudFront caching with `X-Forwarded-Host` cache key for tenant isolation
+7. ✅ On-demand revalidation from `content/update.ts`
 
 ---
 
@@ -643,15 +657,15 @@ Log and alert on:
 
 ## Implementation Order
 
-| Week | Tasks | Effort |
+| Week | Tasks | Status |
 |------|-------|--------|
-| 1 | 1.1-1.6 (Backend hardening) | 10-12h |
-| 2 | 2.1-2.6 (Renderer role separation) | 12-15h |
-| 2-3 | 3.1-3.4 (Customer data access + tenant verification) | 12-15h |
-| 3-4 | Phase 4 (OpenNext caching) | 15-20h |
-| Ongoing | Phase 5 (Operational security) | 4-6h setup |
+| 1 | 1.1-1.6 (Backend hardening) | ✅ COMPLETE |
+| 2 | 2.1-2.6 (Renderer role separation) | ✅ COMPLETE |
+| 2-3 | 3.1-3.4 (Customer data access + tenant verification) | ✅ COMPLETE |
+| 3-4 | Phase 4 (OpenNext caching) | ✅ COMPLETE |
+| Ongoing | Phase 5 (Operational security) | ⏳ PARTIAL |
 
-**Total estimated effort:** 55-70 hours
+**Completed 2026-03-07.** Remaining: CloudWatch alarms, strict origin enforcement.
 
 ---
 

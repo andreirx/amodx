@@ -4,14 +4,14 @@ Updated: 2026-03-07
 
 ## Summary
 
-**Phases 1-3 COMPLETE.** All security hardening code changes are deployed and working.
+**Phases 1-4 COMPLETE.** All security hardening and caching infrastructure deployed.
 - Fixed jsdom ESM crash in Lambda (replaced isomorphic-dompurify with sanitize-html)
 - RENDERER key infrastructure deployed
 - Revalidation endpoint secured
+- **Full OpenNext caching infrastructure deployed** (tag cache, SQS queue, warmer, image opt)
+- CloudFront caching enabled with multi-tenant isolation
 
-**Phase 4 (OpenNext caching) is DEFERRED** - requires significant CDK infrastructure work (see `docs/caching-architecture.md`).
-
-**Phase 5 (operational security) PARTIAL** - CI audit workflow active, CloudWatch alarms pending.
+**Phase 5 (operational security) PARTIAL** - CI audit workflow active, Dependabot configured, CloudWatch alarms pending.
 
 ---
 
@@ -58,19 +58,26 @@ Updated: 2026-03-07
 
 ---
 
-## Phase 4: OpenNext Caching - PENDING CDK
+## Phase 4: OpenNext Caching - COMPLETE
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Tag cache DynamoDB table | ⏳ | CDK required |
-| SQS FIFO revalidation queue | ⏳ | CDK required |
-| Revalidation Lambda | ⏳ | CDK required |
-| Image optimization Lambda | ⏳ | CDK required |
-| Warmer Lambda | ⏳ | CDK required |
-| Enable CloudFront caching | ⏳ | CDK required |
+| Tag cache DynamoDB table | ✅ | `{stackName}-tag-cache` with GSI for path lookups |
+| SQS FIFO revalidation queue | ✅ | `{stackName}-revalidation.fifo` with dedup |
+| Revalidation Lambda | ✅ | Polls SQS, sends HEAD requests to regenerate |
+| Image optimization Lambda | ✅ | `/_next/image*` route with 1536MB memory |
+| Warmer Lambda | ✅ | EventBridge rule every 5 minutes |
+| Enable CloudFront caching | ✅ | Custom cache policy with X-Forwarded-Host for tenant isolation |
 | Backend revalidate helper | ✅ | `backend/src/lib/revalidate.ts` |
+| Backend content/update.ts | ✅ | Calls revalidatePath after content changes |
 
-See `docs/caching-architecture.md` for detailed CDK code.
+**CDK Infrastructure (`infra/lib/renderer-hosting.ts`):**
+- `enableCaching: true` passed from `amodx-stack.ts`
+- Cache policy respects `Cache-Control` headers from origin
+- Multi-tenant isolation via `X-Forwarded-Host` in cache key
+- Server Lambda has env vars: `REVALIDATION_QUEUE_URL`, `CACHE_DYNAMO_TABLE`
+
+See `docs/caching-architecture.md` for architecture details.
 
 ---
 
@@ -79,9 +86,16 @@ See `docs/caching-architecture.md` for detailed CDK code.
 | Task | Status | Notes |
 |------|--------|-------|
 | 5.1 npm audit in CI | ✅ | `.github/workflows/security-audit.yml` |
-| 5.2 Dependabot | ✅ | `.github/dependabot.yml` |
-| 5.3 CloudWatch alarms | ⏳ | CDK required |
-| 5.4 Security logging | ⏳ | Future enhancement |
+| 5.2 Dependabot | ✅ | `.github/dependabot.yml` (weekly, grouped, majors ignored) |
+| 5.3 Playwright CI fixed | ✅ | `.github/workflows/playwright.yml` (deletes lock file for cross-platform deps) |
+| 5.4 CloudWatch alarms | ⏳ | CDK required |
+| 5.5 Security logging | ⏳ | Future enhancement |
+
+**Dependabot configuration:**
+- Runs weekly on Monday
+- Groups all minor/patch updates into single PR
+- Ignores major version bumps (review manually)
+- 5 PR limit to prevent noise
 
 ---
 
@@ -112,21 +126,31 @@ See `docs/caching-architecture.md` for detailed CDK code.
 ### Shared
 - `packages/shared/src/index.ts` - OrderInputSchema
 
+### Infrastructure
+- `infra/lib/renderer-hosting.ts` - Full Phase 4 caching infrastructure
+- `infra/lib/amodx-stack.ts` - `enableCaching: true`, revalidation secrets wiring
+- `infra/lib/api.ts` - Revalidation secret + renderer URL env vars
+
 ### Config
-- `.github/workflows/security-audit.yml` - NEW
-- `.github/dependabot.yml` - NEW
+- `.github/workflows/security-audit.yml` - npm audit on push
+- `.github/workflows/playwright.yml` - Fixed cross-platform optional deps
+- `.github/dependabot.yml` - Weekly grouped updates, majors ignored
 
 ---
 
 ## Next Steps
 
-1. **Install new dependencies**: `cd renderer && npm install`
-2. **Test locally**: Verify all changes work
-3. **Deploy CDK changes** (separate PR):
-   - Create RENDERER key secret
-   - Create REVALIDATION_SECRET
-   - Update renderer environment
-4. **Full OpenNext caching** (Phase 4 CDK, separate PR):
-   - Deploy SQS queue, tag cache table, additional Lambdas
-   - Enable CloudFront caching
-5. **Monitor**: Watch CloudWatch metrics after deployment
+1. **Monitor CloudFront cache hit ratio** - Target > 80% for popular pages
+2. **Add CloudWatch alarms** (Phase 5.4):
+   - Revalidation queue depth > 100
+   - Lambda errors spike
+   - Cache hit ratio drops below threshold
+3. **Enforce strict origin check** (Phase 3.5) - Currently permissive, logs warning
+4. **Review Dependabot PRs weekly** - Grouped minor/patch updates
+
+## Completed Deployment
+
+All Phase 1-4 changes are deployed and working:
+- `npx cdk deploy` on 2026-03-07 deployed full caching infrastructure
+- Tenant sites confirmed working with caching enabled
+- CI pipeline fixed for cross-platform builds
