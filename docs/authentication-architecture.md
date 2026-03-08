@@ -107,9 +107,9 @@ google: z.object({
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        API Gateway                               │
-│                    (Lambda Authorizer)                            │
-│          Validates: Admin Cognito JWT OR Master API Key           │
+│                        API Gateway                              │
+│                    (Lambda Authorizer)                          │
+│          Validates: Admin Cognito JWT OR Master API Key         │
 └──────────┬────────────────────────────────────┬─────────────────┘
            │                                    │
     Authenticated Routes                  Public Routes
@@ -130,18 +130,18 @@ google: z.object({
 
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Renderer (Next.js)                           │
+│                     Renderer (Next.js)                          │
 ├──────────────────┬──────────────────────────────────────────────┤
-│  SSR API calls   │  Customer Auth                                │
-│  (Master API Key)│  (NextAuth + Google OAuth)                    │
-│                  │  Per-tenant credentials from DynamoDB          │
-│                  │  Sessions = signed cookies                     │
+│  SSR API calls   │  Customer Auth                               │
+│  (Master API Key)│  (NextAuth + Google OAuth)                   │
+│                  │  Per-tenant credentials from DynamoDB        │
+│                  │  Sessions = signed cookies                   │
 └──────────────────┴──────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                   Public Pool (Cognito)                           │
-│                   *** NOT CURRENTLY USED ***                      │
-│   Provisioned in CDK, env vars written, but never imported       │
+│                   Public Pool (Cognito)                         │
+│                   *** NOT CURRENTLY USED ***                    │
+│   Provisioned in CDK, env vars written, but never imported      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

@@ -593,6 +593,7 @@ export class AmodxApi extends Construct {
             handler: 'handler',
         });
         props.table.grantReadWriteData(updateProductFunc);
+        props.revalidationSecret.grantRead(updateProductFunc);  // Cache invalidation
 
         const deleteProductFunc = new nodejs.NodejsFunction(this, 'DeleteProductFunc', {
             ...nodeProps,
@@ -600,6 +601,7 @@ export class AmodxApi extends Construct {
             handler: 'handler',
         });
         props.table.grantReadWriteData(deleteProductFunc);
+        props.revalidationSecret.grantRead(deleteProductFunc);  // Cache invalidation
 
         this.httpApi.addRoutes({
             path: '/products',

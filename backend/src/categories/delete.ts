@@ -1,9 +1,11 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { revalidatePath } from "../lib/revalidate.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -20,6 +22,13 @@ export const handler: Handler = async (event) => {
         }
 
         if (!tenantId || !id) return { statusCode: 400, body: JSON.stringify({ error: "Missing ID" }) };
+
+        // Fetch category to get slug for cache invalidation
+        const existing = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: `TENANT#${tenantId}`, SK: `CATEGORY#${id}` },
+            ProjectionExpression: "slug"
+        }));
 
         // Check if any child categories reference this one
         const children = await db.send(new QueryCommand({
@@ -51,6 +60,11 @@ export const handler: Handler = async (event) => {
             target: { id },
             ip: event.requestContext.http.sourceIp
         });
+
+        // Cache invalidation: category page (will now 404)
+        if (existing.Item?.slug) {
+            await revalidatePath(tenantId, `${URL_PREFIX_DEFAULTS.category}/${existing.Item.slug}`);
+        }
 
         return { statusCode: 200, body: JSON.stringify({ message: "Deleted" }) };
     } catch (e: any) {

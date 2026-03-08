@@ -204,6 +204,9 @@ export class AmodxStack extends cdk.Stack {
       uploadsBucketName: uploads.bucket.bucketName,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
       uploadsBucket: uploads.bucket,
+      // Cache revalidation for product/category updates
+      revalidationSecret: revalidationSecret,
+      rendererUrl: rendererBaseUrl,
     });
 
     // 3c. Engagement API (NestedStack — popups, forms)

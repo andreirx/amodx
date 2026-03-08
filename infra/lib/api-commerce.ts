@@ -8,6 +8,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -20,6 +21,9 @@ interface CommerceApiProps extends NestedStackProps {
     uploadsBucketName: string;
     uploadsCdnUrl: string;
     uploadsBucket: s3.IBucket;
+    // Cache revalidation
+    revalidationSecret: secretsmanager.ISecret;
+    rendererUrl?: string;
 }
 
 export class CommerceApi extends NestedStack {
@@ -39,6 +43,9 @@ export class CommerceApi extends NestedStack {
             environment: {
                 TABLE_NAME: table.tableName,
                 EVENT_BUS_NAME: eventBus.eventBusName,
+                // Cache revalidation
+                RENDERER_URL: props.rendererUrl || '',
+                REVALIDATION_SECRET_NAME: props.revalidationSecret.secretName,
             },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
             memorySize: 1024,
@@ -121,6 +128,7 @@ export class CommerceApi extends NestedStack {
             handler: 'handler',
         });
         table.grantReadWriteData(updateCategoryFunc);
+        props.revalidationSecret.grantRead(updateCategoryFunc);
 
         const deleteCategoryFunc = new nodejs.NodejsFunction(this, 'DeleteCategoryFunc', {
             ...nodeProps,
@@ -128,6 +136,7 @@ export class CommerceApi extends NestedStack {
             handler: 'handler',
         });
         table.grantReadWriteData(deleteCategoryFunc);
+        props.revalidationSecret.grantRead(deleteCategoryFunc);
 
         addRoute('CreateCategory', 'POST /categories', createCategoryFunc);
         addRoute('ListCategories', 'GET /categories', listCategoriesFunc);

@@ -1,10 +1,11 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { CategorySchema } from "@amodx/shared";
+import { CategorySchema, URL_PREFIX_DEFAULTS } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { revalidatePath } from "../lib/revalidate.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -59,6 +60,13 @@ export const handler: Handler = async (event) => {
             details: { updatedFields: Object.keys(input).filter(key => input[key as keyof typeof input] !== undefined) },
             ip: event.requestContext.http.sourceIp
         });
+
+        // Cache invalidation: category page
+        await revalidatePath(tenantId, `${URL_PREFIX_DEFAULTS.category}/${merged.slug}`);
+        // If slug changed, also invalidate old URL
+        if (input.slug && input.slug !== existing.Item.slug) {
+            await revalidatePath(tenantId, `${URL_PREFIX_DEFAULTS.category}/${existing.Item.slug}`);
+        }
 
         return { statusCode: 200, body: JSON.stringify(merged) };
     } catch (e: any) {
