@@ -15,6 +15,7 @@ For detailed caching implementation, see: `docs/caching-architecture.md`
 | Phase 3: Customer Data Access | ✅ COMPLETE | 3.1-3.4 done, 3.5 pending (strict origin check) |
 | Phase 4: OpenNext Caching | ✅ COMPLETE | Full infrastructure deployed 2026-03-07 |
 | Phase 5: Operational Security | ⏳ PARTIAL | CI/Dependabot done, CloudWatch alarms pending |
+| Phase 6: Request Provenance | ⏳ IN PROGRESS | 6.1-6.3 done, 6.4-6.5 optional |
 
 See `docs/security-remediation-status.md` for detailed task-by-task status.
 
@@ -655,6 +656,178 @@ Log and alert on:
 
 ---
 
+## Phase 6: Request Provenance (NEW)
+
+**Problem:** Currently, anyone can call Lambda URLs or API Gateway directly with crafted headers. There's no way to prove a request originated from our frontend vs. a curl command.
+
+**Comparison to traditional Spring Boot:**
+- Spring Boot in private subnet: Backend unreachable from internet
+- AMODX: Lambda URLs are public, API Gateway is public
+- The fix isn't VPC (expensive, adds latency) — it's request verification
+
+### 6.1 CloudFront Origin Verification Header ✅
+
+CloudFront Function injects a secret header. Lambda/API Gateway verifies it.
+
+**CloudFront Function (viewer request):**
+```javascript
+function handler(event) {
+    var request = event.request;
+    // Inject secret header - only CloudFront knows this value
+    request.headers['x-origin-verify'] = { value: '${ORIGIN_VERIFY_SECRET}' };
+    return request;
+}
+```
+
+**Lambda verification:**
+```typescript
+// In renderer server or middleware
+const ORIGIN_VERIFY_SECRET = process.env.ORIGIN_VERIFY_SECRET;
+
+if (event.headers['x-origin-verify'] !== ORIGIN_VERIFY_SECRET) {
+    // Request didn't come through CloudFront
+    return { statusCode: 403, body: 'Direct access forbidden' };
+}
+```
+
+**CDK:**
+```typescript
+// Generate secret at deploy time
+const originVerifySecret = new secretsmanager.Secret(this, 'OriginVerifySecret', {
+    generateSecretString: { excludePunctuation: true, passwordLength: 32 },
+});
+
+// CloudFront Function with secret injected
+const hostRewriteFunction = new cloudfront.Function(this, 'HostRewriteFunction', {
+    code: cloudfront.FunctionCode.fromInline(`
+        function handler(event) {
+            var request = event.request;
+            request.headers['x-forwarded-host'] = { value: request.headers.host.value };
+            request.headers['x-origin-verify'] = { value: '${originVerifySecret.secretValue.unsafeUnwrap()}' };
+            return request;
+        }
+    `),
+});
+```
+
+**Effort:** 2 hours
+
+### 6.2 Strict CORS at API Gateway ✅
+
+Currently API Gateway allows all origins. Restrict to known tenant domains.
+
+```typescript
+// In CDK - api.ts
+const allowedOrigins = [
+    'https://admin.example.com',
+    ...tenantDomains.map(d => `https://${d}`),
+];
+
+this.httpApi = new apigw.HttpApi(this, 'HttpApi', {
+    corsPreflight: {
+        allowOrigins: allowedOrigins,
+        allowMethods: [apigw.CorsHttpMethod.GET, apigw.CorsHttpMethod.POST, apigw.CorsHttpMethod.PUT, apigw.CorsHttpMethod.DELETE],
+        allowHeaders: ['content-type', 'x-tenant-id', 'x-api-key', 'authorization'],
+        allowCredentials: true,
+    },
+});
+```
+
+**Dynamic tenant domains:** Fetch from DynamoDB at deploy time or use wildcard patterns carefully.
+
+**Effort:** 1-2 hours
+
+### 6.3 Enforce Strict Tenant Verification ✅
+
+Change `backend/src/lib/tenant-verify.ts` from permissive to strict mode.
+
+```typescript
+// BEFORE (permissive):
+if (!url) {
+    console.warn("verifyTenantFromOrigin: No origin/referer header - allowing (permissive mode)");
+    return true;  // Allow through
+}
+
+// AFTER (strict):
+if (!url) {
+    console.warn("verifyTenantFromOrigin: No origin/referer header - BLOCKING");
+    return false;  // Reject
+}
+```
+
+**Prerequisites:**
+1. Verify all frontend fetch calls include `credentials: 'include'` or explicit origin
+2. Verify CloudFront forwards `Origin` header to Lambda
+3. Test checkout flow end-to-end
+
+**Effort:** 30 minutes + testing
+
+### 6.4 API Gateway Resource Policy
+
+Restrict API Gateway to only accept requests from CloudFront IP ranges.
+
+```typescript
+// AWS publishes CloudFront IP ranges: https://ip-ranges.amazonaws.com/ip-ranges.json
+// Filter for "service": "CLOUDFRONT"
+
+const resourcePolicy = new iam.PolicyDocument({
+    statements: [
+        new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            principals: [new iam.AnyPrincipal()],
+            actions: ['execute-api:Invoke'],
+            resources: ['*'],
+            conditions: {
+                IpAddress: {
+                    'aws:SourceIp': cloudFrontIpRanges,
+                },
+            },
+        }),
+    ],
+});
+
+// Note: HttpApi doesn't support resource policies directly
+// Need to use REST API or use Lambda authorizer to check source IP
+```
+
+**Alternative:** Check source IP in Lambda authorizer.
+
+**Effort:** 2-3 hours
+
+### 6.5 Request Signing for Checkout (Optional)
+
+Server generates a signed token on page load. Checkout POST includes it.
+
+```typescript
+// Page load (server component or API route)
+import { SignJWT } from 'jose';
+
+const pageToken = await new SignJWT({ tenantId, nonce: crypto.randomUUID() })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .sign(new TextEncoder().encode(process.env.PAGE_TOKEN_SECRET));
+
+// Pass to client via cookie or props
+```
+
+```typescript
+// Checkout POST
+headers: { 'x-page-token': pageToken }
+
+// Backend verifies
+import { jwtVerify } from 'jose';
+
+const { payload } = await jwtVerify(token, new TextEncoder().encode(PAGE_TOKEN_SECRET));
+if (payload.tenantId !== requestTenantId) {
+    return { statusCode: 403, body: 'Invalid token' };
+}
+```
+
+**Effort:** 4 hours
+
+---
+
 ## Implementation Order
 
 | Week | Tasks | Status |
@@ -664,28 +837,47 @@ Log and alert on:
 | 2-3 | 3.1-3.4 (Customer data access + tenant verification) | ✅ COMPLETE |
 | 3-4 | Phase 4 (OpenNext caching) | ✅ COMPLETE |
 | Ongoing | Phase 5 (Operational security) | ⏳ PARTIAL |
+| NOW | Phase 6 (Request provenance) | ⏳ IN PROGRESS |
 
-**Completed 2026-03-07.** Remaining: CloudWatch alarms, strict origin enforcement.
+**Phase 6 Status:**
+- ✅ 6.1 CloudFront origin verification - Implemented
+- ✅ 6.2 Strict CORS - Implemented
+- ✅ 6.3 Strict tenant-verify.ts - Implemented
+- ⏳ 6.4 API Gateway resource policy - Optional
+- ⏳ 6.5 Request signing - Optional
 
 ---
 
 ## Security Model After Changes
 
 ```
-Renderer Lambda (SSR)
-├── DynamoDB read access (public entities only via application code)
-├── RENDERER API key (can only POST/DELETE comments)
-└── Revalidation secret (can trigger cache purge)
+Internet
+    │
+    ▼
+CloudFront (injects x-origin-verify header)
+    │
+    ├── Renderer Lambda (SSR)
+    │   ├── Verifies x-origin-verify header
+    │   ├── DynamoDB read access (public entities only)
+    │   ├── RENDERER API key (comments only)
+    │   └── Revalidation secret
+    │
+    └── API Gateway
+        ├── CORS: only known tenant domains
+        ├── Resource policy: CloudFront IPs only (optional)
+        │
+        ├── Authenticated routes (Cognito JWT)
+        │   └── Admin operations
+        │
+        └── Public routes (checkout, forms)
+            ├── Verifies origin header matches tenant
+            ├── reCAPTCHA validation
+            └── Rate limiting
 
-Customer API Routes
-├── Session-validated reads
-├── Tenant-scoped
-└── Only returns own data
-
-Backend Lambdas
-├── Master key (MCP, system integrations)
-├── Cognito JWT (admin users)
-└── Public routes (checkout, forms)
+Direct Lambda URL / API Gateway access → BLOCKED
+├── Missing x-origin-verify header
+├── Origin header doesn't match tenant
+└── Source IP not CloudFront (if resource policy enabled)
 ```
 
 **Blast radius if renderer is compromised:**
@@ -695,3 +887,8 @@ Backend Lambdas
 - CANNOT read orders, customers, coupons, audit logs
 - CANNOT access admin APIs
 - CANNOT impersonate users
+
+**With Phase 6 complete:**
+- Direct API calls from scripts/curl are rejected
+- x-tenant-id header manipulation blocked (origin verification)
+- Only requests through CloudFront are accepted

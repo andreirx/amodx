@@ -13,6 +13,8 @@ Updated: 2026-03-07
 
 **Phase 5 (operational security) PARTIAL** - CI audit workflow active, Dependabot configured, CloudWatch alarms pending.
 
+**Phase 6 (request provenance) IN PROGRESS** - 6.1-6.3 complete, 6.4-6.5 pending.
+
 ---
 
 ## Phase 1: Backend Hardening - COMPLETE
@@ -99,6 +101,36 @@ See `docs/caching-architecture.md` for architecture details.
 
 ---
 
+## Phase 6: Request Provenance - IN PROGRESS
+
+Ensure requests originate from our frontend, not direct API/Lambda URL access.
+
+| Task | Status | Notes |
+|------|--------|-------|
+| 6.1 CloudFront origin verification | ✅ | `x-origin-verify` header injected by CF, verified in middleware |
+| 6.2 Strict CORS at API Gateway | ✅ | Admin + root + tenant + CloudFront domains in allowedOrigins |
+| 6.3 Enforce strict tenant-verify.ts | ✅ | Strict mode default, `TENANT_VERIFY_PERMISSIVE=true` to disable |
+| 6.4 API Gateway resource policy | ⏳ | Only accept requests from CloudFront IP ranges |
+| 6.5 Request signing for checkout | ⏳ | Server-generated token verified on POST (optional) |
+
+**Implemented:**
+- `infra/lib/renderer-hosting.ts`: CloudFront Function injects `x-origin-verify` header
+- `renderer/middleware.ts`: Blocks requests without valid `x-origin-verify`
+- `infra/lib/api.ts`: CORS includes admin, root, tenant, and CloudFront domains
+- `backend/src/lib/tenant-verify.ts`: Strict mode blocks requests without Origin header
+
+**CloudFront URL for Previews (two-step deploy):**
+1. First deploy: CloudFrontRendererUrl output shows `https://d1234.cloudfront.net`
+2. Add to config: `domains.cloudFrontUrl: "https://d1234.cloudfront.net"`
+3. Second deploy: CORS now allows preview requests from CloudFront domain
+
+**Why this matters:**
+- Direct Lambda URL access blocked (missing `x-origin-verify`)
+- `x-tenant-id` header manipulation blocked (tenant-verify.ts checks Origin)
+- curl/script attacks blocked (missing Origin header on cross-origin POST)
+
+---
+
 ## Files Changed
 
 ### Backend
@@ -140,13 +172,14 @@ See `docs/caching-architecture.md` for architecture details.
 
 ## Next Steps
 
-1. **Monitor CloudFront cache hit ratio** - Target > 80% for popular pages
-2. **Add CloudWatch alarms** (Phase 5.4):
+1. **Deploy Phase 6 changes** - `npx cdk deploy` to deploy 6.1-6.3
+2. **Test checkout flow** - Verify orders still work with strict mode
+3. **Phase 6.4 API Gateway resource policy** (optional) - CloudFront IPs only
+4. **Add CloudWatch alarms** (Phase 5.4):
    - Revalidation queue depth > 100
    - Lambda errors spike
    - Cache hit ratio drops below threshold
-3. **Enforce strict origin check** (Phase 3.5) - Currently permissive, logs warning
-4. **Review Dependabot PRs weekly** - Grouped minor/patch updates
+5. **Monitor CloudFront cache hit ratio** - Target > 80% for popular pages
 
 ## Completed Deployment
 

@@ -1,8 +1,22 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// Phase 6.1: Origin verification secret (injected by CloudFront, verified here)
+const ORIGIN_VERIFY_SECRET = process.env.ORIGIN_VERIFY_SECRET;
+
 export function middleware(request: NextRequest) {
     const path = request.nextUrl.pathname;
+
+    // --- 0. ORIGIN VERIFICATION (Phase 6.1) ---
+    // Block direct Lambda URL access - only allow requests through CloudFront
+    if (ORIGIN_VERIFY_SECRET) {
+        const originHeader = request.headers.get('x-origin-verify');
+        if (originHeader !== ORIGIN_VERIFY_SECRET) {
+            // Log but don't expose the secret in the error
+            console.warn(`[Origin Verify] Blocked: missing or invalid x-origin-verify header. Path: ${path}`);
+            return new NextResponse('Direct access forbidden', { status: 403 });
+        }
+    }
 
     // --- 1. DETERMINE DESTINATION URL ---
 
@@ -51,7 +65,6 @@ export function middleware(request: NextRequest) {
 
             const url = request.nextUrl.clone();
             url.pathname = `/${tenantId}${restOfPath}`;
-            rewriteUrl = url;
 
             // Set cookie with preview base path for link generation
             const response = NextResponse.rewrite(url);

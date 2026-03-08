@@ -2,16 +2,21 @@ import { db, TABLE_NAME } from "./db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 /**
- * Phase 3.4: Verify tenant ID against request origin.
+ * Phase 3.4/6.3: Verify tenant ID against request origin.
  *
  * Problem: Public routes trust the client-provided x-tenant-id header.
  * An attacker can submit requests against any tenant.
  *
  * Solution: Verify that the origin/referer domain matches the tenant's configured domain.
  *
- * Note: This adds a DynamoDB lookup per request. For high-traffic routes,
- * consider caching tenant→domain mappings in memory or using signed cookies.
+ * Phase 6.3: STRICT MODE - Requests without Origin header are blocked.
+ * This blocks curl/script attacks while allowing browser requests (browsers send Origin).
+ *
+ * Set TENANT_VERIFY_PERMISSIVE=true to allow requests without Origin (for debugging).
  */
+
+// Strict mode by default (Phase 6.3)
+const PERMISSIVE_MODE = process.env.TENANT_VERIFY_PERMISSIVE === 'true';
 
 // Simple in-memory cache with 5-minute TTL
 const domainCache = new Map<string, { tenantId: string; timestamp: number }>();
@@ -79,10 +84,15 @@ export async function verifyTenantFromOrigin(
     const url = origin || referer;
     if (!url) {
         // No origin/referer - could be SSR request or direct API call
-        // Log warning but allow through to avoid breaking production
-        // TODO: Make this stricter once frontend is verified to send origin
-        console.warn("verifyTenantFromOrigin: No origin or referer header - allowing request");
-        return true;
+        if (PERMISSIVE_MODE) {
+            console.warn("verifyTenantFromOrigin: No origin header - PERMISSIVE MODE, allowing");
+            return true;
+        }
+        // Phase 6.3: STRICT MODE - Block requests without Origin
+        // Browsers always send Origin on cross-origin POST (checkout, forms, etc.)
+        // Missing Origin = curl/script attack
+        console.warn("verifyTenantFromOrigin: No origin header - STRICT MODE, blocking");
+        return false;
     }
 
     const hostname = extractHostname(url);

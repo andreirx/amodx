@@ -22,6 +22,7 @@ interface RendererHostingProps {
     rendererKeySecret: secretsmanager.ISecret;  // Phase 2.3: Restricted key (replaces masterKeySecret)
     revalidationSecret: secretsmanager.ISecret; // Phase 2.5: Cache purge endpoint auth
     nextAuthSecret: secretsmanager.ISecret;
+    originVerifySecret: string;  // Phase 6.1: CloudFront origin verification (plain string, baked into CF Function)
     certificate?: acm.ICertificate;
     domainNames?: string[];
     enableCaching?: boolean;  // Phase 4: Toggle CloudFront caching (default false for safety)
@@ -177,6 +178,8 @@ export class RendererHosting extends Construct {
                 REVALIDATION_QUEUE_URL: revalidationQueue.queueUrl,
                 REVALIDATION_QUEUE_REGION: region,
                 CACHE_DYNAMO_TABLE: tagCacheTable.tableName,
+                // Phase 6.1: Origin verification - reject requests not from CloudFront
+                ORIGIN_VERIFY_SECRET: props.originVerifySecret,
             },
         });
         props.rendererKeySecret.grantRead(serverFunction);
@@ -219,8 +222,8 @@ export class RendererHosting extends Construct {
             authType: lambda.FunctionUrlAuthType.NONE,
         });
 
-        // 5. CloudFront Function to preserve original Host header
-        // This copies the viewer's Host header to X-Forwarded-Host before CloudFront replaces it
+        // 5. CloudFront Function to preserve original Host header + inject origin verification
+        // Phase 6.1: Injects x-origin-verify header so Lambda can verify request came through CloudFront
         const hostRewriteFunction = new cloudfront.Function(this, 'HostRewriteFunction', {
             functionName: `${stackName}-HostRewrite`,
             code: cloudfront.FunctionCode.fromInline(`
@@ -228,12 +231,13 @@ function handler(event) {
     var request = event.request;
     var host = request.headers.host ? request.headers.host.value : '';
     request.headers['x-forwarded-host'] = { value: host };
+    request.headers['x-origin-verify'] = { value: '${props.originVerifySecret}' };
     return request;
 }
             `),
         });
 
-        // 6. Custom Origin Request Policy that forwards X-Forwarded-Host
+        // 6. Custom Origin Request Policy that forwards X-Forwarded-Host + origin verification
         const originRequestPolicy = new cloudfront.OriginRequestPolicy(this, 'RendererOriginPolicy', {
             originRequestPolicyName: `${stackName}-RendererOriginPolicy`,
             headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList(
@@ -241,8 +245,9 @@ function handler(event) {
                 'Accept-Language',
                 'Content-Type',
                 'X-Forwarded-Host',
-                'x-tenant-id', // <--- CRITICAL FIX: Allow this header through
-                'x-automation-key' // Future proofing for MCP
+                'x-origin-verify',  // Phase 6.1: Origin verification header
+                'x-tenant-id',
+                'x-automation-key'
             ),
             queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
             cookieBehavior: cloudfront.OriginRequestCookieBehavior.all(),

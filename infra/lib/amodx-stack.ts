@@ -26,6 +26,7 @@ interface AmodxStackProps extends cdk.StackProps {
       root?: string; // Optional now
       tenants?: string[];
       globalCertArn?: string;
+      cloudFrontUrl?: string; // Phase 6.2: Add after first deploy for CORS (previews)
     };
     [key: string]: any;
   };
@@ -45,6 +46,7 @@ export class AmodxStack extends cdk.Stack {
     const rootDomain = props.config.domains.root;
     const tenantDomains = props.config.domains.tenants || [];
     const globalCertArn = props.config.domains.globalCertArn;
+    const corsCloudFrontUrl = props.config.domains.cloudFrontUrl; // Phase 6.2: For CORS (previews)
 
     // 0. DOMAINS STRATEGY
     let globalCertificate: acm.ICertificate | undefined;
@@ -121,6 +123,15 @@ export class AmodxStack extends cdk.Stack {
       },
     });
 
+    // E. Origin Verify Secret (Phase 6.1: Prove requests came through CloudFront)
+    const originVerifySecret = new secretsmanager.Secret(this, 'OriginVerifySecret', {
+      description: 'Secret injected by CloudFront, verified by Lambda to block direct access',
+      generateSecretString: {
+        passwordLength: 32,
+        excludePunctuation: true,
+      },
+    });
+
     // READ CONFIG (Fallback to your verified email for safety)
     const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
 
@@ -179,6 +190,8 @@ export class AmodxStack extends cdk.Stack {
       eventBus: events.bus,
       sesEmail: sesEmail,
       adminDomain: rootDomain ? `admin.${rootDomain}` : undefined,
+      tenantDomains: tenantDomains, // Phase 6.2: For CORS
+      additionalCorsOrigins: corsCloudFrontUrl ? [corsCloudFrontUrl] : undefined, // Phase 6.2: CloudFront URL for previews
       rendererUrl: rendererBaseUrl, // Phase 4: For cache revalidation
     });
 
@@ -226,6 +239,7 @@ export class AmodxStack extends cdk.Stack {
       rendererKeySecret: rendererKeySecret,  // Restricted: can only POST/DELETE comments
       revalidationSecret: revalidationSecret, // Phase 2.5: Secures cache purge
       nextAuthSecret: nextAuthSecret,
+      originVerifySecret: originVerifySecret.secretValue.unsafeUnwrap(),  // Phase 6.1: Baked into CF Function
       certificate: globalCertificate,
       domainNames: allDomains.length > 0 ? allDomains : undefined,
       enableCaching: true,  // Phase 4: CloudFront caches pages, respects Cache-Control headers

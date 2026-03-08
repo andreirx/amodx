@@ -25,6 +25,8 @@ interface AmodxApiProps {
     eventBus: events.IEventBus;
     sesEmail: string;
     adminDomain?: string;
+    tenantDomains?: string[]; // Phase 6.2: Tenant domains for CORS
+    additionalCorsOrigins?: string[]; // Phase 6.2: CloudFront URLs, staging domains, etc.
     rendererUrl?: string; // Phase 4: For cache revalidation calls
 }
 
@@ -36,6 +38,7 @@ export class AmodxApi extends Construct {
         super(scope, id);
 
         // SECURITY: Explicit origins only - no wildcard fallback
+        // Phase 6.2: Include tenant domains for public routes (checkout, forms)
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:5173',
@@ -44,8 +47,26 @@ export class AmodxApi extends Construct {
 
         if (props.adminDomain) {
             allowedOrigins.push(`https://${props.adminDomain}`);
+            // Also allow root domain (without admin. prefix) for renderer API calls
+            const rootDomain = props.adminDomain.replace('admin.', '');
+            allowedOrigins.push(`https://${rootDomain}`);
+            // Note: API Gateway V2 doesn't support wildcards in CORS origins
+            // Tenant domains must be listed explicitly via props.tenantDomains
         }
-        // Note: In production, adminDomain should always be set
+
+        // Phase 6.2: Add tenant domains for CORS
+        if (props.tenantDomains && props.tenantDomains.length > 0) {
+            for (const domain of props.tenantDomains) {
+                allowedOrigins.push(`https://${domain}`);
+            }
+        }
+
+        // Phase 6.2: Add additional origins (CloudFront URLs, staging domains, etc.)
+        if (props.additionalCorsOrigins && props.additionalCorsOrigins.length > 0) {
+            for (const origin of props.additionalCorsOrigins) {
+                allowedOrigins.push(origin);
+            }
+        }
 
         // 1. Authorizer
         const authorizerFunc = new nodejs.NodejsFunction(this, 'AuthorizerFunc', {
