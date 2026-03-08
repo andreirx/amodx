@@ -11,6 +11,7 @@
   "author": "andreirx",
   "dependencies": {
     "@amodx/shared": "*",
+    "zod": "^4.1.13",
     "@aws-sdk/client-cognito-identity-provider": "^3.980.0",
     "@aws-sdk/client-dynamodb": "^3.980.0",
     "@aws-sdk/client-eventbridge": "^3.980.0",
