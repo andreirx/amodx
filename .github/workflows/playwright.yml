@@ -15,9 +15,10 @@ jobs:
           node-version: lts/*
 
       - name: Install dependencies
-        # Use npm ci for reproducible builds, but with legacy-peer-deps to handle
-        # platform-specific optional deps (esbuild/rollup) that differ macOS vs Linux
-        run: npm ci --legacy-peer-deps || npm install
+        # Must delete lockfile: it's generated on macOS but CI runs Linux.
+        # Platform-specific optional deps (rollup, esbuild) differ per OS.
+        # Zod is pinned to exact version in shared/backend to prevent drift.
+        run: rm -f package-lock.json && npm install
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
