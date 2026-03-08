@@ -51,11 +51,13 @@ export function middleware(request: NextRequest) {
         }
     } else if (path.startsWith('/_site/')) {
         // PREVIEW MODE: /_site/[id]/...
+        // Previews are accessible via CloudFront URL for sharing with clients
+        // Security: Block requests from production tenant domains (prevents /_site/ path hijacking)
         const host = request.headers.get('host') || '';
         const isAllowedHost = host.includes('localhost') || host.includes('cloudfront.net') || host.includes('staging');
 
         if (!isAllowedHost) {
-            return new NextResponse("Previews are restricted to Admin/CloudFront domains.", { status: 403 });
+            return new NextResponse("Preview URLs are only accessible via CloudFront or localhost.", { status: 403 });
         }
 
         const parts = path.split('/');

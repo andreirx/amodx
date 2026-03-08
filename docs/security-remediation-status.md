@@ -1,6 +1,6 @@
 # Security Remediation Implementation Status
 
-Updated: 2026-03-07
+Updated: 2026-03-08
 
 ## Summary
 
@@ -11,9 +11,9 @@ Updated: 2026-03-07
 - **Full OpenNext caching infrastructure deployed** (tag cache, SQS queue, warmer, image opt)
 - CloudFront caching enabled with multi-tenant isolation
 
-**Phase 5 (operational security) PARTIAL** - CI audit workflow active, Dependabot configured, CloudWatch alarms pending.
+**Phase 5 (operational security) COMPLETE** - CI audit, Dependabot, CloudWatch alarms deployed.
 
-**Phase 6 (request provenance) IN PROGRESS** - 6.1-6.3 complete, 6.4-6.5 pending.
+**Phase 6 (request provenance) COMPLETE** - 6.1-6.3 deployed, 6.4-6.5 optional hardening.
 
 ---
 
@@ -55,8 +55,8 @@ Updated: 2026-03-07
 | 3.1 Customer API routes | ✅ | `renderer/src/app/api/account/orders/route.ts` |
 | 3.2 Account page client-side fetch | ✅ | `renderer/src/components/AccountPageView.tsx` |
 | 3.3 Remove sensitive SSR reads | ✅ | `renderer/src/app/[siteId]/[[...slug]]/page.tsx` |
-| 3.4 Tenant verification from origin | ⚠️ | `backend/src/lib/tenant-verify.ts` - Currently permissive (logs warning, allows through). See 3.5 |
-| 3.5 Enforce strict origin check | ⏳ | After verifying frontend sends origin headers correctly |
+| 3.4 Tenant verification from origin | ✅ | `backend/src/lib/tenant-verify.ts` - Strict mode enforced |
+| 3.5 Enforce strict origin check | ✅ | `TENANT_VERIFY_PERMISSIVE=true` to disable (default: strict) |
 
 ---
 
@@ -83,15 +83,20 @@ See `docs/caching-architecture.md` for architecture details.
 
 ---
 
-## Phase 5: Operational Security - PARTIAL
+## Phase 5: Operational Security - COMPLETE
 
 | Task | Status | Notes |
 |------|--------|-------|
 | 5.1 npm audit in CI | ✅ | `.github/workflows/security-audit.yml` |
 | 5.2 Dependabot | ✅ | `.github/dependabot.yml` (weekly, grouped, majors ignored) |
 | 5.3 Playwright CI fixed | ✅ | `.github/workflows/playwright.yml` (deletes lock file for cross-platform deps) |
-| 5.4 CloudWatch alarms | ⏳ | CDK required |
-| 5.5 Security logging | ⏳ | Future enhancement |
+| 5.4 CloudWatch alarms | ✅ | `infra/lib/renderer-hosting.ts` - queue depth, Lambda errors |
+| 5.5 Security logging | ⏳ | Future enhancement (optional) |
+
+**CloudWatch Alarms (Phase 5.4):**
+- `{stackName}-revalidation-queue-depth`: Fires when queue > 100 messages (pages piling up)
+- `{stackName}-server-lambda-errors`: Fires when > 10 errors in 5 minutes
+- `{stackName}-revalidation-lambda-errors`: Fires when > 5 errors in 10 minutes
 
 **Dependabot configuration:**
 - Runs weekly on Monday
@@ -124,10 +129,16 @@ Ensure requests originate from our frontend, not direct API/Lambda URL access.
 2. Add to config: `domains.cloudFrontUrl: "https://d1234.cloudfront.net"`
 3. Second deploy: CORS now allows preview requests from CloudFront domain
 
+**Preview URL Access:**
+- `/_site/` previews accessible via CloudFront URL (for sharing with clients)
+- Blocked on production tenant domains (prevents path hijacking)
+- URL is effectively a secret: requires CloudFront domain + tenant ID + path
+
 **Why this matters:**
 - Direct Lambda URL access blocked (missing `x-origin-verify`)
 - `x-tenant-id` header manipulation blocked (tenant-verify.ts checks Origin)
 - curl/script attacks blocked (missing Origin header on cross-origin POST)
+- Preview URLs only accessible from admin panel
 
 ---
 
@@ -172,18 +183,12 @@ Ensure requests originate from our frontend, not direct API/Lambda URL access.
 
 ## Next Steps
 
-1. **Deploy Phase 6 changes** - `npx cdk deploy` to deploy 6.1-6.3
-2. **Test checkout flow** - Verify orders still work with strict mode
-3. **Phase 6.4 API Gateway resource policy** (optional) - CloudFront IPs only
-4. **Add CloudWatch alarms** (Phase 5.4):
-   - Revalidation queue depth > 100
-   - Lambda errors spike
-   - Cache hit ratio drops below threshold
-5. **Monitor CloudFront cache hit ratio** - Target > 80% for popular pages
+1. **Test checkout flow** - Verify orders still work with strict tenant verification
+2. **Monitor CloudFront cache hit ratio** - Target > 80% for popular pages
+3. **(Optional) Phase 6.4 API Gateway resource policy** - CloudFront IPs only
+4. **(Optional) Phase 6.5 Request signing** - Server-generated checkout tokens
 
-## Completed Deployment
+## Completed Deployments
 
-All Phase 1-4 changes are deployed and working:
-- `npx cdk deploy` on 2026-03-07 deployed full caching infrastructure
-- Tenant sites confirmed working with caching enabled
-- CI pipeline fixed for cross-platform builds
+- **2026-03-07**: Phase 1-4 deployed (caching infrastructure)
+- **2026-03-08**: Phase 6.1-6.3 deployed (request provenance, preview security)

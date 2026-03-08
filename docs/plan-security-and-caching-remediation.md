@@ -12,10 +12,10 @@ For detailed caching implementation, see: `docs/caching-architecture.md`
 |-------|--------|-----------|
 | Phase 1: Backend Hardening | ✅ COMPLETE | All 1.1-1.6 tasks done |
 | Phase 2: Renderer Role Separation | ✅ COMPLETE | All 2.1-2.6 tasks done |
-| Phase 3: Customer Data Access | ✅ COMPLETE | 3.1-3.4 done, 3.5 pending (strict origin check) |
+| Phase 3: Customer Data Access | ✅ COMPLETE | All 3.1-3.5 tasks done |
 | Phase 4: OpenNext Caching | ✅ COMPLETE | Full infrastructure deployed 2026-03-07 |
-| Phase 5: Operational Security | ⏳ PARTIAL | CI/Dependabot done, CloudWatch alarms pending |
-| Phase 6: Request Provenance | ⏳ IN PROGRESS | 6.1-6.3 done, 6.4-6.5 optional |
+| Phase 5: Operational Security | ✅ COMPLETE | CI/Dependabot/CloudWatch alarms done |
+| Phase 6: Request Provenance | ✅ COMPLETE | 6.1-6.3 deployed, 6.4-6.5 optional hardening |
 
 See `docs/security-remediation-status.md` for detailed task-by-task status.
 

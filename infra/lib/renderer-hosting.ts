@@ -11,6 +11,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { Construct } from 'constructs';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -328,6 +329,49 @@ function handler(event) {
             distribution: this.distribution,
             prune: false,
         });
+
+        // 9. CloudWatch Alarms (Phase 5.4: Operational Security)
+
+        // 9.1 Revalidation queue depth alarm (pages piling up = renderer not keeping up)
+        new cloudwatch.Alarm(this, 'RevalidationQueueDepthAlarm', {
+            alarmName: `${stackName}-revalidation-queue-depth`,
+            alarmDescription: 'Revalidation queue has more than 100 pending messages',
+            metric: revalidationQueue.metricApproximateNumberOfMessagesVisible({
+                period: cdk.Duration.minutes(5),
+                statistic: 'Maximum',
+            }),
+            threshold: 100,
+            evaluationPeriods: 2,
+            comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        });
+
+        // 9.2 Server Lambda errors alarm
+        new cloudwatch.Alarm(this, 'ServerLambdaErrorsAlarm', {
+            alarmName: `${stackName}-server-lambda-errors`,
+            alarmDescription: 'Server Lambda has more than 10 errors in 5 minutes',
+            metric: serverFunction.metricErrors({
+                period: cdk.Duration.minutes(5),
+                statistic: 'Sum',
+            }),
+            threshold: 10,
+            evaluationPeriods: 1,
+            comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        });
+
+        // 9.3 Revalidation Lambda errors alarm (if exists)
+        if (revalidationFunc) {
+            new cloudwatch.Alarm(this, 'RevalidationLambdaErrorsAlarm', {
+                alarmName: `${stackName}-revalidation-lambda-errors`,
+                alarmDescription: 'Revalidation Lambda has errors',
+                metric: revalidationFunc.metricErrors({
+                    period: cdk.Duration.minutes(5),
+                    statistic: 'Sum',
+                }),
+                threshold: 5,
+                evaluationPeriods: 2,
+                comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            });
+        }
 
         // Outputs
         new cdk.CfnOutput(this, 'RendererUrl', { value: `https://${this.distribution.distributionDomainName}` });
