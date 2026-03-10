@@ -544,7 +544,7 @@ export async function getPublishedContent(tenantId: string) {
             },
             FilterExpression: "#s = :pub",
             ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, seoDescription, createdAt, updatedAt, #s",
+            ProjectionExpression: "SK, id, title, slug, seoDescription, createdAt, updatedAt, #s",
         }));
 
         // Filter only LATEST versions
