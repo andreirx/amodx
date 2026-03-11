@@ -224,16 +224,25 @@ export async function getProductsByCategory(tenantId: string, categoryId: string
     if (!tableName) return { items: [], total: 0 };
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": `CATPROD#${categoryId}#`,
-            },
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
 
-        const allProducts = (result.Items || [])
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": `CATPROD#${categoryId}#`,
+                },
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+
+        const allProducts = allItems
             // Filter out non-active products (draft, etc.) - only show active or items without status (legacy)
             .filter((p: any) => !p.status || p.status === "active")
             .filter((p: any) => isProductAvailable(p))
@@ -254,20 +263,29 @@ export async function getAllCategories(tenantId: string): Promise<Category[]> {
     if (!tableName) return [];
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "#s = :active",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "CATEGORY#",
-                ":active": "active"
-            },
-            ExpressionAttributeNames: { "#s": "status", "#n": "name" },
-            ProjectionExpression: "id, #n, slug, parentId, sortOrder, productCount, imageLink, seoTitle, seoDescription",
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
 
-        return (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0)) as Category[];
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                FilterExpression: "#s = :active",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": "CATEGORY#",
+                    ":active": "active"
+                },
+                ExpressionAttributeNames: { "#s": "status", "#n": "name" },
+                ProjectionExpression: "id, #n, slug, parentId, sortOrder, productCount, imageLink, seoTitle, seoDescription",
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+
+        return allItems.sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0)) as Category[];
     } catch (error) {
         console.error("DynamoDB Categories Error:", error);
         return [];
@@ -280,20 +298,29 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
     if (!tableName) return { items: [], total: 0 };
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "#s = :active",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "PRODUCT#",
-                ":active": "active"
-            },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil"
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
 
-        let allProducts = (result.Items || [])
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                FilterExpression: "#s = :active",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": "PRODUCT#",
+                    ":active": "active"
+                },
+                ExpressionAttributeNames: { "#s": "status" },
+                ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil",
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+
+        let allProducts = allItems
             .filter((p: any) => isProductAvailable(p))
             .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
@@ -318,21 +345,30 @@ export async function searchProducts(tenantId: string, query: string, page: numb
     if (!tableName || !query.trim()) return { items: [], total: 0 };
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "#s = :active",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "PRODUCT#",
-                ":active": "active"
-            },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, description, sku"
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
+
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                FilterExpression: "#s = :active",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": "PRODUCT#",
+                    ":active": "active"
+                },
+                ExpressionAttributeNames: { "#s": "status" },
+                ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, description, sku",
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
 
         const searchLower = query.toLowerCase();
-        const allProducts = (result.Items || [])
+        const allProducts = allItems
             .filter((p: any) => isProductAvailable(p))
             .filter((p: any) => {
                 const title = (p.title || "").toLowerCase();
@@ -399,20 +435,29 @@ export async function getProductReviews(tenantId: string, productId: string) {
     if (!tableName) return { items: [], averageRating: 0, totalReviews: 0 };
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "#s = :approved",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": `REVIEW#${productId}#`,
-                ":approved": "approved",
-            },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, authorName, rating, content, source, createdAt",
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
 
-        const items = (result.Items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                FilterExpression: "#s = :approved",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": `REVIEW#${productId}#`,
+                    ":approved": "approved",
+                },
+                ExpressionAttributeNames: { "#s": "status" },
+                ProjectionExpression: "id, authorName, rating, content, source, createdAt",
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+
+        const items = allItems.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         const totalReviews = items.length;
         const averageRating = totalReviews > 0 ? Math.round((items.reduce((s: number, r: any) => s + r.rating, 0) / totalReviews) * 10) / 10 : 0;
 
@@ -429,18 +474,27 @@ export async function getCustomerOrders(tenantId: string, email: string) {
     if (!tableName) return [];
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": `CUSTORDER#${email.toLowerCase()}#`,
-            },
-            ProjectionExpression: "orderNumber, total, #s, createdAt, SK",
-            ExpressionAttributeNames: { "#s": "status" },
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
 
-        return (result.Items || [])
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": `CUSTORDER#${email.toLowerCase()}#`,
+                },
+                ProjectionExpression: "orderNumber, total, #s, createdAt, SK",
+                ExpressionAttributeNames: { "#s": "status" },
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+
+        return allItems
             .map((item: any) => ({
                 orderNumber: item.orderNumber,
                 total: item.total,
@@ -499,11 +553,21 @@ export async function getPosts(tenantId: string, tag?: string, limit: number = 6
             params.ExpressionAttributeValues[":tag"] = tag.trim();
         }
 
-        const result = await docClient.send(new QueryCommand(params));
-        let items = result.Items || [];
+        // Paginate through all results (DynamoDB returns max 1MB per query)
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
+
+        do {
+            const result = await docClient.send(new QueryCommand({
+                ...params,
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
 
         // Filter LATEST
-        items = items.filter((item: any) => item.SK.endsWith("#LATEST"));
+        let items = allItems.filter((item: any) => item.SK.endsWith("#LATEST"));
 
         // Sort Date Desc
         items.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -534,21 +598,31 @@ export async function getPublishedContent(tenantId: string) {
     if (!process.env.TABLE_NAME) return [];
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: process.env.TABLE_NAME,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "CONTENT#",
-                ":pub": "Published"
-            },
-            FilterExpression: "#s = :pub",
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "SK, id, title, slug, seoDescription, createdAt, updatedAt, #s",
-        }));
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
+
+        // Paginate through all results (DynamoDB returns max 1MB per query)
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: process.env.TABLE_NAME,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": "CONTENT#",
+                    ":pub": "Published"
+                },
+                FilterExpression: "#s = :pub",
+                ExpressionAttributeNames: { "#s": "status" },
+                ProjectionExpression: "SK, id, title, slug, seoDescription, createdAt, updatedAt, #s",
+                ExclusiveStartKey: lastKey,
+            }));
+
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
 
         // Filter only LATEST versions
-        const items = (result.Items || []).filter((item: any) => item.SK?.endsWith("#LATEST"));
+        const items = allItems.filter((item: any) => item.SK?.endsWith("#LATEST"));
 
         return items.map((p: any) => ({
             id: p.id,
@@ -571,21 +645,30 @@ export async function getProductsForFeed(tenantId: string) {
     if (!tableName) return [];
 
     try {
-        const result = await docClient.send(new QueryCommand({
-            TableName: tableName,
-            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
-            FilterExpression: "#s = :active",
-            ExpressionAttributeValues: {
-                ":pk": `TENANT#${tenantId}`,
-                ":sk": "PRODUCT#",
-                ":active": "active"
-            },
-            ExpressionAttributeNames: { "#s": "status", "#c": "condition" },
-            // All fields needed for product feed
-            ProjectionExpression: "id, title, description, slug, price, currency, salePrice, availability, imageLink, additionalImageLinks, brand, #c, availableFrom, availableUntil",
-        }));
+        // Paginate through all results
+        const allItems: any[] = [];
+        let lastKey: any = undefined;
 
-        return (result.Items || [])
+        do {
+            const result = await docClient.send(new QueryCommand({
+                TableName: tableName,
+                KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                FilterExpression: "#s = :active",
+                ExpressionAttributeValues: {
+                    ":pk": `TENANT#${tenantId}`,
+                    ":sk": "PRODUCT#",
+                    ":active": "active"
+                },
+                ExpressionAttributeNames: { "#s": "status", "#c": "condition" },
+                // All fields needed for product feed
+                ProjectionExpression: "id, title, description, slug, price, currency, salePrice, availability, imageLink, additionalImageLinks, brand, #c, availableFrom, availableUntil",
+                ExclusiveStartKey: lastKey,
+            }));
+            allItems.push(...(result.Items || []));
+            lastKey = result.LastEvaluatedKey;
+        } while (lastKey);
+
+        return allItems
             .filter((p: any) => isProductAvailable(p))
             .map((p: any) => ({
                 id: p.id,
