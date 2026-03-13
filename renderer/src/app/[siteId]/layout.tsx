@@ -14,7 +14,7 @@ import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
 import { URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
 
-export const revalidate = 3600;
+export const revalidate = false;
 
 type Props = {
     children: React.ReactNode;

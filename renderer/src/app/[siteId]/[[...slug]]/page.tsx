@@ -24,7 +24,7 @@ import { sanitizeHtml } from "@/lib/sanitize";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
 
-export const revalidate = 3600; // Default to ISR
+export const revalidate = false; // On-demand revalidation only — no time-based ISR
 
 type Props = {
     params: Promise<{ siteId: string; slug?: string[] }>;

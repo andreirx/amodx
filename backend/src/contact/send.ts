@@ -4,11 +4,12 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
 import { verifyRecaptcha, getRecaptchaErrorMessage } from "../lib/recaptcha.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     // LOG EVERYTHING
     console.log("📨 Contact Handler Started");
     console.log("Headers:", JSON.stringify(event.headers));
@@ -116,3 +117,5 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

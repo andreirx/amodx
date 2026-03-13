@@ -6,6 +6,7 @@ import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -14,7 +15,7 @@ type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 const VALID_STATUSES = ["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"];
 
-export const handler: Handler = async (event) => {
+const _handler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const id = event.pathParameters?.id;
@@ -176,3 +177,5 @@ export const handler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET!;
@@ -77,7 +78,7 @@ async function getProductsForResource(tenantId: string, resourceId: string): Pro
 }
 
 // POST /resources/upload-url (Admin Only)
-export const uploadHandler: Handler = async (event) => {
+const _uploadHandler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
@@ -112,6 +113,8 @@ export const uploadHandler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const uploadHandler = withInvalidation(_uploadHandler);
 
 // GET /resources/{id}/download-url (Protected by Purchase Verification)
 export const downloadHandler: Handler = async (event) => {

@@ -31,6 +31,7 @@ interface RendererHostingProps {
 
 export class RendererHosting extends Construct {
     public readonly distribution: cloudfront.Distribution;
+    public readonly assetBucket: s3.Bucket;
 
     constructor(scope: Construct, id: string, props: RendererHostingProps) {
         super(scope, id);
@@ -66,7 +67,7 @@ export class RendererHosting extends Construct {
         }
 
         // 2. Asset Bucket (Public files + ISR cache)
-        const assetBucket = new s3.Bucket(this, 'RendererAssets', {
+        this.assetBucket = new s3.Bucket(this, 'RendererAssets', {
             autoDeleteObjects: false,
             removalPolicy: cdk.RemovalPolicy.RETAIN,
             publicReadAccess: false,
@@ -139,11 +140,11 @@ export class RendererHosting extends Construct {
                 memorySize: 1536,  // Image processing needs more memory
                 timeout: cdk.Duration.seconds(25),
                 environment: {
-                    BUCKET_NAME: assetBucket.bucketName,
+                    BUCKET_NAME: this.assetBucket.bucketName,
                     BUCKET_KEY_PREFIX: '_assets',
                 },
             });
-            assetBucket.grantRead(imageOptFunc);
+            this.assetBucket.grantRead(imageOptFunc);
 
             imageOptUrl = imageOptFunc.addFunctionUrl({
                 authType: lambda.FunctionUrlAuthType.NONE,
@@ -165,7 +166,7 @@ export class RendererHosting extends Construct {
                 NODE_ENV: 'production',
                 TABLE_NAME: props.table.tableName,
                 API_URL: props.apiUrl,
-                CACHE_BUCKET_NAME: assetBucket.bucketName,
+                CACHE_BUCKET_NAME: this.assetBucket.bucketName,
                 CACHE_BUCKET_KEY_PREFIX: '_cache',
                 CACHE_BUCKET_REGION: region,
                 // Phase 2.3: Restricted key - can only POST/DELETE comments, not full admin access
@@ -187,7 +188,7 @@ export class RendererHosting extends Construct {
 
         // Grant Permissions
         props.table.grantReadData(serverFunction);
-        assetBucket.grantReadWrite(serverFunction);
+        this.assetBucket.grantReadWrite(serverFunction);
         revalidationQueue.grantSendMessages(serverFunction);  // Server can queue revalidation
         tagCacheTable.grantReadWriteData(serverFunction);     // Server reads/writes tag cache
 
@@ -288,18 +289,31 @@ function handler(event) {
 
         // Build additional behaviors
         const additionalBehaviors: Record<string, cloudfront.BehaviorOptions> = {
+            // API routes (comments, account, revalidation) must NOT be cached.
+            // They go to the same server Lambda but bypass the cache layer.
+            'api/*': {
+                origin: new origins.HttpOrigin(cdk.Fn.parseDomainName(fnUrl.url)),
+                viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+                cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+                originRequestPolicy: originRequestPolicy,
+                functionAssociations: [{
+                    function: hostRewriteFunction,
+                    eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+                }],
+            },
             '_next/static/*': {
-                origin: origins.S3BucketOrigin.withOriginAccessControl(assetBucket),
+                origin: origins.S3BucketOrigin.withOriginAccessControl(this.assetBucket),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,  // Static assets cache forever
             },
             'assets/*': {
-                origin: origins.S3BucketOrigin.withOriginAccessControl(assetBucket),
+                origin: origins.S3BucketOrigin.withOriginAccessControl(this.assetBucket),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
             },
             'favicon.ico': {
-                origin: origins.S3BucketOrigin.withOriginAccessControl(assetBucket),
+                origin: origins.S3BucketOrigin.withOriginAccessControl(this.assetBucket),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
             },
@@ -325,7 +339,7 @@ function handler(event) {
         // 8. Upload Assets to S3
         new s3deploy.BucketDeployment(this, 'DeployRendererAssets', {
             sources: [s3deploy.Source.asset(path.join(openNextPath, 'assets'))],
-            destinationBucket: assetBucket,
+            destinationBucket: this.assetBucket,
             distribution: this.distribution,
             prune: false,
         });

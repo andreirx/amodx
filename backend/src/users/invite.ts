@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { renderTemplate } from "../lib/order-email.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 import crypto from "crypto";
 
 const cognito = new CognitoIdentityProviderClient({});
@@ -24,7 +25,7 @@ function generateTempPassword(): string {
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-export const handler: Handler = async (event) => {
+const _handler: Handler = async (event) => {
     try {
         const auth = event.requestContext.authorizer.lambda;
 
@@ -106,3 +107,5 @@ export const handler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

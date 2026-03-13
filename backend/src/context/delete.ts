@@ -3,10 +3,11 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import {requireRole} from "../auth/policy.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-export const handler: AmodxHandler = async (event) => {
+const _handler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const id = event.pathParameters?.id;
@@ -35,3 +36,5 @@ export const handler: AmodxHandler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

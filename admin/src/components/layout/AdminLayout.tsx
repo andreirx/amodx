@@ -12,6 +12,7 @@ import {
 import { apiRequest } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import { useTenant } from "@/context/TenantContext";
+import { InvalidationBanner } from "@/components/InvalidationBanner";
 
 interface LinkSuggestion {
     title: string;
@@ -144,6 +145,9 @@ export default function AdminLayout() {
 
                     <span className="font-bold text-lg">AMODX</span>
                 </header>
+
+                {/* CDN Invalidation Status Banner */}
+                <InvalidationBanner />
 
                 {/* Page Content */}
                 <div className="flex-1 h-full">

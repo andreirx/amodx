@@ -6,10 +6,11 @@ import { AuthorizerContext } from "../auth/context.js";
 import {requireRole} from "../auth/policy.js";
 import { deleteCatProductItems } from "../lib/catprod.js";
 import { revalidatePath } from "../lib/revalidate.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-export const handler: Handler = async (event) => {
+const _handler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const id = event.pathParameters?.id;
@@ -52,3 +53,5 @@ export const handler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

@@ -6,6 +6,7 @@ import { requireRole } from "../auth/policy.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { publishAudit } from "../lib/events.js";
 import { loadMediaMap } from "../lib/media-map.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 /** Look up existing product by slug using GSI_Slug */
 async function findProductBySlug(tenantId: string, slug: string): Promise<any | null> {
@@ -205,7 +206,7 @@ interface ImportResult {
     errors: string[];
 }
 
-export const handler: Handler = async (event) => {
+const _handler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
@@ -535,3 +536,5 @@ export const handler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

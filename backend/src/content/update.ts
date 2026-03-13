@@ -8,6 +8,7 @@ import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 import { revalidatePath } from "../lib/revalidate.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -31,7 +32,7 @@ const StrictUpdateSchema = z.object({
     schemaType: z.string().optional(),
 });
 
-export const handler: AmodxHandler = async (event) => {
+const _handler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
@@ -199,3 +200,5 @@ export const handler: AmodxHandler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

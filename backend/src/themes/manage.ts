@@ -2,11 +2,12 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, QueryCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 // POST /themes - Save a new theme
-export const createHandler: Handler = async (event) => {
+const _createHandler: Handler = async (event) => {
     try {
         const auth = event.requestContext.authorizer.lambda;
 
@@ -53,7 +54,7 @@ export const listHandler: Handler = async () => {
 };
 
 // DELETE /themes/{id}
-export const deleteHandler: Handler = async (event) => {
+const _deleteHandler: Handler = async (event) => {
     try {
         const id = event.pathParameters?.id;
         if (!id) return { statusCode: 400, body: "Missing ID" };
@@ -67,3 +68,6 @@ export const deleteHandler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const createHandler = withInvalidation(_createHandler);
+export const deleteHandler = withInvalidation(_deleteHandler);

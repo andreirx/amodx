@@ -6,6 +6,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
 const BUCKET = process.env.UPLOADS_BUCKET!;
@@ -13,7 +14,7 @@ const CDN_URL = process.env.UPLOADS_CDN_URL!;
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-export const handler: Handler = async (event) => {
+const _handler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
@@ -79,3 +80,5 @@ export const handler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

@@ -8,6 +8,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -21,7 +22,7 @@ const cleanSlug = (str: string) => {
     return cleaned.startsWith('/') ? cleaned : '/' + cleaned;
 };
 
-export const handler: AmodxHandler = async (event) => {
+const _handler: AmodxHandler = async (event) => {
     try {
         const auth = event.requestContext.authorizer.lambda;
         const userId = auth.sub;
@@ -155,3 +156,5 @@ export const handler: AmodxHandler = async (event) => {
         };
     }
 };
+
+export const handler = withInvalidation(_handler);

@@ -5,10 +5,11 @@ import { ContextItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-export const handler: AmodxHandler = async (event) => {
+const _handler: AmodxHandler = async (event) => {
     try {
         if (!event.body) return { statusCode: 400, body: "Missing body" };
 
@@ -67,3 +68,5 @@ export const handler: AmodxHandler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

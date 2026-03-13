@@ -6,6 +6,7 @@ import { parseWXR, WordPressPost } from "./wxr-parser.js";
 import { HTMLToTiptapConverter } from "./html-to-tiptap.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { loadMediaMap } from "../lib/media-map.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 /** Find existing content by slug using ROUTE# lookup */
 async function findContentBySlug(tenantId: string, slug: string): Promise<{ nodeId: string; contentId: string; createdAt: string } | null> {
@@ -68,7 +69,7 @@ interface ImportResponse {
     errors?: string[];
 }
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) {
@@ -288,3 +289,5 @@ async function processPost(
     console.log(`${isUpdate ? 'Updated' : 'Created'} content and route for "${post.title}" at ${slugPath}`);
     return isUpdate;
 }
+
+export const handler = withInvalidation(_handler);

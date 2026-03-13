@@ -1,13 +1,14 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 /**
  * Public endpoint for customers to update their own profile.
  * Requires email verification via a simple token check (email must match).
  * POST /public/customers/profile
  */
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
@@ -90,3 +91,5 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

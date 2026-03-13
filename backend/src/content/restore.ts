@@ -5,11 +5,12 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { ContentItem } from "@amodx/shared"; // Import the type
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 // POST /content/{id}/restore
-export const restoreHandler: Handler = async (event) => {
+const _restoreHandler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const nodeId = event.pathParameters?.id;
@@ -76,3 +77,5 @@ export const restoreHandler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const restoreHandler = withInvalidation(_restoreHandler);

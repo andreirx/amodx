@@ -4,6 +4,7 @@ import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js"; // <--- Added .js
 import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -42,7 +43,7 @@ export const getHandler: AmodxHandler = async (event) => {
     }
 };
 
-export const updateHandler: AmodxHandler = async (event) => {
+const _updateHandler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
@@ -101,3 +102,5 @@ export const updateHandler: AmodxHandler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };
+
+export const updateHandler = withInvalidation(_updateHandler);

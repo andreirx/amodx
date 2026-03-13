@@ -6,6 +6,7 @@ import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { writeMediaMapEntry, loadMediaMap } from "../lib/media-map.js";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET!;
@@ -85,7 +86,7 @@ async function processBatch(
     return downloaded;
 }
 
-export const handler: Handler = async (event) => {
+const _handler: Handler = async (event) => {
     try {
         const tenantId = event.headers["x-tenant-id"];
         const auth = event.requestContext.authorizer.lambda;
@@ -188,3 +189,5 @@ export const handler: Handler = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

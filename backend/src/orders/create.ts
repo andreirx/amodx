@@ -6,6 +6,7 @@ import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order
 import { verifyRecaptcha } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { OrderInputSchema } from "@amodx/shared";
+import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -13,7 +14,7 @@ const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
 // Email rate limiting: max emails per address per hour
 const EMAIL_RATE_LIMIT = 5;
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
@@ -526,3 +527,5 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }
 };
+
+export const handler = withInvalidation(_handler);

@@ -16,6 +16,10 @@ import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as eventTargets from 'aws-cdk-lib/aws-events-targets';
 import { AmodxEvents } from './events';
 import * as path from "node:path";
 
@@ -167,7 +171,7 @@ export class AmodxStack extends cdk.Stack {
     db.table.grantWriteData(auditWorker);
 
     // 2. Events Infra (The Bus)
-    const events = new AmodxEvents(this, 'Events', {
+    const amodxEvents = new AmodxEvents(this, 'Events', {
       auditFunction: auditWorker,
       busName: `AmodxSystemBus${suffix}`
     });
@@ -187,7 +191,7 @@ export class AmodxStack extends cdk.Stack {
       uploadsBucket: uploads.bucket,
       privateBucket: uploads.privateBucket,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
-      eventBus: events.bus,
+      eventBus: amodxEvents.bus,
       sesEmail: sesEmail,
       adminDomain: rootDomain ? `admin.${rootDomain}` : undefined,
       tenantDomains: tenantDomains, // Phase 6.2: For CORS
@@ -208,11 +212,11 @@ export class AmodxStack extends cdk.Stack {
     }
 
     // 3b. Commerce API (NestedStack — categories, orders, customers, delivery, coupons, reviews, woo import)
-    new CommerceApi(this, 'CommerceApi', {
+    const commerceApi = new CommerceApi(this, 'CommerceApi', {
       httpApiId: api.httpApi.apiId,
       authorizerFuncArn: api.authorizerFuncArn,
       table: db.table,
-      eventBus: events.bus,
+      eventBus: amodxEvents.bus,
       sesEmail: sesEmail,
       uploadsBucketName: uploads.bucket.bucketName,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
@@ -223,11 +227,11 @@ export class AmodxStack extends cdk.Stack {
     });
 
     // 3c. Engagement API (NestedStack — popups, forms)
-    new EngagementApi(this, 'EngagementApi', {
+    const engagementApi = new EngagementApi(this, 'EngagementApi', {
       httpApiId: api.httpApi.apiId,
       authorizerFuncArn: api.authorizerFuncArn,
       table: db.table,
-      eventBus: events.bus,
+      eventBus: amodxEvents.bus,
       sesEmail: sesEmail,
     });
 
@@ -255,6 +259,132 @@ export class AmodxStack extends cdk.Stack {
 
     const cloudFrontUrl = `https://${renderer.distribution.distributionDomainName}`;
     const rendererUrl = rootDomain ? `https://${rootDomain}` : cloudFrontUrl;
+
+    // ============================================================
+    // 4b. Debounced CloudFront Invalidation
+    // ============================================================
+    // Mutation handlers write a DynamoDB marker (SYSTEM#CDN_PENDING)
+    // via the withInvalidation() HOF. No CloudFront IAM needed on
+    // mutation Lambdas — they only do DDB PutItem.
+    //
+    // The debounce flush Lambda polls every 10 seconds (inside a
+    // 1-minute EventBridge schedule) and fires CloudFront /*
+    // invalidation when 15 minutes have elapsed since the last mutation.
+    const distId = renderer.distribution.distributionId;
+    const distArn = `arn:aws:cloudfront::${this.account}:distribution/${distId}`;
+
+    const debounceFlushFunc = new nodejs.NodejsFunction(this, 'DebounceFlushFunc', {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        entry: path.join(__dirname, '../../backend/src/scheduled/debounce-flush.ts'),
+        handler: 'handler',
+        memorySize: 256,
+        timeout: cdk.Duration.minutes(2),  // Max 6 iterations * 10s = 60s, plus overhead
+        environment: {
+            TABLE_NAME: db.table.tableName,
+            RENDERER_DISTRIBUTION_ID: distId,
+            DEBOUNCE_WINDOW_MS: '900000', // 15 minutes
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+    });
+    db.table.grantReadWriteData(debounceFlushFunc);
+    debounceFlushFunc.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['cloudfront:CreateInvalidation'],
+        resources: [distArn],
+    }));
+
+    // Schedule: every 1 minute (Lambda loops internally at 10s resolution)
+    new events.Rule(this, 'DebounceFlushSchedule', {
+        schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+        targets: [new eventTargets.LambdaFunction(debounceFlushFunc)],
+    });
+
+    // ============================================================
+    // 4b-2. System API Routes — Invalidation Status + Manual Flush
+    // ============================================================
+    // These use api.httpApi directly from the stack (not api.ts)
+    // because they need the renderer distribution ID, which isn't
+    // available until after the renderer construct is created.
+    const systemNodeProps = {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        environment: {
+            TABLE_NAME: db.table.tableName,
+            DEBOUNCE_WINDOW_MS: '900000',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 256,
+        timeout: cdk.Duration.seconds(10),
+    };
+
+    // GET /system/invalidation — status check (polled by admin UI)
+    const invalidationStatusFunc = new nodejs.NodejsFunction(this, 'InvalidationStatusFunc', {
+        ...systemNodeProps,
+        entry: path.join(__dirname, '../../backend/src/system/invalidation.ts'),
+        handler: 'statusHandler',
+    });
+    db.table.grantReadData(invalidationStatusFunc);
+
+    // POST /system/invalidation — "GO LIVE NOW" manual flush
+    const invalidationFlushFunc = new nodejs.NodejsFunction(this, 'InvalidationFlushFunc', {
+        ...systemNodeProps,
+        entry: path.join(__dirname, '../../backend/src/system/invalidation.ts'),
+        handler: 'flushHandler',
+        environment: {
+            ...systemNodeProps.environment,
+            RENDERER_DISTRIBUTION_ID: distId,
+        },
+    });
+    db.table.grantReadWriteData(invalidationFlushFunc);
+    invalidationFlushFunc.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['cloudfront:CreateInvalidation'],
+        resources: [distArn],
+    }));
+
+    api.httpApi.addRoutes({
+        path: '/system/invalidation',
+        methods: [apigw.HttpMethod.GET],
+        integration: new integrations.HttpLambdaIntegration('InvalidationStatusInt', invalidationStatusFunc),
+    });
+    api.httpApi.addRoutes({
+        path: '/system/invalidation',
+        methods: [apigw.HttpMethod.POST],
+        integration: new integrations.HttpLambdaIntegration('InvalidationFlushInt', invalidationFlushFunc),
+    });
+
+    // ============================================================
+    // 4c. Nightly Cache Flush — safety net
+    // ============================================================
+    // Clears both CloudFront edge cache (/* invalidation) and
+    // OpenNext ISR cache in S3 (delete _cache/ prefix).
+    // Runs daily at 02:00 UTC via EventBridge scheduled rule.
+    const nightlyFlushFunc = new nodejs.NodejsFunction(this, 'NightlyCacheFlushFunc', {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        entry: path.join(__dirname, '../../backend/src/scheduled/nightly-cache-flush.ts'),
+        handler: 'handler',
+        memorySize: 256,
+        timeout: cdk.Duration.minutes(5),
+        environment: {
+            RENDERER_DISTRIBUTION_ID: distId,
+            CACHE_BUCKET_NAME: renderer.assetBucket.bucketName,
+            CACHE_BUCKET_KEY_PREFIX: '_cache',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+    });
+
+    // IAM: CloudFront invalidation
+    nightlyFlushFunc.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['cloudfront:CreateInvalidation'],
+        resources: [distArn],
+    }));
+
+    // IAM: S3 cache flush (list + delete under _cache/ prefix)
+    renderer.assetBucket.grantRead(nightlyFlushFunc);
+    renderer.assetBucket.grantDelete(nightlyFlushFunc);
+
+    // Schedule: daily at 02:00 UTC
+    new events.Rule(this, 'NightlyCacheFlushSchedule', {
+        schedule: events.Schedule.cron({ hour: '2', minute: '0' }),
+        targets: [new eventTargets.LambdaFunction(nightlyFlushFunc)],
+    });
 
     // 5. Admin Layer
     const admin = new AdminHosting(this, 'AdminHosting', {
