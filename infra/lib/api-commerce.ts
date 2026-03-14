@@ -24,6 +24,7 @@ interface CommerceApiProps extends NestedStackProps {
     // Cache revalidation
     revalidationSecret: secretsmanager.ISecret;
     rendererUrl?: string;
+    recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
 }
 
 export class CommerceApi extends NestedStack {
@@ -186,6 +187,7 @@ export class CommerceApi extends NestedStack {
             environment: {
                 ...nodeProps.environment,
                 SES_FROM_EMAIL: sesEmail,
+                ...(props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
             },
         });
         table.grantReadWriteData(createOrderFunc);
@@ -348,6 +350,10 @@ export class CommerceApi extends NestedStack {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/coupons/public-validate.ts'),
             handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                ...(props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
+            },
         });
         table.grantReadData(validateCouponFunc);
 

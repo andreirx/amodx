@@ -3,7 +3,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
-import { verifyRecaptcha, getRecaptchaErrorMessage } from "../lib/recaptcha.js";
+import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
@@ -38,8 +38,9 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const config = tenantRes.Item;
 
-        // reCAPTCHA verification (if enabled for tenant)
-        if (config?.recaptcha?.enabled && config.recaptcha.secretKey) {
+        // reCAPTCHA verification (deployment-level mandatory, tenant can override keys/threshold)
+        const recaptchaConfig = resolveRecaptchaConfig(config?.recaptcha);
+        if (recaptchaConfig) {
             const recaptchaToken = body.recaptchaToken;
 
             if (!recaptchaToken) {
@@ -48,18 +49,16 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
             const result = await verifyRecaptcha(
                 recaptchaToken,
-                config.recaptcha.secretKey,
+                recaptchaConfig.secretKey,
                 event.requestContext?.http?.sourceIp
             );
 
-            const threshold = config.recaptcha.threshold ?? 0.5;
-
-            if (!result.success || result.score < threshold) {
-                console.warn(`reCAPTCHA BLOCKED: score=${result.score}, ip=${event.requestContext?.http?.sourceIp}, form=contact`);
+            if (!result.success || result.score < recaptchaConfig.threshold) {
+                console.warn(`reCAPTCHA BLOCKED [${recaptchaConfig.source}]: score=${result.score}, ip=${event.requestContext?.http?.sourceIp}, form=contact`);
                 return { statusCode: 403, body: JSON.stringify({ error: getRecaptchaErrorMessage(result) }) };
             }
 
-            console.log(`reCAPTCHA passed: score=${result.score}, action=${result.action}`);
+            console.log(`reCAPTCHA passed [${recaptchaConfig.source}]: score=${result.score}, action=${result.action}`);
         }
 
         // 2. Determine Recipient

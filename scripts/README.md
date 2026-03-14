@@ -28,12 +28,38 @@ vim amodx.config.json  # add domain to "tenants" array
 # 2. Request SSL cert
 npm run manage-domains  # add CNAME records it provides
 
-# 3. Deploy
+# 3. Add domain to reCAPTCHA project
+# Google reCAPTCHA console → Settings → Domains → add the new domain
+
+# 4. Deploy
 cd infra && npm run cdk deploy
 
-# 4. Sync env (if secrets changed)
+# 5. Sync env (if secrets changed)
 npm run post-deploy
 ```
+
+## `./scripts/setup-recaptcha.sh`
+
+Stores deployment-level reCAPTCHA v3 keys in AWS SSM Parameter Store. These provide mandatory bot protection for all tenants — tenants cannot disable it, only override with their own keys or adjust the score threshold.
+
+**Prerequisites:**
+1. Register at https://www.google.com/recaptcha/admin — choose **Score based (v3)**
+2. Add ALL tenant domains + `localhost` to the reCAPTCHA project
+3. Copy Site Key (public) and Secret Key (private)
+
+**Usage:**
+```bash
+./scripts/setup-recaptcha.sh
+# Prompts for site key and secret key interactively
+```
+
+Creates two SSM parameters:
+- `/amodx/recaptcha/site-key` (String)
+- `/amodx/recaptcha/secret-key` (SecureString, KMS-encrypted)
+
+**Must run before first `cdk deploy`.** CDK reads these at deploy time and injects them as Lambda env vars. See `docs/INTEGRATION_MANUAL.md` for full setup guide.
+
+**Tenant onboarding:** When adding a new tenant domain, also add it to the reCAPTCHA project's domain list in the Google console (Settings > Domains).
 
 ## Database Restore
 

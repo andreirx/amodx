@@ -175,12 +175,36 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 | View account + all orders | Google sign-in | NextAuth session → email → DynamoDB lookup |
 | Manage orders (admin) | Admin Cognito JWT | API Gateway authorizer |
 
+## 5b. reCAPTCHA v3 (Bot Protection on Public Routes)
+
+reCAPTCHA v3 is orthogonal to authentication — it protects **unauthenticated public routes** from bot abuse. It runs invisibly (no checkbox/puzzle), scoring each request 0.0 (bot) to 1.0 (human).
+
+**Protected endpoints:** `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/orders`, `POST /coupons/validate`
+
+**Architecture:** Two-tier resolution with mandatory deployment-level baseline:
+1. Deployment-level keys stored in SSM Parameter Store, injected as Lambda env vars at deploy time
+2. Tenant can override with their own keys via Admin > Settings (for separate analytics/compliance)
+3. Tenant can adjust score threshold (always per-tenant, default 0.5)
+4. Tenants cannot disable reCAPTCHA — deployment keys always apply as fallback
+
+**Resolution logic:** `backend/src/lib/recaptcha.ts` → `resolveRecaptchaConfig(tenantConfig)`:
+- Tenant has own `siteKey` + `secretKey` → use tenant keys
+- Otherwise → use `RECAPTCHA_SECRET_KEY` env var (deployment-level)
+- Neither (local dev only) → skip verification
+
+**Client-side:** `renderer/src/hooks/useRecaptcha.ts` hook calls `grecaptcha.execute(siteKey, { action })` and includes the token in POST body. The site key is injected by `ThemeInjector` (tenant key takes priority, else deployment key from `RECAPTCHA_SITE_KEY` env var).
+
+**Setup:** `./scripts/setup-recaptcha.sh` stores keys in SSM. See `docs/INTEGRATION_MANUAL.md` for the full Google registration walkthrough.
+
+**Tenant onboarding:** When adding a new domain, it must be added to the reCAPTCHA project's domain list in the Google console, in addition to ACM cert and CDK deploy.
+
 ## Key Facts
 
 - **Pools are per-deployment, not per-tenant.** One admin pool serves all tenants. Tenant isolation is via `custom:tenantId` attribute + backend authorization checks.
 - **The public pool exists but does nothing.** It was created as forward-looking infrastructure. Customer authentication bypasses it entirely via NextAuth.
 - **Google OAuth credentials are per-tenant.** Each tenant can have its own Google OAuth app, allowing customers to sign in with Google on each tenant site independently.
 - **Three credential stores:** Cognito (admin users), DynamoDB (customer records), Secrets Manager (API key + NextAuth secret).
+- **reCAPTCHA is per-deployment by default.** Deployment keys in SSM provide mandatory bot protection. Tenants can override with own keys but cannot disable. See `docs/INTEGRATION_MANUAL.md`.
 
 ## Decision: Public Pool Future
 

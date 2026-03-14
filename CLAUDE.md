@@ -26,6 +26,17 @@ cd renderer && npm run dev               # Renderer dev server
 cd backend && npm test                   # Vitest (uses real staging DynamoDB)
 ```
 
+Beware the installed packages within each workspace, don't mix them up.
+Each module builds SEPARATELY.
+
+## Definition of Done
+
+When updating code, rebuild shared, backend, plugins, renderer.
+When installing new packages, audit vulnerabilities and explain the high priority ones. Github actions will fail on this.
+Check that the MCP server reflects the changes.
+Update the documentation.
+Record any important decisions being made.
+
 ## Critical Rules
 
 These invariants, if broken, cause crashes or data corruption:
@@ -55,7 +66,8 @@ Detailed patterns and business logic live in `docs/`:
 | `docs/growth-engine.md`           | Working on signals, research, social posting, or MCP tools |
 | `docs/commerce.md`               | Commerce extension: cart, checkout, orders, delivery, coupons, email templates |
 | `docs/lessons-learned-details.md` | Check this when planning a feature or refactor              |
-| `docs/authentication-architecture.md` | Auth system: 2 Cognito pools, NextAuth, master API key |
+| `docs/authentication-architecture.md` | Auth system: 2 Cognito pools, NextAuth, master API key, reCAPTCHA |
+| `docs/INTEGRATION_MANUAL.md`          | reCAPTCHA setup, SSM keys, tenant onboarding, troubleshooting |
 
 
 # System Intent (WHY)

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { trackFBEvent } from "@/lib/fbpixel";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
 interface CheckoutProps {
@@ -157,6 +158,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const { execute: executeRecaptcha } = useRecaptcha("checkout");
 
     const couponDiscount = coupon?.discount || 0;
 
@@ -303,6 +305,12 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
             }
             if (form.requestedDeliveryDate) {
                 body.requestedDeliveryDate = form.requestedDeliveryDate;
+            }
+
+            // reCAPTCHA token (null if not configured — backend will skip verification)
+            const recaptchaToken = await executeRecaptcha();
+            if (recaptchaToken) {
+                body.recaptchaToken = recaptchaToken;
             }
 
             trackFBEvent("InitiateCheckout", {

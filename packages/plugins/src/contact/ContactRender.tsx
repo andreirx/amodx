@@ -3,6 +3,7 @@ import React, { useState } from "react";
 
 export function ContactRender({ attrs }: { attrs: any }) {
     const [status, setStatus] = useState("idle");
+    const [errorMessage, setErrorMessage] = useState("");
 
     // Get reCAPTCHA token if configured
     const getRecaptchaToken = async (): Promise<string | null> => {
@@ -27,6 +28,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
     const handleSubmit = async (e: any) => {
         e.preventDefault();
         setStatus("loading");
+        setErrorMessage("");
 
         const formData = new FormData(e.target);
         const data = Object.fromEntries(formData.entries());
@@ -47,10 +49,14 @@ export function ContactRender({ attrs }: { attrs: any }) {
                 body: JSON.stringify({ ...data, tags: attrs.tags, recaptchaToken })
             });
 
-            if (!response.ok) throw new Error("Failed");
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || "Failed to send message");
+            }
             setStatus("success");
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setErrorMessage(err.message || "Something went wrong. Please try again.");
             setStatus("error");
         }
     };
@@ -102,6 +108,10 @@ export function ContactRender({ attrs }: { attrs: any }) {
                     />
                 </div>
             </div>
+
+            {errorMessage && (
+                <p className="text-sm text-red-600 text-center">{errorMessage}</p>
+            )}
 
             <button
                 type="submit"

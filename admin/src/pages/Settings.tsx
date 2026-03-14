@@ -1664,48 +1664,12 @@ export default function SettingsPage() {
                                 <ShieldCheck className="h-5 w-5 text-muted-foreground" />
                                 <CardTitle>Bot Protection (reCAPTCHA v3)</CardTitle>
                             </div>
-                            <CardDescription>Invisible bot protection for public forms (Contact, Lead Magnets, Dynamic Forms).</CardDescription>
+                            <CardDescription>
+                                Bot protection is active for all public forms (Contact, Lead Magnets, Dynamic Forms, Checkout, Coupons).
+                                Deployment-level keys are used by default. Override below to use your own reCAPTCHA project.
+                            </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    id="recaptcha-enabled"
-                                    className="rounded border-gray-300"
-                                    checked={config.recaptcha?.enabled ?? false}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        recaptcha: { ...config.recaptcha!, enabled: e.target.checked }
-                                    })}
-                                />
-                                <Label htmlFor="recaptcha-enabled">Enable reCAPTCHA</Label>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Site Key (Public)</Label>
-                                <Input
-                                    value={config.recaptcha?.siteKey || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        recaptcha: { ...config.recaptcha!, siteKey: e.target.value }
-                                    })}
-                                    placeholder="6Le..."
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Secret Key (Private)</Label>
-                                <Input
-                                    type="password"
-                                    value={config.recaptcha?.secretKey || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        recaptcha: { ...config.recaptcha!, secretKey: e.target.value }
-                                    })}
-                                    placeholder="6Le..."
-                                />
-                            </div>
-
                             <div className="space-y-2">
                                 <Label>Score Threshold (0.0 - 1.0)</Label>
                                 <div className="flex items-center gap-3">
@@ -1726,6 +1690,34 @@ export default function SettingsPage() {
                                 <p className="text-[10px] text-muted-foreground">
                                     Lower = more lenient, Higher = stricter. Default is 0.5. Scores below this block the form submission.
                                 </p>
+                            </div>
+
+                            <div className="pt-4 border-t space-y-3">
+                                <p className="text-xs font-medium text-muted-foreground">Custom reCAPTCHA Keys (optional — overrides deployment default)</p>
+                                <div className="space-y-2">
+                                    <Label>Site Key (Public)</Label>
+                                    <Input
+                                        value={config.recaptcha?.siteKey || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            recaptcha: { ...config.recaptcha!, siteKey: e.target.value }
+                                        })}
+                                        placeholder="Leave blank to use deployment default"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Secret Key (Private)</Label>
+                                    <Input
+                                        type="password"
+                                        value={config.recaptcha?.secretKey || ""}
+                                        onChange={e => setConfig({
+                                            ...config,
+                                            recaptcha: { ...config.recaptcha!, secretKey: e.target.value }
+                                        })}
+                                        placeholder="Leave blank to use deployment default"
+                                    />
+                                </div>
                             </div>
 
                             <div className="pt-2 border-t">

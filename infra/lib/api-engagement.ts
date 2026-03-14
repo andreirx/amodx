@@ -16,6 +16,7 @@ interface EngagementApiProps extends NestedStackProps {
     table: dynamodb.ITable;
     eventBus: events.IEventBus;
     sesEmail: string;
+    recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
 }
 
 export class EngagementApi extends NestedStack {
@@ -189,6 +190,7 @@ export class EngagementApi extends NestedStack {
             environment: {
                 ...nodeProps.environment,
                 SES_FROM_EMAIL: sesEmail,
+                ...(props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
             },
         });
         table.grantReadWriteData(publicSubmitFormFunc);

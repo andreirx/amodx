@@ -5,6 +5,7 @@ import { Lock, Unlock, Download, Loader2 } from "lucide-react";
 export function LeadMagnetRender({ attrs }: { attrs: any }) {
     const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [downloadUrl, setDownloadUrl] = useState("");
+    const [errorMessage, setErrorMessage] = useState("");
 
     // Get reCAPTCHA token if configured
     const getRecaptchaToken = async (): Promise<string | null> => {
@@ -29,6 +30,7 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
     const handleSubmit = async (e: any) => {
         e.preventDefault();
         setStatus("loading");
+        setErrorMessage("");
         const formData = new FormData(e.target);
         const email = formData.get("email");
 
@@ -53,6 +55,11 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                 })
             });
 
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || "Submission failed");
+            }
+
             const data = await res.json();
 
             if (data.downloadUrl) {
@@ -61,8 +68,9 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
             } else {
                 setStatus("success");
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setErrorMessage(err.message || "Something went wrong. Please try again.");
             setStatus("error");
         }
     };
@@ -109,6 +117,9 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                         className="w-full px-4 py-2.5 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all placeholder:text-muted-foreground"
                     />
                 </div>
+                {errorMessage && (
+                    <p className="text-sm text-red-600 text-center">{errorMessage}</p>
+                )}
                 <button
                     type="submit"
                     disabled={status === "loading"}

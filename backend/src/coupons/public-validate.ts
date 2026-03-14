@@ -1,7 +1,7 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
-import { verifyRecaptcha } from "../lib/recaptcha.js";
+import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
@@ -31,9 +31,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }));
         const tenantConfig = tenantResult.Item || {};
 
-        // reCAPTCHA verification to prevent coupon enumeration
-        const recaptchaConfig = tenantConfig.recaptcha;
-        if (recaptchaConfig?.enabled && recaptchaConfig?.secretKey) {
+        // reCAPTCHA verification to prevent coupon enumeration (deployment-level mandatory)
+        const recaptchaConfig = resolveRecaptchaConfig(tenantConfig.recaptcha);
+        if (recaptchaConfig) {
             if (!recaptchaToken) {
                 return {
                     statusCode: 400,
@@ -47,9 +47,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 event.requestContext?.http?.sourceIp
             );
 
-            const threshold = recaptchaConfig.threshold ?? 0.5;
-            if (!recaptchaResult.success || recaptchaResult.score < threshold) {
-                console.warn("Coupon validate reCAPTCHA failed:", {
+            if (!recaptchaResult.success || recaptchaResult.score < recaptchaConfig.threshold) {
+                console.warn(`Coupon validate reCAPTCHA failed [${recaptchaConfig.source}]:`, {
                     success: recaptchaResult.success,
                     score: recaptchaResult.score
                 });

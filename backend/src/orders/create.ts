@@ -3,7 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
-import { verifyRecaptcha } from "../lib/recaptcha.js";
+import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { OrderInputSchema } from "@amodx/shared";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
@@ -55,9 +55,9 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         }));
         const tenantConfig = tenantResult.Item || {};
 
-        // --- reCAPTCHA verification (Phase 1.3) ---
-        const recaptchaConfig = tenantConfig.recaptcha;
-        if (recaptchaConfig?.enabled && recaptchaConfig?.secretKey) {
+        // --- reCAPTCHA verification (deployment-level mandatory, tenant can override keys/threshold) ---
+        const recaptchaConfig = resolveRecaptchaConfig(tenantConfig.recaptcha);
+        if (recaptchaConfig) {
             if (!recaptchaToken) {
                 return {
                     statusCode: 400,
@@ -71,9 +71,8 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 event.requestContext?.http?.sourceIp
             );
 
-            const threshold = recaptchaConfig.threshold ?? 0.5;
-            if (!recaptchaResult.success || recaptchaResult.score < threshold) {
-                console.warn("reCAPTCHA failed:", {
+            if (!recaptchaResult.success || recaptchaResult.score < recaptchaConfig.threshold) {
+                console.warn(`reCAPTCHA failed [${recaptchaConfig.source}]:`, {
                     success: recaptchaResult.success,
                     score: recaptchaResult.score,
                     errors: recaptchaResult["error-codes"]

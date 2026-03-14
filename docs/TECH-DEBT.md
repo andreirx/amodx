@@ -54,6 +54,9 @@ The Settings page (`admin/src/pages/Settings.tsx`) is ~1300 lines covering site 
 
 ## Low Priority
 
+### RecaptchaConfigSchema.enabled field is deprecated
+The `enabled` boolean in `RecaptchaConfigSchema` (shared/index.ts) is no longer used by the resolver. Deployment-level keys make reCAPTCHA mandatory. The field is retained for backward compatibility with existing DynamoDB records. Can be removed in a future schema migration if all tenants are re-saved (the field would simply be ignored on read).
+
 ### Replace `any` types in admin pages
 Several admin pages (Orders, Customers, Products, etc.) use `any` types for API responses. Create proper TypeScript interfaces using the shared schemas.
 

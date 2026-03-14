@@ -42,16 +42,22 @@ cd backend && npm test         # Vitest against staging DynamoDB
 ### Deploy
 
 ```bash
+# First-time only: store reCAPTCHA keys (see docs/INTEGRATION_MANUAL.md)
+./scripts/setup-recaptcha.sh
+
 cd infra && npm run cdk deploy
 npm run post-deploy            # sync .env files from CloudFormation outputs
 ```
+
+**Prerequisites for first deploy:** reCAPTCHA v3 keys must exist in SSM before `cdk deploy`. The setup script prompts interactively. See `docs/INTEGRATION_MANUAL.md` for the full Google registration walkthrough.
 
 ### Add a Tenant Domain
 
 1. Add domain to `amodx.config.json` → `tenants` array
 2. `npm run manage-domains` — request ACM cert, add DNS CNAMEs
-3. `npx cdk deploy` — update CloudFront
-4. `npm run post-deploy` — sync local env
+3. Add domain to reCAPTCHA project (Google console → Settings → Domains)
+4. `npx cdk deploy` — update CloudFront
+5. `npm run post-deploy` — sync local env
 
 ### Connect Claude Desktop
 

@@ -13,7 +13,8 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 src/
 ├── lib/
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
-│   └── events.ts          # EventBridge publishAudit() helper
+│   ├── events.ts          # EventBridge publishAudit() helper
+│   └── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
 ├── auth/
 │   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
 │   ├── context.ts         # AuthorizerContext type definition
@@ -96,6 +97,20 @@ Three modes, checked in order by `auth/authorizer.ts`:
 3. **Public routes** — `POST /leads`, `POST /contact`, `POST /consent` bypass auth entirely
 
 Access control via `requireRole(auth, allowedRoles[], targetTenantId?)` in `auth/policy.ts`. GLOBAL_ADMIN always passes. Others must match both role and tenant scope.
+
+### reCAPTCHA v3 (Bot Protection on Public Routes)
+
+Public endpoints are unauthenticated but protected by reCAPTCHA v3. The `resolveRecaptchaConfig()` function in `lib/recaptcha.ts` implements a two-tier resolution:
+
+1. **Tenant keys** — if tenant provides own `siteKey` + `secretKey` in Settings, those are used
+2. **Deployment keys** — `RECAPTCHA_SECRET_KEY` env var (from SSM, injected by CDK at deploy time)
+3. **None** — local dev only; verification skipped
+
+Deployment-level protection is mandatory. Tenants can override with their own keys or adjust the score threshold, but cannot disable.
+
+Protected public endpoints: `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/orders`, `POST /coupons/validate`.
+
+Logs include `[deployment]` or `[tenant]` tag for tracing which key source was used.
 
 ## DynamoDB Single-Table Design
 

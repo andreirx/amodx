@@ -27,6 +27,7 @@ interface RendererHostingProps {
     certificate?: acm.ICertificate;
     domainNames?: string[];
     enableCaching?: boolean;  // Phase 4: Toggle CloudFront caching (default false for safety)
+    recaptchaSiteKey?: string; // Deployment-level reCAPTCHA public site key
 }
 
 export class RendererHosting extends Construct {
@@ -184,6 +185,8 @@ export class RendererHosting extends Construct {
                 CACHE_DYNAMO_TABLE: tagCacheTable.tableName,
                 // Phase 6.1: Origin verification - reject requests not from CloudFront
                 ORIGIN_VERIFY_SECRET: props.originVerifySecret,
+                // Deployment-level reCAPTCHA site key (public — injected into HTML for all tenants)
+                ...(props.recaptchaSiteKey ? { RECAPTCHA_SITE_KEY: props.recaptchaSiteKey } : {}),
             },
         });
         props.rendererKeySecret.grantRead(this.serverFunction);

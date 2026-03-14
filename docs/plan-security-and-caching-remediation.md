@@ -297,17 +297,20 @@ UpdateExpression: [
 
 **Effort:** 1 hour
 
-### 1.3 Add reCAPTCHA to Checkout
+### 1.3 Add reCAPTCHA to Checkout ✅ DONE
+
+> **Updated:** reCAPTCHA is now deployment-level mandatory (not per-tenant opt-in). Uses `resolveRecaptchaConfig()` in `backend/src/lib/recaptcha.ts`. Keys from SSM via env vars. See `docs/INTEGRATION_MANUAL.md`.
 
 **Files:** `backend/src/orders/create.ts`, `renderer/src/components/CheckoutPageView.tsx`
 
 ```typescript
 // Backend:
-import { verifyRecaptcha } from '../lib/recaptcha.js';
+import { verifyRecaptcha, resolveRecaptchaConfig } from '../lib/recaptcha.js';
 
-const recaptchaResult = await verifyRecaptcha(parsed.data.recaptchaToken, 'checkout');
-if (!recaptchaResult.success || recaptchaResult.score < 0.5) {
-  return { statusCode: 403, body: JSON.stringify({ error: "Verification failed" }) };
+const recaptchaConfig = resolveRecaptchaConfig(tenantConfig.recaptcha);
+if (recaptchaConfig) {
+  const result = await verifyRecaptcha(token, recaptchaConfig.secretKey, sourceIp);
+  if (!result.success || result.score < recaptchaConfig.threshold) { /* 403 */ }
 }
 ```
 
@@ -336,27 +339,24 @@ if (limit.Item?.hour === hour && limit.Item?.count >= 5) {
 
 **Effort:** 2-3 hours
 
-### 1.5 Add reCAPTCHA to Coupon Validation
+### 1.5 Add reCAPTCHA to Coupon Validation ✅ DONE
+
+> **Updated:** Now uses deployment-level mandatory reCAPTCHA via `resolveRecaptchaConfig()`. Same pattern as 1.3.
 
 **File:** `backend/src/coupons/public-validate.ts`
 
 **Problem:** Attackers can enumerate valid coupon codes via error message differences.
 
 ```typescript
-const body = JSON.parse(event.body || '{}');
-const { code, subtotal, recaptchaToken } = body;
-
-if (!recaptchaToken) {
-  return { statusCode: 400, body: JSON.stringify({ error: "Verification required" }) };
-}
-
-const recaptchaResult = await verifyRecaptcha(recaptchaToken, 'coupon_validate');
-if (!recaptchaResult.success || recaptchaResult.score < 0.5) {
-  return { statusCode: 403, body: JSON.stringify({ error: "Verification failed" }) };
+const recaptchaConfig = resolveRecaptchaConfig(tenantConfig.recaptcha);
+if (recaptchaConfig) {
+  if (!recaptchaToken) { /* 400 */ }
+  const result = await verifyRecaptcha(recaptchaToken, recaptchaConfig.secretKey, sourceIp);
+  if (!result.success || result.score < recaptchaConfig.threshold) { /* 403 */ }
 }
 ```
 
-**Client-side:** Add grecaptcha.execute() to coupon validation in CartPageView.
+**Client-side:** grecaptcha.execute() in CartPageView coupon validation.
 
 **Effort:** 2 hours
 
@@ -577,24 +577,22 @@ if (!url) {
 
 The original plan included WAF for rate limiting. But:
 
-**reCAPTCHA already covers:**
-- Order creation (checkout) - the main abuse vector
+**reCAPTCHA v3 now covers all public endpoints (deployment-level mandatory):**
+- Order creation (checkout)
 - Contact forms
 - Lead capture forms
+- Dynamic form submissions
+- Coupon code validation (prevents enumeration)
 
-**WAF would cover:**
-- Coupon code enumeration
-- Product catalog scraping
-- General DDoS
+**Architecture change (implemented):** reCAPTCHA keys are now deployment-level via SSM Parameter Store, not per-tenant opt-in. All tenants get protection by default. Tenants can override with own keys or adjust threshold, but cannot disable. See `docs/INTEGRATION_MANUAL.md`.
 
-**But:**
-- Coupon enumeration: Add reCAPTCHA to validate endpoint (cheaper)
-- Product scraping: Data is public anyway, not a real threat
-- DDoS: CloudFront has basic protection built-in
+**WAF would additionally cover:**
+- Product catalog scraping — data is public anyway, not a real threat
+- General DDoS — CloudFront has basic protection built-in
 
-**Cost:** $5/month + $1/million requests vs. ~$0 for reCAPTCHA
+**Cost:** WAF $5/month + $1/million requests vs. ~$0 for reCAPTCHA
 
-**Recommendation:** Skip WAF. Add reCAPTCHA to coupon validation if enumeration becomes a problem.
+**Recommendation:** Skip WAF. reCAPTCHA covers all meaningful abuse vectors.
 
 ---
 

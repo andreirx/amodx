@@ -4,7 +4,7 @@ import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { LeadSchema } from "@amodx/shared";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { verifyRecaptcha, getRecaptchaErrorMessage } from "../lib/recaptcha.js";
+import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
@@ -17,14 +17,15 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         const body = JSON.parse(event.body || "{}");
 
-        // reCAPTCHA verification (if enabled for tenant)
+        // reCAPTCHA verification (deployment-level mandatory, tenant can override keys/threshold)
         const tenantRes = await db.send(new GetCommand({
             TableName: TABLE_NAME,
             Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
         }));
         const tenantConfig = tenantRes.Item;
 
-        if (tenantConfig?.recaptcha?.enabled && tenantConfig.recaptcha.secretKey) {
+        const recaptchaConfig = resolveRecaptchaConfig(tenantConfig?.recaptcha);
+        if (recaptchaConfig) {
             const recaptchaToken = body.recaptchaToken;
 
             if (!recaptchaToken) {
@@ -33,18 +34,16 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
             const result = await verifyRecaptcha(
                 recaptchaToken,
-                tenantConfig.recaptcha.secretKey,
+                recaptchaConfig.secretKey,
                 event.requestContext?.http?.sourceIp
             );
 
-            const threshold = tenantConfig.recaptcha.threshold ?? 0.5;
-
-            if (!result.success || result.score < threshold) {
-                console.warn(`reCAPTCHA BLOCKED: score=${result.score}, ip=${event.requestContext?.http?.sourceIp}, form=leads`);
+            if (!result.success || result.score < recaptchaConfig.threshold) {
+                console.warn(`reCAPTCHA BLOCKED [${recaptchaConfig.source}]: score=${result.score}, ip=${event.requestContext?.http?.sourceIp}, form=leads`);
                 return { statusCode: 403, body: JSON.stringify({ error: getRecaptchaErrorMessage(result) }) };
             }
 
-            console.log(`reCAPTCHA passed: score=${result.score}, action=${result.action}`);
+            console.log(`reCAPTCHA passed [${recaptchaConfig.source}]: score=${result.score}, action=${result.action}`);
         }
 
         // 1. Save Lead

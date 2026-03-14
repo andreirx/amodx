@@ -89,11 +89,15 @@ export const SearchBarSchema = z.object({
 });
 
 // reCAPTCHA v3 configuration (bot protection for public forms)
+// Deployment-level keys provide mandatory protection for all tenants.
+// Tenant can override with own keys (siteKey + secretKey), but cannot disable.
+// The `enabled` field is retained for backward compat but no longer controls activation.
+// Resolution: tenant keys > deployment env vars > null (local dev only).
 export const RecaptchaConfigSchema = z.object({
-    enabled: z.boolean().default(false),
-    siteKey: z.string().optional(),      // Public - used in frontend
-    secretKey: z.string().optional(),     // Private - used in backend verification
-    threshold: z.number().min(0).max(1).default(0.5), // Score threshold (0.0 = bot, 1.0 = human)
+    enabled: z.boolean().default(false), // DEPRECATED — kept for backward compat, ignored by resolver
+    siteKey: z.string().optional(),      // Public - used in frontend (overrides deployment key if set)
+    secretKey: z.string().optional(),     // Private - used in backend verification (overrides deployment key if set)
+    threshold: z.number().min(0).max(1).default(0.5), // Score threshold (0.0 = bot, 1.0 = human) — always per-tenant
 });
 export type RecaptchaConfig = z.infer<typeof RecaptchaConfigSchema>;
 

@@ -86,7 +86,7 @@ export default async function SiteLayout({ children, params }: Props) {
                 <ThemeInjector
                     theme={config.theme}
                     tenantId={config.id}
-                    recaptchaSiteKey={config.recaptcha?.enabled ? config.recaptcha.siteKey : undefined}
+                    recaptchaSiteKey={config.recaptcha?.siteKey || process.env.RECAPTCHA_SITE_KEY}
                 />
 
                 {/* ANALYTICS INJECTION */}
@@ -102,10 +102,11 @@ export default async function SiteLayout({ children, params }: Props) {
                     <FBPixel pixelId={config.integrations.fbPixelId} />
                 )}
 
-                {/* reCAPTCHA v3 Script (bot protection for public forms) */}
-                {config.recaptcha?.enabled && config.recaptcha.siteKey && (
-                    <RecaptchaProvider siteKey={config.recaptcha.siteKey} />
-                )}
+                {/* reCAPTCHA v3 Script — deployment-level always on, tenant can override with own key */}
+                {(() => {
+                    const recaptchaSiteKey = config.recaptcha?.siteKey || process.env.RECAPTCHA_SITE_KEY;
+                    return recaptchaSiteKey ? <RecaptchaProvider siteKey={recaptchaSiteKey} /> : null;
+                })()}
 
                 {/* GDPR Cookie Consent Banner */}
                 {(() => {

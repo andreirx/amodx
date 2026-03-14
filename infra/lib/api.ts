@@ -28,6 +28,7 @@ interface AmodxApiProps {
     tenantDomains?: string[]; // Phase 6.2: Tenant domains for CORS
     additionalCorsOrigins?: string[]; // Phase 6.2: CloudFront URLs, staging domains, etc.
     rendererUrl?: string; // Phase 4: For cache revalidation calls
+    recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
 }
 
 export class AmodxApi extends Construct {
@@ -297,6 +298,7 @@ export class AmodxApi extends Construct {
             environment: {
                 ...nodeProps.environment,
                 SES_FROM_EMAIL: props.sesEmail,
+                ...(props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
             }
         });
         // SECURITY: Scope SES to verified identity only
@@ -512,6 +514,7 @@ export class AmodxApi extends Construct {
             environment: {
                 TABLE_NAME: props.table.tableName,
                 PRIVATE_BUCKET: props.privateBucket.bucketName,
+                ...(props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
             }
         });
         props.table.grantWriteData(createLeadFunc);

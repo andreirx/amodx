@@ -23,9 +23,9 @@ Updated: 2026-03-08
 |------|--------|------|
 | 1.1 Zod validation for orders | ✅ | `packages/shared/src/index.ts` (OrderInputSchema), `backend/src/orders/create.ts` |
 | 1.2 Customer profile protection | ✅ | `backend/src/orders/create.ts` (if_not_exists) |
-| 1.3 reCAPTCHA on checkout | ✅ | `backend/src/orders/create.ts` |
+| 1.3 reCAPTCHA on checkout | ✅ | `backend/src/orders/create.ts` — deployment-level mandatory via `resolveRecaptchaConfig()` |
 | 1.4 Email rate limiting | ✅ | `backend/src/orders/create.ts` |
-| 1.5 reCAPTCHA on coupon validation | ✅ | `backend/src/coupons/public-validate.ts` |
+| 1.5 reCAPTCHA on coupon validation | ✅ | `backend/src/coupons/public-validate.ts` — deployment-level mandatory via `resolveRecaptchaConfig()` |
 | 1.6 Genericize delivery errors | ✅ | `backend/src/orders/create.ts` |
 
 ---
@@ -148,8 +148,12 @@ Ensure requests originate from our frontend, not direct API/Lambda URL access.
 - `backend/src/auth/authorizer.ts` - RENDERER key support
 - `backend/src/comments/create.ts` - RENDERER role allowed
 - `backend/src/comments/moderate.ts` - RENDERER role allowed
-- `backend/src/coupons/public-validate.ts` - reCAPTCHA + tenant verification
-- `backend/src/orders/create.ts` - Zod, reCAPTCHA, rate limiting, tenant verification
+- `backend/src/coupons/public-validate.ts` - reCAPTCHA (deployment-level mandatory) + tenant verification
+- `backend/src/orders/create.ts` - Zod, reCAPTCHA (deployment-level mandatory), rate limiting, tenant verification
+- `backend/src/contact/send.ts` - reCAPTCHA (deployment-level mandatory)
+- `backend/src/leads/create.ts` - reCAPTCHA (deployment-level mandatory)
+- `backend/src/forms/public-submit.ts` - reCAPTCHA (deployment-level mandatory)
+- `backend/src/lib/recaptcha.ts` - resolveRecaptchaConfig() two-tier resolution (tenant keys > deployment env vars)
 - `backend/src/lib/tenant-verify.ts` - NEW: tenant origin verification
 - `backend/src/lib/revalidate.ts` - NEW: backend revalidation helper
 
@@ -170,9 +174,12 @@ Ensure requests originate from our frontend, not direct API/Lambda URL access.
 - `packages/shared/src/index.ts` - OrderInputSchema
 
 ### Infrastructure
-- `infra/lib/renderer-hosting.ts` - Full Phase 4 caching infrastructure
-- `infra/lib/amodx-stack.ts` - `enableCaching: true`, revalidation secrets wiring
-- `infra/lib/api.ts` - Revalidation secret + renderer URL env vars
+- `infra/lib/renderer-hosting.ts` - Full Phase 4 caching infrastructure + RECAPTCHA_SITE_KEY env var
+- `infra/lib/amodx-stack.ts` - `enableCaching: true`, revalidation secrets, SSM reCAPTCHA key lookups
+- `infra/lib/api.ts` - Revalidation secret + renderer URL + RECAPTCHA_SECRET_KEY env vars
+- `infra/lib/api-commerce.ts` - RECAPTCHA_SECRET_KEY on createOrderFunc + validateCouponFunc
+- `infra/lib/api-engagement.ts` - RECAPTCHA_SECRET_KEY on publicSubmitFormFunc
+- `scripts/setup-recaptcha.sh` - NEW: stores deployment-level reCAPTCHA keys in SSM
 
 ### Config
 - `.github/workflows/security-audit.yml` - npm audit on push

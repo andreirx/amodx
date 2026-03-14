@@ -27,6 +27,7 @@
     "@aws-sdk/client-acm": "^3.980.0",
     "@aws-sdk/client-cloudformation": "^3.980.0",
     "@aws-sdk/client-secrets-manager": "^3.980.0",
+    "@aws-sdk/client-ssm": "^3.980.0",
     "@aws-sdk/client-sts": "^3.980.0",
     "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.1",

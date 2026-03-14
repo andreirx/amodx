@@ -494,9 +494,10 @@ CHECKOUT (order creation):
        │   OrderInputSchema.safeParse(body)
        │   → validates email, UUIDs, quantities, payment method
        │
-       │ ③ reCAPTCHA verification (if tenant has it enabled)
+       │ ③ reCAPTCHA verification (deployment-level mandatory)
+       │   → resolveRecaptchaConfig(): tenant keys > deployment env var > null
        │   → POST to google.com/recaptcha/api/siteverify
-       │   → score threshold check (default 0.5)
+       │   → score threshold check (per-tenant, default 0.5)
        │
        │ ④ Server-side price validation
        │   for each item:

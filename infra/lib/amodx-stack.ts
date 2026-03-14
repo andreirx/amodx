@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { AmodxDatabase } from './database';
 import { AmodxAuth } from './auth';
@@ -138,6 +139,20 @@ export class AmodxStack extends cdk.Stack {
       },
     });
 
+    // F. reCAPTCHA v3 deployment-level keys (stored in SSM Parameter Store)
+    // These provide mandatory bot protection for all tenants by default.
+    // Tenants can override with their own keys via Settings, but cannot disable.
+    // Created by: scripts/setup-recaptcha.sh
+    const recaptchaSiteKey = ssm.StringParameter.valueForStringParameter(
+        this, '/amodx/recaptcha/site-key'
+    );
+    // SecureString cannot use valueForStringParameter (CloudFormation limitation).
+    // Dynamic reference resolves the encrypted value at deploy time.
+    const recaptchaSecretKey = new cdk.CfnDynamicReference(
+        cdk.CfnDynamicReferenceService.SSM_SECURE,
+        '/amodx/recaptcha/secret-key'
+    ).toString();
+
     // READ CONFIG (Fallback to your verified email for safety)
     const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
 
@@ -199,6 +214,7 @@ export class AmodxStack extends cdk.Stack {
       tenantDomains: tenantDomains, // Phase 6.2: For CORS
       additionalCorsOrigins: corsCloudFrontUrl ? [corsCloudFrontUrl] : undefined, // Phase 6.2: CloudFront URL for previews
       rendererUrl: rendererBaseUrl, // Phase 4: For cache revalidation
+      recaptchaSecretKey, // Deployment-level reCAPTCHA (mandatory bot protection)
     });
 
     if (apiDomain && domains) {
@@ -226,6 +242,7 @@ export class AmodxStack extends cdk.Stack {
       // Cache revalidation for product/category updates
       revalidationSecret: revalidationSecret,
       rendererUrl: rendererBaseUrl,
+      recaptchaSecretKey, // Deployment-level reCAPTCHA
     });
 
     // 3c. Engagement API (NestedStack — popups, forms)
@@ -235,6 +252,7 @@ export class AmodxStack extends cdk.Stack {
       table: db.table,
       eventBus: amodxEvents.bus,
       sesEmail: sesEmail,
+      recaptchaSecretKey, // Deployment-level reCAPTCHA
     });
 
     // 4. Renderer Layer
@@ -249,6 +267,7 @@ export class AmodxStack extends cdk.Stack {
       certificate: globalCertificate,
       domainNames: allDomains.length > 0 ? allDomains : undefined,
       enableCaching: true,  // Phase 4: CloudFront caches pages, respects Cache-Control headers
+      recaptchaSiteKey, // Deployment-level reCAPTCHA site key (public, injected into HTML)
     });
 
     // Wire DNS for Root (Agency) Domain only

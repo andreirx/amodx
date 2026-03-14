@@ -5,6 +5,7 @@ import { useTenantUrl } from "@/lib/routing";
 import Link from "next/link";
 import { Minus, Plus, Trash2, Tag } from "lucide-react";
 import { useState } from "react";
+import { useRecaptcha } from "@/hooks/useRecaptcha";
 import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
 
 interface CartPageProps {
@@ -27,6 +28,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
     const [couponCode, setCouponCode] = useState(coupon?.code || "");
     const [couponError, setCouponError] = useState("");
     const [couponLoading, setCouponLoading] = useState(false);
+    const { execute: executeRecaptcha } = useRecaptcha("coupon_validate");
 
     const couponDiscount = coupon?.discount || 0;
     const shippingCost = freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost;
@@ -38,10 +40,11 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
         setCouponError("");
         setCouponLoading(true);
         try {
+            const recaptchaToken = await executeRecaptcha();
             const res = await fetch(`${apiUrl}/public/coupons/validate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
-                body: JSON.stringify({ code: couponCode.trim(), subtotal: String(subtotal), items: items.map(i => ({ productId: i.productId })) }),
+                body: JSON.stringify({ code: couponCode.trim(), subtotal: String(subtotal), items: items.map(i => ({ productId: i.productId })), recaptchaToken }),
             });
             const data = await res.json();
             if (data.valid) {
