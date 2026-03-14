@@ -32,6 +32,8 @@ interface RendererHostingProps {
 export class RendererHosting extends Construct {
     public readonly distribution: cloudfront.Distribution;
     public readonly assetBucket: s3.Bucket;
+    public readonly serverFunction: lambda.Function;
+    public readonly revalidationQueue: sqs.Queue;
 
     constructor(scope: Construct, id: string, props: RendererHostingProps) {
         super(scope, id);
@@ -95,7 +97,7 @@ export class RendererHosting extends Construct {
         });
 
         // 4.2 SQS FIFO Queue for background revalidation
-        const revalidationQueue = new sqs.Queue(this, 'RevalidationQueue', {
+        this.revalidationQueue = new sqs.Queue(this, 'RevalidationQueue', {
             queueName: `${stackName}-revalidation.fifo`,
             fifo: true,
             contentBasedDeduplication: true,  // Prevents duplicate revalidations
@@ -119,7 +121,7 @@ export class RendererHosting extends Construct {
 
             // Wire SQS to revalidation Lambda
             // Note: FIFO queues don't support maxBatchingWindow
-            revalidationFunc.addEventSource(new lambdaEventSources.SqsEventSource(revalidationQueue, {
+            revalidationFunc.addEventSource(new lambdaEventSources.SqsEventSource(this.revalidationQueue, {
                 batchSize: 5,
             }));
         } else {
@@ -155,7 +157,7 @@ export class RendererHosting extends Construct {
 
         // 3. The Server Lambda
         // Phase 2.3: Uses restricted rendererKeySecret instead of masterKeySecret
-        const serverFunction = new lambda.Function(this, 'RendererServer', {
+        this.serverFunction = new lambda.Function(this, 'RendererServer', {
             runtime: lambda.Runtime.NODEJS_22_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(openNextPath, 'server-functions/default')),
@@ -177,20 +179,20 @@ export class RendererHosting extends Construct {
                 NEXTAUTH_SECRET: props.nextAuthSecret.secretValue.unsafeUnwrap(),
                 NEXTAUTH_URL: `https://${props.domainNames ? props.domainNames[0] : 'localhost'}`,
                 // Phase 4: Caching infrastructure
-                REVALIDATION_QUEUE_URL: revalidationQueue.queueUrl,
+                REVALIDATION_QUEUE_URL: this.revalidationQueue.queueUrl,
                 REVALIDATION_QUEUE_REGION: region,
                 CACHE_DYNAMO_TABLE: tagCacheTable.tableName,
                 // Phase 6.1: Origin verification - reject requests not from CloudFront
                 ORIGIN_VERIFY_SECRET: props.originVerifySecret,
             },
         });
-        props.rendererKeySecret.grantRead(serverFunction);
+        props.rendererKeySecret.grantRead(this.serverFunction);
 
         // Grant Permissions
-        props.table.grantReadData(serverFunction);
-        this.assetBucket.grantReadWrite(serverFunction);
-        revalidationQueue.grantSendMessages(serverFunction);  // Server can queue revalidation
-        tagCacheTable.grantReadWriteData(serverFunction);     // Server reads/writes tag cache
+        props.table.grantReadData(this.serverFunction);
+        this.assetBucket.grantReadWrite(this.serverFunction);
+        this.revalidationQueue.grantSendMessages(this.serverFunction);  // Server can queue revalidation
+        tagCacheTable.grantReadWriteData(this.serverFunction);     // Server reads/writes tag cache
 
         // 4.5 Warmer Lambda (prevents cold starts)
         const warmerFuncPath = path.join(openNextPath, 'warmer-function');
@@ -204,11 +206,11 @@ export class RendererHosting extends Construct {
                 memorySize: 128,
                 timeout: cdk.Duration.seconds(15),
                 environment: {
-                    FUNCTION_NAME: serverFunction.functionName,
+                    FUNCTION_NAME: this.serverFunction.functionName,
                     CONCURRENCY: '1',
                 },
             });
-            serverFunction.grantInvoke(warmerFunc);
+            this.serverFunction.grantInvoke(warmerFunc);
 
             // Schedule warmer every 5 minutes
             new events.Rule(this, 'WarmerSchedule', {
@@ -220,7 +222,7 @@ export class RendererHosting extends Construct {
         }
 
         // 4. Lambda Function URL
-        const fnUrl = serverFunction.addFunctionUrl({
+        const fnUrl = this.serverFunction.addFunctionUrl({
             authType: lambda.FunctionUrlAuthType.NONE,
         });
 
@@ -350,7 +352,7 @@ function handler(event) {
         new cloudwatch.Alarm(this, 'RevalidationQueueDepthAlarm', {
             alarmName: `${stackName}-revalidation-queue-depth`,
             alarmDescription: 'Revalidation queue has more than 100 pending messages',
-            metric: revalidationQueue.metricApproximateNumberOfMessagesVisible({
+            metric: this.revalidationQueue.metricApproximateNumberOfMessagesVisible({
                 period: cdk.Duration.minutes(5),
                 statistic: 'Maximum',
             }),
@@ -363,7 +365,7 @@ function handler(event) {
         new cloudwatch.Alarm(this, 'ServerLambdaErrorsAlarm', {
             alarmName: `${stackName}-server-lambda-errors`,
             alarmDescription: 'Server Lambda has more than 10 errors in 5 minutes',
-            metric: serverFunction.metricErrors({
+            metric: this.serverFunction.metricErrors({
                 period: cdk.Duration.minutes(5),
                 statistic: 'Sum',
             }),
@@ -390,7 +392,7 @@ function handler(event) {
         // Outputs
         new cdk.CfnOutput(this, 'RendererUrl', { value: `https://${this.distribution.distributionDomainName}` });
         new cdk.CfnOutput(this, 'TagCacheTableName', { value: tagCacheTable.tableName });
-        new cdk.CfnOutput(this, 'RevalidationQueueUrlOutput', { value: revalidationQueue.queueUrl });
+        new cdk.CfnOutput(this, 'RevalidationQueueUrlOutput', { value: this.revalidationQueue.queueUrl });
         new cdk.CfnOutput(this, 'CachingEnabledOutput', { value: props.enableCaching ? 'true' : 'false' });
     }
 }

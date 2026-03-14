@@ -20,6 +20,8 @@ import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as eventTargets from 'aws-cdk-lib/aws-events-targets';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { AmodxEvents } from './events';
 import * as path from "node:path";
 
@@ -405,6 +407,183 @@ export class AmodxStack extends cdk.Stack {
       });
     }
 
+
+    // ============================================================
+    // 6. CloudWatch Operations Dashboard
+    // ============================================================
+    // Single-pane-of-glass for site health, API performance,
+    // database load, and cache management.
+    // Free for first 3 dashboards, $3/month per dashboard after.
+    const cw = cloudwatch;
+    const dashboard = new cw.Dashboard(this, 'OperationsDashboard', {
+        dashboardName: `AMODX-Operations${suffix}`,
+        defaultInterval: cdk.Duration.hours(6),
+    });
+
+    // --- Row 1: CloudFront (customer-facing layer) ---
+    // CloudFront metrics are ONLY in us-east-1 regardless of stack region
+    const cfMetric = (metricName: string, stat = 'Average') => new cw.Metric({
+        namespace: 'AWS/CloudFront',
+        metricName,
+        dimensionsMap: { DistributionId: distId, Region: 'Global' },
+        region: 'us-east-1',
+        statistic: stat,
+        period: cdk.Duration.minutes(5),
+    });
+
+    dashboard.addWidgets(
+        new cw.TextWidget({ markdown: '# Site Health — CloudFront', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+        new cw.GraphWidget({
+            title: 'Cache Hit Rate (%)',
+            left: [cfMetric('CacheHitRate')],
+            width: 6, height: 6,
+            leftYAxis: { min: 0, max: 100 },
+        }),
+        new cw.GraphWidget({
+            title: 'Requests',
+            left: [cfMetric('Requests', 'Sum')],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: '4xx Error Rate (%)',
+            left: [cfMetric('4xxErrorRate')],
+            width: 6, height: 6,
+            leftYAxis: { min: 0 },
+        }),
+        new cw.GraphWidget({
+            title: '5xx Error Rate (%)',
+            left: [cfMetric('5xxErrorRate')],
+            width: 6, height: 6,
+            leftYAxis: { min: 0 },
+        }),
+    );
+
+    // --- Row 2: Renderer Lambda (origin SSR) ---
+    dashboard.addWidgets(
+        new cw.TextWidget({ markdown: '# Renderer Lambda', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+        new cw.GraphWidget({
+            title: 'Invocations',
+            left: [renderer.serverFunction.metricInvocations({ statistic: 'Sum' })],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Errors',
+            left: [renderer.serverFunction.metricErrors({ statistic: 'Sum' })],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Duration (ms)',
+            left: [
+                renderer.serverFunction.metricDuration({ statistic: 'p50', label: 'P50' }),
+                renderer.serverFunction.metricDuration({ statistic: 'p99', label: 'P99' }),
+            ],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Concurrent Executions',
+            left: [renderer.serverFunction.metric('ConcurrentExecutions', { statistic: 'Maximum' })],
+            width: 6, height: 6,
+        }),
+    );
+
+    // --- Row 3: API Gateway ---
+    const apiMetric = (metricName: string, stat = 'Sum') => new cw.Metric({
+        namespace: 'AWS/ApiGateway',
+        metricName,
+        dimensionsMap: { ApiId: api.httpApi.apiId },
+        statistic: stat,
+        period: cdk.Duration.minutes(5),
+    });
+
+    dashboard.addWidgets(
+        new cw.TextWidget({ markdown: '# API Gateway', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+        new cw.GraphWidget({
+            title: 'Request Count',
+            left: [apiMetric('Count')],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Latency (ms)',
+            left: [
+                apiMetric('Latency', 'p50'),
+                apiMetric('Latency', 'p99'),
+            ],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: '4xx Errors',
+            left: [apiMetric('4xx')],
+            width: 6, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: '5xx Errors',
+            left: [apiMetric('5xx')],
+            width: 6, height: 6,
+        }),
+    );
+
+    // --- Row 4: DynamoDB ---
+    dashboard.addWidgets(
+        new cw.TextWidget({ markdown: '# DynamoDB', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+        new cw.GraphWidget({
+            title: 'Consumed Read Capacity',
+            left: [db.table.metricConsumedReadCapacityUnits({ statistic: 'Sum' })],
+            width: 8, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Consumed Write Capacity',
+            left: [db.table.metricConsumedWriteCapacityUnits({ statistic: 'Sum' })],
+            width: 8, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Throttled Requests',
+            left: [db.table.metricThrottledRequestsForOperations({
+                operations: [dynamodb.Operation.PUT_ITEM, dynamodb.Operation.GET_ITEM, dynamodb.Operation.QUERY],
+                statistic: 'Sum',
+            })],
+            width: 8, height: 6,
+        }),
+    );
+
+    // --- Row 5: Cache Management ---
+    dashboard.addWidgets(
+        new cw.TextWidget({ markdown: '# Cache Management', width: 24, height: 1 }),
+    );
+    dashboard.addWidgets(
+        new cw.GraphWidget({
+            title: 'Debounce Flush — Duration (ms)',
+            left: [
+                debounceFlushFunc.metricDuration({ statistic: 'Average', label: 'Avg' }),
+                debounceFlushFunc.metricDuration({ statistic: 'Maximum', label: 'Max' }),
+            ],
+            right: [debounceFlushFunc.metricErrors({ statistic: 'Sum', label: 'Errors' })],
+            width: 8, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Nightly Flush — Duration (ms)',
+            left: [
+                nightlyFlushFunc.metricDuration({ statistic: 'Average', label: 'Avg' }),
+                nightlyFlushFunc.metricDuration({ statistic: 'Maximum', label: 'Max' }),
+            ],
+            right: [nightlyFlushFunc.metricErrors({ statistic: 'Sum', label: 'Errors' })],
+            width: 8, height: 6,
+        }),
+        new cw.GraphWidget({
+            title: 'Revalidation Queue Depth',
+            left: [renderer.revalidationQueue.metricApproximateNumberOfMessagesVisible({
+                statistic: 'Maximum',
+            })],
+            width: 8, height: 6,
+        }),
+    );
 
     // Outputs
     new cdk.CfnOutput(this, 'TableName', { value: db.table.tableName });
