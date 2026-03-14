@@ -59,7 +59,7 @@ Run the setup script:
 
 It will prompt for both keys and store them in AWS SSM Parameter Store:
 - `/amodx/recaptcha/site-key` — String (public)
-- `/amodx/recaptcha/secret-key` — SecureString (encrypted with AWS KMS)
+- `/amodx/recaptcha/secret-key` — String (CloudFormation blocks SecureString in Lambda env vars)
 
 Alternatively, store manually:
 
@@ -74,7 +74,7 @@ aws ssm put-parameter \
 aws ssm put-parameter \
   --region eu-central-1 \
   --name "/amodx/recaptcha/secret-key" \
-  --type "SecureString" \
+  --type "String" \
   --value "YOUR_SECRET_KEY" \
   --overwrite
 ```

@@ -212,10 +212,10 @@ async function main() {
 
         await ssm.send(new PutParameterCommand({
             Name: "/amodx/recaptcha/secret-key",
-            Type: "SecureString",
+            Type: "String",
             Value: recaptchaSecretKey,
             Overwrite: true,
-            Description: "reCAPTCHA v3 secret key (private — used by Lambda for server-side verification)"
+            Description: "reCAPTCHA v3 secret key (private — used by Lambda for server-side verification). String type because CloudFormation blocks SecureString in Lambda env vars."
         }));
 
         console.log("reCAPTCHA keys stored in SSM");

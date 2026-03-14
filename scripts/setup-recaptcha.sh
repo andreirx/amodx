@@ -47,11 +47,11 @@ aws ssm put-parameter \
     --overwrite \
     --description "reCAPTCHA v3 site key (public — embedded in HTML for all tenants)"
 
-# Secret key — SecureString (encrypted at rest with AWS-managed KMS key)
+# Secret key — String (not SecureString: CloudFormation blocks SecureString in Lambda env vars)
 aws ssm put-parameter \
     --region "$REGION" \
     --name "/amodx/recaptcha/secret-key" \
-    --type "SecureString" \
+    --type "String" \
     --value "$SECRET_KEY" \
     --overwrite \
     --description "reCAPTCHA v3 secret key (private — used by Lambda for server-side verification)"
@@ -59,6 +59,6 @@ aws ssm put-parameter \
 echo ""
 echo "Done. Keys stored:"
 echo "  /amodx/recaptcha/site-key    (String)"
-echo "  /amodx/recaptcha/secret-key  (SecureString)"
+echo "  /amodx/recaptcha/secret-key  (String)"
 echo ""
 echo "Next: deploy with 'cdk deploy' to inject these into Lambda env vars."

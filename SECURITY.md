@@ -59,7 +59,7 @@ This document tracks accepted architectural trade-offs and security mitigations 
 | `POST /public/orders` | `backend/src/orders/create.ts` | Fake orders |
 | `POST /coupons/validate` | `backend/src/coupons/public-validate.ts` | Code enumeration |
 
-**Key storage:** SSM Parameter Store (`/amodx/recaptcha/site-key` as String, `/amodx/recaptcha/secret-key` as SecureString encrypted by AWS KMS). Created by `npm run setup` or `scripts/setup-recaptcha.sh`.
+**Key storage:** SSM Parameter Store (`/amodx/recaptcha/site-key` and `/amodx/recaptcha/secret-key`, both as String). String type is required because CloudFormation blocks SecureString in Lambda environment variables. Created by `npm run setup` or `scripts/setup-recaptcha.sh`.
 
 **Supplementary controls on public endpoints:**
 - Tenant origin verification (`verifyTenantFromOrigin` on orders + coupons)
@@ -80,8 +80,8 @@ This document tracks accepted architectural trade-offs and security mitigations 
 | Revalidation Secret | Secrets Manager | Renderer + backend Lambdas (deploy time) |
 | Origin Verify Secret | Secrets Manager | CloudFront Function + Renderer Lambda |
 | reCAPTCHA Site Key | SSM Parameter Store (String) | Renderer Lambda env var (public, in HTML) |
-| reCAPTCHA Secret Key | SSM Parameter Store (SecureString) | 5 backend Lambdas env var (deploy time) |
+| reCAPTCHA Secret Key | SSM Parameter Store (String) | 5 backend Lambdas env var (deploy time) |
 | Cognito credentials | Cognito (managed) | Admin SPA via Amplify |
 | Google OAuth per-tenant | DynamoDB (TenantConfig) | Renderer NextAuth at runtime |
 
-**Mitigation:** Secrets Manager secrets use auto-generated values. SSM SecureString uses AWS-managed KMS. No secrets are hardcoded in source. Tenant-specific API keys (Google, Brave, etc.) are stored in DynamoDB TenantConfig, accessed only by the owning tenant's handlers.
+**Mitigation:** Secrets Manager secrets use auto-generated values. reCAPTCHA keys use SSM String type (CloudFormation blocks SecureString in Lambda env vars; reCAPTCHA keys are not credential-grade — they're POST'd in plaintext to Google on every verification). No secrets are hardcoded in source. Tenant-specific API keys (Google, Brave, etc.) are stored in DynamoDB TenantConfig, accessed only by the owning tenant's handlers.

@@ -55,7 +55,7 @@ Stores deployment-level reCAPTCHA v3 keys in AWS SSM Parameter Store. These prov
 
 Creates two SSM parameters:
 - `/amodx/recaptcha/site-key` (String)
-- `/amodx/recaptcha/secret-key` (SecureString, KMS-encrypted)
+- `/amodx/recaptcha/secret-key` (String — CloudFormation blocks SecureString in Lambda env vars)
 
 **Must run before first `cdk deploy`.** CDK reads these at deploy time and injects them as Lambda env vars. See `docs/INTEGRATION_MANUAL.md` for full setup guide.
 

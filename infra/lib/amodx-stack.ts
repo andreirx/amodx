@@ -146,12 +146,13 @@ export class AmodxStack extends cdk.Stack {
     const recaptchaSiteKey = ssm.StringParameter.valueForStringParameter(
         this, '/amodx/recaptcha/site-key'
     );
-    // SecureString cannot use valueForStringParameter (CloudFormation limitation).
-    // Dynamic reference resolves the encrypted value at deploy time.
-    const recaptchaSecretKey = new cdk.CfnDynamicReference(
-        cdk.CfnDynamicReferenceService.SSM_SECURE,
-        '/amodx/recaptcha/secret-key'
-    ).toString();
+    // Stored as String (not SecureString) because:
+    // 1. CloudFormation blocks SecureString in Lambda env vars
+    // 2. reCAPTCHA secret keys are POST'd in plaintext to Google on every verification
+    // 3. Not credential-grade — no financial or data access
+    const recaptchaSecretKey = ssm.StringParameter.valueForStringParameter(
+        this, '/amodx/recaptcha/secret-key'
+    );
 
     // READ CONFIG (Fallback to your verified email for safety)
     const sesEmail = props.config.sesEmail || "contact@bijuterie.software";
