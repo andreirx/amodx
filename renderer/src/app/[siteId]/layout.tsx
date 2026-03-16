@@ -13,13 +13,7 @@ import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
 import { URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
-import dynamic from "next/dynamic";
-
-/** Page-level ambient GPU effect — lazy-loaded, no SSR (WebGPU is browser-only) */
-const PageEffectLayer = dynamic(
-    () => import("@amodx/effects/render").then(m => ({ default: m.PageEffectLayer })),
-    { ssr: false }
-);
+import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 
 export const revalidate = false;
 
@@ -188,7 +182,7 @@ export default async function SiteLayout({ children, params }: Props) {
 
                 {/* Page-level GPU effect (z-0 behind all content) — zero impact if type is "none" */}
                 {config.pageEffect && config.pageEffect.type !== "none" && (
-                    <PageEffectLayer effect={config.pageEffect} />
+                    <PageEffectWrapper effect={config.pageEffect} />
                 )}
 
                 <div className="flex-1">
