@@ -439,6 +439,42 @@ export const GDPRConfigSchema = z.object({
 
 export type GDPRConfig = z.infer<typeof GDPRConfigSchema>;
 
+// ==========================================
+// GPU EFFECTS CONFIG (for @amodx/effects)
+// ==========================================
+
+// Capability tier detected at runtime by the effects package.
+// 'none' means no WebGPU or prefers-reduced-motion — CSS fallback only.
+export type GpuTier = 'hdr-edr' | 'hdr-srgb' | 'sdr' | 'none';
+
+// Background effect config for blocks (hero, cta, features, testimonials, pricing).
+// type is z.string() not z.enum() — open for third-party effect types.
+export const BlockEffectConfigSchema = z.object({
+    type: z.string().default("none"),
+    colors: z.array(z.string()).max(4).default([]),
+    speed: z.number().min(0.1).max(3.0).default(1.0),
+    intensity: z.number().min(0.1).max(2.0).default(1.0),
+});
+export type BlockEffectConfig = z.infer<typeof BlockEffectConfigSchema>;
+
+// Glow effect config for CTA buttons (HDR bloom, plasma arcs).
+export const GlowEffectConfigSchema = z.object({
+    enabled: z.boolean().default(false),
+    color: z.string().default("#6366f1"),
+    intensity: z.number().min(0.5).max(3.0).default(1.0),
+});
+export type GlowEffectConfig = z.infer<typeof GlowEffectConfigSchema>;
+
+// Page-level ambient background effect (TenantConfig).
+// Lower default intensity/speed than block effects — these run full-page, must be subtle.
+export const PageEffectConfigSchema = z.object({
+    type: z.string().default("none"),
+    colors: z.array(z.string()).max(4).default([]),
+    speed: z.number().min(0.1).max(3.0).default(0.5),
+    intensity: z.number().min(0.1).max(2.0).default(0.3),
+});
+export type PageEffectConfig = z.infer<typeof PageEffectConfigSchema>;
+
 // Commerce UI Strings (i18n) - all optional, defaults applied at runtime
 export const CommerceStringsSchema = z.object({
     // Product page
@@ -683,6 +719,10 @@ export const TenantConfigSchema = z.object({
 
     // Search Bar (dedicated product search bar below navbar)
     searchBar: SearchBarSchema.default({ enabled: false, placeholder: "Search products..." }),
+
+    // GPU Effects — page-level ambient background (aurora, particles, etc.)
+    // Defaults to type "none" — zero impact on existing sites.
+    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.3 }),
 
     // reCAPTCHA v3 bot protection for public forms
     recaptcha: RecaptchaConfigSchema.default({ enabled: false, threshold: 0.5 }),

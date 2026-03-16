@@ -1,0 +1,47 @@
+{
+  "name": "@amodx/effects",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "default": "./dist/render.js"
+    },
+    "./celebration": {
+      "types": "./dist/celebration.d.ts",
+      "default": "./dist/celebration.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "render": [
+        "dist/render.d.ts"
+      ],
+      "celebration": [
+        "dist/celebration.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@amodx/shared": "*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@webgpu/types": "^0.1.69",
+    "typescript": "^5.7.0"
+  }
+}
