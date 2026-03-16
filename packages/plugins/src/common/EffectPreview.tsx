@@ -117,11 +117,12 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                 await pipeline.init(device, cfg.format, canvas, {
                     colors: effectColors,
                     speed: currentConfig?.speed ?? 1.0,
-                    intensity: currentConfig?.intensity ?? 1.0,
+                    intensity: currentConfig?.intensity ?? 0.25,
                     tier: tierRef.current,
                     isMobile: false,
                     invertY: (currentConfig as any)?.invertY ?? false,
                     bgColor: (currentConfig as any)?.bgColor,
+                    bands: (currentConfig as any)?.bands,
                 });
 
                 if (destroyed) { pipeline.destroy(); device.destroy(); return; }
@@ -143,6 +144,7 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                                 colors: live.colors?.length ? live.colors : DEFAULT_COLORS,
                                 invertY: (live as any)?.invertY,
                                 bgColor: (live as any)?.bgColor,
+                                bands: (live as any)?.bands,
                             });
                         }
 

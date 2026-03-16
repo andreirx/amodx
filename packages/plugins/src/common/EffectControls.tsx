@@ -29,15 +29,18 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
     const meta = backgroundEffects.find(e => e.key === currentType);
 
     const update = (field: string, value: any) => {
-        onChange({
+        const merged: any = {
             type: currentType,
             colors: effect?.colors || meta?.defaultColors || [],
             speed: effect?.speed ?? 1.0,
-            intensity: effect?.intensity ?? 1.0,
+            intensity: effect?.intensity ?? 0.25,
             invertY: effect?.invertY ?? false,
             bgColor: effect?.bgColor,
             [field]: value,
-        });
+        };
+        if (effect?.bands !== undefined) merged.bands = effect.bands;
+        if (field === "bands") merged.bands = value;
+        onChange(merged);
     };
 
     return (
@@ -52,7 +55,7 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                 onChange={e => {
                     const key = e.target.value;
                     if (key === "none") {
-                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 1.0, invertY: false });
+                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 0.25, invertY: false });
                         return;
                     }
                     const newMeta = backgroundEffects.find(ef => ef.key === key);
@@ -60,7 +63,7 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                         type: key,
                         colors: newMeta?.defaultColors || [],
                         speed: 1.0,
-                        intensity: 1.0,
+                        intensity: 0.25,
                         invertY: false,
                     });
                 }}
@@ -111,18 +114,35 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
 
                     <div>
                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
-                            Intensity: {(effect?.intensity ?? 1.0).toFixed(1)}
+                            Intensity: {(effect?.intensity ?? 0.25).toFixed(3)}
                         </label>
                         <input
                             type="range"
-                            min="0.1"
-                            max="2.0"
-                            step="0.1"
-                            value={effect?.intensity ?? 1.0}
+                            min="0"
+                            max="0.5"
+                            step="0.001"
+                            value={effect?.intensity ?? 0.25}
                             onChange={e => update("intensity", parseFloat(e.target.value))}
                             className="w-full"
                         />
                     </div>
+
+                    {currentType === "aurora" && (
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                                Bands: {effect?.bands ?? 8}
+                            </label>
+                            <input
+                                type="range"
+                                min="2"
+                                max="32"
+                                step="1"
+                                value={effect?.bands ?? 8}
+                                onChange={e => update("bands", parseInt(e.target.value, 10))}
+                                className="w-full"
+                            />
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-4">
                         <label className="flex items-center gap-1.5 cursor-pointer">

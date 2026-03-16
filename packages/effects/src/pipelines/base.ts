@@ -179,7 +179,8 @@ export function initStandardUniforms(
     data[1] = config.speed;
     data[2] = config.intensity;
     data[3] = glowMultiplier(config.tier);
-    data[8] = config.isMobile ? 2.0 : 5.0;  // octaves
+    // octaves slot: aurora uses config.bands (default 8), others use tier-based value
+    data[8] = config.bands ?? (config.isMobile ? 2.0 : 5.0);
     data[9] = Math.min(config.colors.length, 4);
     data[10] = config.invertY ? 1.0 : 0.0;
     data[11] = config.bgColor ? 1.0 : 0.0;
@@ -211,10 +212,11 @@ export function initStandardUniforms(
  */
 export function updateStandardConfig(
     data: Float32Array,
-    config: { speed?: number; intensity?: number; colors?: string[]; invertY?: boolean; bgColor?: string },
+    config: { speed?: number; intensity?: number; colors?: string[]; invertY?: boolean; bgColor?: string; bands?: number },
 ): void {
     if (config.speed !== undefined) data[1] = config.speed;
     if (config.intensity !== undefined) data[2] = config.intensity;
+    if (config.bands !== undefined) data[8] = config.bands;
     if (config.invertY !== undefined) data[10] = config.invertY ? 1.0 : 0.0;
     if (config.colors) {
         data[9] = Math.min(config.colors.length, 4);

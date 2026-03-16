@@ -453,9 +453,10 @@ export const BlockEffectConfigSchema = z.object({
     type: z.string().default("none"),
     colors: z.array(z.string()).max(4).default([]),
     speed: z.number().min(0.1).max(3.0).default(1.0),
-    intensity: z.number().min(0.1).max(2.0).default(1.0),
+    intensity: z.number().min(0).max(0.5).default(0.25),
     invertY: z.boolean().default(false),
     bgColor: z.string().optional(),   // hex color for background; undefined = shader default
+    bands: z.number().min(2).max(32).optional(),  // aurora curtain count; undefined = 8
 });
 export type BlockEffectConfig = z.infer<typeof BlockEffectConfigSchema>;
 
@@ -473,9 +474,10 @@ export const PageEffectConfigSchema = z.object({
     type: z.string().default("none"),
     colors: z.array(z.string()).max(4).default([]),
     speed: z.number().min(0.1).max(3.0).default(0.5),
-    intensity: z.number().min(0.1).max(2.0).default(0.3),
+    intensity: z.number().min(0).max(0.5).default(0.15),
     invertY: z.boolean().default(false),
     bgColor: z.string().optional(),
+    bands: z.number().min(2).max(32).optional(),
 });
 export type PageEffectConfig = z.infer<typeof PageEffectConfigSchema>;
 

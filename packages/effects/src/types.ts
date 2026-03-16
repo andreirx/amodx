@@ -31,6 +31,8 @@ export interface PipelineConfig {
     invertY?: boolean;
     /** Custom background color (hex). If omitted, shader uses its own default. */
     bgColor?: string;
+    /** Number of aurora curtain bands (2–32). Only used by aurora effect. */
+    bands?: number;
 }
 
 export interface EffectPipeline {

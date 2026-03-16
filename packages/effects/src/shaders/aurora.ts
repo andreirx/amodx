@@ -199,10 +199,14 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     let cx     = aspect * 0.5;  // horizontal center
     let spread = aspect * 0.22; // distance between adjacent curtains
 
+    let num_bands = u32(clamp(u.octaves, 2.0, 32.0));
+    let half_bands = f32(num_bands) * 0.5;
+
     var aurora = vec3f(0.0);
-    for (var i = 0u; i < 4u; i = i + 1u) {
+    for (var i = 0u; i < 32u; i = i + 1u) {
+        if (i >= num_bands) { break; }
         let fi   = f32(i);
-        let base = cx + (fi - 1.5) * spread;
+        let base = cx + (fi - half_bands + 0.5) * spread;
         let seed = fi * 31.7;
         // Slight sharpness variation per curtain
         let sharp = 85.0 + fi * 5.0;

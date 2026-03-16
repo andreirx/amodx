@@ -160,11 +160,12 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                 await pipeline.init(device, config.format, canvas, {
                     colors: effectColors,
                     speed: effect.speed ?? 1.0,
-                    intensity: effect.intensity ?? 1.0,
+                    intensity: effect.intensity ?? 0.25,
                     tier,
                     isMobile: mobile,
                     invertY: (effect as any).invertY ?? false,
                     bgColor: (effect as any).bgColor,
+                    bands: (effect as any).bands,
                 });
 
                 if (destroyed) {
