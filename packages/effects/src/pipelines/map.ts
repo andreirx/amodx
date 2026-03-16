@@ -14,6 +14,8 @@ import { AuroraPipeline } from "./aurora.js";
 import { PlasmaPipeline } from "./plasma.js";
 import { CausticsPipeline } from "./caustics.js";
 import { GlowPipeline } from "./glow.js";
+import { CellularPipeline } from "./cellular.js";
+import { CloudsPipeline } from "./clouds.js";
 import { ConfettiPipeline } from "./confetti.js";
 
 /**
@@ -25,6 +27,8 @@ export const PIPELINE_MAP: Record<string, () => EffectPipeline> = {
     plasma:   () => new PlasmaPipeline(),
     caustics: () => new CausticsPipeline(),
     glow:     () => new GlowPipeline(),
+    cellular: () => new CellularPipeline(),
+    clouds:   () => new CloudsPipeline(),
     confetti: () => new ConfettiPipeline(),
 };
 

@@ -157,6 +157,7 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                 }
 
                 const effectColors = effect.colors?.length ? effect.colors : DEFAULT_COLORS;
+                const usesBands = effectType === "aurora" || effectType === "plasma" || effectType === "cellular" || effectType === "clouds";
                 await pipeline.init(device, config.format, canvas, {
                     colors: effectColors,
                     speed: effect.speed ?? 1.0,
@@ -165,7 +166,7 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                     isMobile: mobile,
                     invertY: (effect as any).invertY ?? false,
                     bgColor: (effect as any).bgColor,
-                    bands: (effect as any).bands,
+                    bands: (effect as any).bands ?? (usesBands ? 8 : undefined),
                 });
 
                 if (destroyed) {

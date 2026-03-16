@@ -114,6 +114,7 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
 
                 const currentConfig = configRef.current;
                 const effectColors = currentConfig?.colors?.length ? currentConfig.colors : DEFAULT_COLORS;
+                const usesBands = effectType === "aurora" || effectType === "plasma" || effectType === "cellular" || effectType === "clouds";
                 await pipeline.init(device, cfg.format, canvas, {
                     colors: effectColors,
                     speed: currentConfig?.speed ?? 1.0,
@@ -122,7 +123,7 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                     isMobile: false,
                     invertY: (currentConfig as any)?.invertY ?? false,
                     bgColor: (currentConfig as any)?.bgColor,
-                    bands: (currentConfig as any)?.bands,
+                    bands: (currentConfig as any)?.bands ?? (usesBands ? 8 : undefined),
                 });
 
                 if (destroyed) { pipeline.destroy(); device.destroy(); return; }
@@ -138,13 +139,14 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                         // Live-update config from ref (no GPU re-init needed)
                         const live = configRef.current;
                         if (pipelineRef.current.updateConfig && live) {
+                            const liveUsesBands = effectType === "aurora" || effectType === "plasma" || effectType === "cellular" || effectType === "clouds";
                             pipelineRef.current.updateConfig({
                                 speed: live.speed,
                                 intensity: live.intensity,
                                 colors: live.colors?.length ? live.colors : DEFAULT_COLORS,
                                 invertY: (live as any)?.invertY,
                                 bgColor: (live as any)?.bgColor,
-                                bands: (live as any)?.bands,
+                                bands: (live as any)?.bands ?? (liveUsesBands ? 8 : undefined),
                             });
                         }
 

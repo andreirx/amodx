@@ -36,6 +36,20 @@ export const EFFECT_LIST: EffectMetadata[] = [
         scopes: ["background"],
     },
     {
+        key: "cellular",
+        label: "Cellular Noise",
+        description: "Animated Voronoi cells with glowing edges and colored interiors",
+        defaultColors: ["#06b6d4", "#8b5cf6", "#ec4899"],
+        scopes: ["background"],
+    },
+    {
+        key: "clouds",
+        label: "Clouds",
+        description: "Organic flowing patterns via domain-warped fractal noise",
+        defaultColors: ["#1e3a5f", "#6366f1", "#06b6d4", "#f0f9ff"],
+        scopes: ["background"],
+    },
+    {
         key: "glow",
         label: "HDR Glow",
         description: "Pulsating bloom that exceeds sRGB on capable displays",

@@ -156,12 +156,13 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
         attractor = vec2f(u.pointer.x * aspect, u.pointer.y);
     }
 
-    // Generate multiple arcs
-    let num_arcs = select(3u, 5u, u.octaves > 3.0);
+    // Generate multiple arcs — count driven by bands parameter
+    let num_arcs = u32(clamp(u.octaves, 2.0, 32.0));
     var total_glow = 0.0;
     var color_accum = vec3f(0.0);
 
-    for (var i = 0u; i < num_arcs; i = i + 1u) {
+    for (var i = 0u; i < 32u; i = i + 1u) {
+        if (i >= num_arcs) { break; }
         let fi = f32(i);
         let seed = fi * 37.7 + t * 0.5;
 

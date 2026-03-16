@@ -179,7 +179,7 @@ export function initStandardUniforms(
     data[1] = config.speed;
     data[2] = config.intensity;
     data[3] = glowMultiplier(config.tier);
-    // octaves slot: aurora uses config.bands (default 8), others use tier-based value
+    // octaves slot: aurora/plasma pass bands count; caustics uses this as detail threshold
     data[8] = config.bands ?? (config.isMobile ? 2.0 : 5.0);
     data[9] = Math.min(config.colors.length, 4);
     data[10] = config.invertY ? 1.0 : 0.0;

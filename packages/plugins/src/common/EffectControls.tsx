@@ -127,10 +127,10 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                         />
                     </div>
 
-                    {currentType === "aurora" && (
+                    {(currentType === "aurora" || currentType === "plasma" || currentType === "cellular" || currentType === "clouds") && (
                         <div>
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
-                                Bands: {effect?.bands ?? 8}
+                                {{ aurora: "Bands", plasma: "Arcs", cellular: "Cells", clouds: "Detail" }[currentType] || "Detail"}: {effect?.bands ?? 8}
                             </label>
                             <input
                                 type="range"

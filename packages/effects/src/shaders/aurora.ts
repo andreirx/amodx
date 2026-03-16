@@ -92,12 +92,6 @@ fn snoise(v: vec2f) -> f32 {
     return 130.0 * dot(m, g);
 }
 
-// ─── Star field hash ─────────────────────────────────────────────────
-
-fn hash_star(p: vec2f) -> f32 {
-    return fract(sin(dot(p, vec2f(12.9898, 78.233))) * 43758.5453);
-}
-
 // ─── Curtain x-position at height y ──────────────────────────────────
 // Three noise octaves create the characteristic ribbon shape:
 //   slow sway (whole curtain drifts) + medium ripple + fine flutter.
@@ -185,31 +179,24 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
                       0.016 + sky_g * 2.0);
     }
 
-    // ── Star field ──────────────────────────────────────────────
-    let star_cell = floor(uv * vec2f(200.0, 120.0));
-    let sh = hash_star(star_cell);
-    if (sh > 0.9965) {
-        let twinkle = sin(t * (1.2 + sh * 4.0) + sh * 80.0) * 0.25 + 0.75;
-        let star_b  = (sh - 0.9965) / (1.0 - 0.9965);  // 0..1 rarity ramp
-        color += vec3f(star_b * twinkle * 0.45);
-    }
-
     // ── Aurora curtains ─────────────────────────────────────────
     let env    = envelope(py);
     let cx     = aspect * 0.5;  // horizontal center
-    let spread = aspect * 0.22; // distance between adjacent curtains
 
     let num_bands = u32(clamp(u.octaves, 2.0, 32.0));
-    let half_bands = f32(num_bands) * 0.5;
+    let fnum      = f32(num_bands);
+    // Spread scales inversely with band count so all bands stay on screen.
+    // 80% of visible width divided evenly among bands.
+    let dyn_spread = aspect * 0.8 / fnum;
 
     var aurora = vec3f(0.0);
     for (var i = 0u; i < 32u; i = i + 1u) {
         if (i >= num_bands) { break; }
         let fi   = f32(i);
-        let base = cx + (fi - half_bands + 0.5) * spread;
+        let base = cx + (fi - fnum * 0.5 + 0.5) * dyn_spread;
         let seed = fi * 31.7;
-        // Slight sharpness variation per curtain
-        let sharp = 85.0 + fi * 5.0;
+        // Sharpness increases with band count to keep curtains thin
+        let sharp = 60.0 + 80.0 / fnum + fi * 3.0;
         let glow  = curtain_glow(px, py, base, t, seed, sharp);
         aurora   += aurora_color(py, fi) * glow * env;
     }
