@@ -2,6 +2,7 @@ import React from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
+import { LazyGlowWrap } from "../common/LazyGlowWrap";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -43,9 +44,11 @@ export function HeroRender({ attrs }: { attrs: any }) {
                     <h1 className="text-5xl font-black tracking-tight text-foreground mb-6">{headline}</h1>
                     {subheadline && <p className="text-lg text-muted-foreground mb-8">{subheadline}</p>}
                     {ctaText && (
-                        <a href={ctaLink} className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground shadow h-11 px-8 hover:opacity-90">
-                            {ctaText}
-                        </a>
+                        <LazyGlowWrap glow={attrs.glow}>
+                            <a href={ctaLink} className="relative z-10 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground shadow h-11 px-8 hover:opacity-90">
+                                {ctaText}
+                            </a>
+                        </LazyGlowWrap>
                     )}
                 </div>
                 <div className="relative z-10 order-1 lg:order-2 bg-muted rounded-2xl overflow-hidden shadow-2xl aspect-[4/3]">
@@ -73,9 +76,11 @@ export function HeroRender({ attrs }: { attrs: any }) {
                 </p>
             )}
             {ctaText && (
-                <a href={ctaLink} className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-11 px-8 hover:opacity-90">
-                    {ctaText}
-                </a>
+                <LazyGlowWrap glow={attrs.glow}>
+                    <a href={ctaLink} className="relative z-10 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-11 px-8 hover:opacity-90">
+                        {ctaText}
+                    </a>
+                </LazyGlowWrap>
             )}
             {/* Optional: Show image below text for center layout */}
             {imageSrc && (

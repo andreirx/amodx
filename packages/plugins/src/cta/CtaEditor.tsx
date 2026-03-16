@@ -3,6 +3,7 @@ import { Megaphone, Link as LinkIcon } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 import { EffectControls } from '../common/EffectControls';
+import { GlowControls } from '../common/GlowControls';
 
 const Input = ({ label, value, onChange, placeholder, list }: any) => (
     <div className="space-y-1 w-full">
@@ -60,6 +61,10 @@ export function CtaEditor(props: any) {
                     <EffectControls
                         effect={props.node.attrs.effect}
                         onChange={v => update('effect', v)}
+                    />
+                    <GlowControls
+                        glow={props.node.attrs.glow}
+                        onChange={v => update('glow', v)}
                     />
                 </div>
             </div>

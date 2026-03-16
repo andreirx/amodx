@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BlockEffectConfigSchema } from '@amodx/shared';
+import { BlockEffectConfigSchema, GlowEffectConfigSchema } from '@amodx/shared';
 
 export const CtaSchema = z.object({
     headline: z.string().default("Ready to get started?"),
@@ -9,4 +9,5 @@ export const CtaSchema = z.object({
     style: z.enum(["simple", "card", "band"]).default("simple"),
     blockWidth: z.enum(["content", "wide", "full"]).default("full"),
     effect: BlockEffectConfigSchema.optional(),
+    glow: GlowEffectConfigSchema.optional(),
 });

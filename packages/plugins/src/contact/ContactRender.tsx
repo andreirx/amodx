@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { LazyGlowWrap } from "../common/LazyGlowWrap";
 
 export function ContactRender({ attrs }: { attrs: any }) {
     const [status, setStatus] = useState("idle");
@@ -113,13 +114,15 @@ export function ContactRender({ attrs }: { attrs: any }) {
                 <p className="text-sm text-red-600 text-center">{errorMessage}</p>
             )}
 
-            <button
-                type="submit"
-                disabled={status === "loading"}
-                className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm mt-2"
-            >
-                {status === "loading" ? "Sending..." : attrs.buttonText}
-            </button>
+            <LazyGlowWrap glow={attrs.glow} className="block mt-2">
+                <button
+                    type="submit"
+                    disabled={status === "loading"}
+                    className="relative z-10 w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
+                >
+                    {status === "loading" ? "Sending..." : attrs.buttonText}
+                </button>
+            </LazyGlowWrap>
         </form>
     );
 }

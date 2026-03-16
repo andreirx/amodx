@@ -3,6 +3,7 @@ import { LayoutTemplate, Link as LinkIcon, Image as ImageIcon, Upload, Search } 
 import React, { useState } from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 import { EffectControls } from '../common/EffectControls';
+import { GlowControls } from '../common/GlowControls';
 
 // Unified Input Helper
 const Input = ({ value, onChange, placeholder, className = "" }: any) => (
@@ -119,6 +120,10 @@ export function HeroEditor(props: any) {
                     <EffectControls
                         effect={props.node.attrs.effect}
                         onChange={v => update('effect', v)}
+                    />
+                    <GlowControls
+                        glow={props.node.attrs.glow}
+                        onChange={v => update('glow', v)}
                     />
                 </div>
             </div>

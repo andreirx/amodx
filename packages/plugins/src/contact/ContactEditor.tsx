@@ -2,6 +2,7 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { Mail } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
+import { GlowControls } from '../common/GlowControls';
 
 const Input = ({ label, value, onChange, placeholder }: any) => (
     <div className="space-y-1">
@@ -40,6 +41,11 @@ export function ContactEditor(props: any) {
                         <Input label="Button Label" value={buttonText} onChange={(v: string) => update('buttonText', v)} />
                         <Input label="CRM Tags" value={tags} onChange={(v: string) => update('tags', v)} placeholder="contact, lead" />
                     </div>
+
+                    <GlowControls
+                        glow={props.node.attrs.glow}
+                        onChange={v => update('glow', v)}
+                    />
                 </div>
             </div>
         </NodeViewWrapper>

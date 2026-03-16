@@ -285,10 +285,8 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
 // ---------- GlowCanvas (CTA button glow) ----------
 
 export interface GlowCanvasProps {
-    /** Glow config from CTA block attrs */
+    /** Glow config from block attrs */
     glow: GlowEffectConfig;
-    /** Ref to the button element — canvas sizes to match */
-    buttonRef: React.RefObject<HTMLElement | null>;
     /** Optional extra CSS class */
     className?: string;
 }
@@ -296,21 +294,170 @@ export interface GlowCanvasProps {
 /**
  * Canvas wrapper for CTA button glow effects.
  *
- * Sized to the button element plus bleed area for glow overflow.
- * Desktop: arcs track pointer. Mobile: time-based pulse.
+ * Positioned absolutely within a relative wrapper (LazyGlowWrap).
+ * Uses -inset-5 (20px) bleed so glow extends beyond button edges.
+ * The button sits above at z-10 for clickability.
  *
- * Renders as absolute-positioned behind the button.
- * The <a> tag remains on top for accessibility and SEO.
+ * Desktop: glow arcs track pointer position.
+ * Mobile: time-based pulse (no pointer tracking).
+ *
+ * Compositing: canvas alphaMode = "premultiplied". Shader outputs
+ * vec4f(glow_rgb, 0.0) — additive blending. Glow light adds to
+ * page content; transparent areas fully see-through.
+ *
+ * Pointer tracking: document-level listener computes proximity to
+ * canvas rect. Works through z-stacking (button z-10 above canvas).
+ * Canvas is pointer-events:none so button clicks are unaffected.
  */
-export function GlowCanvas({ glow, buttonRef, className }: GlowCanvasProps) {
-    // Stub — will be implemented when the glow pipeline is ready.
-    // Same pattern as EffectCanvas but sized to buttonRef element
-    // with ~20px bleed for glow overflow.
-    if (!glow?.enabled) return null;
+export function GlowCanvas({ glow, className }: GlowCanvasProps) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const pipelineRef = useRef<EffectPipeline | null>(null);
+    const deviceRef = useRef<GPUDevice | null>(null);
+    const rafRef = useRef<number>(0);
+    const startRef = useRef<number>(0);
+    const pointerRef = useRef<{ x: number; y: number } | null>(null);
+    const [tier, setTier] = useState<GpuTier>("none");
+
+    useEffect(() => {
+        detectGpuTier().then(setTier);
+    }, []);
+
+    const shouldRender = glow?.enabled && tier !== "none";
+
+    useEffect(() => {
+        if (!shouldRender) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        let destroyed = false;
+        let resizeObs: ResizeObserver | null = null;
+        const mobile = isMobileDevice();
+
+        // Document-level pointer tracking — works through z-index stacking.
+        // The button (z-10) blocks direct canvas pointer events, but the
+        // document listener captures moves everywhere, then we check proximity.
+        function handlePointerMove(e: PointerEvent) {
+            if (!canvas || destroyed) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            // Track when pointer is within or near the canvas (10% margin)
+            if (x >= -0.1 && x <= 1.1 && y >= -0.1 && y <= 1.1) {
+                pointerRef.current = {
+                    x: Math.max(0, Math.min(1, x)),
+                    y: Math.max(0, Math.min(1, y)),
+                };
+            } else {
+                pointerRef.current = null;
+            }
+        }
+
+        async function init() {
+            if (destroyed || !canvas) return;
+
+            try {
+                const adapter = await navigator.gpu?.requestAdapter();
+                if (!adapter || destroyed) return;
+
+                const device = await adapter.requestDevice();
+                if (destroyed) { device.destroy(); return; }
+                deviceRef.current = device;
+
+                device.onuncapturederror = (ev) => {
+                    console.error("[amodx/effects/glow] GPU error:", ev.error);
+                };
+
+                const ctx = canvas.getContext("webgpu");
+                if (!ctx || destroyed) { device.destroy(); return; }
+
+                const cfg = surfaceConfig(tier);
+                // Premultiplied alpha: transparent areas show page content,
+                // glow RGB adds on top (additive compositing via alpha=0 trick)
+                ctx.configure({ device, ...cfg, alphaMode: "premultiplied" });
+
+                const { width, height } = canvasPixelSize(
+                    canvas.clientWidth, canvas.clientHeight, mobile,
+                );
+                canvas.width = width;
+                canvas.height = height;
+
+                const pipeline = createEffect("glow");
+                if (!pipeline || destroyed) { device.destroy(); return; }
+                pipelineRef.current = pipeline;
+
+                await pipeline.init(device, cfg.format, canvas, {
+                    colors: [glow.color || "#6366f1"],
+                    speed: 1.0,
+                    intensity: glow.intensity ?? 1.0,
+                    tier,
+                    isMobile: mobile,
+                });
+
+                if (destroyed) { pipeline.destroy(); device.destroy(); return; }
+
+                console.log(`[amodx/effects/glow] Pipeline initialized — ${width}x${height}, tier=${tier}`);
+
+                // Pointer tracking (desktop only)
+                if (!mobile) {
+                    document.addEventListener("pointermove", handlePointerMove);
+                }
+
+                resizeObs = new ResizeObserver(() => {
+                    if (!canvas || destroyed) return;
+                    const { width: w, height: h } = canvasPixelSize(
+                        canvas.clientWidth, canvas.clientHeight, mobile,
+                    );
+                    canvas.width = w;
+                    canvas.height = h;
+                    pipeline.resize(w, h);
+                });
+                resizeObs.observe(canvas);
+
+                // Render loop
+                startRef.current = performance.now();
+                function renderLoop() {
+                    if (destroyed || !pipelineRef.current || !deviceRef.current) return;
+                    try {
+                        const time = (performance.now() - startRef.current) / 1000;
+                        const encoder = deviceRef.current.createCommandEncoder();
+                        const texture = ctx!.getCurrentTexture();
+                        const view = texture.createView();
+                        pipelineRef.current.frame(encoder, view, time, pointerRef.current);
+                        deviceRef.current.queue.submit([encoder.finish()]);
+                    } catch (err) {
+                        console.error("[amodx/effects/glow] Frame error:", err);
+                        return;
+                    }
+                    rafRef.current = requestAnimationFrame(renderLoop);
+                }
+                rafRef.current = requestAnimationFrame(renderLoop);
+            } catch (err) {
+                console.error("[amodx/effects/glow] Init failed:", err);
+            }
+        }
+
+        init();
+
+        return () => {
+            destroyed = true;
+            cancelAnimationFrame(rafRef.current);
+            document.removeEventListener("pointermove", handlePointerMove);
+            resizeObs?.disconnect();
+            pipelineRef.current?.destroy();
+            pipelineRef.current = null;
+            deviceRef.current?.destroy();
+            deviceRef.current = null;
+        };
+    }, [shouldRender, tier, glow?.color, glow?.intensity]);
+
+    if (!shouldRender) return null;
 
     return (
         <div className={`absolute -inset-5 overflow-visible pointer-events-none ${className || ""}`}>
-            {/* Canvas will be mounted here when glow pipeline is implemented */}
+            <canvas
+                ref={canvasRef}
+                className="w-full h-full pointer-events-none"
+            />
         </div>
     );
 }
