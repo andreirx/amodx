@@ -454,6 +454,8 @@ export const BlockEffectConfigSchema = z.object({
     colors: z.array(z.string()).max(4).default([]),
     speed: z.number().min(0.1).max(3.0).default(1.0),
     intensity: z.number().min(0.1).max(2.0).default(1.0),
+    invertY: z.boolean().default(false),
+    bgColor: z.string().optional(),   // hex color for background; undefined = shader default
 });
 export type BlockEffectConfig = z.infer<typeof BlockEffectConfigSchema>;
 
@@ -472,6 +474,8 @@ export const PageEffectConfigSchema = z.object({
     colors: z.array(z.string()).max(4).default([]),
     speed: z.number().min(0.1).max(3.0).default(0.5),
     intensity: z.number().min(0.1).max(2.0).default(0.3),
+    invertY: z.boolean().default(false),
+    bgColor: z.string().optional(),
 });
 export type PageEffectConfig = z.infer<typeof PageEffectConfigSchema>;
 
@@ -722,7 +726,7 @@ export const TenantConfigSchema = z.object({
 
     // GPU Effects — page-level ambient background (aurora, particles, etc.)
     // Defaults to type "none" — zero impact on existing sites.
-    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.3 }),
+    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.3, invertY: false }),
 
     // Order confirmation celebration confetti — opt-in, default off
     celebrationEnabled: z.boolean().default(false),

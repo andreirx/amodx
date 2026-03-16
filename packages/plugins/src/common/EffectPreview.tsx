@@ -120,6 +120,8 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                     intensity: currentConfig?.intensity ?? 1.0,
                     tier: tierRef.current,
                     isMobile: false,
+                    invertY: (currentConfig as any)?.invertY ?? false,
+                    bgColor: (currentConfig as any)?.bgColor,
                 });
 
                 if (destroyed) { pipeline.destroy(); device.destroy(); return; }
@@ -139,6 +141,8 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                                 speed: live.speed,
                                 intensity: live.intensity,
                                 colors: live.colors?.length ? live.colors : DEFAULT_COLORS,
+                                invertY: (live as any)?.invertY,
+                                bgColor: (live as any)?.bgColor,
                             });
                         }
 

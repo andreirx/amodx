@@ -10,6 +10,8 @@
  * real physical bloom on capable panels.
  */
 
+import { LUM_INVERT_WGSL } from "./lum-invert.js";
+
 export const PLASMA_SHADER = /* wgsl */ `
 
 struct Uniforms {
@@ -21,11 +23,13 @@ struct Uniforms {
     pointer: vec2f,
     octaves: f32,
     num_colors: f32,
-    _pad: vec2f,
+    invert_y: f32,
+    has_bg: f32,
     color0: vec4f,
     color1: vec4f,
     color2: vec4f,
     color3: vec4f,
+    bg_color: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -135,6 +139,9 @@ fn get_color(t: f32) -> vec3f {
     return mix(c0, c1, f);
 }
 
+// ─── HLS luminosity inversion ────────────────────────────────────────
+${LUM_INVERT_WGSL}
+
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
     let uv = in.uv;
@@ -144,9 +151,9 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
     // Center and pointer (or center if no pointer)
     let center = vec2f(0.5 * aspect, 0.5);
-    var target = center;
+    var attractor = center;
     if (u.pointer.x >= 0.0) {
-        target = vec2f(u.pointer.x * aspect, u.pointer.y);
+        attractor = vec2f(u.pointer.x * aspect, u.pointer.y);
     }
 
     // Generate multiple arcs
@@ -166,7 +173,7 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
         // Second endpoint attracted toward pointer/center
         let edge_b = mix(
             center + vec2f(cos(angle_b), sin(angle_b)) * 0.3,
-            target,
+            attractor,
             0.6
         );
 
@@ -187,6 +194,11 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
         final_color = (color_accum / total_glow) * final_glow;
     }
     final_color += u.color0.rgb * ambient * u.glow_mult;
+
+    // Luminosity inversion: preserve hue & saturation, flip lightness
+    if (u.invert_y > 0.5) {
+        final_color = invert_luminosity(final_color);
+    }
 
     return vec4f(final_color, 1.0);
 }

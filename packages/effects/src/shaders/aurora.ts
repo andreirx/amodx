@@ -20,6 +20,8 @@
  * Simplex noise: Ashima Arts (Ian McEwan, Stefan Gustavson).
  */
 
+import { LUM_INVERT_WGSL } from "./lum-invert.js";
+
 export const AURORA_SHADER = /* wgsl */ `
 
 struct Uniforms {
@@ -31,11 +33,13 @@ struct Uniforms {
     pointer: vec2f,
     octaves: f32,
     num_colors: f32,
-    _pad: vec2f,
+    invert_y: f32,
+    has_bg: f32,
     color0: vec4f,
     color1: vec4f,
     color2: vec4f,
     color3: vec4f,
+    bg_color: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -150,11 +154,14 @@ fn aurora_color(y: f32, ci: f32) -> vec3f {
     return col;
 }
 
+// ─── HLS luminosity inversion ────────────────────────────────────────
+${LUM_INVERT_WGSL}
+
 // ─── Fragment ────────────────────────────────────────────────────────
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
-    let uv = in.uv;
+    var uv = in.uv;
     let t  = u.time * u.speed;
     let aspect = u.resolution.x / u.resolution.y;
     var px = uv.x * aspect;
@@ -167,11 +174,16 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     }
 
     // ── Sky background ──────────────────────────────────────────
-    // Deep blue-black, slight vertical gradient (lighter near horizon)
-    let sky_g = py * 0.006;
-    var color = vec3f(0.003 + sky_g * 0.5,
+    // Custom bg color if set, otherwise deep blue-black with vertical gradient
+    var color: vec3f;
+    if (u.has_bg > 0.5) {
+        color = u.bg_color.rgb;
+    } else {
+        let sky_g = py * 0.006;
+        color = vec3f(0.003 + sky_g * 0.5,
                       0.005 + sky_g * 0.7,
                       0.016 + sky_g * 2.0);
+    }
 
     // ── Star field ──────────────────────────────────────────────
     let star_cell = floor(uv * vec2f(200.0, 120.0));
@@ -212,6 +224,12 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     aurora *= u.intensity * u.glow_mult;
 
     color += aurora;
+
+    // Luminosity inversion: preserve hue & saturation, flip lightness
+    if (u.invert_y > 0.5) {
+        color = invert_luminosity(color);
+    }
+
     return vec4f(color, 1.0);
 }
 `;

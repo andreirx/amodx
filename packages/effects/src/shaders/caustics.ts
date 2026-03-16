@@ -8,6 +8,8 @@
  * Bright lines form where cell boundaries from different layers overlap.
  */
 
+import { LUM_INVERT_WGSL } from "./lum-invert.js";
+
 export const CAUSTICS_SHADER = /* wgsl */ `
 
 struct Uniforms {
@@ -19,11 +21,13 @@ struct Uniforms {
     pointer: vec2f,
     octaves: f32,
     num_colors: f32,
-    _pad: vec2f,
+    invert_y: f32,
+    has_bg: f32,
     color0: vec4f,
     color1: vec4f,
     color2: vec4f,
     color3: vec4f,
+    bg_color: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -92,6 +96,9 @@ fn get_color(t: f32) -> vec3f {
     return mix(c0, c1, f);
 }
 
+// ─── HLS luminosity inversion ────────────────────────────────────────
+${LUM_INVERT_WGSL}
+
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
     let uv = in.uv;
@@ -129,7 +136,12 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
     // Background: dark tinted water
     let bg = u.color0.rgb * 0.03;
-    let final_color = bg + color * bright * u.intensity * u.glow_mult;
+    var final_color = bg + color * bright * u.intensity * u.glow_mult;
+
+    // Luminosity inversion: preserve hue & saturation, flip lightness
+    if (u.invert_y > 0.5) {
+        final_color = invert_luminosity(final_color);
+    }
 
     return vec4f(final_color, 1.0);
 }

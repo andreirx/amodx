@@ -27,6 +27,10 @@ export interface PipelineConfig {
     tier: GpuTier;
     /** True on touch devices with small screens — pipeline reduces complexity */
     isMobile: boolean;
+    /** Flip the effect vertically (e.g., aurora curtains rise from bottom) */
+    invertY?: boolean;
+    /** Custom background color (hex). If omitted, shader uses its own default. */
+    bgColor?: string;
 }
 
 export interface EffectPipeline {

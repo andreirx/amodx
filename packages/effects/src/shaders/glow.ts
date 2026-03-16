@@ -10,6 +10,8 @@
  * Mobile: slow time-based pulse with no pointer tracking.
  */
 
+import { LUM_INVERT_WGSL } from "./lum-invert.js";
+
 export const GLOW_SHADER = /* wgsl */ `
 
 struct Uniforms {
@@ -21,11 +23,13 @@ struct Uniforms {
     pointer: vec2f,
     octaves: f32,
     num_colors: f32,
-    _pad: vec2f,
+    invert_y: f32,
+    has_bg: f32,
     color0: vec4f,
     color1: vec4f,
     color2: vec4f,
     color3: vec4f,
+    bg_color: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -80,6 +84,9 @@ fn sdf_rounded_rect(p: vec2f, half_size: vec2f, radius: f32) -> f32 {
     return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - radius;
 }
 
+// ─── HLS luminosity inversion ────────────────────────────────────────
+${LUM_INVERT_WGSL}
+
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
     let uv = in.uv;
@@ -121,7 +128,12 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     }
 
     let color = u.color0.rgb;
-    let final_color = color * glow * u.intensity * u.glow_mult;
+    var final_color = color * glow * u.intensity * u.glow_mult;
+
+    // Luminosity inversion: preserve hue & saturation, flip lightness
+    if (u.invert_y > 0.5) {
+        final_color = invert_luminosity(final_color);
+    }
 
     return vec4f(final_color, 0.0);
 }

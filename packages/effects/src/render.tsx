@@ -163,6 +163,8 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                     intensity: effect.intensity ?? 1.0,
                     tier,
                     isMobile: mobile,
+                    invertY: (effect as any).invertY ?? false,
+                    bgColor: (effect as any).bgColor,
                 });
 
                 if (destroyed) {

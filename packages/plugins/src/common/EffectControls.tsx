@@ -34,6 +34,8 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
             colors: effect?.colors || meta?.defaultColors || [],
             speed: effect?.speed ?? 1.0,
             intensity: effect?.intensity ?? 1.0,
+            invertY: effect?.invertY ?? false,
+            bgColor: effect?.bgColor,
             [field]: value,
         });
     };
@@ -50,7 +52,7 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                 onChange={e => {
                     const key = e.target.value;
                     if (key === "none") {
-                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 1.0 });
+                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 1.0, invertY: false });
                         return;
                     }
                     const newMeta = backgroundEffects.find(ef => ef.key === key);
@@ -59,6 +61,7 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                         colors: newMeta?.defaultColors || [],
                         speed: 1.0,
                         intensity: 1.0,
+                        invertY: false,
                     });
                 }}
             >
@@ -119,6 +122,40 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                             onChange={e => update("intensity", parseFloat(e.target.value))}
                             className="w-full"
                         />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={effect?.invertY ?? false}
+                                onChange={e => update("invertY", e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-gray-300"
+                            />
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                Invert
+                            </span>
+                        </label>
+
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                BG
+                            </span>
+                            <input
+                                type="color"
+                                value={effect?.bgColor || "#000010"}
+                                onChange={e => update("bgColor", e.target.value)}
+                                className="w-6 h-6 rounded border border-gray-200 cursor-pointer"
+                            />
+                            {effect?.bgColor && (
+                                <button
+                                    onClick={() => update("bgColor", undefined)}
+                                    className="text-[9px] text-gray-400 hover:text-red-500 underline"
+                                >
+                                    reset
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Live GPU preview */}

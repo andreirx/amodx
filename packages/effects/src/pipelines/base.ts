@@ -100,14 +100,15 @@ export function createUniformBuffer(
 // Float index → WGSL member
 // [0]  time        [1]  speed       [2]  intensity   [3]  glow_mult
 // [4]  resolution.x [5] resolution.y [6] pointer.x   [7]  pointer.y
-// [8]  octaves     [9]  num_colors  [10] _pad.x      [11] _pad.y
+// [8]  octaves     [9]  num_colors  [10] invert_y    [11] has_bg
 // [12] color0.r    [13] color0.g    [14] color0.b    [15] color0.a
 // [16] color1.r    [17] color1.g    [18] color1.b    [19] color1.a
 // [20] color2.r    [21] color2.g    [22] color2.b    [23] color2.a
 // [24] color3.r    [25] color3.g    [26] color3.b    [27] color3.a
-// Total: 28 floats = 112 bytes (16-byte aligned)
+// [28] bg_color.r  [29] bg_color.g  [30] bg_color.b  [31] bg_color.a (unused)
+// Total: 32 floats = 128 bytes (16-byte aligned)
 
-export const STANDARD_UNIFORM_FLOATS = 28;
+export const STANDARD_UNIFORM_FLOATS = 32;
 export const STANDARD_UNIFORM_BYTES = STANDARD_UNIFORM_FLOATS * 4;
 
 /**
@@ -180,6 +181,8 @@ export function initStandardUniforms(
     data[3] = glowMultiplier(config.tier);
     data[8] = config.isMobile ? 2.0 : 5.0;  // octaves
     data[9] = Math.min(config.colors.length, 4);
+    data[10] = config.invertY ? 1.0 : 0.0;
+    data[11] = config.bgColor ? 1.0 : 0.0;
 
     for (let i = 0; i < 4; i++) {
         const hex = config.colors[i] || config.colors[0] || "#6366f1";
@@ -190,6 +193,15 @@ export function initStandardUniforms(
         data[offset + 2] = b;
         data[offset + 3] = 1.0;
     }
+
+    // Background color (floats 28-31)
+    if (config.bgColor) {
+        const [r, g, b] = hexToFloat3(config.bgColor);
+        data[28] = r;
+        data[29] = g;
+        data[30] = b;
+        data[31] = 1.0;
+    }
 }
 
 /**
@@ -199,10 +211,11 @@ export function initStandardUniforms(
  */
 export function updateStandardConfig(
     data: Float32Array,
-    config: { speed?: number; intensity?: number; colors?: string[] },
+    config: { speed?: number; intensity?: number; colors?: string[]; invertY?: boolean; bgColor?: string },
 ): void {
     if (config.speed !== undefined) data[1] = config.speed;
     if (config.intensity !== undefined) data[2] = config.intensity;
+    if (config.invertY !== undefined) data[10] = config.invertY ? 1.0 : 0.0;
     if (config.colors) {
         data[9] = Math.min(config.colors.length, 4);
         for (let i = 0; i < 4; i++) {
@@ -213,6 +226,15 @@ export function updateStandardConfig(
             data[offset + 1] = g;
             data[offset + 2] = b;
             data[offset + 3] = 1.0;
+        }
+    }
+    if (config.bgColor !== undefined) {
+        if (config.bgColor) {
+            data[11] = 1.0;
+            const [r, g, b] = hexToFloat3(config.bgColor);
+            data[28] = r; data[29] = g; data[30] = b; data[31] = 1.0;
+        } else {
+            data[11] = 0.0;
         }
     }
 }
