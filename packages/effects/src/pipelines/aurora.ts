@@ -17,7 +17,7 @@ export class AuroraPipeline implements EffectPipeline {
 
     async init(device: GPUDevice, format: GPUTextureFormat, canvas: HTMLCanvasElement, config: PipelineConfig): Promise<void> {
         this.device = device;
-        const { pipeline, bindGroupLayout } = createFullscreenPipeline(device, AURORA_SHADER, format);
+        const { pipeline, bindGroupLayout } = await createFullscreenPipeline(device, AURORA_SHADER, format);
         this.pipeline = pipeline;
         this.uniformBuffer = createUniformBuffer(device, STANDARD_UNIFORM_BYTES);
         this.bindGroup = device.createBindGroup({

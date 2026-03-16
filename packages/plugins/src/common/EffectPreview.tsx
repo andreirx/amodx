@@ -62,69 +62,102 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
 
         let destroyed = false;
 
+        const DEFAULT_COLORS = ["#6366f1", "#8b5cf6", "#a855f7"];
+
         async function init() {
             if (destroyed || !canvas) return;
 
-            const { createEffect, surfaceConfig, canvasPixelSize } = await import("@amodx/effects/render");
-            if (destroyed) return;
+            try {
+                const { createEffect, surfaceConfig, canvasPixelSize } = await import("@amodx/effects/render");
+                if (destroyed) return;
 
-            const adapter = await (navigator as any).gpu?.requestAdapter();
-            if (!adapter || destroyed) return;
-
-            const device = await adapter.requestDevice();
-            if (destroyed) { device.destroy(); return; }
-            deviceRef.current = device;
-
-            const ctx = canvas.getContext("webgpu") as any;
-            if (!ctx || destroyed) { device.destroy(); return; }
-            ctxRef.current = ctx;
-
-            const cfg = surfaceConfig(tierRef.current);
-            ctx.configure({ device, ...cfg });
-
-            const { width, height } = canvasPixelSize(canvas.clientWidth, canvas.clientHeight, false);
-            canvas.width = width;
-            canvas.height = height;
-
-            const pipeline = createEffect(effectType);
-            if (!pipeline || destroyed) { device.destroy(); return; }
-            pipelineRef.current = pipeline;
-
-            const currentConfig = configRef.current;
-            await pipeline.init(device, cfg.format, canvas, {
-                colors: currentConfig?.colors || [],
-                speed: currentConfig?.speed ?? 1.0,
-                intensity: currentConfig?.intensity ?? 1.0,
-                tier: tierRef.current,
-                isMobile: false,
-            });
-
-            if (destroyed) { pipeline.destroy(); device.destroy(); return; }
-
-            // Render loop
-            startRef.current = performance.now();
-            function renderLoop() {
-                if (destroyed || !pipelineRef.current || !deviceRef.current || !ctxRef.current) return;
-
-                // Live-update config from ref (no GPU re-init needed)
-                const live = configRef.current;
-                if (pipelineRef.current.updateConfig && live) {
-                    pipelineRef.current.updateConfig({
-                        speed: live.speed,
-                        intensity: live.intensity,
-                        colors: live.colors,
-                    });
+                const adapter = await (navigator as any).gpu?.requestAdapter();
+                if (!adapter || destroyed) {
+                    console.warn("[amodx/effects/preview] No GPU adapter");
+                    return;
                 }
 
-                const time = (performance.now() - startRef.current) / 1000;
-                const encoder = deviceRef.current.createCommandEncoder();
-                const texture = ctxRef.current.getCurrentTexture();
-                const view = texture.createView();
-                pipelineRef.current.frame(encoder, view, time, null);
-                deviceRef.current.queue.submit([encoder.finish()]);
+                const device = await adapter.requestDevice();
+                if (destroyed) { device.destroy(); return; }
+                deviceRef.current = device;
+
+                device.onuncapturederror = (ev: any) => {
+                    console.error("[amodx/effects/preview] GPU error:", ev.error);
+                };
+
+                const ctx = canvas.getContext("webgpu") as any;
+                if (!ctx || destroyed) {
+                    console.warn("[amodx/effects/preview] Failed to get webgpu context");
+                    device.destroy();
+                    return;
+                }
+                ctxRef.current = ctx;
+
+                const cfg = surfaceConfig(tierRef.current);
+                ctx.configure({ device, ...cfg, alphaMode: "opaque" });
+
+                const { width, height } = canvasPixelSize(canvas.clientWidth, canvas.clientHeight, false);
+                canvas.width = width;
+                canvas.height = height;
+
+                if (width === 0 || height === 0) {
+                    console.warn(`[amodx/effects/preview] Canvas zero dimensions: ${width}x${height}`);
+                }
+
+                const pipeline = createEffect(effectType);
+                if (!pipeline || destroyed) {
+                    console.warn(`[amodx/effects/preview] Unknown effect type: "${effectType}"`);
+                    device.destroy();
+                    return;
+                }
+                pipelineRef.current = pipeline;
+
+                const currentConfig = configRef.current;
+                const effectColors = currentConfig?.colors?.length ? currentConfig.colors : DEFAULT_COLORS;
+                await pipeline.init(device, cfg.format, canvas, {
+                    colors: effectColors,
+                    speed: currentConfig?.speed ?? 1.0,
+                    intensity: currentConfig?.intensity ?? 1.0,
+                    tier: tierRef.current,
+                    isMobile: false,
+                });
+
+                if (destroyed) { pipeline.destroy(); device.destroy(); return; }
+
+                console.log(`[amodx/effects/preview] Pipeline "${effectType}" initialized — ${width}x${height}`);
+
+                // Render loop
+                startRef.current = performance.now();
+                function renderLoop() {
+                    if (destroyed || !pipelineRef.current || !deviceRef.current || !ctxRef.current) return;
+
+                    try {
+                        // Live-update config from ref (no GPU re-init needed)
+                        const live = configRef.current;
+                        if (pipelineRef.current.updateConfig && live) {
+                            pipelineRef.current.updateConfig({
+                                speed: live.speed,
+                                intensity: live.intensity,
+                                colors: live.colors?.length ? live.colors : DEFAULT_COLORS,
+                            });
+                        }
+
+                        const time = (performance.now() - startRef.current) / 1000;
+                        const encoder = deviceRef.current.createCommandEncoder();
+                        const texture = ctxRef.current.getCurrentTexture();
+                        const view = texture.createView();
+                        pipelineRef.current.frame(encoder, view, time, null);
+                        deviceRef.current.queue.submit([encoder.finish()]);
+                    } catch (frameErr) {
+                        console.error("[amodx/effects/preview] Frame error:", frameErr);
+                        return;
+                    }
+                    rafRef.current = requestAnimationFrame(renderLoop);
+                }
                 rafRef.current = requestAnimationFrame(renderLoop);
+            } catch (err) {
+                console.error("[amodx/effects/preview] Init failed:", err);
             }
-            rafRef.current = requestAnimationFrame(renderLoop);
         }
 
         init();

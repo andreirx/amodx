@@ -104,13 +104,13 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
     // Pointer-reactive boost (desktop)
     if (u.pointer.x >= 0.0) {
-        let ptr = vec2f((u.pointer.x - 0.5) * aspect, u.pointer.y - 0.5);
-        let ptr_dist = distance(p, ptr);
+        let mptr =vec2f((u.pointer.x - 0.5) * aspect, u.pointer.y - 0.5);
+        let ptr_dist = distance(p, mptr);
         let ptr_boost = exp(-ptr_dist * 6.0) * 0.8;
         glow += ptr_boost;
 
         // Arc filament toward pointer
-        let to_ptr = ptr - p;
+        let to_ptr = mptr - p;
         let to_ptr_len = length(to_ptr);
         if (to_ptr_len > 0.01 && dist > 0.0 && dist < 0.3) {
             let along = dot(p - vec2f(0.0), normalize(to_ptr));

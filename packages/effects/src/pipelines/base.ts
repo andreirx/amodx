@@ -114,13 +114,27 @@ export const STANDARD_UNIFORM_BYTES = STANDARD_UNIFORM_FLOATS * 4;
  * Create a fullscreen render pipeline with a single uniform bind group.
  * Used by all fragment-shader-only effects (aurora, plasma, caustics, glow).
  */
-export function createFullscreenPipeline(
+export async function createFullscreenPipeline(
     device: GPUDevice,
     shaderCode: string,
     format: GPUTextureFormat,
     blend?: GPUBlendState,
-): { pipeline: GPURenderPipeline; bindGroupLayout: GPUBindGroupLayout } {
+): Promise<{ pipeline: GPURenderPipeline; bindGroupLayout: GPUBindGroupLayout }> {
     const module = device.createShaderModule({ code: shaderCode });
+
+    // Check shader compilation — createShaderModule does NOT throw on WGSL errors.
+    // Errors surface only through getCompilationInfo() or as validation errors later.
+    const compilationInfo = await module.getCompilationInfo();
+    for (const msg of compilationInfo.messages) {
+        const prefix = `[amodx/effects] WGSL ${msg.type}`;
+        const location = msg.lineNum ? ` (line ${msg.lineNum}:${msg.linePos})` : "";
+        console.warn(`${prefix}${location}: ${msg.message}`);
+    }
+    const hasErrors = compilationInfo.messages.some(m => m.type === "error");
+    if (hasErrors) {
+        throw new Error("[amodx/effects] Shader compilation failed — see warnings above");
+    }
+
     const bindGroupLayout = device.createBindGroupLayout({
         entries: [{
             binding: 0,
@@ -131,6 +145,9 @@ export function createFullscreenPipeline(
     const pipelineLayout = device.createPipelineLayout({
         bindGroupLayouts: [bindGroupLayout],
     });
+
+    // Push error scope to catch pipeline creation validation errors
+    device.pushErrorScope("validation");
     const pipeline = device.createRenderPipeline({
         layout: pipelineLayout,
         vertex: { module, entryPoint: "vs" },
@@ -141,6 +158,11 @@ export function createFullscreenPipeline(
         },
         primitive: { topology: "triangle-list" },
     });
+    const validationError = await device.popErrorScope();
+    if (validationError) {
+        throw new Error(`[amodx/effects] Pipeline creation failed: ${validationError.message}`);
+    }
+
     return { pipeline, bindGroupLayout };
 }
 

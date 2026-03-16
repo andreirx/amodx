@@ -29,7 +29,7 @@ export class GlowPipeline implements EffectPipeline {
             alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
         };
 
-        const { pipeline, bindGroupLayout } = createFullscreenPipeline(device, GLOW_SHADER, format, blend);
+        const { pipeline, bindGroupLayout } = await createFullscreenPipeline(device, GLOW_SHADER, format, blend);
         this.pipeline = pipeline;
         this.uniformBuffer = createUniformBuffer(device, STANDARD_UNIFORM_BYTES);
         this.bindGroup = device.createBindGroup({

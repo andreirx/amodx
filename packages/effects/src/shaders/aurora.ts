@@ -106,8 +106,8 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
     // Subtle pointer influence (desktop)
     if (u.pointer.x >= 0.0) {
-        let ptr = vec2f(u.pointer.x * aspect, u.pointer.y);
-        let pull = (ptr - p) * 0.04;
+        let mptr =vec2f(u.pointer.x * aspect, u.pointer.y);
+        let pull = (mptr - p) * 0.04;
         p += pull;
     }
 

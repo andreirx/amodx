@@ -100,100 +100,129 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
         let resizeObserver: ResizeObserver | null = null;
         const mobile = isMobileDevice();
 
+        // Default colors when none provided — prevents silent all-black output
+        const DEFAULT_COLORS = ["#6366f1", "#8b5cf6", "#a855f7"];
+
         async function initGpu() {
             if (destroyed || !canvas) return;
 
-            const adapter = await navigator.gpu?.requestAdapter();
-            if (!adapter || destroyed) return;
+            try {
+                const adapter = await navigator.gpu?.requestAdapter();
+                if (!adapter || destroyed) {
+                    console.warn("[amodx/effects] No GPU adapter available");
+                    return;
+                }
 
-            const device = await adapter.requestDevice();
-            if (destroyed) {
-                device.destroy();
-                return;
-            }
-            deviceRef.current = device;
+                const device = await adapter.requestDevice();
+                if (destroyed) {
+                    device.destroy();
+                    return;
+                }
+                deviceRef.current = device;
 
-            const ctx = canvas.getContext("webgpu");
-            if (!ctx || destroyed) {
-                device.destroy();
-                return;
-            }
+                // Log GPU errors that would otherwise be swallowed
+                device.onuncapturederror = (ev) => {
+                    console.error("[amodx/effects] GPU uncaptured error:", ev.error);
+                };
 
-            const config = surfaceConfig(tier);
-            ctx.configure({ device, ...config });
+                const ctx = canvas.getContext("webgpu");
+                if (!ctx || destroyed) {
+                    console.warn("[amodx/effects] Failed to get webgpu context");
+                    device.destroy();
+                    return;
+                }
 
-            const pipeline = createEffect(effectType!);
-            if (!pipeline || destroyed) {
-                device.destroy();
-                return;
-            }
-            pipelineRef.current = pipeline;
+                const config = surfaceConfig(tier);
+                ctx.configure({ device, ...config, alphaMode: "opaque" });
 
-            // Size canvas
-            const { width, height } = canvasPixelSize(
-                canvas.clientWidth,
-                canvas.clientHeight,
-                mobile,
-            );
-            canvas.width = width;
-            canvas.height = height;
+                const pipeline = createEffect(effectType!);
+                if (!pipeline || destroyed) {
+                    console.warn(`[amodx/effects] Unknown effect type: "${effectType}"`);
+                    device.destroy();
+                    return;
+                }
+                pipelineRef.current = pipeline;
 
-            await pipeline.init(device, config.format, canvas, {
-                colors: effect.colors || [],
-                speed: effect.speed ?? 1.0,
-                intensity: effect.intensity ?? 1.0,
-                tier,
-                isMobile: mobile,
-            });
-
-            if (destroyed) {
-                pipeline.destroy();
-                device.destroy();
-                return;
-            }
-
-            // Pointer events (desktop only)
-            if (!mobile) {
-                canvas.addEventListener("pointermove", handlePointerMove);
-                canvas.addEventListener("pointerleave", handlePointerLeave);
-            }
-
-            // Resize observer
-            resizeObserver = new ResizeObserver(() => {
-                if (!canvas || destroyed) return;
-                const { width: w, height: h } = canvasPixelSize(
+                // Size canvas
+                const { width, height } = canvasPixelSize(
                     canvas.clientWidth,
                     canvas.clientHeight,
                     mobile,
                 );
-                canvas.width = w;
-                canvas.height = h;
-                pipeline.resize(w, h);
-            });
-            resizeObserver.observe(canvas);
+                canvas.width = width;
+                canvas.height = height;
 
-            // Render loop
-            startTimeRef.current = performance.now();
-            function renderLoop() {
-                if (destroyed || !pipelineRef.current || !deviceRef.current) return;
+                if (width === 0 || height === 0) {
+                    console.warn(`[amodx/effects] Canvas has zero dimensions: ${width}x${height}`);
+                }
 
-                const time =
-                    (performance.now() - startTimeRef.current) / 1000;
-                const encoder = deviceRef.current.createCommandEncoder();
-                const texture = ctx!.getCurrentTexture();
-                const view = texture.createView();
+                const effectColors = effect.colors?.length ? effect.colors : DEFAULT_COLORS;
+                await pipeline.init(device, config.format, canvas, {
+                    colors: effectColors,
+                    speed: effect.speed ?? 1.0,
+                    intensity: effect.intensity ?? 1.0,
+                    tier,
+                    isMobile: mobile,
+                });
 
-                pipelineRef.current.frame(
-                    encoder,
-                    view,
-                    time,
-                    pointerRef.current,
-                );
+                if (destroyed) {
+                    pipeline.destroy();
+                    device.destroy();
+                    return;
+                }
 
-                deviceRef.current.queue.submit([encoder.finish()]);
+                console.log(`[amodx/effects] Pipeline "${effectType}" initialized — ${width}x${height}, tier=${tier}`);
+
+                // Pointer events (desktop only)
+                if (!mobile) {
+                    canvas.addEventListener("pointermove", handlePointerMove);
+                    canvas.addEventListener("pointerleave", handlePointerLeave);
+                }
+
+                // Resize observer
+                resizeObserver = new ResizeObserver(() => {
+                    if (!canvas || destroyed) return;
+                    const { width: w, height: h } = canvasPixelSize(
+                        canvas.clientWidth,
+                        canvas.clientHeight,
+                        mobile,
+                    );
+                    canvas.width = w;
+                    canvas.height = h;
+                    pipeline.resize(w, h);
+                });
+                resizeObserver.observe(canvas);
+
+                // Render loop
+                startTimeRef.current = performance.now();
+                function renderLoop() {
+                    if (destroyed || !pipelineRef.current || !deviceRef.current) return;
+
+                    try {
+                        const time =
+                            (performance.now() - startTimeRef.current) / 1000;
+                        const encoder = deviceRef.current.createCommandEncoder();
+                        const texture = ctx!.getCurrentTexture();
+                        const view = texture.createView();
+
+                        pipelineRef.current.frame(
+                            encoder,
+                            view,
+                            time,
+                            pointerRef.current,
+                        );
+
+                        deviceRef.current.queue.submit([encoder.finish()]);
+                    } catch (frameErr) {
+                        console.error("[amodx/effects] Frame error:", frameErr);
+                        return; // Stop the render loop on frame error
+                    }
+                    rafRef.current = requestAnimationFrame(renderLoop);
+                }
                 rafRef.current = requestAnimationFrame(renderLoop);
+            } catch (err) {
+                console.error("[amodx/effects] GPU init failed:", err);
             }
-            rafRef.current = requestAnimationFrame(renderLoop);
         }
 
         function cleanup() {

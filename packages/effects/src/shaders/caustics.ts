@@ -101,10 +101,10 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
     // Pointer ripple influence
     if (u.pointer.x >= 0.0) {
-        let ptr = vec2f(u.pointer.x * aspect, u.pointer.y);
-        let d = distance(p, ptr);
+        let mptr =vec2f(u.pointer.x * aspect, u.pointer.y);
+        let d = distance(p, mptr);
         let ripple = sin(d * 30.0 - t * 5.0) * exp(-d * 4.0) * 0.02;
-        p += normalize(p - ptr) * ripple;
+        p += normalize(p - mptr) * ripple;
     }
 
     // Two Voronoi layers at different scales and speeds
