@@ -66,7 +66,9 @@ export function CelebrationOverlay() {
             }
 
             const config = surfaceConfig(tier);
-            ctx.configure({ device, ...config });
+            // Premultiplied alpha: allows page to show through the canvas.
+            // Backdrop darkening and particle alpha are composited correctly.
+            ctx.configure({ device, ...config, alphaMode: "premultiplied" });
 
             const mobile = isMobileDevice();
             const { width, height } = canvasPixelSize(

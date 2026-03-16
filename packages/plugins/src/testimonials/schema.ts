@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BlockEffectConfigSchema } from '@amodx/shared';
 
 const TestimonialItem = z.object({
     id: z.string(),
@@ -17,4 +18,5 @@ export const TestimonialsSchema = z.object({
     ]),
     style: z.enum(["grid", "slider", "minimal"]).default("grid"),
     blockWidth: z.enum(["content", "wide", "full"]).default("full"),
+    effect: BlockEffectConfigSchema.optional(),
 });

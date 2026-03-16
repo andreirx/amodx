@@ -2,6 +2,7 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
+import { EffectControls } from '../common/EffectControls';
 
 // ... Standard Inputs ...
 const Input = ({ value, onChange, placeholder }: any) => (
@@ -65,6 +66,11 @@ export function FeaturesEditor(props: any) {
                         ))}
                         <button onClick={addItem} className="min-h-[100px] border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-blue-500 hover:bg-blue-50 transition-colors"><Plus className="w-5 h-5" /></button>
                     </div>
+
+                    <EffectControls
+                        effect={props.node.attrs.effect}
+                        onChange={v => update('effect', v)}
+                    />
                 </div>
             </div>
         </NodeViewWrapper>

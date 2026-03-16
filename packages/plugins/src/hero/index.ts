@@ -25,6 +25,7 @@ export const HeroPlugin: PluginDefinition = {
                 style: { default: 'center' },
                 imageSrc: { default: null },
                 blockWidth: { default: 'content' },
+                effect: { default: null },
             };
         },
         parseHTML() { return [{ tag: 'app-hero' }]; },

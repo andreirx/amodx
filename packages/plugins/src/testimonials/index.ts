@@ -29,6 +29,7 @@ export const TestimonialsPlugin: PluginDefinition = {
                 },
                 style: { default: 'grid' },
                 blockWidth: { default: 'full' },
+                effect: { default: null },
             };
         },
 

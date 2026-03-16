@@ -23,6 +23,10 @@ import type { GpuTier, BlockEffectConfig, PageEffectConfig, GlowEffectConfig } f
 import { detectGpuTier, isMobileDevice } from "./detection.js";
 import { createEffect } from "./pipelines/map.js";
 import { surfaceConfig, canvasPixelSize } from "./pipelines/base.js";
+
+// Re-export pipeline utilities for admin preview and advanced consumers
+export { createEffect } from "./pipelines/map.js";
+export { surfaceConfig, canvasPixelSize } from "./pipelines/base.js";
 import type { EffectPipeline } from "./types.js";
 
 // ---------- EffectCanvas (block-level backgrounds) ----------
@@ -234,7 +238,7 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
     return (
         <div
             ref={containerRef}
-            className={`absolute inset-0 overflow-hidden pointer-events-none ${className || ""}`}
+            className={`absolute inset-0 z-0 overflow-hidden pointer-events-none ${className || ""}`}
         >
             <canvas
                 ref={canvasRef}

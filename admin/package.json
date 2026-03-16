@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@amodx/effects": "*",
     "@amodx/plugins": "*",
     "@amodx/shared": "*",
     "@aws-amplify/auth": "^6.17.0",

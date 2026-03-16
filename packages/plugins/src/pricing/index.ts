@@ -49,6 +49,7 @@ export const PricingPlugin: PluginDefinition = {
                     ],
                 },
                 blockWidth: { default: 'content' },
+                effect: { default: null },
             };
         },
 

@@ -25,6 +25,7 @@ export const CtaPlugin: PluginDefinition = {
                 buttonLink: { default: '#' },
                 style: { default: 'simple' },
                 blockWidth: { default: 'full' },
+                effect: { default: null },
             };
         },
 

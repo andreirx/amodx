@@ -2,6 +2,7 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { CreditCard, Plus, Trash2, Star } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
+import { EffectControls } from '../common/EffectControls';
 
 const Input = ({ value, onChange, placeholder }: any) => (
     <input
@@ -83,6 +84,11 @@ export function PricingEditor(props: any) {
                             <span className="text-xs font-bold">Add Plan</span>
                         </button>
                     </div>
+
+                    <EffectControls
+                        effect={props.node.attrs.effect}
+                        onChange={v => update('effect', v)}
+                    />
                 </div>
             </div>
         </NodeViewWrapper>

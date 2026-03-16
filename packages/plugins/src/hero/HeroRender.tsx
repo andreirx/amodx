@@ -1,6 +1,7 @@
 import React from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -18,23 +19,27 @@ export function HeroRender({ attrs }: { attrs: any }) {
 
     if (style === "minimal") {
         return (
-            <section className="py-24 max-w-4xl mx-auto">
-                <h1 className="text-6xl font-black tracking-tighter text-foreground mb-6">
-                    {headline}
-                </h1>
-                {subheadline && (
-                    <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
-                        {subheadline}
-                    </p>
-                )}
+            <section className="relative py-24 max-w-4xl mx-auto">
+                <LazyEffectCanvas effect={attrs.effect} />
+                <div className="relative z-10">
+                    <h1 className="text-6xl font-black tracking-tighter text-foreground mb-6">
+                        {headline}
+                    </h1>
+                    {subheadline && (
+                        <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
+                            {subheadline}
+                        </p>
+                    )}
+                </div>
             </section>
         );
     }
 
     if (style === "split") {
         return (
-            <section className="py-20 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto px-6">
-                <div className="order-2 lg:order-1">
+            <section className="relative py-20 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto px-6">
+                <LazyEffectCanvas effect={attrs.effect} />
+                <div className="relative z-10 order-2 lg:order-1">
                     <h1 className="text-5xl font-black tracking-tight text-foreground mb-6">{headline}</h1>
                     {subheadline && <p className="text-lg text-muted-foreground mb-8">{subheadline}</p>}
                     {ctaText && (
@@ -43,7 +48,7 @@ export function HeroRender({ attrs }: { attrs: any }) {
                         </a>
                     )}
                 </div>
-                <div className="order-1 lg:order-2 bg-muted rounded-2xl overflow-hidden shadow-2xl aspect-[4/3] relative">
+                <div className="relative z-10 order-1 lg:order-2 bg-muted rounded-2xl overflow-hidden shadow-2xl aspect-[4/3]">
                     {imageSrc ? (
                         <img src={imageSrc} alt={headline} className="w-full h-full object-cover" />
                     ) : (
@@ -56,7 +61,9 @@ export function HeroRender({ attrs }: { attrs: any }) {
 
     // Center
     return (
-        <section className="py-24 text-center max-w-5xl mx-auto">
+        <section className="relative py-24 text-center max-w-5xl mx-auto">
+            <LazyEffectCanvas effect={attrs.effect} />
+            <div className="relative z-10">
             <h1 className="text-5xl md:text-7xl font-black tracking-tight text-foreground mb-6">
                 {headline}
             </h1>
@@ -76,7 +83,7 @@ export function HeroRender({ attrs }: { attrs: any }) {
                     <img src={imageSrc} alt="" className="w-full h-auto" />
                 </div>
             )}
-
+            </div>
         </section>
     );
 }

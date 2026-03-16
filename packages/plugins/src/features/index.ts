@@ -30,6 +30,7 @@ export const FeaturesPlugin: PluginDefinition = {
                 },
                 columns: { default: '3' },
                 blockWidth: { default: 'content' },
+                effect: { default: null },
             };
         },
 

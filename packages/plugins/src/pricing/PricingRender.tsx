@@ -1,11 +1,14 @@
 import React from "react";
 import { Check } from "lucide-react";
+import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 
 export function PricingRender({ attrs }: { attrs: any }) {
     const plans = attrs.plans || [];
 
     return (
-        <section className="py-20">
+        <section className="relative py-20">
+            <LazyEffectCanvas effect={attrs.effect} />
+            <div className="relative z-10">
             <div className="text-center mb-12">
                 <h2 className="text-4xl font-bold tracking-tight mb-4">{attrs.headline}</h2>
                 <p className="text-xl text-muted-foreground">{attrs.subheadline}</p>
@@ -51,6 +54,7 @@ export function PricingRender({ attrs }: { attrs: any }) {
                         </a>
                     </div>
                 ))}
+            </div>
             </div>
         </section>
     );

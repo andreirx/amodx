@@ -2,6 +2,7 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { Plus, Trash2, MessageSquareQuote, User } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
+import { EffectControls } from '../common/EffectControls';
 
 const Input = ({ value, onChange, placeholder }: any) => (
     <input
@@ -92,6 +93,11 @@ export function TestimonialsEditor(props: any) {
                             <span className="text-xs font-bold">Add Testimonial</span>
                         </button>
                     </div>
+
+                    <EffectControls
+                        effect={props.node.attrs.effect}
+                        onChange={v => update('effect', v)}
+                    />
                 </div>
             </div>
         </NodeViewWrapper>

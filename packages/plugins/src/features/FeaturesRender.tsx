@@ -1,5 +1,6 @@
 import React from "react";
 import * as Icons from "lucide-react";
+import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 
 export function FeaturesRender({ attrs }: { attrs: any }) {
     const items = attrs.items || [];
@@ -13,7 +14,9 @@ export function FeaturesRender({ attrs }: { attrs: any }) {
     }[cols as string] || "md:grid-cols-3";
 
     return (
-        <section className="py-24 px-6 max-w-7xl mx-auto">
+        <section className="relative py-24 px-6 max-w-7xl mx-auto">
+            <LazyEffectCanvas effect={attrs.effect} />
+            <div className="relative z-10">
             <div className="text-center mb-16 max-w-3xl mx-auto">
                 <h2 className="text-3xl font-bold tracking-tight mb-4">{attrs.headline}</h2>
                 <p className="text-lg text-muted-foreground">{attrs.subheadline}</p>
@@ -34,6 +37,7 @@ export function FeaturesRender({ attrs }: { attrs: any }) {
                         </div>
                     );
                 })}
+            </div>
             </div>
         </section>
     );

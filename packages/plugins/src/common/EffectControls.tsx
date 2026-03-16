@@ -1,0 +1,130 @@
+/**
+ * Admin-side effect configuration controls for block editors.
+ *
+ * Imports EFFECT_LIST from @amodx/effects root entry (lightweight —
+ * metadata only, no GPU code, no shaders).
+ *
+ * Renders a dropdown of available background effects, plus color pickers
+ * and speed/intensity sliders when an effect is selected.
+ *
+ * Used inside Tiptap NodeView editors (HeroEditor, CtaEditor, etc.)
+ * to let content editors configure GPU background effects per block.
+ */
+
+import React from "react";
+import { EFFECT_LIST } from "@amodx/effects";
+import type { BlockEffectConfig } from "@amodx/shared";
+import { EffectPreview } from "./EffectPreview";
+
+/** Only show effects that support "background" scope in block editors */
+const backgroundEffects = EFFECT_LIST.filter(e => e.scopes.includes("background"));
+
+interface EffectControlsProps {
+    effect: BlockEffectConfig | null | undefined;
+    onChange: (effect: BlockEffectConfig) => void;
+}
+
+export function EffectControls({ effect, onChange }: EffectControlsProps) {
+    const currentType = effect?.type || "none";
+    const meta = backgroundEffects.find(e => e.key === currentType);
+
+    const update = (field: string, value: any) => {
+        onChange({
+            type: currentType,
+            colors: effect?.colors || meta?.defaultColors || [],
+            speed: effect?.speed ?? 1.0,
+            intensity: effect?.intensity ?? 1.0,
+            [field]: value,
+        });
+    };
+
+    return (
+        <div className="space-y-3 border-t border-gray-100 pt-4 mt-4">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                Background Effect
+            </label>
+
+            <select
+                className="w-full h-8 bg-white border border-gray-200 rounded px-2 text-sm focus:border-indigo-500 outline-none"
+                value={currentType}
+                onChange={e => {
+                    const key = e.target.value;
+                    if (key === "none") {
+                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 1.0 });
+                        return;
+                    }
+                    const newMeta = backgroundEffects.find(ef => ef.key === key);
+                    onChange({
+                        type: key,
+                        colors: newMeta?.defaultColors || [],
+                        speed: 1.0,
+                        intensity: 1.0,
+                    });
+                }}
+            >
+                <option value="none">None</option>
+                {backgroundEffects.map(e => (
+                    <option key={e.key} value={e.key}>{e.label}</option>
+                ))}
+            </select>
+
+            {currentType !== "none" && (
+                <>
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                            Colors
+                        </label>
+                        <div className="flex gap-2">
+                            {(effect?.colors || []).map((c, i) => (
+                                <input
+                                    key={i}
+                                    type="color"
+                                    value={c}
+                                    onChange={e => {
+                                        const newColors = [...(effect?.colors || [])];
+                                        newColors[i] = e.target.value;
+                                        update("colors", newColors);
+                                    }}
+                                    className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
+                                />
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                            Speed: {(effect?.speed ?? 1.0).toFixed(1)}
+                        </label>
+                        <input
+                            type="range"
+                            min="0.1"
+                            max="3.0"
+                            step="0.1"
+                            value={effect?.speed ?? 1.0}
+                            onChange={e => update("speed", parseFloat(e.target.value))}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                            Intensity: {(effect?.intensity ?? 1.0).toFixed(1)}
+                        </label>
+                        <input
+                            type="range"
+                            min="0.1"
+                            max="2.0"
+                            step="0.1"
+                            value={effect?.intensity ?? 1.0}
+                            onChange={e => update("intensity", parseFloat(e.target.value))}
+                            className="w-full"
+                        />
+                    </div>
+
+                    {/* Live GPU preview */}
+                    <EffectPreview effect={effect} />
+                </>
+            )}
+        </div>
+    );
+}

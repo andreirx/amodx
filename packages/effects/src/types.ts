@@ -65,6 +65,18 @@ export interface EffectPipeline {
      * Must be idempotent — may be called multiple times.
      */
     destroy(): void;
+
+    /**
+     * Live-update config without full pipeline re-init. Optional.
+     *
+     * Modifies the in-memory uniform Float32Array. The next frame()
+     * call writes the updated values to the GPU buffer automatically.
+     * Used by the admin preview for responsive slider feedback.
+     *
+     * Only speed, intensity, and colors can be updated live.
+     * Changing the effect type requires full destroy() + init().
+     */
+    updateConfig?(config: Partial<PipelineConfig>): void;
 }
 
 /**

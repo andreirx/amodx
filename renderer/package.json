@@ -10,6 +10,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@amodx/effects": "*",
     "@amodx/plugins": "*",
     "@aws-sdk/client-dynamodb": "^3.946.0",
     "@aws-sdk/client-secrets-manager": "^3.946.0",

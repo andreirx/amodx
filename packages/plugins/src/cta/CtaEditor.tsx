@@ -2,6 +2,7 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { Megaphone, Link as LinkIcon } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
+import { EffectControls } from '../common/EffectControls';
 
 const Input = ({ label, value, onChange, placeholder, list }: any) => (
     <div className="space-y-1 w-full">
@@ -53,6 +54,13 @@ export function CtaEditor(props: any) {
                         <Input label="Button Label" value={buttonText} onChange={(v: string) => update('buttonText', v)} />
                         <Input label="Button Link" value={buttonLink} onChange={(v: string) => update('buttonLink', v)} list="amodx-links" placeholder="/path" />
                     </div>
+                </div>
+
+                <div className="px-5 pb-5">
+                    <EffectControls
+                        effect={props.node.attrs.effect}
+                        onChange={v => update('effect', v)}
+                    />
                 </div>
             </div>
         </NodeViewWrapper>

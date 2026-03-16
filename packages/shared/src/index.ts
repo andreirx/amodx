@@ -724,6 +724,9 @@ export const TenantConfigSchema = z.object({
     // Defaults to type "none" — zero impact on existing sites.
     pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.3 }),
 
+    // Order confirmation celebration confetti — opt-in, default off
+    celebrationEnabled: z.boolean().default(false),
+
     // reCAPTCHA v3 bot protection for public forms
     recaptcha: RecaptchaConfigSchema.default({ enabled: false, threshold: 0.5 }),
 

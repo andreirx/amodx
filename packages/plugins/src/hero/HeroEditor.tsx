@@ -2,6 +2,7 @@ import { NodeViewWrapper } from '@tiptap/react';
 import { LayoutTemplate, Link as LinkIcon, Image as ImageIcon, Upload, Search } from 'lucide-react';
 import React, { useState } from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
+import { EffectControls } from '../common/EffectControls';
 
 // Unified Input Helper
 const Input = ({ value, onChange, placeholder, className = "" }: any) => (
@@ -112,6 +113,13 @@ export function HeroEditor(props: any) {
                             )}
                         </div>
                     </div>
+                </div>
+
+                <div className="px-5 pb-5">
+                    <EffectControls
+                        effect={props.node.attrs.effect}
+                        onChange={v => update('effect', v)}
+                    />
                 </div>
             </div>
         </NodeViewWrapper>

@@ -19,6 +19,13 @@ import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { AccountPageView } from "@/components/AccountPageView";
 import { SearchBar } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
+import dynamic from "next/dynamic";
+
+/** Celebration confetti overlay — lazy-loaded, no SSR (WebGPU is browser-only) */
+const CelebrationOverlay = dynamic(
+    () => import("@amodx/effects/celebration").then(m => ({ default: m.CelebrationOverlay })),
+    { ssr: false }
+);
 
 // NEW: Auth Imports
 import { decode } from "next-auth/jwt";
@@ -1035,6 +1042,7 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
 
     return (
         <main className={`${pageWidth} mx-auto py-12 px-6`}>
+            {config.celebrationEnabled && <CelebrationOverlay />}
             <FBPurchaseEvent
                 orderId={order.id}
                 value={parseFloat(order.total) || 0}

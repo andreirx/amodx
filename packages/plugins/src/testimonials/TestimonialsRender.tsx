@@ -1,12 +1,14 @@
 import React from "react";
 import { Quote } from "lucide-react";
+import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 
 export function TestimonialsRender({ attrs }: { attrs: any }) {
     const items = attrs.items || [];
 
     return (
-        <section className="py-24 bg-muted/30">
-            <div className="max-w-7xl mx-auto px-6">
+        <section className="relative py-24 bg-muted/30">
+            <LazyEffectCanvas effect={attrs.effect} />
+            <div className="relative z-10 max-w-7xl mx-auto px-6">
                 <div className="text-center mb-16 max-w-3xl mx-auto">
                     <h2 className="text-3xl font-bold tracking-tight mb-4">{attrs.headline}</h2>
                     <p className="text-lg text-muted-foreground">{attrs.subheadline}</p>

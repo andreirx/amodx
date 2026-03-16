@@ -21,7 +21,9 @@ import {
 } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
 import { Plus, Trash2, Upload, ShoppingBag } from "lucide-react";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, Sparkles } from "lucide-react";
+import { EFFECT_LIST } from "@amodx/effects";
+import { EffectPreview } from "@amodx/plugins/common/EffectPreview";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
 import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack } from "@amodx/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1499,6 +1501,122 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+
+                    {/* GPU VISUAL EFFECTS */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Sparkles className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Page Background Effect</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Ambient GPU-accelerated background effect applied site-wide behind all content.
+                                Automatically disabled on devices with reduced motion or no WebGPU support.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Effect Type</Label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                                    value={config.pageEffect?.type || "none"}
+                                    onChange={e => {
+                                        const key = e.target.value;
+                                        if (key === "none") {
+                                            setConfig({ ...config, pageEffect: { type: "none", colors: [], speed: 0.5, intensity: 0.3 } as any });
+                                            return;
+                                        }
+                                        const meta = EFFECT_LIST.find(ef => ef.key === key && ef.scopes.includes("background"));
+                                        setConfig({ ...config, pageEffect: {
+                                            type: key,
+                                            colors: meta?.defaultColors || [],
+                                            speed: 0.5,
+                                            intensity: 0.3,
+                                        } as any });
+                                    }}
+                                >
+                                    <option value="none">None</option>
+                                    {EFFECT_LIST.filter(e => e.scopes.includes("background")).map(e => (
+                                        <option key={e.key} value={e.key}>{e.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {config.pageEffect?.type && config.pageEffect.type !== "none" && (
+                                <>
+                                    <div className="space-y-2">
+                                        <Label>Colors</Label>
+                                        <div className="flex gap-2">
+                                            {(config.pageEffect?.colors || []).map((c: string, i: number) => (
+                                                <input
+                                                    key={i}
+                                                    type="color"
+                                                    value={c}
+                                                    onChange={e => {
+                                                        const newColors = [...(config.pageEffect?.colors || [])];
+                                                        newColors[i] = e.target.value;
+                                                        setConfig({ ...config, pageEffect: { ...config.pageEffect!, colors: newColors } as any });
+                                                    }}
+                                                    className="w-10 h-10 rounded border cursor-pointer"
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Speed: {(config.pageEffect?.speed ?? 0.5).toFixed(1)}</Label>
+                                            <input
+                                                type="range" min="0.1" max="3.0" step="0.1"
+                                                value={config.pageEffect?.speed ?? 0.5}
+                                                onChange={e => setConfig({ ...config, pageEffect: { ...config.pageEffect!, speed: parseFloat(e.target.value) } as any })}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Intensity: {(config.pageEffect?.intensity ?? 0.3).toFixed(1)}</Label>
+                                            <input
+                                                type="range" min="0.1" max="2.0" step="0.1"
+                                                value={config.pageEffect?.intensity ?? 0.3}
+                                                onChange={e => setConfig({ ...config, pageEffect: { ...config.pageEffect!, intensity: parseFloat(e.target.value) } as any })}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Live GPU preview */}
+                                    <EffectPreview effect={config.pageEffect as any} />
+                                </>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* CELEBRATION CONFETTI */}
+                    {config.commerceEnabled && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Order Celebration</CardTitle>
+                            <CardDescription>
+                                GPU confetti animation on the order confirmation page.
+                                Auto-disabled for users with reduced motion or no WebGPU.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.celebrationEnabled ?? false}
+                                    onChange={e => setConfig({ ...config, celebrationEnabled: e.target.checked })}
+                                    className="rounded border-gray-300 h-5 w-5"
+                                />
+                                <div>
+                                    <span className="font-medium text-sm">Enable Confetti Celebration</span>
+                                    <p className="text-xs text-muted-foreground">Shows a 4-second confetti burst with backdrop darkening when a customer completes an order.</p>
+                                </div>
+                            </label>
+                        </CardContent>
+                    </Card>
+                    )}
 
                     {/* COUNTRY, LOCALE & CURRENCY — always visible (drives GDPR texts, date formats, etc.) */}
                     <Card>
