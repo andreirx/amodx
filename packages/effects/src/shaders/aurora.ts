@@ -1,12 +1,23 @@
 /**
- * Aurora Borealis — layered simplex noise with vertical envelope.
+ * Aurora Borealis — vertical curtain ribbons with realistic structure.
  *
- * Technique: Multiple octaves of 2D simplex noise, each scrolling at
- * different speeds. Color interpolated from palette. Vertical envelope
- * concentrates the effect in the upper portion. Pointer gently distorts
- * the noise field.
+ * Technique: Each curtain is a 1D curve whose x-position varies with height
+ * via layered noise (slow sway + medium ripple + fine flutter). Brightness
+ * is inverse-distance from the curtain line with three glow layers:
+ *   - Core:  very thin, bright center line
+ *   - Inner: medium-width glow halo
+ *   - Outer: wide, soft ambient light
  *
- * Simplex noise implementation: Ashima Arts (Ian McEwan, Stefan Gustavson).
+ * Vertical envelope concentrates the aurora in the upper portion of the
+ * frame with a bright "lower hem" and diffuse upward fade — matching real
+ * aurora structure where excited particles create a sharp lower edge.
+ *
+ * Color is a vertical gradient: color0 (bottom/green) → color1 (top/purple).
+ * Additional palette colors tint individual curtains for variety.
+ *
+ * Background: dark blue-black sky with sparse twinkling star field.
+ *
+ * Simplex noise: Ashima Arts (Ian McEwan, Stefan Gustavson).
  */
 
 export const AURORA_SHADER = /* wgsl */ `
@@ -44,7 +55,7 @@ fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
-// --- Simplex 2D noise (Ashima Arts) ---
+// ─── Simplex 2D noise (Ashima Arts) ──────────────────────────────────
 
 fn mod289_3(x: vec3f) -> vec3f { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 fn mod289_2(x: vec2f) -> vec2f { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -53,12 +64,12 @@ fn permute(x: vec3f) -> vec3f { return mod289_3(((x * 34.0) + 10.0) * x); }
 fn snoise(v: vec2f) -> f32 {
     let C = vec4f(0.211324865405187, 0.366025403784439,
                   -0.577350269189626, 0.024390243902439);
-    let i = floor(v + dot(v, C.yy));
+    let i  = floor(v + dot(v, C.yy));
     let x0 = v - i + dot(i, C.xx);
     let i1 = select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), x0.x > x0.y);
     let x12 = vec4f(x0 - i1 + C.xx, x0 + C.zz);
     let ii = mod289_2(i);
-    let p = permute(permute(
+    let p  = permute(permute(
         ii.y + vec3f(0.0, i1.y, 1.0)) +
         ii.x + vec3f(0.0, i1.x, 1.0));
     var m = max(vec3f(0.5) - vec3f(
@@ -66,9 +77,9 @@ fn snoise(v: vec2f) -> f32 {
     m = m * m;
     m = m * m;
     let x_g = 2.0 * fract(p * C.www) - 1.0;
-    let h = abs(x_g) - 0.5;
-    let ox = floor(x_g + 0.5);
-    let a0 = x_g - ox;
+    let h   = abs(x_g) - 0.5;
+    let ox  = floor(x_g + 0.5);
+    let a0  = x_g - ox;
     m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
     let g = vec3f(
         a0.x * x0.x + h.x * x0.y,
@@ -77,76 +88,130 @@ fn snoise(v: vec2f) -> f32 {
     return 130.0 * dot(m, g);
 }
 
-// --- Color interpolation ---
+// ─── Star field hash ─────────────────────────────────────────────────
 
-fn get_color(t: f32) -> vec3f {
-    let n = u.num_colors;
-    if (n <= 1.0) { return u.color0.rgb; }
-    let scaled = clamp(t, 0.0, 1.0) * (n - 1.0);
-    let i = u32(floor(scaled));
-    let f = fract(scaled);
-    var c0: vec3f; var c1: vec3f;
-    switch (i) {
-        case 0u: { c0 = u.color0.rgb; c1 = u.color1.rgb; }
-        case 1u: { c0 = u.color1.rgb; c1 = u.color2.rgb; }
-        case 2u: { c0 = u.color2.rgb; c1 = u.color3.rgb; }
-        default: { c0 = u.color3.rgb; c1 = u.color3.rgb; }
-    }
-    return mix(c0, c1, f);
+fn hash_star(p: vec2f) -> f32 {
+    return fract(sin(dot(p, vec2f(12.9898, 78.233))) * 43758.5453);
 }
 
-// --- Fragment shader ---
+// ─── Curtain x-position at height y ──────────────────────────────────
+// Three noise octaves create the characteristic ribbon shape:
+//   slow sway (whole curtain drifts) + medium ripple + fine flutter.
+
+fn curtain_x(y: f32, base: f32, t: f32, seed: f32) -> f32 {
+    var cx = base;
+    cx += snoise(vec2f(y * 0.8 + seed, t * 0.12)) * 0.22;
+    cx += snoise(vec2f(y * 2.5 + seed + 47.0, t * 0.45)) * 0.08;
+    cx += snoise(vec2f(y * 6.0 + seed + 91.0, t * 0.9))  * 0.025;
+    return cx;
+}
+
+// ─── Single curtain brightness ───────────────────────────────────────
+// Three glow layers: tight core, medium inner halo, wide outer ambient.
+// sharpness controls overall curtain thinness (higher = thinner).
+
+fn curtain_glow(px: f32, py: f32, base: f32, t: f32, seed: f32, sharpness: f32) -> f32 {
+    let cx = curtain_x(py, base, t, seed);
+    let d  = abs(px - cx);
+    let core  = exp(-d * sharpness);
+    let inner = exp(-d * sharpness * 0.30) * 0.45;
+    let outer = exp(-d * sharpness * 0.08) * 0.12;
+    return core + inner + outer;
+}
+
+// ─── Vertical envelope ───────────────────────────────────────────────
+// Shapes the aurora band vertically.  UV: y=0 top, y=1 bottom.
+// Aurora hangs from above: bright lower hem ≈ y 0.50–0.60,
+// diffusing upward.  Nothing below y 0.75 or above y 0.05.
+
+fn envelope(y: f32) -> f32 {
+    let lower = smoothstep(0.78, 0.58, y);   // sharp bottom cutoff
+    let upper = smoothstep(0.02, 0.10, y);   // fade near very top
+    // Gaussian peak in the bright-hem zone
+    let peak = exp(-pow((y - 0.50) * 3.0, 2.0));
+    return lower * upper * (0.55 + peak * 0.45);
+}
+
+// ─── Vertical color gradient ─────────────────────────────────────────
+// Bottom of band → color0 (typically green).
+// Top of band → color1 (typically purple/magenta).
+// Per-curtain tints from color2/color3 add variety.
+
+fn aurora_color(y: f32, ci: f32) -> vec3f {
+    let grad = smoothstep(0.62, 0.12, y);  // 0 at bottom, 1 at top
+    var col = mix(u.color0.rgb, u.color1.rgb, grad);
+
+    if (u.num_colors > 2.0 && ci >= 2.0) {
+        col = mix(col, u.color2.rgb, 0.25);
+    }
+    if (u.num_colors > 3.0 && ci >= 3.0) {
+        col = mix(col, u.color3.rgb, 0.25);
+    }
+    return col;
+}
+
+// ─── Fragment ────────────────────────────────────────────────────────
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
     let uv = in.uv;
-    let t = u.time * u.speed;
+    let t  = u.time * u.speed;
     let aspect = u.resolution.x / u.resolution.y;
-    var p = vec2f(uv.x * aspect, uv.y);
+    var px = uv.x * aspect;
+    let py = uv.y;
 
-    // Subtle pointer influence (desktop)
+    // Pointer influence: curtains lean gently toward mouse
     if (u.pointer.x >= 0.0) {
-        let mptr =vec2f(u.pointer.x * aspect, u.pointer.y);
-        let pull = (mptr - p) * 0.04;
-        p += pull;
+        let mx = u.pointer.x * aspect;
+        px += (mx - px) * 0.025;
     }
 
-    // Layered noise
-    var aurora = 0.0;
-    var freq = 1.5;
-    var amp = 1.0;
-    let max_oct = u32(u.octaves);
-    for (var i = 0u; i < max_oct; i = i + 1u) {
-        let fi = f32(i);
-        let offset = vec2f(t * (0.15 + fi * 0.08), fi * 73.7);
-        aurora += snoise(p * freq + offset) * amp;
-        freq *= 2.1;
-        amp *= 0.45;
+    // ── Sky background ──────────────────────────────────────────
+    // Deep blue-black, slight vertical gradient (lighter near horizon)
+    let sky_g = py * 0.006;
+    var color = vec3f(0.003 + sky_g * 0.5,
+                      0.005 + sky_g * 0.7,
+                      0.016 + sky_g * 2.0);
+
+    // ── Star field ──────────────────────────────────────────────
+    let star_cell = floor(uv * vec2f(200.0, 120.0));
+    let sh = hash_star(star_cell);
+    if (sh > 0.9965) {
+        let twinkle = sin(t * (1.2 + sh * 4.0) + sh * 80.0) * 0.25 + 0.75;
+        let star_b  = (sh - 0.9965) / (1.0 - 0.9965);  // 0..1 rarity ramp
+        color += vec3f(star_b * twinkle * 0.45);
     }
 
-    // Normalize and shape
-    aurora = aurora * 0.5 + 0.5;
-    aurora = pow(aurora, 1.8);
+    // ── Aurora curtains ─────────────────────────────────────────
+    let env    = envelope(py);
+    let cx     = aspect * 0.5;  // horizontal center
+    let spread = aspect * 0.22; // distance between adjacent curtains
 
-    // Vertical envelope: strongest in upper third
-    let env = smoothstep(0.0, 0.25, uv.y) * smoothstep(1.0, 0.45, uv.y);
-    aurora *= env;
+    var aurora = vec3f(0.0);
+    for (var i = 0u; i < 4u; i = i + 1u) {
+        let fi   = f32(i);
+        let base = cx + (fi - 1.5) * spread;
+        let seed = fi * 31.7;
+        // Slight sharpness variation per curtain
+        let sharp = 85.0 + fi * 5.0;
+        let glow  = curtain_glow(px, py, base, t, seed, sharp);
+        aurora   += aurora_color(py, fi) * glow * env;
+    }
 
-    // Horizontal shimmer
-    let shimmer = snoise(vec2f(uv.x * 3.0 + t * 0.3, t * 0.1)) * 0.3 + 0.7;
+    // ── Vertical ray striations at the bright lower hem ─────────
+    // High-frequency brightness modulation along x in the hem zone
+    let ray_n   = snoise(vec2f(px * 18.0, t * 0.25 + py * 2.0)) * 0.5 + 0.5;
+    let ray_env = smoothstep(0.65, 0.52, py) * smoothstep(0.38, 0.48, py);
+    aurora *= 1.0 + ray_n * ray_env * 0.25;
+
+    // ── Luminance shimmer ───────────────────────────────────────
+    let shimmer = snoise(vec2f(px * 0.6 + t * 0.07, t * 0.035)) * 0.12 + 1.0;
     aurora *= shimmer;
 
-    // Color from palette
-    let color_t = snoise(vec2f(uv.x * 2.0 + t * 0.05, uv.y * 0.5)) * 0.5 + 0.5;
-    let color = get_color(color_t);
+    // ── Apply intensity + HDR glow multiplier ───────────────────
+    aurora *= u.intensity * u.glow_mult;
 
-    // Brightness with HDR glow
-    let brightness = aurora * u.intensity * u.glow_mult;
-
-    // Dark background tinted by first color
-    let bg = u.color0.rgb * 0.015;
-    let final_color = bg + color * brightness;
-
-    return vec4f(final_color, 1.0);
+    color += aurora;
+    return vec4f(color, 1.0);
 }
 `;
