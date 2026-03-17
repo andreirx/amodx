@@ -14,7 +14,7 @@
  *   - isMobileDevice() (for pipeline complexity reduction)
  *
  * GPU components are in separate entry points:
- *   @amodx/effects/render      → EffectCanvas, GlowCanvas, PageEffectLayer
+ *   @amodx/effects/render      → EffectCanvas, PageEffectLayer
  *   @amodx/effects/celebration → CelebrationOverlay
  */
 

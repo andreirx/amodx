@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BlockEffectConfigSchema, GlowEffectConfigSchema } from '@amodx/shared';
+import { EffectConfigSchema } from '@amodx/shared';
 
 export const HeroSchema = z.object({
     headline: z.string().default("Welcome to AMODX"),
@@ -9,6 +9,6 @@ export const HeroSchema = z.object({
     imageSrc: z.string().optional(),
     style: z.enum(["center", "split", "minimal"]).default("center"),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
-    effect: BlockEffectConfigSchema.optional(),
-    glow: GlowEffectConfigSchema.optional(),
+    effect: EffectConfigSchema.optional(),
+    buttonEffect: EffectConfigSchema.optional(),
 });

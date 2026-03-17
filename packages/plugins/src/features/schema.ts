@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BlockEffectConfigSchema } from '@amodx/shared';
+import { EffectConfigSchema } from '@amodx/shared';
 
 const FeatureItem = z.object({
     id: z.string(),
@@ -18,5 +18,5 @@ export const FeaturesSchema = z.object({
     ]),
     columns: z.enum(["2", "3", "4"]).default("3"),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
-    effect: BlockEffectConfigSchema.optional(),
+    effect: EffectConfigSchema.optional(),
 });

@@ -15,13 +15,13 @@
  */
 
 import React, { Suspense, lazy } from "react";
-import type { BlockEffectConfig } from "@amodx/shared";
+import type { EffectConfig } from "@amodx/shared";
 
 const EffectCanvas = lazy(() =>
     import("@amodx/effects/render").then(m => ({ default: m.EffectCanvas }))
 );
 
-export function LazyEffectCanvas({ effect }: { effect?: BlockEffectConfig | null }) {
+export function LazyEffectCanvas({ effect }: { effect?: EffectConfig | null }) {
     if (!effect || effect.type === "none") return null;
 
     return (

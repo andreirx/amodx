@@ -2,11 +2,24 @@ import React from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
-import { LazyGlowWrap } from "../common/LazyGlowWrap";
+import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
+import { resolveButtonEffect } from "../common/resolveButtonEffect";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
+
+/**
+ * Button styles that respond to --btn-bg-alpha and --btn-text-stroke CSS variables
+ * set by ButtonEffectWrap. See CtaRender.tsx for detailed explanation.
+ */
+const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground shadow h-11 px-8 hover:opacity-90";
+const btnStyle: React.CSSProperties = {
+    backgroundColor: "hsl(var(--primary) / var(--btn-bg-alpha, 1))",
+    paintOrder: "stroke fill",
+    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) hsl(var(--primary))",
+    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) hsl(var(--primary)), 0 0 calc(var(--btn-text-stroke, 0) * 8px) hsl(var(--primary))",
+};
 
 export function HeroRender({ attrs }: { attrs: any }) {
     const {
@@ -17,6 +30,8 @@ export function HeroRender({ attrs }: { attrs: any }) {
         imageSrc,
         style = "center"
     } = attrs || {};
+
+    const buttonEffect = resolveButtonEffect(attrs);
 
     if (style === "minimal") {
         return (
@@ -44,11 +59,11 @@ export function HeroRender({ attrs }: { attrs: any }) {
                     <h1 className="text-5xl font-black tracking-tight text-foreground mb-6">{headline}</h1>
                     {subheadline && <p className="text-lg text-muted-foreground mb-8">{subheadline}</p>}
                     {ctaText && (
-                        <LazyGlowWrap glow={attrs.glow}>
-                            <a href={ctaLink} className="relative z-10 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground shadow h-11 px-8 hover:opacity-90">
+                        <ButtonEffectWrap effect={buttonEffect}>
+                            <a href={ctaLink} className={btnClass} style={btnStyle}>
                                 {ctaText}
                             </a>
-                        </LazyGlowWrap>
+                        </ButtonEffectWrap>
                     )}
                 </div>
                 <div className="relative z-10 order-1 lg:order-2 bg-muted rounded-2xl overflow-hidden shadow-2xl aspect-[4/3]">
@@ -76,11 +91,11 @@ export function HeroRender({ attrs }: { attrs: any }) {
                 </p>
             )}
             {ctaText && (
-                <LazyGlowWrap glow={attrs.glow}>
-                    <a href={ctaLink} className="relative z-10 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-11 px-8 hover:opacity-90">
+                <ButtonEffectWrap effect={buttonEffect}>
+                    <a href={ctaLink} className={btnClass} style={btnStyle}>
                         {ctaText}
                     </a>
-                </LazyGlowWrap>
+                </ButtonEffectWrap>
             )}
             {/* Optional: Show image below text for center layout */}
             {imageSrc && (

@@ -14,11 +14,11 @@
  */
 
 import React, { useRef, useEffect, useState } from "react";
-import type { BlockEffectConfig, GpuTier } from "@amodx/shared";
+import type { EffectConfig, GpuTier } from "@amodx/shared";
 import type { EffectPipeline, PipelineConfig } from "@amodx/effects";
 
 interface EffectPreviewProps {
-    effect: BlockEffectConfig | null | undefined;
+    effect: EffectConfig | null | undefined;
 }
 
 export function EffectPreview({ effect }: EffectPreviewProps) {

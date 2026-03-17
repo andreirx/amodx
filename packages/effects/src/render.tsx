@@ -19,7 +19,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
-import type { GpuTier, BlockEffectConfig, PageEffectConfig, GlowEffectConfig } from "@amodx/shared";
+import type { GpuTier, EffectConfig, PageEffectConfig } from "@amodx/shared";
 import { detectGpuTier, isMobileDevice } from "./detection.js";
 import { createEffect } from "./pipelines/map.js";
 import { surfaceConfig, canvasPixelSize } from "./pipelines/base.js";
@@ -32,28 +32,45 @@ import type { EffectPipeline } from "./types.js";
 // ---------- EffectCanvas (block-level backgrounds) ----------
 
 export interface EffectCanvasProps {
-    /** Effect config from block attrs (type, colors, speed, intensity) */
-    effect: BlockEffectConfig | PageEffectConfig;
+    /** Effect config (unified — works for backgrounds, button overlays, and page effects) */
+    effect: EffectConfig | PageEffectConfig;
     /** Optional extra CSS class on the container div */
     className?: string;
+    /**
+     * Pointer tracking mode:
+     * - "canvas" (default): pointermove on the canvas element. For backgrounds.
+     * - "document": document-level pointermove with proximity check. For button
+     *   overlays where the canvas is behind a button that captures pointer events.
+     */
+    pointerMode?: "canvas" | "document";
+    /**
+     * Called when the GPU pipeline activates or deactivates.
+     * true = pipeline initialized and rendering. false = destroyed (scroll-out, error, unmount).
+     * Used by ButtonEffectWrap to toggle button semi-transparency only when the
+     * effect is actually rendering — pixel-perfect fallback when GPU is unavailable.
+     */
+    onActive?: (active: boolean) => void;
 }
 
 /**
- * Canvas wrapper for block-level background effects.
+ * Canvas wrapper for GPU effects — unified for backgrounds and button overlays.
  *
- * Renders a <canvas> behind the block content. Manages the full GPU lifecycle:
+ * Renders a <canvas> that manages the full GPU lifecycle:
  * adapter → device → surface → pipeline → rAF loop → cleanup.
  *
  * If the effect type is "none", GPU is unavailable, or reduced motion is
  * preferred, renders nothing. The block's CSS background shows through.
  *
- * Usage in a block render component:
- *   <section className="relative" style={{ background: fallbackCSS }}>
+ * Usage as a background:
+ *   <section className="relative">
  *     <EffectCanvas effect={attrs.effect} />
  *     <div className="relative z-10">{children}</div>
  *   </section>
+ *
+ * Usage as a button overlay (via ButtonEffectWrap):
+ *   <EffectCanvas effect={attrs.buttonEffect} pointerMode="document" onActive={setActive} />
  */
-export function EffectCanvas({ effect, className }: EffectCanvasProps) {
+export function EffectCanvas({ effect, className, pointerMode = "canvas", onActive }: EffectCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const pipelineRef = useRef<EffectPipeline | null>(null);
@@ -73,7 +90,10 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
     const shouldRender = tier !== "none" && effectType && effectType !== "none";
 
     // Pointer tracking (desktop only)
-    const handlePointerMove = useCallback((e: PointerEvent) => {
+    // "canvas" mode: direct listeners on canvas element (backgrounds)
+    // "document" mode: document-level with proximity check (button overlays
+    //   where the canvas is behind a button that captures pointer events)
+    const handleCanvasPointerMove = useCallback((e: PointerEvent) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
@@ -83,8 +103,25 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
         };
     }, []);
 
-    const handlePointerLeave = useCallback(() => {
+    const handleCanvasPointerLeave = useCallback(() => {
         pointerRef.current = null;
+    }, []);
+
+    const handleDocumentPointerMove = useCallback((e: PointerEvent) => {
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = (e.clientY - rect.top) / rect.height;
+        // Proximity check — track when cursor is near the element
+        if (x >= -0.2 && x <= 1.2 && y >= -0.3 && y <= 1.3) {
+            pointerRef.current = {
+                x: Math.max(0, Math.min(1, x)),
+                y: Math.max(0, Math.min(1, y)),
+            };
+        } else {
+            pointerRef.current = null;
+        }
     }, []);
 
     // Main GPU lifecycle — runs when tier is known and effect is configured
@@ -176,11 +213,16 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                 }
 
                 console.log(`[amodx/effects] Pipeline "${effectType}" initialized — ${width}x${height}, tier=${tier}`);
+                onActive?.(true);
 
                 // Pointer events (desktop only)
                 if (!mobile) {
-                    canvas.addEventListener("pointermove", handlePointerMove);
-                    canvas.addEventListener("pointerleave", handlePointerLeave);
+                    if (pointerMode === "document") {
+                        document.addEventListener("pointermove", handleDocumentPointerMove);
+                    } else {
+                        canvas.addEventListener("pointermove", handleCanvasPointerMove);
+                        canvas.addEventListener("pointerleave", handleCanvasPointerLeave);
+                    }
                 }
 
                 // Resize observer
@@ -233,12 +275,17 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
             destroyed = true;
             cancelAnimationFrame(rafRef.current);
             resizeObserver?.disconnect();
-            canvas?.removeEventListener("pointermove", handlePointerMove);
-            canvas?.removeEventListener("pointerleave", handlePointerLeave);
+            if (pointerMode === "document") {
+                document.removeEventListener("pointermove", handleDocumentPointerMove);
+            } else {
+                canvas?.removeEventListener("pointermove", handleCanvasPointerMove);
+                canvas?.removeEventListener("pointerleave", handleCanvasPointerLeave);
+            }
             pipelineRef.current?.destroy();
             pipelineRef.current = null;
             deviceRef.current?.destroy();
             deviceRef.current = null;
+            onActive?.(false);
         }
 
         // IntersectionObserver: only init GPU when visible
@@ -249,10 +296,14 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                 } else if (!entry.isIntersecting && pipelineRef.current) {
                     // Scrolled out — release GPU resources
                     cancelAnimationFrame(rafRef.current);
+                    if (pointerMode === "document") {
+                        document.removeEventListener("pointermove", handleDocumentPointerMove);
+                    }
                     pipelineRef.current?.destroy();
                     pipelineRef.current = null;
                     deviceRef.current?.destroy();
                     deviceRef.current = null;
+                    onActive?.(false);
                 }
             },
             { threshold: 0.1 },
@@ -263,7 +314,7 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
             observer?.disconnect();
             cleanup();
         };
-    }, [shouldRender, tier, effectType, effect.colors, effect.speed, effect.intensity, handlePointerMove, handlePointerLeave]);
+    }, [shouldRender, tier, effectType, effect.colors, effect.speed, effect.intensity, pointerMode, handleCanvasPointerMove, handleCanvasPointerLeave, handleDocumentPointerMove, onActive]);
 
     // Render nothing if no GPU or no effect configured
     if (!shouldRender) return null;
@@ -277,186 +328,6 @@ export function EffectCanvas({ effect, className }: EffectCanvasProps) {
                 ref={canvasRef}
                 className="w-full h-full"
                 style={{ pointerEvents: "auto" }}
-            />
-        </div>
-    );
-}
-
-// ---------- GlowCanvas (CTA button glow) ----------
-
-export interface GlowCanvasProps {
-    /** Glow config from block attrs */
-    glow: GlowEffectConfig;
-    /** Optional extra CSS class */
-    className?: string;
-}
-
-/**
- * Canvas wrapper for CTA button glow effects.
- *
- * Positioned absolutely within a relative wrapper (LazyGlowWrap).
- * Uses -inset-5 (20px) bleed so glow extends beyond button edges.
- * The button sits above at z-10 for clickability.
- *
- * Desktop: glow arcs track pointer position.
- * Mobile: time-based pulse (no pointer tracking).
- *
- * Compositing: canvas alphaMode = "premultiplied". Shader outputs
- * vec4f(glow_rgb, 0.0) — additive blending. Glow light adds to
- * page content; transparent areas fully see-through.
- *
- * Pointer tracking: document-level listener computes proximity to
- * canvas rect. Works through z-stacking (button z-10 above canvas).
- * Canvas is pointer-events:none so button clicks are unaffected.
- */
-export function GlowCanvas({ glow, className }: GlowCanvasProps) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const pipelineRef = useRef<EffectPipeline | null>(null);
-    const deviceRef = useRef<GPUDevice | null>(null);
-    const rafRef = useRef<number>(0);
-    const startRef = useRef<number>(0);
-    const pointerRef = useRef<{ x: number; y: number } | null>(null);
-    const [tier, setTier] = useState<GpuTier>("none");
-
-    useEffect(() => {
-        detectGpuTier().then(setTier);
-    }, []);
-
-    const shouldRender = glow?.enabled && tier !== "none";
-
-    useEffect(() => {
-        if (!shouldRender) return;
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        let destroyed = false;
-        let resizeObs: ResizeObserver | null = null;
-        const mobile = isMobileDevice();
-
-        // Document-level pointer tracking — works through z-index stacking.
-        // The button (z-10) blocks direct canvas pointer events, but the
-        // document listener captures moves everywhere, then we check proximity.
-        function handlePointerMove(e: PointerEvent) {
-            if (!canvas || destroyed) return;
-            const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            // Track when pointer is within or near the canvas (10% margin)
-            if (x >= -0.1 && x <= 1.1 && y >= -0.1 && y <= 1.1) {
-                pointerRef.current = {
-                    x: Math.max(0, Math.min(1, x)),
-                    y: Math.max(0, Math.min(1, y)),
-                };
-            } else {
-                pointerRef.current = null;
-            }
-        }
-
-        async function init() {
-            if (destroyed || !canvas) return;
-
-            try {
-                const adapter = await navigator.gpu?.requestAdapter();
-                if (!adapter || destroyed) return;
-
-                const device = await adapter.requestDevice();
-                if (destroyed) { device.destroy(); return; }
-                deviceRef.current = device;
-
-                device.onuncapturederror = (ev) => {
-                    console.error("[amodx/effects/glow] GPU error:", ev.error);
-                };
-
-                const ctx = canvas.getContext("webgpu");
-                if (!ctx || destroyed) { device.destroy(); return; }
-
-                const cfg = surfaceConfig(tier);
-                // Premultiplied alpha: transparent areas show page content,
-                // glow RGB adds on top (additive compositing via alpha=0 trick)
-                ctx.configure({ device, ...cfg, alphaMode: "premultiplied" });
-
-                const { width, height } = canvasPixelSize(
-                    canvas.clientWidth, canvas.clientHeight, mobile,
-                );
-                canvas.width = width;
-                canvas.height = height;
-
-                const pipeline = createEffect("glow");
-                if (!pipeline || destroyed) { device.destroy(); return; }
-                pipelineRef.current = pipeline;
-
-                await pipeline.init(device, cfg.format, canvas, {
-                    colors: [glow.color || "#6366f1"],
-                    speed: 1.0,
-                    intensity: glow.intensity ?? 1.0,
-                    tier,
-                    isMobile: mobile,
-                });
-
-                if (destroyed) { pipeline.destroy(); device.destroy(); return; }
-
-                console.log(`[amodx/effects/glow] Pipeline initialized — ${width}x${height}, tier=${tier}`);
-
-                // Pointer tracking (desktop only)
-                if (!mobile) {
-                    document.addEventListener("pointermove", handlePointerMove);
-                }
-
-                resizeObs = new ResizeObserver(() => {
-                    if (!canvas || destroyed) return;
-                    const { width: w, height: h } = canvasPixelSize(
-                        canvas.clientWidth, canvas.clientHeight, mobile,
-                    );
-                    canvas.width = w;
-                    canvas.height = h;
-                    pipeline.resize(w, h);
-                });
-                resizeObs.observe(canvas);
-
-                // Render loop
-                startRef.current = performance.now();
-                function renderLoop() {
-                    if (destroyed || !pipelineRef.current || !deviceRef.current) return;
-                    try {
-                        const time = (performance.now() - startRef.current) / 1000;
-                        const encoder = deviceRef.current.createCommandEncoder();
-                        const texture = ctx!.getCurrentTexture();
-                        const view = texture.createView();
-                        pipelineRef.current.frame(encoder, view, time, pointerRef.current);
-                        deviceRef.current.queue.submit([encoder.finish()]);
-                    } catch (err) {
-                        console.error("[amodx/effects/glow] Frame error:", err);
-                        return;
-                    }
-                    rafRef.current = requestAnimationFrame(renderLoop);
-                }
-                rafRef.current = requestAnimationFrame(renderLoop);
-            } catch (err) {
-                console.error("[amodx/effects/glow] Init failed:", err);
-            }
-        }
-
-        init();
-
-        return () => {
-            destroyed = true;
-            cancelAnimationFrame(rafRef.current);
-            document.removeEventListener("pointermove", handlePointerMove);
-            resizeObs?.disconnect();
-            pipelineRef.current?.destroy();
-            pipelineRef.current = null;
-            deviceRef.current?.destroy();
-            deviceRef.current = null;
-        };
-    }, [shouldRender, tier, glow?.color, glow?.intensity]);
-
-    if (!shouldRender) return null;
-
-    return (
-        <div className={`absolute -inset-5 overflow-visible pointer-events-none ${className || ""}`}>
-            <canvas
-                ref={canvasRef}
-                className="w-full h-full pointer-events-none"
             />
         </div>
     );

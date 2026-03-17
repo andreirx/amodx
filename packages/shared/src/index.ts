@@ -447,9 +447,10 @@ export type GDPRConfig = z.infer<typeof GDPRConfigSchema>;
 // 'none' means no WebGPU or prefers-reduced-motion — CSS fallback only.
 export type GpuTier = 'hdr-edr' | 'hdr-srgb' | 'sdr' | 'none';
 
-// Background effect config for blocks (hero, cta, features, testimonials, pricing).
+// Unified effect config — used for block backgrounds, button overlays, and page effects.
 // type is z.string() not z.enum() — open for third-party effect types.
-export const BlockEffectConfigSchema = z.object({
+// overlayOpacity is only meaningful when applied as a button overlay (ignored for backgrounds).
+export const EffectConfigSchema = z.object({
     type: z.string().default("none"),
     colors: z.array(z.string()).max(4).default([]),
     speed: z.number().min(0.1).max(3.0).default(1.0),
@@ -457,27 +458,35 @@ export const BlockEffectConfigSchema = z.object({
     invertY: z.boolean().default(false),
     bgColor: z.string().optional(),   // hex color for background; undefined = shader default
     bands: z.number().min(2).max(32).optional(),  // aurora curtain count; undefined = 8
+    overlayOpacity: z.number().min(0.5).max(1.0).default(0.85), // button bg opacity when effect active
 });
-export type BlockEffectConfig = z.infer<typeof BlockEffectConfigSchema>;
+export type EffectConfig = z.infer<typeof EffectConfigSchema>;
 
-// Glow effect config for CTA buttons (HDR bloom, plasma arcs).
+// Backward-compat aliases — existing code importing BlockEffectConfig still compiles.
+// These are identical to EffectConfigSchema. Migrate consumers to EffectConfig over time.
+/** @deprecated Use EffectConfigSchema */
+export const BlockEffectConfigSchema = EffectConfigSchema;
+/** @deprecated Use EffectConfig */
+export type BlockEffectConfig = EffectConfig;
+
+// Legacy glow config — kept for read-path backward compatibility.
+// New code should use EffectConfigSchema with type: "glow".
+// resolveButtonEffect() in plugin render components converts this format on read.
+/** @deprecated Use EffectConfigSchema with type: "glow" */
 export const GlowEffectConfigSchema = z.object({
     enabled: z.boolean().default(false),
     color: z.string().default("#6366f1"),
-    intensity: z.number().min(0.5).max(3.0).default(1.0),
+    intensity: z.number().min(0).max(0.5).default(0.25),
 });
+/** @deprecated Use EffectConfig */
 export type GlowEffectConfig = z.infer<typeof GlowEffectConfigSchema>;
 
 // Page-level ambient background effect (TenantConfig).
-// Lower default intensity/speed than block effects — these run full-page, must be subtle.
-export const PageEffectConfigSchema = z.object({
-    type: z.string().default("none"),
-    colors: z.array(z.string()).max(4).default([]),
+// Narrowed alias — same shape as EffectConfig but with hard intensity cap at 0.15.
+// Full-viewport effects at higher intensity are overwhelming. The schema enforces this.
+export const PageEffectConfigSchema = EffectConfigSchema.extend({
     speed: z.number().min(0.1).max(3.0).default(0.5),
-    intensity: z.number().min(0).max(0.5).default(0.15),
-    invertY: z.boolean().default(false),
-    bgColor: z.string().optional(),
-    bands: z.number().min(2).max(32).optional(),
+    intensity: z.number().min(0).max(0.15).default(0.1),
 });
 export type PageEffectConfig = z.infer<typeof PageEffectConfigSchema>;
 
@@ -728,7 +737,7 @@ export const TenantConfigSchema = z.object({
 
     // GPU Effects — page-level ambient background (aurora, particles, etc.)
     // Defaults to type "none" — zero impact on existing sites.
-    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.3, invertY: false }),
+    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.1, invertY: false, overlayOpacity: 0.85 }),
 
     // Order confirmation celebration confetti — opt-in, default off
     celebrationEnabled: z.boolean().default(false),

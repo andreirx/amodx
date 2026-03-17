@@ -26,6 +26,8 @@ export const HeroPlugin: PluginDefinition = {
                 imageSrc: { default: null },
                 blockWidth: { default: 'content' },
                 effect: { default: null },
+                buttonEffect: { default: null },
+                // Legacy: reads old "glow" attrs, writes to buttonEffect on save
                 glow: { default: null },
             };
         },

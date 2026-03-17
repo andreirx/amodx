@@ -1,32 +1,36 @@
 /**
- * Admin-side effect configuration controls for block editors.
+ * Unified admin-side effect configuration controls.
+ *
+ * Used for BOTH background effects and button overlay effects.
+ * The `scope` prop filters the effect type dropdown to show only
+ * effects that support the given context.
+ *
+ * When scope is "button", an extra Overlay Opacity slider appears
+ * (controls how transparent the button background becomes).
  *
  * Imports EFFECT_LIST from @amodx/effects root entry (lightweight —
  * metadata only, no GPU code, no shaders).
- *
- * Renders a dropdown of available background effects, plus color pickers
- * and speed/intensity sliders when an effect is selected.
- *
- * Used inside Tiptap NodeView editors (HeroEditor, CtaEditor, etc.)
- * to let content editors configure GPU background effects per block.
  */
 
 import React from "react";
 import { EFFECT_LIST } from "@amodx/effects";
-import type { BlockEffectConfig } from "@amodx/shared";
+import type { EffectConfig } from "@amodx/shared";
 import { EffectPreview } from "./EffectPreview";
 
-/** Only show effects that support "background" scope in block editors */
-const backgroundEffects = EFFECT_LIST.filter(e => e.scopes.includes("background"));
-
 interface EffectControlsProps {
-    effect: BlockEffectConfig | null | undefined;
-    onChange: (effect: BlockEffectConfig) => void;
+    effect: EffectConfig | null | undefined;
+    onChange: (effect: EffectConfig) => void;
+    /** Which scope to filter effects by. Default: "background". */
+    scope?: "background" | "button";
+    /** Label shown above the dropdown. Default: "Background Effect" or "Button Effect". */
+    label?: string;
 }
 
-export function EffectControls({ effect, onChange }: EffectControlsProps) {
+export function EffectControls({ effect, onChange, scope = "background", label }: EffectControlsProps) {
+    const scopedEffects = EFFECT_LIST.filter(e => e.scopes.includes(scope));
     const currentType = effect?.type || "none";
-    const meta = backgroundEffects.find(e => e.key === currentType);
+    const meta = scopedEffects.find(e => e.key === currentType);
+    const displayLabel = label || (scope === "button" ? "Button Effect" : "Background Effect");
 
     const update = (field: string, value: any) => {
         const merged: any = {
@@ -36,6 +40,7 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
             intensity: effect?.intensity ?? 0.25,
             invertY: effect?.invertY ?? false,
             bgColor: effect?.bgColor,
+            overlayOpacity: effect?.overlayOpacity ?? 0.85,
             [field]: value,
         };
         if (effect?.bands !== undefined) merged.bands = effect.bands;
@@ -46,7 +51,7 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
     return (
         <div className="space-y-3 border-t border-gray-100 pt-4 mt-4">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                Background Effect
+                {displayLabel}
             </label>
 
             <select
@@ -55,21 +60,22 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                 onChange={e => {
                     const key = e.target.value;
                     if (key === "none") {
-                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 0.25, invertY: false });
+                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 0.25, invertY: false, overlayOpacity: 0.85 });
                         return;
                     }
-                    const newMeta = backgroundEffects.find(ef => ef.key === key);
+                    const newMeta = scopedEffects.find(ef => ef.key === key);
                     onChange({
                         type: key,
                         colors: newMeta?.defaultColors || [],
                         speed: 1.0,
                         intensity: 0.25,
                         invertY: false,
+                        overlayOpacity: 0.85,
                     });
                 }}
             >
                 <option value="none">None</option>
-                {backgroundEffects.map(e => (
+                {scopedEffects.map(e => (
                     <option key={e.key} value={e.key}>{e.label}</option>
                 ))}
             </select>
@@ -177,6 +183,24 @@ export function EffectControls({ effect, onChange }: EffectControlsProps) {
                             )}
                         </div>
                     </div>
+
+                    {/* Overlay opacity — only shown for button scope */}
+                    {scope === "button" && (
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                                Button Opacity: {((effect?.overlayOpacity ?? 0.85) * 100).toFixed(0)}%
+                            </label>
+                            <input
+                                type="range"
+                                min="0.5"
+                                max="1.0"
+                                step="0.05"
+                                value={effect?.overlayOpacity ?? 0.85}
+                                onChange={e => update("overlayOpacity", parseFloat(e.target.value))}
+                                className="w-full"
+                            />
+                        </div>
+                    )}
 
                     {/* Live GPU preview */}
                     <EffectPreview effect={effect} />

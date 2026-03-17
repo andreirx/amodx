@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BlockEffectConfigSchema } from '@amodx/shared';
+import { EffectConfigSchema } from '@amodx/shared';
 
 const PlanSchema = z.object({
     id: z.string(),
@@ -38,5 +38,5 @@ export const PricingSchema = z.object({
         }
     ]),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
-    effect: BlockEffectConfigSchema.optional(),
+    effect: EffectConfigSchema.optional(),
 });

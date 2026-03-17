@@ -1,16 +1,23 @@
 /**
- * HDR Glow — pulsating bloom for CTA buttons.
+ * Button Gleam — flowing caustic light overlay for CTA buttons.
  *
- * Technique: Distance from each pixel to the center (or to an inner
- * rectangle representing the button). Exponential falloff creates a
- * soft glow halo. On HDR-EDR, values exceed 1.0 creating physical
- * bloom on capable displays.
+ * Renders bright caustic ridges on a black background. The canvas sits
+ * ON TOP of the button with CSS mix-blend-mode: screen. In screen blend,
+ * black = invisible, bright = adds light. This compositing is handled
+ * entirely by CSS (universally supported), not by WebGPU alpha tricks.
  *
- * Desktop: glow intensifies toward pointer, optional arc filaments.
- * Mobile: slow time-based pulse with no pointer tracking.
+ * Technique:
+ *   1. Domain-warped simplex noise creates flowing caustic ridges
+ *   2. Secondary detail layer adds fine-grained texture
+ *   3. Pointer position (mouse or device tilt) creates a Gaussian specular highlight
+ *   4. When no pointer: slow sweeping highlight as fallback
+ *   5. Edge vignette prevents hard cutoff at button borders
+ *   6. HDR glow_mult pushes values > 1.0 on capable displays (physical bloom)
+ *
+ * Desktop: specular highlight tracks mouse cursor via document-level listener.
+ * Mobile: time-based sweeping highlight. Device orientation tilt tracking
+ * can be layered on via the same pointer uniform (tech debt: not yet wired).
  */
-
-import { LUM_INVERT_WGSL } from "./lum-invert.js";
 
 export const GLOW_SHADER = /* wgsl */ `
 
@@ -49,6 +56,8 @@ fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
     return out;
 }
 
+// ─── Simplex noise (Ashima Arts) ─────────────────────────────────────
+
 fn mod289_3(x: vec3f) -> vec3f { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 fn mod289_2(x: vec2f) -> vec2f { return x - floor(x * (1.0 / 289.0)) * 289.0; }
 fn permute(x: vec3f) -> vec3f { return mod289_3(((x * 34.0) + 10.0) * x); }
@@ -78,63 +87,57 @@ fn snoise(v: vec2f) -> f32 {
     return 130.0 * dot(m, g);
 }
 
-// SDF distance to rounded rectangle (the button shape)
-fn sdf_rounded_rect(p: vec2f, half_size: vec2f, radius: f32) -> f32 {
-    let q = abs(p) - half_size + vec2f(radius);
-    return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - radius;
-}
-
-// ─── HLS luminosity inversion ────────────────────────────────────────
-${LUM_INVERT_WGSL}
+// ─── Fragment ────────────────────────────────────────────────────────
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
     let uv = in.uv;
     let t = u.time * u.speed;
-
-    // Canvas is sized to button + bleed. Button occupies the inner ~70%.
-    let centered = uv - vec2f(0.5);
     let aspect = u.resolution.x / u.resolution.y;
-    let p = vec2f(centered.x * aspect, centered.y);
+    let p = vec2f(uv.x * aspect, uv.y);
 
-    // Button SDF (inner rectangle)
-    let button_half = vec2f(0.28 * aspect, 0.22);
-    let dist = sdf_rounded_rect(p, button_half, 0.04);
+    // --- Domain-warped caustic pattern ---
+    // Warp field: two noise samples create organic displacement
+    let warp = vec2f(
+        snoise(p * 2.5 + vec2f(t * 0.3, 0.0)),
+        snoise(p * 2.5 + vec2f(0.0, t * 0.4))
+    );
+    // Caustic ridges: noise sampled through the warp, sharpened via pow()
+    let n = snoise(p * 3.0 + warp * 0.6 + vec2f(t * 0.15));
+    let caustic = pow(clamp(n * 0.5 + 0.55, 0.0, 1.0), 5.0);
 
-    // Pulsation
-    let pulse = sin(t * 2.0) * 0.15 + 0.85;
+    // --- Secondary detail layer (finer texture) ---
+    let n2 = snoise(p * 6.0 + warp * 0.3 + vec2f(-t * 0.2, t * 0.25));
+    let detail = pow(clamp(n2 * 0.5 + 0.5, 0.0, 1.0), 4.0) * 0.3;
 
-    // Glow layers: tight inner + soft outer
-    let inner_glow = exp(-max(dist, 0.0) * 25.0) * 1.5;
-    let outer_glow = exp(-max(dist, 0.0) * 8.0) * 0.4;
-    var glow = (inner_glow + outer_glow) * pulse;
-
-    // Pointer-reactive boost (desktop)
+    // --- Specular highlight ---
+    var specular = 0.0;
     if (u.pointer.x >= 0.0) {
-        let mptr =vec2f((u.pointer.x - 0.5) * aspect, u.pointer.y - 0.5);
-        let ptr_dist = distance(p, mptr);
-        let ptr_boost = exp(-ptr_dist * 6.0) * 0.8;
-        glow += ptr_boost;
-
-        // Arc filament toward pointer
-        let to_ptr = mptr - p;
-        let to_ptr_len = length(to_ptr);
-        if (to_ptr_len > 0.01 && dist > 0.0 && dist < 0.3) {
-            let along = dot(p - vec2f(0.0), normalize(to_ptr));
-            let noise_val = snoise(vec2f(along * 10.0, t * 4.0));
-            let arc = exp(-abs(noise_val) * 20.0) * exp(-dist * 15.0);
-            glow += arc * 0.5;
-        }
+        // Pointer active: bright Gaussian spot tracks cursor / device tilt
+        let ptr = vec2f(u.pointer.x, u.pointer.y);
+        let d = distance(uv, ptr);
+        specular = exp(-d * d * 18.0) * 1.5;
+    } else {
+        // No pointer: slow sweeping highlight (mobile fallback)
+        let sweep = vec2f(
+            sin(t * 0.4) * 0.3 + 0.5,
+            cos(t * 0.6) * 0.2 + 0.5
+        );
+        let d = distance(uv, sweep);
+        specular = exp(-d * d * 12.0) * 0.5;
     }
 
-    let color = u.color0.rgb;
-    var final_color = color * glow * u.intensity * u.glow_mult;
+    // --- Edge vignette (soft fade at button borders) ---
+    let ex = smoothstep(0.0, 0.15, uv.x) * smoothstep(0.0, 0.15, 1.0 - uv.x);
+    let ey = smoothstep(0.0, 0.2, uv.y) * smoothstep(0.0, 0.2, 1.0 - uv.y);
+    let edge = ex * ey;
 
-    // Luminosity inversion: preserve hue & saturation, flip lightness
-    if (u.invert_y > 0.5) {
-        final_color = invert_luminosity(final_color);
-    }
+    // --- Compose ---
+    let brightness = (caustic + detail + specular) * u.intensity * u.glow_mult * edge;
+    let color = u.color0.rgb * brightness;
 
-    return vec4f(final_color, 0.0);
+    // Opaque output — CSS mix-blend-mode: screen handles compositing.
+    // Black pixels = invisible, bright pixels = light on the button surface.
+    return vec4f(color, 1.0);
 }
 `;

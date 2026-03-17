@@ -1,10 +1,12 @@
 "use client";
 import React, { useState } from "react";
-import { LazyGlowWrap } from "../common/LazyGlowWrap";
+import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
+import { resolveButtonEffect } from "../common/resolveButtonEffect";
 
 export function ContactRender({ attrs }: { attrs: any }) {
     const [status, setStatus] = useState("idle");
     const [errorMessage, setErrorMessage] = useState("");
+    const buttonEffect = resolveButtonEffect(attrs);
 
     // Get reCAPTCHA token if configured
     const getRecaptchaToken = async (): Promise<string | null> => {
@@ -114,15 +116,21 @@ export function ContactRender({ attrs }: { attrs: any }) {
                 <p className="text-sm text-red-600 text-center">{errorMessage}</p>
             )}
 
-            <LazyGlowWrap glow={attrs.glow} className="block mt-2">
+            <ButtonEffectWrap effect={buttonEffect} className="block mt-2">
                 <button
                     type="submit"
                     disabled={status === "loading"}
-                    className="relative z-10 w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
+                    className="w-full py-3 rounded-lg font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
+                    style={{
+                        backgroundColor: "hsl(var(--primary) / var(--btn-bg-alpha, 1))",
+                        paintOrder: "stroke fill",
+                        WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) hsl(var(--primary))",
+                        textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) hsl(var(--primary)), 0 0 calc(var(--btn-text-stroke, 0) * 8px) hsl(var(--primary))",
+                    } as React.CSSProperties}
                 >
                     {status === "loading" ? "Sending..." : attrs.buttonText}
                 </button>
-            </LazyGlowWrap>
+            </ButtonEffectWrap>
         </form>
     );
 }

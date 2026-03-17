@@ -7,11 +7,13 @@ import {
 } from "./base.js";
 
 /**
- * Glow pipeline for CTA buttons.
+ * Gleam pipeline for CTA button overlays.
  *
- * Same fullscreen triangle technique but the canvas is sized to the
- * button element (with bleed). The shader computes glow based on
- * distance to a centered rounded rectangle.
+ * Renders bright caustic patterns on opaque black. The canvas sits
+ * ON TOP of the button with CSS mix-blend-mode: screen — black pixels
+ * are invisible, bright pixels add light to the button surface.
+ *
+ * No custom blend state needed — compositing is handled entirely by CSS.
  */
 export class GlowPipeline implements EffectPipeline {
     private device: GPUDevice | null = null;
@@ -23,13 +25,8 @@ export class GlowPipeline implements EffectPipeline {
     async init(device: GPUDevice, format: GPUTextureFormat, canvas: HTMLCanvasElement, config: PipelineConfig): Promise<void> {
         this.device = device;
 
-        // Glow needs alpha blending for the transparent areas around the button
-        const blend: GPUBlendState = {
-            color: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
-            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
-        };
-
-        const { pipeline, bindGroupLayout } = await createFullscreenPipeline(device, GLOW_SHADER, format, blend);
+        // No custom blend — opaque rendering. CSS screen blend handles compositing.
+        const { pipeline, bindGroupLayout } = await createFullscreenPipeline(device, GLOW_SHADER, format);
         this.pipeline = pipeline;
         this.uniformBuffer = createUniformBuffer(device, STANDARD_UNIFORM_BYTES);
         this.bindGroup = device.createBindGroup({
@@ -52,7 +49,7 @@ export class GlowPipeline implements EffectPipeline {
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view, loadOp: "clear", storeOp: "store",
-                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                clearValue: { r: 0, g: 0, b: 0, a: 1 },
             }],
         });
         pass.setPipeline(this.pipeline);

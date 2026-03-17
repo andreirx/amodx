@@ -26,6 +26,8 @@ export const CtaPlugin: PluginDefinition = {
                 style: { default: 'simple' },
                 blockWidth: { default: 'full' },
                 effect: { default: null },
+                buttonEffect: { default: null },
+                // Legacy: reads old "glow" attrs, writes to buttonEffect on save
                 glow: { default: null },
             };
         },

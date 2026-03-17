@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GlowEffectConfigSchema } from '@amodx/shared';
+import { EffectConfigSchema } from '@amodx/shared';
 
 export const ContactSchema = z.object({
     headline: z.string().default("Get Access"),
@@ -8,5 +8,5 @@ export const ContactSchema = z.object({
     successMessage: z.string().default("Success! Redirecting..."),
     tags: z.string().default("contact-form"),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
-    glow: GlowEffectConfigSchema.optional(),
+    buttonEffect: EffectConfigSchema.optional(),
 });

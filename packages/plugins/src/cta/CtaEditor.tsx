@@ -3,7 +3,6 @@ import { Megaphone, Link as LinkIcon } from 'lucide-react';
 import React from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 import { EffectControls } from '../common/EffectControls';
-import { GlowControls } from '../common/GlowControls';
 
 const Input = ({ label, value, onChange, placeholder, list }: any) => (
     <div className="space-y-1 w-full">
@@ -56,9 +55,10 @@ export function CtaEditor(props: any) {
                         <Input label="Button Link" value={buttonLink} onChange={(v: string) => update('buttonLink', v)} list="amodx-links" placeholder="/path" />
                     </div>
 
-                    <GlowControls
-                        glow={props.node.attrs.glow}
-                        onChange={v => update('glow', v)}
+                    <EffectControls
+                        effect={props.node.attrs.buttonEffect}
+                        onChange={v => update('buttonEffect', v)}
+                        scope="button"
                     />
                 </div>
 

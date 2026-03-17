@@ -99,5 +99,5 @@ export interface EffectMetadata {
     /** Suggested default colors shown in admin color pickers */
     defaultColors: string[];
     /** Which scopes this effect supports — filters the dropdown per context */
-    scopes: readonly ('background' | 'glow' | 'celebration')[];
+    scopes: readonly ('background' | 'button' | 'celebration')[];
 }

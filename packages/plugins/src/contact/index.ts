@@ -25,6 +25,8 @@ export const ContactPlugin: PluginDefinition = {
                 successMessage: { default: 'Thanks! We will be in touch.' },
                 tags: { default: 'contact-form' },
                 blockWidth: { default: 'content' },
+                buttonEffect: { default: null },
+                // Legacy: reads old "glow" attrs, writes to buttonEffect on save
                 glow: { default: null },
             };
         },
