@@ -133,11 +133,17 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     let edge = ex * ey;
 
     // --- Compose ---
-    let brightness = (caustic + detail + specular) * u.intensity * u.glow_mult * edge;
+    // SDR compensation: glow_mult is 1.0 on SDR, 3.0-6.4 on HDR.
+    // The caustic pattern (pow 5 sharpening) produces values in 0.05-0.2
+    // range before multiplication — invisible at 1.0x. Guarantee a minimum
+    // effective multiplier of 2.5 so the pattern fills the 0-1 range on SDR.
+    // On HDR displays, glow_mult is already >= 3.0 — no change.
+    let effective_mult = max(u.glow_mult, 2.5);
+    let brightness = (caustic + detail + specular) * u.intensity * effective_mult * edge;
     let color = u.color0.rgb * brightness;
 
-    // Opaque output — CSS mix-blend-mode: screen handles compositing.
-    // Black pixels = invisible, bright pixels = light on the button surface.
+    // Opaque output — compositing is handled by the wrapper component
+    // (ButtonEffectWrap for buttons, LazyEffectCanvas for backgrounds).
     return vec4f(color, 1.0);
 }
 `;

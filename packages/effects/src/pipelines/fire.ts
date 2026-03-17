@@ -1,35 +1,23 @@
 import type { EffectPipeline, PipelineConfig } from "../types.js";
-import { GLOW_SHADER } from "../shaders/glow.js";
+import { FIRE_SHADER } from "../shaders/fire.js";
 import {
     createFullscreenPipeline, createUniformBuffer,
     initStandardUniforms, updateFrameUniforms, updateStandardConfig,
     STANDARD_UNIFORM_FLOATS, STANDARD_UNIFORM_BYTES,
 } from "./base.js";
 
-/**
- * HDR Caustics pipeline — domain-warped caustic light patterns.
- *
- * Originally designed for button overlays, now usable as both background
- * and button effect via the unified effect architecture. Compositing is
- * handled by wrapper components (ButtonEffectWrap, LazyEffectCanvas),
- * not by this pipeline.
- *
- * SDR compensation: the shader internally guarantees a minimum effective
- * glow multiplier of 2.5, ensuring the caustic pattern is visible on
- * non-HDR displays (Firefox, older hardware) where glow_mult is 1.0.
- */
-export class GlowPipeline implements EffectPipeline {
+export class FirePipeline implements EffectPipeline {
     private device: GPUDevice | null = null;
     private pipeline: GPURenderPipeline | null = null;
     private uniformBuffer: GPUBuffer | null = null;
     private bindGroup: GPUBindGroup | null = null;
     private uniformData = new Float32Array(STANDARD_UNIFORM_FLOATS);
+    private width = 0;
+    private height = 0;
 
     async init(device: GPUDevice, format: GPUTextureFormat, canvas: HTMLCanvasElement, config: PipelineConfig): Promise<void> {
         this.device = device;
-
-        // No custom blend — opaque rendering. Wrapper components handle compositing.
-        const { pipeline, bindGroupLayout } = await createFullscreenPipeline(device, GLOW_SHADER, format);
+        const { pipeline, bindGroupLayout } = await createFullscreenPipeline(device, FIRE_SHADER, format);
         this.pipeline = pipeline;
         this.uniformBuffer = createUniformBuffer(device, STANDARD_UNIFORM_BYTES);
         this.bindGroup = device.createBindGroup({
@@ -41,6 +29,8 @@ export class GlowPipeline implements EffectPipeline {
     }
 
     resize(width: number, height: number): void {
+        this.width = width;
+        this.height = height;
         this.uniformData[4] = width;
         this.uniformData[5] = height;
     }

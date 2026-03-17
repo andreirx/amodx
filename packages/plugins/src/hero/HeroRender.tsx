@@ -10,15 +10,15 @@ function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Button styles that respond to --btn-bg-alpha and --btn-text-stroke CSS variables
+ * Button styles that respond to --btn-bg-color and --btn-text-stroke CSS variables
  * set by ButtonEffectWrap. See CtaRender.tsx for detailed explanation.
  */
-const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground shadow h-11 px-8 hover:opacity-90";
+const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90";
 const btnStyle: React.CSSProperties = {
-    backgroundColor: "hsl(var(--primary) / var(--btn-bg-alpha, 1))",
+    backgroundColor: "var(--btn-bg-color, var(--primary))",
     paintOrder: "stroke fill",
-    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) hsl(var(--primary))",
-    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) hsl(var(--primary)), 0 0 calc(var(--btn-text-stroke, 0) * 8px) hsl(var(--primary))",
+    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--primary)",
+    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
 };
 
 export function HeroRender({ attrs }: { attrs: any }) {

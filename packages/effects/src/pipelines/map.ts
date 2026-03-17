@@ -17,6 +17,10 @@ import { GlowPipeline } from "./glow.js";
 import { CellularPipeline } from "./cellular.js";
 import { CloudsPipeline } from "./clouds.js";
 import { ConfettiPipeline } from "./confetti.js";
+import { Aurora2Pipeline } from "./aurora2.js";
+import { FractalsPipeline } from "./fractals.js";
+import { FirePipeline } from "./fire.js";
+import { BubblesPipeline } from "./bubbles.js";
 
 /**
  * Maps effect type key -> pipeline factory.
@@ -30,6 +34,10 @@ export const PIPELINE_MAP: Record<string, () => EffectPipeline> = {
     cellular: () => new CellularPipeline(),
     clouds:   () => new CloudsPipeline(),
     confetti: () => new ConfettiPipeline(),
+    aurora2:  () => new Aurora2Pipeline(),
+    fractals: () => new FractalsPipeline(),
+    fire:     () => new FirePipeline(),
+    bubbles:  () => new BubblesPipeline(),
 };
 
 /**

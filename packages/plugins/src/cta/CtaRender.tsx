@@ -4,21 +4,22 @@ import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
 
 /**
- * Button class that responds to --btn-bg-alpha and --btn-text-stroke CSS variables
- * set by ButtonEffectWrap when the GPU effect is active.
+ * Button styles that respond to CSS variables set by ButtonEffectWrap:
  *
- * --btn-bg-alpha: controls background opacity (1 = opaque, 0.85 = semi-transparent)
- * --btn-text-stroke: controls text outline (0 = none, 1 = active)
+ * --btn-bg-color: set to "transparent" when wrapped (overlay div provides the fill).
+ *   Falls back to var(--primary) when not wrapped → normal opaque button.
+ * --btn-text-stroke: 0 (inactive) or 1 (active) — drives stroke width + shadow blur
+ *   via calc(). At 0, stroke is 0px and shadow blur is 0px → zero visual impact.
  *
- * The calc() trick: paint-order + text-stroke + text-shadow only activate when
- * --btn-text-stroke is 1. At 0, stroke width is 0px and shadow blur is 0px.
+ * Colors use var(--primary) directly (not hsl(var(--primary))) because --primary
+ * stores hex colors, not HSL triplets.
  */
 const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90 transition-opacity";
 const btnStyle: React.CSSProperties = {
-    backgroundColor: "hsl(var(--primary) / var(--btn-bg-alpha, 1))",
+    backgroundColor: "var(--btn-bg-color, var(--primary))",
     paintOrder: "stroke fill",
-    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) hsl(var(--primary))",
-    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) hsl(var(--primary)), 0 0 calc(var(--btn-text-stroke, 0) * 8px) hsl(var(--primary))",
+    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--primary)",
+    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
 };
 
 export function CtaRender({ attrs }: { attrs: any }) {
@@ -32,13 +33,13 @@ export function CtaRender({ attrs }: { attrs: any }) {
                 <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
                     <h2 className="text-3xl font-bold mb-6">{headline}</h2>
                     <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">{subheadline}</p>
-                    <ButtonEffectWrap effect={buttonEffect}>
+                    <ButtonEffectWrap effect={buttonEffect} bgClass="bg-background">
                         <a href={buttonLink} className={btnClass} style={{
                             ...btnStyle,
-                            backgroundColor: "hsl(var(--background) / var(--btn-bg-alpha, 1))",
-                            color: "hsl(var(--foreground))",
-                            WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) hsl(var(--background))",
-                            textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) hsl(var(--background)), 0 0 calc(var(--btn-text-stroke, 0) * 8px) hsl(var(--background))",
+                            backgroundColor: "var(--btn-bg-color, var(--background))",
+                            color: "var(--foreground)",
+                            WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--background)",
+                            textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--background), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--background)",
                         }}>
                             {buttonText}
                         </a>

@@ -2,24 +2,31 @@
  * Button overlay effect wrapper — Option A compositing.
  *
  * Renders the EffectCanvas BEHIND the button (same opaque canvas used for
- * backgrounds — works on every browser including Firefox). The button gets
- * a semi-transparent background so the effect bleeds through.
+ * backgrounds — works on every browser including Firefox). A dedicated
+ * background overlay div provides the button's fill color at configurable
+ * opacity — the effect bleeds through the semi-transparent overlay.
+ *
+ * Architecture: Three z-layers within a positioned container:
+ *   z-0:  EffectCanvas — opaque effect rendering
+ *   z-[5]: Background overlay — bg-primary (or custom bgClass) with opacity
+ *   z-10: Button text/chrome — transparent background, text protection
  *
  * Fallback chain:
  *   1. No effect configured → renders children bare, no wrapper div.
  *   2. Effect configured but WebGPU unavailable → EffectCanvas renders null,
- *      onActive stays false → button fully opaque. Visually identical to no effect.
- *   3. Effect configured + WebGPU works → canvas behind, button semi-transparent.
- *   4. Scroll out of viewport → pipeline destroyed, onActive(false) → opaque.
+ *      onActive stays false → overlay fully opaque. Visually identical to no effect.
+ *   3. Effect configured + WebGPU works → canvas renders, overlay semi-transparent.
+ *   4. Scroll out of viewport → pipeline destroyed, onActive(false) → overlay opaque.
  *
  * Button text protection: when effect is active, text gets a CSS stroke + shadow
- * halo in the primary color. This prevents text from becoming unreadable when
- * the effect shows through the semi-transparent button background.
+ * halo. Plugin render components read --btn-text-stroke CSS variable (0 or 1)
+ * and apply stroke/shadow via calc(). The color is var(--primary) directly (no
+ * hsl() wrapper — --primary stores hex colors, not HSL triplets).
  *
- * The CSS variable --btn-bg-alpha is set on the wrapper:
- *   - 1 (default / no effect) → button fully opaque
- *   - overlayOpacity value (e.g. 0.85) → button semi-transparent
- * Plugin render components reference this variable in button styles.
+ * Why a separate overlay instead of button background opacity?
+ *   --primary is stored as a hex color (e.g. "#6366f1"), not as HSL triplets.
+ *   CSS like hsl(var(--primary) / 0.85) is invalid when --primary is hex.
+ *   A separate div with bg-primary + opacity works with ANY color format.
  */
 
 import React, { Suspense, lazy, useState } from "react";
@@ -39,9 +46,15 @@ interface ButtonEffectWrapProps {
      * Use "block" for full-width buttons (Contact form).
      */
     className?: string;
+    /**
+     * Tailwind class for the background overlay color.
+     * Default: "bg-primary" — matches most buttons.
+     * Use "bg-background" for inverted buttons (e.g. band-style CTA on primary bg).
+     */
+    bgClass?: string;
 }
 
-export function ButtonEffectWrap({ effect, children, className = "inline-flex" }: ButtonEffectWrapProps) {
+export function ButtonEffectWrap({ effect, children, className = "inline-flex", bgClass = "bg-primary" }: ButtonEffectWrapProps) {
     const [active, setActive] = useState(false);
 
     // No effect configured → render children bare
@@ -53,11 +66,12 @@ export function ButtonEffectWrap({ effect, children, className = "inline-flex" }
         <div
             className={`relative overflow-hidden rounded-lg ${className}`}
             style={{
-                '--btn-bg-alpha': active ? String(overlayOpacity) : '1',
+                // Children read these CSS variables for text protection + bg transparency
+                '--btn-bg-color': 'transparent',
                 '--btn-text-stroke': active ? '1' : '0',
             } as React.CSSProperties}
         >
-            {/* Effect canvas behind button — same component as backgrounds, opaque, z-0 */}
+            {/* z-0: Effect canvas — opaque rendering, same component as backgrounds */}
             <Suspense fallback={null}>
                 <EffectCanvas
                     effect={effect}
@@ -65,7 +79,14 @@ export function ButtonEffectWrap({ effect, children, className = "inline-flex" }
                     onActive={setActive}
                 />
             </Suspense>
-            {/* Button on top — z-10, semi-transparent when effect active */}
+            {/* z-[5]: Background overlay — provides button fill color at configurable opacity.
+                When inactive: opacity 1 (fully covers effect → visually identical to normal button).
+                When active: opacity e.g. 0.85 (effect bleeds through the 15% gap). */}
+            <div
+                className={`absolute inset-0 z-[5] ${bgClass} transition-opacity duration-300`}
+                style={{ opacity: active ? overlayOpacity : 1 }}
+            />
+            {/* z-10: Button chrome + text — background is transparent (overlay provides color) */}
             <div className="relative z-10">
                 {children}
             </div>

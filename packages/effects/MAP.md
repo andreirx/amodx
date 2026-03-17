@@ -4,9 +4,9 @@ GPU effect system for AMODX. Provides WebGPU-based visual effects as composable 
 
 ## Unified Effect Architecture
 
-Any effect type (aurora, plasma, caustics, cellular, clouds, glow) can be applied in any context:
+Any effect type (aurora, aurora2, plasma, caustics, cellular, clouds, glow, fractals, fire, bubbles) can be applied in any context:
 - **Background**: opaque canvas behind content (z-0). Used by `LazyEffectCanvas` in plugin render components.
-- **Button overlay**: opaque canvas behind a semi-transparent button. Used by `ButtonEffectWrap` in plugin render components. The button's `bg-primary` becomes `bg-primary/85` when the effect is active (controlled via `--btn-bg-alpha` CSS variable). Text gets stroke + shadow protection via `--btn-text-stroke`.
+- **Button overlay**: opaque canvas behind button. Used by `ButtonEffectWrap` in plugin render components. Three z-layers: canvas (z-0), bg-primary overlay div at configurable opacity (z-5), transparent-bg button text (z-10). When effect is active, overlay opacity drops to `overlayOpacity` (default 0.85) and text gets stroke + shadow protection via `--btn-text-stroke`. When inactive, overlay is fully opaque — visually identical to a normal button. Colors use `var(--primary)` directly (not `hsl()`) because `--primary` stores hex values.
 - **Page-level**: full-viewport fixed canvas behind all page content. Used by `PageEffectWrapper` in renderer layout.
 
 The compositing mode is a **wrapper concern**, not an effect concern. The `EffectCanvas` component is the same in all three contexts.
@@ -39,6 +39,10 @@ src/
     cellular.ts         Cellular Noise WGSL (Voronoi cells)
     clouds.ts           Clouds WGSL (domain-warped fractal noise)
     confetti.ts         Confetti WGSL (compute + render pipeline)
+    aurora2.ts          Aurora Smooth WGSL (fractal noise + wave distortion)
+    fractals.ts         Fractals WGSL (iterative fract + cosine palette)
+    fire.ts             Fire & Smoke WGSL (simplex 3D noise + spark grid)
+    bubbles.ts          Soap Bubbles WGSL (Voronoi cells + thin-film iridescence)
 
   pipelines/
     index.ts            Barrel export

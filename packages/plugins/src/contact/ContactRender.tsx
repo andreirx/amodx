@@ -122,10 +122,10 @@ export function ContactRender({ attrs }: { attrs: any }) {
                     disabled={status === "loading"}
                     className="w-full py-3 rounded-lg font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
                     style={{
-                        backgroundColor: "hsl(var(--primary) / var(--btn-bg-alpha, 1))",
+                        backgroundColor: "var(--btn-bg-color, var(--primary))",
                         paintOrder: "stroke fill",
-                        WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) hsl(var(--primary))",
-                        textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) hsl(var(--primary)), 0 0 calc(var(--btn-text-stroke, 0) * 8px) hsl(var(--primary))",
+                        WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--primary)",
+                        textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
                     } as React.CSSProperties}
                 >
                     {status === "loading" ? "Sending..." : attrs.buttonText}
