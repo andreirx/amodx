@@ -26,6 +26,7 @@ export const CtaPlugin: PluginDefinition = {
                 style: { default: 'simple' },
                 blockWidth: { default: 'full' },
                 effect: { default: null },
+                glow: { default: null },
             };
         },
 

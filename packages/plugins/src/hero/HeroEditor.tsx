@@ -87,6 +87,11 @@ export function HeroEditor(props: any) {
                                 <Input value={ctaLink} onChange={(v: string) => update('ctaLink', v)} list="amodx-links" placeholder="/path" className="font-mono text-xs" />
                             </div>
                         </div>
+
+                        <GlowControls
+                            glow={props.node.attrs.glow}
+                            onChange={v => update('glow', v)}
+                        />
                     </div>
 
                     <div className="border-l pl-6 border-dashed border-gray-200">
@@ -120,10 +125,6 @@ export function HeroEditor(props: any) {
                     <EffectControls
                         effect={props.node.attrs.effect}
                         onChange={v => update('effect', v)}
-                    />
-                    <GlowControls
-                        glow={props.node.attrs.glow}
-                        onChange={v => update('glow', v)}
                     />
                 </div>
             </div>
