@@ -1523,7 +1523,7 @@ export default function SettingsPage() {
                                     onChange={e => {
                                         const key = e.target.value;
                                         if (key === "none") {
-                                            setConfig({ ...config, pageEffect: { type: "none", colors: [], speed: 0.5, intensity: 0.3 } as any });
+                                            setConfig({ ...config, pageEffect: { type: "none", colors: [], speed: 0.5, intensity: 0.1 } as any });
                                             return;
                                         }
                                         const meta = EFFECT_LIST.find(ef => ef.key === key && ef.scopes.includes("background"));
@@ -1531,7 +1531,7 @@ export default function SettingsPage() {
                                             type: key,
                                             colors: meta?.defaultColors || [],
                                             speed: 0.5,
-                                            intensity: 0.3,
+                                            intensity: 0.1,
                                         } as any });
                                     }}
                                 >
@@ -1574,10 +1574,10 @@ export default function SettingsPage() {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Intensity: {(config.pageEffect?.intensity ?? 0.3).toFixed(1)}</Label>
+                                            <Label>Intensity: {(config.pageEffect?.intensity ?? 0.1).toFixed(2)}</Label>
                                             <input
-                                                type="range" min="0.1" max="2.0" step="0.1"
-                                                value={config.pageEffect?.intensity ?? 0.3}
+                                                type="range" min="0" max="0.15" step="0.005"
+                                                value={config.pageEffect?.intensity ?? 0.1}
                                                 onChange={e => setConfig({ ...config, pageEffect: { ...config.pageEffect!, intensity: parseFloat(e.target.value) } as any })}
                                                 className="w-full"
                                             />
