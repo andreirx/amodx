@@ -19,8 +19,10 @@ import type { GpuTier } from "@amodx/shared";
 export interface PipelineConfig {
     /** Hex color strings from block attrs (e.g., ["#6366f1", "#8b5cf6"]) */
     colors: string[];
-    /** Animation speed multiplier (0.1–3.0) */
+    /** Animation speed multiplier (-3 to 3). Negative = reverse. 0 = frozen. */
     speed: number;
+    /** Timeline offset (-100 to 100). Added after speed×time. Useful for scrubbing frozen effects. */
+    timeOffset?: number;
     /** Effect intensity multiplier (0.1–2.0) */
     intensity: number;
     /** Detected GPU capability tier — pipeline adjusts quality accordingly */

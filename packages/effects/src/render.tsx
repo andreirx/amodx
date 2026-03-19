@@ -198,6 +198,7 @@ export function EffectCanvas({ effect, className, pointerMode = "canvas", onActi
                 await pipeline.init(device, config.format, canvas, {
                     colors: effectColors,
                     speed: effect.speed ?? 1.0,
+                    timeOffset: (effect as any).timeOffset ?? 0,
                     intensity: effect.intensity ?? 0.25,
                     tier,
                     isMobile: mobile,

@@ -68,6 +68,7 @@ Detailed patterns and business logic live in `docs/`:
 | `docs/lessons-learned-details.md` | Check this when planning a feature or refactor              |
 | `docs/authentication-architecture.md` | Auth system: 2 Cognito pools, NextAuth, master API key, reCAPTCHA |
 | `docs/INTEGRATION_MANUAL.md`          | reCAPTCHA setup, SSM keys, tenant onboarding, troubleshooting |
+| `docs/plan-self-hosted-saas.md`       | SaaS platform: control plane, provisioning, billing, AI integration, phases |
 
 
 # System Intent (WHY)

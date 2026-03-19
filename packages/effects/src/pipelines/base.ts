@@ -94,7 +94,7 @@ export function createUniformBuffer(
 }
 
 // ==========================================
-// Standard uniform buffer layout (shared by aurora, plasma, caustics, glow)
+// Standard uniform buffer layout (shared by aurora, plasma, caustics, glow, etc.)
 // ==========================================
 //
 // Float index → WGSL member
@@ -105,10 +105,11 @@ export function createUniformBuffer(
 // [16] color1.r    [17] color1.g    [18] color1.b    [19] color1.a
 // [20] color2.r    [21] color2.g    [22] color2.b    [23] color2.a
 // [24] color3.r    [25] color3.g    [26] color3.b    [27] color3.a
-// [28] bg_color.r  [29] bg_color.g  [30] bg_color.b  [31] bg_color.a (unused)
-// Total: 32 floats = 128 bytes (16-byte aligned)
+// [28] bg_color.r  [29] bg_color.g  [30] bg_color.b  [31] bg_color.a
+// [32] time_offset [33..47] reserved (padding / future use)
+// Total: 48 floats = 192 bytes (16-byte aligned)
 
-export const STANDARD_UNIFORM_FLOATS = 32;
+export const STANDARD_UNIFORM_FLOATS = 48;
 export const STANDARD_UNIFORM_BYTES = STANDARD_UNIFORM_FLOATS * 4;
 
 /**
@@ -181,6 +182,7 @@ export function initStandardUniforms(
     data[3] = glowMultiplier(config.tier);
     // octaves slot: aurora/plasma pass bands count; caustics uses this as detail threshold
     data[8] = config.bands ?? (config.isMobile ? 2.0 : 5.0);
+    data[32] = config.timeOffset ?? 0;
     data[9] = Math.min(config.colors.length, 4);
     data[10] = config.invertY ? 1.0 : 0.0;
     data[11] = config.bgColor ? 1.0 : 0.0;
@@ -212,11 +214,12 @@ export function initStandardUniforms(
  */
 export function updateStandardConfig(
     data: Float32Array,
-    config: { speed?: number; intensity?: number; colors?: string[]; invertY?: boolean; bgColor?: string; bands?: number },
+    config: { speed?: number; timeOffset?: number; intensity?: number; colors?: string[]; invertY?: boolean; bgColor?: string; bands?: number },
 ): void {
     if (config.speed !== undefined) data[1] = config.speed;
     if (config.intensity !== undefined) data[2] = config.intensity;
     if (config.bands !== undefined) data[8] = config.bands;
+    if (config.timeOffset !== undefined) data[32] = config.timeOffset;
     if (config.invertY !== undefined) data[10] = config.invertY ? 1.0 : 0.0;
     if (config.colors) {
         data[9] = Math.min(config.colors.length, 4);

@@ -453,7 +453,8 @@ export type GpuTier = 'hdr-edr' | 'hdr-srgb' | 'sdr' | 'none';
 export const EffectConfigSchema = z.object({
     type: z.string().default("none"),
     colors: z.array(z.string()).max(4).default([]),
-    speed: z.number().min(0.1).max(3.0).default(1.0),
+    speed: z.number().min(-3).max(3).default(1),           // negative = reverse animation
+    timeOffset: z.number().min(-100).max(100).default(0),  // scrub timeline; useful at speed=0 for frozen frames
     intensity: z.number().min(0).max(0.5).default(0.25),
     invertY: z.boolean().default(false),
     bgColor: z.string().optional(),   // hex color for background; undefined = shader default
@@ -737,7 +738,7 @@ export const TenantConfigSchema = z.object({
 
     // GPU Effects — page-level ambient background (aurora, particles, etc.)
     // Defaults to type "none" — zero impact on existing sites.
-    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, intensity: 0.1, invertY: false, overlayOpacity: 0.85 }),
+    pageEffect: PageEffectConfigSchema.default({ type: "none", colors: [], speed: 0.5, timeOffset: 0, intensity: 0.1, invertY: false, overlayOpacity: 0.85 }),
 
     // Order confirmation celebration confetti — opt-in, default off
     celebrationEnabled: z.boolean().default(false),

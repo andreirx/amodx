@@ -105,6 +105,12 @@ export function HeroEditor(props: any) {
                                             Replace
                                             <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} accept="image/*" />
                                         </label>
+                                        <button
+                                            onClick={() => update('imageSrc', '')}
+                                            className="bg-red-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-red-700"
+                                        >
+                                            Remove
+                                        </button>
                                     </div>
                                 </>
                             ) : (

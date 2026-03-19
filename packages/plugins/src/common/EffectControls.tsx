@@ -37,6 +37,7 @@ export function EffectControls({ effect, onChange, scope = "background", label }
             type: currentType,
             colors: effect?.colors || meta?.defaultColors || [],
             speed: effect?.speed ?? 1.0,
+            timeOffset: effect?.timeOffset ?? 0,
             intensity: effect?.intensity ?? 0.25,
             invertY: effect?.invertY ?? false,
             bgColor: effect?.bgColor,
@@ -60,7 +61,7 @@ export function EffectControls({ effect, onChange, scope = "background", label }
                 onChange={e => {
                     const key = e.target.value;
                     if (key === "none") {
-                        onChange({ type: "none", colors: [], speed: 1.0, intensity: 0.25, invertY: false, overlayOpacity: 0.85 });
+                        onChange({ type: "none", colors: [], speed: 1.0, timeOffset: 0, intensity: 0.25, invertY: false, overlayOpacity: 0.85 });
                         return;
                     }
                     const newMeta = scopedEffects.find(ef => ef.key === key);
@@ -68,6 +69,7 @@ export function EffectControls({ effect, onChange, scope = "background", label }
                         type: key,
                         colors: newMeta?.defaultColors || [],
                         speed: 1.0,
+                        timeOffset: 0,
                         intensity: 0.25,
                         invertY: false,
                         overlayOpacity: 0.85,
@@ -105,15 +107,30 @@ export function EffectControls({ effect, onChange, scope = "background", label }
 
                     <div>
                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
-                            Speed: {(effect?.speed ?? 1.0).toFixed(1)}
+                            Speed: {(effect?.speed ?? 1.0).toFixed(1)}{(effect?.speed ?? 1) < 0 ? " (reverse)" : (effect?.speed ?? 1) === 0 ? " (frozen)" : ""}
                         </label>
                         <input
                             type="range"
-                            min="0.1"
-                            max="3.0"
+                            min="-3"
+                            max="3"
                             step="0.1"
                             value={effect?.speed ?? 1.0}
                             onChange={e => update("speed", parseFloat(e.target.value))}
+                            className="w-full"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                            Time Offset: {(effect?.timeOffset ?? 0).toFixed(1)}
+                        </label>
+                        <input
+                            type="range"
+                            min="-100"
+                            max="100"
+                            step="0.2"
+                            value={effect?.timeOffset ?? 0}
+                            onChange={e => update("timeOffset", parseFloat(e.target.value))}
                             className="w-full"
                         />
                     </div>

@@ -35,6 +35,7 @@ struct Uniforms {
     color2: vec4f,
     color3: vec4f,
     bg_color: vec4f,
+    time_offset: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -92,7 +93,7 @@ fn vnoise3(p: vec3f) -> f32 {
 // Returns vec4: rgb color, w = alpha (bubble coverage)
 
 fn bubble_layer(uv: vec2f, cell_scale: f32, time_offset: f32, layer_alpha: f32) -> vec4f {
-    let t = u.time * u.speed;
+    let t = u.time * u.speed + u.time_offset;
     let scaled = uv * cell_scale;
     let cell = floor(scaled);
     let local = fract(scaled);

@@ -118,6 +118,7 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                 await pipeline.init(device, cfg.format, canvas, {
                     colors: effectColors,
                     speed: currentConfig?.speed ?? 1.0,
+                    timeOffset: currentConfig?.timeOffset ?? 0,
                     intensity: currentConfig?.intensity ?? 0.25,
                     tier: tierRef.current,
                     isMobile: false,
@@ -142,6 +143,7 @@ export function EffectPreview({ effect }: EffectPreviewProps) {
                             const liveUsesBands = effectType === "aurora" || effectType === "plasma" || effectType === "cellular" || effectType === "clouds";
                             pipelineRef.current.updateConfig({
                                 speed: live.speed,
+                                timeOffset: live.timeOffset,
                                 intensity: live.intensity,
                                 colors: live.colors?.length ? live.colors : DEFAULT_COLORS,
                                 invertY: (live as any)?.invertY,

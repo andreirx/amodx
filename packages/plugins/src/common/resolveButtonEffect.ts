@@ -21,6 +21,7 @@ export function resolveButtonEffect(attrs: any): EffectConfig | null {
             type: "glow",
             colors: [attrs.glow.color || "#6366f1"],
             speed: 1.0,
+            timeOffset: 0,
             intensity: attrs.glow.intensity ?? 0.25,
             invertY: false,
             overlayOpacity: 0.85,

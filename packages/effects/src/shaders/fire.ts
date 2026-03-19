@@ -33,6 +33,7 @@ struct Uniforms {
     color2: vec4f,
     color3: vec4f,
     bg_color: vec4f,
+    time_offset: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -147,7 +148,7 @@ ${LUM_INVERT_WGSL}
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
-    let real_time = u.time * u.speed * 0.5;
+    let real_time = (u.time * u.speed + u.time_offset) * 0.5;
     let res = u.resolution;
 
     // fragCoord equivalent: uv is 0..1, convert to pixel coords

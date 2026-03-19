@@ -34,6 +34,7 @@ struct Uniforms {
     color2: vec4f,
     color3: vec4f,
     bg_color: vec4f,
+    time_offset: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -88,7 +89,7 @@ ${LUM_INVERT_WGSL}
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
     let uv = in.uv;
-    let t = u.time * u.speed;
+    let t = u.time * u.speed + u.time_offset;
     let aspect = u.resolution.x / u.resolution.y;
 
     // Grid scale from bands parameter (default 8 = 8 cells across)
