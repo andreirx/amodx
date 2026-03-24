@@ -1,6 +1,6 @@
 # Authentication Architecture
 
-AMODX has **four authentication mechanisms** serving different audiences. Two Cognito pools are provisioned per deployment (not per tenant), plus NextAuth.js for customer accounts and a master API key for system-to-system calls.
+AMODX has **five authentication mechanisms** serving different audiences. Two Cognito pools are provisioned per deployment (not per tenant), plus NextAuth.js for customer accounts, a master API key for system-to-system calls, and a restricted renderer API key for renderer proxy routes.
 
 ## Overview
 
@@ -9,15 +9,16 @@ AMODX has **four authentication mechanisms** serving different audiences. Two Co
 | Admin Cognito Pool | `AmodxAdminPool` | **Active** | Agency owners, editors | Invite-only |
 | Public Cognito Pool | `AmodxPublicPool` | **Provisioned, not wired** | Tenant visitors | Self-signup |
 | NextAuth + Google OAuth | Per-tenant Google credentials | **Active** | Site customers | Google sign-in |
-| Master API Key | Secrets Manager | **Active** | Renderer SSR, MCP tools | N/A |
+| Master API Key | Secrets Manager | **Active** | MCP tools, system robots | N/A |
+| Renderer API Key | Secrets Manager | **Active** | Renderer Lambda proxy routes | N/A |
 
 ## 1. Admin Pool (Active)
 
-**CDK:** `infra/lib/auth.ts` → `AmodxAdminPool`
+**CDK:** `infra/lib/auth.ts` -> `AmodxAdminPool`
 
 **Custom attributes:**
-- `custom:role` — `GLOBAL_ADMIN`, `TENANT_ADMIN`, `EDITOR`
-- `custom:tenantId` — specific tenant ID or `"GLOBAL"` / `"ALL"`
+- `custom:role` -- `GLOBAL_ADMIN`, `TENANT_ADMIN`, `EDITOR`
+- `custom:tenantId` -- specific tenant ID or `"GLOBAL"` / `"ALL"`
 
 **Configuration:**
 - `selfSignUpEnabled: false` (invite-only via `AdminCreateUser`)
@@ -33,13 +34,13 @@ AMODX has **four authentication mechanisms** serving different audiences. Two Co
 
 2. **Admin SPA** (`admin/src/main.tsx`): AWS Amplify configured with `VITE_USER_POOL_ID` and `VITE_USER_POOL_CLIENT_ID`. Injected by `ConfigGenerator` in `infra/lib/admin-hosting.ts`.
 
-3. **Backend user management** (`backend/src/users/*.ts`): Invite, list, update, toggle-status — all operate against this pool via Cognito admin SDK.
+3. **Backend user management** (`backend/src/users/*.ts`): Invite, list, update, toggle-status -- all operate against this pool via Cognito admin SDK.
 
-**All authenticated API routes use this pool.** Public routes (`/public/*`, `/leads`, `/contact`, `/consent`) bypass auth entirely.
+**All authenticated API routes use this pool.** Public routes (`/public/*`, `/leads`, `/contact`, `/consent`) allow anonymous access, but the authorizer checks API keys first -- if the renderer key is present, the request is authenticated as `RENDERER` role before the anonymous fallback runs. See section 4b.
 
 ## 2. Public Pool (Provisioned but Dormant)
 
-**CDK:** `infra/lib/auth.ts` → `AmodxPublicPool`
+**CDK:** `infra/lib/auth.ts` -> `AmodxPublicPool`
 
 **Custom attributes:**
 - `custom:tenant_id` (note: underscore, unlike admin pool's camelCase)
@@ -58,7 +59,7 @@ AMODX has **four authentication mechanisms** serving different audiences. Two Co
 
 **Design intent:**
 - `TenantMemberSchema` in `packages/shared/src/index.ts` has `id` field commented as "Cognito SUB from the End User Pool"
-- `TenantMemberRole` enum: `["Member", "Subscriber", "VIP"]` — distinct from admin roles
+- `TenantMemberRole` enum: `["Member", "Subscriber", "VIP"]` -- distinct from admin roles
 - The pool client comment says "NextAuth runs client-side/edge compatible"
 - Likely intended as a user store behind NextAuth, but the implementation went a different direction
 
@@ -75,15 +76,15 @@ AMODX has **four authentication mechanisms** serving different audiences. Two Co
 6. `NEXTAUTH_URL` is set dynamically per-request to `{protocol}://{host}`
 
 **Session consumers:**
-- `renderer/src/components/Providers.tsx` — wraps site in `<SessionProvider>`
-- `renderer/src/components/Navbar.tsx` — shows "Sign In" or user account link
-- `renderer/src/components/AccountPageView.tsx` — customer profile + order history
+- `renderer/src/components/Providers.tsx` -- wraps site in `<SessionProvider>`
+- `renderer/src/components/Navbar.tsx` -- shows "Sign In" or user account link
+- `renderer/src/components/AccountPageView.tsx` -- customer profile + order history
 
 **CDK env vars** (in `infra/lib/renderer-hosting.ts`):
-- `NEXTAUTH_SECRET` — from dedicated Secrets Manager secret
-- `NEXTAUTH_URL` — base domain, overridden per-request
+- `NEXTAUTH_SECRET` -- from dedicated Secrets Manager secret
+- `NEXTAUTH_URL` -- base domain, overridden per-request
 
-**Google OAuth credentials** — per-tenant in `TenantConfig.integrations.google`:
+**Google OAuth credentials** -- per-tenant in `TenantConfig.integrations.google`:
 ```typescript
 google: z.object({
     clientId: z.string().optional(),
@@ -95,54 +96,78 @@ google: z.object({
 
 ## 4. Master API Key (Active)
 
-**CDK:** `infra/lib/amodx-stack.ts` — Secrets Manager secret
+**CDK:** `infra/lib/amodx-stack.ts` -- Secrets Manager secret
 
 **How it works:**
 - Backend authorizer (`backend/src/auth/authorizer.ts`) checks `x-api-key` header
 - If matched: returns `sub: "system-robot"`, `role: "GLOBAL_ADMIN"`, `tenantId: "ALL"`
-- Used by renderer's server-side API client (`renderer/src/lib/api-client.ts`)
 - Used by MCP tools for automation
+- Full access to all API routes regardless of role checks
+
+## 4b. Renderer API Key (Active)
+
+**CDK:** `infra/lib/amodx-stack.ts` -> `RendererApiKey` secret
+
+**How it works:**
+- Separate secret from the master key, with a restricted scope
+- Backend authorizer checks `x-api-key` -- if it matches the renderer key, returns `sub: "renderer"`, `role: "RENDERER"`, `tenantId: "ALL"`
+- Fetched at runtime from Secrets Manager by `renderer/src/lib/api-client.ts` via `getRendererKey()`
+- Local dev fallback: `AMODX_API_KEY` env var (set by `post-deploy.ts`)
+
+**Scope -- routes that accept RENDERER role:**
+- `POST /comments`, `DELETE /comments` -- comment moderation
+- `POST /public/customers/profile` -- customer profile update (via session-validated proxy)
+- `POST /contact`, `POST /leads`, `POST /consent` -- public form proxies (tenant derived from host)
+
+**Authorizer order:**
+1. API key checks run first (master key, then renderer key)
+2. If a valid key is found, the request is authenticated with the corresponding role
+3. Only if no valid key is present do public routes fall through to anonymous bypass
+
+This means renderer proxy calls to `POST /contact`, `POST /leads`, and `POST /consent` authenticate as `RENDERER` rather than `anonymous`. The backend distinguishes trusted proxy calls from direct browser calls.
+
+**Tenant verification trust model** (`backend/src/lib/tenant-verify.ts`):
+
+| Caller | Trust anchor | Origin check |
+|--------|-------------|--------------|
+| Renderer proxy (RENDERER) | Authenticated service identity + host-derived tenant | Skipped |
+| Direct browser (anonymous) | Browser-enforced Origin header matched against GSI_Domain | Required |
+| System robot (GLOBAL_ADMIN) | Master key with explicit tenant targeting | Skipped |
+
+The renderer proxies derive the tenant ID server-side from the host header via `getTenantConfig(host)`, not from client-supplied `x-tenant-id`.
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        API Gateway                              │
-│                    (Lambda Authorizer)                          │
-│          Validates: Admin Cognito JWT OR Master API Key         │
-└──────────┬────────────────────────────────────┬─────────────────┘
-           │                                    │
-    Authenticated Routes                  Public Routes
-    (Content, Products,                   (/public/*, /leads,
-     Orders, Users, etc.)                  /contact, /consent)
-           │                                    │
-           ▼                                    ▼
-    ┌─────────────┐                    No auth required
-    │ Admin Pool  │
-    │ (Cognito)   │
-    └─────────────┘
-           ▲
-           │ Amplify Auth
-    ┌─────────────┐
-    │  Admin SPA  │
-    │  (React)    │
-    └─────────────┘
+                        API Gateway
+                    (Lambda Authorizer)
+   Check order: API keys -> public bypass -> Cognito JWT
+
+       |              |                          |
+  Master Key     Renderer Key              Cognito JWT
+  (GLOBAL_ADMIN)  (RENDERER)              (EDITOR/TENANT_ADMIN)
+       |              |                          |
+       v              v                          v
+  All routes     Scoped routes            Authenticated routes
+               (comments, profile,       (content, products,
+                contact/leads/consent)    orders, users, etc.)
+
+  If no valid key on public routes -> anonymous bypass
+  (POST /leads, POST /contact, POST /consent)
+  Anonymous callers verified via Origin header
 
 
-┌─────────────────────────────────────────────────────────────────┐
-│                     Renderer (Next.js)                          │
-├──────────────────┬──────────────────────────────────────────────┤
-│  SSR API calls   │  Customer Auth                               │
-│  (Master API Key)│  (NextAuth + Google OAuth)                   │
-│                  │  Per-tenant credentials from DynamoDB        │
-│                  │  Sessions = signed cookies                   │
-└──────────────────┴──────────────────────────────────────────────┘
+                     Renderer (Next.js)
+  ---------------------------------------------------------
+  Proxy routes         |  Customer Auth
+  (Renderer Key)       |  (NextAuth + Google OAuth)
+  Derives tenant       |  Per-tenant credentials from DynamoDB
+  from host            |  Sessions = signed cookies
 
-┌─────────────────────────────────────────────────────────────────┐
-│                   Public Pool (Cognito)                         │
-│                   *** NOT CURRENTLY USED ***                    │
-│   Provisioned in CDK, env vars written, but never imported      │
-└─────────────────────────────────────────────────────────────────┘
+
+                   Public Pool (Cognito)
+                   *** NOT CURRENTLY USED ***
+   Provisioned in CDK, env vars written, but never imported
 ```
 
 ## 5. Commerce Customer Flow (How Orders Are Tracked)
@@ -157,11 +182,9 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 
 **Account page (requires Google sign-in):**
 1. Customer signs in via NextAuth/Google on the tenant site
-2. Server-side `page.tsx` reads the `next-auth.session-token` cookie
-3. Decodes JWT with `NEXTAUTH_SECRET` to extract `email`
-4. Queries DynamoDB: `getCustomerOrders(tenantId, email)` → `CUSTORDER#email#*` adjacency
-5. Queries DynamoDB: `getCustomerProfile(tenantId, email)` → `CUSTOMER#email` record
-6. Renders order history + profile info
+2. Session-validated API route (`/api/account/orders`) reads orders from DynamoDB
+3. Session-validated API route (`/api/profile`) reads/updates customer profile
+4. Renderer derives tenant from host, uses session email -- never trusts client-supplied values
 
 **Identity linking is purely email-based.** If a customer checks out as `john@example.com` without signing in, then later signs in with Google as `john@example.com`, they will see all their previous orders. No Cognito SUB or user pool involved.
 
@@ -170,14 +193,15 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 | Feature | Auth Required? | Mechanism |
 |---------|---------------|-----------|
 | Browse products | No | Public routes |
-| Place an order | No | `POST /public/orders` (unauthenticated) |
+| Place an order | No | `POST /public/orders` (reCAPTCHA + Origin verification) |
 | Track a specific order | No | `GET /public/orders/{id}?email=` (email verification) |
-| View account + all orders | Google sign-in | NextAuth session → email → DynamoDB lookup |
+| View account + all orders | Google sign-in | NextAuth session -> email -> DynamoDB lookup (via `/api/account/orders`) |
+| Update profile | Google sign-in | NextAuth session -> email -> backend via renderer proxy (RENDERER key) |
 | Manage orders (admin) | Admin Cognito JWT | API Gateway authorizer |
 
 ## 5b. reCAPTCHA v3 (Bot Protection on Public Routes)
 
-reCAPTCHA v3 is orthogonal to authentication — it protects **unauthenticated public routes** from bot abuse. It runs invisibly (no checkbox/puzzle), scoring each request 0.0 (bot) to 1.0 (human).
+reCAPTCHA v3 is orthogonal to authentication -- it protects **unauthenticated public routes** from bot abuse. It runs invisibly (no checkbox/puzzle), scoring each request 0.0 (bot) to 1.0 (human).
 
 **Protected endpoints:** `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/orders`, `POST /coupons/validate`
 
@@ -185,12 +209,12 @@ reCAPTCHA v3 is orthogonal to authentication — it protects **unauthenticated p
 1. Deployment-level keys stored in SSM Parameter Store, injected as Lambda env vars at deploy time
 2. Tenant can override with their own keys via Admin > Settings (for separate analytics/compliance)
 3. Tenant can adjust score threshold (always per-tenant, default 0.5)
-4. Tenants cannot disable reCAPTCHA — deployment keys always apply as fallback
+4. Tenants cannot disable reCAPTCHA -- deployment keys always apply as fallback
 
-**Resolution logic:** `backend/src/lib/recaptcha.ts` → `resolveRecaptchaConfig(tenantConfig)`:
-- Tenant has own `siteKey` + `secretKey` → use tenant keys
-- Otherwise → use `RECAPTCHA_SECRET_KEY` env var (deployment-level)
-- Neither (local dev only) → skip verification
+**Resolution logic:** `backend/src/lib/recaptcha.ts` -> `resolveRecaptchaConfig(tenantConfig)`:
+- Tenant has own `siteKey` + `secretKey` -> use tenant keys
+- Otherwise -> use `RECAPTCHA_SECRET_KEY` env var (deployment-level)
+- Neither (local dev only) -> skip verification
 
 **Client-side:** `renderer/src/hooks/useRecaptcha.ts` hook calls `grecaptcha.execute(siteKey, { action })` and includes the token in POST body. The site key is injected by `ThemeInjector` (tenant key takes priority, else deployment key from `RECAPTCHA_SITE_KEY` env var).
 
@@ -203,14 +227,15 @@ reCAPTCHA v3 is orthogonal to authentication — it protects **unauthenticated p
 - **Pools are per-deployment, not per-tenant.** One admin pool serves all tenants. Tenant isolation is via `custom:tenantId` attribute + backend authorization checks.
 - **The public pool exists but does nothing.** It was created as forward-looking infrastructure. Customer authentication bypasses it entirely via NextAuth.
 - **Google OAuth credentials are per-tenant.** Each tenant can have its own Google OAuth app, allowing customers to sign in with Google on each tenant site independently.
-- **Three credential stores:** Cognito (admin users), DynamoDB (customer records), Secrets Manager (API key + NextAuth secret).
+- **Four credential stores:** Cognito (admin users), DynamoDB (customer records), Secrets Manager (master key, renderer key, NextAuth secret, revalidation secret).
 - **reCAPTCHA is per-deployment by default.** Deployment keys in SSM provide mandatory bot protection. Tenants can override with own keys but cannot disable. See `docs/INTEGRATION_MANUAL.md`.
+- **Tenant secrets are redacted for EDITOR role.** `GET /settings` strips `recaptcha.secretKey`, `integrations.google.clientSecret`, and `integrations.braveApiKey`. Admin users fetch these via `GET /settings/secrets`.
 
 ## Decision: Public Pool Future
 
 The public Cognito pool could serve these future purposes:
-- **Email/password customer auth** — if tenants want non-Google sign-in options
-- **Federated identity** — Cognito as identity broker for multiple social providers per tenant
-- **Customer API access** — if customers need authenticated API calls (wishlist, saved addresses)
+- **Email/password customer auth** -- if tenants want non-Google sign-in options
+- **Federated identity** -- Cognito as identity broker for multiple social providers per tenant
+- **Customer API access** -- if customers need authenticated API calls (wishlist, saved addresses)
 
 Currently, the NextAuth approach is simpler and sufficient for Google-only sign-in with cookie-based sessions.

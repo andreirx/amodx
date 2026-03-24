@@ -4,6 +4,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
+import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
@@ -18,8 +19,16 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         const tenantId = event.headers['x-tenant-id'];
 
         if (!tenantId) {
-            console.error("❌ Missing x-tenant-id header");
+            console.error("Missing x-tenant-id header");
             return { statusCode: 400, body: "Missing Tenant" };
+        }
+
+        // Verify tenant ID — trusted if RENDERER (proxy derived tenant from host), otherwise check Origin
+        const callerRole = (event.requestContext as any)?.authorizer?.lambda?.role as string | undefined;
+        const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId, callerRole);
+        if (!tenantVerified) {
+            console.warn("Tenant verification failed", { tenantId, origin: event.headers['origin'] });
+            return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
         }
 
         const body = JSON.parse(event.body || "{}");

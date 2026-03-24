@@ -110,9 +110,9 @@ export class AmodxStack extends cdk.Stack {
       }
     });
 
-    // C. Renderer API Key (Phase 2.1: Restricted key for renderer - can only POST/DELETE comments)
+    // C. Renderer API Key (Phase 2.1: Restricted key for renderer proxy routes)
     const rendererKeySecret = new secretsmanager.Secret(this, 'RendererApiKey', {
-      description: 'Restricted API key for renderer Lambda (comments only)',
+      description: 'Restricted API key for renderer Lambda (comments, customer profile, contact/leads/consent proxies)',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({}),
         generateStringKey: 'apiKey',
@@ -204,7 +204,7 @@ export class AmodxStack extends cdk.Stack {
       userPoolId: auth.adminPool.userPoolId,
       userPoolClientId: auth.adminClient.userPoolClientId,
       masterKeySecret: masterKeySecret,
-      rendererKeySecret: rendererKeySecret, // Phase 2.1: Restricted key for renderer
+      rendererKeySecret: rendererKeySecret, // Phase 2.1: Restricted key for renderer proxy routes
       revalidationSecret: revalidationSecret, // Phase 4: Cache invalidation
       uploadsBucket: uploads.bucket,
       privateBucket: uploads.privateBucket,
@@ -257,11 +257,11 @@ export class AmodxStack extends cdk.Stack {
     });
 
     // 4. Renderer Layer
-    // Phase 2.3: Use restricted rendererKeySecret instead of masterKeySecret
+    // Phase 2.3: Use restricted rendererKeySecret (not masterKeySecret)
     const renderer = new RendererHosting(this, 'RendererHosting', {
       table: db.table,
       apiUrl: api.httpApi.url!,
-      rendererKeySecret: rendererKeySecret,  // Restricted: can only POST/DELETE comments
+      rendererKeySecret: rendererKeySecret,
       revalidationSecret: revalidationSecret, // Phase 2.5: Secures cache purge
       nextAuthSecret: nextAuthSecret,
       originVerifySecret: originVerifySecret.secretValue.unsafeUnwrap(),  // Phase 6.1: Baked into CF Function

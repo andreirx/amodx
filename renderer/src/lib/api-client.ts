@@ -4,10 +4,17 @@ let cachedKey: string | null = null;
 
 /**
  * Get the renderer API key from AWS Secrets Manager.
- * Phase 2.3: This is now a RESTRICTED key that can only:
- * - POST /comments (create)
- * - DELETE /comments (delete)
- * It cannot access /orders, /customers, /tenants, or other admin APIs.
+ * Phase 2.3: This is a RESTRICTED key (role: RENDERER) with limited scope:
+ *   - POST /comments (create)
+ *   - DELETE /comments (delete)
+ *   - POST /public/customers/profile (session-gated via renderer proxy)
+ *
+ * It cannot access admin APIs (orders, tenants, settings, etc.) because
+ * those handlers require TENANT_ADMIN or GLOBAL_ADMIN roles.
+ *
+ * The profile endpoint was added in Phase 7.3 remediation. Access is safe
+ * because the renderer proxy validates the NextAuth session and substitutes
+ * the email from the session before forwarding.
  */
 export async function getRendererKey() {
     if (cachedKey && cachedKey.length > 0) return cachedKey;

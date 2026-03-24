@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js"; // <--- Added .js
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
+import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 
 const ConsentSchema = z.object({
     visitorId: z.string().min(1),
@@ -19,6 +20,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 statusCode: 400,
                 body: JSON.stringify({ error: "Missing Tenant Context" })
             };
+        }
+
+        // Verify tenant ID — trusted if RENDERER (proxy derived tenant from host), otherwise check Origin
+        const callerRole = (event.requestContext as any)?.authorizer?.lambda?.role as string | undefined;
+        const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId, callerRole);
+        if (!tenantVerified) {
+            console.warn("Tenant verification failed", { tenantId, origin: event.headers['origin'] });
+            return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
         }
 
         const body = JSON.parse(event.body || "{}");

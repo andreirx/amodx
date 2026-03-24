@@ -3,6 +3,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
+import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
@@ -11,6 +12,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // Verify tenant ID matches request origin
+        const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId);
+        if (!tenantVerified) {
+            console.warn("Tenant verification failed", { tenantId, origin: event.headers['origin'] });
+            return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
+        }
 
         // reCAPTCHA verification (deployment-level mandatory, tenant can override keys/threshold)
         const tenantRes = await db.send(new GetCommand({

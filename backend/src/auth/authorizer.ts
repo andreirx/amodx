@@ -65,40 +65,6 @@ const verifier = CognitoJwtVerifier.create({
     clientId: clientId,
 });
 
-// Helper to print hex diff
-function logKeyMismatch(serverKey: string, clientKey: string) {
-    const lenS = serverKey.length;
-    const lenC = clientKey.length;
-
-    // Find first difference
-    let i = 0;
-    while (i < lenS && i < lenC && serverKey[i] === clientKey[i]) {
-        i++;
-    }
-
-    console.warn("================ AUTH DEBUG ================");
-    console.warn(`❌ Key Mismatch at Index: ${i}`);
-    console.warn(`📏 Lengths -> Server: ${lenS}, Client: ${lenC}`);
-
-    if (i < lenS) {
-        const char = serverKey.charCodeAt(i);
-        const hex = char.toString(16);
-        console.warn(`🔹 Server char at ${i}: '${serverKey[i]}' (Code: ${char}, Hex: ${hex})`);
-        console.warn(`🔹 Server Tail (Hex): ${Buffer.from(serverKey.substring(i)).toString('hex')}`);
-    } else {
-        console.warn(`🔹 Server key ended.`);
-    }
-
-    if (i < lenC) {
-        const char = clientKey.charCodeAt(i);
-        const hex = char.toString(16);
-        console.warn(`🔸 Client char at ${i}: '${clientKey[i]}' (Code: ${char}, Hex: ${hex})`);
-        console.warn(`🔸 Client Tail (Hex): ${Buffer.from(clientKey.substring(i)).toString('hex')}`);
-    } else {
-        console.warn(`🔸 Client key ended.`);
-    }
-    console.warn("============================================");
-}
 
 export const handler = async (
     event: APIGatewayRequestAuthorizerEventV2
@@ -122,43 +88,47 @@ export const handler = async (
         hasAuthHeader: !!authHeader
     });
 
-    // Public Routes
-    if (event.routeKey === "POST /leads" || event.routeKey === "POST /contact" || event.routeKey === "POST /consent") {
-        console.log("✅ Auth Success: Public Route Bypass");
-        return { isAuthorized: true, context: { sub: "anonymous" } };
-    }
-
-    // 1. Fetch Key
+    // 1. API key checks run FIRST, before any route-based bypass.
+    // This allows renderer proxies to authenticate on public routes
+    // instead of falling through to anonymous.
     const masterKey = await getMasterKey();
     if (!masterKey) {
         console.error("CRITICAL: Failed to retrieve Master Key from Secrets Manager.");
     }
 
-    // 2. Compare Master Key
-    if (masterKey && apiKey) {
-        if (apiKey === masterKey) {
-            console.log("✅ Auth Success: Master Key Match");
-            return {
-                isAuthorized: true,
-                context: { sub: "system-robot", role: "GLOBAL_ADMIN", tenantId: "ALL" }
-            };
-        } else {
-            // Log forensic details (only if not renderer key)
-            const rendererKey = await getRendererKey();
-            if (!rendererKey || apiKey !== rendererKey) {
-                logKeyMismatch(masterKey, apiKey);
-            }
-        }
+    if (masterKey && apiKey && apiKey === masterKey) {
+        console.log("Auth Success: Master Key Match");
+        return {
+            isAuthorized: true,
+            context: { sub: "system-robot", role: "GLOBAL_ADMIN", tenantId: "ALL" }
+        };
     }
 
-    // 2b. Phase 2.1: Compare RENDERER Key (restricted role - can only POST/DELETE comments)
     const rendererKey = await getRendererKey();
     if (rendererKey && apiKey === rendererKey) {
-        console.log("✅ Auth Success: Renderer Key Match");
+        console.log("Auth Success: Renderer Key Match");
         return {
             isAuthorized: true,
             context: { sub: "renderer", role: "RENDERER", tenantId: "ALL" }
         };
+    }
+
+    // Log mismatch if a key was provided but matched neither master nor renderer
+    if (apiKey && masterKey) {
+        console.warn("Auth: API key mismatch", {
+            route: event.routeKey,
+            clientKeyLength: apiKey?.length,
+            serverKeyLength: masterKey.length,
+            ip: event.requestContext?.http?.sourceIp,
+        });
+    }
+
+    // 2. Public routes — allow anonymous when no valid key was presented.
+    // Renderer proxies send the renderer key and resolve above as RENDERER.
+    // Direct browser callers (if any) reach here and get anonymous.
+    if (event.routeKey === "POST /leads" || event.routeKey === "POST /contact" || event.routeKey === "POST /consent") {
+        console.log("Auth Success: Public Route (anonymous)");
+        return { isAuthorized: true, context: { sub: "anonymous" } };
     }
 
     // 3. Cognito Token Check

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
+import { useAuth } from "@/context/AuthContext";
 import type { TenantConfig } from "@amodx/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,10 +41,17 @@ const getRendererUrl = () => {
 
 export default function SettingsPage() {
     const { currentTenant } = useTenant();
+    const { userRole } = useAuth();
     const [config, setConfig] = useState<Partial<TenantConfig>>({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Tracks whether secrets have been merged into config.
+    // Guards the secrets effect so it only fires once per settings load.
+    const [secretsLoaded, setSecretsLoaded] = useState(false);
+
+    const isAdmin = userRole === "TENANT_ADMIN" || userRole === "GLOBAL_ADMIN";
 
     // Country pack apply dialog
     const [pendingPackCode, setPendingPackCode] = useState<string | null>(null);
@@ -57,15 +65,26 @@ export default function SettingsPage() {
     // Get the URL dynamically so it works in Prod and Local
     const rendererUrl = getRendererUrl();
 
+    // Load settings (redacted — no secrets)
     useEffect(() => {
         if (currentTenant) {
             loadSettings();
         }
     }, [currentTenant?.id]);
 
+    // Load secrets separately once admin role resolves and config is loaded.
+    // Fixes race condition: useAuth starts userRole as "EDITOR" and resolves async.
+    // If secrets were fetched inside loadSettings(), isAdmin would be false on first run.
+    useEffect(() => {
+        if (isAdmin && config.id && !secretsLoaded) {
+            loadSecrets();
+        }
+    }, [isAdmin, config.id, secretsLoaded]);
+
     async function loadSettings() {
         setLoading(true);
         setError(null);
+        setSecretsLoaded(false);
         try {
             const data = await apiRequest("/settings");
             setConfig(data);
@@ -74,6 +93,24 @@ export default function SettingsPage() {
             setError(e.message || "Failed to load settings");
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function loadSecrets() {
+        try {
+            const secrets = await apiRequest("/settings/secrets");
+            setConfig(prev => ({
+                ...prev,
+                recaptcha: { ...prev.recaptcha, ...secrets.recaptcha },
+                integrations: {
+                    ...prev.integrations,
+                    ...secrets.integrations,
+                    google: { ...prev.integrations?.google, ...secrets.integrations?.google },
+                },
+            }));
+            setSecretsLoaded(true);
+        } catch (err: any) {
+            console.warn("Failed to load secrets:", err.message);
         }
     }
 
@@ -1456,8 +1493,8 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* IDENTITY PROVIDERS */}
-                    <Card>
+                    {/* IDENTITY PROVIDERS — admin only (contains clientSecret) */}
+                    {isAdmin && <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
                                 <Key className="h-5 w-5 text-muted-foreground" />
@@ -1499,7 +1536,7 @@ export default function SettingsPage() {
                                 />
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card>}
 
 
                     {/* GPU VISUAL EFFECTS */}
@@ -1810,6 +1847,7 @@ export default function SettingsPage() {
                                 </p>
                             </div>
 
+                            {isAdmin && (
                             <div className="pt-4 border-t space-y-3">
                                 <p className="text-xs font-medium text-muted-foreground">Custom reCAPTCHA Keys (optional — overrides deployment default)</p>
                                 <div className="space-y-2">
@@ -1837,6 +1875,7 @@ export default function SettingsPage() {
                                     />
                                 </div>
                             </div>
+                            )}
 
                             <div className="pt-2 border-t">
                                 <a
@@ -1852,7 +1891,8 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* RESEARCH */}
+                    {/* RESEARCH — admin only (contains braveApiKey) */}
+                    {isAdmin && (
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
@@ -1876,6 +1916,7 @@ export default function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
                 </div>
 
                 {/* RIGHT COLUMN: Colors */}

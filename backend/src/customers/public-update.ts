@@ -1,17 +1,45 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { AuthorizerContext } from "../auth/context.js";
+import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 /**
- * Public endpoint for customers to update their own profile.
- * Requires email verification via a simple token check (email must match).
+ * Customer profile update — called via renderer proxy only.
+ * Requires RENDERER or GLOBAL_ADMIN role (renderer sends its API key).
+ * The renderer proxy (renderer/src/app/api/profile/route.ts) enforces
+ * NextAuth session validation and substitutes the session email,
+ * preventing callers from modifying arbitrary profiles.
+ *
+ * Role enforcement:
+ *   - RENDERER: renderer Lambda (x-api-key = renderer secret)
+ *   - GLOBAL_ADMIN: system robot (x-api-key = master secret)
+ *   - EDITOR / TENANT_ADMIN via Cognito: REJECTED (403)
+ *
+ * tenantId is NOT passed to requireRole because RENDERER has tenantId "ALL",
+ * which does not equal any specific tenant ID. The role gate alone is sufficient
+ * because only service accounts (RENDERER, GLOBAL_ADMIN) hold these roles.
+ *
  * POST /public/customers/profile
  */
-const _handler: APIGatewayProxyHandlerV2 = async (event) => {
+type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+
+const _handler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
+        const auth = event.requestContext.authorizer.lambda;
+
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+
+        // Only service accounts (RENDERER proxy, GLOBAL_ADMIN robot) may call this.
+        // Regular Cognito users must use the renderer proxy, which validates their session.
+        try {
+            requireRole(auth, ["GLOBAL_ADMIN", "RENDERER"]);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
+
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
 
         const body = JSON.parse(event.body);

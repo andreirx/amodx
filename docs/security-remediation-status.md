@@ -1,6 +1,6 @@
 # Security Remediation Implementation Status
 
-Updated: 2026-03-08
+Updated: 2026-03-23
 
 ## Summary
 
@@ -13,7 +13,9 @@ Updated: 2026-03-08
 
 **Phase 5 (operational security) COMPLETE** - CI audit, Dependabot, CloudWatch alarms deployed.
 
-**Phase 6 (request provenance) COMPLETE** - 6.1-6.3 deployed, 6.4-6.5 optional hardening.
+**Phase 6 (request provenance) IN PROGRESS** - 6.1-6.3 deployed, 6.4-6.5 optional hardening. See corrections below.
+
+**Phase 7 (security audit remediation) IN PROGRESS** - see below.
 
 ---
 
@@ -54,8 +56,8 @@ Updated: 2026-03-08
 |------|--------|------|
 | 3.1 Customer API routes | ✅ | `renderer/src/app/api/account/orders/route.ts` |
 | 3.2 Account page client-side fetch | ✅ | `renderer/src/components/AccountPageView.tsx` |
-| 3.3 Remove sensitive SSR reads | ✅ | `renderer/src/app/[siteId]/[[...slug]]/page.tsx` |
-| 3.4 Tenant verification from origin | ✅ | `backend/src/lib/tenant-verify.ts` - Strict mode enforced |
+| 3.3 Remove sensitive SSR reads | ⚠️ | `page.tsx` comment says removed, but still imports/uses `getOrderForCustomer`. See Finding 5 (deferred). |
+| 3.4 Tenant verification from origin | ⚠️ → ✅ | **Fixed 2026-03-23**: GSI query used `domain` (lowercase) but GSI PK is `Domain` (uppercase). Fixed in `tenant-verify.ts`. Also extended to contact, leads, forms, consent handlers. |
 | 3.5 Enforce strict origin check | ✅ | `TENANT_VERIFY_PERMISSIVE=true` to disable (default: strict) |
 
 ---
@@ -114,7 +116,7 @@ Ensure requests originate from our frontend, not direct API/Lambda URL access.
 |------|--------|-------|
 | 6.1 CloudFront origin verification | ✅ | `x-origin-verify` header injected by CF, verified in middleware |
 | 6.2 Strict CORS at API Gateway | ✅ | Admin + root + tenant + CloudFront domains in allowedOrigins |
-| 6.3 Enforce strict tenant-verify.ts | ✅ | Strict mode default, `TENANT_VERIFY_PERMISSIVE=true` to disable |
+| 6.3 Enforce strict tenant-verify.ts | ⚠️ → ✅ | **Fixed 2026-03-23**: Was only applied to orders/create + coupons/public-validate. Now applied to all 6 public mutation handlers. |
 | 6.4 API Gateway resource policy | ⏳ | Only accept requests from CloudFront IP ranges |
 | 6.5 Request signing for checkout | ⏳ | Server-generated token verified on POST (optional) |
 
@@ -139,6 +141,61 @@ Ensure requests originate from our frontend, not direct API/Lambda URL access.
 - `x-tenant-id` header manipulation blocked (tenant-verify.ts checks Origin)
 - curl/script attacks blocked (missing Origin header on cross-origin POST)
 - Preview URLs only accessible from admin panel
+
+---
+
+## Phase 7: Security Audit Remediation (2026-03-23)
+
+Static code review identified 5 findings. 4 fixed, 1 deferred. Post-review identified 4 regressions in the initial fixes, all corrected.
+
+| Finding | Severity | Status | Notes |
+|---------|----------|--------|-------|
+| 7.1 Master key logged in CloudWatch | HIGH | ✅ | `logKeyMismatch()` deleted from `authorizer.ts`. Replaced with safe log (lengths + IP only). |
+| 7.2 GSI attribute name bug in tenant-verify | HIGH | ✅ | `tenant-verify.ts` queried `domain` (lowercase) but GSI PK is `Domain` (uppercase). Fixed. |
+| 7.3 Public customer profile mutation | CRITICAL | ✅ | `POST /public/customers/profile` removed `noAuth`. Handler enforces `requireRole(["GLOBAL_ADMIN", "RENDERER"])`. Renderer proxy uses `getRendererKey()` + `API_URL` (matching deployed env vars). |
+| 7.4 Tenant verification incomplete | HIGH | ✅ | Added `verifyTenantFromOrigin()` to contact, leads, forms, consent. Upgraded consent Lambda to `grantReadWriteData`. |
+| 7.5 Tenant secrets readable by EDITOR | CRITICAL | ✅ | `GET /settings` strips secrets via `redactSecrets()`. `PUT /settings` deep-merges `integrations` and `recaptcha` to preserve secret fields absent from redacted body. New `GET /settings/secrets` endpoint for TENANT_ADMIN/GLOBAL_ADMIN only. Admin UI loads secrets in a separate effect (fixes auth race condition). |
+| 7.6 Renderer excessive DynamoDB access | MEDIUM | ⏳ | Deferred. Renderer Lambda has table-wide read. SSR page still imports `getOrderForCustomer`. Planned: separate commerce table (Option C). |
+
+**Post-review regression fixes (same session):**
+1. `secretsLoaded` declared-but-never-read: moved secrets fetch to separate `useEffect` that uses `secretsLoaded` as guard, fixing the TS6133 build error and the auth race condition in one change.
+2. Secret deletion on save: `PUT /settings` shallow merge `{ ...current, ...body }` replaced nested objects wholesale, deleting secrets absent from the redacted body. Added deep-merge for `integrations` (including `google` sub-object) and `recaptcha`.
+3. Missing role enforcement: `public-update.ts` handler changed from untyped `APIGatewayProxyHandlerV2` to typed `APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>`, added `requireRole(auth, ["GLOBAL_ADMIN", "RENDERER"])` call, blocking direct Cognito user access.
+4. Renderer proxy env var mismatch: `route.ts` used `NEXT_PUBLIC_API_URL` and `MASTER_API_KEY`, but deployed Lambda has `API_URL` and `AMODX_API_KEY_SECRET`. Fixed to use `process.env.API_URL` and `getRendererKey()` from `api-client.ts`.
+
+**Second review fixes:**
+5. Profile GET path broken: renderer proxy GET called `GET /public/customers/profile?email=...` but no backend GET route exists (only POST). Replaced with direct DynamoDB read via `getCustomerProfile()` — renderer has table read access and the session is validated before the read.
+6. Renderer key privilege model documentation: `api-client.ts` and `authorizer.ts` comments still stated the renderer key was restricted to comments only. Updated to reflect the profile endpoint addition (Phase 7.3).
+
+**Third review fix:**
+7. `getCustomerProfile()` ProjectionExpression omitted `birthday`. UI reads/displays it, backend writes it, but the DynamoDB projection didn't return it. Added to projection.
+
+**Deployment safety — proxy trust model (strict mode):**
+8. Renderer proxies (contact, leads, consent) made server-to-server calls without Origin header. In strict mode, `verifyTenantFromOrigin` blocked them. Fixed with a two-part change:
+   - **Authorizer reorder**: API key checks now run BEFORE the public route bypass. When the renderer sends its key, the authorizer returns `role: RENDERER` instead of `sub: anonymous`. The anonymous fallback only applies when no valid key is present.
+   - **Trusted caller model in tenant-verify**: `verifyTenantFromOrigin` accepts an optional `callerRole`. For RENDERER/GLOBAL_ADMIN, Origin verification is skipped — the authenticated service identity is the trust anchor. For anonymous callers (direct browser), Origin remains the trust anchor.
+   - **Renderer proxies derive tenant from host**: All three proxies now call `getTenantConfig(host)` instead of reading client-supplied `x-tenant-id`. They authenticate with `getRendererKey()`. Dummy headers (`x-api-key: 'web-client'`, `Authorization: 'Bearer public'`) removed.
+   - **Leads proxy bug fix**: original built `backendPayload` with referral enrichment but sent raw `body` instead. Now sends `backendPayload`.
+
+**Files changed:**
+- `backend/src/auth/authorizer.ts` — removed `logKeyMismatch()`, reordered key checks before public route bypass
+- `backend/src/lib/tenant-verify.ts` — fixed GSI attribute name, added `callerRole` parameter for trusted service bypass
+- `backend/src/tenant/settings.ts` — added `redactSecrets()` to GET handler, deep-merge in PUT handler
+- `backend/src/tenant/settings-secrets.ts` — new privileged endpoint
+- `backend/src/customers/public-update.ts` — typed handler, `requireRole(["GLOBAL_ADMIN", "RENDERER"])` enforcement
+- `backend/src/contact/send.ts` — `verifyTenantFromOrigin()` with callerRole
+- `backend/src/leads/create.ts` — `verifyTenantFromOrigin()` with callerRole
+- `backend/src/forms/public-submit.ts` — `verifyTenantFromOrigin()` (browser-direct, no callerRole needed)
+- `backend/src/consent/create.ts` — `verifyTenantFromOrigin()` with callerRole
+- `infra/lib/api-commerce.ts` — removed `noAuth` from `PublicUpdateCustomer`
+- `infra/lib/api.ts` — added `GetSettingsSecretsFunc` Lambda + route, upgraded consent IAM to `grantReadWriteData`
+- `renderer/src/app/api/contact/route.ts` — derives tenant from host, authenticates with renderer key
+- `renderer/src/app/api/leads/route.ts` — derives tenant from host, authenticates with renderer key, sends backendPayload
+- `renderer/src/app/api/consent/route.ts` — derives tenant from host, authenticates with renderer key
+- `renderer/src/app/api/profile/route.ts` — GET reads DynamoDB directly, POST uses correct env vars
+- `renderer/src/lib/api-client.ts` — updated privilege documentation for RENDERER key
+- `renderer/src/lib/dynamo.ts` — added `birthday` to `getCustomerProfile` projection
+- `admin/src/pages/Settings.tsx` — `useAuth` for role check, separate secrets effect, admin-gated secret cards
 
 ---
 

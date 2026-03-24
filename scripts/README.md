@@ -13,8 +13,8 @@ Requests a single ACM certificate in `us-east-1` covering all domains from `amod
 ## `npm run post-deploy`
 
 Syncs CloudFormation outputs and secrets to local `.env` files:
-- `admin/.env.local` — Cognito pool IDs, API URL
-- `renderer/.env.local` — table name, API URL, NextAuth secret
+- `admin/.env.local` — Cognito pool IDs, API URL, renderer URL, region
+- `renderer/.env.local` — table name, region, API_URL, AMODX_API_KEY (local-dev renderer key fallback), NEXT_PUBLIC_API_URL, public pool IDs
 - `tools/mcp-server/.env` — API URL, master API key
 
 Run after every `cdk deploy`.

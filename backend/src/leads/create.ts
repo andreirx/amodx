@@ -5,6 +5,7 @@ import { LeadSchema } from "@amodx/shared";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
+import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
@@ -14,6 +15,14 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: "Missing Tenant Context" };
+
+        // Verify tenant ID — trusted if RENDERER (proxy derived tenant from host), otherwise check Origin
+        const callerRole = (event.requestContext as any)?.authorizer?.lambda?.role as string | undefined;
+        const tenantVerified = await verifyTenantFromOrigin(event.headers as Record<string, string | undefined>, tenantId, callerRole);
+        if (!tenantVerified) {
+            console.warn("Tenant verification failed", { tenantId, origin: event.headers['origin'] });
+            return { statusCode: 403, body: JSON.stringify({ error: "Invalid request origin" }) };
+        }
 
         const body = JSON.parse(event.body || "{}");
 

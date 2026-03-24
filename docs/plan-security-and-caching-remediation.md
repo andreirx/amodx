@@ -857,7 +857,7 @@ CloudFront (injects x-origin-verify header)
     ├── Renderer Lambda (SSR)
     │   ├── Verifies x-origin-verify header
     │   ├── DynamoDB read access (public entities only)
-    │   ├── RENDERER API key (comments only)
+    │   ├── RENDERER API key (comments, profile, contact/leads/consent proxies)
     │   └── Revalidation secret
     │
     └── API Gateway

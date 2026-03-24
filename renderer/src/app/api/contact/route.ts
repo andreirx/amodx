@@ -1,32 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getTenantConfig } from "@/lib/dynamo";
+import { getRendererKey } from "@/lib/api-client";
 
+/**
+ * Contact form proxy.
+ * Derives tenant from host header (server-side, not client-supplied).
+ * Authenticates to backend with renderer API key so the backend can
+ * distinguish this from an anonymous browser call and skip Origin verification.
+ */
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
-        // 1. Get Environment Variable
-        // Remove trailing slash if present to prevent double slashes (https://api.com//contact)
         const apiUrl = process.env.API_URL?.replace(/\/$/, "");
-
         if (!apiUrl) {
             console.error("[Contact Proxy] API_URL is missing in Renderer Environment");
             return NextResponse.json({ error: "Configuration Error" }, { status: 500 });
         }
 
-        // 2. Forward to Backend
-        const tenantId = req.headers.get("x-tenant-id");
+        // Derive tenant from host — not from client-supplied x-tenant-id
+        const host = req.headers.get("host") || "";
+        const config = await getTenantConfig(host.split(":")[0]);
+        if (!config) {
+            return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+        }
 
-        console.log(`[Contact Proxy] Forwarding to ${apiUrl}/contact for tenant ${tenantId}`);
+        const apiKey = await getRendererKey();
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+            "x-tenant-id": config.id,
+        };
+        if (apiKey) {
+            headers["x-api-key"] = apiKey;
+        }
 
         const response = await fetch(`${apiUrl}/contact`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-tenant-id': tenantId || '',
-                'x-api-key': 'web-client',
-                'Authorization': 'Bearer public'
-            },
-            body: JSON.stringify(body)
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
         });
 
         if (!response.ok) {
@@ -37,7 +48,6 @@ export async function POST(req: NextRequest) {
 
         const data = await response.json();
         return NextResponse.json(data);
-
     } catch (err: any) {
         console.error("[Contact Proxy] Exception:", err);
         return NextResponse.json({ error: err.message }, { status: 500 });

@@ -518,7 +518,7 @@ export async function getCustomerProfile(tenantId: string, email: string) {
         const result = await docClient.send(new GetCommand({
             TableName: tableName,
             Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${email.toLowerCase()}` },
-            ProjectionExpression: "email, #n, phone, defaultAddress",
+            ProjectionExpression: "email, #n, phone, birthday, defaultAddress",
             ExpressionAttributeNames: { "#n": "name" },
         }));
         return result.Item || null;

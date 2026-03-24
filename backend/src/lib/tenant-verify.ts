@@ -37,7 +37,7 @@ async function getTenantByDomain(domain: string): Promise<string | null> {
             TableName: TABLE_NAME,
             IndexName: "GSI_Domain",
             KeyConditionExpression: "#d = :domain",
-            ExpressionAttributeNames: { "#d": "domain" },
+            ExpressionAttributeNames: { "#d": "Domain" },
             ExpressionAttributeValues: { ":domain": domain },
             ProjectionExpression: "id"
         }));
@@ -69,15 +69,31 @@ function extractHostname(url: string): string | null {
 /**
  * Verify that the provided tenant ID matches the origin domain.
  *
+ * Two trust models:
+ *   1. Trusted service caller (RENDERER, GLOBAL_ADMIN): the caller derived
+ *      the tenant ID server-side (e.g., from host header via getTenantConfig).
+ *      Origin verification is skipped — the authenticated service identity
+ *      is the trust anchor, not a browser header.
+ *   2. Anonymous/browser caller: Origin header is the trust anchor.
+ *      The browser enforces Origin on cross-origin POST; absence implies
+ *      a curl/script attack and is blocked in strict mode.
+ *
  * @param headers - Request headers (origin, referer)
  * @param tenantId - Tenant ID from x-tenant-id header
- * @returns true if tenant ID matches origin, false otherwise
+ * @param callerRole - Authorizer role, if available (RENDERER, GLOBAL_ADMIN, etc.)
+ * @returns true if tenant ID is verified, false otherwise
  */
 export async function verifyTenantFromOrigin(
     headers: Record<string, string | undefined>,
-    tenantId: string
+    tenantId: string,
+    callerRole?: string
 ): Promise<boolean> {
-    // Extract origin or referer
+    // Trusted service accounts — tenant ID was derived server-side by the caller.
+    if (callerRole === 'RENDERER' || callerRole === 'GLOBAL_ADMIN') {
+        return true;
+    }
+
+    // Anonymous/browser callers — verify Origin matches tenant domain
     const origin = headers['origin'] || headers['Origin'];
     const referer = headers['referer'] || headers['Referer'];
 

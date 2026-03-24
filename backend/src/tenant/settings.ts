@@ -8,6 +8,33 @@ import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
+/**
+ * Strips secret fields from tenant config before returning to any caller.
+ * Secrets are served exclusively via GET /settings/secrets (TENANT_ADMIN/GLOBAL_ADMIN only).
+ *
+ * IMPORTANT: When adding new secret fields to TenantConfig, add them here too.
+ * Current secret fields:
+ *   - recaptcha.secretKey
+ *   - integrations.google.clientSecret
+ *   - integrations.braveApiKey
+ */
+function redactSecrets(config: Record<string, any>): Record<string, any> {
+    const redacted = structuredClone(config);
+
+    if (redacted.recaptcha) {
+        delete redacted.recaptcha.secretKey;
+    }
+
+    if (redacted.integrations) {
+        if (redacted.integrations.google) {
+            delete redacted.integrations.google.clientSecret;
+        }
+        delete redacted.integrations.braveApiKey;
+    }
+
+    return redacted;
+}
+
 export const getHandler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
@@ -37,7 +64,8 @@ export const getHandler: AmodxHandler = async (event) => {
             theme: { primaryColor: "#000000" }
         };
 
-        return { statusCode: 200, body: JSON.stringify(config) };
+        // SECURITY: Strip secrets for all callers. Use GET /settings/secrets for privileged access.
+        return { statusCode: 200, body: JSON.stringify(redactSecrets(config)) };
     } catch (error: any) {
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
@@ -68,6 +96,26 @@ const _updateHandler: AmodxHandler = async (event) => {
 
         const current = result.Item || { name: "Unknown" };
         const merged = { ...current, ...body };
+
+        // Deep-merge nested objects that contain secret fields.
+        // GET /settings strips recaptcha.secretKey, integrations.google.clientSecret,
+        // and integrations.braveApiKey. The client sends the full config on PUT, but
+        // those fields are absent because they were never in the response.
+        // Without deep-merge, { ...current, ...body } replaces the entire nested object,
+        // deleting the secret fields that existed in `current`.
+        if (body.integrations && current.integrations) {
+            merged.integrations = { ...current.integrations, ...body.integrations };
+            // google sub-object needs its own merge (contains clientSecret)
+            if (current.integrations.google || body.integrations?.google) {
+                merged.integrations.google = {
+                    ...current.integrations.google,
+                    ...body.integrations?.google,
+                };
+            }
+        }
+        if (body.recaptcha && current.recaptcha) {
+            merged.recaptcha = { ...current.recaptcha, ...body.recaptcha };
+        }
 
         // Metadata updates
         merged.updatedBy = auth.sub;

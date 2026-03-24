@@ -66,9 +66,17 @@ VITE_REGION=${REGION}
         console.log("✅ Updated admin/.env.local");
 
         // 5. Write Renderer .env.local
+        // API_URL is required by renderer proxy routes (contact, leads, consent, profile POST).
+        // AMODX_API_KEY is the local-dev fallback for the renderer key (api-client.ts checks
+        // this before falling back to AMODX_API_KEY_SECRET / Secrets Manager).
+        // In production, AMODX_API_KEY_SECRET is injected by CDK and the key is fetched
+        // from Secrets Manager. For local dev, we use the master key as the renderer key.
         const rendererEnv = `
 TABLE_NAME=${getOutput("TableName")}
 AWS_REGION=${REGION}
+API_URL=${apiUrl}
+AMODX_API_KEY=${apiKey}
+NEXT_PUBLIC_API_URL=${apiUrl}
 NEXT_PUBLIC_USER_POOL_ID=${publicPoolId}
 NEXT_PUBLIC_USER_POOL_CLIENT_ID=${publicClientId}
 `.trim();

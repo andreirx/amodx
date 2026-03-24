@@ -290,6 +290,20 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('UpdateSettingsInt', updateSettingsFunc),
         });
 
+        // --- SETTINGS SECRETS (privileged, TENANT_ADMIN/GLOBAL_ADMIN only) ---
+        const getSettingsSecretsFunc = new nodejs.NodejsFunction(this, 'GetSettingsSecretsFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/tenant/settings-secrets.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(getSettingsSecretsFunc);
+
+        this.httpApi.addRoutes({
+            path: '/settings/secrets',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('GetSettingsSecretsInt', getSettingsSecretsFunc),
+        });
+
         // --- CONTACT ---
         const contactFunc = new nodejs.NodejsFunction(this, 'ContactFunc', {
             ...nodeProps,
@@ -321,7 +335,7 @@ export class AmodxApi extends Construct {
             entry: path.join(__dirname, '../../backend/src/consent/create.ts'),
             handler: 'handler',
         });
-        props.table.grantWriteData(consentFunc);
+        props.table.grantReadWriteData(consentFunc); // Writes consent + reads GSI_Domain for tenant verification
 
         this.httpApi.addRoutes({
             path: '/consent',

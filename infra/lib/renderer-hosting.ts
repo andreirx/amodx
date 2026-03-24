@@ -172,7 +172,7 @@ export class RendererHosting extends Construct {
                 CACHE_BUCKET_NAME: this.assetBucket.bucketName,
                 CACHE_BUCKET_KEY_PREFIX: '_cache',
                 CACHE_BUCKET_REGION: region,
-                // Phase 2.3: Restricted key - can only POST/DELETE comments, not full admin access
+                // Phase 2.3: Restricted renderer key (comments, customer profile, contact/leads/consent proxies)
                 AMODX_API_KEY_SECRET: props.rendererKeySecret.secretName,
                 // Phase 2.5: Secret for cache revalidation endpoint
                 REVALIDATION_SECRET: props.revalidationSecret.secretValue.unsafeUnwrap(),

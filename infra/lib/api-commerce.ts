@@ -282,7 +282,8 @@ export class CommerceApi extends NestedStack {
         });
         table.grantReadWriteData(publicUpdateCustomerFunc);
 
-        addRoute('PublicUpdateCustomer', 'POST /public/customers/profile', publicUpdateCustomerFunc, { noAuth: true });
+        // SECURITY: Requires auth (renderer sends x-api-key). Was previously noAuth — see Finding 2 remediation.
+        addRoute('PublicUpdateCustomer', 'POST /public/customers/profile', publicUpdateCustomerFunc);
 
         // ===================== DELIVERY =====================
         const getDeliveryConfigFunc = new nodejs.NodejsFunction(this, 'GetDeliveryConfigFunc', {
