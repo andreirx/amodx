@@ -385,12 +385,16 @@ export class AmodxStack extends cdk.Stack {
         memorySize: 256,
         timeout: cdk.Duration.minutes(5),
         environment: {
+            TABLE_NAME: db.table.tableName,
             RENDERER_DISTRIBUTION_ID: distId,
             CACHE_BUCKET_NAME: renderer.assetBucket.bucketName,
             CACHE_BUCKET_KEY_PREFIX: '_cache',
         },
         bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
     });
+
+    // IAM: DynamoDB read/write for change markers (CDN_LAST_CHANGE, CDN_LAST_NIGHTLY_FLUSH)
+    db.table.grantReadWriteData(nightlyFlushFunc);
 
     // IAM: CloudFront invalidation
     nightlyFlushFunc.addToRolePolicy(new iam.PolicyStatement({

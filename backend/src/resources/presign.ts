@@ -4,7 +4,6 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET!;
@@ -114,7 +113,7 @@ const _uploadHandler: Handler = async (event) => {
     }
 };
 
-export const uploadHandler = withInvalidation(_uploadHandler);
+export const uploadHandler = _uploadHandler;
 
 // GET /resources/{id}/download-url (Protected by Purchase Verification)
 export const downloadHandler: Handler = async (event) => {

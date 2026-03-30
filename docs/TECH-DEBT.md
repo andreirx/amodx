@@ -61,6 +61,24 @@ The "glow" (HDR Caustics) pipeline currently uses `colors[0]` only and ignores t
 ### Existing tenants with page effect intensity > 0.15
 The PageEffectConfigSchema intensity cap was lowered from 0.5 to 0.15. Existing tenants with higher values stored in DynamoDB will render fine (renderer reads raw JSON, no validation). But when they open Admin > Settings, the intensity slider now caps at 0.15. Their stored value will display clamped. On save, the old higher value is replaced. No data loss but a subtle visual change they didn't request.
 
+### Deferred npm audit vulnerabilities (blocked on infra guardrails)
+Three groups of vulnerabilities remain unfixed because their fixes require upgrading frozen packages. These MUST NOT be upgraded until CDK infra snapshot tests and CI `cdk synth` are in place.
+
+**aws-cdk-lib 2.241.0** (pinned to exact version in `infra/package.json`):
+- `yaml@1.10.2` (moderate) — Stack Overflow via deeply nested YAML. Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
+- `brace-expansion@5.0.3` (moderate) — Zero-step sequence hang. Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
+- **Actual risk**: Near-zero. CDK never parses untrusted YAML or user-supplied brace patterns. These are build-time tools.
+
+**open-next@3.1.3 / esbuild@0.19.2** (open-next pins esbuild):
+- `esbuild <= 0.24.2` (moderate) — Dev server cross-origin request vulnerability (GHSA-67mh-4wv8-2f99). Only applies to `esbuild --serve`, which open-next does NOT use. Build-time only.
+- **Actual risk**: Zero in production. esbuild is a bundler, not a server, in our deployment.
+- **Blocked on**: upstream open-next releasing with esbuild >= 0.25.0.
+
+**Upgrade plan**: (1) Add infra snapshot tests + CI `cdk synth`, (2) add targeted CDK assertions for critical resources, (3) baseline synth/diff, (4) upgrade aws-cdk-lib to >= 2.245.0, (5) wait for open-next to update esbuild dep.
+
+### CDK infra test suite is a placeholder
+`infra/test/infra.test.ts` is entirely commented out (CDK scaffold boilerplate). No snapshot test, no resource assertions, no CI synthesis step. This means CDK upgrades, construct changes, or dependency bumps have zero automated verification. Must be activated before any aws-cdk-lib version change.
+
 ## Low Priority
 
 ### RecaptchaConfigSchema.enabled field is deprecated

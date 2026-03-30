@@ -155,7 +155,7 @@ Static code review identified 5 findings. 4 fixed, 1 deferred. Post-review ident
 | 7.3 Public customer profile mutation | CRITICAL | ✅ | `POST /public/customers/profile` removed `noAuth`. Handler enforces `requireRole(["GLOBAL_ADMIN", "RENDERER"])`. Renderer proxy uses `getRendererKey()` + `API_URL` (matching deployed env vars). |
 | 7.4 Tenant verification incomplete | HIGH | ✅ | Added `verifyTenantFromOrigin()` to contact, leads, forms, consent. Upgraded consent Lambda to `grantReadWriteData`. |
 | 7.5 Tenant secrets readable by EDITOR | CRITICAL | ✅ | `GET /settings` strips secrets via `redactSecrets()`. `PUT /settings` deep-merges `integrations` and `recaptcha` to preserve secret fields absent from redacted body. New `GET /settings/secrets` endpoint for TENANT_ADMIN/GLOBAL_ADMIN only. Admin UI loads secrets in a separate effect (fixes auth race condition). |
-| 7.6 Renderer excessive DynamoDB access | MEDIUM | ⏳ | Deferred. Renderer Lambda has table-wide read. SSR page still imports `getOrderForCustomer`. Planned: separate commerce table (Option C). |
+| 7.6 Renderer excessive DynamoDB access | MEDIUM | ⏳ | Deferred. Renderer Lambda has table-wide read. SSR page still imports `getOrderForCustomer`. Planned: commerce-private table + backend-proxied self-service reads. See `docs/plan-commerce-private-table.md`. |
 
 **Post-review regression fixes (same session):**
 1. `secretsLoaded` declared-but-never-read: moved secrets fetch to separate `useEffect` that uses `secretsLoaded` as guard, fixing the TS6133 build error and the auth race condition in one change.
@@ -242,6 +242,25 @@ Static code review identified 5 findings. 4 fixed, 1 deferred. Post-review ident
 - `.github/workflows/security-audit.yml` - npm audit on push
 - `.github/workflows/playwright.yml` - Fixed cross-platform optional deps
 - `.github/dependabot.yml` - Weekly grouped updates, majors ignored
+
+---
+
+## Phase 8: npm Audit Remediation (2026-03-30)
+
+Resolved 5 of 8 vulnerabilities (including the only CRITICAL and both HIGHs) via `npm audit fix`. Remaining 5 moderate-severity findings are all inside frozen packages (aws-cdk-lib bundled deps, open-next/esbuild) — deferred until infra guardrails are in place.
+
+| Package | Before | After | Severity | Notes |
+|---------|--------|-------|----------|-------|
+| handlebars | 4.7.8 | 4.7.9 | **CRITICAL** → fixed | 5 CVEs (proto pollution, JS injection, AST confusion). Transitive of ts-jest (dev only). |
+| path-to-regexp | 8.3.0 | 8.4.0 | **HIGH** → fixed | ReDoS via sequential optional groups + multiple wildcards. Transitive of sinon/nise + express/router. |
+| picomatch | 2.3.1 / 4.0.3 | 2.3.2 / 4.0.4 | **HIGH** → fixed | Method injection + ReDoS. Transitive of jest, vite, vitest, tinyglobby. |
+| brace-expansion | 1.1.12 / 2.0.2 | 1.1.13 / 2.0.3 | moderate → fixed | Zero-step sequence hang. Transitive of eslint, minimatch, @node-minify. |
+| aws-cdk-lib | 2.241.0 | **frozen** | moderate (yaml + brace) | Pinned to exact version. Upgrade blocked on infra guardrails. |
+| esbuild (open-next) | 0.19.2 | **frozen** | moderate | Dev server vuln. Build-time only, not exploitable. Blocked on upstream. |
+
+**aws-cdk-lib pinned**: Changed `infra/package.json` from `"^2.241.0"` to `"2.241.0"` to prevent accidental upgrades before infra tests exist.
+
+**CI impact**: `security-audit.yml` uses `--audit-level=high`. All high/critical findings are now resolved, so CI will pass. The 5 remaining moderate findings won't trigger failure.
 
 ---
 

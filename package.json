@@ -16,7 +16,8 @@
     "setup-config": "tsx scripts/setup-config.ts",
     "manage-domains": "tsx scripts/manage-domains.ts",
     "post-deploy": "npx tsx scripts/post-deploy.ts",
-    "post-deploy-staging": "npx tsx scripts/post-deploy-staging.ts"
+    "post-deploy-staging": "npx tsx scripts/post-deploy-staging.ts",
+    "migrate-commerce-private-table": "npx tsx scripts/migrate-commerce-private-table.ts"
   },
   "dependencies": {
     "autoprefixer": "^10.4.22",

@@ -6,7 +6,6 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const s3 = new S3Client({});
 const BUCKET = process.env.UPLOADS_BUCKET!;
@@ -81,4 +80,4 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

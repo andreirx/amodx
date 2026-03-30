@@ -121,41 +121,41 @@ Properties:
 - **Best-effort**: Marker write errors are logged but don't fail the response.
 - **Unconditional overwrite**: PutItem always wins. Latest mutation timestamp is the source of truth.
 
-#### Wrapped Handlers (51)
+#### Wrapped Handlers (cache-relevant only)
+
+Only handlers that change what visitors see on cached pages are wrapped. Transactional mutations (orders, leads, contact submissions, customer profile updates, admin user management, signals, coupons, delivery config, assets, resources) are NOT wrapped — they do not affect cached page content.
 
 | Domain | Files |
 |--------|-------|
 | Content | create, update, restore |
-| Context | create, update, delete |
 | Products | create, update, delete, bulk-price |
 | Categories | create, update, delete |
-| Orders | create, update, update-status |
-| Customers | update, public-update |
-| Delivery | update |
-| Coupons | create, update, delete |
 | Reviews | create, update, delete |
 | Popups | create, update, delete |
 | Forms | create, update, delete |
-| Themes | manage (applyTheme, resetTheme) |
-| Tenant | create, settings (updateSettings) |
-| Assets | create |
-| Signals | create, update |
-| Comments | create, moderate |
-| Contact | send |
-| Leads | create, delete |
-| Users | invite, update, delete, toggle-status |
-| Webhooks | paddle |
-| Resources | presign |
+| Themes | manage (createHandler, deleteHandler) |
+| Tenant | create, settings (updateHandler) |
 | Import | woocommerce, wordpress, media |
 
-#### Opt-out Pattern
+#### Not Wrapped (transactional / non-cache-visible)
 
-If a future handler should NOT invalidate (e.g., a read-heavy analytics endpoint), simply don't wrap it:
+These handlers do NOT trigger CloudFront invalidation, the admin "changes pending" banner, or the nightly backstop:
 
-```typescript
-// No withInvalidation — this is a query, not a mutation
-export const handler: Handler = async (event) => { /* ... */ };
-```
+| Domain | Files | Reason |
+|--------|-------|--------|
+| Orders | create, update, update-status | Transaction data, not page content |
+| Customers | update, public-update | Profile data, fetched at runtime |
+| Contact | send | Form submission |
+| Leads | create, delete | CRM data |
+| Coupons | create, update, delete | Validated via API, not in cached pages |
+| Delivery | update | Config fetched at runtime by date picker |
+| Comments | create, moderate | Loaded client-side via API |
+| Context | create, update, delete | Admin-only strategy docs |
+| Signals | create, update | Growth engine, admin-only |
+| Users | invite, update, delete, toggle-status | Admin user management |
+| Assets | create | Upload; pages change when content is updated |
+| Resources | presign | Presigned URL generation |
+| Webhooks | paddle | Payment fulfillment email |
 
 ### 2. Debounce Flush Lambda
 
@@ -229,14 +229,32 @@ Currently used by 5 handlers:
 
 **Limitation**: Uses hardcoded default URL prefixes (`/product`, `/category`). Tenants with custom URL prefixes (e.g., `/produs`) won't get precise ISR invalidation. The nightly flush covers this gap.
 
-### 6. Nightly Safety Net — Both Layers
+### 6. Nightly Safety Net — Both Layers (change-gated)
 
 **File**: `backend/src/scheduled/nightly-cache-flush.ts`
 
-Scheduled Lambda triggered by EventBridge cron at **02:00 UTC daily**. Flushes both cache layers completely:
+Scheduled Lambda triggered by EventBridge cron at **02:00 UTC daily**. Skips entirely if no cache-relevant mutations happened since the last successful nightly flush.
+
+**Decision logic** (two DynamoDB markers):
+
+| Marker | Written by | Deleted by |
+|--------|-----------|------------|
+| `SYSTEM#CDN_LAST_CHANGE` | `markCdnPending()` in `withInvalidation()` on each cache-relevant mutation | Never (persistent high-water mark) |
+| `SYSTEM#CDN_LAST_NIGHTLY_FLUSH` | This Lambda, after both flush steps succeed | Never (persistent high-water mark) |
+
+At invocation:
+1. Read both markers
+2. If `CDN_LAST_CHANGE` does not exist → no mutations ever → skip
+3. If `CDN_LAST_NIGHTLY_FLUSH.flushedAt >= CDN_LAST_CHANGE.updatedAt` → no changes since last flush → skip
+4. Otherwise → proceed with flush
+5. If marker read fails → proceed with flush as safety fallback
+
+When it does run, flushes both cache layers:
 
 1. **CloudFront**: Submits `/*` invalidation (clears all edge caches globally)
 2. **S3 ISR cache**: Paginated deletion of all objects under `_cache/` prefix (1000 per batch)
+
+**Success-gated marker write**: `CDN_LAST_NIGHTLY_FLUSH` is only written if both CloudFront invalidation and S3 purge succeed. A failed flush does not suppress the next nightly run.
 
 After the nightly flush, the first visitor to any page triggers a fresh SSR from DynamoDB. Cache refills organically as visitors arrive.
 
@@ -245,6 +263,8 @@ This covers:
 - Edge cases where `revalidatePath()` silently fails
 - Tenants with custom URL prefixes that bypass path-based ISR revalidation
 - Any cache corruption or drift
+
+On days with zero content changes, the nightly flush skips entirely and cached pages remain warm.
 
 ---
 

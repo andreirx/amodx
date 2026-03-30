@@ -5,7 +5,7 @@ import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
+
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL!;
@@ -126,4 +126,4 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

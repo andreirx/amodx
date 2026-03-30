@@ -6,7 +6,6 @@ import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order
 import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
 import { OrderInputSchema } from "@amodx/shared";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -527,4 +526,4 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

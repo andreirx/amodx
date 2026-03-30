@@ -6,7 +6,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
+
 
 const s3 = new S3Client({});
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET; // Ensure this env var is passed in CDK!
@@ -110,4 +110,4 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

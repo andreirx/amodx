@@ -5,7 +5,6 @@ import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { renderTemplate } from "../lib/order-email.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 import crypto from "crypto";
 
 const cognito = new CognitoIdentityProviderClient({});
@@ -108,4 +107,4 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

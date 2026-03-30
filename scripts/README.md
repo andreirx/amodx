@@ -19,6 +19,37 @@ Syncs CloudFormation outputs and secrets to local `.env` files:
 
 Run after every `cdk deploy`.
 
+## `npm run migrate-commerce-private-table`
+
+One-time operational migration tool for moving customer-private commerce records out of the main table and into the dedicated commerce-private table.
+
+Modes:
+- `plan` - query counts from source and destination, no writes
+- `migrate` - copy the moved record families into the destination table and verify
+- `verify` - compare source and destination without writing
+
+Moved sort-key families:
+- `ORDER#`
+- `CUSTORDER#`
+- `CUSTOMER#`
+- `COUNTER#ORDER`
+
+Hard rules:
+- explicit tenant allowlist required
+- explicit source and destination tables required
+- uses `QueryCommand`, never `ScanCommand`
+- does not delete source records
+
+Example:
+
+```bash
+npm run migrate-commerce-private-table -- \
+  --mode plan \
+  --source-table AmodxTable \
+  --destination-table AmodxCommerceTable \
+  --tenants tenant-a,tenant-b
+```
+
 ## Adding a Tenant Domain
 
 ```bash

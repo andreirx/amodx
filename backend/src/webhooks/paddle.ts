@@ -4,7 +4,6 @@ import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
 const s3 = new S3Client({});
@@ -133,4 +132,4 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

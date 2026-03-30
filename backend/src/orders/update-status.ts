@@ -6,7 +6,6 @@ import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -178,4 +177,4 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;

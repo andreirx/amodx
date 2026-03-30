@@ -3,7 +3,6 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 /**
  * Customer profile update — called via renderer proxy only.
@@ -120,4 +119,4 @@ const _handler: AmodxHandler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = _handler;
