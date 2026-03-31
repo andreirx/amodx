@@ -452,6 +452,161 @@ This is sufficient for the current small commerce footprint.
 - the renderer still has read access to the main table
 - this plan fixes customer-private commerce exposure first because that is the highest-value boundary and aligns with the active renderer customer-account paths
 
+## What does it look like from deployment perspective?
+
+### Deploy 1 — Build the new read path + create empty table
+
+  What you code:
+
+  - Phase 1: Remove getOrderForCustomer import and usage from renderer/src/app/[siteId]/[[...slug]]/page.tsx. The
+  order tracking page switches to a client-side fetch through a renderer API route (or the existing GET
+  /public/orders/{id} backend endpoint, which stays in the main table).
+  - Phase 2: Add backend/src/lib/commerce-db.ts — the typed-function module. In this deploy it wraps the OLD table.
+  Every function takes a table name parameter or reads from COMMERCE_TABLE_NAME env var, falling back to TABLE_NAME.
+  This means the module works against the main table until the env var is set.
+  - Phase 2: Add two new backend handlers — GET /customer/orders and GET /customer/profile. Both use
+  requireRole(["RENDERER"]), read email from a request header (e.g., x-customer-email), and call commerce-db.ts
+  functions. Register routes in CDK (api-commerce.ts nested stack).
+  - Phase 3: Rewrite renderer/src/app/api/account/orders/route.ts — stop importing getCustomerOrders from dynamo.ts,
+  instead call GET /customer/orders on the backend with renderer key + tenant from host + session email in header.
+  - Phase 3: Rewrite renderer/src/app/api/profile/route.ts GET — stop importing getCustomerProfile from dynamo.ts,
+  instead call GET /customer/profile on the backend with renderer key.
+  - Phase 4: Add the new DynamoDB table in CDK. Suggested location: infra/lib/database.ts alongside the existing
+  table, or a new infra/lib/commerce-database.ts construct. PK/SK, PAY_PER_REQUEST, PITR enabled. Pass the table to
+  api-commerce.ts as a new prop. Do NOT set COMMERCE_TABLE_NAME on any Lambda yet — the fallback to TABLE_NAME means
+  everything still reads the main table.
+  - Remove getOrderForCustomer, getCustomerOrders, getCustomerProfile from renderer/src/lib/dynamo.ts (dead code
+  after Phases 1+3).
+
+  What you deploy:
+
+  Single cdk deploy. Everything goes live together. The new backend endpoints exist. The renderer uses them. The new
+  table exists but is empty and unused.
+
+  What you verify:
+
+  - Account page loads order history (data flows: renderer → backend → main table, same data as before)
+  - Profile page loads and saves (renderer → backend → main table)
+  - Order tracking page works (no longer SSR, uses client-side or public endpoint)
+  - No renderer code imports customer/order DynamoDB functions
+  - New empty table visible in DynamoDB console
+
+  Risk: Low. All reads still hit the main table. The new table is inert. If the backend endpoints fail, the renderer
+  shows errors on account/profile pages — test-only pages, easily caught.
+
+  ---
+###  Operational Step — Data migration
+
+  Prerequisite: Activate commerce write freeze. In practice: stop placing test orders. If the test shop has a
+  storefront, temporarily disable checkout or just don't use it.
+
+  What you run:
+
+  # Plan — see what will be migrated
+  npx tsx scripts/migrate-commerce-private-table.ts \
+    --mode plan \
+    --source-table AmodxTable \
+    --destination-table AmodxCommerceTable \
+    --tenants <your-commerce-tenant-id>
+
+  # Migrate — copy records
+  npx tsx scripts/migrate-commerce-private-table.ts \
+    --mode migrate \
+    --source-table AmodxTable \
+    --destination-table AmodxCommerceTable \
+    --tenants <your-commerce-tenant-id>
+
+  # Verify — confirm parity
+  npx tsx scripts/migrate-commerce-private-table.ts \
+    --mode verify \
+    --source-table AmodxTable \
+    --destination-table AmodxCommerceTable \
+    --tenants <your-commerce-tenant-id>
+
+  What you verify:
+
+  - Plan output shows expected record counts per prefix
+  - Migrate completes without errors
+  - Verify confirms zero missing keys, zero unexpected keys
+  - DynamoDB console shows records in the new table
+
+  Do not proceed to Deploy 2 until verify passes. Write freeze stays active.
+
+  ---
+### Deploy 2 — Backend storage cutover
+
+  What you code:
+
+  - Phase 6: Set COMMERCE_TABLE_NAME env var on all commerce Lambda handlers in CDK. This switches commerce-db.ts
+  from the fallback (main table) to the new table.
+  - Phase 6: Update orders/create.ts — the TransactWriteCommand now references two tables. ORDER#, CUSTORDER#,
+  CUSTOMER#, COUNTER# items use COMMERCE_TABLE_NAME. COUPON# usage update uses TABLE_NAME.
+  - Phase 6: Update orders/get.ts, orders/list.ts, orders/public-get.ts, orders/update.ts, orders/update-status.ts —
+  read/write from COMMERCE_TABLE_NAME.
+  - Phase 6: Update customers/get.ts, customers/list.ts, customers/update.ts, customers/public-update.ts — read/write
+   from COMMERCE_TABLE_NAME.
+  - Phase 6: Update reports/summary.ts — reads from COMMERCE_TABLE_NAME.
+  - Phase 6: Grant grantReadWriteData on the new table to all affected Lambda functions in CDK. Grant grantReadData
+  on the new table to read-only handlers (reports, get, list).
+
+  What you deploy:
+
+  Single cdk deploy. All backend handlers now read/write the new table. The migrated data is already there from the
+  previous step.
+
+  What you verify (Phase 7):
+
+  - Place a new test order → confirm it appears in the new table (DynamoDB console)
+  - Account page shows old migrated orders AND the new test order
+  - Profile read/update works
+  - Public order tracking works
+  - Admin order list shows all orders
+  - Reports page loads
+  - Run verify mode of migration script again to confirm source and destination still match (plus the new order only
+  in destination)
+
+  Lift write freeze. Commerce is now fully operational on the new table.
+
+  Risk: Medium. This is the cutover moment. If something fails, rollback is: revert the CDK deploy (which removes
+  COMMERCE_TABLE_NAME env var, handlers fall back to main table). Data in the main table is untouched.
+
+  ---
+### Operational Step — Purge old records from main table
+
+  When: After validation is complete and you're confident the new table is the source of truth. No rush — the old
+  records don't cause functional issues, they're just a residual security exposure.
+
+  What you run:
+
+  A purge script (not yet written) or manual DynamoDB operations that delete ORDER#, CUSTORDER#, CUSTOMER#,
+  COUNTER#ORDER records from the main table for each migrated tenant.
+
+  What you verify:
+
+  - Renderer Lambda cannot read any customer/order data from the main table (the security property is now true)
+  - All commerce paths still work (they read the new table)
+
+  ---
+  Summary
+
+  ┌───────────┬───────────┬───────────────────────────────────┬─────────────────────────────────────────────────┐
+  │   Step    │   Type    │           What changes            │                    Rollback                     │
+  ├───────────┼───────────┼───────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Deploy 1  │ cdk       │ New read path + empty table       │ Revert code, redeploy                           │
+  │           │ deploy    │                                   │                                                 │
+  ├───────────┼───────────┼───────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Migration │ Script    │ Data copied to new table          │ Delete from new table                           │
+  ├───────────┼───────────┼───────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Deploy 2  │ cdk       │ Backend reads/writes new table    │ Revert code, redeploy (main table still has     │
+  │           │ deploy    │                                   │ data)                                           │
+  ├───────────┼───────────┼───────────────────────────────────┼─────────────────────────────────────────────────┤
+  │ Purge     │ Script    │ Old records deleted from main     │ Restore from PITR backup                        │
+  │           │           │ table                             │                                                 │
+  └───────────┴───────────┴───────────────────────────────────┴─────────────────────────────────────────────────┘
+
+  Two deploys. One migration script run. One purge. Write freeze only between migration and Deploy 2 validation
+  completion.
+
 ## Definition of Done
 
 - renderer no longer reads `ORDER#`, `CUSTORDER#`, `CUSTOMER#`, or `COUNTER#ORDER` directly
