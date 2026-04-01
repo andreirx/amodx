@@ -71,6 +71,36 @@ Detailed patterns and business logic live in `docs/`:
 | `docs/plan-self-hosted-saas.md`       | SaaS platform: control plane, provisioning, billing, AI integration, phases |
 
 
+## Codebase Intelligence (rgr)
+
+This repo can be indexed by `rgr` (Repo-Graph) for structural analysis. If rgr is available on PATH:
+
+```bash
+rgr repo add .                           # Register this repo
+rgr repo index amodx                     # Full index (~400 files, <1s)
+rgr graph cycles amodx                   # Module-level dependency cycles
+rgr graph dead amodx --kind SYMBOL       # Unreferenced exported symbols
+rgr graph callers amodx <symbol>         # Who calls this?
+rgr graph callers amodx <symbol> --edge-types CALLS,INSTANTIATES  # Who uses this?
+rgr graph path amodx <from> <to>         # Shortest path between two symbols
+```
+
+Use `/investigate-symbol amodx <SymbolName>` for a guided investigation workflow. Use `/repo-overview .` for a full structural health check.
+
+rgr uses syntax-only resolution (no type info). Import graphs are accurate. Call graphs are conservative — `this.method()` and `obj.method()` calls may not resolve. When callee results look incomplete, read the source directly.
+
+When you find architectural breadcrumbs, comments, or docs in the repo:
+- Do not copy them into repo-graph blindly.
+- First verify them against current code.
+- If the claim is still true and operationally useful, store the distilled fact in rgr as a declaration.
+- Prefer short, canonical facts over prose.
+- Treat rgr as the system of record for verified architectural facts, with source files/docs serving as evidence.
+- If a breadcrumb conflicts with code, trust code and report the drift.
+
+HOWEVER - Only store a fact in rgr if it would help a future agent make a better design/debugging decision without rereading the same code.
+Store surprises, constraints, hazards, and architectural intent.
+Don’t store summaries of obvious code.
+
 # System Intent (WHY)
 This repository contains a high-reliability, safety-critical product. The objective is rock-solid execution, not a Minimum Viable Product. Structural decisions must prioritize long-term maintainability, hardware-independence, and off-target testability. 
 

@@ -29,6 +29,8 @@ interface AmodxApiProps {
     additionalCorsOrigins?: string[]; // Phase 6.2: CloudFront URLs, staging domains, etc.
     rendererUrl?: string; // Phase 4: For cache revalidation calls
     recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
+    publicPoolId?: string; // Public Cognito pool for customer auth (optional, wired when available)
+    publicPoolClientId?: string; // Public Cognito pool client ID
 }
 
 export class AmodxApi extends Construct {
@@ -79,6 +81,12 @@ export class AmodxApi extends Construct {
                 USER_POOL_CLIENT_ID: props.userPoolClientId,
                 MASTER_KEY_SECRET_NAME: props.masterKeySecret.secretName,
                 RENDERER_KEY_SECRET_NAME: props.rendererKeySecret.secretName, // Phase 2.1
+                // Public Cognito pool for customer auth — both must be set or neither.
+                // Authorizer validates pairing at cold start and fails closed on mismatch.
+                ...(props.publicPoolId && props.publicPoolClientId ? {
+                    PUBLIC_POOL_ID: props.publicPoolId,
+                    PUBLIC_POOL_CLIENT_ID: props.publicPoolClientId,
+                } : {}),
             },
             bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
         });

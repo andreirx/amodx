@@ -216,6 +216,8 @@ export class AmodxStack extends cdk.Stack {
       additionalCorsOrigins: corsCloudFrontUrl ? [corsCloudFrontUrl] : undefined, // Phase 6.2: CloudFront URL for previews
       rendererUrl: rendererBaseUrl, // Phase 4: For cache revalidation
       recaptchaSecretKey, // Deployment-level reCAPTCHA (mandatory bot protection)
+      publicPoolId: auth.publicPool.userPoolId, // Public Cognito pool for customer auth
+      publicPoolClientId: auth.publicClient.userPoolClientId,
     });
 
     if (apiDomain && domains) {

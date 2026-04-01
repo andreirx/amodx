@@ -3,7 +3,7 @@
 ## Status
 
 - Decision record: proposed and documented
-- Current maturity: no scheduling module; Public Cognito pool is provisioned but dormant
+- Current maturity: no scheduling module; Public Cognito pool is wired in the authorizer (returns role: "CUSTOMER") but no consumer routes exist yet
 - Target maturity: production-grade boundary where:
   - appointment data (including customer details) lives in a dedicated appointments-private table
   - the renderer Lambda cannot read that table
@@ -17,7 +17,7 @@ AMODX tenants will need “events between the user and the tenant” such as den
 Today:
 
 - There is no scheduling domain model or storage.
-- The Public Cognito pool exists, but is unused.
+- The Public Cognito pool is wired in the Lambda authorizer — public pool JWTs are verified and return `role: "CUSTOMER"` with `tenantId` from `custom:tenant_id`. No consumer routes accept this role yet. See `docs/authentication-architecture.md` section 2.
 - The main DynamoDB table is shared by many entity families, and the renderer has read access to that table.
 
 If we naively add appointments into the main table and allow the renderer to read/write them, we repeat the original commerce exposure: compromise of the public renderer process would grant access to customer-private appointment data (names, emails, phone numbers, times, notes).
@@ -152,23 +152,23 @@ Trust model:
 
 ## Authentication Architecture Integration
 
-### Public Cognito Pool Usage
+### Public Cognito Pool Usage — IMPLEMENTED
 
-From `infra/lib/auth.ts` and `docs/authentication-architecture.md`:
+The Lambda authorizer (`backend/src/auth/authorizer.ts`) now verifies Public pool JWTs as a fallback after Admin pool verification. See `docs/authentication-architecture.md` section 2 for full details.
 
-- The Public pool currently defines a custom attribute: `custom:tenant_id`.
-- It is provisioned but not wired into any routes.
+Current state:
 
-Required changes (conceptual, not implemented here):
+- `custom:tenant_id` is extracted and validated (must be non-empty string).
+- Role is always the literal `”CUSTOMER”` — never derived from token claims.
+- `PUBLIC_POOL_ID` and `PUBLIC_POOL_CLIENT_ID` must both be set or both be unset; mismatched config fails closed.
+- No consumer routes accept CUSTOMER yet. Appointment handlers (Phase 4) will be the first.
 
-- Extend `backend/src/auth/authorizer.ts` (or add a sibling authorizer) to:
-  - Verify JWTs against the Public pool as well as the Admin pool.
-  - When a token is from the Public pool:
-    - Map `custom:tenant_id` → `auth.tenantId`.
-    - Set `auth.role = "CUSTOMER"` (or similar).
-- Appointment endpoints then rely on `requireRole()` and strict tenant equality to enforce isolation.
+Appointment endpoints will rely on `requireRole(auth, [“CUSTOMER”], tenantId)` and strict tenant equality to enforce isolation. This keeps the same “authorizer -> auth context -> handler” pattern used by commerce and admin routes.
 
-This keeps the same “authorizer → auth context → handler” pattern used by commerce and admin routes.
+Security constraints for appointment routes:
+
+- Do NOT place appointment endpoints under anonymous-bypass paths (`POST /leads`, `POST /contact`, `POST /consent`) — those resolve before JWT verification and silently ignore bearer tokens.
+- Do NOT treat `custom:tenant_id` alone as sufficient tenant proof — appointment handlers must also verify host/tenant consistency or enforce server-controlled membership so a token for tenant A cannot be replayed against tenant B routes.
 
 ## Clean Architecture Shape
 
@@ -223,33 +223,24 @@ This mirrors the commerce-private-table rollout, but for a new domain (appointme
 
 At this point the table is empty and inert.
 
-### Phase 3 — Auth Wiring
+### Phase 3 — Auth Wiring — COMPLETED (as support module)
 
-Two main options (to be implemented later, trade-offs documented here):
+**Decision: Option 1 — Single shared authorizer (extended).**
 
-1. **Single shared authorizer (extended)**  
-   - Extend `backend/src/auth/authorizer.ts` to:
-     - Detect token issuer/audience and route to Admin vs Public verifier.
-     - Map Public pool `custom:tenant_id` into `auth.tenantId`.
-     - Set `auth.role = "CUSTOMER"` for Public pool tokens.
-   - Pros:
-     - One place to harden and audit.
-     - Simpler API Gateway configuration.
-   - Cons:
-     - More complexity in a single authorizer function.
-     - Careful testing required to avoid role confusion.
+Implemented in `backend/src/auth/authorizer.ts`. The existing authorizer now verifies Public pool JWTs as a fallback after Admin pool verification fails.
 
-2. **Separate authorizer / routes for scheduling**  
-   - Provision a second authorizer Lambda dedicated to the Public pool.
-   - Appointment routes use this authorizer; admin/commerce routes keep the current one.
-   - Pros:
-     - Clear separation of concerns between admin and customer auth.
-     - Easier to reason about in logs and IAM.
-   - Cons:
-     - More moving parts at the API Gateway level.
-     - Slightly more infrastructure surface area (additional authorizer function).
+Behavior:
+- Role is always the literal `"CUSTOMER"` — never derived from token claims
+- `tenantId` extracted from `custom:tenant_id` — rejected if missing or empty
+- `PUBLIC_POOL_ID` and `PUBLIC_POOL_CLIENT_ID` must both be set or both unset — mismatched config fails closed with CRITICAL log
+- No consumer routes exist yet — all existing `requireRole()` calls reject CUSTOMER
 
-This document does not choose between them; the implementation phase must explicitly pick one and update this doc.
+Security constraints for appointment routes (when added):
+- Do NOT place customer endpoints under anonymous-bypass paths (`POST /leads`, `POST /contact`, `POST /consent`) — those resolve before JWT verification
+- Do NOT treat `custom:tenant_id` alone as sufficient tenant proof — appointment handlers must also verify host/tenant consistency or enforce server-controlled membership
+- Unit tests in `backend/test/auth-policy.test.ts` verify CUSTOMER is rejected by all existing admin role lists
+
+See `docs/authentication-architecture.md` section 2 for full details.
 
 ### Phase 4 — Backend Handlers (Customer + Admin)
 

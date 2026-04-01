@@ -7,7 +7,7 @@ AMODX has **five authentication mechanisms** serving different audiences. Two Co
 | Mechanism | Pool / Provider | Status | Audience | Sign-up |
 |-----------|----------------|--------|----------|---------|
 | Admin Cognito Pool | `AmodxAdminPool` | **Active** | Agency owners, editors | Invite-only |
-| Public Cognito Pool | `AmodxPublicPool` | **Provisioned, not wired** | Tenant visitors | Self-signup |
+| Public Cognito Pool | `AmodxPublicPool` | **Wired, no consumer routes** | Tenant visitors | Self-signup |
 | NextAuth + Google OAuth | Per-tenant Google credentials | **Active** | Site customers | Google sign-in |
 | Master API Key | Secrets Manager | **Active** | MCP tools, system robots | N/A |
 | Renderer API Key | Secrets Manager | **Active** | Renderer Lambda proxy routes | N/A |
@@ -38,7 +38,7 @@ AMODX has **five authentication mechanisms** serving different audiences. Two Co
 
 **All authenticated API routes use this pool.** Public routes (`/public/*`, `/leads`, `/contact`, `/consent`) allow anonymous access, but the authorizer checks API keys first -- if the renderer key is present, the request is authenticated as `RENDERER` role before the anonymous fallback runs. See section 4b.
 
-## 2. Public Pool (Provisioned but Dormant)
+## 2. Public Pool (Wired, No Consumer Routes Yet)
 
 **CDK:** `infra/lib/auth.ts` -> `AmodxPublicPool`
 
@@ -48,20 +48,28 @@ AMODX has **five authentication mechanisms** serving different audiences. Two Co
 **Configuration:**
 - `selfSignUpEnabled: true`
 - Sign-in aliases: email + username
-- Password: min 6 chars (lower bar than admin)
+- Password: min 8 chars
 - No custom invite email
 
 **Current status:**
 - Pool IDs exported as CloudFormation outputs (`PublicPoolId`, `PublicClientId`)
 - Written to `renderer/.env.local` by `scripts/post-deploy.ts` as `NEXT_PUBLIC_USER_POOL_ID` and `NEXT_PUBLIC_USER_POOL_CLIENT_ID`
-- **Never imported or referenced** in any renderer source code
-- No API routes use it for authorization
+- **Authorizer wired:** `PUBLIC_POOL_ID` and `PUBLIC_POOL_CLIENT_ID` passed to the Lambda authorizer. Public pool JWTs are verified as a fallback after admin pool verification fails.
+- **No consumer routes exist yet.** All existing `requireRole()` calls use admin-only role lists. A valid CUSTOMER token will authenticate successfully but be rejected at the handler level by every current route.
+
+**Authorizer behavior for public pool tokens:**
+- Role is ALWAYS the literal `"CUSTOMER"` -- never read from token claims, never defaultable
+- `tenantId` is extracted from `custom:tenant_id` -- if missing or empty, the token is rejected
+- If `PUBLIC_POOL_ID` is set but `PUBLIC_POOL_CLIENT_ID` is missing (or vice versa), the public pool branch is disabled entirely and a CRITICAL error is logged
+
+**Security constraints for future consumer routes:**
+- Do NOT add customer routes under the anonymous-bypass paths (`POST /leads`, `POST /contact`, `POST /consent`). Those resolve before JWT verification in the authorizer cascade, which means a bearer token sent to those routes is silently ignored.
+- Do NOT treat `custom:tenant_id` alone as sufficient proof of tenant access. Public users are lower-trust identities. Consumer routes must still perform host/tenant consistency checks or server-controlled membership verification so a token for tenant A cannot be replayed against tenant B routes.
 
 **Design intent:**
 - `TenantMemberSchema` in `packages/shared/src/index.ts` has `id` field commented as "Cognito SUB from the End User Pool"
 - `TenantMemberRole` enum: `["Member", "Subscriber", "VIP"]` -- distinct from admin roles
-- The pool client comment says "NextAuth runs client-side/edge compatible"
-- Likely intended as a user store behind NextAuth, but the implementation went a different direction
+- Future use: commerce customer accounts (subscribers, member tiers), appointments/scheduling
 
 ## 3. NextAuth + Google OAuth (Active)
 
@@ -141,20 +149,22 @@ The renderer proxies derive the tenant ID server-side from the host header via `
 ```
                         API Gateway
                     (Lambda Authorizer)
-   Check order: API keys -> public bypass -> Cognito JWT
+   Check order: API keys -> anonymous bypass -> Admin JWT -> Public JWT
 
-       |              |                          |
-  Master Key     Renderer Key              Cognito JWT
-  (GLOBAL_ADMIN)  (RENDERER)              (EDITOR/TENANT_ADMIN)
-       |              |                          |
-       v              v                          v
-  All routes     Scoped routes            Authenticated routes
-               (comments, profile,       (content, products,
-                contact/leads/consent)    orders, users, etc.)
+       |              |              |                    |
+  Master Key     Renderer Key   Anonymous bypass     Cognito JWT
+  (GLOBAL_ADMIN)  (RENDERER)    (leads/contact/      (two pools)
+       |              |          consent)                 |
+       v              v              v              ┌─────┴─────┐
+  All routes     Scoped routes   Public routes   Admin pool   Public pool
+               (comments,       (no auth)       (EDITOR/      (CUSTOMER)
+                profile, etc.)                   TENANT_ADMIN)
 
-  If no valid key on public routes -> anonymous bypass
-  (POST /leads, POST /contact, POST /consent)
-  Anonymous callers verified via Origin header
+  Admin pool: custom:role + custom:tenantId (camelCase)
+  Public pool: role hardcoded to "CUSTOMER" + custom:tenant_id (underscore)
+
+  WARNING: Anonymous bypass runs BEFORE JWT verification.
+  Do NOT add customer routes under POST /leads, /contact, /consent.
 
 
                      Renderer (Next.js)
@@ -166,8 +176,10 @@ The renderer proxies derive the tenant ID server-side from the host header via `
 
 
                    Public Pool (Cognito)
-                   *** NOT CURRENTLY USED ***
-   Provisioned in CDK, env vars written, but never imported
+                   *** WIRED — NO CONSUMER ROUTES YET ***
+   Authorizer verifies public pool JWTs as fallback after admin pool.
+   Returns role: "CUSTOMER", tenantId from custom:tenant_id.
+   No existing route accepts CUSTOMER in its allowedRoles.
 ```
 
 ## 5. Commerce Customer Flow (How Orders Are Tracked)
@@ -225,17 +237,25 @@ reCAPTCHA v3 is orthogonal to authentication -- it protects **unauthenticated pu
 ## Key Facts
 
 - **Pools are per-deployment, not per-tenant.** One admin pool serves all tenants. Tenant isolation is via `custom:tenantId` attribute + backend authorization checks.
-- **The public pool exists but does nothing.** It was created as forward-looking infrastructure. Customer authentication bypasses it entirely via NextAuth.
+- **The public pool is wired but has no consumer routes.** The authorizer verifies public pool JWTs as a fallback after admin pool, returning `role: "CUSTOMER"`. No existing route accepts CUSTOMER. Commerce customer accounts still use NextAuth + email-based DynamoDB identity.
 - **Google OAuth credentials are per-tenant.** Each tenant can have its own Google OAuth app, allowing customers to sign in with Google on each tenant site independently.
 - **Four credential stores:** Cognito (admin users), DynamoDB (customer records), Secrets Manager (master key, renderer key, NextAuth secret, revalidation secret).
 - **reCAPTCHA is per-deployment by default.** Deployment keys in SSM provide mandatory bot protection. Tenants can override with own keys but cannot disable. See `docs/INTEGRATION_MANUAL.md`.
 - **Tenant secrets are redacted for EDITOR role.** `GET /settings` strips `recaptcha.secretKey`, `integrations.google.clientSecret`, and `integrations.braveApiKey`. Admin users fetch these via `GET /settings/secrets`.
 
-## Decision: Public Pool Future
+## Decision: Public Pool — Current State and Future
 
-The public Cognito pool could serve these future purposes:
+The public Cognito pool authorizer wiring is live as a support module. It authenticates public pool JWTs and returns `role: "CUSTOMER"` with validated `tenantId`. No routes consume this role yet.
+
+**Planned consumers:**
+- **Commerce customer accounts** -- subscriber management, member tiers, wishlist, saved addresses
+- **Appointments/scheduling** -- authenticated booking requiring Public Cognito sign-in
 - **Email/password customer auth** -- if tenants want non-Google sign-in options
 - **Federated identity** -- Cognito as identity broker for multiple social providers per tenant
-- **Customer API access** -- if customers need authenticated API calls (wishlist, saved addresses)
 
-Currently, the NextAuth approach is simpler and sufficient for Google-only sign-in with cookie-based sessions.
+**Security constraints for consumer routes (when added):**
+1. Never add customer routes under anonymous-bypass paths (`POST /leads`, `POST /contact`, `POST /consent`) -- those resolve before JWT verification
+2. Do not treat `custom:tenant_id` alone as sufficient proof of tenant access -- consumer routes must also check host/tenant consistency or server-controlled membership
+3. The `requireRole()` fallback in `policy.ts` line 15 defaults missing roles to `EDITOR` -- the authorizer MUST always set `role: "CUSTOMER"` explicitly for public pool tokens
+
+Currently, the NextAuth approach remains active for Google-only sign-in with cookie-based sessions on commerce sites. The public pool and NextAuth can coexist -- they serve different authentication needs.
