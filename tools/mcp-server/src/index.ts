@@ -21,8 +21,41 @@ if (!API_URL || !API_KEY) {
     process.exit(1);
 }
 
+// Startup health check flag — set by validateApiKey() before server.connect().
+// When false, getHeaders() throws immediately so every API tool fails fast
+// with a clear fix instruction instead of making a doomed HTTP call.
+let apiKeyValid = false;
+
+async function validateApiKey(): Promise<boolean> {
+    try {
+        const res = await axios.get(`${API_URL}tenants`, {
+            headers: { 'x-api-key': API_KEY, 'Authorization': 'Bearer robot' },
+            timeout: 10000,
+        });
+        return res.status === 200;
+    } catch (e: any) {
+        if (e.response?.status === 403) {
+            console.error(
+                "STARTUP: API key validation FAILED (403 Forbidden). All API tools will return errors.\n" +
+                "FIX: Run `npm run post-deploy` in the amodx project root, then restart the MCP server."
+            );
+        } else {
+            console.error(`STARTUP: API connectivity check failed: ${e.message}`);
+        }
+        return false;
+    }
+}
+
 // HELPER: Standard Headers
+// Throws immediately when the API key is known-invalid so the tool's
+// existing catch block returns a clear error to the caller.
 const getHeaders = (tenantId?: string) => {
+    if (!apiKeyValid) {
+        throw new Error(
+            "AMODX API key is invalid (403 Forbidden). The key in tools/mcp-server/.env is stale.\n" +
+            "Fix: Run `npm run post-deploy` in the amodx project root, then restart the MCP server."
+        );
+    }
     const h: any = {
         'x-api-key': API_KEY,
         'Authorization': 'Bearer robot',
@@ -1869,6 +1902,14 @@ TIPS:
 });
 
 async function main() {
+    // Validate API key before accepting tool calls.
+    // Server stays alive either way — non-API tools (scrape_url, social_login,
+    // get_block_schemas, get_schema) remain functional.
+    apiKeyValid = await validateApiKey();
+    if (apiKeyValid) {
+        console.error("STARTUP: API key validated. All tools operational.");
+    }
+
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("AMODX MCP Server v3.0.0 running on Stdio");
