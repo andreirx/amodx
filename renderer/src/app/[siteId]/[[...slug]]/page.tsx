@@ -457,25 +457,38 @@ export default async function Page({ params, searchParams }: Props) {
         );
     }
 
-    // --- SEO FIX: PRE-FETCH POST GRID DATA ---
-    // We modify the blocks in memory before passing them to the renderer
+    // --- SERVER PRE-FETCH FOR PLUGIN BLOCKS ---
+    // Inject server-fetched data into block attrs before rendering.
+    // Eliminates client-side browser→API Gateway fetches which are fragile
+    // (CORS, missing env vars, silent failures). Same pattern for all plugins.
     if (content.blocks && Array.isArray(content.blocks)) {
         await Promise.all(content.blocks.map(async (block: any) => {
             if (block.type === 'postGrid') {
                 const tag = block.attrs.filterTag;
-                // Parse limit safely (handle "0" string or number)
                 let limit = 6;
                 if (block.attrs.limit !== undefined && block.attrs.limit !== null && block.attrs.limit !== "") {
                     limit = parseInt(block.attrs.limit);
                 }
-
-                // Fetch data SERVER SIDE
                 const posts = await getPosts(config.id, tag, limit);
-
-                // Inject into attributes
                 block.attrs.prefetchedPosts = posts;
-                // Pass domain for breadcrumbs (fixes "window is undefined")
                 block.attrs.serverDomain = config.domain;
+            }
+
+            if (block.type === 'categoryShowcase') {
+                const slug = block.attrs.categorySlug;
+                if (slug) {
+                    const category = await getCategoryBySlug(config.id, slug);
+                    if (category) {
+                        const limit = block.attrs.limit || 4;
+                        const { items } = await getProductsByCategory(config.id, category.id, 1, limit);
+                        block.attrs.prefetchedProducts = items;
+                    }
+                }
+                // Inject tenant-resolved URL prefixes so the component doesn't
+                // need to read from document meta tags (unavailable during SSR).
+                const resolvedPrefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
+                block.attrs._productPrefix = resolvedPrefixes.product || "/product";
+                block.attrs._categoryPrefix = resolvedPrefixes.category || "/category";
             }
         }));
     }

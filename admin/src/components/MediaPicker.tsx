@@ -50,14 +50,14 @@ export function MediaPicker({ open, onOpenChange, onSelect }: MediaPickerProps) 
                                     key={asset.id}
                                     className="group relative aspect-square border rounded-lg overflow-hidden hover:ring-2 ring-primary focus:outline-none focus:ring-2"
                                     onClick={() => {
-                                        onSelect(asset.publicUrl);
+                                        onSelect(asset.publicUrl || asset.url);
                                         onOpenChange(false);
                                     }}
                                 >
-                                    {asset.fileType?.startsWith('image/') ? (
+                                    {asset.fileType?.startsWith('image/') || asset.contentType?.startsWith('image/') ? (
                                         <img
-                                            src={asset.publicUrl}
-                                            alt={asset.fileName}
+                                            src={asset.publicUrl || asset.url}
+                                            alt={asset.fileName || asset.filename}
                                             className="w-full h-full object-cover transition-transform group-hover:scale-105"
                                         />
                                     ) : (
@@ -66,7 +66,7 @@ export function MediaPicker({ open, onOpenChange, onSelect }: MediaPickerProps) 
                                         </div>
                                     )}
                                     <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 text-[10px] text-white truncate text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        {asset.fileName}
+                                        {asset.fileName || asset.filename}
                                     </div>
                                 </button>
                             ))}

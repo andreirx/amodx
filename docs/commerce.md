@@ -658,7 +658,7 @@ Commerce routes live in `infra/lib/api-commerce.ts` (NestedStack, ~234 resources
 | GET | `/public/products` | products/public-list |
 | GET | `/public/products/{id}` | products/public-get |
 | GET | `/public/categories` | categories/public-list |
-| GET | `/public/categories/{id}` | categories/public-get |
+| GET | `/public/categories/{slug}` | categories/public-get |
 | POST | `/public/orders` | orders/create |
 | GET | `/public/orders/{id}` | orders/public-get |
 | POST | `/public/coupons/validate` | coupons/public-validate |

@@ -47,15 +47,22 @@
     "watch": "tsc -w"
   },
   "dependencies": {
-    "@amodx/shared": "*",
     "@amodx/effects": "*",
+    "@amodx/shared": "*",
+    "@tiptap/extension-bold": "^2.27.2",
+    "@tiptap/extension-document": "^2.27.2",
+    "@tiptap/extension-hard-break": "^2.27.2",
+    "@tiptap/extension-history": "^2.27.2",
+    "@tiptap/extension-italic": "^2.27.2",
+    "@tiptap/extension-paragraph": "^2.27.2",
+    "@tiptap/extension-text": "^2.27.2",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.470.0",
-    "swiper": "^12.0.3",
-    "tailwind-merge": "^3.0.0",
     "highlight.js": "^11.11.0",
+    "lucide-react": "^0.470.0",
     "marked": "^15.0.0",
     "marked-highlight": "^2.2.0",
+    "swiper": "^12.0.3",
+    "tailwind-merge": "^3.0.0",
     "zod": "4.1.13"
   },
   "peerDependencies": {

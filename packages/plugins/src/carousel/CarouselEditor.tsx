@@ -1,6 +1,6 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import { GalleryHorizontal, Plus, Trash2, Image as ImageIcon } from 'lucide-react';
-import React from 'react';
+import { GalleryHorizontal, Plus, Trash2, Image as ImageIcon, Upload } from 'lucide-react';
+import React, { useRef, useState } from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 
 const Input = ({ label, value, onChange, placeholder }: any) => (
@@ -18,12 +18,28 @@ const Input = ({ label, value, onChange, placeholder }: any) => (
 export function CarouselEditor(props: any) {
     const { headline, items, style, blockWidth } = props.node.attrs;
     const safeItems = Array.isArray(items) ? items : [];
+    const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set());
+
+    // Ref always holds the latest items so async callbacks never read stale state.
+    const itemsRef = useRef(safeItems);
+    itemsRef.current = safeItems;
 
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
     const updateItem = (index: number, field: string, value: any) => {
         const newItems = [...safeItems];
         newItems[index] = { ...newItems[index], [field]: value };
+        update('items', newItems);
+    };
+
+    // Write a single field on an item identified by stable id, reading the
+    // latest items array via ref so that concurrent edits are not discarded.
+    const updateItemById = (itemId: string, field: string, value: any) => {
+        const current = itemsRef.current;
+        const idx = current.findIndex((it: any) => it.id === itemId);
+        if (idx === -1) return; // item was deleted during async op
+        const newItems = [...current];
+        newItems[idx] = { ...newItems[idx], [field]: value };
         update('items', newItems);
     };
 
@@ -35,10 +51,23 @@ export function CarouselEditor(props: any) {
         update('items', safeItems.filter((_: any, i: number) => i !== index));
     };
 
-    const handlePickImage = (index: number) => {
+    const handlePickImage = (itemId: string) => {
         const pickFn = props.editor.storage.image?.pickFn;
         if (pickFn) {
-            pickFn((url: string) => updateItem(index, 'image', url));
+            pickFn((url: string) => updateItemById(itemId, 'image', url));
+        }
+    };
+
+    const handleUploadImage = async (itemId: string, file: File) => {
+        const uploadFn = props.editor.storage.image?.uploadFn;
+        if (!uploadFn) return;
+        setUploadingIds(prev => new Set(prev).add(itemId));
+        try {
+            const url = await uploadFn(file);
+            updateItemById(itemId, 'image', url);
+        } catch (e) { console.error(e); }
+        finally {
+            setUploadingIds(prev => { const next = new Set(prev); next.delete(itemId); return next; });
         }
     };
 
@@ -84,16 +113,32 @@ export function CarouselEditor(props: any) {
                                 </button>
 
                                 <div className="mb-3">
-                                    <div
-                                        className="aspect-video bg-gray-100 rounded flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors relative overflow-hidden group/img"
-                                        onClick={() => handlePickImage(i)}
-                                    >
-                                        {item.image ? (
-                                            <img src={item.image} className="w-full h-full object-cover" />
+                                    <div className="aspect-video bg-gray-100 rounded flex items-center justify-center relative overflow-hidden group/img">
+                                        {uploadingIds.has(item.id) ? (
+                                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                <Upload className="w-4 h-4 animate-pulse" /> Uploading...
+                                            </div>
+                                        ) : item.image ? (
+                                            <>
+                                                <img src={item.image} className="w-full h-full object-cover" />
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 flex items-center justify-center gap-2 transition-opacity">
+                                                    <label className="cursor-pointer bg-white text-gray-900 px-2 py-1 rounded text-[10px] font-medium hover:bg-gray-100">
+                                                        Replace
+                                                        <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleUploadImage(item.id, e.target.files[0])} accept="image/*" />
+                                                    </label>
+                                                    <button onClick={() => handlePickImage(item.id)} className="bg-white text-gray-900 px-2 py-1 rounded text-[10px] font-medium hover:bg-gray-100">Library</button>
+                                                </div>
+                                            </>
                                         ) : (
-                                            <ImageIcon className="w-6 h-6 text-gray-400" />
+                                            <div className="flex gap-2 items-center">
+                                                <label className="cursor-pointer text-[10px] font-bold text-cyan-600 hover:underline">
+                                                    UPLOAD
+                                                    <input type="file" className="hidden" onChange={e => e.target.files?.[0] && handleUploadImage(item.id, e.target.files[0])} accept="image/*" />
+                                                </label>
+                                                <span className="text-[10px] text-gray-400">OR</span>
+                                                <button onClick={() => handlePickImage(item.id)} className="text-[10px] font-bold text-cyan-600 hover:underline">LIBRARY</button>
+                                            </div>
                                         )}
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 flex items-center justify-center text-white text-xs font-medium transition-opacity">Change</div>
                                     </div>
                                 </div>
 

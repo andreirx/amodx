@@ -14,7 +14,7 @@ interface Product {
     volumePricing?: { minQuantity: number; price: string }[];
 }
 
-function ProductCard({ product, showPrice, productPrefix }: { product: Product; showPrice: boolean; productPrefix: string }) {
+function ProductCard({ product, showPrice, productPrefix, getUrl }: { product: Product; showPrice: boolean; productPrefix: string; getUrl: (s: string) => string }) {
     const outOfStock = product.availability === "out_of_stock";
     const hasSale = product.salePrice && product.salePrice !== product.price;
     const hasVolume = product.volumePricing && product.volumePricing.length > 0;
@@ -31,7 +31,7 @@ function ProductCard({ product, showPrice, productPrefix }: { product: Product; 
     }
 
     return (
-        <a href={`${productPrefix}/${product.slug}`} className="group block">
+        <a href={getUrl(`${productPrefix}/${product.slug}`)} className="group block">
             <div className="aspect-square bg-muted rounded-lg overflow-hidden relative mb-3">
                 {product.imageLink ? (
                     <img
@@ -61,35 +61,53 @@ function ProductCard({ product, showPrice, productPrefix }: { product: Product; 
 }
 
 export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenantId?: string }) {
-    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText } = attrs;
-    const [products, setProducts] = useState<Product[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, prefetchedProducts, _getUrl, _productPrefix, _categoryPrefix } = attrs;
 
-    // Determine URL prefixes from document (set as data attrs on body or read from config)
-    const productPrefix = typeof document !== "undefined"
-        ? (document.querySelector('meta[name="x-product-prefix"]') as HTMLMetaElement)?.content || "/product"
-        : "/product";
-    const categoryPrefix = typeof document !== "undefined"
-        ? (document.querySelector('meta[name="x-category-prefix"]') as HTMLMetaElement)?.content || "/category"
-        : "/category";
+    // Client-fetch state — only used when server prefetch is absent (editor preview).
+    // When prefetchedProducts exists, these are ignored in favor of the prop directly.
+    const [fetchedProducts, setFetchedProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState(!prefetchedProducts);
 
+    // Derive render data: prop wins, state is fallback only.
+    const products: Product[] = prefetchedProducts || fetchedProducts;
+
+    // URL helper injected by RenderBlocks — handles /_site/ prefix on both server and client.
+    // Falls back to identity function when not provided (e.g. editor preview).
+    const getUrl: (slug: string) => string = _getUrl || ((s: string) => s);
+
+    // URL prefixes: prefer server-injected values (SSR-correct), fall back to
+    // document meta tags (client-only contexts like editor preview), then defaults.
+    const productPrefix = _productPrefix
+        || (typeof document !== "undefined" ? (document.querySelector('meta[name="x-product-prefix"]') as HTMLMetaElement)?.content : null)
+        || "/product";
+    const categoryPrefix = _categoryPrefix
+        || (typeof document !== "undefined" ? (document.querySelector('meta[name="x-category-prefix"]') as HTMLMetaElement)?.content : null)
+        || "/category";
+
+    // Client-side fallback fetch — only runs when server prefetch is absent
     useEffect(() => {
-        if (!categoryId || !tenantId) { setLoading(false); return; }
+        if (prefetchedProducts || !categorySlug || !tenantId) {
+            setLoading(false);
+            return;
+        }
 
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-        fetch(`${apiUrl}/public/categories/${categoryId}`, {
+        fetch(`${apiUrl}/public/categories/${categorySlug}`, {
             headers: { "x-tenant-id": tenantId },
         })
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error(`API ${r.status}`);
+                return r.json();
+            })
             .then(data => {
                 const items = (data.products || []).slice(0, limit);
-                setProducts(items);
+                setFetchedProducts(items);
             })
-            .catch(() => {})
+            .catch((e) => console.error("[CategoryShowcase] Fetch failed:", e))
             .finally(() => setLoading(false));
-    }, [categoryId, tenantId, limit]);
+    }, [categorySlug, tenantId, limit, prefetchedProducts]);
 
-    if (!categoryId) return null;
+    if (!categorySlug) return null;
 
     const colClass = columns === "2" ? "grid-cols-2" : columns === "3" ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2 md:grid-cols-4";
 
@@ -111,6 +129,7 @@ export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenant
                             product={product}
                             showPrice={showPrice}
                             productPrefix={productPrefix}
+                            getUrl={getUrl}
                         />
                     ))}
                 </div>
@@ -121,7 +140,7 @@ export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenant
             {ctaText && categorySlug && (
                 <div className="text-center mt-8">
                     <a
-                        href={`${categoryPrefix}/${categorySlug}`}
+                        href={getUrl(`${categoryPrefix}/${categorySlug}`)}
                         className="inline-block border-2 border-primary text-primary px-8 py-3 rounded-full text-sm font-semibold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground transition-colors"
                     >
                         {ctaText}

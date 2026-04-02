@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 /**
  * Persistent banner showing pending CDN cache invalidation status.
@@ -27,6 +28,7 @@ interface InvalidationStatus {
 }
 
 export function InvalidationBanner() {
+    const { userRole } = useAuth();
     const [status, setStatus] = useState<InvalidationStatus | null>(null);
     const [remainingMs, setRemainingMs] = useState<number>(0);
     const [flushing, setFlushing] = useState(false);
@@ -50,14 +52,15 @@ export function InvalidationBanner() {
         }
     }, []);
 
-    // Poll loop
+    // Poll loop — only for GLOBAL_ADMIN to avoid wasted API calls
     useEffect(() => {
+        if (userRole !== "GLOBAL_ADMIN") return;
         fetchStatus();
         pollRef.current = setInterval(fetchStatus, POLL_INTERVAL_MS);
         return () => {
             if (pollRef.current) clearInterval(pollRef.current);
         };
-    }, [fetchStatus]);
+    }, [fetchStatus, userRole]);
 
     // Client-side countdown (ticks every second)
     useEffect(() => {
@@ -89,6 +92,10 @@ export function InvalidationBanner() {
             setFlushing(false);
         }
     };
+
+    // Only visible to GLOBAL_ADMIN — cache infrastructure is an operational
+    // detail that confuses tenant editors who don't control deployments.
+    if (userRole !== "GLOBAL_ADMIN") return null;
 
     // Don't render anything if no pending changes
     if (!status?.pending) return null;

@@ -20,6 +20,24 @@ export const LinkSchema = z.object({
     })).optional(), // dropdown sub-items
 });
 
+// ==========================================
+// 1b. INLINE RICH TEXT (Shape B)
+// ==========================================
+// Constrained inline content for plugin attributes that need bold/italic
+// but not full block-level editing. Stored as an array of text segments.
+// Deliberately framework-agnostic — no Tiptap vocabulary in storage.
+
+export const InlineTextSegmentSchema = z.object({
+    text: z.string().optional().default(""),
+    bold: z.boolean().optional(),
+    italic: z.boolean().optional(),
+    br: z.boolean().optional(),   // line break — segment is { br: true }, text is ignored
+});
+
+export const InlineRichTextSchema = z.array(InlineTextSegmentSchema);
+
+export type InlineTextSegment = z.infer<typeof InlineTextSegmentSchema>;
+
 // Plugin block types that default to full-bleed (no wrapper) when blockWidth attr is absent.
 // All other plugins default to "content" width (wrapped in contentPageMaxWidth).
 export const FULL_BLEED_DEFAULTS = new Set(["cta", "testimonials", "carousel"]);

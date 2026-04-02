@@ -20,6 +20,7 @@ export const HeroPlugin: PluginDefinition = {
             return {
                 headline: { default: 'Welcome' },
                 subheadline: { default: '' },
+                subheadlineRich: { default: null },
                 ctaText: { default: 'Get Started' },
                 ctaLink: { default: '#' },
                 style: { default: 'center' },

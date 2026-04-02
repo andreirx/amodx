@@ -105,6 +105,11 @@ export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth }
                     }));
                 }
 
+                // Inject getUrl so plugins that construct internal links
+                // (e.g. CategoryShowcase product/category links) can prefix them
+                // correctly on both server and client, including /_site/ preview paths.
+                newAttrs._getUrl = getUrl;
+
                 const rendered = <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} />;
 
                 // Width wrapping (only at top-level — recursive RenderChildren calls don't pass contentMaxWidth)

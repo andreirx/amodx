@@ -4,6 +4,7 @@ import { twMerge } from "tailwind-merge";
 import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
+import { InlineRichTextRenderer } from "../common/InlineRichTextRenderer";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -21,16 +22,45 @@ const btnStyle: React.CSSProperties = {
     textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
 };
 
+/** Parse legacy plain text containing <br> tags or \n into Shape B segments. */
+function parseLegacySubheadline(text: string): { text?: string; bold?: boolean; italic?: boolean; br?: boolean }[] {
+    // Split on <br>, <br/>, <br />, and literal newlines
+    const parts = text.split(/<br\s*\/?>|\n/gi);
+    const segments: { text?: string; br?: boolean }[] = [];
+    parts.forEach((part, i) => {
+        if (part) segments.push({ text: part });
+        if (i < parts.length - 1) segments.push({ br: true });
+    });
+    return segments;
+}
+
+/** Render subheadline: prefer rich segments, fall back to plain string with <br>/\n parsing. */
+function SubheadlineText({ rich, plain, className }: { rich?: any[]; plain?: string; className?: string }) {
+    if (rich && rich.length > 0) {
+        return <InlineRichTextRenderer segments={rich} className={className} as="p" />;
+    }
+    if (plain) {
+        // Legacy path: parse <br> tags and newlines so existing content renders line breaks
+        if (plain.includes("<br") || plain.includes("\n")) {
+            return <InlineRichTextRenderer segments={parseLegacySubheadline(plain)} className={className} as="p" />;
+        }
+        return <p className={className}>{plain}</p>;
+    }
+    return null;
+}
+
 export function HeroRender({ attrs }: { attrs: any }) {
     const {
         headline = "Welcome to AMODX",
         subheadline = "The operating system for modern agencies.",
+        subheadlineRich,
         ctaText = "Get Started",
         ctaLink = "#",
         imageSrc,
         style = "center"
     } = attrs || {};
 
+    const hasSubheadline = (subheadlineRich && subheadlineRich.length > 0) || !!subheadline;
     const buttonEffect = resolveButtonEffect(attrs);
 
     if (style === "minimal") {
@@ -41,10 +71,8 @@ export function HeroRender({ attrs }: { attrs: any }) {
                     <h1 className="text-6xl font-black tracking-tighter text-foreground mb-6">
                         {headline}
                     </h1>
-                    {subheadline && (
-                        <p className="text-xl text-muted-foreground leading-relaxed max-w-2xl">
-                            {subheadline}
-                        </p>
+                    {hasSubheadline && (
+                        <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-xl text-muted-foreground leading-relaxed max-w-2xl" />
                     )}
                 </div>
             </section>
@@ -57,7 +85,7 @@ export function HeroRender({ attrs }: { attrs: any }) {
                 <LazyEffectCanvas effect={attrs.effect} />
                 <div className="relative z-10 order-2 lg:order-1">
                     <h1 className="text-5xl font-black tracking-tight text-foreground mb-6">{headline}</h1>
-                    {subheadline && <p className="text-lg text-muted-foreground mb-8">{subheadline}</p>}
+                    {hasSubheadline && <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-lg text-muted-foreground mb-8" />}
                     {ctaText && (
                         <ButtonEffectWrap effect={buttonEffect}>
                             <a href={ctaLink} className={btnClass} style={btnStyle}>
@@ -85,10 +113,8 @@ export function HeroRender({ attrs }: { attrs: any }) {
             <h1 className="text-5xl md:text-7xl font-black tracking-tight text-foreground mb-6">
                 {headline}
             </h1>
-            {subheadline && (
-                <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-                    {subheadline}
-                </p>
+            {hasSubheadline && (
+                <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto" />
             )}
             {ctaText && (
                 <ButtonEffectWrap effect={buttonEffect}>

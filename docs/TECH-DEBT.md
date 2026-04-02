@@ -42,6 +42,14 @@ The public Cognito pool (`AmodxPublicPool`) is provisioned in CDK but dormant. C
 
 ---
 
+### Tiptap version skew: plugins 2.x / admin 3.x
+`packages/plugins` depends on `@tiptap/core@^2` and `@tiptap/react@^2`. `admin` depends on `@tiptap/*@^3`. Both are installed separately (not deduped). The `InlineRichTextField` support component creates a standalone Tiptap 2.x ProseMirror instance that coexists with the admin's 3.x outer editor. This works because the two editors are fully isolated (no shared state, schema, or extensions), but it means:
+- Duplicate editor runtime in the admin bundle
+- Future contributors may assume editor helpers can be shared across both worlds
+- If Tiptap 2.x stops receiving security patches, plugins must be upgraded
+
+**Fix:** Dedicated PR to upgrade `packages/plugins` from Tiptap 2.x to 3.x. Key changes per the official migration guide: import reshuffling (`@tiptap/extensions`), `shouldRerenderOnTransaction` default change, `getPos()` can return undefined. Current plugin surface (Node.create, ReactNodeViewRenderer, NodeViewWrapper, storage injection) is low-risk but requires regression testing all 19 plugin NodeViews inside the admin editor.
+
 ## Medium Priority (Code Quality)
 
 ### Split Settings page into sections

@@ -3,6 +3,7 @@ import { LayoutTemplate, Link as LinkIcon, Image as ImageIcon, Upload, Search } 
 import React, { useState } from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 import { EffectControls } from '../common/EffectControls';
+import { InlineRichTextField } from '../common/InlineRichTextField';
 
 // Unified Input Helper
 const Input = ({ value, onChange, placeholder, className = "" }: any) => (
@@ -22,7 +23,7 @@ const Label = ({ children, icon: Icon }: any) => (
 );
 
 export function HeroEditor(props: any) {
-    const { headline, subheadline, ctaText, ctaLink, style, imageSrc, blockWidth } = props.node.attrs;
+    const { headline, subheadline, subheadlineRich, ctaText, ctaLink, style, imageSrc, blockWidth } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -74,7 +75,15 @@ export function HeroEditor(props: any) {
                         <div className="space-y-2">
                             <Label>Headline & Text</Label>
                             <Input value={headline} onChange={(v: string) => update('headline', v)} className="font-bold" placeholder="Headline" />
-                            <Input value={subheadline} onChange={(v: string) => update('subheadline', v)} placeholder="Subheadline" />
+                            <InlineRichTextField
+                                value={subheadlineRich}
+                                fallbackText={subheadline}
+                                onChange={(segments, plainText) => {
+                                    update('subheadlineRich', segments);
+                                    update('subheadline', plainText);
+                                }}
+                                placeholder="Subheadline (bold / italic supported)"
+                            />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
