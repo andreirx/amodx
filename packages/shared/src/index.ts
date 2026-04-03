@@ -477,7 +477,7 @@ export const EffectConfigSchema = z.object({
     invertY: z.boolean().default(false),
     bgColor: z.string().optional(),   // hex color for background; undefined = shader default
     bands: z.number().min(2).max(32).optional(),  // aurora curtain count; undefined = 8
-    overlayOpacity: z.number().min(0.5).max(1.0).default(0.85), // button bg opacity when effect active
+    overlayOpacity: z.number().min(0).max(1.0).default(0.85), // button base-fill opacity when effect active (0 = full effect, 1 = fully opaque)
 });
 export type EffectConfig = z.infer<typeof EffectConfigSchema>;
 

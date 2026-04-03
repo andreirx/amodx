@@ -18,5 +18,6 @@ export const ReviewsCarouselSchema = z.object({
     ]),
     showSource: z.boolean().default(true),
     autoScroll: z.boolean().default(false),
+    maxLines: z.number().min(2).max(20).default(4),  // visible lines before "Read more"
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
 });

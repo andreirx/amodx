@@ -120,13 +120,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
                 <button
                     type="submit"
                     disabled={status === "loading"}
-                    className="w-full py-3 rounded-lg font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
-                    style={{
-                        backgroundColor: "var(--btn-bg-color, var(--primary))",
-                        paintOrder: "stroke fill",
-                        WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--primary)",
-                        textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
-                    } as React.CSSProperties}
+                    className="w-full py-3 rounded-lg font-semibold text-primary-foreground bg-primary hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
                 >
                     {status === "loading" ? "Sending..." : attrs.buttonText}
                 </button>

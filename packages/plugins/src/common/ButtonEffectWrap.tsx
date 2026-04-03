@@ -1,32 +1,34 @@
 /**
- * Button overlay effect wrapper — Option A compositing.
+ * Button effect compositor — four-layer shell + chip architecture.
  *
- * Renders the EffectCanvas BEHIND the button (same opaque canvas used for
- * backgrounds — works on every browser including Firefox). A dedicated
- * background overlay div provides the button's fill color at configurable
- * opacity — the effect bleeds through the semi-transparent overlay.
+ * Renders a GPU-powered effect as a decorative shell around an opaque inner
+ * label surface. Text/icons sit on the solid chip and render with normal
+ * browser painting — no WebkitTextStroke, no textShadow halo, no paintOrder
+ * tricks. Readability is a deterministic layout property, not a browser paint
+ * side effect.
  *
- * Architecture: Three z-layers within a positioned container:
- *   z-0:  EffectCanvas — opaque effect rendering
- *   z-[5]: Background overlay — bg-primary (or custom bgClass) with opacity
- *   z-10: Button text/chrome — transparent background, text protection
+ * Layer stack (inside a positioned container with overflow-hidden + rounded):
+ *   z-0:   EffectCanvas — opaque GPU effect fills the full button area
+ *   z-[5]: Base overlay — bg fill at configurable opacity (0..1).
+ *          At 0: full effect visible. At 1: effect fully covered.
+ *   z-[8]: Label surface — solid opaque chip, inset from edges, carries the
+ *          button's text background color. Effect shows as a decorative
+ *          border/glow in the gap between the chip edge and the outer shell.
+ *   z-10:  Children (text, icons) — normal rendering on the opaque chip.
  *
  * Fallback chain:
- *   1. No effect configured → renders children bare, no wrapper div.
- *   2. Effect configured but WebGPU unavailable → EffectCanvas renders null,
- *      onActive stays false → overlay fully opaque. Visually identical to no effect.
- *   3. Effect configured + WebGPU works → canvas renders, overlay semi-transparent.
- *   4. Scroll out of viewport → pipeline destroyed, onActive(false) → overlay opaque.
+ *   1. No effect configured → renders children bare, no wrapper.
+ *   2. Effect configured but WebGPU unavailable → canvas renders null,
+ *      onActive stays false → overlay + chip fully opaque. Visually normal.
+ *   3. Effect active → canvas renders, overlay at configured opacity,
+ *      chip opaque, text crisp regardless of effect noise level.
+ *   4. Scroll out of viewport → pipeline destroyed, onActive(false) →
+ *      overlay goes opaque. Seamless fallback.
  *
- * Button text protection: when effect is active, text gets a CSS stroke + shadow
- * halo. Plugin render components read --btn-text-stroke CSS variable (0 or 1)
- * and apply stroke/shadow via calc(). The color is var(--primary) directly (no
- * hsl() wrapper — --primary stores hex colors, not HSL triplets).
- *
- * Why a separate overlay instead of button background opacity?
- *   --primary is stored as a hex color (e.g. "#6366f1"), not as HSL triplets.
- *   CSS like hsl(var(--primary) / 0.85) is invalid when --primary is hex.
- *   A separate div with bg-primary + opacity works with ANY color format.
+ * Migration note: replaces the previous three-layer model that used
+ * --btn-text-stroke / --btn-bg-color CSS variables for text protection.
+ * Those variables are no longer set or consumed. Consumers no longer need
+ * special btnStyle objects — just normal button classes.
  */
 
 import React, { Suspense, lazy, useState } from "react";
@@ -40,21 +42,24 @@ interface ButtonEffectWrapProps {
     /** Unified effect config. null/undefined or type "none" → bare children. */
     effect?: EffectConfig | null;
     children: React.ReactNode;
-    /**
-     * Additional classes on the wrapper div.
-     * Default: "inline-flex" (for inline CTA/Hero buttons).
-     * Use "block" for full-width buttons (Contact form).
-     */
+    /** Classes on the outer shell container. Default: "inline-flex". */
     className?: string;
-    /**
-     * Tailwind class for the background overlay color.
-     * Default: "bg-primary" — matches most buttons.
-     * Use "bg-background" for inverted buttons (e.g. band-style CTA on primary bg).
-     */
+    /** Tailwind class for the base overlay color. Default: "bg-primary". */
     bgClass?: string;
+    /** Tailwind class for the inner label chip color. Default: "bg-primary". */
+    labelSurfaceClass?: string;
+    /** Inset in pixels for the label chip from the shell edge. Default: 2. */
+    labelInset?: number;
 }
 
-export function ButtonEffectWrap({ effect, children, className = "inline-flex", bgClass = "bg-primary" }: ButtonEffectWrapProps) {
+export function ButtonEffectWrap({
+    effect,
+    children,
+    className = "inline-flex",
+    bgClass = "bg-primary",
+    labelSurfaceClass = "bg-primary",
+    labelInset = 2,
+}: ButtonEffectWrapProps) {
     const [active, setActive] = useState(false);
 
     // No effect configured → render children bare
@@ -63,15 +68,8 @@ export function ButtonEffectWrap({ effect, children, className = "inline-flex", 
     const overlayOpacity = effect.overlayOpacity ?? 0.85;
 
     return (
-        <div
-            className={`relative overflow-hidden rounded-lg ${className}`}
-            style={{
-                // Children read these CSS variables for text protection + bg transparency
-                '--btn-bg-color': 'transparent',
-                '--btn-text-stroke': active ? '1' : '0',
-            } as React.CSSProperties}
-        >
-            {/* z-0: Effect canvas — opaque rendering, same component as backgrounds */}
+        <div className={`relative overflow-hidden rounded-lg ${className}`}>
+            {/* z-0: Effect canvas — opaque GPU rendering, fills full shell area */}
             <Suspense fallback={null}>
                 <EffectCanvas
                     effect={effect}
@@ -79,14 +77,27 @@ export function ButtonEffectWrap({ effect, children, className = "inline-flex", 
                     onActive={setActive}
                 />
             </Suspense>
-            {/* z-[5]: Background overlay — provides button fill color at configurable opacity.
-                When inactive: opacity 1 (fully covers effect → visually identical to normal button).
-                When active: opacity e.g. 0.85 (effect bleeds through the 15% gap). */}
+
+            {/* z-[5]: Base overlay — controls how much effect bleeds through the shell.
+                When inactive: opacity 1 (fully covers effect → normal button appearance).
+                When active: user-configured opacity (0 = full effect, 1 = no effect visible). */}
             <div
                 className={`absolute inset-0 z-[5] ${bgClass} transition-opacity duration-300`}
                 style={{ opacity: active ? overlayOpacity : 1 }}
             />
-            {/* z-10: Button chrome + text — background is transparent (overlay provides color) */}
+
+            {/* z-[8]: Label surface — solid opaque chip, inset from shell edge.
+                The gap between the chip and the outer shell is where the effect shows
+                as a decorative border/glow. Text readability is guaranteed because
+                this surface is fully opaque regardless of effect state. */}
+            <div
+                className={`absolute z-[8] ${labelSurfaceClass} rounded-md`}
+                style={{
+                    inset: `${labelInset}px`,
+                }}
+            />
+
+            {/* z-10: Children (text, icons) — normal rendering on the opaque chip */}
             <div className="relative z-10">
                 {children}
             </div>

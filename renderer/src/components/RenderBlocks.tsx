@@ -74,8 +74,21 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
 };
 
 // Accept tenantId + contentMaxWidth (prose width) + siteMaxWidth (shell width)
-export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth }: { blocks: any[], tenantId?: string, contentMaxWidth?: string, siteMaxWidth?: string }) {
-    const { getUrl } = useTenantUrl();
+export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth, basePath }: { blocks: any[], tenantId?: string, contentMaxWidth?: string, siteMaxWidth?: string, basePath?: string }) {
+    const { getUrl: clientGetUrl } = useTenantUrl();
+
+    // Prefer server-provided basePath (SSR-correct) over client-side hook detection.
+    // useTenantUrl relies on usePathname() which returns the REWRITTEN path after middleware,
+    // losing the /_site/ prefix. The server-side basePath from getPreviewBase() is authoritative.
+    const getUrl = basePath
+        ? (slug: string) => {
+            if (!slug) return "#";
+            if (slug.startsWith("http")) return slug;
+            const clean = slug.startsWith("/") ? slug : `/${slug}`;
+            if (clean.startsWith(basePath)) return clean;
+            return `${basePath}${clean}`;
+        }
+        : clientGetUrl;
 
     if (!blocks || !Array.isArray(blocks)) return null;
 

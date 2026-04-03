@@ -11,7 +11,8 @@ export const HeroSchema = z.object({
     ctaText: z.string().default("Get Started"),
     ctaLink: z.string().default("/contact"),
     imageSrc: z.string().optional(),
-    style: z.enum(["center", "split", "minimal"]).default("center"),
+    style: z.enum(["center", "split", "minimal", "cover"]).default("center"),
+    overlayOpacity: z.number().min(0).max(1).default(0.5),  // cover mode: dark overlay behind text
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
     effect: EffectConfigSchema.optional(),
     buttonEffect: EffectConfigSchema.optional(),

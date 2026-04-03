@@ -16,7 +16,7 @@ function StarRating({ rating, onChange }: { rating: number; onChange: (r: number
 }
 
 export function ReviewsCarouselEditor(props: any) {
-    const { headline, items = [], showSource, autoScroll, blockWidth } = props.node.attrs;
+    const { headline, items = [], showSource, autoScroll, maxLines = 4, blockWidth } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -64,6 +64,19 @@ export function ReviewsCarouselEditor(props: any) {
                         <label className="flex items-center gap-1.5 text-xs text-amber-700">
                             <input type="checkbox" checked={autoScroll} onChange={e => update('autoScroll', e.target.checked)} className="accent-amber-600" />
                             Auto-scroll
+                        </label>
+                        <div className="w-px h-4 bg-gray-200" />
+                        <label className="flex items-center gap-1.5 text-xs text-amber-700">
+                            Lines
+                            <select
+                                value={maxLines}
+                                onChange={e => update('maxLines', parseInt(e.target.value))}
+                                className="text-xs bg-white border border-amber-200 rounded px-1.5 py-0.5 focus:outline-none"
+                            >
+                                {[2, 3, 4, 5, 6, 8, 10, 20].map(n => (
+                                    <option key={n} value={n}>{n}</option>
+                                ))}
+                            </select>
                         </label>
                     </div>
                 </div>

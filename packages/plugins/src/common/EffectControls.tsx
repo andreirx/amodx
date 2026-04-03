@@ -209,7 +209,7 @@ export function EffectControls({ effect, onChange, scope = "background", label }
                             </label>
                             <input
                                 type="range"
-                                min="0.5"
+                                min="0"
                                 max="1.0"
                                 step="0.05"
                                 value={effect?.overlayOpacity ?? 0.85}

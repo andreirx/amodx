@@ -24,6 +24,7 @@ export const ReviewsCarouselPlugin: PluginDefinition = {
                 items: { default: [] },
                 showSource: { default: true },
                 autoScroll: { default: false },
+                maxLines: { default: 4 },
                 blockWidth: { default: 'content' },
             };
         },

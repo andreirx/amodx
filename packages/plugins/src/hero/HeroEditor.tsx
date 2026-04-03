@@ -23,7 +23,7 @@ const Label = ({ children, icon: Icon }: any) => (
 );
 
 export function HeroEditor(props: any) {
-    const { headline, subheadline, subheadlineRich, ctaText, ctaLink, style, imageSrc, blockWidth } = props.node.attrs;
+    const { headline, subheadline, subheadlineRich, ctaText, ctaLink, style, imageSrc, blockWidth, overlayOpacity } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -65,6 +65,7 @@ export function HeroEditor(props: any) {
                         >
                             <option value="center">Center</option>
                             <option value="split">Split</option>
+                            <option value="cover">Cover</option>
                             <option value="minimal">Minimal</option>
                         </select>
                     </div>
@@ -135,6 +136,23 @@ export function HeroEditor(props: any) {
                         </div>
                     </div>
                 </div>
+
+                {/* Overlay opacity — only shown in cover mode */}
+                {style === 'cover' && (
+                    <div className="px-5 pb-2">
+                        <div className="flex items-center gap-3">
+                            <Label>Overlay</Label>
+                            <input
+                                type="range"
+                                min={0} max={1} step={0.05}
+                                value={overlayOpacity ?? 0.5}
+                                onChange={e => update('overlayOpacity', parseFloat(e.target.value))}
+                                className="flex-1 accent-indigo-600"
+                            />
+                            <span className="text-xs text-gray-500 font-mono w-8 text-right">{Math.round((overlayOpacity ?? 0.5) * 100)}%</span>
+                        </div>
+                    </div>
+                )}
 
                 <div className="px-5 pb-5">
                     <EffectControls

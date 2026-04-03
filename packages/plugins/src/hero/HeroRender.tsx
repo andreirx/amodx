@@ -10,17 +10,9 @@ function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
-/**
- * Button styles that respond to --btn-bg-color and --btn-text-stroke CSS variables
- * set by ButtonEffectWrap. See CtaRender.tsx for detailed explanation.
- */
-const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90";
-const btnStyle: React.CSSProperties = {
-    backgroundColor: "var(--btn-bg-color, var(--primary))",
-    paintOrder: "stroke fill",
-    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--primary)",
-    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
-};
+// Button text sits on the opaque label surface inside ButtonEffectWrap.
+// No stroke/shadow hacks — readability is structural, not a paint trick.
+const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90 bg-primary";
 
 /** Parse legacy plain text containing <br> tags or \n into Shape B segments. */
 function parseLegacySubheadline(text: string): { text?: string; bold?: boolean; italic?: boolean; br?: boolean }[] {
@@ -57,12 +49,14 @@ export function HeroRender({ attrs }: { attrs: any }) {
         ctaText = "Get Started",
         ctaLink = "#",
         imageSrc,
-        style = "center"
+        style = "center",
+        overlayOpacity = 0.5,
     } = attrs || {};
 
     const hasSubheadline = (subheadlineRich && subheadlineRich.length > 0) || !!subheadline;
     const buttonEffect = resolveButtonEffect(attrs);
 
+    // --- Minimal ---
     if (style === "minimal") {
         return (
             <section className="relative py-24 max-w-4xl mx-auto">
@@ -79,37 +73,86 @@ export function HeroRender({ attrs }: { attrs: any }) {
         );
     }
 
+    // --- Split: image first (mobile), image right + large (desktop) ---
     if (style === "split") {
         return (
-            <section className="relative py-20 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto px-6">
+            <section className="relative grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] items-stretch max-w-7xl mx-auto">
                 <LazyEffectCanvas effect={attrs.effect} />
-                <div className="relative z-10 order-2 lg:order-1">
-                    <h1 className="text-5xl font-black tracking-tight text-foreground mb-6">{headline}</h1>
-                    {hasSubheadline && <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-lg text-muted-foreground mb-8" />}
-                    {ctaText && (
-                        <ButtonEffectWrap effect={buttonEffect}>
-                            <a href={ctaLink} className={btnClass} style={btnStyle}>
-                                {ctaText}
-                            </a>
-                        </ButtonEffectWrap>
-                    )}
-                </div>
-                <div className="relative z-10 order-1 lg:order-2 bg-muted rounded-2xl overflow-hidden shadow-2xl aspect-[4/3]">
+                {/* Image — shows first on mobile, right on desktop */}
+                <div className="relative z-10 order-1 lg:order-2 bg-muted overflow-hidden min-h-[300px] lg:min-h-[500px]">
                     {imageSrc ? (
                         <img src={imageSrc} alt={headline} className="w-full h-full object-cover" />
                     ) : (
                         <div className="flex items-center justify-center h-full text-muted-foreground/30">No Image</div>
                     )}
                 </div>
+                {/* Text — shows second on mobile, left on desktop */}
+                <div className="relative z-10 order-2 lg:order-1 flex flex-col justify-center px-6 lg:px-12 py-12 lg:py-20">
+                    <h1 className="text-4xl lg:text-5xl font-black tracking-tight text-foreground mb-6">{headline}</h1>
+                    {hasSubheadline && <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-lg text-muted-foreground mb-8" />}
+                    {ctaText && (
+                        <div>
+                            <ButtonEffectWrap effect={buttonEffect}>
+                                <a href={ctaLink} className={btnClass}>
+                                    {ctaText}
+                                </a>
+                            </ButtonEffectWrap>
+                        </div>
+                    )}
+                </div>
             </section>
         );
     }
 
-    // Center
+    // --- Cover: image as full background, text centered on top ---
+    if (style === "cover") {
+        return (
+            <section className="relative min-h-[60vh] flex items-center justify-center overflow-hidden">
+                {/* Background image */}
+                {imageSrc && (
+                    <img
+                        src={imageSrc}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                    />
+                )}
+                {/* Dark overlay — opacity configurable */}
+                <div
+                    className="absolute inset-0"
+                    style={{ backgroundColor: `rgba(0, 0, 0, ${overlayOpacity})` }}
+                />
+                <LazyEffectCanvas effect={attrs.effect} />
+                {/* Content */}
+                <div className="relative z-10 text-center px-6 py-24 max-w-4xl mx-auto">
+                    <h1 className="text-5xl md:text-7xl font-black tracking-tight text-white mb-6 drop-shadow-lg">
+                        {headline}
+                    </h1>
+                    {hasSubheadline && (
+                        <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-xl text-white/90 mb-10 max-w-2xl mx-auto drop-shadow-md" />
+                    )}
+                    {ctaText && (
+                        <ButtonEffectWrap effect={buttonEffect}>
+                            <a href={ctaLink} className={btnClass}>
+                                {ctaText}
+                            </a>
+                        </ButtonEffectWrap>
+                    )}
+                </div>
+            </section>
+        );
+    }
+
+    // --- Center: image first, then text + button ---
     return (
         <section className="relative py-24 text-center max-w-5xl mx-auto">
             <LazyEffectCanvas effect={attrs.effect} />
             <div className="relative z-10">
+            {/* Image above text */}
+            {imageSrc && (
+                <div className="mb-12 rounded-xl overflow-hidden shadow-2xl border border-border">
+                    <img src={imageSrc} alt="" className="w-full h-auto" />
+                </div>
+            )}
             <h1 className="text-5xl md:text-7xl font-black tracking-tight text-foreground mb-6">
                 {headline}
             </h1>
@@ -118,16 +161,10 @@ export function HeroRender({ attrs }: { attrs: any }) {
             )}
             {ctaText && (
                 <ButtonEffectWrap effect={buttonEffect}>
-                    <a href={ctaLink} className={btnClass} style={btnStyle}>
+                    <a href={ctaLink} className={btnClass}>
                         {ctaText}
                     </a>
                 </ButtonEffectWrap>
-            )}
-            {/* Optional: Show image below text for center layout */}
-            {imageSrc && (
-                <div className="mt-12 rounded-xl overflow-hidden shadow-2xl border border-border">
-                    <img src={imageSrc} alt="" className="w-full h-auto" />
-                </div>
             )}
             </div>
         </section>

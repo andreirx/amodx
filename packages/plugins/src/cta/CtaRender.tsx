@@ -3,24 +3,11 @@ import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
 
-/**
- * Button styles that respond to CSS variables set by ButtonEffectWrap:
- *
- * --btn-bg-color: set to "transparent" when wrapped (overlay div provides the fill).
- *   Falls back to var(--primary) when not wrapped → normal opaque button.
- * --btn-text-stroke: 0 (inactive) or 1 (active) — drives stroke width + shadow blur
- *   via calc(). At 0, stroke is 0px and shadow blur is 0px → zero visual impact.
- *
- * Colors use var(--primary) directly (not hsl(var(--primary))) because --primary
- * stores hex colors, not HSL triplets.
- */
-const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90 transition-opacity";
-const btnStyle: React.CSSProperties = {
-    backgroundColor: "var(--btn-bg-color, var(--primary))",
-    paintOrder: "stroke fill",
-    WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--primary)",
-    textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--primary), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--primary)",
-};
+// Button text sits on the opaque label surface inside ButtonEffectWrap.
+// No stroke/shadow hacks needed — readability is handled by the compositor.
+// Background is transparent here because the label chip provides the fill.
+// When not wrapped (no effect), bg-primary kicks in via the class.
+const btnClass = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90 transition-opacity bg-primary";
 
 export function CtaRender({ attrs }: { attrs: any }) {
     const { headline, subheadline, buttonText, buttonLink, style } = attrs;
@@ -33,14 +20,8 @@ export function CtaRender({ attrs }: { attrs: any }) {
                 <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
                     <h2 className="text-3xl font-bold mb-6">{headline}</h2>
                     <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">{subheadline}</p>
-                    <ButtonEffectWrap effect={buttonEffect} bgClass="bg-background">
-                        <a href={buttonLink} className={btnClass} style={{
-                            ...btnStyle,
-                            backgroundColor: "var(--btn-bg-color, var(--background))",
-                            color: "var(--foreground)",
-                            WebkitTextStroke: "calc(var(--btn-text-stroke, 0) * 1px) var(--background)",
-                            textShadow: "0 0 calc(var(--btn-text-stroke, 0) * 4px) var(--background), 0 0 calc(var(--btn-text-stroke, 0) * 8px) var(--background)",
-                        }}>
+                    <ButtonEffectWrap effect={buttonEffect} bgClass="bg-background" labelSurfaceClass="bg-background">
+                        <a href={buttonLink} className="inline-flex items-center justify-center rounded-md text-sm font-medium text-foreground shadow h-11 px-8 hover:opacity-90 transition-opacity bg-background">
                             {buttonText}
                         </a>
                     </ButtonEffectWrap>
@@ -57,7 +38,7 @@ export function CtaRender({ attrs }: { attrs: any }) {
                 <h2 className="text-4xl font-bold tracking-tight mb-6">{headline}</h2>
                 <p className="text-lg text-muted-foreground mb-10">{subheadline}</p>
                 <ButtonEffectWrap effect={buttonEffect}>
-                    <a href={buttonLink} className={btnClass} style={btnStyle}>
+                    <a href={buttonLink} className={btnClass}>
                         {buttonText}
                     </a>
                 </ButtonEffectWrap>

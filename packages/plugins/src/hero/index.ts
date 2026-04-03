@@ -24,6 +24,7 @@ export const HeroPlugin: PluginDefinition = {
                 ctaText: { default: 'Get Started' },
                 ctaLink: { default: '#' },
                 style: { default: 'center' },
+                overlayOpacity: { default: 0.5 },
                 imageSrc: { default: null },
                 blockWidth: { default: 'content' },
                 effect: { default: null },

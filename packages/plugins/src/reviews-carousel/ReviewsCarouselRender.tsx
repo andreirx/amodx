@@ -50,12 +50,23 @@ function formatDate(dateStr: string, locale = "ro-RO") {
     }
 }
 
-function ReviewCard({ item, showSource, locale }: { item: any; showSource: boolean; locale?: string }) {
+function ReviewCard({ item, showSource, locale, maxLines, expanded, onToggle }: { item: any; showSource: boolean; locale?: string; maxLines: number; expanded: boolean; onToggle: () => void }) {
     const initial = item.name?.charAt(0)?.toUpperCase() || "?";
     const color = getInitialColor(item.name || "");
+    const textRef = useRef<HTMLParagraphElement>(null);
+    const [isTruncated, setIsTruncated] = useState(false);
+
+    // Detect whether the text is actually truncated (overflows the clamp)
+    useEffect(() => {
+        const el = textRef.current;
+        if (el && !expanded) setIsTruncated(el.scrollHeight > el.clientHeight + 2);
+    }, [item.text, maxLines, expanded]);
 
     return (
-        <div className="min-w-[280px] max-w-[320px] shrink-0 snap-start bg-background rounded-xl border border-border p-5 space-y-3">
+        <div
+            className={`min-w-[280px] shrink-0 snap-start bg-background rounded-xl border border-border p-5 space-y-3 transition-all ${isTruncated || expanded ? "cursor-pointer" : ""} ${expanded ? "max-w-[480px]" : "max-w-[320px]"}`}
+            onClick={() => { if (isTruncated || expanded) onToggle(); }}
+        >
             {/* Header: Avatar + Name + Source */}
             <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-3">
@@ -85,17 +96,36 @@ function ReviewCard({ item, showSource, locale }: { item: any; showSource: boole
                 )}
             </div>
 
-            {/* Review text */}
-            {item.text && <p className="text-sm text-foreground leading-relaxed line-clamp-4">{item.text}</p>}
+            {/* Review text — click to expand/collapse */}
+            {item.text && (
+                <div>
+                    <p
+                        ref={textRef}
+                        className={`text-sm text-foreground leading-relaxed ${expanded ? "" : "overflow-hidden"}`}
+                        style={expanded ? undefined : { display: "-webkit-box", WebkitLineClamp: maxLines, WebkitBoxOrient: "vertical" as const }}
+                    >
+                        {item.text}
+                    </p>
+                    {(isTruncated || expanded) && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+                            className="text-xs font-medium text-primary hover:underline mt-1"
+                        >
+                            {expanded ? "Show less" : "Read more"}
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
 
 export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
-    const { headline, items = [], showSource, autoScroll, locale } = attrs;
+    const { headline, items = [], showSource, autoScroll, maxLines = 4, locale } = attrs;
     const scrollRef = useRef<HTMLDivElement>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     if (!items.length) return null;
 
@@ -113,8 +143,9 @@ export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
         return () => el?.removeEventListener('scroll', checkScroll);
     }, []);
 
+    // Auto-scroll pauses when any review is expanded
     useEffect(() => {
-        if (!autoScroll || items.length <= 1) return;
+        if (!autoScroll || items.length <= 1 || expandedId) return;
         const interval = setInterval(() => {
             const el = scrollRef.current;
             if (!el) return;
@@ -125,7 +156,7 @@ export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
             }
         }, 4000);
         return () => clearInterval(interval);
-    }, [autoScroll, items.length]);
+    }, [autoScroll, items.length, expandedId]);
 
     const scroll = (dir: number) => {
         scrollRef.current?.scrollBy({ left: dir * 320, behavior: 'smooth' });
@@ -146,7 +177,15 @@ export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
                 {/* Scrollable container */}
                 <div ref={scrollRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-hide px-1 py-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {items.map((item: any) => (
-                        <ReviewCard key={item.id} item={item} showSource={showSource} locale={locale} />
+                        <ReviewCard
+                            key={item.id}
+                            item={item}
+                            showSource={showSource}
+                            locale={locale}
+                            maxLines={maxLines}
+                            expanded={expandedId === item.id}
+                            onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                        />
                     ))}
                 </div>
 

@@ -551,7 +551,7 @@ export default async function Page({ params, searchParams }: Props) {
                 </div>
             )}
 
-            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} siteMaxWidth={sw} />
+            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} siteMaxWidth={sw} basePath={basePath} />
 
             <CommentsSection pageId={content.nodeId} mode={content.commentsMode} contentMaxWidth={cw} />
         </main>

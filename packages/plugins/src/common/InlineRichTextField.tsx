@@ -50,15 +50,13 @@ function segmentsToTiptap(segments: InlineTextSegment[]): any {
     return { type: "doc", content: [{ type: "paragraph", content }] };
 }
 
-/** Convert Tiptap JSON → Shape B segments. */
-function tiptapToSegments(json: any): InlineTextSegment[] {
-    const para = json?.content?.[0];
+/** Extract text/hardBreak nodes from a single Tiptap paragraph node. */
+function extractParaContent(para: any): InlineTextSegment[] {
     if (!para?.content) return [];
-
     return para.content
         .filter((node: any) => (node.type === "text" && node.text) || node.type === "hardBreak")
         .map((node: any) => {
-            if (node.type === "hardBreak") return { br: true };
+            if (node.type === "hardBreak") return { br: true } as InlineTextSegment;
             const seg: InlineTextSegment = { text: node.text };
             if (node.marks) {
                 for (const mark of node.marks) {
@@ -68,6 +66,21 @@ function tiptapToSegments(json: any): InlineTextSegment[] {
             }
             return seg;
         });
+}
+
+/** Convert Tiptap JSON → Shape B segments.
+ *  Flattens ALL paragraphs into one array, inserting { br: true } between them.
+ *  This handles both hardBreak nodes (Shift+Enter) and multiple paragraphs (Enter). */
+function tiptapToSegments(json: any): InlineTextSegment[] {
+    const paragraphs = json?.content;
+    if (!paragraphs || paragraphs.length === 0) return [];
+
+    const segments: InlineTextSegment[] = [];
+    paragraphs.forEach((para: any, i: number) => {
+        if (i > 0) segments.push({ br: true });
+        segments.push(...extractParaContent(para));
+    });
+    return segments;
 }
 
 /** Strip segments to plain text (line breaks become newlines). */
