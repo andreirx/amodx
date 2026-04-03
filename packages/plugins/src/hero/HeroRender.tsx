@@ -5,6 +5,7 @@ import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
 import { InlineRichTextRenderer } from "../common/InlineRichTextRenderer";
+import { resolveOverlayStyle, resolveTextClass } from "./resolveColorTokens";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -51,6 +52,9 @@ export function HeroRender({ attrs }: { attrs: any }) {
         imageSrc,
         style = "center",
         overlayOpacity = 0.5,
+        overlayColorToken,
+        headlineColorToken,
+        subheadlineColorToken,
     } = attrs || {};
 
     const hasSubheadline = (subheadlineRich && subheadlineRich.length > 0) || !!subheadline;
@@ -106,6 +110,10 @@ export function HeroRender({ attrs }: { attrs: any }) {
 
     // --- Cover: image as full background, text centered on top ---
     if (style === "cover") {
+        const overlayStyle = resolveOverlayStyle(overlayColorToken, overlayOpacity);
+        const hlClass = resolveTextClass(headlineColorToken, "text-white");
+        const shClass = resolveTextClass(subheadlineColorToken, "text-white/90");
+
         return (
             <section className="relative min-h-[60vh] flex items-center justify-center overflow-hidden">
                 {/* Background image */}
@@ -116,19 +124,19 @@ export function HeroRender({ attrs }: { attrs: any }) {
                         className="absolute inset-0 w-full h-full object-cover"
                     />
                 )}
-                {/* Dark overlay — opacity configurable */}
+                {/* Overlay — color and opacity resolved from semantic tokens */}
                 <div
                     className="absolute inset-0"
-                    style={{ backgroundColor: `rgba(0, 0, 0, ${overlayOpacity})` }}
+                    style={overlayStyle}
                 />
                 <LazyEffectCanvas effect={attrs.effect} />
                 {/* Content */}
                 <div className="relative z-10 text-center px-6 py-24 max-w-4xl mx-auto">
-                    <h1 className="text-5xl md:text-7xl font-black tracking-tight text-white mb-6 drop-shadow-lg">
+                    <h1 className={`text-5xl md:text-7xl font-black tracking-tight mb-6 drop-shadow-lg ${hlClass}`}>
                         {headline}
                     </h1>
                     {hasSubheadline && (
-                        <SubheadlineText rich={subheadlineRich} plain={subheadline} className="text-xl text-white/90 mb-10 max-w-2xl mx-auto drop-shadow-md" />
+                        <SubheadlineText rich={subheadlineRich} plain={subheadline} className={`text-xl mb-10 max-w-2xl mx-auto drop-shadow-md ${shClass}`} />
                     )}
                     {ctaText && (
                         <ButtonEffectWrap effect={buttonEffect}>

@@ -73,7 +73,7 @@ Detailed patterns and business logic live in `docs/`:
 
 ## Codebase Intelligence (rgr)
 
-This repo can be indexed by `rgr` (Repo-Graph) for structural analysis. If rgr is available on PATH:
+This repo is indexed by `rgr` (Repo-Graph) for structural analysis. If rgr is available on PATH:
 
 ```bash
 rgr repo add .                           # Register this repo
@@ -83,23 +83,39 @@ rgr graph dead amodx --kind SYMBOL       # Unreferenced exported symbols
 rgr graph callers amodx <symbol>         # Who calls this?
 rgr graph callers amodx <symbol> --edge-types CALLS,INSTANTIATES  # Who uses this?
 rgr graph path amodx <from> <to>         # Shortest path between two symbols
+rgr declare list amodx                   # List all active declarations
 ```
 
-Use `/investigate-symbol amodx <SymbolName>` for a guided investigation workflow. Use `/repo-overview .` for a full structural health check.
+Slash commands (checked into `.claude/commands/`):
+- `/investigate-symbol amodx <SymbolName>` — callers, callees, dead code, cycles
+- `/repo-overview .` — full structural health check
+- `/assess-health amodx` — structure + complexity + hotspots + risk report
+- `/verify-requirements amodx` — check declared requirements and obligations
 
 rgr uses syntax-only resolution (no type info). Import graphs are accurate. Call graphs are conservative — `this.method()` and `obj.method()` calls may not resolve. When callee results look incomplete, read the source directly.
 
-When you find architectural breadcrumbs, comments, or docs in the repo:
-- Do not copy them into repo-graph blindly.
-- First verify them against current code.
-- If the claim is still true and operationally useful, store the distilled fact in rgr as a declaration.
-- Prefer short, canonical facts over prose.
-- Treat rgr as the system of record for verified architectural facts, with source files/docs serving as evidence.
-- If a breadcrumb conflicts with code, trust code and report the drift.
+### Declarations: what to store
 
-HOWEVER - Only store a fact in rgr if it would help a future agent make a better design/debugging decision without rereading the same code.
-Store surprises, constraints, hazards, and architectural intent.
-Don’t store summaries of obvious code.
+When you find architectural breadcrumbs, comments, or docs in the repo:
+- First verify them against current code. If a breadcrumb conflicts with code, trust code and report the drift.
+- If the claim is still true, store the distilled fact in rgr as a declaration.
+- Treat rgr as the system of record for verified architectural facts.
+
+**Store:**
+- Security-critical behavior
+- Architectural boundaries (forbidden dependencies)
+- Important entrypoints (Lambda handlers, event listeners)
+- Non-obvious invariants (things that will break silently if violated)
+- Long-lived business/runtime constraints
+
+**Do not store:**
+- DTO field lists
+- Obvious module descriptions ("this file does X" when X is clear from the filename)
+- Facts immediately visible from one file read
+- Temporary debugging observations
+- Prose summaries of code structure
+
+The test: would a future agent make a worse decision without this fact? If not, don’t store it.
 
 # System Intent (WHY)
 This repository contains a high-reliability, safety-critical product. The objective is rock-solid execution, not a Minimum Viable Product. Structural decisions must prioritize long-term maintainability, hardware-independence, and off-target testability. 

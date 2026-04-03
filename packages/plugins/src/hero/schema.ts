@@ -12,7 +12,12 @@ export const HeroSchema = z.object({
     ctaLink: z.string().default("/contact"),
     imageSrc: z.string().optional(),
     style: z.enum(["center", "split", "minimal", "cover"]).default("center"),
-    overlayOpacity: z.number().min(0).max(1).default(0.5),  // cover mode: dark overlay behind text
+    overlayOpacity: z.number().min(0).max(1).default(0.5),  // cover mode: overlay opacity
+    // Cover mode color tokens — semantic IDs resolved to CSS at render time.
+    // "auto" preserves current defaults (black overlay, white text).
+    overlayColorToken: z.enum(["auto", "black", "foreground", "primary", "muted", "accent"]).default("auto"),
+    headlineColorToken: z.enum(["auto", "white", "foreground", "primary", "primary-foreground", "muted-foreground", "accent-foreground"]).default("auto"),
+    subheadlineColorToken: z.enum(["auto", "white", "foreground", "primary", "primary-foreground", "muted-foreground", "accent-foreground"]).default("auto"),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
     effect: EffectConfigSchema.optional(),
     buttonEffect: EffectConfigSchema.optional(),

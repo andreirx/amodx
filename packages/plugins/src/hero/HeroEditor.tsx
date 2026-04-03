@@ -23,7 +23,7 @@ const Label = ({ children, icon: Icon }: any) => (
 );
 
 export function HeroEditor(props: any) {
-    const { headline, subheadline, subheadlineRich, ctaText, ctaLink, style, imageSrc, blockWidth, overlayOpacity } = props.node.attrs;
+    const { headline, subheadline, subheadlineRich, ctaText, ctaLink, style, imageSrc, blockWidth, overlayOpacity, overlayColorToken, headlineColorToken, subheadlineColorToken } = props.node.attrs;
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -137,9 +137,9 @@ export function HeroEditor(props: any) {
                     </div>
                 </div>
 
-                {/* Overlay opacity — only shown in cover mode */}
+                {/* Cover mode controls — overlay + color tokens */}
                 {style === 'cover' && (
-                    <div className="px-5 pb-2">
+                    <div className="px-5 pb-2 space-y-3">
                         <div className="flex items-center gap-3">
                             <Label>Overlay</Label>
                             <input
@@ -150,6 +150,55 @@ export function HeroEditor(props: any) {
                                 className="flex-1 accent-indigo-600"
                             />
                             <span className="text-xs text-gray-500 font-mono w-8 text-right">{Math.round((overlayOpacity ?? 0.5) * 100)}%</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Overlay Color</label>
+                                <select
+                                    value={overlayColorToken || 'auto'}
+                                    onChange={e => update('overlayColorToken', e.target.value)}
+                                    className="w-full h-8 text-xs border border-gray-200 rounded px-2 bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    <option value="auto">Auto (Black)</option>
+                                    <option value="black">Black</option>
+                                    <option value="primary">Primary</option>
+                                    <option value="foreground">Foreground</option>
+                                    <option value="muted">Muted</option>
+                                    <option value="accent">Accent</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Headline</label>
+                                <select
+                                    value={headlineColorToken || 'auto'}
+                                    onChange={e => update('headlineColorToken', e.target.value)}
+                                    className="w-full h-8 text-xs border border-gray-200 rounded px-2 bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    <option value="auto">Auto (White)</option>
+                                    <option value="white">White</option>
+                                    <option value="foreground">Foreground</option>
+                                    <option value="primary">Primary</option>
+                                    <option value="primary-foreground">Primary FG</option>
+                                    <option value="muted-foreground">Muted FG</option>
+                                    <option value="accent-foreground">Accent FG</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Subheadline</label>
+                                <select
+                                    value={subheadlineColorToken || 'auto'}
+                                    onChange={e => update('subheadlineColorToken', e.target.value)}
+                                    className="w-full h-8 text-xs border border-gray-200 rounded px-2 bg-white focus:border-indigo-500 outline-none"
+                                >
+                                    <option value="auto">Auto (White 90%)</option>
+                                    <option value="white">White</option>
+                                    <option value="foreground">Foreground</option>
+                                    <option value="primary">Primary</option>
+                                    <option value="primary-foreground">Primary FG</option>
+                                    <option value="muted-foreground">Muted FG</option>
+                                    <option value="accent-foreground">Accent FG</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 )}
