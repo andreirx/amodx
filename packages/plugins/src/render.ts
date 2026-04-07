@@ -18,9 +18,11 @@ import { CodeBlockRender } from './code-block/CodeBlockRender';
 import { ReviewsCarouselRender } from './reviews-carousel/ReviewsCarouselRender';
 import { CategoryShowcaseRender } from './category-showcase/CategoryShowcaseRender';
 import { MarkdownRender } from './markdown/MarkdownRender';
+import { VideoHeroRender } from './video-hero/VideoHeroRender';
 
 export const RENDER_MAP: Record<string, React.FC<any>> = {
     'hero': HeroRender,
+    'videoHero': VideoHeroRender,
     'pricing': PricingRender,
     'image': ImageRender,
     'contact': ContactRender,

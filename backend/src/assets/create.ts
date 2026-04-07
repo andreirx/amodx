@@ -6,6 +6,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
+import { validateUpload } from "@amodx/shared";
 
 const s3 = new S3Client({});
 const BUCKET = process.env.UPLOADS_BUCKET!;
@@ -28,10 +29,26 @@ const _handler: Handler = async (event) => {
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const { filename, contentType, size } = JSON.parse(event.body);
 
+        // Enforce MIME allowlist and size limits (shared policy)
+        const declaredSize = size || 0;
+        const validation = validateUpload(contentType, declaredSize);
+        if (!validation.valid) {
+            return { statusCode: 400, body: JSON.stringify({ error: validation.error }) };
+        }
+
+        if (!declaredSize || declaredSize <= 0) {
+            return { statusCode: 400, body: JSON.stringify({ error: "File size is required." }) };
+        }
+
         const assetId = crypto.randomUUID();
         const key = `${tenantId}/${assetId}-${filename}`; // Collision-proof key
 
         // 1. Generate S3 Presigned URL
+        // NOTE: Size enforcement here is advisory, not a storage-boundary guarantee.
+        // The presigned PUT URL does not bind content-length as a signed condition.
+        // Client pre-check + this backend validation catch honest uploads.
+        // Hard enforcement requires migrating to presigned POST with content-length-range.
+        // See docs/TECH-DEBT.md for the tracked remediation path.
         const command = new PutObjectCommand({
             Bucket: BUCKET,
             Key: key,

@@ -5,7 +5,7 @@ import { LazyEffectCanvas } from "../common/LazyEffectCanvas";
 import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
 import { InlineRichTextRenderer } from "../common/InlineRichTextRenderer";
-import { resolveOverlayStyle, resolveTextClass } from "./resolveColorTokens";
+import { resolveOverlayStyle, resolveTextClass } from "../common/resolveCoverColorTokens";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));

@@ -17,11 +17,14 @@ interface BlockEditorProps {
 
 export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
     const [pickerOpen, setPickerOpen] = useState(false);
+    const [pickerMediaType, setPickerMediaType] = useState<"image" | "video" | "all">("all");
 
     // Parentheses around the function type allow 'null' as a state value
     const [pickerCallback, setPickerCallback] = useState<((url: string) => void) | null>(null);
 
-    const openPicker = (callback: (url: string) => void) => {
+    // Parameterized picker: plugins call openPicker(callback, { mediaType: "video" })
+    const openPicker = (callback: (url: string) => void, opts?: { mediaType?: "image" | "video" | "all" }) => {
+        setPickerMediaType(opts?.mediaType || "all");
         // We pass a function that RETURNS the callback, so React doesn't execute the callback immediately as an updater
         setPickerCallback(() => callback);
         setPickerOpen(true);
@@ -118,6 +121,7 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
                 open={pickerOpen}
                 onOpenChange={setPickerOpen}
                 onSelect={handleSelect}
+                mediaType={pickerMediaType}
             />
         </div>
     );

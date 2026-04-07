@@ -1,6 +1,14 @@
 import { apiRequest } from "@/lib/api";
+import { validateUpload } from "@amodx/shared";
 
 export async function uploadFile(file: File): Promise<string> {
+    // Client-side pre-check — gives immediate feedback before the network round-trip.
+    // The backend enforces the same policy server-side (shared validateUpload).
+    const check = validateUpload(file.type, file.size);
+    if (!check.valid) {
+        throw new Error(check.error);
+    }
+
     try {
         // 1. Get Presigned URL from Backend
         const res = await apiRequest('/assets', {

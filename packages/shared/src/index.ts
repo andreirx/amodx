@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+// Re-export media classification module
+export {
+    ALLOWED_IMAGE_MIMES, ALLOWED_VIDEO_MIMES, ALLOWED_UPLOAD_MIMES,
+    MAX_UPLOAD_BYTES,
+    classifyMedia, getAssetMime, matchesMediaFilter, validateUpload,
+    type MediaKind, type UploadValidationResult,
+} from "./media.js";
+
 // ==========================================
 // 1. GLOBAL ENUMS & CONSTANTS
 // ==========================================
@@ -40,7 +48,7 @@ export type InlineTextSegment = z.infer<typeof InlineTextSegmentSchema>;
 
 // Plugin block types that default to full-bleed (no wrapper) when blockWidth attr is absent.
 // All other plugins default to "content" width (wrapped in contentPageMaxWidth).
-export const FULL_BLEED_DEFAULTS = new Set(["cta", "testimonials", "carousel"]);
+export const FULL_BLEED_DEFAULTS = new Set(["cta", "testimonials", "carousel", "videoHero"]);
 
 // SINGLE SOURCE OF TRUTH for URL prefix defaults — do NOT duplicate these elsewhere
 export const URL_PREFIX_DEFAULTS = {

@@ -76,13 +76,51 @@ Detailed patterns and business logic live in `docs/`:
 This repo is indexed by `rgr` (Repo-Graph) for structural analysis. If rgr is available on PATH:
 
 ```bash
+# Repository management
 rgr repo add .                           # Register this repo
 rgr repo index amodx                     # Full index (~400 files, <1s)
-rgr graph cycles amodx                   # Module-level dependency cycles
-rgr graph dead amodx --kind SYMBOL       # Unreferenced exported symbols
+rgr repo status amodx                    # Current snapshot, toolchain provenance
+rgr repo refresh amodx                   # Re-index (refresh snapshot)
+rgr repo list                            # All registered repos
+
+# Structural graph queries
 rgr graph callers amodx <symbol>         # Who calls this?
-rgr graph callers amodx <symbol> --edge-types CALLS,INSTANTIATES  # Who uses this?
+rgr graph callers amodx <symbol> --edge-types CALLS,INSTANTIATES
+rgr graph callees amodx <symbol>         # What does this call?
+rgr graph imports amodx <file>           # Import chain
 rgr graph path amodx <from> <to>         # Shortest path between two symbols
+rgr graph dead amodx --kind SYMBOL       # Unreferenced exported symbols
+rgr graph cycles amodx                   # Module-level dependency cycles
+
+# Architecture & governance
+rgr arch violations amodx                # IMPORTS edges crossing forbidden boundaries
+rgr graph obligations amodx              # Evaluate obligations
+rgr evidence amodx                       # Verification status report
+rgr gate amodx                           # CI gate: five-state verdicts
+rgr trend amodx                          # Snapshot-to-snapshot health delta
+rgr change impact amodx                  # Modules affected by changes
+rgr trust amodx                          # Extraction trust report
+rgr enrich amodx                         # Compiler-assisted receiver type enrichment
+
+# Boundary interactions (HTTP + CLI)
+rgr boundary summary amodx               # Providers, consumers, links, match rates
+rgr boundary providers amodx             # List provider facts (routes, commands)
+rgr boundary consumers amodx             # List consumer facts (HTTP calls, scripts)
+rgr boundary links amodx                 # Matched provider-consumer links
+rgr boundary unmatched amodx             # Providers/consumers with no match
+
+# Quality measurements
+rgr graph stats amodx                    # Module structural metrics (fan-in/out)
+rgr graph metrics amodx --limit 10       # Top complex functions
+rgr graph versions amodx                 # Extracted domain versions
+rgr graph churn amodx --since 90.days.ago  # Per-file git churn
+rgr graph hotspots amodx                 # Churn x complexity ranking
+rgr graph risk amodx                     # Under-tested hotspots
+
+# Declarations
+rgr declare module amodx <path> --purpose "..." --maturity MATURE
+rgr declare boundary amodx <path> --forbids <other-path>
+rgr declare entrypoint amodx <symbol> --type public_export
 rgr declare list amodx                   # List all active declarations
 ```
 
@@ -92,7 +130,13 @@ Slash commands (checked into `.claude/commands/`):
 - `/assess-health amodx` — structure + complexity + hotspots + risk report
 - `/verify-requirements amodx` — check declared requirements and obligations
 
-rgr uses syntax-only resolution (no type info). Import graphs are accurate. Call graphs are conservative — `this.method()` and `obj.method()` calls may not resolve. When callee results look incomplete, read the source directly.
+rgr uses syntax-only extraction (tree-sitter) with optional compiler enrichment (`rgr enrich`). Import graphs are accurate. Call graphs resolve well on class-heavy architectures; weaker on SDK-heavy or functional patterns. Compiler enrichment resolves ~80-85% of unknown receiver types. When callee results look incomplete, read the source directly or run `rgr enrich`.
+
+Trust boundaries for `graph dead`:
+- On clean-architecture codebases with explicit call/import graphs: high confidence.
+- On registry/plugin-driven architectures (CMS renderers, extension registries, render maps, string-key dispatch): treat results as "graph orphans," not deletion candidates.
+- Lambda exported handler functions are automatically suppressed via framework-liveness inferences.
+- Use `declare entrypoint` to suppress known live nodes that appear as false positives.
 
 ### Declarations: what to store
 

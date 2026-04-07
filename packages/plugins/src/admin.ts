@@ -18,9 +18,11 @@ import { CodeBlockPlugin } from './code-block';
 import { ReviewsCarouselPlugin } from './reviews-carousel';
 import { CategoryShowcasePlugin } from './category-showcase';
 import { MarkdownPlugin } from './markdown';
+import { VideoHeroPlugin } from './video-hero';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
+    VideoHeroPlugin,
     PricingPlugin,
     ImagePlugin,
     ContactPlugin,
