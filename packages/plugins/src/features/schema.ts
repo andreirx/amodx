@@ -16,7 +16,7 @@ export const FeaturesSchema = z.object({
         { id: '2', title: 'Security', description: 'Enterprise-grade protection.', icon: 'Shield' },
         { id: '3', title: 'Scale', description: 'Grow without limits.', icon: 'TrendingUp' },
     ]),
-    columns: z.enum(["2", "3", "4"]).default("3"),
+    columns: z.enum(["2", "3", "4", "5", "6"]).default("3"),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
     effect: EffectConfigSchema.optional(),
 });

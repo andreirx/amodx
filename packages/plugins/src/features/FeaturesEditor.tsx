@@ -39,6 +39,8 @@ export function FeaturesEditor(props: any) {
                             <option value="2">2 Cols</option>
                             <option value="3">3 Cols</option>
                             <option value="4">4 Cols</option>
+                            <option value="5">5 Cols</option>
+                            <option value="6">6 Cols</option>
                         </select>
                     </div>
                 </div>
@@ -55,8 +57,37 @@ export function FeaturesEditor(props: any) {
                                 <button onClick={() => removeItem(i)} className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
                                 <div className="space-y-2">
                                     <div className="flex gap-2">
-                                        <select className="w-24 h-8 bg-white border border-gray-200 rounded px-1 text-xs" value={item.icon} onChange={e => updateItem(i, 'icon', e.target.value)}>
-                                            {["Check", "Zap", "Shield", "TrendingUp", "Users", "Globe", "Lock", "Smile"].map(o => <option key={o} value={o}>{o}</option>)}
+                                        <select className="w-32 h-8 bg-white border border-gray-200 rounded px-1 text-xs" value={item.icon} onChange={e => updateItem(i, 'icon', e.target.value)}>
+                                            <optgroup label="General">
+                                                {["Check", "CheckCircle", "Star", "Award", "Trophy", "ThumbsUp", "Smile", "Heart", "Sparkles", "Gem", "Crown"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Performance">
+                                                {["Zap", "Rocket", "TrendingUp", "Gauge", "Timer", "Activity", "BarChart3", "Target"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Security & Trust">
+                                                {["Shield", "ShieldCheck", "Lock", "KeyRound", "Eye", "Fingerprint", "BadgeCheck"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Communication">
+                                                {["MessageCircle", "Mail", "Phone", "Send", "Bell", "Megaphone", "Radio"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="People & Social">
+                                                {["Users", "UserCheck", "Handshake", "HeartHandshake", "CircleUserRound", "Building2"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Commerce">
+                                                {["ShoppingCart", "CreditCard", "Wallet", "Receipt", "Package", "Truck", "Store", "Gift", "Percent", "BadgeDollarSign"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Tech & Tools">
+                                                {["Globe", "Wifi", "Cloud", "Database", "Server", "Code", "Cpu", "Monitor", "Smartphone", "Settings", "Wrench", "Puzzle"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Content & Media">
+                                                {["Image", "Video", "Camera", "FileText", "BookOpen", "Palette", "Layers", "Layout", "PenTool"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Nature & Time">
+                                                {["Sun", "Moon", "Leaf", "TreePine", "Droplets", "Flame", "Clock", "Calendar", "MapPin", "Mountain", "Waves"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
+                                            <optgroup label="Arrows & Navigation">
+                                                {["ArrowRight", "ArrowUpRight", "MoveRight", "RefreshCw", "Repeat", "RotateCw", "Compass", "Navigation"].map(o => <option key={o} value={o}>{o}</option>)}
+                                            </optgroup>
                                         </select>
                                         <Input value={item.title} onChange={(v: string) => updateItem(i, 'title', v)} placeholder="Title" />
                                     </div>
