@@ -13,7 +13,7 @@ const TextArea = ({ value, onChange, placeholder }: any) => (
 );
 
 export function FeaturesEditor(props: any) {
-    const { headline, subheadline, items, columns, blockWidth } = props.node.attrs;
+    const { headline, subheadline, items, columns, blockWidth, layout, iconSize } = props.node.attrs;
     const safeItems = Array.isArray(items) ? items : [];
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
 
@@ -41,6 +41,15 @@ export function FeaturesEditor(props: any) {
                             <option value="4">4 Cols</option>
                             <option value="5">5 Cols</option>
                             <option value="6">6 Cols</option>
+                        </select>
+                        <select className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-blue-500" value={layout || 'stacked'} onChange={e => update('layout', e.target.value)}>
+                            <option value="stacked">Stacked</option>
+                            <option value="inline">Inline</option>
+                        </select>
+                        <select className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium focus:border-blue-500" value={iconSize || 'md'} onChange={e => update('iconSize', e.target.value)}>
+                            <option value="sm">Icon S</option>
+                            <option value="md">Icon M</option>
+                            <option value="lg">Icon L</option>
                         </select>
                     </div>
                 </div>

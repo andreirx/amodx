@@ -29,6 +29,8 @@ export const FeaturesPlugin: PluginDefinition = {
                     ]
                 },
                 columns: { default: '3' },
+                layout: { default: 'stacked' },
+                iconSize: { default: 'md' },
                 blockWidth: { default: 'content' },
                 effect: { default: null },
             };

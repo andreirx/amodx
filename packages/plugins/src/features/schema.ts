@@ -17,6 +17,8 @@ export const FeaturesSchema = z.object({
         { id: '3', title: 'Scale', description: 'Grow without limits.', icon: 'TrendingUp' },
     ]),
     columns: z.enum(["2", "3", "4", "5", "6"]).default("3"),
+    layout: z.enum(["stacked", "inline"]).default("stacked"),  // stacked = icon above text, inline = icon left of text
+    iconSize: z.enum(["sm", "md", "lg"]).default("md"),
     blockWidth: z.enum(["content", "wide", "full"]).default("content"),
     effect: EffectConfigSchema.optional(),
 });
