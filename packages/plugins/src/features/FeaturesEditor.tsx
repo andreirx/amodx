@@ -56,8 +56,8 @@ export function FeaturesEditor(props: any) {
 
                 <div className="p-5">
                     <div className="mb-6 space-y-2">
-                        <Input value={headline} onChange={(v: string) => update('headline', v)} placeholder="Headline" />
-                        <Input value={subheadline} onChange={(v: string) => update('subheadline', v)} placeholder="Subheadline" />
+                        <Input value={headline} onChange={(v: string) => update('headline', v)} placeholder="Headline (leave empty to hide)" />
+                        <Input value={subheadline} onChange={(v: string) => update('subheadline', v)} placeholder="Subheadline (leave empty to hide)" />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
