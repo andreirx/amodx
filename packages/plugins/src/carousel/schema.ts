@@ -18,5 +18,6 @@ export const CarouselSchema = z.object({
     ]),
     height: z.enum(["small", "medium", "large"]).default("medium"),
     style: z.enum(["standard", "coverflow"]).default("coverflow"),
+    cardFormat: z.enum(["vertical", "horizontal", "square"]).default("vertical"),
     blockWidth: z.enum(["content", "wide", "full"]).default("full"),
 });

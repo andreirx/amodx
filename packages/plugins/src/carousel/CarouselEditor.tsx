@@ -16,7 +16,7 @@ const Input = ({ label, value, onChange, placeholder }: any) => (
 );
 
 export function CarouselEditor(props: any) {
-    const { headline, items, style, blockWidth } = props.node.attrs;
+    const { headline, items, style, blockWidth, cardFormat } = props.node.attrs;
     const safeItems = Array.isArray(items) ? items : [];
     const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set());
 
@@ -95,6 +95,17 @@ export function CarouselEditor(props: any) {
                             <option value="standard">Standard</option>
                             <option value="coverflow">Coverflow</option>
                         </select>
+                        {style !== 'coverflow' && (
+                            <select
+                                className="h-7 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium shadow-sm outline-none focus:border-cyan-500 cursor-pointer"
+                                value={cardFormat || 'vertical'}
+                                onChange={e => update('cardFormat', e.target.value)}
+                            >
+                                <option value="vertical">Vertical</option>
+                                <option value="horizontal">Horizontal</option>
+                                <option value="square">Square</option>
+                            </select>
+                        )}
                     </div>
                 </div>
 

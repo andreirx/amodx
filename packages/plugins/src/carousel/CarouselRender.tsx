@@ -5,18 +5,22 @@ import { ArrowRight } from "lucide-react";
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCoverflow, Pagination, Navigation } from 'swiper/modules';
 
-// Import Swiper styles
 import 'swiper/css';
 import 'swiper/css/effect-coverflow';
 import 'swiper/css/pagination';
 import 'swiper/css/navigation';
 
+const ASPECT_CLASSES: Record<string, string> = {
+    vertical: "aspect-[3/4]",
+    horizontal: "aspect-video",
+    square: "aspect-square",
+};
+
 export function CarouselRender({ attrs }: { attrs: any }) {
-    const { headline, items, style } = attrs;
+    const { headline, items, style, cardFormat = "vertical" } = attrs;
     const safeItems = items || [];
 
-    // Global styles for Swiper to override default theme
-    // We inject this style tag locally to control the bullets and width
+    // Swiper overrides for coverflow mode
     const swiperStyles = `
         .swiper {
             width: 100%;
@@ -26,11 +30,11 @@ export function CarouselRender({ attrs }: { attrs: any }) {
         .swiper-slide {
             background-position: center;
             background-size: cover;
-            width: 300px; /* Mobile Width */
+            width: 300px;
         }
         @media (min-width: 768px) {
             .swiper-slide {
-                width: 600px; /* Desktop Width */
+                width: 600px;
             }
         }
         .swiper-pagination-bullet {
@@ -43,55 +47,56 @@ export function CarouselRender({ attrs }: { attrs: any }) {
     `;
 
     return (
-        <section className="py-20 bg-muted/10 border-y border-border/50 overflow-hidden">
-            <style>{swiperStyles}</style>
-
+        <section className="py-20 overflow-hidden">
             {headline && (
-                <div className="max-w-7xl mx-auto px-6 mb-8 text-center">
+                <div className="max-w-7xl mx-auto px-6 mb-8">
                     <h2 className="text-3xl font-bold tracking-tight">{headline}</h2>
                 </div>
             )}
 
             {style === 'coverflow' ? (
-                <Swiper
-                    effect={'coverflow'}
-                    grabCursor={true}
-                    centeredSlides={true}
-                    slidesPerView={'auto'}
-                    initialSlide={1} // Start on the second item if exists
-                    coverflowEffect={{
-                        rotate: 40,      // Angle
-                        stretch: 0,      // Spacing
-                        depth: 100,      // 3D Depth
-                        modifier: 1,     // Effect multiplier
-                        slideShadows: false, // CSS shadows are cleaner than canvas shadows
-                    }}
-                    pagination={{ clickable: true }}
-                    modules={[EffectCoverflow, Pagination]}
-                    className="mySwiper"
-                >
-                    {safeItems.map((item: any) => (
-                        <SwiperSlide key={item.id}>
-                            <CardItem item={item} />
-                        </SwiperSlide>
-                    ))}
-                </Swiper>
-            ) : (
-                // STANDARD GRID (Fallback to simple Swiper row)
-                <div className="max-w-7xl mx-auto px-6">
+                <>
+                    <style>{swiperStyles}</style>
                     <Swiper
-                        spaceBetween={30}
-                        slidesPerView={1}
-                        breakpoints={{
-                            640: { slidesPerView: 2 },
-                            1024: { slidesPerView: 3 },
+                        effect={'coverflow'}
+                        grabCursor={true}
+                        centeredSlides={true}
+                        slidesPerView={'auto'}
+                        initialSlide={1}
+                        coverflowEffect={{
+                            rotate: 40,
+                            stretch: 0,
+                            depth: 100,
+                            modifier: 1,
+                            slideShadows: false,
                         }}
                         pagination={{ clickable: true }}
-                        modules={[Pagination]}
+                        modules={[EffectCoverflow, Pagination]}
                     >
                         {safeItems.map((item: any) => (
                             <SwiperSlide key={item.id}>
-                                <CardItem item={item} />
+                                <CoverflowCard item={item} />
+                            </SwiperSlide>
+                        ))}
+                    </Swiper>
+                </>
+            ) : (
+                <div className="max-w-7xl mx-auto px-6">
+                    <Swiper
+                        spaceBetween={24}
+                        slidesPerView={1}
+                        breakpoints={{
+                            640: { slidesPerView: 2 },
+                            1024: { slidesPerView: cardFormat === "horizontal" ? 3 : 4 },
+                            1280: { slidesPerView: cardFormat === "horizontal" ? 3 : 5 },
+                        }}
+                        pagination={{ clickable: true }}
+                        navigation={true}
+                        modules={[Pagination, Navigation]}
+                    >
+                        {safeItems.map((item: any) => (
+                            <SwiperSlide key={item.id}>
+                                <StandardCard item={item} aspectClass={ASPECT_CLASSES[cardFormat] || ASPECT_CLASSES.vertical} />
                             </SwiperSlide>
                         ))}
                     </Swiper>
@@ -101,10 +106,42 @@ export function CarouselRender({ attrs }: { attrs: any }) {
     );
 }
 
-function CardItem({ item }: { item: any }) {
+/** Standard card — clean, no shadow, image zoom on hover, text below. */
+function StandardCard({ item, aspectClass }: { item: any; aspectClass: string }) {
+    const Wrapper = item.link && item.link !== "#" ? "a" : "div";
+    const wrapperProps = item.link && item.link !== "#" ? { href: item.link } : {};
+
+    return (
+        <Wrapper {...wrapperProps} className="block group">
+            {/* Image with hover zoom */}
+            <div className={`${aspectClass} overflow-hidden rounded-lg bg-muted`}>
+                {item.image ? (
+                    <img
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
+                        No image
+                    </div>
+                )}
+            </div>
+            {/* Text below image */}
+            {(item.title || item.description) && (
+                <div className="mt-3 space-y-0.5">
+                    {item.title && <h3 className="text-sm font-semibold leading-tight">{item.title}</h3>}
+                    {item.description && <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>}
+                </div>
+            )}
+        </Wrapper>
+    );
+}
+
+/** Coverflow card — existing cinematic style with overlay text and shadow. */
+function CoverflowCard({ item }: { item: any }) {
     return (
         <a href={item.link} className="block group h-full bg-card border border-border rounded-xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300">
-            {/* Aspect Video */}
             <div className="aspect-video bg-muted overflow-hidden relative">
                 {item.image ? (
                     <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
@@ -113,19 +150,14 @@ function CardItem({ item }: { item: any }) {
                         NO IMAGE
                     </div>
                 )}
-
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-90" />
-
                 <div className="absolute bottom-0 left-0 right-0 p-6 text-white text-left">
                     <h3 className="text-2xl font-bold mb-2 leading-none">{item.title}</h3>
                     <p className="text-white/70 text-sm line-clamp-2 font-light">{item.description}</p>
                 </div>
             </div>
-
             <div className="bg-card p-3 flex justify-between items-center border-t border-border/50">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                    View
-                </span>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">View</span>
                 <span className="text-primary group-hover:translate-x-1 transition-transform">
                     <ArrowRight className="w-4 h-4" />
                 </span>

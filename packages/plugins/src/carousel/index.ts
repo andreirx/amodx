@@ -24,6 +24,7 @@ export const CarouselPlugin: PluginDefinition = {
             height: { default: 'medium' },
             style: { default: 'coverflow' },
             blockWidth: { default: 'full' },
+            cardFormat: { default: 'vertical' },
         };
     },
 
