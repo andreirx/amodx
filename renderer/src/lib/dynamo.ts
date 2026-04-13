@@ -103,6 +103,8 @@ function mapTenant(item: any): TenantConfig {
         urlPrefixes: item.urlPrefixes || URL_PREFIX_DEFAULTS,
         quickContact: item.quickContact || undefined,
         topBar: item.topBar || undefined,
+        pageEffect: item.pageEffect || undefined,
+        celebrationEnabled: item.celebrationEnabled ?? false,
         createdAt: item.createdAt || new Date().toISOString()
     } as TenantConfig;
 }
