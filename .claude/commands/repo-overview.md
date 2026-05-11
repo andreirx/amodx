@@ -1,14 +1,14 @@
-Index a codebase with rgr and produce a structural health overview.
+Index the amodx codebase with rmap and produce a structural overview.
 
-Usage: /repo-overview <path>
+Usage: /repo-overview
+
+Database: ./amodx.db
 
 Steps:
-1. Run `rgr repo add $ARGUMENTS` to register the repo (skip if already registered)
-2. Run `rgr repo index <name>` to index (or re-index) the codebase
-3. Run `rgr graph stats <name> --json` for module structural metrics
-4. Run `rgr graph cycles <name> --json` for dependency cycles
-5. Run `rgr arch violations <name> --json` for boundary violations (if boundaries declared)
-6. Run `rgr graph metrics <name> --module --json` for per-module complexity
-7. Run `rgr graph metrics <name> --limit 10 --json` for top complex functions
-8. Run `rgr graph dead <name> --kind SYMBOL --json` for dead code candidates
-9. Produce a summary: module count, cycle count, violation count, top complex modules, top complex functions, dead code count
+1. Run `rmap index . ./amodx.db` to index (or re-index) the codebase
+2. Run `rmap trust ./amodx.db amodx` for extraction reliability report
+3. Run `rmap check ./amodx.db amodx` for structural health check
+4. Run `rmap modules list ./amodx.db amodx` for module inventory
+5. Run `rmap boundaries summary ./amodx.db amodx` for HTTP/CLI surface summary
+6. Run `rmap violations ./amodx.db amodx` for boundary violations
+7. Produce a summary: module count, boundary surfaces, violations, trust level, key concerns
