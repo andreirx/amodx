@@ -20,19 +20,19 @@
     "migrate-commerce-private-table": "npx tsx scripts/migrate-commerce-private-table.ts"
   },
   "dependencies": {
-    "autoprefixer": "^10.4.22",
-    "postcss": "^8.5.14",
-    "tailwindcss": "^4.1.17"
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
-    "@aws-sdk/client-acm": "^3.980.0",
-    "@aws-sdk/client-cloudformation": "^3.980.0",
-    "@aws-sdk/client-secrets-manager": "^3.980.0",
-    "@aws-sdk/client-ssm": "^3.980.0",
-    "@aws-sdk/client-sts": "^3.980.0",
-    "@playwright/test": "^1.57.0",
-    "@types/node": "^24.10.1",
+    "@aws-sdk/client-acm": "^3.1053.0",
+    "@aws-sdk/client-cloudformation": "^3.1053.0",
+    "@aws-sdk/client-secrets-manager": "^3.1053.0",
+    "@aws-sdk/client-ssm": "^3.1053.0",
+    "@aws-sdk/client-sts": "^3.1053.0",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^20.19.41",
     "prompts": "^2.4.2",
-    "tsx": "^4.7.1"
+    "tsx": "^4.22.3"
   }
 }
