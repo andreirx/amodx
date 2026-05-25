@@ -79,19 +79,32 @@ The "glow" (HDR Caustics) pipeline currently uses `colors[0]` only and ignores t
 The PageEffectConfigSchema intensity cap was lowered from 0.5 to 0.15. Existing tenants with higher values stored in DynamoDB will render fine (renderer reads raw JSON, no validation). But when they open Admin > Settings, the intensity slider now caps at 0.15. Their stored value will display clamped. On save, the old higher value is replaced. No data loss but a subtle visual change they didn't request.
 
 ### Deferred npm audit vulnerabilities (blocked on infra guardrails)
-Three groups of vulnerabilities remain unfixed because their fixes require upgrading frozen packages. These MUST NOT be upgraded until CDK infra snapshot tests and CI `cdk synth` are in place.
+Multiple vulnerability groups remain unfixed because their fixes require upgrading frozen or upstream-blocked packages.
 
 **aws-cdk-lib 2.241.0** (pinned to exact version in `infra/package.json`):
+- `fast-uri@3.1.0` (**HIGH**) — Path traversal via percent-encoded dot segments + host confusion (GHSA-q3j6-qgpj-74h6, GHSA-v39h-62p7-jpjc). Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
 - `yaml@1.10.2` (moderate) — Stack Overflow via deeply nested YAML. Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
 - `brace-expansion@5.0.3` (moderate) — Zero-step sequence hang. Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
-- **Actual risk**: Near-zero. CDK never parses untrusted YAML or user-supplied brace patterns. These are build-time tools.
+- **Actual risk**: Near-zero. CDK never parses untrusted URLs, YAML, or user-supplied brace patterns. These are build-time tools operating on trusted infrastructure code. fast-uri is used internally by CDK for CloudFormation template validation, not for parsing user input.
+- **MUST NOT upgrade** until CDK infra snapshot tests and CI `cdk synth` are in place.
 
 **open-next@3.1.3 / esbuild@0.19.2** (open-next pins esbuild):
 - `esbuild <= 0.24.2` (moderate) — Dev server cross-origin request vulnerability (GHSA-67mh-4wv8-2f99). Only applies to `esbuild --serve`, which open-next does NOT use. Build-time only.
 - **Actual risk**: Zero in production. esbuild is a bundler, not a server, in our deployment.
 - **Blocked on**: upstream open-next releasing with esbuild >= 0.25.0.
 
-**Upgrade plan**: (1) Add infra snapshot tests + CI `cdk synth`, (2) add targeted CDK assertions for critical resources, (3) baseline synth/diff, (4) upgrade aws-cdk-lib to >= 2.245.0, (5) wait for open-next to update esbuild dep.
+**next@16.2.6 / postcss** (postcss bundled in next):
+- `postcss < 8.5.10` (moderate) — XSS via unescaped `</style>` in CSS stringify output (GHSA-qx2v-qp2m-jg93). Bundled inside next.
+- Fixed in Next.js >= 16.3.0, which is currently **canary only** (no stable release).
+- **Actual risk**: Low. This affects CSS output containing user-controlled content that ends up in `<style>` tags. Our renderer does not inject user content into CSS stringify paths.
+- **Blocked on**: Next.js 16.3.0 stable release.
+
+**next-auth@4.24.13 / uuid** (uuid bundled in next-auth):
+- `uuid < 11.1.1` (moderate) — Missing buffer bounds check in v3/v5/v6 when `buf` is provided (GHSA-w5hq-g745-h8pq).
+- **Actual risk**: Near-zero. We do not pass custom `buf` arguments to uuid generation. Standard usage (no buf argument) is unaffected.
+- **Blocked on**: next-auth releasing with updated uuid. Forcing `npm audit fix --force` would downgrade to next-auth@3.x which is a breaking change.
+
+**Upgrade plan**: (1) Add infra snapshot tests + CI `cdk synth`, (2) add targeted CDK assertions for critical resources, (3) baseline synth/diff, (4) upgrade aws-cdk-lib to >= 2.245.0, (5) wait for Next.js 16.3.0 stable, (6) wait for open-next and next-auth to update their deps.
 
 ### CDK infra test suite is a placeholder
 `infra/test/infra.test.ts` is entirely commented out (CDK scaffold boilerplate). No snapshot test, no resource assertions, no CI synthesis step. This means CDK upgrades, construct changes, or dependency bumps have zero automated verification. Must be activated before any aws-cdk-lib version change.

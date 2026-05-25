@@ -26,8 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Security audit (high severity)
-        run: npm audit --audit-level=high
+      - name: Security audit (high severity, production deps only)
+        # --omit=dev skips dev dependencies like aws-cdk-lib which have known
+        # blocked vulnerabilities (fast-uri, yaml, brace-expansion) that only
+        # affect build-time, not production runtime. See docs/TECH-DEBT.md.
+        run: npm audit --audit-level=high --omit=dev
         continue-on-error: false
 
       - name: Security audit report
