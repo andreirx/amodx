@@ -2,9 +2,30 @@
 
 AMODX is a serverless multi-tenant CMS and agency operating system on AWS. Single deployment serves up to 99 tenant websites. Block-based content editor (Tiptap) with a plugin architecture.
 
+## Slice Workflow
+
+Before implementation work, read in order:
+
+1. `docs/VISION.md`
+2. `docs/ROADMAP.md` (current priority)
+3. `CURRENT_SLICE.md`
+4. the referenced `docs/slices/*.md` file
+5. any plan/architecture docs the slice references
+
+Work only inside the active slice unless explicitly instructed otherwise. Record evidence
+as `EXECUTED` / `OBSERVED` / `INFERRED` / `NOT RUN`. **Stop** if the slice would contradict
+`docs/platform-decisions.md`, tenant isolation, the no-DynamoDB-scan rule, or clean-architecture
+boundaries. The slice lifecycle, status taxonomy, and naming live in `docs/documentation.md`.
+
+Before declaring a change done:
+
+- **Verify, don't assert.** Check every command, script, config field, or file you cite against the actual repo before stating it exists. Label claims `EXECUTED` / `OBSERVED` / `INFERRED`; never present `INFERRED` as `OBSERVED`.
+- **Chase ripples.** After any rename or structural edit, re-read the whole file/doc and update every dependent reference — cross-refs, renamed identifiers, example commands, summary tables. A partial scan misses them.
+- **"Done" means the ripple re-read and evidence are complete**, not "edit applied."
+
 ## Monorepo Structure
 
-npm workspaces. **Build order matters** — shared → plugins → backend/admin/renderer.
+npm workspaces. **Build order matters** — shared → plugins → backend → admin → renderer.
 
 | Package | What | Tech |
 |---------|------|------|
