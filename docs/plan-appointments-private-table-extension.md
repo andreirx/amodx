@@ -2,287 +2,418 @@
 
 ## Status
 
-- Decision record: proposed and documented
-- Current maturity: no scheduling module; Public Cognito pool is wired in the authorizer (returns role: "CUSTOMER") but no consumer routes exist yet
-- Target maturity: production-grade boundary where:
-  - appointment data (including customer details) lives in a dedicated appointments-private table
-  - the renderer Lambda cannot read that table
-  - only authenticated end-users (Public Cognito) can create/manage their own appointments
-  - tenants can enable/disable the entire feature via a single config flag
+- PLANNED
+- Capacity model: **multiple named resources** per tenant (a booking reserves one
+  resource, or the system assigns one from an eligible set)
+- Customer data transport: **renderer proxy** — `docs/platform-decisions.md` PD-002
+- Customer identity: **tenant-local** — `docs/platform-decisions.md` PD-001
+- Cognito role: the `CUSTOMER` authorizer branch stays **dormant** in Phase 1 —
+  `docs/platform-decisions.md` PD-003
+- Current maturity: no scheduling module; the Public Cognito pool's authorizer branch
+  exists but is dormant (returns `role: "CUSTOMER"`), with no consumer routes
+- Target maturity: production-grade boundary where appointment data (including customer
+  details) lives in a dedicated appointments-private table, the renderer Lambda cannot
+  read it, all access is renderer-proxied or admin, and tenants enable/disable the
+  feature with one config flag
+
+> Read `docs/platform-decisions.md` (PD-001/002/003) first. This plan applies those
+> decisions to scheduling; it does not re-derive them.
 
 ## Problem
 
-AMODX tenants will need “events between the user and the tenant” such as dentist appointments, car repair bookings, or lawyer meetings.
+AMODX tenants need "events between a customer and the tenant" — dentist appointments,
+car-repair bookings, salon slots, lawyer meetings. These businesses commonly have
+**parallel capacity** (3 chairs, N staff, several bays), so a single-calendar model is
+insufficient.
 
 Today:
 
 - There is no scheduling domain model or storage.
-- The Public Cognito pool is wired in the Lambda authorizer — public pool JWTs are verified and return `role: "CUSTOMER"` with `tenantId` from `custom:tenant_id`. No consumer routes accept this role yet. See `docs/authentication-architecture.md` section 2.
-- The main DynamoDB table is shared by many entity families, and the renderer has read access to that table.
+- The Public Cognito pool's authorizer branch verifies public-pool JWTs and returns
+  `role: "CUSTOMER"`, but no consumer routes accept it. Under PD-002/PD-003 it stays
+  dormant: Phase-1 customer actions are renderer-proxied, not customer-JWT-authorized.
+- The main DynamoDB table is shared by many entity families, and the renderer has read
+  access to it.
 
-If we naively add appointments into the main table and allow the renderer to read/write them, we repeat the original commerce exposure: compromise of the public renderer process would grant access to customer-private appointment data (names, emails, phone numbers, times, notes).
+If appointments went into the main table with renderer read access, a renderer
+compromise would expose customer-private appointment data (names, emails, phones, times,
+notes) — repeating the commerce exposure (security finding 7.6).
 
 ## Goal
 
-Introduce an EVENTS SCHEDULING extension with the following properties:
+Introduce an EVENTS SCHEDULING extension with these properties:
 
-- Authenticated booking only:
-  - End-users must sign in via the Public Cognito pool before booking or managing appointments.
-- Tenant isolation:
-  - Every appointment is scoped to a single tenant.
-  - Cross-tenant reads/writes are blocked by the same `requireRole()` + `tenantId` pattern as existing backend handlers.
-- Private storage boundary:
-  - Customer-private appointment data lives in a dedicated appointments-private DynamoDB table.
-  - The renderer Lambda has **no IAM access** to this table.
-  - All reads/writes go through backend handlers.
-- Operational control:
-  - A per-tenant toggle, e.g. `TenantConfig.appointmentsEnabled` (UI: a single checkbox “Enable appointments/scheduling”), enables or disables the entire feature set for that tenant.
+- **Authenticated booking only.** A customer must have a session (Google or
+  email/password — see `plan-public-pool-customer-auth.md`) before booking or managing
+  appointments. Booking calls are renderer-proxied (PD-002), not direct customer-JWT
+  calls to the backend.
+- **Tenant isolation.** Every appointment is scoped to one tenant; cross-tenant
+  reads/writes are blocked by the same role + tenant checks as existing handlers.
+- **Private storage boundary.** Customer-private appointment data lives in a dedicated
+  appointments-private DynamoDB table. The renderer Lambda has **no IAM access** to it;
+  all access is via backend handlers.
+- **Parallel capacity.** A tenant defines multiple named resources; bookings reserve a
+  concrete resource (or the system assigns an eligible free one).
+- **Operational control.** A per-tenant `appointmentsEnabled` flag (default `false`)
+  enables/disables the whole feature.
 
 ## Non-Goals (Phase 1)
 
 - No general workflow engine or arbitrary multi-step orchestration.
-- No calendar sync (Google/Outlook) in the first phase.
-- No shared “global booking” across tenants; everything remains tenant-local.
-- No anonymous bookings; public unauthenticated booking is explicitly out of scope for the first extension.
+- No calendar sync (Google/Outlook).
+- No shared "global booking" across tenants; everything is tenant-local.
+- No anonymous bookings; a session is required.
+- **No numeric per-service pooled capacity.** Phase 1 supports per-service resource
+  *eligibility*, but every booking still reserves exactly one named resource. Deferred:
+  service-level pooled capacity (e.g. "service A has capacity 3" without naming
+  staff/chairs/bays).
+
+## Capacity Model (Phase 1 — multiple named resources)
+
+### Domain entities
+
+```
+Tenant
+  has many AppointmentResources           (staff / chairs / bays)
+
+AppointmentService
+  has duration
+  has eligibleResourceIds[]  OR  allResourcesEligible: true
+
+Appointment
+  reserves exactly one resourceId
+  has start / end  (derived from service duration)
+  has status, customer identity (tenant-local), optional notes
+```
+
+### Slot generation (pure function, no I/O)
+
+```
+availableSlots(
+  serviceId,
+  dateRange,
+  resources,
+  availabilityRules,
+  existingAppointments,
+  timezone,
+  now            // injected clock — never read ambient time (DST testability)
+) -> slots grouped by start time; each slot lists the eligible resourceIds that are free
+```
+
+### Time invariant (UTC instants vs local wall time)
+
+- **Storage and locks use UTC ISO instants.** `startIso` in `SLOT#<resourceId>#<startIso>`
+  and the appointment `start`/`end` are UTC instants, not local wall time.
+- **Availability rules use local wall time** in an explicit tenant/resource timezone
+  (e.g. "Mon–Fri 09:00–17:00 Europe/Bucharest").
+- The kernel takes the timezone explicitly (never ambient) and converts local candidate
+  slots to UTC instants for locks and storage. This keeps DST correct: a 09:00 local slot
+  maps to different UTC instants across a DST boundary, but each lock key is one
+  unambiguous instant.
+
+### Booking concurrency enforcement (persistence, not kernel)
+
+Double-booking is prevented at write time, not in the kernel, with a per-resource slot
+lock:
+
+```
+PK = TENANT#<tenantId>
+SK = SLOT#<resourceId>#<startIso>      // startIso = UTC ISO instant (Time invariant)
+```
+
+"Any available" is **two-step** — you cannot discover a free resource *inside* one
+DynamoDB transaction (discovery needs queries across resources):
+
+1. Query existing appointments/locks for the eligible resources over the range.
+2. The kernel returns the eligible resourceIds free for the chosen slot.
+3. The backend deterministically picks one candidate.
+4. `TransactWrite` creates `SLOT#<resourceId>#<startIso>` with `attribute_not_exists`,
+   plus — atomically — the appointment item, its `APPTCUSTOMER#`/`APPTDATE#` adjacency
+   items, and the booking-intent item (so the access-pattern adjacencies always exist).
+5. On a race (the condition fails), retry with the next candidate, or return a conflict if
+   none remain.
+
+For a specific (non-"any") resource, steps 1–3 collapse to that one resource; step 4 is
+the same conditional lock.
+
+- **Idempotency:** the client generates a booking-intent UUID at form render; the backend
+  does a conditional `Put` on `BOOKINGINTENT#<uuid>`, so a double-click or retry cannot
+  create two appointments. Retry semantics: same UUID + same request fingerprint →
+  return the existing appointment result; same UUID + **different** fingerprint → `409`
+  conflict.
+
+### Detection vs enforcement (do not conflate)
+
+- The **kernel** *detects* availability and overlap as pure functions of its inputs.
+- **DynamoDB** *enforces* concurrency via the slot-lock conditional write / transaction.
+- These are two separate slices (S1 kernel and S3 persistence). The kernel must never
+  reach for a clock or a database.
 
 ## Architectural Boundary
 
 ### Main Table (unchanged)
 
-The existing single table remains the public/content/catalog table:
-
-- tenant config and site config
-- content and routes
-- products and categories
-- forms, popups, delivery config
-- all current non-appointment entity families
-
-The renderer continues to have read access to this table (subject to future least‑privilege phases).
+The existing single table remains the public/content/catalog table (tenant config,
+content, products, categories, forms, popups, delivery, etc.). The renderer keeps read
+access to it (subject to future least-privilege phases).
 
 ### New Appointments-Private Table
 
-A new DynamoDB table holds only customer-private scheduling entities (example key shapes; exact schema TBD in implementation):
+A dedicated DynamoDB table holds only scheduling entities:
 
-- `APPOINTMENT#<appointmentId>`
-- `APPTCUSTOMER#<email>#<appointmentId>` (customer→appointment adjacency)
-- optionally, per-tenant counters or work-queue items related to appointments
+- `APPOINTMENT#<appointmentId>` (get by id)
+- `APPTCUSTOMER#<normalizedEmail>#<startIso>#<appointmentId>` (customer→appointment
+  adjacency, **time-ordered**; email normalized via the shared `normalizeEmail()` — PD-001)
+- `APPTDATE#<startIso>#<appointmentId>` (tenant date adjacency for calendar/admin range
+  queries)
+- `RESOURCE#<resourceId>`, `SERVICE#<serviceId>`, `AVAILABILITY#<…>` (tenant scheduling
+  config)
+- `SLOT#<resourceId>#<startIso>` (concurrency lock item; `startIso` = UTC instant)
+- optional `BOOKINGINTENT#<uuid>` (idempotency) and per-tenant counters
 
-Keys:
+Keys: `PK = TENANT#<tenantId>`, `SK = <entity-specific pattern>`. Mirrors the
+commerce-private pattern; renderer has **no IAM access**.
 
-- `PK = TENANT#<tenantId>`
-- `SK = <entity-specific pattern>`
+> **Decision:** resources, services, and availability rules also live in the
+> appointments-private table — one consistency boundary (config and appointment records
+> change together), and resource names can reveal staff/chair/bay data, so not public by
+> default. The renderer never reads this table directly; it gets only public-safe
+> **derived availability DTOs** through backend routes. Customer-private records
+> (`APPOINTMENT#`, `APPTCUSTOMER#`) are private for the same reason.
 
-This mirrors the commerce private-table pattern and preserves access patterns while isolating customer‑private data.
+#### Access patterns (no-scan)
+
+All list endpoints use `QueryCommand` + `ProjectionExpression`; never `Scan`.
+
+1. **Get appointment by id** — `SK = APPOINTMENT#<appointmentId>`.
+2. **List a customer's appointments (time-ordered)** —
+   `SK begins_with APPTCUSTOMER#<normalizedEmail>#`; the embedded `<startIso>` makes the
+   result chronological without a post-query sort.
+3. **List tenant appointments by date range (calendar/admin)** —
+   `SK BETWEEN APPTDATE#<rangeStartIso> AND APPTDATE#<rangeEndIso>`.
+4. **Resource locks by date range** —
+   `SK BETWEEN SLOT#<resourceId>#<rangeStartIso> AND SLOT#<resourceId>#<rangeEndIso>`
+   (per resource).
+5. **Config lookup** — `RESOURCE#<resourceId>`, `SERVICE#<serviceId>`, `AVAILABILITY#<…>`.
+
+Rationale: `APPOINTMENT#<id>` alone cannot serve a date-range calendar view without
+scanning, and `APPTCUSTOMER#<email>#<id>` cannot return history chronologically — hence
+the `APPTDATE#` adjacency and the `<startIso>` segment inside `APPTCUSTOMER#`.
 
 ### Tenant Feature Toggle
 
-Extend `TenantConfig` with a boolean flag:
+`appointmentsEnabled: boolean` (default `false`), independent of `commerceEnabled`. Place
+it on `TenantConfig` or within an existing feature/config grouping in the shared schema if
+one exists at implementation time — the invariant is **default false and
+backend-enforced**, not the exact field location.
 
-- `appointmentsEnabled: boolean` (default: `false`)
+- Admin UI: the settings toggle is **always visible** to authorized tenant admins.
+  Resource/service/availability **config** can be edited while `appointmentsEnabled` is
+  `false`, so a tenant prepares first, then enables. Operational appointment
+  list/detail/status views may be hidden or read-only when disabled.
+- Renderer: hides booking UX and skips scheduling calls when disabled.
+- Backend enforcement is **route-specific**, not a blanket reject:
+  - Customer routes (booking / list / cancel) reject when `appointmentsEnabled` is `false`.
+  - Admin config + toggle routes remain usable when disabled (so the tenant can configure
+    and then enable).
+  - Admin operational routes (list/detail/status) may be read-only when disabled.
 
-Behavior:
-
-- **Admin UI**:
-  - Shows an “Appointments / Scheduling” settings section with a single checkbox:
-    - “Enable appointments/scheduling for this site”
-  - When disabled: hide appointments admin pages and configuration UI.
-- **Renderer**:
-  - When disabled: hide booking widgets/routes and avoid calling scheduling endpoints.
-- **Backend**:
-  - All appointment handlers check `appointmentsEnabled` for the target tenant and return `403` or `404` when disabled, even if called directly.
-
-This matches the commerce `commerceEnabled` gating pattern.
-
-## Security Properties After Cutover
+## Security Properties
 
 ### Improved
 
-- Renderer Lambda compromise does not grant direct read access to appointment records or customer identities associated with bookings.
-- Appointment endpoints require:
-  - a valid Public Cognito JWT (end user)
-  - correct tenant scoping based on `custom:tenant_id`
-- Tenants can disable the entire feature with a single flag if they do not want to process appointments at all.
+- A renderer compromise grants no direct read of appointment records or customer
+  identities (the table is outside the renderer's IAM).
+- Customer booking/list/cancel is renderer-proxied (PD-002): backend routes accept the
+  `RENDERER` role, tenant is host-derived, customer email is session-derived. The browser
+  never asserts tenant or identity directly.
+- A tenant can disable the whole feature with one flag.
 
 ### Residual
 
-- Renderer still has access to whatever remains in the main table (content, products, etc.).
-- Appointment data is isolated, but other non-commerce/non-appointment private families still rely on the main table boundary.
+- The renderer still has read access to whatever remains in the main table.
+- Appointment data is isolated, but other non-commerce/non-appointment private families
+  still rely on the main-table boundary.
 
-## API Design
+## Auth & API Design (renderer-proxy, PD-002/PD-003)
 
-### Customer-Facing Endpoints (renderer or direct)
+### Customer-facing endpoints
 
-Preferred shapes (no email in URL path):
+The customer's browser calls **renderer** routes; the renderer validates the NextAuth
+session, derives tenant from `Host`, and calls the backend with the `RENDERER` key plus
+the session email. No customer Cognito JWT reaches the backend in Phase 1.
 
-- `POST /appointments` — create a new appointment for the authenticated user
-- `GET /appointments` — list the authenticated user’s appointments
-- `DELETE /appointments/{id}` — cancel one of the user’s appointments
+Backend routes (RENDERER-key, not anonymous, not CUSTOMER):
 
-Trust model:
+- `POST /appointments` — create for the session customer
+- `GET /appointments` — list the session customer's appointments
+- `DELETE /appointments/{id}` — cancel one of the session customer's appointments
 
-- Public Cognito JWT in `Authorization` header
-  - Authorizer verifies token against the Public pool.
-  - Maps `custom:tenant_id` → `auth.tenantId`.
-  - Assigns a dedicated role, e.g. `CUSTOMER`, to distinguish from admin/editor roles.
-- Backend handlers:
-  - Extract `tenantId` from `auth.tenantId`.
-  - Use `requireRole(auth, ["CUSTOMER"], tenantId)` for customer endpoints.
-  - Use appointments-private table for all reads/writes.
+Backend handler rules:
 
-### Admin/Tenant Owner Endpoints
+- `requireRole(auth, ["RENDERER"])`.
+- Tenant comes from the renderer (host-derived), not the request body.
+- Customer email comes from the renderer (session-derived), normalized via
+  `normalizeEmail()`; appointment ownership is checked against
+  `APPTCUSTOMER#<normalizedEmail>`.
+- No email in URL paths/query strings (it lands in logs/traces).
+- All reads use `QueryCommand` + `ProjectionExpression`; no scans.
 
-Examples:
+### Admin / tenant-owner endpoints
 
-- `GET /appointments/admin` — list tenant appointments with projection
-- `GET /appointments/admin/{id}` — detailed view
-- `PUT /appointments/admin/{id}` — status updates (confirmed, completed, cancelled by tenant)
+These use the existing admin Cognito pool directly (not renderer-proxied):
 
-Trust model:
+- `GET /appointments/admin`, `GET /appointments/admin/{id}` — list/detail with projection
+- `PUT /appointments/admin/{id}` — status updates (confirmed/completed/cancelled)
+- Resource/service/availability config CRUD
 
-- Admin Cognito JWT (existing pool).
-- `requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId)` as appropriate.
-- Same appointments-private table; no renderer involvement.
+Rule: use the existing admin role constants accepted by `requireRole` in this codebase
+(see `packages/shared` `UserRole`); `GLOBAL_ADMIN` passes through policy automatically. Do
+not invent new role names.
+
+### Dormant CUSTOMER branch (PD-003)
+
+The authorizer's `CUSTOMER` branch stays in place but unused in Phase 1 — no appointment
+route accepts `CUSTOMER`. It is retained for a possible future direct-JWT path
+(high-sensitivity flows). Do not route Phase-1 appointments through it. Do not place
+appointment endpoints under anonymous-bypass paths (`POST /leads|/contact|/consent`),
+which resolve before JWT verification.
 
 ### Notifications and Audit
 
-- Appointment lifecycle events (created, rescheduled, cancelled, completed) call `publishAudit()` → EventBridge → worker Lambda → DynamoDB audit trail.
-- Optional email notifications (SES) follow the commerce order-email template pattern:
-  - Per-tenant templates for “Appointment booked”, “Reminder”, “Cancelled”, etc.
-  - Variables: `{{appointmentDate}}`, `{{serviceName}}`, `{{customerName}}`, etc.
-
-## Authentication Architecture Integration
-
-### Public Cognito Pool Usage — IMPLEMENTED
-
-The Lambda authorizer (`backend/src/auth/authorizer.ts`) now verifies Public pool JWTs as a fallback after Admin pool verification. See `docs/authentication-architecture.md` section 2 for full details.
-
-Current state:
-
-- `custom:tenant_id` is extracted and validated (must be non-empty string).
-- Role is always the literal `”CUSTOMER”` — never derived from token claims.
-- `PUBLIC_POOL_ID` and `PUBLIC_POOL_CLIENT_ID` must both be set or both be unset; mismatched config fails closed.
-- No consumer routes accept CUSTOMER yet. Appointment handlers (Phase 4) will be the first.
-
-Appointment endpoints will rely on `requireRole(auth, [“CUSTOMER”], tenantId)` and strict tenant equality to enforce isolation. This keeps the same “authorizer -> auth context -> handler” pattern used by commerce and admin routes.
-
-Security constraints for appointment routes:
-
-- Do NOT place appointment endpoints under anonymous-bypass paths (`POST /leads`, `POST /contact`, `POST /consent`) — those resolve before JWT verification and silently ignore bearer tokens.
-- Do NOT treat `custom:tenant_id` alone as sufficient tenant proof — appointment handlers must also verify host/tenant consistency or enforce server-controlled membership so a token for tenant A cannot be replayed against tenant B routes.
+- Lifecycle events (created/rescheduled/cancelled/completed) call `publishAudit()` with
+  `actor.email` + `target.title` (per repo audit rule), → EventBridge → worker → audit
+  trail.
+- Optional SES notifications follow the commerce order-email template pattern (per-tenant
+  templates; variables like `{{appointmentDate}}`, `{{serviceName}}`, `{{resourceName}}`,
+  `{{customerName}}`).
 
 ## Clean Architecture Shape
 
-### Support Module
+### Domain kernel (pure, no I/O) — the core, build first
 
-Introduce a backend support module similar in spirit to `commerce-db.ts`:
+A pure OOP module (the Critical Business Rules) with **no AWS, no clock, no framework**:
 
-- Suggested file: `backend/src/lib/appointments-db.ts`
-- Responsibilities:
-  - Typed functions for:
-    - `createAppointment(...)`
-    - `getAppointment(tenantId, appointmentId)`
-    - `listAppointmentsForCustomer(tenantId, email)`
-    - `listAppointmentsForTenant(tenantId, filters)`
-    - `cancelAppointment(...)`
-  - Encapsulate PK/SK construction and GSI usage.
-  - Enforce “no scans, always projection” for list endpoints.
+- entities: `AppointmentResource`, `AppointmentService`, `AvailabilityRule`,
+  `Appointment`, `AppointmentStatus`
+- `availableSlots(...)` (signature above) — injected `now`, injected timezone
+- overlap detection, status-transition rules, reschedule rules, cancellation-window rules
 
-Table name:
+Testable off-target (per the repo's off-target-testability rule) with fixtures for DST
+boundaries, multi-resource eligibility, and overlap edge cases.
 
-- Supplied via dedicated env var (e.g. `APPOINTMENTS_TABLE_NAME`).
-- Fallback to main table **only in early development**, but production DOD is “renderer has zero IAM access and appointment data lives in the separate table”.
+### Persistence / support module
 
-### Feature Implementation
+`backend/src/lib/appointments-db.ts` — typed functions isolating the table detail:
 
-Use the support module from:
+- `createAppointment(...)` (one transaction: appointment + `APPTCUSTOMER#`/`APPTDATE#`
+  adjacencies + slot-lock + booking-intent)
+- `getAppointment`, `listAppointmentsForCustomer`, `listAppointmentsForTenant`
+- `cancelAppointment(...)` (releases the slot lock)
+- resource/service/availability config reads/writes
+- enforces "no scans, always projection"; table via `APPOINTMENTS_TABLE_NAME`
 
-- Customer booking endpoints.
-- Admin/tenant management endpoints.
-- Any future reminder worker that needs to read upcoming appointments.
+The kernel does not import this module; this module calls the kernel for slot/overlap
+decisions, then enforces concurrency at write time.
 
-Renderer and admin code must **not** import `appointments-db.ts` or any DynamoDB helper directly; they only call API routes.
+### Feature implementation
 
-## Rollout Plan
+Backend handlers (customer renderer-proxied + admin) and any future reminder worker use
+`appointments-db.ts`. Renderer and admin code never import it; they call API routes.
 
-This mirrors the commerce-private-table rollout, but for a new domain (appointments) instead of migration.
+## Rollout Plan (kernel-first slices)
 
-### Phase 1 — Design & Schema in Shared Types
+Production sensitivity is low: appointments is a new domain with no existing data, the
+table is new, and the flag defaults off. Deploy risk is ordinary shared-fleet deploy
+risk, not data migration.
 
-- Define appointment-related Zod schemas and TypeScript types in `packages/shared`:
-  - `AppointmentSchema`, `AppointmentStatus`, `AppointmentServiceSchema`, etc.
-  - Include `appointmentsEnabled` flag in `TenantConfig` schema.
-- This allows admin/renderer/backend to share DTOs and validation.
+### Slice S1 — Pure domain kernel (no AWS)
 
-### Phase 2 — Infra: Empty Appointments-Private Table
+- Shared Zod schemas/types in `packages/shared`: resources, services (eligibility),
+  availability rules, appointment, status; `appointmentsEnabled` on `TenantConfig`.
+- Kernel logic: slot generation, overlap detection, status transitions — pure, injected
+  clock + timezone.
+- Tests: DST boundaries, multi-resource eligibility, overlap, cancellation window.
+- Deploy: shared/backend build only; no runtime behavior, no migration.
 
-- Add new DynamoDB table in `infra/`:
-  - PAY_PER_REQUEST, PITR enabled.
-  - Keys: `PK`, `SK` with patterns described above.
-- Wire `APPOINTMENTS_TABLE_NAME` into relevant backend Lambdas.
-- Do **not** grant any IAM access to the renderer Lambda for this table.
+### Slice S2 — Infra: empty appointments-private table + flag
 
-At this point the table is empty and inert.
+- New DynamoDB table (PAY_PER_REQUEST, PITR), keys above; renderer gets **no** IAM.
+- Wire `APPOINTMENTS_TABLE_NAME` into the relevant backend Lambdas.
+- `appointmentsEnabled` default false.
+- Deploy: one CDK deploy; inert table; no migration.
+- (Table before persistence: S3 writes to it and tests concurrency against it.)
 
-### Phase 3 — Auth Wiring — COMPLETED (as support module)
+### Slice S3 — Persistence support module + concurrency enforcement
 
-**Decision: Option 1 — Single shared authorizer (extended).**
+- `appointments-db.ts` create path: slot-lock item (`SLOT#<resourceId>#<startIso>`, UTC
+  instant) + booking-intent idempotency + `TransactWriteCommand`; "any available" uses
+  the two-step discover-then-conditionally-lock model (see Capacity section).
+- Tests against the now-existing staging table: concurrent double-book attempt → exactly
+  one wins; duplicate booking-intent → one appointment.
+- Deploy: backend build; still gated off; no migration.
 
-Implemented in `backend/src/auth/authorizer.ts`. The existing authorizer now verifies Public pool JWTs as a fallback after Admin pool verification fails.
+### Slice S4 — Backend handlers (customer renderer-proxied + admin)
 
-Behavior:
-- Role is always the literal `"CUSTOMER"` — never derived from token claims
-- `tenantId` extracted from `custom:tenant_id` — rejected if missing or empty
-- `PUBLIC_POOL_ID` and `PUBLIC_POOL_CLIENT_ID` must both be set or both unset — mismatched config fails closed with CRITICAL log
-- No consumer routes exist yet — all existing `requireRole()` calls reject CUSTOMER
+- Customer: `POST/GET/DELETE /appointments` with `requireRole(["RENDERER"])`,
+  host-derived tenant, session email.
+- Admin: list/detail/status + resource/service/availability config with the existing
+  admin role constants (`GLOBAL_ADMIN` passes via policy; do not invent roles).
+- Customer handlers check `appointmentsEnabled` and reject when disabled. Admin
+  config/toggle handlers remain usable while disabled. Admin operational handlers may be
+  hidden, read-only, or reject mutations when disabled.
+- Deploy: CDK routes (likely a new `api-appointments.ts` NestedStack, given the
+  CloudFormation resource-count history). Enabled on one staging tenant only.
 
-Security constraints for appointment routes (when added):
-- Do NOT place customer endpoints under anonymous-bypass paths (`POST /leads`, `POST /contact`, `POST /consent`) — those resolve before JWT verification
-- Do NOT treat `custom:tenant_id` alone as sufficient tenant proof — appointment handlers must also verify host/tenant consistency or enforce server-controlled membership
-- Unit tests in `backend/test/auth-policy.test.ts` verify CUSTOMER is rejected by all existing admin role lists
+### Slice S5 — Tenant toggle, admin config UI, renderer booking UI
 
-See `docs/authentication-architecture.md` section 2 for full details.
+- Admin: "Appointments / Scheduling" section (independent of `commerceEnabled`) — define
+  resources, services (+eligibility), availability rules; toggle the flag. The toggle is
+  exposed independently and config can be prepared while `appointmentsEnabled` is `false`.
+- Renderer: booking widget/pages (require sign-in; renderer-proxied calls); appear only
+  when enabled.
+- Deploy: admin + renderer build; one staging tenant.
 
-### Phase 4 — Backend Handlers (Customer + Admin)
+### Slice S6 — Notifications & audit
 
-- Implement backend handlers under `backend/src/appointments/*`:
-  - Customer endpoints: create/list/cancel own appointments.
-  - Admin endpoints: list/update appointments and manage service/availability configuration.
-- All handlers:
-  - Read `auth` from `event.requestContext.authorizer.lambda`.
-  - Use `requireRole()` with strict tenant checks.
-  - Read/write only via `appointments-db.ts`.
+- `publishAudit()` on lifecycle events; optional SES templates.
+- Deploy: backend build.
 
-### Phase 5 — Tenant Toggle & UI
+### Slice S7 — Validation
 
-- Extend admin settings:
-  - Add “Appointments / Scheduling” section with a single checkbox bound to `appointmentsEnabled`.
-- Extend renderer:
-  - When `appointmentsEnabled` is `false`, hide booking UX and skip scheduling API calls.
-  - When `true`, expose booking widgets/pages but still require Public Cognito sign-in.
+For a staging tenant:
 
-### Phase 6 — Notifications & Audit
-
-- Wire appointment lifecycle to:
-  - `publishAudit()` for traceability.
-  - Optional SES-based notifications for customers and tenant operators.
-
-### Phase 7 — Validation
-
-For at least one staging tenant:
-
-- Confirm that booking requires Public Cognito sign-in.
-- Confirm that a user from tenant A cannot access tenant B’s appointments (JWT `tenant_id` isolation).
-- Confirm that the renderer Lambda IAM role has no permissions on the appointments-private table.
-- Confirm that disabling the checkbox removes all scheduling UX and backend endpoints reject calls for that tenant.
+- Booking requires sign-in.
+- A customer of tenant A cannot read/cancel tenant B's appointments.
+- The renderer Lambda IAM role has no permission on the appointments-private table.
+- Disabling the flag removes all scheduling UX and backend rejects calls.
+- Concurrency: simultaneous bookings of the last slot for a resource → exactly one wins.
 
 ## Assumptions and Technical Debt
 
-- Public Cognito pool will be used exclusively for end-user customer auth (not admins).
-- Email remains the primary cross-system customer identifier (matching commerce).
-- This plan assumes that an appointments domain is relatively small compared to commerce; table cost impact is low.
+- Customer identity is tenant-local (PD-001); email (normalized) is the cross-system
+  identifier, matching commerce.
+- Phase-1 customer access is renderer-proxied (PD-002); the dormant `CUSTOMER` authorizer
+  branch (PD-003) is reserved for a future direct-JWT path.
+- Appointment volume is assumed small relative to commerce; table cost impact is low.
 - Deferred work:
   - Calendar sync (Google/Outlook).
+  - Per-service numeric pooled capacity (the "configurable per service" option).
   - Advanced workflow (multi-step approval, dependencies).
   - Hardening other non-commerce private families into their own tables.
+- Any prototyping that temporarily stores appointment records in the main table must be
+  documented and migrated to the appointments-private table before go-live (mirror the
+  commerce-private migration discipline).
 
-Any deviations from this plan (e.g., temporarily storing appointments in the main table during prototyping) must be documented and later migrated to the appointments-private table, similar to the commerce-private migration strategy.
+## Open Items (resolve during implementation)
+
+- Scheduling **config** placement: RESOLVED — resources/services/availability live in the
+  appointments-private table; the renderer gets only public-safe derived availability DTOs
+  via backend routes (see Architectural Boundary).
+- Reschedule semantics: cancel+create (new appointment + slot lock, old released) vs
+  in-place mutation. Default to cancel+create for a clean status history and simpler slot
+  accounting unless a reason emerges otherwise.
+- Timezone source: tenant-level default vs per-resource vs per-customer display. Kernel
+  takes an explicit timezone; the source of that value is a config decision.
+- Slot granularity / start alignment (e.g. 15-min grid vs service-duration grid) for slot
+  generation.

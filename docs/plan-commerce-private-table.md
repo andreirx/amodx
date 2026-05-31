@@ -2,9 +2,10 @@
 
 ## Status
 
-- Decision record: proposed and documented
+- Decision record: proposed and documented; the renderer→backend trust model is now formalized as PD-002 (`docs/platform-decisions.md`)
 - Current maturity: renderer/content boundary is mature, customer-data least-privilege is not
 - Target maturity: production-grade boundary where the renderer Lambda cannot read customer-private commerce data
+- Sensitivity: **data migration is low-stakes** (commerce is test-only — one tenant, disposable orders), but **shared-code / CDK deploys remain production-sensitive** (the same backend + renderer fleet serves all non-commerce production tenants). Treat the first migration as a rehearsal of the production migration machinery on disposable data — build the tooling full-strength, run it as a rehearsal.
 
 ## Problem
 
@@ -47,6 +48,12 @@ This is the previously discussed "Option X":
 - renderer calls backend using the `RENDERER` API key
 - backend is the only process that reads the commerce-private table
 
+This is now formalized platform-wide as **PD-002** (`docs/platform-decisions.md`): a
+two-hop trust chain — browser→renderer (validated NextAuth session), then renderer→backend
+(RENDERER key + host-derived tenant + session-derived email). The browser never supplies
+`tenantId` or customer email as an authority. Do not "optimize" by letting the browser
+call the backend customer routes directly.
+
 Rejected directions:
 
 - Dedicated customer-read Lambda behind custom CloudFront routing
@@ -76,9 +83,14 @@ It continues to hold:
 The new table holds only customer-private commerce entities:
 
 - `ORDER#<orderId>`
-- `CUSTORDER#<email>#<orderId>`
-- `CUSTOMER#<email>`
+- `CUSTORDER#<normalizedEmail>#<orderId>`
+- `CUSTOMER#<normalizedEmail>`
 - `COUNTER#ORDER`
+
+where `normalizedEmail = normalizeEmail(customerEmail)` (shared utility — trim +
+lowercase; no inline `toLowerCase()`). The current checkout only lowercases, so the
+migration must align historical keys to this normalized form and all new writes must use
+it.
 
 Keys remain the same:
 
@@ -119,12 +131,18 @@ Preferred backend endpoints:
 - `GET /customer/profile`
 - `POST /customer/profile`
 
-Trust model:
+Trust model (PD-002):
 
-- renderer validates NextAuth session
+- the browser never sends customer identity (email or tenant) as an authority
+- renderer validates the NextAuth session and derives the customer email from it
 - renderer derives tenant from `Host`
-- renderer passes session email to backend in a request header or request body
-- backend authenticates the renderer with the `RENDERER` API key
+- renderer sends identity to the backend only on the server-to-server call, authenticated
+  with the `RENDERER` API key
+- if a header carries the email, it MUST be an internal header excluded from
+  access/request logging; prefer the JSON body for non-GET internal calls where the API
+  shape allows
+- the backend IGNORES any browser-originated customer email; identity comes only from the
+  RENDERER-authenticated call
 
 These endpoints are not generic public routes. They are renderer-only self-service routes with tightly scoped DTOs.
 
@@ -229,6 +247,7 @@ Copy existing commerce-private records from the main table into the new table.
 
 Important:
 
+- the GSI pre-migration gate (see Assumptions) must be cleared first
 - no `ScanCommand`
 - query by tenant and by sort-key prefix only
 - copy records exactly as stored
@@ -280,22 +299,28 @@ Expected shape:
 
 ```ts
 TransactItems: [
-  { Put: { TableName: COMMERCE_TABLE_NAME, Item: orderItem } },
-  { Put: { TableName: COMMERCE_TABLE_NAME, Item: custOrderItem } },
-  { Put: { TableName: COMMERCE_TABLE_NAME, Item: customerItem } },
-  { Update: { TableName: COMMERCE_TABLE_NAME, Key: counterKey, ... } },
-  { Update: { TableName: TABLE_NAME, Key: couponKey, ... } },
+  { Put:    { TableName: COMMERCE_TABLE_NAME, Item: orderItem } },       // ORDER#<orderId>
+  { Put:    { TableName: COMMERCE_TABLE_NAME, Item: custOrderItem } },   // CUSTORDER#<normalizedEmail>#<orderId>
+  { Update: { TableName: COMMERCE_TABLE_NAME, Key: customerKey, ... } }, // CUSTOMER#<normalizedEmail> — UPDATE
+  { Update: { TableName: COMMERCE_TABLE_NAME, Key: counterKey, ... } },  // COUNTER#ORDER
+  { Update: { TableName: TABLE_NAME, Key: couponKey, ... } },            // COUPON# stays in main table
 ]
 ```
+
+The customer record is an **`Update`**, not a `Put`: preserve the current `create.ts`
+upsert semantics (`if_not_exists` for profile fields, additive spend/order counters). A
+`Put` would clobber an existing customer's profile and totals. Verify the current
+`create.ts` write shape and replicate it exactly on the new table.
 
 DynamoDB supports cross-table transactions in the same account and region, so this remains atomic if implemented correctly.
 
 ### Phase 7 - Validation
 
-Validate per tenant:
+Validate per tenant (post-cutover semantics — destination already has new orders, so do
+NOT require strict count parity here):
 
-- source and destination counts match for each moved prefix
-- all source keys exist in destination
+- every expected source key exists in destination (`verify --post-cutover`)
+- destination-only keys were all created after cutover; no writes still land in the old table
 - backend reads resolve from the commerce-private table
 - manual spot checks for:
   - account order history
@@ -313,6 +338,8 @@ After validation succeeds:
 
 This purge is mandatory if the security objective is to become true. If old copies remain in the main table, the renderer can still read them through its current main-table IAM grant.
 
+Purge only via the script's `purge` mode, after `purge-plan` review and a recorded backup reference (on-demand backup ARN, or PITR + the exact UTC timestamp) + NDJSON export (see Safety Rules); then run `purge-verify`.
+
 ## Rollback Plan
 
 Rollback should be staged, not improvised.
@@ -326,6 +353,19 @@ Rollback should be staged, not improvised.
 2. After migration but before source purge
    - backend can be pointed back to old table
    - source data still exists
+
+### Rollback after Deploy 2 (destination-only writes)
+
+Once Deploy 2 is live and any order is created, that order is **destination-only**.
+
+- Before the write freeze is lifted (no destination-only writes yet): rollback is simply
+  pointing code/env back to the old table.
+- After destination-only writes exist, rollback requires either:
+  - reverse-copying the destination-only records back to the old table, or
+  - accepting their loss — acceptable for the current **test** commerce tenant, NOT for a
+    future production commerce tenant.
+- For future production use: no rollback after destination-only writes without a
+  reverse-migration plan prepared in advance.
 
 ### Unsafe rollback point
 
@@ -356,16 +396,33 @@ It is not part of the current deployable architecture and assumes all of the fol
   - query source items
   - write them to destination
   - verify counts and key parity
-- `verify`
-  - compare source and destination without writing
+- `verify --strict` (before Deploy 2 / storage cutover)
+  - exact source/destination parity: same keys, same counts
+- `verify --post-cutover` (after Deploy 2; a.k.a. `--destination-superset`)
+  - every expected source item exists in destination
+  - destination-only items are allowed, but must have been created after cutover
+  - proves no new writes are still landing in the old table
+- `purge-plan`
+  - list the source records that would be deleted from the main table, without deleting
+- `purge`
+  - delete the moved source records from the main table (only after validation + backup)
+- `purge-verify`
+  - confirm the moved keys are absent from the main table and still present in destination
 
 ### Safety Rules
 
 - requires explicit tenant list
 - requires explicit source and destination tables
-- defaults to dry planning behavior unless `--mode migrate`
+- defaults to dry planning behavior unless an explicit write mode is selected
+  (`--mode migrate` or `--mode purge`)
 - aborts if destination already contains moved records unless `--allow-existing-destination` is supplied
-- does not delete source records
+- `migrate` never deletes source records; deletion happens only via the explicit `purge` mode
+- `purge-plan`, `purge`, and `purge-verify` all require BOTH `--source-table` and
+  `--destination-table`; `purge` refuses to delete any candidate not already present in the
+  commerce-private (destination) table
+- `purge` refuses to run without a recorded backup reference — an on-demand backup ARN, or
+  PITR enabled plus the exact UTC restore timestamp recorded immediately before purge — AND
+  an NDJSON export of the purge candidates
 - uses `QueryCommand`, never `ScanCommand`
 
 ### Example Usage
@@ -392,11 +449,49 @@ npm run migrate-commerce-private-table -- \
   --tenants tenant-a,tenant-b
 ```
 
-Verify:
+Verify (pre-cutover, strict parity):
 
 ```bash
 npm run migrate-commerce-private-table -- \
-  --mode verify \
+  --mode verify --strict \
+  --source-table AmodxTable \
+  --destination-table AmodxCommerceTable \
+  --tenants tenant-a,tenant-b
+```
+
+Verify (post-cutover, destination superset):
+
+```bash
+npm run migrate-commerce-private-table -- \
+  --mode verify --post-cutover \
+  --source-table AmodxTable \
+  --destination-table AmodxCommerceTable \
+  --tenants tenant-a,tenant-b
+```
+
+Purge (only after `verify --post-cutover` passes):
+
+```bash
+# 1. Review what would be deleted (no writes)
+npm run migrate-commerce-private-table -- \
+  --mode purge-plan \
+  --source-table AmodxTable \
+  --destination-table AmodxCommerceTable \
+  --tenants tenant-a,tenant-b
+
+# 2. Delete — requires a backup reference + NDJSON export; only deletes candidates
+#    confirmed present in the destination table
+npm run migrate-commerce-private-table -- \
+  --mode purge \
+  --source-table AmodxTable \
+  --destination-table AmodxCommerceTable \
+  --tenants tenant-a,tenant-b \
+  --backup-ref "<on-demand-backup-ARN | pitr-utc-timestamp>" \
+  --export-path <ndjson-path>
+
+# 3. Confirm removal from source, presence in destination
+npm run migrate-commerce-private-table -- \
+  --mode purge-verify \
   --source-table AmodxTable \
   --destination-table AmodxCommerceTable \
   --tenants tenant-a,tenant-b
@@ -408,8 +503,9 @@ Per tenant and per moved prefix, the script reports:
 
 - source count
 - destination count
-- missing keys in destination
-- unexpected keys in destination
+- missing keys in destination (always a failure)
+- destination-only keys — a failure under `verify --strict` (pre-cutover), but EXPECTED
+  under `verify --post-cutover` (new orders write only to destination after Deploy 2)
 
 This is sufficient for the current small commerce footprint.
 
@@ -431,6 +527,13 @@ This is sufficient for the current small commerce footprint.
 
 - remove direct DynamoDB reads for customer/order data
 - proxy through backend from session-validated routes
+- add a CI guard (a lint rule, not a fragile grep that trips on comments/docs) that fails
+  the build if production renderer source — scope `renderer/src/**`, excluding docs,
+  tests, and generated files — imports or calls any of: the DynamoDB commerce read helpers
+  (`getOrderForCustomer` / `getCustomerOrders` / `getCustomerProfile`), direct table access
+  for `ORDER#` / `CUSTOMER#` / `CUSTORDER#` / `COUNTER#ORDER`, `COMMERCE_TABLE_NAME`, or any
+  backend/internal commerce repository module. Renderer API proxy routes may call the backend HTTP client
+  only — never DynamoDB.
 
 ### Scripts and Docs
 
@@ -442,9 +545,23 @@ This is sufficient for the current small commerce footprint.
 - commerce footprint is currently small
 - existing commerce tenants can be migrated from an explicit allowlist
 - migration runs in the same AWS account and region as both tables
-- no schema transformation is needed; this is a record-preserving move
+- no payload transformation is needed; key transformation is limited to deterministic
+  normalization of `CUSTOMER#` and `CUSTORDER#` email components through `normalizeEmail()`
 - no dual-write transition layer is introduced for this phase
 - a temporary write freeze is acceptable during migration and cutover
+- **GSI participation is a hard pre-migration gate** (not just an assumption). Migration
+  MUST NOT run until verified:
+  - whether `ORDER#`, `CUSTORDER#`, `CUSTOMER#`, `COUNTER#ORDER` participate in any GSI
+    (the `CUSTORDER#` adjacency should be a base-table SK-prefix query, not a GSI);
+  - whether any admin/report/list path depends on a `Type`/entity GSI projection;
+  - whether the new commerce-private table needs matching GSIs, or whether all commerce
+    access remains PK/SK-only.
+  Any GSI those entities feed must be recreated on the new table and every dependent query
+  re-pointed, or the migration scope is incomplete.
+- **email normalization must be consistent**: `CUSTOMER#<email>` keys must use the shared
+  `normalizeEmail()` (see `plan-public-pool-customer-auth.md`). Checkout currently does
+  inline `customerEmail.toLowerCase()` (no `.trim()`); migrate it to `normalizeEmail()` or
+  account-linking forks duplicate `CUSTOMER#` records.
 
 ## Divergences From a Full Least-Privilege End State
 
@@ -465,12 +582,12 @@ This is sufficient for the current small commerce footprint.
   Every function takes a table name parameter or reads from COMMERCE_TABLE_NAME env var, falling back to TABLE_NAME.
   This means the module works against the main table until the env var is set.
   - Phase 2: Add two new backend handlers — GET /customer/orders and GET /customer/profile. Both use
-  requireRole(["RENDERER"]), read email from a request header (e.g., x-customer-email), and call commerce-db.ts
+  requireRole(["RENDERER"]) and read customer identity ONLY from the renderer-authenticated internal carrier (API Design — if a header, excluded from request/access logging; browser-originated email is never trusted), then call commerce-db.ts
   functions. Register routes in CDK (api-commerce.ts nested stack).
   - Phase 3: Rewrite renderer/src/app/api/account/orders/route.ts — stop importing getCustomerOrders from dynamo.ts,
-  instead call GET /customer/orders on the backend with renderer key + tenant from host + session email in header.
+  instead call GET /customer/orders on the backend with renderer key + tenant from host + session-derived customer identity through the renderer-authenticated internal identity carrier (API Design); if that carrier is a header, it must be excluded from request/access logging. Browser-originated email is never trusted.
   - Phase 3: Rewrite renderer/src/app/api/profile/route.ts GET — stop importing getCustomerProfile from dynamo.ts,
-  instead call GET /customer/profile on the backend with renderer key.
+  instead call GET /customer/profile on the backend with renderer key + tenant from host + session-derived customer identity through the renderer-authenticated internal identity carrier (API Design); if that carrier is a header, it must be excluded from request/access logging. Browser-originated email is never trusted.
   - Phase 4: Add the new DynamoDB table in CDK. Suggested location: infra/lib/database.ts alongside the existing
   table, or a new infra/lib/commerce-database.ts construct. PK/SK, PAY_PER_REQUEST, PITR enabled. Pass the table to
   api-commerce.ts as a new prop. Do NOT set COMMERCE_TABLE_NAME on any Lambda yet — the fallback to TABLE_NAME means
@@ -516,9 +633,9 @@ This is sufficient for the current small commerce footprint.
     --destination-table AmodxCommerceTable \
     --tenants <your-commerce-tenant-id>
 
-  # Verify — confirm parity
+  # Verify — confirm strict pre-cutover parity
   npx tsx scripts/migrate-commerce-private-table.ts \
-    --mode verify \
+    --mode verify --strict \
     --source-table AmodxTable \
     --destination-table AmodxCommerceTable \
     --tenants <your-commerce-tenant-id>
@@ -527,7 +644,7 @@ This is sufficient for the current small commerce footprint.
 
   - Plan output shows expected record counts per prefix
   - Migrate completes without errors
-  - Verify confirms zero missing keys, zero unexpected keys
+  - `verify --strict` confirms zero missing keys and zero unexpected keys before storage cutover
   - DynamoDB console shows records in the new table
 
   Do not proceed to Deploy 2 until verify passes. Write freeze stays active.
@@ -562,8 +679,8 @@ This is sufficient for the current small commerce footprint.
   - Public order tracking works
   - Admin order list shows all orders
   - Reports page loads
-  - Run verify mode of migration script again to confirm source and destination still match (plus the new order only
-  in destination)
+  - Run `verify --post-cutover` to confirm destination is a superset of the expected source keys and the new test
+  order exists only in destination
 
   Lift write freeze. Commerce is now fully operational on the new table.
 
@@ -578,8 +695,9 @@ This is sufficient for the current small commerce footprint.
 
   What you run:
 
-  A purge script (not yet written) or manual DynamoDB operations that delete ORDER#, CUSTORDER#, CUSTOMER#,
-  COUNTER#ORDER records from the main table for each migrated tenant.
+  The migration script's `purge` mode — after `purge-plan` review and a recorded backup reference (on-demand backup ARN, or PITR
+  + the exact UTC timestamp) + NDJSON export — deletes ORDER#, CUSTORDER#, CUSTOMER#, COUNTER#ORDER from
+  the main table for each migrated tenant; then `purge-verify` confirms removal.
 
   What you verify:
 
@@ -600,7 +718,7 @@ This is sufficient for the current small commerce footprint.
   │ Deploy 2  │ cdk       │ Backend reads/writes new table    │ Revert code, redeploy (main table still has     │
   │           │ deploy    │                                   │ data)                                           │
   ├───────────┼───────────┼───────────────────────────────────┼─────────────────────────────────────────────────┤
-  │ Purge     │ Script    │ Old records deleted from main     │ Restore from PITR backup                        │
+  │ Purge     │ Script    │ Old records deleted from main     │ Restore from backup/PITR                        │
   │           │           │ table                             │                                                 │
   └───────────┴───────────┴───────────────────────────────────┴─────────────────────────────────────────────────┘
 
@@ -616,4 +734,7 @@ This is sufficient for the current small commerce footprint.
 - validation passes per tenant and per moved prefix
 - cross-table order creation succeeds with coupon usage updates
 - old source copies are purged from the main table after validation
-- docs and remediation notes point to the new boundary and migration process
+- purge runs only after a recorded backup reference (on-demand backup ARN, or PITR + UTC timestamp) + NDJSON export, confirmed by `purge-verify`
+- a CI guard fails the build if renderer code imports `getOrderForCustomer` / `getCustomerOrders` / `getCustomerProfile` or reads `ORDER#` / `CUSTOMER#` / `CUSTORDER#`
+- checkout email keying is migrated to the shared `normalizeEmail()` (consistent `CUSTOMER#` keys)
+- docs and remediation notes point to the new boundary (PD-002) and migration process
