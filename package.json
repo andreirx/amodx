@@ -11,7 +11,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build -w packages/shared && npm run build -w packages/effects && npm run build -w packages/plugins && npm run build -w backend && npm run build -w admin && npm run build -w renderer && npm run build -w tools/mcp-server && npm run build -w infra",
     "setup": "tsx scripts/setup.ts",
     "setup-config": "tsx scripts/setup-config.ts",
     "manage-domains": "tsx scripts/manage-domains.ts",

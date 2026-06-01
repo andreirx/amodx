@@ -41,9 +41,11 @@ and .webm-with-query; unknown; empty string).
 
 Add a `test` script and a `vitest` dev dependency to `packages/plugins/package.json`: the
 package currently has only `build`/`watch` and the plugins workspace has no test harness
-yet (backend already uses vitest). Installing vitest triggers the repo vuln-audit rule
-(`CLAUDE.md` Definition of Done): after installing, run `npm audit` and document any
-high/critical findings.
+yet — pin `vitest >= 4.1.7` (backend now uses `^4.1.8`, which clears critical advisory
+GHSA-5xrq-8626-4rwp; the earlier `^4.0.16` shipped the vulnerable `@vitest/ui`). Do not add
+`@vitest/ui` unless a `--ui` workflow is actually needed. Installing vitest triggers the repo
+vuln-audit rule (`CLAUDE.md` Definition of Done): after installing, run `npm audit` and
+document any high/critical findings.
 
 ## Non-scope
 

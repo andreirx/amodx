@@ -25,7 +25,7 @@ Before declaring a change done:
 
 ## Monorepo Structure
 
-npm workspaces. **Build order matters** — shared → plugins → backend → admin → renderer.
+npm workspaces. **Build order matters** — shared → effects → plugins → backend → admin → renderer (then tools/mcp-server, infra). The root `npm run build` runs exactly this dependency order.
 
 | Package | What | Tech |
 |---------|------|------|

@@ -101,6 +101,18 @@ request/response schemas depend on the provider's streaming and tool-call format
 slice docs until the provider is chosen. The provider-agnostic `LlmGateway` interface is
 the hedge when this resumes.
 
+## Maintenance
+
+Hygiene work, not a feature track.
+
+| Slice | Scope | Status |
+|-------|-------|--------|
+| `dep-1` | Dependency-audit remediation for the **non-backend** workspaces — renderer/build (`open-next`/`esbuild`, `next`/`postcss`), infra (`aws-cdk-lib` → `fast-uri`/`brace-expansion`/`yaml`), and auth (`next-auth`/`uuid`). No `--force`; no NextAuth downgrade. Detail + grouping in `docs/TECH-DEBT.md`. | PLANNED |
+
+> Backend's 2 critical `vitest`/`@vitest/ui` advisories are already fixed (`vitest ^4.1.8`,
+> 0 backend vulnerabilities, tests green). `dep-1` covers only the remaining 9 moderate + 1 high
+> in the other workspaces.
+
 ## Cross-cutting dependencies
 
 - `fnd-1` (`normalizeEmail`) is a prerequisite for `cmrc` `CUSTOMER#` key normalization (B)

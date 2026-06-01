@@ -100,6 +100,7 @@ Prefixes:
 - `auth-` — customer auth (Track C)
 - `appt-` — appointments / scheduling (Track D)
 - `ai-` — admin AI (Track E, deferred)
+- `dep-` — dependency / maintenance remediation
 
 Sub-slices use a letter suffix when one slice splits: `auth-2a-...`, `auth-2b-...`.
 

@@ -4,6 +4,42 @@ Items tracked here are known issues that don't block production but should be ad
 
 ---
 
+## Dependency Audit Remediation
+
+### Backend critical advisories — FIXED (2026-06-01)
+
+`vitest` bumped `4.0.16 → 4.1.8` and the direct `@vitest/ui` devDep removed — cleared both
+critical **GHSA-5xrq-8626-4rwp** findings (Vitest UI server arbitrary file read/exec; dev-only,
+never in the Lambda runtime). Backend: **0 vulnerabilities; 47/47 tests pass**.
+
+### Remaining: 9 moderate + 1 high (non-backend) — DEFERRED to slice `dep-1`
+
+Whole-repo `npm audit` reports 10 remaining, all in renderer/build and infra/auth dependency
+chains. **Do not run `npm audit fix --force`** — the forced fixes are breaking downgrades. Grouped
+by remediation path and runtime exposure:
+
+**Dev/CI-only, non-breaking (`npm audit fix`, no `--force`) — safe to clear anytime:**
+- `fast-uri <=3.1.1` — **HIGH** — path traversal / host confusion. Transitive under `aws-cdk-lib`.
+- `brace-expansion 4.0.0–5.0.5` — moderate — ReDoS / DoS. Transitive under `aws-cdk-lib`.
+- `aws-cdk-lib` is deploy-time tooling (infra synth), never bundled into a Lambda or the renderer
+  runtime — so even the HIGH has **no production-runtime exposure**.
+
+**Breaking / `--force` — renderer build/deploy stack — DEFER, do NOT force:**
+- `esbuild <=0.24.2` (moderate) under `open-next` — dev-server request vuln. Force → `open-next@0.0.1` (breaking downgrade).
+- `postcss <8.5.10` (moderate) under `next` — CSS-stringify XSS. Force → `next@9.3.3` (breaking downgrade).
+- `yaml 1.0.0–1.10.2` (moderate) under `aws-cdk-lib` — stack overflow. Force → `aws-cdk-lib@2.257.0` (outside stated range).
+- These are build-time tools; fix by moving the **parent** (open-next/next/cdk) forward, not by forcing a downgrade.
+
+**Auth stack — handle during auth dependency review; do NOT downgrade NextAuth:**
+- `uuid <11.1.1` (moderate) under `next-auth` — buffer-bounds check in v3/v5/v6. Force → `next-auth@3.29.10` (breaking downgrade).
+- next-auth runs server-side in the renderer, so this is the one item with **possible renderer-runtime
+  exposure** — scrutinise the actual code path during the Track C / customer-auth dependency review.
+
+Disposition: tracked as ROADMAP slice `dep-1`. Remediate by bumping the parents (open-next, next,
+aws-cdk-lib) to versions carrying patched transitive deps; review next-auth's `uuid` with the auth track.
+
+---
+
 ## High Priority (Missing Features)
 
 ### Netopia Payments (future)
