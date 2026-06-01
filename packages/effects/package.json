@@ -40,8 +40,8 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@webgpu/types": "^0.1.69",
+    "@types/react": "^19.2.15",
+    "@webgpu/types": "^0.1.70",
     "typescript": "^5.7.0"
   }
 }
