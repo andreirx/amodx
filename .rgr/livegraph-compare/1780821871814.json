@@ -1,0 +1,19 @@
+{
+  "symbol": "detectGpuTier",
+  "kind": "callers",
+  "sqlite_count": 0,
+  "livegraph_count": 5,
+  "livegraph_class": "Exact",
+  "missing_in_livegraph": [],
+  "extra_in_livegraph": [
+    "repo_01ks2wmts2d4hybkc4f33dntde:packages/effects/src/celebration.tsx#CelebrationOverlay:SYMBOL:FUNCTION",
+    "repo_01ks2wmts2d4hybkc4f33dntde:packages/effects/src/celebration.tsx:FILE",
+    "repo_01ks2wmts2d4hybkc4f33dntde:packages/effects/src/index.ts:FILE",
+    "repo_01ks2wmts2d4hybkc4f33dntde:packages/effects/src/render.tsx#EffectCanvas:SYMBOL:FUNCTION",
+    "repo_01ks2wmts2d4hybkc4f33dntde:packages/effects/src/render.tsx:FILE"
+  ],
+  "identity_mismatch": [],
+  "edge_basis_mismatch": [],
+  "partition_unavailable": false,
+  "trust_class_mismatch": []
+}

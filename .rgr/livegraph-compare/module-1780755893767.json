@@ -1,0 +1,9 @@
+{
+  "sqlite_count": 3,
+  "livegraph_count": 3,
+  "livegraph_class": "Exact",
+  "matched": 3,
+  "livegraph_subset": true,
+  "missing_in_livegraph": [],
+  "extra_in_livegraph": []
+}
