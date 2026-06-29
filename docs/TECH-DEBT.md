@@ -6,37 +6,52 @@ Items tracked here are known issues that don't block production but should be ad
 
 ## Dependency Audit Remediation
 
-### Backend critical advisories — FIXED (2026-06-01)
+`npm audit` status and the remaining **pinned** items. Tracked as ROADMAP slice `dep-1`.
 
-`vitest` bumped `4.0.16 → 4.1.8` and the direct `@vitest/ui` devDep removed — cleared both
-critical **GHSA-5xrq-8626-4rwp** findings (Vitest UI server arbitrary file read/exec; dev-only,
-never in the Lambda runtime). Backend: **0 vulnerabilities; 47/47 tests pass**.
+**Cleared — no longer debt:**
+- **Backend criticals** (2026-06-01): `vitest 4.0.16 → 4.1.8`, removed the direct `@vitest/ui` devDep —
+  both **GHSA-5xrq-8626-4rwp** (Vitest UI server file read/exec; dev-only, never in the Lambda runtime).
+  Backend: **0 vulnerabilities; 47/47 tests pass**.
+- **Non-breaking `npm audit fix`** (2026-06-29): cleared 4 HIGH + the non-breaking moderates —
+  `linkify-it` (renderer, Tiptap editor chain), `form-data` (mcp-server → axios), `undici`
+  (backend Lambda runtime + mcp-server), `vite` (admin + backend build), plus `markdown-it`,
+  `@babel/core`, `js-yaml` (eslint path). Full rebuild green: exit 0, 8/8 workspaces.
 
-### Remaining: 9 moderate + 1 high (non-backend) — DEFERRED to slice `dep-1`
+**Remaining — 2 high + 27 moderate (whole repo).** Every one needs a `--force` breaking downgrade or a
+deliberate version-pin bump; none clears with plain `npm audit fix`. **Do NOT run `npm audit fix --force`.**
+Grouped by the parent that owns the fix:
 
-Whole-repo `npm audit` reports 10 remaining, all in renderer/build and infra/auth dependency
-chains. **Do not run `npm audit fix --force`** — the forced fixes are breaking downgrades. Grouped
-by remediation path and runtime exposure:
+1. **`aws-cdk-lib` 2.241.0 — exact pin in `infra/package.json` (deploy-time).** `aws-cdk-lib` (HIGH —
+   OS command injection in NodejsFunction bundling), bundled `fast-uri` (HIGH — path traversal / host
+   confusion), `yaml` (mod — stack overflow), `brace-expansion` (mod — ReDoS). All four are **bundled
+   inside the cdk tarball**, so `npm audit fix` cannot dedupe them out.
+   - **Fix:** bump the pin `2.241.0 → 2.260.0` — semver-*minor*, not major (shows as `--force` only
+     because the version is exact-pinned). Clears all four at once.
+   - **Runtime exposure:** none. CDK is build/deploy tooling, never bundled into a Lambda or the
+     renderer, and never parses untrusted URLs / YAML / brace input.
+   - **Gated on** the CDK infra test suite (see "CDK infra test suite is a placeholder" below): add a
+     synth snapshot + `cdk synth` baseline *before* bumping.
+2. **`open-next` 3.1.3 / `esbuild` (renderer build, build-time).** `esbuild` + `open-next` (mod). The
+   advisory is the `esbuild --serve` dev-server CORS hole; open-next uses esbuild as a one-shot bundler,
+   not a server. `--force` → `open-next@0.0.1` (absurd downgrade). **Fix:** move open-next forward to a
+   release carrying patched esbuild.
+3. **`next` / `postcss` (renderer, build-time).** `postcss` XSS via unescaped `</style>` in CSS
+   stringify, bundled in `next`. `--force` → `next@9.3.3`. **Fix:** Next.js ≥ 16.3 stable (16.3 is
+   canary as of writing). The renderer does not inject user content into CSS-stringify paths.
+4. **`next-auth` 4.x / `uuid` (renderer, server-side runtime).** `uuid` missing buffer-bounds check in
+   v3/v5/v6 when `buf` is passed, bundled in next-auth. `--force` → `next-auth@3.29.10` (breaking).
+   **Do NOT downgrade NextAuth.** We never pass a custom `buf`, so standard usage is unaffected. Resolve
+   during the Track C / customer-auth dependency review.
+5. **`jest` / `ts-jest` toolchain (infra test, dev-only).** ~19 of the 27 moderate:
+   `@istanbuljs/load-nyc-config → js-yaml` quadratic DoS, propagated up the whole jest tree (`@jest/*`,
+   `babel-jest`, `jest`, `ts-jest`, …). `--force` → `jest@25` / `ts-jest@27` (ancient breaking
+   downgrades). Dev-only test tooling, never deployed. **Fix:** refresh the infra jest/ts-jest stack to
+   versions with a patched `js-yaml` — not a downgrade.
 
-**Dev/CI-only, non-breaking (`npm audit fix`, no `--force`) — safe to clear anytime:**
-- `fast-uri <=3.1.1` — **HIGH** — path traversal / host confusion. Transitive under `aws-cdk-lib`.
-- `brace-expansion 4.0.0–5.0.5` — moderate — ReDoS / DoS. Transitive under `aws-cdk-lib`.
-- `aws-cdk-lib` is deploy-time tooling (infra synth), never bundled into a Lambda or the renderer
-  runtime — so even the HIGH has **no production-runtime exposure**.
-
-**Breaking / `--force` — renderer build/deploy stack — DEFER, do NOT force:**
-- `esbuild <=0.24.2` (moderate) under `open-next` — dev-server request vuln. Force → `open-next@0.0.1` (breaking downgrade).
-- `postcss <8.5.10` (moderate) under `next` — CSS-stringify XSS. Force → `next@9.3.3` (breaking downgrade).
-- `yaml 1.0.0–1.10.2` (moderate) under `aws-cdk-lib` — stack overflow. Force → `aws-cdk-lib@2.257.0` (outside stated range).
-- These are build-time tools; fix by moving the **parent** (open-next/next/cdk) forward, not by forcing a downgrade.
-
-**Auth stack — handle during auth dependency review; do NOT downgrade NextAuth:**
-- `uuid <11.1.1` (moderate) under `next-auth` — buffer-bounds check in v3/v5/v6. Force → `next-auth@3.29.10` (breaking downgrade).
-- next-auth runs server-side in the renderer, so this is the one item with **possible renderer-runtime
-  exposure** — scrutinise the actual code path during the Track C / customer-auth dependency review.
-
-Disposition: tracked as ROADMAP slice `dep-1`. Remediate by bumping the parents (open-next, next,
-aws-cdk-lib) to versions carrying patched transitive deps; review next-auth's `uuid` with the auth track.
+**Order when `dep-1` runs:** (1) activate CDK infra tests + CI `cdk synth` baseline → (2) bump
+`aws-cdk-lib → 2.260.0` (clears both HIGH + `yaml` + `brace-expansion`) → (3) move `open-next` forward
+for `esbuild` → (4) Next.js 16.3 stable for `postcss` → (5) review `next-auth`/`uuid` in Track C →
+(6) refresh jest/ts-jest.
 
 ---
 
@@ -113,34 +128,6 @@ The "glow" (HDR Caustics) pipeline currently uses `colors[0]` only and ignores t
 
 ### Existing tenants with page effect intensity > 0.15
 The PageEffectConfigSchema intensity cap was lowered from 0.5 to 0.15. Existing tenants with higher values stored in DynamoDB will render fine (renderer reads raw JSON, no validation). But when they open Admin > Settings, the intensity slider now caps at 0.15. Their stored value will display clamped. On save, the old higher value is replaced. No data loss but a subtle visual change they didn't request.
-
-### Deferred npm audit vulnerabilities (blocked on infra guardrails)
-Multiple vulnerability groups remain unfixed because their fixes require upgrading frozen or upstream-blocked packages.
-
-**aws-cdk-lib 2.241.0** (pinned to exact version in `infra/package.json`):
-- `fast-uri@3.1.0` (**HIGH**) — Path traversal via percent-encoded dot segments + host confusion (GHSA-q3j6-qgpj-74h6, GHSA-v39h-62p7-jpjc). Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
-- `yaml@1.10.2` (moderate) — Stack Overflow via deeply nested YAML. Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
-- `brace-expansion@5.0.3` (moderate) — Zero-step sequence hang. Bundled inside aws-cdk-lib. Fixed in aws-cdk-lib >= 2.245.0.
-- **Actual risk**: Near-zero. CDK never parses untrusted URLs, YAML, or user-supplied brace patterns. These are build-time tools operating on trusted infrastructure code. fast-uri is used internally by CDK for CloudFormation template validation, not for parsing user input.
-- **MUST NOT upgrade** until CDK infra snapshot tests and CI `cdk synth` are in place.
-
-**open-next@3.1.3 / esbuild@0.19.2** (open-next pins esbuild):
-- `esbuild <= 0.24.2` (moderate) — Dev server cross-origin request vulnerability (GHSA-67mh-4wv8-2f99). Only applies to `esbuild --serve`, which open-next does NOT use. Build-time only.
-- **Actual risk**: Zero in production. esbuild is a bundler, not a server, in our deployment.
-- **Blocked on**: upstream open-next releasing with esbuild >= 0.25.0.
-
-**next@16.2.6 / postcss** (postcss bundled in next):
-- `postcss < 8.5.10` (moderate) — XSS via unescaped `</style>` in CSS stringify output (GHSA-qx2v-qp2m-jg93). Bundled inside next.
-- Fixed in Next.js >= 16.3.0, which is currently **canary only** (no stable release).
-- **Actual risk**: Low. This affects CSS output containing user-controlled content that ends up in `<style>` tags. Our renderer does not inject user content into CSS stringify paths.
-- **Blocked on**: Next.js 16.3.0 stable release.
-
-**next-auth@4.24.13 / uuid** (uuid bundled in next-auth):
-- `uuid < 11.1.1` (moderate) — Missing buffer bounds check in v3/v5/v6 when `buf` is provided (GHSA-w5hq-g745-h8pq).
-- **Actual risk**: Near-zero. We do not pass custom `buf` arguments to uuid generation. Standard usage (no buf argument) is unaffected.
-- **Blocked on**: next-auth releasing with updated uuid. Forcing `npm audit fix --force` would downgrade to next-auth@3.x which is a breaking change.
-
-**Upgrade plan**: (1) Add infra snapshot tests + CI `cdk synth`, (2) add targeted CDK assertions for critical resources, (3) baseline synth/diff, (4) upgrade aws-cdk-lib to >= 2.245.0, (5) wait for Next.js 16.3.0 stable, (6) wait for open-next and next-auth to update their deps.
 
 ### CDK infra test suite is a placeholder
 `infra/test/infra.test.ts` is entirely commented out (CDK scaffold boilerplate). No snapshot test, no resource assertions, no CI synthesis step. This means CDK upgrades, construct changes, or dependency bumps have zero automated verification. Must be activated before any aws-cdk-lib version change.

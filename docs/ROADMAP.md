@@ -107,11 +107,13 @@ Hygiene work, not a feature track.
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `dep-1` | Dependency-audit remediation for the **non-backend** workspaces — renderer/build (`open-next`/`esbuild`, `next`/`postcss`), infra (`aws-cdk-lib` → `fast-uri`/`brace-expansion`/`yaml`), and auth (`next-auth`/`uuid`). No `--force`; no NextAuth downgrade. Detail + grouping in `docs/TECH-DEBT.md`. | PLANNED |
+| `dep-1` | Dependency-audit remediation for the **non-backend** workspaces — renderer/build (`open-next`/`esbuild`, `next`/`postcss`), infra (`aws-cdk-lib` → `fast-uri`/`brace-expansion`/`yaml`, + the `jest`/`ts-jest` test toolchain), and auth (`next-auth`/`uuid`). No `--force`; no NextAuth downgrade. Detail + grouping in `docs/TECH-DEBT.md`. | PLANNED |
 
-> Backend's 2 critical `vitest`/`@vitest/ui` advisories are already fixed (`vitest ^4.1.8`,
-> 0 backend vulnerabilities, tests green). `dep-1` covers only the remaining 9 moderate + 1 high
-> in the other workspaces.
+> Backend's 2 critical `vitest`/`@vitest/ui` advisories were fixed first (`vitest ^4.1.8`,
+> 0 backend vulnerabilities, tests green). A non-breaking `npm audit fix` (2026-06-29) then cleared
+> 4 more HIGH (`linkify-it`, `form-data`, `undici`, `vite`) + the non-breaking moderates. `dep-1`
+> covers only what remains — 2 high + 27 moderate, all needing a version-pin bump or a `--force`
+> breaking change (grouped in `docs/TECH-DEBT.md`).
 
 ## Cross-cutting dependencies
 
