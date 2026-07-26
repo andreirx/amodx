@@ -30,3 +30,6 @@ out/
 # rmap generated maps (per-file sidecars + directory maps)
 MAP.md
 *_MAP.md
+
+# agent-manager relay working state (local-only process trail)
+.agent-manager/

@@ -92,6 +92,13 @@ rewrite). Move the preview distinction from render-time dynamic APIs to the rout
    defaults-relying stub; `content/delete.ts` is not wrapped — flag as open question).
 5. `docs/security-remediation-status.md` Phase 4 note appended: serving layer was
    inert until this slice; "COMPLETE" claim corrected.
+6. **Interactive functionality holds on cached pages** (operator condition, ratified
+   2026-07-26): cookie consent (`CookieConsent.tsx` — `"use client"` + localStorage),
+   comments (`CommentsSection.tsx` — `"use client"` fetching uncached `/api/comments`),
+   and NextAuth session UI must remain client-side hydrated — the cached HTML must
+   contain no per-visitor state. Evidence: cite the `"use client"` boundary + data path
+   for each; if any such surface is found to render per-visitor state on the server,
+   STOP and surface it instead of quietly keeping it dynamic.
 
 ## Evidence required
 

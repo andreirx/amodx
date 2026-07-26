@@ -32,6 +32,7 @@ Source: code audit 2026-07-26; `docs/caching-architecture.md` is the intended de
 | `cache-1` | Restore static/ISR rendering for public pages: dedicated `_preview` route, dynamic-API reads pushed into carve-out branches, doc truth-up | PLANNED |
 | `cache-2` | ISR revalidation keyed by domain (backend resolves tenant domains); loud warning when `RENDERER_URL` unset | PLANNED |
 | `cache-3` | CloudFront query-string allowlist + attribution cookie off cached HTML (CDK-touching, production-sensitive) | PLANNED |
+| `cache-4` | Granular invalidation (operator-requested 2026-07-26): replace the CloudFront `/*` sledgehammer with changed-path invalidations derived from the mutation (per page / per entity), and adopt tag-based ISR revalidation ("all pages showing product X") using the already-provisioned tag-cache table. Constraint to design around: on the shared distribution, CloudFront invalidation paths match URI paths across ALL tenant hosts — true per-tenant Layer-1 isolation needs per-tenant distributions (Workstream 3); collateral is cheap once cache-1/2 land because same-path entries on other tenants refill from warm ISR without SSR. Slice doc to be authored after cache-1..3 ship. | PLANNED |
 
 Post-deploy operator verification (`x-cache: Hit`, Lambda invocation drop) is part of
 each slice's evidence — a cache slice is not SHIPPED on build green alone.
