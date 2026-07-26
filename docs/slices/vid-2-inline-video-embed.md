@@ -10,7 +10,7 @@
 
 Read before implementing (plugin-internal change):
 
-- `packages/plugins/MAP.md`
+- `packages/plugins/ARCHITECTURE.md`
 - `docs/plugin-architecture.md`
 - `docs/block-types.md`
 - `docs/plan-youtube-vimeo-embed.md`

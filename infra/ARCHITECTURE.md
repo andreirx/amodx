@@ -1,4 +1,4 @@
-# infra — MAP.md
+# infra — ARCHITECTURE.md
 
 ## Role in the System
 

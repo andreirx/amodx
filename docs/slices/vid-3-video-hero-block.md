@@ -10,7 +10,7 @@
 
 Read before implementing (plugin-internal change):
 
-- `packages/plugins/MAP.md`
+- `packages/plugins/ARCHITECTURE.md`
 - `docs/plugin-architecture.md`
 - `docs/block-types.md`
 - `docs/plan-youtube-vimeo-embed.md`
@@ -88,7 +88,7 @@ without a gesture).
 ## Exit criterion
 
 Both video plugins fully support YouTube/Vimeo; Track A is complete. On completion, update
-`docs/block-types.md`, `packages/plugins/MAP.md`, sync the MCP server video schemas
+`docs/block-types.md`, `packages/plugins/ARCHITECTURE.md`, sync the MCP server video schemas
 (`tools/mcp-server/src/index.ts`), and add the deferred items (`youtube-nocookie`, oEmbed
 metadata, schema Option B) to `docs/TECH-DEBT.md`.
 

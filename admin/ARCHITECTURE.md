@@ -1,4 +1,4 @@
-# admin — MAP.md
+# admin — ARCHITECTURE.md
 
 ## Role in the System
 

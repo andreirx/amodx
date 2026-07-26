@@ -26,3 +26,7 @@ out/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# rmap generated maps (per-file sidecars + directory maps)
+MAP.md
+*_MAP.md

@@ -10,7 +10,7 @@
 
 Read before implementing (plugin-internal change):
 
-- `packages/plugins/MAP.md`
+- `packages/plugins/ARCHITECTURE.md`
 - `docs/plugin-architecture.md`
 - `docs/block-types.md`
 - `docs/plan-youtube-vimeo-embed.md`
@@ -103,4 +103,4 @@ its own URL regex after this slice.
 
 - `docs/plan-youtube-vimeo-embed.md` — Phase 1 (Parser Module) + Testing Checklist.
 - `CLAUDE.md` — Critical Rule 1 (plugin split entry), Definition of Done (rebuild order).
-- `packages/plugins/MAP.md` — update with the new common module on completion.
+- `packages/plugins/ARCHITECTURE.md` — update with the new common module on completion.

@@ -295,7 +295,7 @@ Before shipping, verify:
 | `packages/plugins/src/video/VideoRender.tsx` | Use parser, add Vimeo, add a11y |
 | `packages/plugins/src/video-hero/VideoHeroEditor.tsx` | Add tabbed selector with Embed tab |
 | `packages/plugins/src/video-hero/VideoHeroRender.tsx` | Conditional iframe render for embeds |
-| `packages/plugins/MAP.md` | Update with new common module, changed render paths |
+| `packages/plugins/ARCHITECTURE.md` | Update with new common module, changed render paths |
 | `docs/block-types.md` | Document embed support for video and video-hero |
 | `docs/TECH-DEBT.md` | Add future considerations (youtube-nocookie, oEmbed metadata) |
 | `tools/mcp-server/src/index.ts` | Sync block schemas if MCP exposes video/video-hero attributes |
@@ -333,7 +333,7 @@ All five must succeed before PR. (Backend is included per repo rules even though
 12. VideoHero iframe cover works on landscape AND portrait viewports
 
 ### Documentation
-13. `packages/plugins/MAP.md` updated with new common module
+13. `packages/plugins/ARCHITECTURE.md` updated with new common module
 14. `docs/block-types.md` updated with embed support details
 15. `docs/TECH-DEBT.md` updated with future considerations
 16. `tools/mcp-server/src/index.ts` synced if it exposes video block schemas

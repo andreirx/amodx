@@ -1,4 +1,4 @@
-# backend — MAP.md
+# backend — ARCHITECTURE.md
 
 ## Role in the System
 

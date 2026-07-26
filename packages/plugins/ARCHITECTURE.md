@@ -1,4 +1,4 @@
-# packages/plugins — MAP.md
+# packages/plugins — ARCHITECTURE.md
 
 ## Role in the System
 

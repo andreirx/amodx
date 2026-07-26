@@ -1,4 +1,4 @@
-# tools/mcp-server — MAP.md
+# tools/mcp-server — ARCHITECTURE.md
 
 ## Role in the System
 

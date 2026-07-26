@@ -1,4 +1,4 @@
-# renderer — MAP.md
+# renderer — ARCHITECTURE.md
 
 ## Role in the System
 

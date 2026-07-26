@@ -1,4 +1,4 @@
-# packages/shared — MAP.md
+# packages/shared — ARCHITECTURE.md
 
 ## Role in the System
 

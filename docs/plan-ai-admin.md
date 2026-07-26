@@ -604,6 +604,6 @@ tools/mcp-server/src/
 
 ## References
 
-- Current MCP server: `tools/mcp-server/MAP.md`
+- Current MCP server: `tools/mcp-server/ARCHITECTURE.md`
 - Existing auth: `docs/authentication-architecture.md`
 - Tenant config patterns: `packages/shared/src/index.ts`

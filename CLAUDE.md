@@ -70,7 +70,7 @@ These invariants, if broken, cause crashes or data corruption:
 
 ## Documentation
 
-Each package has a **MAP.md** with internal architecture. Read before structural changes, update after.
+Each package has an **ARCHITECTURE.md** with internal architecture. Read before structural changes, update after.
 
 | File | When to read |
 |------|-------------|
