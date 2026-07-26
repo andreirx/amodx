@@ -10,15 +10,35 @@ Status taxonomy and naming are defined in `docs/documentation.md`. All slices be
 
 ## Current Priority
 
-**`vid-1` — YouTube/Vimeo URL parser** (Track A). Decision-free, plugin-local, no tenant
-data, no migration. It is also the worked example that validates the slice template
-before the production-sensitive tracks (B/C/D) begin.
+**Track CACHE — serving-layer remediation** (`cache-1` → `cache-2` → `cache-3`), inserted
+2026-07-26 by operator ratification. A code audit found the two-layer cache described in
+`docs/caching-architecture.md` is inert for HTML: the catch-all route unconditionally
+invokes dynamic APIs, so every public page view pays full SSR + DynamoDB reads and
+neither CloudFront nor the OpenNext S3 ISR cache stores anything. Two latent bugs
+(tenantId-keyed ISR purges, Set-Cookie on cacheable responses) would surface the moment
+caching turns on. Live tenants are paying this cost today, and the remediation-status
+docs' "Phase 4 COMPLETE" claim is wrong at the serving layer — highest-value fix in the
+repo.
 
-See `CURRENT_SLICE.md` and `docs/slices/vid-1-youtube-vimeo-url-parser.md`.
+`vid-1` follows immediately after as the slice-template validation run (its rationale
+unchanged). See `CURRENT_SLICE.md`.
+
+## Track CACHE — serving-layer remediation
+
+Source: code audit 2026-07-26; `docs/caching-architecture.md` is the intended design.
+
+| Slice | Scope | Status |
+|-------|-------|--------|
+| `cache-1` | Restore static/ISR rendering for public pages: dedicated `_preview` route, dynamic-API reads pushed into carve-out branches, doc truth-up | PLANNED |
+| `cache-2` | ISR revalidation keyed by domain (backend resolves tenant domains); loud warning when `RENDERER_URL` unset | PLANNED |
+| `cache-3` | CloudFront query-string allowlist + attribution cookie off cached HTML (CDK-touching, production-sensitive) | PLANNED |
+
+Post-deploy operator verification (`x-cache: Hit`, Lambda invocation drop) is part of
+each slice's evidence — a cache slice is not SHIPPED on build green alone.
 
 ## Track order and rationale
 
-A → FND-1 → B → C → D → E.
+CACHE → A → FND-1 → B → C → D → E.
 
 - **A (video embed)** first: independent, low-risk, no private data, no migration —
   momentum plus a proof that the slice format is not overbuilt.

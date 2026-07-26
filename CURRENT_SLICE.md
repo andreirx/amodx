@@ -2,16 +2,17 @@
 
 ## Current Priority
 
-**`vid-1` — YouTube/Vimeo URL parser** (Track A).
+**`cache-1` — Restore static/ISR rendering for public pages** (Track CACHE).
 
-Active slice: `docs/slices/vid-1-youtube-vimeo-url-parser.md`.
+Active slice: `docs/slices/cache-1-restore-static-rendering.md`.
 
-Why now: decision-free, plugin-local, no tenant data, no migration — and the worked
-example that validates the slice template before the production-sensitive tracks (B
-commerce-private, C auth, D appointments) begin.
+Why now (ratified 2026-07-26): audit found both cache layers inert for HTML — every
+public page view runs full SSR + DynamoDB reads for live tenants. cache-1 alone turns
+the documented architecture back on; `cache-2`/`cache-3` fix the bugs that become
+observable once it does.
 
 Read before implementation: `docs/VISION.md` → `docs/ROADMAP.md` → this file →
-`docs/slices/vid-1-youtube-vimeo-url-parser.md` → `docs/plan-youtube-vimeo-embed.md`.
+`docs/slices/cache-1-restore-static-rendering.md` → `docs/caching-architecture.md`.
 
 ## Planning phase — COMPLETE
 
@@ -31,7 +32,9 @@ None. Track A slice docs exist (`vid-1`, `vid-2`, `vid-3`); implementation not s
 
 ## Next
 
-`vid-2` → `vid-3` (complete Track A), then `fnd-1` (shared `normalizeEmail`), then begin
+`cache-2` → `cache-3` (complete Track CACHE, each with post-deploy operator
+verification), then `vid-1` → `vid-2` → `vid-3` (Track A), then `fnd-1` (shared
+`normalizeEmail`), then begin
 Track B (`cmrc-1`). The `fnd-1` and Track B/C/D slice docs are not yet authored — generate
 them per `docs/ROADMAP.md` when their track starts.
 
