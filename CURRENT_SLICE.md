@@ -2,14 +2,14 @@
 
 ## Current Priority
 
-**`cache-1` — Restore static/ISR rendering for public pages** (Track CACHE).
+**`cache-2` — ISR revalidation keyed by domain** (Track CACHE).
 
-Active slice: `docs/slices/cache-1-restore-static-rendering.md`.
+Active slice: `docs/slices/cache-2-isr-revalidation-keying.md`.
 
-Why now (ratified 2026-07-26): audit found both cache layers inert for HTML — every
-public page view runs full SSR + DynamoDB reads for live tenants. cache-1 alone turns
-the documented architecture back on; `cache-2`/`cache-3` fix the bugs that become
-observable once it does.
+`cache-1` is IMPLEMENTED (approved + committed 2026-07-26, d2ecffe) but **NOT DEPLOYED —
+deploy gate: cache-3 must land first** (H1: RSC header family in the CloudFront cache
+key). Deploy order: cache-3 → cache-1 (or combined), staging header probes + rollback
+per the cache-1 slice doc.
 
 Read before implementation: `docs/VISION.md` → `docs/ROADMAP.md` → this file →
 `docs/slices/cache-1-restore-static-rendering.md` → `docs/caching-architecture.md`.
