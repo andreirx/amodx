@@ -1,11 +1,10 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { DeleteCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
-import { revalidatePath } from "../lib/revalidate.js";
+import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
@@ -62,10 +61,9 @@ const _handler: Handler = async (event) => {
             ip: event.requestContext.http.sourceIp
         });
 
-        // Cache invalidation: category page (will now 404)
-        if (existing.Item?.slug) {
-            await revalidatePath(tenantId, `${URL_PREFIX_DEFAULTS.category}/${existing.Item.slug}`);
-        }
+        // Cache invalidation: category page (now a not-found handoff). cache-2: domain-keyed,
+        // tenant's own category prefix.
+        await revalidateTenantPaths(tenantId, "category", [existing.Item?.slug]);
 
         return { statusCode: 200, body: JSON.stringify({ message: "Deleted" }) };
     } catch (e: any) {

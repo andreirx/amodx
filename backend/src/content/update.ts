@@ -7,7 +7,7 @@ import { z } from "zod";
 import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
-import { revalidatePath } from "../lib/revalidate.js";
+import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
@@ -186,13 +186,12 @@ const _handler: AmodxHandler = async (event) => {
             ip: event.requestContext.http.sourceIp
         });
 
-        // Phase 4: Bust CloudFront cache for updated page
-        // Use tenantId as domain - renderer routing supports both domain and tenantId
-        await revalidatePath(tenantId, newSlug);
-        // If slug changed, also invalidate the old slug
-        if (slugChanged && oldSlug) {
-            await revalidatePath(tenantId, oldSlug);
-        }
+        // Purge the ISR (Layer 2) entries for this page. cache-2: keyed by the tenant's
+        // DOMAIN, which is what middleware rewrites to and therefore what the S3 entry is
+        // keyed by — the previous tenantId-keyed purge addressed nothing in production.
+        // On a rename both slugs are purged: the new path (fresh content) and the old one
+        // (which now serves a redirect).
+        await revalidateTenantPaths(tenantId, "page", [newSlug, slugChanged ? oldSlug : undefined]);
 
         return { statusCode: 200, body: JSON.stringify({ message: "Updated", version: currentVersion + 1, slug: newSlug }) };
     } catch (error: any) {

@@ -57,6 +57,15 @@ for `esbuild` → (4) Next.js 16.3 stable for `postcss` → (5) review `next-aut
 
 ## High Priority (Missing Features)
 
+### Tenant domain aliases are not representable
+A tenant has exactly one `domain` (`TenantConfigSchema.domain`, mirrored to the `GSI_Domain`
+partition key), and `renderer/src/lib/tenant-directory.ts` admits a host only on an exact
+match. So `example.com` and `www.example.com` cannot both serve one tenant, and a domain
+migration has no overlap window. Noted by `cache-2` (finding F2) because it is what makes the
+ISR purge single-valued; if aliases are added, the fan-out point is `TenantRouting.domain` in
+`backend/src/lib/revalidate-paths.ts`, plus the middleware host gate and the CloudFront alias
+list. Not a defect today — no tenant is configured to need it.
+
 ### Netopia Payments (future)
 Some clients need card payments via Netopia. Architecture is ready:
 - Add "netopia" to paymentMethod enum and enabledPaymentMethods

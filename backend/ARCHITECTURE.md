@@ -11,10 +11,13 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/
+├── lib/                   # (selected modules; 13 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── events.ts          # EventBridge publishAudit() helper
-│   └── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
+│   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
+│   ├── invalidate-cdn.ts  # withInvalidation() HOF — writes the debounce marker (CloudFront, Layer 1)
+│   ├── revalidate.ts      # ISR purge (Layer 2): revalidateTenantPaths() + the /api/revalidate transport
+│   └── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
 ├── auth/
 │   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
 │   ├── context.ts         # AuthorizerContext type definition
@@ -157,9 +160,24 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 
 ## Testing
 
-Vitest with real DynamoDB (staging table via `.env.test`). Test utilities in `test/utils.ts`:
+Two suites with two configs. They are separate because one needs AWS and the other must not.
+
+### Integration — `test/*.test.ts`, config `vitest.config.ts`
+
+Vitest against **real staging DynamoDB** (table from `.env.test`, loaded by `test/setup.ts`,
+which throws if `TABLE_NAME` is unset). These tests create and delete real items — do not run
+them when the staging table matters. Test utilities in `test/utils.ts`:
 - `createEvent(tenantId, body?, pathParams?, queryParams?, userId?, role?, email?)` — builds API Gateway V2 event
 - `generateTenantId()` — creates unique `test-<timestamp>-<random>` IDs
 - `cleanupTenant(tenantId)` — deletes all items for tenant in batches of 25
 
 Run: `cd backend && npm test` or `npx vitest run <path>` for a single file.
+
+### Pure unit — `test/unit/**/*.test.ts`, config `vitest.unit.config.ts`
+
+No `setupFiles`, so no `.env.test`, no credentials, no AWS calls of any kind. For logic that
+can be exercised off-target: today `lib/revalidate-paths.ts` (the ISR purge-path rule, slice
+`cache-2`). A module belongs here only if it imports neither `lib/db.ts` nor an AWS SDK
+client — keeping that true is what keeps the suite runnable in CI and on a laptop.
+
+Run: `cd backend && npm run test:unit`.

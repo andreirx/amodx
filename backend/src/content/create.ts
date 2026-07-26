@@ -8,6 +8,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
+import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
@@ -133,6 +134,21 @@ const _handler: AmodxHandler = async (event) => {
             details: { slug: slug },
             ip: event.requestContext.http.sourceIp
         });
+
+        // cache-2: a CREATE must purge too, which was not true before cache-1.
+        // Since cache-1, a request for a URL that does not exist yet stores a **cacheable
+        // 307 → <path>?nf=1** in the S3 ISR cache (the not-found handoff; a redirect is a
+        // cacheable render outcome — docs/caching-architecture.md § "Which render outcomes
+        // are cacheable"). So a slug that was probed before it was published already has an
+        // entry, and without this purge the canonical URL keeps answering that redirect
+        // until the debounced CloudFront invalidation and the nightly S3 flush clear it.
+        //
+        // IAM: this Lambda never revalidated before, so it was the one revalidating handler
+        // without `props.revalidationSecret.grantRead(...)`. That grant is added by this same
+        // slice (`infra/lib/api.ts`, next to `grantReadWriteData(createContentFunc)`) — the
+        // code and its IAM must deploy together or this call logs "[Revalidate] No secret
+        // available" and purges nothing. See the cache-2 slice doc, § Migration / deployment.
+        await revalidateTenantPaths(tenantId, "page", [slug]);
 
         return {
             statusCode: 201,

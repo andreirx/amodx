@@ -645,8 +645,11 @@ Reproduction: `cd renderer && npx open-next build`, then drive
 pointing `AWS_ENDPOINT_URL_DYNAMODB` / `AWS_ENDPOINT_URL_S3` at local stubs (the `cache-1`
 build report carries the driver script).
 
-Still not exercised here: the SQS revalidation queue, the DynamoDB tag cache, and behaviour
-against real S3 latency/consistency. Those are `cache-2` territory.
+Still not exercised: the SQS revalidation queue, the DynamoDB tag cache, and behaviour
+against real S3 latency/consistency. **`cache-2` did not exercise them either** — it fixed the
+*keying* of the purge (`/<domain>/<path>`, § *Invalidation Mechanisms 5*) with a pure unit
+test, and left the live round-trip to its post-deploy operator gate. The tag cache stays
+unexercised until tag-based revalidation is adopted (Known Gap 5, `cache-4`).
 
 ---
 
@@ -780,21 +783,69 @@ Countdown ticks client-side every second (cosmetic). Server timestamp is source 
 
 ### 5. revalidatePath() / revalidateTag() — ISR Layer
 
-**File**: `backend/src/lib/revalidate.ts`
+**Files**: `backend/src/lib/revalidate.ts` (transport + tenant lookup),
+`backend/src/lib/revalidate-paths.ts` (pure path construction, unit-tested).
 
-Calls the renderer's `/api/revalidate` endpoint with a secret token. This triggers Next.js `revalidatePath()` or `revalidateTag()`, which deletes the specific S3 cache entry.
+Calls the renderer's `/api/revalidate` endpoint with a secret token. The renderer does
+`revalidatePath("/" + domain + slug)`, which deletes that S3 ISR entry. **The renderer's
+contract is `{ domain, slug }` or `{ tag }` and is unchanged by `cache-2`** — it purges
+exactly the path it is told.
 
-Currently used by 5 handlers:
+#### The key is the domain, not the tenant id (fixed in `cache-2`)
 
-| Handler | What it invalidates |
-|---------|-------------------|
-| `content/update.ts` | Page slug (+ old slug if changed) |
-| `products/update.ts` | Product page (+ old slug if changed) |
-| `products/delete.ts` | Product page |
-| `categories/update.ts` | Category page (+ old slug if changed) |
-| `categories/delete.ts` | Category page |
+An ISR entry is keyed by the path **middleware rewrote the request to**, and the S3 object
+key carries the host: `_cache/<buildId>/<host>/<path>.cache` (measured, `cache-1`). For
+production traffic that host is the tenant's domain:
 
-**Limitation**: Uses hardcoded default URL prefixes (`/product`, `/category`). Tenants with custom URL prefixes (e.g., `/produs`) won't get precise ISR invalidation. The nightly flush covers this gap.
+```
+Host: shop.example.com  GET /about
+   → middleware rewrite   /shop.example.com/about
+   → S3 key               _cache/<buildId>/shop.example.com/about.cache
+```
+
+Before `cache-2` every backend purge named `/<tenantId>/<path>`, which addresses no entry
+that can exist in production — **all 8 calls were no-ops**. The backend now resolves the
+tenant's `domain` (one projected `GetItem` on `PK: SYSTEM / SK: TENANT#<id>`) and purges
+domain-keyed paths. Tenant → domain resolution stays in the backend because the backend owns
+`TenantConfig`; the renderer stays dumb (ratified design D2, `cache-2`).
+
+**No tenantId-keyed purge is emitted, deliberately.** `/tenant/<id>/…` (test mode) and
+`/_site/<id>/…` (preview) are rewritten by `renderer/middleware.ts` to the `force-dynamic`
+twin `/<id>/_dyn/…`, so they are never stored by either cache layer — there is nothing under
+a tenantId key to purge. Verified in-slice; see the `cache-2` slice doc § Findings.
+
+**One domain per tenant.** `TenantConfigSchema.domain` is a single `z.string()`, mirrored to
+the `Domain` attribute that is `GSI_Domain`'s partition key, and `lib/tenant-directory.ts`
+admits a host only on an exact match — so exactly one host can produce ISR entries for a
+tenant. If aliases (apex + www, migration domains) are ever added, the fan-out point is
+`TenantRouting.domain` in `revalidate-paths.ts`.
+
+#### Handlers that purge (6)
+
+| Handler | Kind | What it purges |
+|---------|------|----------------|
+| `content/create.ts` | `page` | New page slug — clears the cacheable `307 → ?nf=1` a pre-publication probe may have stored (see Known Gaps 4). Added in `cache-2` together with its IAM grant (`revalidationSecret.grantRead(createContentFunc)`); code and grant must deploy together. |
+| `content/update.ts` | `page` | Page slug (+ old slug on rename) |
+| `products/update.ts` | `product` | Product page (+ old slug on rename) |
+| `products/delete.ts` | `product` | Product page |
+| `categories/update.ts` | `category` | Category page (+ old slug on rename) |
+| `categories/delete.ts` | `category` | Category page |
+
+Commerce paths are built from the tenant's own `urlPrefixes.product` / `urlPrefixes.category`
+(the same values `SitePage.tsx#matchCommercePrefix` routes on), falling back to
+`URL_PREFIX_DEFAULTS`. The tenant config is already in hand from the domain lookup, so this
+costs nothing and closes Known Gap 2 for these two entity kinds.
+
+#### When revalidation is switched off
+
+`RENDERER_URL` is empty on any deployment without a configured root domain
+(`amodx-stack.ts` → `rootDomain ? https://<rootDomain> : undefined`, passed as
+`props.rendererUrl || ''`). ISR revalidation is then disabled entirely. Since `cache-2` this
+logs a `console.warn` naming the missing variable **and the paths that went unpurged**,
+instead of the previous context-free `console.log("Skipping")`. Consequence when it fires:
+Layer 2 only clears on the nightly flush, so an edit can stay stale for up to 24h even after
+CloudFront is invalidated. **A deployment that wants working ISR purges must set
+`RENDERER_URL`, which today means configuring a root domain.**
 
 ### 6. Nightly Safety Net — Both Layers (change-gated)
 
@@ -826,9 +877,12 @@ When it does run, flushes both cache layers:
 After the nightly flush, the first visitor to any page triggers a fresh SSR from DynamoDB. Cache refills organically as visitors arrive.
 
 This covers:
-- ISR cache entries orphaned by mutations that only invalidate CloudFront (Layer 1)
-- Edge cases where `revalidatePath()` silently fails
-- Tenants with custom URL prefixes that bypass path-based ISR revalidation
+- ISR cache entries orphaned by mutations that only invalidate CloudFront (Layer 1) — Known Gap 1
+- Edge cases where `revalidatePath()` silently fails, including a deployment with no
+  `RENDERER_URL` (§ *Invalidation Mechanisms 5*, "When revalidation is switched off")
+- Pages a targeted purge does not name: listings/landing pages that show a changed entity
+  (Known Gap 5). *Custom URL prefixes are no longer in this list for product and category
+  pages — `cache-2` builds those paths from the tenant's own prefixes.*
 - Any cache corruption or drift
 
 On days with zero content changes, the nightly flush skips entirely and cached pages remain warm.
@@ -1045,17 +1099,17 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 1. **ISR cache staleness for non-content mutations**: Reviews, coupons, popups, themes, delivery config, settings — these mutations trigger CloudFront invalidation (Layer 1) via the debounce system, but NOT the S3 ISR cache (Layer 2). The nightly flush covers this. Fix: add `revalidatePath()` or `revalidateTag()` calls to these handlers.
 
-2. **Custom URL prefix ISR revalidation**: `revalidatePath()` uses hardcoded default prefixes (`/product`, `/category`). Tenants with custom prefixes miss precise ISR invalidation. Fix: fetch tenant config before calling `revalidatePath()`, or switch entirely to tag-based revalidation.
+2. **Custom URL prefix ISR revalidation — CLOSED in `cache-2`** for products and categories. The purge now reads the tenant's `urlPrefixes` from the same `GetItem` that resolves the domain and builds `/<domain>/<tenant prefix>/<slug>`. *Still open elsewhere:* nothing purges the `shop`, `cart`, `checkout`, `account` or `search` landing pages, and a product change does not purge the category/shop listings that display it — that is Known Gap 5 (tag-based revalidation), owned by `cache-4`.
 
 3. **Blast radius of `/*` invalidation**: Each debounced flush invalidates ALL tenants on the shared distribution. Fix: per-tenant path invalidation (`/tenantId/*`) or Workstream 3 (dedicated distribution per high-volume tenant).
 
-4. **`content/create.ts` missing ISR revalidation**: New pages don't call `revalidatePath()`. **Corrected 2026-07-26 — the old reasoning ("no stale S3 entry can exist for a URL that didn't exist before") is false since `cache-1`.** Any request for a not-yet-existing URL now stores a **307 → `<path>?nf=1`** in the S3 ISR cache (measured; the redirect is a cacheable outcome — see § *Which render outcomes are cacheable*). So a URL that is probed before it is published *does* leave an entry behind, created by the miss itself. The consequence is mild by construction: the stored 307 points at the same path, and the twin that serves `?nf=1` re-reads, so the visitor gets the freshly published page — at `…?nf=1`, uncached, until the debounced CloudFront invalidation and the nightly S3 flush clear the redirect. A `revalidatePath()` in `content/create.ts` would drop that tail; `cache-2` owns it.
+4. **`content/create.ts` missing ISR revalidation — CLOSED in `cache-2` (code + IAM); takes effect when the track deploys.** Background: the old reasoning ("no stale S3 entry can exist for a URL that didn't exist before") became false with `cache-1` — any request for a not-yet-existing URL stores a **307 → `<path>?nf=1`** in the S3 ISR cache (measured; a redirect is a cacheable outcome — see § *Which render outcomes are cacheable*). So a URL probed before publication *does* leave an entry behind, created by the miss itself. `content/create.ts` now calls `revalidateTenantPaths(tenantId, "page", [slug])` to drop that tail, and `infra/lib/api.ts` grants `CreateContentFunc` the `revalidationSecret.grantRead` it previously lacked (it was the one revalidating handler without it). Both halves are required — code without the grant logs `[Revalidate] No secret available` and purges nothing — so they must ship in the same deploy. Nothing in Track CACHE is deployed yet: the whole track is gated on `cache-3` (H1). Until it deploys, the exposure is the pre-`cache-2` one and is mild: the stored 307 points at the same path and the `?nf=1` twin re-reads, so the visitor still gets the freshly published page (at `…?nf=1`, uncached) until the debounced CloudFront invalidation and the nightly S3 flush clear the redirect.
 
 5. **Tag-based revalidation underutilized**: The infrastructure exists (tag cache DynamoDB table, `/api/revalidate` supports tags, `revalidateTag()` helper exists) but very few handlers use it. This would enable surgical cache invalidation (e.g., invalidate all pages showing a specific product) without the `/*` sledgehammer.
 
 6. **Debounce is global, not per-tenant**: The `SYSTEM#CDN_PENDING` marker is a single row. All tenants share the same debounce timer. A mutation by Tenant A delays Tenant B's pending changes by resetting the timer. Acceptable for shared distribution. Would need per-tenant markers for per-tenant distributions (Workstream 3).
 
-7. **The invalidation machinery became reachable with `cache-1`.** Before it, every mechanism above — debounce, nightly flush, `revalidatePath()`, the admin banner — invalidated caches that held no HTML. It now has real cache entries to clear, which means its known gaps (items 1–6 above) start to have observable consequences. `cache-2` covers the invalidation work.
+7. **The invalidation machinery became reachable with `cache-1`.** Before it, every mechanism above — debounce, nightly flush, `revalidatePath()`, the admin banner — invalidated caches that held no HTML. It now has real cache entries to clear, which means its known gaps start to have observable consequences. `cache-2` closed gaps 2 and 4 and fixed the ISR purge *key* (domain, not tenant id). Gaps 1, 3, 5 and 6 — non-content mutations, `/*` blast radius, tag-based revalidation, global debounce — remain open and are `cache-4`'s scope.
 
 8. **`renderer/open-next.config.ts` is a defaults-relying stub.** It sets only `default.architecture: 'arm64'` and `buildCommand: 'npm run build'`. The incremental cache, tag cache, and revalidation queue implementations are whatever the installed OpenNext version defaults to — they are not pinned here. (The earlier claim that `open-next` is "not present in `node_modules`" was wrong: it is installed at `node_modules/open-next@3.1.3` and pinned by `package-lock.json`. What is unpinned is the *configuration*, not the version. Defaults observed in the 2026-07-26 build: `incrementalCache: s3`, `tagCache: dynamodb`, `queue: sqs`.)
 

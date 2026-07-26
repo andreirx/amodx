@@ -1,12 +1,12 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { ProductSchema, URL_PREFIX_DEFAULTS } from "@amodx/shared";
+import { ProductSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import {requireRole} from "../auth/policy.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
-import { revalidatePath } from "../lib/revalidate.js";
+import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
@@ -78,12 +78,10 @@ const _handler: Handler = async (event) => {
             ip: event.requestContext.http.sourceIp
         });
 
-        // Cache invalidation: product page
-        await revalidatePath(tenantId, `${URL_PREFIX_DEFAULTS.product}/${merged.slug}`);
-        // If slug changed, also invalidate old URL
-        if (input.slug && input.slug !== existing.Item.slug) {
-            await revalidatePath(tenantId, `${URL_PREFIX_DEFAULTS.product}/${existing.Item.slug}`);
-        }
+        // Cache invalidation: product page (+ the old URL on a rename). cache-2: the paths
+        // are built from the tenant's DOMAIN and its own `urlPrefixes.product`, not from
+        // the tenant id and the hardcoded `/product` default.
+        await revalidateTenantPaths(tenantId, "product", [merged.slug, existing.Item.slug]);
 
         return { statusCode: 200, body: JSON.stringify(merged) };
     } catch (e: any) {

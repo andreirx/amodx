@@ -141,6 +141,7 @@ export class AmodxApi extends Construct {
             handler: 'handler',
         });
         props.table.grantReadWriteData(createContentFunc);
+        props.revalidationSecret.grantRead(createContentFunc);  // cache-2: ISR purge on page create
 
         const listContentFunc = new nodejs.NodejsFunction(this, 'ListContentFunc', {
             ...nodeProps,
