@@ -21,6 +21,18 @@
    replays it to **every subsequent viewer** — cross-visitor attribution contamination.
    (The `amodx_preview_base` Set-Cookie is preview-only traffic — uncached — fine.)
 
+## Scope widening (ratified 2026-07-26, decision CACHE-1-H1)
+
+**Add the RSC header family to the CloudFront cache key**: `RSC`,
+`Next-Router-Prefetch`, `Next-Router-State-Tree`, `Next-Router-Segment-Prefetch` in the
+`RendererCachePolicy` header allowlist (alongside `X-Forwarded-Host`). Without this, a
+single unauthenticated request with a bare `RSC: 1` header pins a flight payload at the
+edge under a page's HTML URL (measured, cache-1 build run 2026-07-26). **cache-1 is not
+deployable until this lands** — deploy order: cache-3 → cache-1, or one combined deploy.
+Note: more allowlisted headers fragment the cache (each combination is a distinct
+entry); the RSC family is low-cardinality in practice (present/absent), which is why
+key-inclusion is preferred over a middleware blocklist.
+
 ## Design (ratified approach — D3)
 
 1. **Query-string allowlist** in `RendererCachePolicy`:

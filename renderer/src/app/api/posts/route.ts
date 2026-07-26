@@ -1,3 +1,10 @@
+// Client fallback for the `postGrid` block (packages/plugins/src/post-grid/PostGridRender.tsx)
+// when the server did not prefetch. It is a READ path, so it obeys the same rule as
+// `lib/dynamo.ts`: `{ items: [] }` means the query succeeded and matched nothing. A missing
+// `TABLE_NAME` or a DynamoDB failure is an error and answers 5xx (human decision CACHE-1-D4,
+// widened to this route by review-1, 2026-07-26 — the rule is repo-wide and has no
+// "uncached routes may lie" carve-out). PostGridRender already renders an error state for a
+// non-2xx response, so the failure is visible instead of looking like "this site has no posts".
 import { NextRequest, NextResponse } from "next/server";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
@@ -14,14 +21,22 @@ export async function GET(req: NextRequest) {
     // Default to 6, but if 0 is passed, keep it 0 (Infinity)
     const limit = limitParam !== null ? parseInt(limitParam) : 6;
 
-    if (!tenantId || !process.env.TABLE_NAME) {
-        return NextResponse.json({ items: [] });
+    // Caller error: without a tenant there is no question to answer, and answering "no posts"
+    // would be a guess. 400, not an empty 200.
+    if (!tenantId) {
+        return NextResponse.json({ error: "x-tenant-id header is required" }, { status: 400 });
+    }
+    // Deployment error, same reasoning as `requireTableName()` in lib/dynamo.ts.
+    const tableName = process.env.TABLE_NAME;
+    if (!tableName) {
+        console.error("Posts API: TABLE_NAME is not set");
+        return NextResponse.json({ error: "Posts are unavailable" }, { status: 500 });
     }
 
     try {
         // Query only "Content" items (Pages/Posts)
         const params: any = {
-            TableName: process.env.TABLE_NAME,
+            TableName: tableName,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: {
                 ":pk": `TENANT#${tenantId}`,
@@ -68,7 +83,9 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ items: cleanItems });
     } catch (e) {
+        // Log and answer 500. Returning `{ items: [] }` here would tell the block "this site
+        // has no posts", which is the same fabricated absence D4 removed from lib/dynamo.ts.
         console.error("Posts API Error:", e);
-        return NextResponse.json({ items: [] });
+        return NextResponse.json({ error: "Posts are unavailable" }, { status: 500 });
     }
 }

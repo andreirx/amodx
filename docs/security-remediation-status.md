@@ -62,7 +62,101 @@ Updated: 2026-03-23
 
 ---
 
-## Phase 4: OpenNext Caching - COMPLETE
+## Phase 4: OpenNext Caching - INFRASTRUCTURE COMPLETE, SERVING LAYER INERT UNTIL `cache-1` DEPLOYS
+
+> **Correction appended 2026-07-26 (slice `cache-1`).** The "COMPLETE" claim below was
+> wrong at the serving layer and is corrected here rather than deleted, so the original
+> assessment stays auditable. `cache-1` fixes it in the working tree; **the deployed
+> distribution is still in the state described here** until that slice ships.
+>
+> Every row in the table below is accurate: the infrastructure was built and deployed.
+> But **no HTML has ever been cached by it.** Measured on this repo's `next@16.2.9` build:
+> every HTML route returns `Cache-Control: private, no-cache, no-store, max-age=0,
+> must-revalidate`, so CloudFront (Layer 1) and the OpenNext S3 ISR cache (Layer 2) both
+> store nothing. Live tenants have been paying full React SSR + DynamoDB reads on every
+> public page view for the entire period this document reported the phase as complete.
+>
+> Root cause: a Next.js App Router route with an un-enumerated dynamic segment (`[siteId]`)
+> and no `generateStaticParams()` is rendered dynamically and marked `no-store` — the
+> `export const revalidate = false` present on the routes has no effect in that mode. The
+> catch-all additionally calls `await searchParams` and `cookies()` unconditionally.
+>
+> Security-relevant reading: this is a **cost and availability** finding, not a data-exposure
+> one. The failure mode is "nothing is cached", which is the fail-safe direction — no
+> cross-tenant or per-visitor HTML was ever placed in a shared cache. The remediation moves
+> in the less-safe direction and must therefore re-verify cache-key isolation
+> (`X-Forwarded-Host`), `Set-Cookie` suppression on cacheable responses, and the access gate
+> for non-`Public` pages before it ships.
+>
+> Full evidence and the reproducible probe matrix: `docs/caching-architecture.md`
+> § *Measured serving behaviour (Next 16.2.9)*. Remediation: slices `cache-1` → `cache-2`
+> → `cache-3`.
+>
+> **Re-verification result (`cache-1` build run, 2026-07-26).** The three checks the
+> paragraph above demanded were run against a locally-served production build:
+>
+> - **Access gate for non-`Public` pages — PASS.** The NextAuth JWT no longer reaches the
+>   render through `cookies()`; it arrives as a `sessionToken` prop. The cacheable route
+>   always passes `null`, so the worst a cached render of a gated page can contain is the
+>   "Restricted Access" shell. Any request carrying a session cookie is rewritten to the
+>   `force-dynamic` twin (`private, no-store`) before rendering.
+> - **`Set-Cookie` suppression on cacheable responses — PASS.** Both cookies middleware sets
+>   (`amodx_ref`, `amodx_preview_base`) are triggered only by a query param or the `/_site/`
+>   prefix, and both of those route to the twin. The cached response captured in the probe
+>   carries no `Set-Cookie`.
+> - **Cache-key isolation — FAIL, and it blocks the deploy.** `X-Forwarded-Host` keying is
+>   intact, so tenant isolation holds. But the `RSC` request header switches the response body
+>   between an HTML document and a React flight payload while **not** being part of
+>   `RendererCachePolicy`'s cache key. An unauthenticated `curl -H 'RSC: 1'` can therefore pin
+>   a flight payload at the edge under a page's own URL, breaking that page for every
+>   subsequent visitor until the next invalidation. Availability/defacement, per tenant; no
+>   data disclosure (the flight payload is the same public content). Written up as **H1** in
+>   `docs/caching-architecture.md` § *Open hazards activated by cache-1*. Fix belongs to
+>   `cache-3`: add `RSC`, `Next-Router-Prefetch`, `Next-Router-State-Tree`,
+>   `Next-Router-Segment-Prefetch` to the cache-policy header allowlist, matching the origin's
+>   own `Vary`. **Do not deploy `cache-1` before that lands.**
+>
+> **Second re-verification (`cache-1` revise run, 2026-07-26).** Two further findings closed:
+>
+> - **Soft 404 on unwired hosts — FIXED.** `app/[siteId]/layout.tsx` answered HTTP **200**
+>   with a "Site Not Found" body (indexable, and cacheable once `cache-1` landed). Requests
+>   for a host with no tenant record are now rejected in middleware with `404` +
+>   `private, no-store` before any render. The one path that still reaches a render with no
+>   tenant — the host gate's verdict cache going stale within its 60 s TTL — is handled by the
+>   layout rendering `children` bare so the page's `notFoundOrHandoff()` answers, which yields
+>   `307 → ?nf=1 → 404` + `no-store` and stores no 404 in either cache layer (measured; see
+>   `docs/caching-architecture.md` § *Probe: the host-verdict transition*). An intermediate
+>   version of this fix had the layout call bare `notFound()`, which was itself a cacheable
+>   404 on the ISR route; that is corrected.
+> - **Transient DynamoDB failure could be pinned at the edge — FIXED, repo-wide.** Every read
+>   helper in `renderer/src/lib/dynamo.ts` — 19 of them — caught AWS errors and returned
+>   `null` / `[]`, which the render turns into absence. With HTML cacheable for a year, one
+>   blip stored the result: a "Site Not Found" shell for a failed tenant lookup, a year-lived
+>   `307 → ?nf=1` for a page that exists, or a `200` + `s-maxage=3600` sitemap listing zero
+>   pages. Measured on the pre-fix build, the artefact **outlived the blip** — the page kept
+>   answering `307` from cache (`x-nextjs-cache: HIT`) after DynamoDB recovered, until an
+>   invalidation. All 19 now let the error propagate; a 500 carries no `Cache-Control` and is
+>   never stored, and the next request renders and caches normally (measured both ways —
+>   `docs/caching-architecture.md` § *Probe: a read that fails AFTER tenant resolution*).
+>   Ratified as human decision CACHE-1-D4. Accepted cost: during an AWS failure the dynamic
+>   twin and `/api/*` answer 500 instead of rendering a silently-empty section.
+> - **Fabricated absence from a *misconfigured* renderer — FIXED (third re-verification,
+>   `cache-1` revise run 4).** The line above was true only of AWS/SDK errors. Two paths still
+>   manufactured absence: (a) every helper began `if (!process.env.TABLE_NAME) return null/[]`,
+>   and `hasActivePopups()` went further and fell back to `NEXT_PUBLIC_TABLE_NAME` or the
+>   literal `"amodx-table"` — so an unset table name rendered a storable not-found shell for
+>   the whole estate, or silently queried a table nobody intended; (b) `app/api/posts/route.ts`
+>   returned HTTP `200 {"items": []}` on a DynamoDB failure, which the `postGrid` block renders
+>   as "this site has no posts". Both closed: one `requireTableName()` throws for all 19
+>   helpers (no fallback chain, validated before empty-input short-circuits), and `/api/posts`
+>   answers `500` on failure and `400` without `x-tenant-id`. Measured: page/`sitemap.xml`/
+>   `/api/posts` all `500` with no `Cache-Control`, no ISR entry written, and the S3
+>   incremental cache shows `GET → MISS` with no `PUT`; the only `TableName` ever addressed is
+>   the configured one (`docs/caching-architecture.md` § *Probe: a missing `TABLE_NAME`, and
+>   `/api/posts`*). Verified across all eight `app/api/` routes, so the `/api/*` claim above is
+>   now accurate by enumeration.
+
+
 
 | Task | Status | Notes |
 |------|--------|-------|

@@ -62,18 +62,23 @@ export default async function SiteLayout({ children, params }: Props) {
     const config = await getTenantConfig(siteId);
 
     if (!config) {
-        return (
-            <Providers>
-                <div className="flex h-screen items-center justify-center bg-gray-50">
-                    <div className="text-center p-8 bg-white shadow-lg rounded-xl border">
-                        <h1 className="text-3xl font-bold text-red-600 mb-2">Site Not Found</h1>
-                        <p className="text-gray-500">
-                            The domain <span className="font-mono bg-gray-100 px-1 rounded">{siteId}</span> is not configured.
-                        </p>
-                    </div>
-                </div>
-            </Providers>
-        );
+        // cache-1: this branch must not answer the not-found itself, and must render
+        // `children` so the page can.
+        //
+        // It cannot answer correctly: this layout is shared by the ISR route and the
+        // %5Fdyn twin and gets only `{ siteId }`, so it knows neither the rendering mode
+        // nor the path — it can pick neither `notFound()` nor the `?nf=1` handoff, and a
+        // bare `notFound()` here is stored with the page's own year-long `s-maxage`. It
+        // does not need to: `SitePage` / `ProductByIdPage` repeat this lookup and route a
+        // null through `notFoundOrHandoff(cacheable, publicPath)`, knowing both facts.
+        //
+        // Rendering `children` is load-bearing, not cosmetic: a layout that returns early
+        // never invokes the page function (an unrendered child element is never
+        // evaluated) — which is how the original HTTP-200 "Site Not Found" shell
+        // suppressed the page's own not-found. Nothing escapes here: the child always ends
+        // in a redirect (ISR) or a 404 (twin) when the tenant is missing.
+        console.warn(`[SiteLayout] No tenant record for "${siteId}" — deferring to the page's not-found handoff.`);
+        return <>{children}</>;
     }
 
     const commerceEnabled = config.commerceEnabled ?? false;

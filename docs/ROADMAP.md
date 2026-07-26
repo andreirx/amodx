@@ -29,17 +29,38 @@ Source: code audit 2026-07-26; `docs/caching-architecture.md` is the intended de
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `cache-1` | Restore static/ISR rendering for public pages: dedicated `_preview` route, dynamic-API reads pushed into carve-out branches, doc truth-up | PLANNED |
+| `cache-1` | Restore static/ISR rendering for public pages: two routes (cacheable ISR + `%5Fdyn` force-dynamic twin) discriminated in middleware, non-cacheable not-found path, doc truth-up. *(The original entry described design D1 — a `_preview` route with dynamic reads pushed into carve-out branches. D1 was refuted by measurement 2026-07-26 and replaced by D2/D3; see the slice doc.)* | IN_REVIEW — deploy gated on `cache-3` (H1) |
 | `cache-2` | ISR revalidation keyed by domain (backend resolves tenant domains); loud warning when `RENDERER_URL` unset | PLANNED |
-| `cache-3` | CloudFront query-string allowlist + attribution cookie off cached HTML (CDK-touching, production-sensitive) | PLANNED |
-| `cache-4` | Granular invalidation (operator-requested 2026-07-26): replace the CloudFront `/*` sledgehammer with changed-path invalidations derived from the mutation (per page / per entity), and adopt tag-based ISR revalidation ("all pages showing product X") using the already-provisioned tag-cache table. Constraint to design around: on the shared distribution, CloudFront invalidation paths match URI paths across ALL tenant hosts — true per-tenant Layer-1 isolation needs per-tenant distributions (Workstream 3); collateral is cheap once cache-1/2 land because same-path entries on other tenants refill from warm ISR without SSR. Slice doc to be authored after cache-1..3 ship. | PLANNED |
+| `cache-3` | CloudFront query-string allowlist + attribution cookie off cached HTML + **RSC header family in the cache key** (scope widened 2026-07-26, CACHE-1-H1 — `cache-1` must not deploy before this) (CDK-touching, production-sensitive) | PLANNED |
+| `cache-4` | Granular invalidation (operator-requested 2026-07-26): replace the CloudFront `/*` sledgehammer with changed-path invalidations derived from the mutation (per page / per entity), and adopt tag-based ISR revalidation ("all pages showing product X") using the already-provisioned tag-cache table. **Go-live timer redefined (human 2026-07-26): ordinary admin edits invalidate their changed paths immediately — instant go-live; the 15-min debounce + banner remain only for bulk/global mutations (imports, theme changes)** where `/*` coalescing still pays. Constraint to design around: on the shared distribution, CloudFront invalidation paths match URI paths across ALL tenant hosts — true per-tenant Layer-1 isolation needs per-tenant distributions (Workstream 3); collateral is cheap once cache-1/2 land because same-path entries on other tenants refill from warm ISR without SSR. Slice doc to be authored after cache-1..3 ship. | PLANNED |
+| `cache-5` | Unknown-tenant handling hardening beyond cache-1's middleware domain-cache (sequencing with domain-onboarding flow; authored after cache-1 ships and the D3 mechanism is measured) | PLANNED |
+
+## Track TEST — test estate characterization & gap-filling
+
+Ratified 2026-07-26 (human): runs **after Track CACHE, before Track B** (commerce-private
+migration must not rehearse on an untested estate). Live-tenant directive applies: none of
+these slices touch production data; backend integration tests (live staging DDB) stay
+operator-run only until made local.
+
+| Slice | Scope | Status |
+|-------|-------|--------|
+| `test-1` | Fast gates: `typecheck` (`tsc --noEmit`) script per workspace + root aggregate; CI job for build+typecheck (today a type regression ships silently — no build CI exists) | PLANNED |
+| `test-2` | Serving-contract characterization suite: automate the cache-1 header-probe matrix (`next build`+`next start`+local DDB stub; MISS→HIT, twin no-store, not-found, zero-DDB-on-HIT) as a runnable suite — the regression net for the CACHE track | PLANNED |
+| `test-3` | Pure unit layer for pure logic: shared schemas + `normalizeEmail` (with fnd-1), backend pure helpers (cache-2 path construction), plugins parser (with vid-1) | PLANNED |
+| `test-4` | Infra truth: delete the commented-out jest stub that reports PASS 1/1 while asserting nothing; real `cdk synth` snapshot tests + CI synth job. Unblocks `dep-1` | PLANNED |
+
+Deferred (documented, not slices yet): local-DynamoDB backend integration tests;
+playwright expansion (needs a deployed-target strategy).
 
 Post-deploy operator verification (`x-cache: Hit`, Lambda invocation drop) is part of
 each slice's evidence — a cache slice is not SHIPPED on build green alone.
 
 ## Track order and rationale
 
-CACHE → A → FND-1 → B → C → D → E.
+CACHE → TEST → A → FND-1 → B → C → D → E. (TEST placed before Track B by human
+ratification 2026-07-26: the commerce-private migration is the first
+production-machinery rehearsal and must not run on an untested estate. Track A may
+interleave with TEST — it is independent and carries its own tests.)
 
 - **A (video embed)** first: independent, low-risk, no private data, no migration —
   momentum plus a proof that the slice format is not overbuilt.

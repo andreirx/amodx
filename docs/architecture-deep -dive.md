@@ -303,17 +303,23 @@ Dual-Write Patterns (eventual consistency within TransactWrite):
 │  A. Skip: /_next/*, /api/*, /static/*, files with extensions        │
 │     → NextResponse.next()                                           │
 │                                                                     │
-│  B. Test: /tenant/{id}/...                                          │
-│     → rewrite to /{id}/...                                          │
+│  B. Test: /tenant/{id}/...  → always the dynamic twin               │
+│     rewrite to /{id}/_dyn/...                                       │
 │                                                                     │
 │  C. Preview: /_site/{id}/... (restricted to localhost/CF/staging)   │
-│     → rewrite to /{id}/... + set amodx_preview_base cookie          │
+│     rewrite to /{id}/_dyn/... + set amodx_preview_base cookie       │
 │                                                                     │
 │  D. Production: X-Forwarded-Host = cleanHost                        │
-│     → rewrite to /{cleanHost}{path}                                 │
+│     unknown host (tenant-directory.ts, 60s cache, fails open)       │
+│       → 404 + private, no-store  [no render]                        │
+│     query string OR next-auth session cookie                        │
+│       → rewrite to /{cleanHost}/_dyn{path}   (force-dynamic)        │
+│     otherwise                                                       │
+│       → rewrite to /{cleanHost}{path}        (cacheable / ISR)      │
 │                                                                     │
 │  Referral Tracking:                                                 │
 │     ?ref= or ?utm_source= → set amodx_ref cookie (30 days)          │
+│     (both are query params, so always on the dynamic twin)          │
 └─────────────────┬───────────────────────────────────────────────────┘
                   │
                   ▼
