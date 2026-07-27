@@ -13,10 +13,20 @@ the target architecture. Track TEST in `docs/ROADMAP.md` implements it.
 | admin | 0 (no runner installed) | — | — | 0 |
 | plugins/shared/effects | 0 | — | — | — |
 | infra | jest file 100% commented out, reports PASS 1/1 | — | — | — |
-| CI | none | `playwright.yml` runs the staging-mutating suites | — | ↑ |
+| CI | `ci.yml` (`test-1`, 2026-07-27): build → typecheck (8 workspaces) → `backend test:unit`; credential-free, every push/PR | `playwright.yml` runs the staging-mutating suites (secrets-gated) | — | ↑ |
 
 Hazards: backend suites mutate shared staging state (unattended-unsafe, forbidden to
 relays); `.env.test` holds live secrets; the infra "suite" is a false green.
+
+`ci.yml` deliberately references no `secrets.*` and sets no `env:` — it is the fast gate of
+§7 and nothing in it can touch AWS. It installs with `npm ci`, so CI is pinned to the reviewed
+`package-lock.json`; `test-1` repaired that lockfile by hand-adding the Linux/win32 entries of the
+five native families that were missing them, changing no existing entry. If it ever regresses, add
+the entries back — do not regenerate the lockfile (`docs/TECH-DEBT.md`, recipe in `TESTING.md`).
+`npm run typecheck` runs **after** `npm run build`, not instead of it:
+`tsc --noEmit` emits nothing, so consumers of `@amodx/shared` / `effects` / `plugins` need those
+packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/types/**`, which
+`next build` generates.
 
 ## Test taxonomy and where each kind lives
 
@@ -41,6 +51,8 @@ relays); `.env.test` holds live secrets; the infra "suite" is a false green.
    Lambdas). Deletes the lying stub. Unblocks dep-1.
 7. **CI ordering** — every push: build + typecheck + unit (fast, no credentials).
    On demand / nightly: local-DDB integration. Post-deploy: e2e vs staging.
+   *Status: the fast gate is implemented as `.github/workflows/ci.yml` (`test-1`). The
+   local-DDB and post-deploy legs are still unimplemented.*
 
 ## Invariants
 

@@ -42,6 +42,8 @@ npm workspaces. **Build order matters** — shared → effects → plugins → b
 ```bash
 npm install                              # All workspaces
 npm run build                            # Full build (shared → plugins → all)
+npm run typecheck                        # tsc --noEmit, all 8 workspaces (run AFTER a build:
+                                         #   it emits nothing, so it needs packages/*/dist)
 cd admin && npm run dev                  # Admin dev server
 cd renderer && npm run dev               # Renderer dev server
 cd backend && npm test                   # Vitest (uses real staging DynamoDB)

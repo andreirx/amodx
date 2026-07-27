@@ -6,6 +6,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk"

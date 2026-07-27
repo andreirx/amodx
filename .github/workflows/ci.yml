@@ -1,0 +1,69 @@
+name: CI
+
+# Fast gate (docs/testing-strategy.md §7): build + typecheck + AWS-free unit tests on
+# every push. Deliberately CREDENTIAL-FREE: this workflow reads no repository secret, sets
+# no env, and touches no AWS. It is green from a bare checkout and runnable by a fork PR.
+# Keep it that way — anything needing credentials belongs in playwright.yml.
+#
+# Explicitly NOT here:
+#   - the 8 backend suites under backend/test/*.test.ts (`npm test`): they mutate LIVE
+#     staging DynamoDB and need `.env.test`. Only `test:unit` (backend/test/unit/) is
+#     credential-free. See backend/vitest.unit.config.ts.
+#   - playwright e2e: needs a deployed staging target. Stays in playwright.yml.
+
+on:
+  push:
+  pull_request:
+
+# A branch pushed as part of an open PR would otherwise run this job twice.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-typecheck-unit:
+    name: build + typecheck + unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to 22 to match the Lambda runtime (CLAUDE.md), not `lts/*`, which
+          # silently rolls to the next LTS.
+          node-version: '22'
+
+      - name: Install dependencies
+        # `npm ci` — the install is pinned to package-lock.json, so CI builds the exact
+        # dependency set the operator reviewed. Do NOT replace this with
+        # `rm -f package-lock.json && npm install`: that silently unpins CI.
+        #
+        # This requires package-lock.json to carry the Linux entries of every native
+        # binary family. npm only records the optional platform variants it resolved on
+        # the authoring host (npm/cli#4828), so a lockfile written on macOS lists only
+        # the darwin ones; `npm ci` still exits 0 (the entries are optional, so npm just
+        # skips them) and the failure surfaces one step later, in admin's `vite build`:
+        # "Cannot find module @rollup/rollup-linux-x64-gnu".
+        #
+        # The linux/win entries for rollup, @tailwindcss/oxide, @unrs/resolver-binding,
+        # lightningcss and sharp were added to the lockfile by hand at the versions their
+        # parents already pin. If you ever regenerate the lockfile on macOS, re-check
+        # those families before pushing. See docs/TECH-DEBT.md.
+        run: npm ci
+
+      # Build first: `npm run typecheck` does not emit, so the workspaces that consume
+      # @amodx/shared, @amodx/effects and @amodx/plugins resolve their types from those
+      # packages' dist/*.d.ts and need them on disk. `next build` also generates
+      # renderer/.next/types/**, which renderer/tsconfig.json includes.
+      - name: Build (shared -> effects -> plugins -> backend -> admin -> renderer -> mcp-server -> infra)
+        run: npm run build
+
+      - name: Typecheck (all 8 workspaces, tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Backend unit tests (no AWS, no credentials)
+        working-directory: backend
+        run: npm run test:unit

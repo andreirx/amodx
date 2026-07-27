@@ -169,6 +169,68 @@ The PageEffectConfigSchema intensity cap was lowered from 0.5 to 0.15. Existing 
 ### CDK infra test suite is a placeholder
 `infra/test/infra.test.ts` is entirely commented out (CDK scaffold boilerplate). No snapshot test, no resource assertions, no CI synthesis step. This means CDK upgrades, construct changes, or dependency bumps have zero automated verification. Must be activated before any aws-cdk-lib version change.
 
+### `playwright.yml` still deletes the lockfile; lockfile Linux entries are fragile
+Recorded by slice `test-1` (2026-07-27), **updated after the lockfile was repaired** in the same
+slice's revise cycle.
+
+**Was:** the committed lockfile carried `@rollup/rollup-darwin-arm64`, `lightningcss-darwin-arm64`,
+`@tailwindcss/oxide-darwin-arm64`, `@unrs/resolver-binding-darwin-arm64` and `@img/sharp-darwin-arm64`
+with no linux siblings. Confirmed `EXECUTED` in `node:22` on `linux/amd64`: `npm ci` from that
+lockfile *succeeded* (the entries are `optional`, so npm skips them silently) and `npm run build`
+then died in admin's `vite build` with
+`Cannot find module @rollup/rollup-linux-x64-gnu ... (npm/cli#4828)`.
+
+**Now:** the missing entries were **added to the lockfile by hand**, at the exact versions their
+parents already pinned. 63 entries added (the linux and win32 siblings of `rollup`,
+`@tailwindcss/oxide`, `unrs-resolver`, `lightningcss` and `sharp`); **0 existing entries modified,
+0 removed**. Linux entries went 22 → 71. `ci.yml` uses `npm ci`, and `npm ci && npm run build`
+is green in `linux/amd64 node:22`.
+
+**Why by hand and not by regenerating.** npm resolves optional platform binaries **against the
+host, seeded from the reified `node_modules`**, and will **not** backfill missing optional platform
+variants into an existing lockfile. Four in-place repair attempts were run and all four were exact
+no-ops: `npm install`; `npm install --package-lock-only`; the same with
+`--os=linux --cpu=x64 --libc=glibc`; and `--force`. Hand-deleting the darwin child entries did not
+force re-resolution either — npm left them deleted.
+
+A clean-room regeneration (scratch dir with only the `package.json` files, no `node_modules`, no
+lockfile) *does* produce the Linux entries, but it re-resolves **every** semver range at the same
+time: measured at 344 version changes, 418 entries removed, 212 added. That is a fleet-wide
+dependency upgrade — `@tiptap/* 3.13 → 3.29`, `tailwindcss 4.1 → 4.3`, `next 16.2.9 → 16.2.12`,
+`@aws-sdk/* 3.1004 → 3.1095` — and it was **rejected** for riding along inside an unrelated CI
+slice with no runtime verification behind it. The direct edit changes nothing but the platform
+coverage, which is exactly the defect. If those upgrades are wanted, they are their own slice with
+their own e2e evidence.
+
+**Rules for anyone touching this in future** (recipe in `TESTING.md` § CI/CD Integration):
+
+- Never "fix" a missing-native error by deleting the lockfile or regenerating it wholesale.
+- After any lockfile edit, prove it surgical by parsing old vs new and asserting 0 modified /
+  0 removed entries. `git diff`'s default myers algorithm mis-anchors large JSON insertions and
+  renders unchanged blocks as delete+add; use `--diff-algorithm=histogram` to read it.
+
+**Residual debt:**
+
+1. **`playwright.yml` still runs `rm -f package-lock.json && npm install`** (line 21). It is
+   therefore still unpinned, and installs a *different, floating* dependency set than `ci.yml`.
+   Migrating it to `npm ci` is mechanical but was out of `test-1`'s packet scope
+   (the packet forbids touching that file). Do it as its own change.
+2. **The lockfile's Linux entries are fragile.** They are hand-maintained: any future `npm install`
+   that re-resolves one of these five families can prune its foreign-platform siblings back to
+   darwin-only, silently reverting CI to red — and the failure appears in `npm run build`, not in
+   `npm ci`, so it reads as a build bug rather than an install bug. There is no guard. A cheap one
+   would be a CI step asserting `@rollup/rollup-linux-x64-gnu` is present in `package-lock.json`;
+   not implemented, and worth doing when `playwright.yml` is migrated.
+3. **Coverage is linux + win32 + the pre-existing darwin only.** The `wasm32-wasi` siblings of
+   `@tailwindcss/oxide`, `unrs-resolver` and `sharp` were deliberately left out: they depend on
+   `@emnapi/*`, `@napi-rs/wasm-runtime` and `@tybys/wasm-util`, none of which are in this lockfile,
+   so adding them would stop being a pure platform-entry addition. android/freebsd/openbsd siblings
+   were likewise not added. None are reachable from any runner this repo uses.
+4. `actions/setup-node`'s `cache: npm` is now usable (it needs a valid lockfile) but was left off
+   to keep the slice minimal.
+
+`security-audit.yml` is unaffected: it already used `npm ci` and only installs, never builds.
+
 ## Low Priority
 
 ### RecaptchaConfigSchema.enabled field is deprecated
