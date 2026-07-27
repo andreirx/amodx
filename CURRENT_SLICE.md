@@ -2,9 +2,69 @@
 
 ## Current Priority
 
-**`cache-3` — CloudFront cache-key remediation** (Track CACHE). Slice doc not yet authored;
-generate it per `docs/ROADMAP.md`. It is the deploy gate for the whole track (H1: the RSC
-header family is missing from the CloudFront cache key).
+**Track CACHE is code-complete and awaiting one combined deploy.** All three slices are
+implemented; nothing is deployed.
+
+`cache-3` — CloudFront cache-key hygiene — is **IMPLEMENTED 2026-07-27 (revision 5 —
+review iteration 3's three required changes applied; revision 4 applied review iteration 2's
+four; revision 3 applied both human decisions), review pending**
+(`docs/slices/cache-3-cache-key-hygiene.md`, § Ratified resolutions + § Revision 5 +
+§ Build run 2026-07-27 revision 5). Revision 5 is **documentation-only** — the sole non-`.md`
+edit is a code comment, and the synthesized CloudFront template was measured byte-identical
+across it (slice doc build-run rows 5/5b). The evidence gate was re-run from scratch anyway:
+the source-isolated synth comparison shows the same three semantic deltas and nothing else
+(rows 5c/5d). It fixes
+the staging deploy command (`-c stage=staging` is mandatory —
+`infra/bin/infra.ts:12` defaults to `prod`), replaces the stale "two-property edit" CDK
+scope statement with the real three-delta/two-construct scope, and corrects a comment in
+`infra/lib/renderer-hosting.ts` that named a nonexistent middleware function.
+
+It closes **H1** (the RSC header family was missing from the CloudFront cache key), replaces
+`queryStringBehavior: all()` with a 7-parameter allowlist, moves the `amodx_ref`
+attribution cookie off page responses (`components/ReferralCapture.tsx` inline script
+beacons to `app/api/ref/route.ts`, which sets the cookie — the write stayed server-side
+because a `document.cookie` write cannot overwrite the pre-deploy `HttpOnly` cookie,
+RFC 6265 §5.3 step 11, slice doc F8), and — **new in revision 3** — closes **H3**.
+
+**H3, found in review iteration 2:** the cache key was blind to the session cookie
+(`cookieBehavior: none()`, no session-derived header), so an authenticated request had the
+*same* key as an anonymous one. Middleware's rule that session traffic goes to the
+`no-store` twin is an **origin** behaviour and a warm entry is answered before the origin
+runs — so on an access-gated page a signed-in visitor would have been served the cached
+"Restricted Access" shell for up to a year. Per decision `CACHE3-SESSION-KEY` = **option B**,
+the existing viewer-request CloudFront Function now derives `x-has-session: '0'|'1'` from the
+cookie jar and that header is in the cache key. Cookies stay out of the key. The match is by
+**prefix** (revision 4, narrowed from revision 3's substring test) over
+`next-auth.session-token` and the legacy `__secure-next-auth.session-token`, so chunked
+`.0`/`.1` variants are covered and names that merely embed the literal are not. Middleware
+uses the identical predicate; the two are pinned equal by test (slice doc F11).
+
+The same edit corrected middleware's **routing** for chunked session cookies, which
+exact-name matching never detected (slice doc F12 — declares the out-of-packet-scope
+middleware edit). That is routing only: the dynamic twin still does not reassemble chunked
+JWTs, so a chunked session bypasses the cache correctly and is *still* denied gated content.
+Deferred debt, `docs/TECH-DEBT.md`.
+
+Four findings the operator must read before deploying:
+
+- **`nf` is mandatory in the query allowlist** (slice doc F1). It is
+  `lib/not-found-handoff.ts`'s `NOT_FOUND_PARAM`, and the `307 → ?nf=1` handoff is itself
+  cacheable — drop `nf` from the key and every 404 becomes an infinite redirect loop.
+- **The deploy is now STAGED** (decision `CACHE3-STAGING-DRIFT` = staged reconcile, replacing
+  the bounded-`cdk diff` gate). Staging has drifted ~630 resources behind HEAD (F7), so:
+  (1) deploy HEAD to staging, absorbing the drift; (2) run the full Track CACHE probe suite
+  there; (3) *then* review a small production diff. Step-by-step plan in the slice doc
+  § Deployment.
+- **The WARM-EDGE session probe is mandatory and cannot be skipped or substituted** (slice
+  doc § Deployment probe 6). No origin `curl` can fail the H3 way — at the origin middleware
+  runs and routes correctly. It needs a real CloudFront hit on a gated page with a real
+  session cookie. Under this repo's NextAuth config that cookie is named
+  `next-auth.session-token`, **not** the `__Secure-` default. If the browser shows `.0`/`.1`
+  chunks, read the slice doc's *6b-caveat* first: a chunked session will correctly miss the
+  edge and still show "Restricted Access", because the twin does not reassemble chunks
+  (`docs/TECH-DEBT.md`). That is not an H3 regression.
+- **Do not roll back only the `x-has-session` half.** With `cache-1` live, that is H3 at full
+  strength. The cache policy and the CloudFront Function are one unit.
 
 `cache-2` — ISR revalidation keyed by domain — is **IMPLEMENTED 2026-07-26 (revised same day),
 review pending** (`docs/slices/cache-2-isr-revalidation-keying.md`, § Build run). Nothing
@@ -16,15 +76,24 @@ allow exactly one `infra/` line, `revalidationSecret.grantRead(createContentFunc
 The slice is therefore backend + one IAM statement; that grant and the create-purge must
 deploy together.
 
-`cache-1` is IMPLEMENTED (approved + committed 2026-07-26, d2ecffe) but **NOT DEPLOYED —
-deploy gate: cache-3 must land first**. Deploy order: cache-3 → cache-1 + cache-2 (combined
-is fine; the `CACHE-2-D2` grant is part of cache-2, not an optional extra step); staging
-header probes + rollback per the cache-1 slice doc, ISR purge verification per the cache-2
-slice doc.
+`cache-1` is IMPLEMENTED (approved + committed 2026-07-26, d2ecffe) but **NOT DEPLOYED**.
+Its deploy gate — `cache-3` — is now implemented, so the gate is satisfied in code and
+pending review.
+
+**Deploy order: cache-3 → cache-1 + cache-2 (one combined deploy is fine), staged
+staging-first.** Never `cache-1` alone: that window is exactly H1 on live tenants. The
+`CACHE-2-D2` grant is part of cache-2, not an optional extra step. Post-deploy verification
+is per-slice and all of it is still NOT RUN: the cache-key probes (RSC, junk-param,
+404-loop, attribution, **warm-edge session**) in the cache-3 slice doc § Deployment, the
+header probes + rollback in the cache-1 slice doc, and the ISR purge check in the cache-2
+slice doc. Expect a functionally cold Layer-1 cache on
+deploy — changing the cache key strands every existing entry under the old key (Layer 2 is
+untouched, so refill is mostly an origin ISR hit rather than fresh SSR).
 
 Read before implementation: `docs/VISION.md` → `docs/ROADMAP.md` → this file →
 `docs/slices/cache-1-restore-static-rendering.md` →
-`docs/slices/cache-2-isr-revalidation-keying.md` → `docs/caching-architecture.md`.
+`docs/slices/cache-2-isr-revalidation-keying.md` →
+`docs/slices/cache-3-cache-key-hygiene.md` → `docs/caching-architecture.md`.
 
 ## Planning phase — COMPLETE
 
@@ -44,8 +113,8 @@ None. Track A slice docs exist (`vid-1`, `vid-2`, `vid-3`); implementation not s
 
 ## Next
 
-`cache-3` (completes Track CACHE; then deploy cache-3 + cache-1 + cache-2 with the
-post-deploy operator verification each slice doc specifies), then
+Review `cache-3`, then **deploy cache-3 + cache-1 + cache-2 together** with the post-deploy
+operator verification each slice doc specifies. Then
 `vid-1` → `vid-2` → `vid-3` (Track A), then `fnd-1` (shared
 `normalizeEmail`), then begin
 Track B (`cmrc-1`). The `fnd-1` and Track B/C/D slice docs are not yet authored — generate
@@ -53,6 +122,13 @@ them per `docs/ROADMAP.md` when their track starts.
 
 ## Recently Completed
 
+- `cache-3` — cache-key hygiene (2026-07-27, revision 5). CloudFront cache policy: RSC
+  header family added (closes H1), `x-has-session` added (closes H3),
+  `queryStringBehavior: all()` → a 7-parameter allowlist; the viewer-request CloudFront
+  Function derives the session bit. `amodx_ref` moved off page responses to
+  `components/ReferralCapture.tsx` + `app/api/ref/route.ts`.
+  Status `IMPLEMENTED`, not `SHIPPED` — authoritative status is § Current Priority above;
+  this entry is a pointer, not a second source of truth.
 - `cache-2` — ISR revalidation keyed by domain (2026-07-26). Backend code **plus one IAM
   statement** (`revalidationSecret.grantRead(createContentFunc)`, `infra/lib/api.ts:144`):
   6 handlers now purge `/<domain>/<path>` instead of the no-op `/<tenantId>/<path>`, and

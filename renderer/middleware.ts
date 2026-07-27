@@ -18,10 +18,53 @@ const ORIGIN_VERIFY_SECRET = process.env.ORIGIN_VERIFY_SECRET;
 // using only information a request carries. Two signals are enough and both are free:
 // a query string, and a NextAuth session cookie.
 //
+// This file only runs on a CloudFront MISS. Both signals therefore have a counterpart in
+// the CloudFront cache key (slice cache-3): query strings via the parameter allowlist, and
+// the session cookie via the `x-has-session` header the viewer-request Function derives.
+// Without those, a warm entry is served at the edge and this discriminator never executes.
+//
 // This file is also the only place a **non-cacheable 404** can be produced for a
 // production host (the unknown-host gate below) — see `lib/tenant-directory.ts`.
 const DYN_SEGMENT = '_dyn';
-const SESSION_COOKIES = ['next-auth.session-token', '__Secure-next-auth.session-token'];
+
+// Session detection — two base names, matched by PREFIX (base, or base + '.' + chunk index).
+//
+// Source of truth for the names: the NextAuth cookie configuration in
+// `src/app/api/auth/[...nextauth]/route.ts` (`cookies.sessionToken.name =
+// 'next-auth.session-token'`). next-auth 4.24.14 spreads that object over its own defaults
+// at the top level (`next-auth/core/init.js:59-61`), so the configured name REPLACES the
+// default and the `__Secure-` prefix `defaultCookies()` applies on https does not take
+// effect while this config stands. What is emitted today is therefore
+// `next-auth.session-token`, plus `.0`, `.1`, … chunks when the JWT exceeds the 4096-byte
+// cookie limit (`next-auth/core/lib/cookie.js:152` names chunks `<configured-name>.<i>`).
+//
+// `__secure-next-auth.session-token` is listed as COMPATIBILITY/LEGACY coverage: it is what
+// next-auth would emit if the explicit `cookies` block were removed, and what a cookie
+// issued before that block existed still carries. No repo evidence shows it in use today.
+// Listing it costs nothing; missing a real session cookie is the expensive direction.
+//
+// Matching is case-insensitive (hence lowercase literals) even though cookie names are
+// case-sensitive per RFC 6265. That over-matches slightly, which is the safe direction: a
+// false positive routes the request to the uncached twin, which renders correctly and merely
+// misses the cache. It is NOT a substring test — a substring test would also match unrelated
+// names that happen to embed the literal (`x-next-auth.session-token-decoy`), needlessly
+// widening the set of requests a viewer can push past the edge cache.
+//
+// This predicate must stay IDENTICAL to the one in the CloudFront viewer-request Function
+// (`infra/lib/renderer-hosting.ts`, `HostRewriteFunction` → `x-has-session`). That function
+// decides whether an authenticated request can match a warm anonymous edge entry; this one
+// decides whether it renders on the dynamic twin. If the CF function classified a request
+// as anonymous while this file classified it as authenticated, the request would be
+// answered from the anonymous entry and never reach here at all (hazard H3).
+const SESSION_COOKIE_BASES = ['next-auth.session-token', '__secure-next-auth.session-token'];
+
+/** True iff the request carries any NextAuth session cookie, chunked variants included. */
+function hasSessionCookie(request: NextRequest): boolean {
+    return request.cookies.getAll().some((c) => {
+        const lower = c.name.toLowerCase();
+        return SESSION_COOKIE_BASES.some((base) => lower === base || lower.indexOf(base + '.') === 0);
+    });
+}
 
 // Route Handlers that live under [siteId]. They never enter the full-route cache whatever
 // the rendering mode, and each sets (or deliberately omits) its own Cache-Control on the
@@ -87,8 +130,7 @@ export async function middleware(request: NextRequest) {
     // they have no twin, and they are never in the full-route cache to begin with.
     const needsDynamicRender =
         !isSiteRouteHandler &&
-        (request.nextUrl.search !== '' ||
-            SESSION_COOKIES.some((name) => request.cookies.has(name)));
+        (request.nextUrl.search !== '' || hasSessionCookie(request));
 
     // B. Logic for Tenant Routing
     if (path.startsWith('/tenant/')) {
@@ -166,31 +208,42 @@ export async function middleware(request: NextRequest) {
     // --- 2. CONSTRUCT RESPONSE ---
 
     // If we determined a rewrite, create a rewrite response. Otherwise, 'next'.
-    const response = rewriteUrl
+    // No Set-Cookie is attached here — see the note below.
+    return rewriteUrl
         ? NextResponse.rewrite(rewriteUrl)
         : NextResponse.next();
-
-    // --- 3. REFERRAL TRACKING (Cookie Injection) ---
-    // Both triggers are query params, so these requests were already routed to the
-    // dynamic twin above — the Set-Cookie can never land on a cacheable response.
-
-    const ref = request.nextUrl.searchParams.get('ref');
-    const source = request.nextUrl.searchParams.get('utm_source');
-
-    if (ref || source) {
-        const val = ref || source;
-        // Set cookie on the outgoing response object
-        response.cookies.set('amodx_ref', val!, {
-            httpOnly: true,
-            secure: true, // Only HTTPS
-            maxAge: 60 * 60 * 24 * 30, // 30 days
-            path: '/', // Global
-            sameSite: 'lax'
-        });
-    }
-
-    return response;
 }
+
+// --- REFERRAL ATTRIBUTION: deliberately NOT here (slice cache-3) ---
+//
+// This middleware used to set `amodx_ref` from `?ref=` / `?utm_source=` on the outgoing
+// page response. It is now a two-part mechanism: `components/ReferralCapture.tsx` (an
+// inline script in the public site layout) beacons to `src/app/api/ref/route.ts`, which
+// sets the cookie. Two reasons the trigger had to leave this file, in order of weight:
+//
+// 1. cache-3 drops `ref` / `utm_source` from the CloudFront cache key, so `/p?ref=x`
+//    collapses onto the `/p` entry. Once that entry is warm the edge answers it directly
+//    and the origin — hence this middleware — never runs. A server-side capture would
+//    have silently stopped firing exactly for the visitors it exists to attribute. The
+//    trigger has to live somewhere that runs on a cache HIT, i.e. in the browser.
+// 2. Even before that, a `Set-Cookie` on a page response is a cache-poisoning shape: if a
+//    response carrying one is ever stored, CloudFront replays it to every later viewer.
+//    cache-1's twin discriminator happened to keep those responses `no-store`, so the
+//    hazard was latent rather than live — but "correct only because of a rule enforced in
+//    another file" is not a property worth keeping.
+//
+// The cookie is still WRITTEN by the origin, on an `/api/*` response that is uncacheable
+// three ways over (POST, `CachingDisabled` behavior, `no-store`). Keeping the write
+// server-side is what makes the change migration-safe: visitors holding the old
+// `HttpOnly` `amodx_ref` cookie cannot have it overwritten from `document.cookie`
+// (RFC 6265 §5.3 step 11), so a pure client-side write would have frozen their
+// attribution at the stale value for up to 30 days. The cookie keeps `HttpOnly`, and the
+// sole consumer — `src/app/api/leads/route.ts:31`, `cookies().get("amodx_ref")` — is
+// unchanged.
+//
+// The `amodx_preview_base` cookie above is exempt from all of this: `/_site/` preview
+// traffic is rewritten to the force-dynamic twin and is never stored by either cache
+// layer.
 
 export const config = {
     matcher: [

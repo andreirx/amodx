@@ -57,6 +57,34 @@ for `esbuild` → (4) Next.js 16.3 stable for `postcss` → (5) review `next-aut
 
 ## High Priority (Missing Features)
 
+### Chunked NextAuth session cookies are not reassembled (gated content denied)
+**Found:** `cache-3` revision 4 review. **Scope:** deferred — the fix is in the dynamic twin
+routes, which `cache-3` is explicitly barred from touching.
+
+NextAuth chunks the session JWT into `next-auth.session-token.0`, `.1`, … when it exceeds the
+4096-byte cookie limit (`next-auth/core/lib/cookie.js:144-160`). The dynamic twin's
+`readSessionToken()`
+(`renderer/src/app/[siteId]/%5Fdyn/[[...slug]]/page.tsx:33-38`) reads two exact, unchunked
+names and returns `null` for anything else — it neither collects nor concatenates chunks. So
+a visitor whose JWT was chunked reaches `SitePage` with `sessionToken: null` and the ACCESS
+GATEKEEPER (`renderer/src/components/SitePage.tsx`) denies gated content.
+
+What `cache-3` **did** fix is *routing*, on both layers: such a request now keys as
+`x-has-session: 1` at the edge and is rewritten to the `no-store` twin at the origin, so it
+can neither hit nor populate an anonymous cache entry. Do not read the `cache-3` probes
+(`probe-cache3.sh` §F3/§F3b, `probe-cache3-cffunc.mjs`) as evidence that chunked
+authentication works — they measure routing only.
+
+**Fix shape:** replicate NextAuth's `SessionStore` reassembly in `readSessionToken()` —
+collect every cookie whose name is `<base>` or `<base>.<i>`, sort by numeric suffix,
+concatenate the values, then `decode()`. Same twin file also carries a stale comment ("Both
+the plain and `__Secure-` names are in use"); under the repo's explicit `cookies` config only
+the plain name is emitted (`next-auth/core/init.js:59-61` — top-level spread replaces the
+default entry).
+
+**Blast radius today:** only tenants with large Google profile claims or many custom session
+fields reach 4096 bytes. Unmeasured in production; no probe exists for it.
+
 ### Tenant domain aliases are not representable
 A tenant has exactly one `domain` (`TenantConfigSchema.domain`, mirrored to the `GSI_Domain`
 partition key), and `renderer/src/lib/tenant-directory.ts` admits a host only on an exact

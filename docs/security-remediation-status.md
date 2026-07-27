@@ -100,21 +100,53 @@ Updated: 2026-03-23
 >   always passes `null`, so the worst a cached render of a gated page can contain is the
 >   "Restricted Access" shell. Any request carrying a session cookie is rewritten to the
 >   `force-dynamic` twin (`private, no-store`) before rendering.
+>   *(Amended by `cache-3` revision 3, 2026-07-27.* The **confidentiality** claim above is
+>   unchanged and was never at risk — the cacheable route cannot render another visitor's
+>   content because it never receives a session. But the middleware rewrite is an
+>   **origin** behaviour, and CloudFront answers a warm entry without consulting the origin,
+>   so on its own it did not keep a logged-in visitor off the cached anonymous page: the
+>   gate would have *failed closed*, serving "Restricted Access" to someone entitled to the
+>   content. The cache key now carries `x-has-session`, so such a request always misses and
+>   reaches middleware. Hazard **H3** in `docs/caching-architecture.md`.)*
+>   *(Further amended by `cache-3` revision 4, 2026-07-27.* The cookie-name predicate on both
+>   layers is a **prefix** match over `next-auth.session-token` and the legacy
+>   `__secure-next-auth.session-token`, not a substring test. Separately: routing a session
+>   request to the twin is not the same as authenticating it — the twin does not reassemble
+>   NextAuth's **chunked** session cookies, so a visitor with a >4096-byte JWT still gets the
+>   "Restricted Access" shell, now from a `no-store` render rather than from cache. That is
+>   an availability/entitlement gap, not a confidentiality one, and is tracked in
+>   `docs/TECH-DEBT.md`.)*
 > - **`Set-Cookie` suppression on cacheable responses — PASS.** Both cookies middleware sets
 >   (`amodx_ref`, `amodx_preview_base`) are triggered only by a query param or the `/_site/`
 >   prefix, and both of those route to the twin. The cached response captured in the probe
 >   carries no `Set-Cookie`.
-> - **Cache-key isolation — FAIL, and it blocks the deploy.** `X-Forwarded-Host` keying is
+>   *(Updated by `cache-3`: middleware now sets no cookie on page responses at all —
+>   `amodx_ref` capture moved to a browser-side snippet, `components/ReferralCapture.tsx`,
+>   which POSTs to `app/api/ref/route.ts`; the cache-key change means a warm campaign landing
+>   is answered at the edge and the origin never runs, so the trigger had to leave the
+>   origin. `amodx_preview_base` is unchanged. So this item no longer depends on the twin
+>   discriminator holding. Re-measured across six request shapes: zero `Set-Cookie:
+>   amodx_ref` on any page response. The cookie itself is unchanged — still `HttpOnly`,
+>   `Secure`, `SameSite=Lax`, `Path=/`, 30 days — because the write stayed server-side; that
+>   is also what makes it overwrite the pre-deploy `HttpOnly` cookie, which a
+>   `document.cookie` write could not (RFC 6265 §5.3 step 11).)*
+> - **Cache-key isolation — was FAIL, blocked the deploy; FIXED in `cache-3` (not yet
+>   deployed).** `X-Forwarded-Host` keying is
 >   intact, so tenant isolation holds. But the `RSC` request header switches the response body
 >   between an HTML document and a React flight payload while **not** being part of
 >   `RendererCachePolicy`'s cache key. An unauthenticated `curl -H 'RSC: 1'` can therefore pin
 >   a flight payload at the edge under a page's own URL, breaking that page for every
 >   subsequent visitor until the next invalidation. Availability/defacement, per tenant; no
 >   data disclosure (the flight payload is the same public content). Written up as **H1** in
->   `docs/caching-architecture.md` § *Open hazards activated by cache-1*. Fix belongs to
->   `cache-3`: add `RSC`, `Next-Router-Prefetch`, `Next-Router-State-Tree`,
->   `Next-Router-Segment-Prefetch` to the cache-policy header allowlist, matching the origin's
->   own `Vary`. **Do not deploy `cache-1` before that lands.**
+>   `docs/caching-architecture.md` § *Open hazards activated by cache-1*.
+>   **`cache-3` applied that fix**: `RSC`, `Next-Router-Prefetch`, `Next-Router-State-Tree`
+>   and `Next-Router-Segment-Prefetch` are now in the cache-policy header allowlist, matching
+>   the origin's own `Vary`, and `_rsc` was dropped from the query-string key (measured
+>   redundant — the header is the discriminator). **Still not deployed.** The ordering
+>   constraint stands: deploy `cache-3` first, or `cache-3` + `cache-1` + `cache-2` together.
+>   Never `cache-1` alone. The post-deploy RSC probe in
+>   `docs/slices/cache-3-cache-key-hygiene.md` § *Deployment* is the operator's confirmation
+>   that H1 is actually closed in production.
 >
 > **Second re-verification (`cache-1` revise run, 2026-07-26).** Two further findings closed:
 >
@@ -153,8 +185,10 @@ Updated: 2026-03-23
 >   `/api/posts` all `500` with no `Cache-Control`, no ISR entry written, and the S3
 >   incremental cache shows `GET → MISS` with no `PUT`; the only `TableName` ever addressed is
 >   the configured one (`docs/caching-architecture.md` § *Probe: a missing `TABLE_NAME`, and
->   `/api/posts`*). Verified across all eight `app/api/` routes, so the `/api/*` claim above is
->   now accurate by enumeration.
+>   `/api/posts`*). Verified across all eight read/proxy `app/api/` routes, so the `/api/*`
+>   claim above is now accurate by enumeration. (`cache-3` later added a ninth route,
+>   `api/ref` — a write with no absence to fabricate, so the rule does not apply to it;
+>   `auth/[...nextauth]` is NextAuth's own handler and always was outside the count.)
 
 
 

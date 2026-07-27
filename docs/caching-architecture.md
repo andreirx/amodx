@@ -12,7 +12,12 @@ User Request ──> CloudFront Edge Cache ──> OpenNext ISR Cache (S3) ─�
                       (global PoPs)            (origin region)         (DynamoDB reads)
 ```
 
-**Layer 1 — CloudFront**: Edge cache at 400+ global points of presence. Cache key includes `X-Forwarded-Host` (tenant isolation) + query strings. Serves HTML with sub-50ms latency on hit.
+**Layer 1 — CloudFront**: Edge cache at 400+ global points of presence. Cache key is
+`X-Forwarded-Host` (tenant isolation) + the RSC content-negotiation header family +
+`x-has-session` (one bit, derived from the cookie jar at the edge — anonymous and
+authenticated requests must not share an entry) + an **allowlist** of seven query
+parameters — see § *Cache Policy (Default Behavior)* for the list and the per-parameter
+justification. Serves HTML with sub-50ms latency on hit.
 
 **Layer 2 — OpenNext ISR**: S3-backed cache in the origin region. When CloudFront misses, the request hits the Lambda Function URL. OpenNext checks S3 first. If cached, it returns the S3 object without running React SSR. If not cached, it renders from DynamoDB and writes the result to S3.
 
@@ -157,9 +162,11 @@ is traded for not writing durable incorrect content. An uncached 500 self-heals 
 request; a cached wrong page does not.
 
 The claim that **`/api/*` answers 5xx rather than fabricating absence** is now true of every
-route under `renderer/src/app/api/`, verified by reading all eight
+route under `renderer/src/app/api/`, verified by reading all nine
 (`account/orders`, `comments`, `consent`, `contact`, `leads`, `posts`, `profile`,
-`revalidate`; `auth/[...nextauth]` is NextAuth's own handler). Seven already returned
+`ref`, `revalidate`; `auth/[...nextauth]` is NextAuth's own handler). `ref` is the
+attribution beacon added by `cache-3`; it is a write, not a read, has no absence to
+fabricate, and answers `204` unconditionally. Of the eight read/proxy routes, seven already returned
 `{ error }` + 4xx/5xx. `posts` was the exception — a DynamoDB failure or a missing
 `TABLE_NAME` returned HTTP `200 {"items": []}`, which the `postGrid` block renders as *this
 site has no posts*. It now answers `500`; a missing `x-tenant-id` header answers `400`.
@@ -187,8 +194,9 @@ Two read paths outside `lib/dynamo.ts` keep different internals on purpose:
   `app/[siteId]/` or `components/`. Making the empty-key case fail earlier and more loudly is
   a candidate cleanup, not a cache correctness issue.
 
-One hazard remains open (**H1**, the `RSC` cache key) and gates the deploy — see
-**Open hazards activated by cache-1** below.
+The hazard that gated the deploy (**H1**, the `RSC` cache key) is closed in `cache-3` — see
+**Open hazards activated by cache-1** below for the before/after. Nothing in the track is
+deployed yet; deploy order is `cache-3` → `cache-1` + `cache-2`.
 
 ---
 
@@ -382,7 +390,7 @@ normally force that are themselves a hard 500 in this mode. Any requirement of t
 "make outcome X non-cacheable" therefore has to be met by routing X to a different route, by
 CloudFront/CDN policy, or not at all.
 
-### The `RSC` request header changes the response body — and is not in the cache key
+### The `RSC` request header changes the response body — and was not in the cache key
 
 Measured against the real `[siteId]/[[...slug]]` route, same URL, same tenant:
 
@@ -399,17 +407,23 @@ Next stores both variants under one ISR entry and content-negotiates on the way 
 advertises `Vary: rsc, next-router-state-tree, next-router-prefetch,
 next-router-segment-prefetch, Accept-Encoding`.
 
-The problem is downstream: `RendererCachePolicy`
-(`infra/lib/renderer-hosting.ts:265`) allowlists **only `X-Forwarded-Host`** as a cache-key
-header, and CloudFront does not key on origin `Vary`. See **Open hazards** below.
+The problem was downstream: until `cache-3`, `RendererCachePolicy`
+(`infra/lib/renderer-hosting.ts`) allowlisted **only `X-Forwarded-Host`** as a cache-key
+header, and CloudFront does not key on origin `Vary`. **Closed in `cache-3`** — the four
+`Vary` headers are now in the key. See **Open hazards** below for the full H1 write-up.
 
-Next's own client never hits this, because `fetch-server-response.js` always calls
+Next's own client never hit this, because `fetch-server-response.js` always calls
 `setCacheBustingSearchParam()`, appending `?_rsc=<hash>` to every prefetch and client
-navigation (`node_modules/next/dist/client/components/router-reducer/`). Since the cache
-policy keys on all query strings, real RSC traffic gets its own cache entry. Note also that
+navigation (`node_modules/next/dist/client/components/router-reducer/`). Under the old
+`queryStringBehavior: all()` that gave real RSC traffic its own cache entry. Note also that
 Next strips `_rsc` before middleware sees the URL, so `request.nextUrl.search` is empty for
 those requests and they land on the **ISR** route, not the dynamic twin — verified: an
 `?_rsc=…` request returns `x-nextjs-cache: HIT`.
+
+`cache-3` inverts which of the two mechanisms carries the discrimination: the header is in
+the key and `_rsc` is not, so prefetches for one URL share one entry instead of one per
+hash. Measured that this is body-safe — `?_rsc=<hash>` alone returns `text/html`, and only
+the `RSC` header returns `text/x-component`. See § *Cache Policy (Default Behavior)*.
 
 ### Three consequences that constrain any future cache work
 
@@ -435,37 +449,60 @@ those requests and they land on the **ISR** route, not the dynamic twin — veri
 
 ## Open hazards activated by cache-1
 
-Both were invisible before `cache-1`, because nothing was cached. Both became live
+All three were invisible before `cache-1`, because nothing was cached. All three became live
 behaviours of the serving layer the moment it started caching.
 
-- **H1 is OPEN and gates the deploy.** Its fix is outside the renderer, in CloudFront policy
-  (`cache-3`).
+- **H1 is CLOSED in `cache-3`** (CloudFront cache-policy header allowlist). It gated the
+  whole track's deploy: `cache-1` was not deployable while it was open.
 - **H2 is CLOSED inside `cache-1`** (middleware host gate + `?nf=1` handoff). It is kept
   here, with its before/after measurements, because the "before" row is what the code
   actually did in production until this slice.
+- **H3 is CLOSED in `cache-3` revision 3** (`x-has-session` in the cache key). Found in
+  review of `cache-3` revision 2, not in the original audit — the cache key was blind to the
+  session cookie, so a warm anonymous entry was served to logged-in visitors.
 
-Read both before deploying.
+All three are kept with their measurements. **No fix is deployed yet** — the whole CACHE
+track is uncommitted-to-production as of 2026-07-27; see `CURRENT_SLICE.md` for deploy order.
 
-### H1 — the `RSC` header is not in the CloudFront cache key (severity: high)
+### H1 — the `RSC` header was not in the CloudFront cache key — CLOSED in `cache-3` (was: high)
 
-`RendererCachePolicy` keys on path + all query strings + `X-Forwarded-Host`. The `RSC`
-request header is not in the key, but it changes the response body from an HTML document to
-a React flight payload (measured above). CloudFront stores whichever variant it saw first
-under the bare URL and serves it to everyone.
+**State before the fix:** `RendererCachePolicy` keyed on path + all query strings +
+`X-Forwarded-Host`. The `RSC` request header was not in the key, but it changes the response
+body from an HTML document to a React flight payload (measured above). CloudFront stores
+whichever variant it saw first under the bare URL and serves it to everyone.
 
-Normal traffic does not trigger it (Next's client always adds `?_rsc=<hash>`, which *is* in
+Normal traffic did not trigger it (Next's client always adds `?_rsc=<hash>`, which *was* in
 the key). But **any client can send `RSC: 1` with no query string** — one `curl` — and pin a
 `text/x-component` payload at the edge under the page's own URL. Every subsequent visitor
 gets raw flight text instead of the page, until the next invalidation (≤15 min via the
 debounce marker if some mutation happens, ≤24 h via the nightly flush, otherwise 1 year).
 
 This is availability/defacement, per tenant, not a data-disclosure vector: the flight payload
-is the same public content, and no per-visitor state reaches a cacheable render (session
-requests go to the dynamic twin).
+is the same public content, and no per-visitor state reaches a cacheable render — the
+cacheable route passes `sessionToken: null` literally, so there is no per-visitor state for
+it to store. (Do **not** restate this as "session requests go to the dynamic twin". That is
+a middleware property and middleware only runs on a miss; the reason it is *also* true at
+the edge is H3's `x-has-session`, below.)
 
-Fix (`cache-3`, one line): add `RSC`, `Next-Router-Prefetch`, `Next-Router-State-Tree`,
-`Next-Router-Segment-Prefetch` to `RendererCachePolicy`'s header allowlist, matching the
-origin's own `Vary`.
+**State after the fix (`cache-3`):** `RSC`, `Next-Router-Prefetch`, `Next-Router-State-Tree`
+and `Next-Router-Segment-Prefetch` are in `RendererCachePolicy`'s header allowlist, matching
+the origin's own `Vary`, so the HTML and flight variants occupy separate cache entries and
+neither can displace the other. Re-measured on the `cache-3` build that the premise still
+holds on this Next version — `RSC: 1` flips the content type at the same URL, the other
+three do not — see the probe table in § *Cache Policy (Default Behavior)*.
+
+`cache-3` also removed `_rsc` from the query-string key, so the header is now the *only*
+discriminator rather than one of two. That is what makes the fix load-bearing instead of
+belt-and-braces, and it is why the post-deploy RSC probe is mandatory, not optional:
+
+```bash
+# Both must be run against a WARM url. Expect text/html, then text/x-component,
+# then text/html again — the third request proves the flight payload did not displace
+# the HTML entry, which is the exact H1 failure.
+curl -sI https://<tenant-domain>/<page> | grep -i 'content-type\|x-cache'
+curl -sI -H 'RSC: 1' https://<tenant-domain>/<page> | grep -i 'content-type\|x-cache'
+curl -sI https://<tenant-domain>/<page> | grep -i 'content-type\|x-cache'
+```
 
 ### H2 — not-found responses are cacheable — CLOSED in `cache-1` (was: medium)
 
@@ -600,6 +637,46 @@ an unset Lambda env var would): page `500`, `sitemap.xml` `500`, `/api/posts` `5
 S3 incremental-cache log for that key shows `GET → MISS` with **no `PUT`**. After restoring
 it, the same key shows `GET → MISS`, `GET → MISS`, `PUT` and the response carries
 `s-maxage=31536000`.
+
+### H3 — the cache key was blind to the session cookie — CLOSED in `cache-3` rev 3 (was: high)
+
+**Found in review**, not in the original audit — `cache-3` revisions 1 and 2 shipped the
+`RSC` and query-string fixes with this still open, and the reviewer blocked the deploy on it.
+
+**State before the fix:** `RendererCachePolicy` used `cookieBehavior: none()` and no
+session-derived header, so an authenticated request and an anonymous one produced the
+**identical cache key**. `renderer/middleware.ts` routes session requests to the `no-store`
+dynamic twin — but middleware runs at the origin, and a warm entry is answered at the edge
+before the origin is consulted. On any access-gated page whose anonymous entry was warm, a
+logged-in visitor would have been served the *"Restricted Access"* shell that the cacheable
+route renders for `sessionToken: null` (`components/SitePage.tsx` ACCESS GATEKEEPER),
+`s-maxage=31536000`, for up to a year.
+
+This is a **functionality** failure, not a disclosure one, and the asymmetry is worth being
+precise about: the cacheable route never receives a session token, so it cannot render, and
+therefore cannot store, one visitor's private content for another. The thing that broke is
+authenticated access itself — which `cache-1` and `renderer/ARCHITECTURE.md` both state
+works.
+
+Note that no existing probe could see it. Every `cache-3` probe drives the origin directly,
+and at the origin middleware *does* run and *does* route correctly. The failure only exists
+in the gap between the edge and the origin, which is precisely the gap the cache key covers.
+
+**State after the fix (`cache-3` revision 3, human decision `CACHE3-SESSION-KEY` option B):**
+the viewer-request CloudFront Function derives `x-has-session: 0|1` from the cookie jar and
+the cache policy keys on it, so an authenticated request can never match a warm anonymous
+entry — it misses, reaches the origin, and middleware routes it to the twin as designed.
+Cookies stay out of the key. Revision 4 narrowed the cookie-name predicate on both layers
+from a substring test to a **prefix** match over two base names. Full rationale, the forgery
+and chunked-cookie edge cases and the two-detector agreement argument: § *`x-has-session` —
+why one derived bit, and why it is not a cookie*.
+
+Closing H3 does **not** by itself make a *chunked* session work end to end — it makes such a
+request miss the edge and render on the twin, where the token is still not reassembled. See
+the caveat in that section and `docs/TECH-DEBT.md`.
+
+Post-deploy this needs a **warm-edge** probe, not an origin probe — see the `cache-3` slice
+doc § *Deployment*, probe 6. A `curl` against the origin cannot fail this way.
 
 ### `open-next@3.1.3` vs Next 16 — VERIFIED (2026-07-26)
 
@@ -894,7 +971,10 @@ On days with zero content changes, the nightly flush skips entirely and cached p
 ```
 CloudFront Distribution
 ├── Default Behavior → Lambda Function URL (RendererCachePolicy)
-│   └── Cache Key: X-Forwarded-Host + all query strings (tenant isolation)
+│   └── Cache Key: X-Forwarded-Host (tenant isolation) + RSC header family
+│                  + x-has-session (0|1, derived from cookies by the viewer-request Function)
+│                  + query allowlist (page, q, availability, id, email, preview, nf)
+│      Cookies themselves are NOT in the key — only that one derived bit.
 │
 ├── api/* → Lambda Function URL (CACHING_DISABLED)
 │   └── Comments, account, revalidation — never cached
@@ -907,20 +987,315 @@ CloudFront Distribution
 
 ### Cache Policy (Default Behavior)
 
+Source of truth: `infra/lib/renderer-hosting.ts`, `RendererCachePolicy`. Current shape
+(slice `cache-3`):
+
 ```typescript
 const rendererCachePolicy = new cloudfront.CachePolicy(this, 'RendererCachePolicy', {
     defaultTtl: cdk.Duration.seconds(0),     // Respect origin Cache-Control (s-maxage)
     maxTtl: cdk.Duration.days(365),
-    minTtl: cdk.Duration.seconds(0),
-    headerBehavior: cloudfront.CacheHeaderBehavior.allowList('X-Forwarded-Host'),
-    queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
+    minTtl: cdk.Duration.seconds(0),         // 0 => an origin `no-store` is not stored
+    headerBehavior: cloudfront.CacheHeaderBehavior.allowList(
+        'X-Forwarded-Host',
+        'RSC', 'Next-Router-Prefetch', 'Next-Router-State-Tree', 'Next-Router-Segment-Prefetch',
+        'x-has-session',                     // derived at the edge, never viewer-supplied
+    ),
+    queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList(
+        'page', 'q', 'availability', 'id', 'email', 'preview', 'nf',
+    ),
     cookieBehavior: cloudfront.CacheCookieBehavior.none(),
     enableAcceptEncodingGzip: true,
     enableAcceptEncodingBrotli: true,
 });
 ```
 
+…paired with the viewer-request CloudFront Function in the same file, which is what
+produces the two derived headers the key relies on:
+
+```javascript
+function handler(event) {
+    var request = event.request;
+    var host = request.headers.host ? request.headers.host.value : '';
+    request.headers['x-forwarded-host'] = { value: host };          // tenant isolation (keyed)
+    request.headers['x-origin-verify']  = { value: '<secret>' };    // origin trust (not keyed)
+
+    // session bit (keyed). PREFIX match: name === base, or name starts with base + '.'
+    // (NextAuth's chunk separator). Lowercase literals => case-insensitive comparison.
+    var SESSION_COOKIE_BASES = ['next-auth.session-token', '__secure-next-auth.session-token'];
+    var hasSession = '0';
+    var jar = request.cookies || {};
+    for (var name in jar) {
+        var lower = name.toLowerCase();
+        for (var i = 0; i < SESSION_COOKIE_BASES.length; i++) {
+            var base = SESSION_COOKIE_BASES[i];
+            if (lower === base || lower.indexOf(base + '.') === 0) {
+                hasSession = '1';
+                break;
+            }
+        }
+        if (hasSession === '1') {
+            break;
+        }
+    }
+    request.headers['x-has-session'] = { value: hasSession };
+
+    return request;
+}
+```
+
 `defaultTtl: 0` means CloudFront defers entirely to the origin's `Cache-Control` header. With `revalidate = false`, OpenNext sends `s-maxage=31536000`, so CloudFront caches for up to 1 year.
+
+**The cache key decides whether the origin runs at all.** A header or parameter left out of
+the key collapses the request onto the bare key; if that entry is warm, CloudFront answers
+from it and the origin — and therefore middleware and the render — never runs.
+
+`RendererOriginPolicy` still forwards the full query string and all cookies to the Lambda,
+so on an edge **miss** an omitted parameter does reach the render. That is a cache-miss
+property only. It is *not* what makes an omission safe — see § *Why this list is the right
+list* for the actual argument (keyed for representation-changing parameters, code
+inspection for the rest).
+
+#### Why the header allowlist has six entries
+
+`X-Forwarded-Host` is tenant isolation (§ *Multi-Tenant Isolation*). `x-has-session` is
+visitor-class isolation (next subsection). The other four mirror the origin's own `Vary`,
+which CloudFront does not honour:
+
+```
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+```
+
+Measured (`cache-3` build run, table below): only `RSC` actually flips the response body
+today — from `text/html` to a `text/x-component` flight payload, **at the same URL, both
+with `s-maxage=31536000`**. That is hazard H1: before this slice, one `curl -H 'RSC: 1'`
+pinned a flight payload at the edge under a page's HTML URL for every later visitor. The
+other three are keyed even though they do not flip the body today, because they are in the
+origin's `Vary` — a future Next version that starts negotiating on them must not silently
+reintroduce H1.
+
+Cost, stated honestly: more keyed headers means more distinct entries. These four appear
+essentially only on client navigations and `<Link>` prefetches, which previously fragmented
+anyway via `?_rsc=<hash>` (see below), so this is roughly entry-count neutral rather than
+free.
+
+#### `x-has-session` — why one derived bit, and why it is not a cookie
+
+This is the fix for **H3** (§ *Open hazards*), added in `cache-3` revision 3 under human
+decision `CACHE3-SESSION-KEY` (option B). The failure it prevents:
+
+> `cookieBehavior: none()` means a logged-in visitor's request has **the same cache key** as
+> an anonymous one. Once the anonymous entry for an access-gated page is warm, CloudFront
+> answers at the edge; the origin never runs; `renderer/middleware.ts` never gets to route
+> the request to the `no-store` dynamic twin. The visitor is served the *"Restricted Access"*
+> shell that the cacheable route renders for `sessionToken: null`
+> (`renderer/src/components/SitePage.tsx`, ACCESS GATEKEEPER).
+
+Note the direction: the leak is anonymous content served to an authenticated visitor, not
+the reverse. Authenticated renders are `no-store` and `minTtl: 0` refuses to store them, so
+no visitor can ever receive another visitor's *content*. What breaks is authenticated access
+itself, which the cache-1 design and `renderer/ARCHITECTURE.md` both promise works.
+
+Three design points, each of which is load-bearing:
+
+1. **A derived bit, not the cookie.** Adding `next-auth.session-token` to the cache key would
+   key on the token *value* — a per-visitor string. Every logged-in visitor would get a
+   private set of entries (unbounded fragmentation) and a credential would end up in a cache
+   key. One bit adds at most one partition. In practice it adds **zero stored entries**:
+   every `x-has-session: 1` request is routed to the force-dynamic twin, whose `no-store`
+   response `minTtl: 0` declines to store.
+2. **Written on every request, both values.** The header is in the cache key and headers are
+   viewer-supplied. If the function only wrote it on a match, `x-has-session: <random>` from
+   a client would survive into the key and mint an entry per value — reintroducing exactly
+   the fragmentation vector the query allowlist removes. Overwriting unconditionally bounds
+   the key to `0` and `1`. (Measured: `probe-cache3-cffunc.mjs` §B2.)
+3. **Prefix match over two base names, not a substring test and not an exact-name list.**
+   The predicate is `name === base || name.startsWith(base + '.')`, applied
+   case-insensitively to `next-auth.session-token` and `__secure-next-auth.session-token`.
+   `.` is NextAuth's chunk separator, so the prefix form covers `.0`, `.1`, … without
+   enumerating them. A plain substring test was rejected in `cache-3` revision 4: it also
+   matches unrelated names that merely embed the literal (`x-next-auth.session-token-decoy`,
+   `next-auth.session-tokenX`), needlessly widening the set of requests a viewer can push
+   past the edge cache. An exact-name list was rejected because it misses the chunks.
+
+**Which names NextAuth actually emits here** (evidence, not assumption):
+
+| Name | Status | Evidence |
+|---|---|---|
+| `next-auth.session-token` | **emitted today** | `renderer/src/app/api/auth/[...nextauth]/route.ts:36-46` sets `cookies.sessionToken.name` explicitly |
+| `next-auth.session-token.0`, `.1`, … | **emitted today**, when the JWT exceeds 4096 bytes | `next-auth/core/lib/cookie.js:152` names chunks `` `${cookie.name}.${i}` `` — from the *configured* name |
+| `__Secure-next-auth.session-token` (+ chunks) | **compatibility/legacy coverage only** | `next-auth/core/init.js:59-61` spreads `authOptions.cookies` over `defaultCookies(secure)` at the **top level**, so the configured `sessionToken` entry *replaces* the default and the `__Secure-` prefix does not apply while that config stands |
+
+The `__Secure-` family is matched anyway, deliberately: it is what next-auth would emit if
+the explicit `cookies` block were ever removed, and what a cookie issued before that block
+existed still carries in a visitor's jar. Matching it costs nothing; missing a real session
+cookie is the expensive direction. Do **not** read the code comments as a claim that it is
+in use today — installed next-auth is 4.24.14 and the merge above is what it does.
+
+**Shared source of truth for the cookie name:** that NextAuth cookie configuration. Two
+detectors derive from it — the CloudFront Function (`x-has-session`) and
+`renderer/middleware.ts` (`SESSION_COOKIE_BASES` / `hasSessionCookie`) — and they must
+classify **every** cookie name identically. They cannot import a common constant (`infra/`
+is a deploy-time CDK package and does not depend on the renderer; adding that edge to share
+one string was rejected), so the agreement is enforced by test instead of by structure:
+`probe-cache3-cffunc.mjs` §C extracts both `SESSION_COOKIE_BASES` arrays — one from the
+*synthesized template*, one from `middleware.ts` — asserts they are equal and are the two
+ratified names, pins the middleware predicate's source shape, and runs a 31-name cookie
+corpus (emitted, legacy, non-session, decoy, case-variant, malformed) through both looking
+for a disagreement.
+
+The direction of a mismatch matters. If the CF function under-matched relative to middleware,
+an authenticated request would key as anonymous, hit the warm entry, and H3 would be open
+again. If it over-matched, the request would merely miss the cache and render correctly. The
+test pins equality, so neither happens; over-matching is the safe side if it ever drifts.
+
+**Chunked sessions: routing is fixed, authentication is not.** Before `cache-3` revision 3,
+`middleware.ts` matched two exact cookie names, so a *chunked* session (`…session-token.0` /
+`.1`) was not detected and was routed to the cacheable route. That routing is now correct on
+both layers — a chunked-session request keys as `x-has-session: 1` at the edge and renders on
+the `no-store` twin (`probe-cache3.sh` §F3/§F3b) — so it can neither hit nor populate an
+anonymous entry. It does **not** follow that a chunked session authenticates: the twin's
+`readSessionToken()`
+(`renderer/src/app/[siteId]/%5Fdyn/[[...slug]]/page.tsx:35-36`) reads two exact, unchunked
+names and does not reassemble chunks, so `SitePage` still receives `sessionToken: null` and
+gated content is still denied. Twin routes are out of `cache-3`'s scope; this is recorded as
+deferred debt in `docs/TECH-DEBT.md` (*Chunked NextAuth session cookies are not reassembled*)
+and slice-doc F12.
+
+#### The query-string allowlist, parameter by parameter
+
+`all()` was the largest remaining "Lambda fires more than intended" vector after `cache-1`:
+any `?utm_*`, `?fbclid`, or attacker-chosen junk minted its own entry — a guaranteed miss.
+
+| Param | Read by | Why it must be in the key |
+|---|---|---|
+| `page` | `SitePage.tsx` `query.page` (category, shop, search) | `/shop?page=2` must not be served the page-1 entry |
+| `q` | `SitePage.tsx` `query.q`, and `buildSitePageMetadata` | search term selects the result set |
+| `availability` | `SitePage.tsx` `query.availability` | shop in-stock filter |
+| `id` | `SitePage.tsx` `query.id` (checkout-confirm) | order lookup, paired with `email` |
+| `email` | `SitePage.tsx` `query.id`/`query.email` (checkout-confirm, checkout-track) | order lookup |
+| `preview` | `%5Fdyn/[[...slug]]` + `%5Fdyn/products/[productId]` `query.preview` | an editor previewing a draft must bypass the published entry |
+| `nf` | `lib/not-found-handoff.ts` (`NOT_FOUND_PARAM`) | **mandatory, not an optimisation** — see below |
+
+**`nf` is load-bearing.** The not-found handoff redirects `/p` → `/p?nf=1`, and that 307 is
+itself cacheable (measured: `307`, `s-maxage=31536000`, `x-nextjs-cache: MISS`). Drop `nf`
+from the key and `/p?nf=1` collapses onto the `/p` entry, hits the stored 307, and is
+redirected to itself — an infinite client redirect loop on **every** 404. Anyone editing
+this allowlist must keep `nf` and `NOT_FOUND_PARAM` in sync.
+
+**Not in the allowlist, deliberately:** `ref`, `utm_*`, `fbclid`, `gclid`, `_rsc`, and
+everything else.
+
+#### Why this list is the right list (the safety argument, in two halves)
+
+The worry is that stripping a parameter makes CloudFront serve a stored response that does
+not match what the origin would have rendered. The argument has two halves and they are not
+symmetric — one is about what is *in* the list, the other about what is *out*.
+
+**(a) A parameter that changes the representation must be in the list.** Being in the cache
+key is what forces an edge miss and gets the request to the origin at all. Nothing
+downstream can rescue a parameter stripped here, because on a warm entry **CloudFront
+answers before middleware runs** — the origin never sees the request. Concretely: drop
+`page` from the key, warm `/shop`, and `/shop?page=2` is answered with the stored page 1.
+The seven parameters above are listed precisely because each one selects a different
+representation (and `nf` because of the redirect loop below).
+
+**(b) A parameter that is *not* in the list is safe only because nothing reads it.** This
+is a code-inspection claim, not a header claim, so here is its basis. The complete set of
+`query.*` reads reachable from a rendered page (deterministic `grep -rn "query\.\|query\["`
+over `renderer/src`, then read in place — a literal-text scan, not an index or call graph):
+
+| Read site | Parameters |
+|---|---|
+| `components/SitePage.tsx` | `q`, `page`, `availability`, `id`, `email` |
+| `app/[siteId]/%5Fdyn/[[...slug]]/page.tsx`, `…/%5Fdyn/products/[productId]/page.tsx` | `preview` |
+| `lib/not-found-handoff.ts` | `nf` (`NOT_FOUND_PARAM`) |
+
+That set **is** the allowlist. Every other parameter — `ref`, `utm_*`, `fbclid`, `gclid`,
+attacker-chosen junk — is read by no code on either route, so the representation the origin
+would produce for it is byte-identical to the bare-path one it now collapses onto.
+
+The strongest form of (b) applies to the cacheable route specifically: it passes
+`query={{}}` **literally** (`app/[siteId]/[[...slug]]/page.tsx`) because in ISR mode it
+cannot `await searchParams` at all. So the representation that ends up *stored* is a pure
+function of host + path + the RSC headers, and no query parameter can vary it. `_rsc` is the
+one non-listed parameter that reaches that route (Next appends `?_rsc=<hash>` to prefetches
+and strips it before middleware, so those requests land on the ISR route). Measured, not
+inferred: `?_rsc=<hash>` **without** the `RSC` header returns `text/html`; **with** it
+returns `text/x-component`; two different `_rsc` values with identical headers return the
+same content type. The *header* is the discriminator; the parameter is only a cache-buster
+for CDNs that do not key on the header — which is precisely what this policy now does.
+Dropping `_rsc` collapses the per-prefetch entry explosion noted under § *Cost Analysis*.
+
+**What the `cache-1` middleware property does and does not contribute.** `middleware.ts`
+routes every request carrying a query string to the `%5Fdyn` twin, which answers
+`private, no-cache, no-store, max-age=0, must-revalidate` (measured for `?fbclid=`, `?ref=`,
+`?utm_source=`, `?page=`, `?q=`, `?preview=`, `?nf=` — table below). This is **not** the
+safety argument, because it only applies to requests that reach the origin, and a warm
+bare-path entry is served without ever getting there. What it does buy is narrower and still
+worth stating: a query-string request can never *populate* an entry, so a junk parameter
+cannot warm a bogus one, and a listed parameter always renders fresh rather than from a
+stale per-parameter variant.
+
+**Consequence for verification.** Because a junk-param request cannot populate anything, the
+junk-param probe must warm the *bare* URL first, or the second request is a miss for a
+legitimate reason. Once `/p` is warm, `/p?fbclid=<anything>` resolves to the `/p` key and is
+answered at the edge with no origin request at all — which is the whole point.
+
+#### Measured: the origin behaviour this key depends on (EXECUTED 2026-07-26, `cache-3`)
+
+`next build` + `next start -p 3111` against the `cache-1` DynamoDB stub. Script:
+`.agent-manager/slices/CACHE-1/probe-harness/probe-cache3.sh`.
+
+| Request (same URL `/published` unless noted) | Status | `Content-Type` | `Cache-Control` | Cacheable? |
+|---|---|---|---|---|
+| bare, 1st then 2nd | 200 | `text/html` | `s-maxage=31536000` | yes, MISS → HIT |
+| `?fbclid=junk123` | 200 | `text/html` | `private, …, no-store` | **no** |
+| `?ref=partner-a` | 200 | `text/html` | `private, …, no-store` | **no** |
+| `?utm_source=newsletter` | 200 | `text/html` | `private, …, no-store` | **no** |
+| `?page=2` / `?q=ring` / `?preview=true` / `?nf=1` | 200 | `text/html` | `private, …, no-store` | **no** |
+| `/no-such-page-c3` (bare) | 307 → `?nf=1` | — | `s-maxage=31536000` | **yes** — why `nf` must be keyed |
+| header `RSC: 1` | 200 | **`text/x-component`** | `s-maxage=31536000` | yes — **H1** |
+| header `Next-Router-Prefetch: 1` | 200 | `text/html` | `s-maxage=31536000` | yes |
+| header `Next-Router-State-Tree: …` | 200 | `text/html` | `s-maxage=31536000` | yes |
+| `?_rsc=abc123`, no `RSC` header | 200 | `text/html` | `s-maxage=31536000` | yes |
+| `?_rsc=abc123` + `RSC: 1` | 200 | `text/x-component` | `s-maxage=31536000` | yes |
+| `?_rsc=zzz999`, no `RSC` header | 200 | `text/html` | `s-maxage=31536000` | yes |
+| cookie `next-auth.session-token` | 200 | `text/html` | `private, …, no-store` | **no** — twin |
+| cookie `__Secure-next-auth.session-token` (legacy name) | 200 | `text/html` | `private, …, no-store` | **no** — twin |
+| cookies `next-auth.session-token.0` + `.1` (chunked, emitted name) | 200 | `text/html` | `private, …, no-store` | **no** — twin |
+| cookies `__Secure-next-auth.session-token.0` + `.1` (chunked, legacy) | 200 | `text/html` | `private, …, no-store` | **no** — twin |
+| cookies `__Host-next-auth.csrf-token` + `…callback-url` | 200 | `text/html` | `s-maxage=31536000` | yes — no over-match |
+| cookies `amodx_ref` + `_ga` | 200 | `text/html` | `s-maxage=31536000` | yes — no over-match |
+| cookies `x-next-auth.session-token-decoy` + `next-auth.session-tokenX` | 200 | `text/html` | `s-maxage=31536000` | yes — prefix, not substring |
+
+Body inspection confirms the content types are not mislabelled: the `RSC: 1` response
+begins `1:"$Sreact.fragment"`, the `?_rsc=` response begins `<!DOCTYPE html>`.
+
+The last seven rows (`probe-cache3.sh` §F, added in revision 3, extended in revision 4) are
+the **origin** half of H3: middleware routes every session-cookie shape to the `no-store`
+twin and nothing else. The two chunked rows show routing only — see the caveat in
+§ *`x-has-session`*: a chunked session reaches the twin but is still not *authenticated*
+there. The decoy row is the prefix contract's negative half. The **edge** half
+(`x-has-session`) cannot be exercised locally; it is covered by `probe-cache3-cffunc.mjs`
+against the synthesized template, and by the operator's warm-edge session probe post-deploy.
+
+#### Measured: the CloudFront Function's session bit (EXECUTED 2026-07-27, revision 4)
+
+`node .agent-manager/slices/CACHE-1/probe-harness/probe-cache3-cffunc.mjs` — **39/39 PASS**.
+It reads the function body out of `infra/cdk.out/AmodxStack-staging.template.json` (so
+what runs is what would deploy, not the `.ts` source) and executes it against synthetic
+viewer-request events. Otherwise this code is exercised by nothing: it is inline ES5 inside a
+CDK template literal, invisible to `tsc`, to lint and to the `infra` jest suite.
+
+| Group | Asserts |
+|---|---|
+| B | the emitted names (`next-auth.session-token`, `.0`, `.1`) and the legacy `__Secure-` family → `1`; `__Host-next-auth.csrf-token`, `…callback-url`, `next-auth.pkce.code_verifier`, `amodx_ref`, `_ga`, `session`, `sessiontoken`, `next-auth` → `0`; empty jar and absent `cookies` key → `0`; five embedding decoys (`x-next-auth.session-token-decoy`, `next-auth.session-tokenX`, `next-auth.session-token-0`, `evil__secure-…`, `anext-auth.session-token`) → `0` |
+| B2 | a viewer-supplied `x-has-session` (`1`, or a long junk value) is **overwritten** — the key can only hold `0`/`1` |
+| B3 | `x-forwarded-host` is still derived from `Host` and a viewer-supplied one is overwritten; `x-origin-verify` still set |
+| C | both `SESSION_COOKIE_BASES` arrays (one extracted from the synthesized template, one from `middleware.ts`) are equal and are the two ratified names; `middleware.ts` uses the prefix predicate over **all** cookie names and no longer substring-matches; zero disagreements across a 31-name corpus |
+
+The bottom three rows are the evidence for dropping `_rsc`. Without them the claim would be
+an inference from the origin's `Vary` header; with them it is measured on this build.
 
 ### /api/* Behavior
 
@@ -929,6 +1304,11 @@ Explicit `CACHING_DISABLED` policy. Without this, API routes (comments POST, acc
 ### Multi-Tenant Isolation
 
 A CloudFront Function on viewer request copies the incoming `Host` header to `X-Forwarded-Host`. The cache policy includes `X-Forwarded-Host` in the cache key. Result: `shop-a.example.com/about` and `shop-b.example.com/about` are separate cache entries, even though they share the same CloudFront distribution.
+
+The same function derives `x-has-session` from the cookie jar, which is the *visitor-class*
+partition of the same key (§ *`x-has-session`*). Both headers are **overwritten** on every
+request rather than passed through, so neither is viewer-forgeable: a client cannot mint a
+key partition, nor read another tenant's entry by sending its own `X-Forwarded-Host`.
 
 ---
 
@@ -1019,9 +1399,12 @@ IAM grants: `cloudfront:CreateInvalidation` + S3 read/delete on the asset bucket
 > These figures assume the cache is working. Before `cache-1` it was not — the Lambda line
 > was **100% miss, not ~5%**. `cache-1` makes the target reachable; the figures below become
 > real only once the operator confirms the post-deploy CloudFront check on the staging
-> distribution. Note that client-side navigations and `<Link>` prefetches carry `?_rsc=<hash>`
-> and so occupy their own cache entries — they are cached, but they roughly double the number
-> of distinct entries per page.
+> distribution. Two `cache-3` corrections to the entry-count arithmetic: client-side
+> navigations and `<Link>` prefetches carry `?_rsc=<hash>`, which is **no longer in the cache
+> key**, so they no longer mint one entry per hash — they collapse onto two entries per URL
+> (HTML and flight), discriminated by the `RSC` header. And campaign / tracking parameters
+> (`?utm_*`, `?fbclid`, `?ref`) no longer mint entries at all; once a URL is warm they are
+> answered from its entry with no origin request.
 
 | Component | Cost |
 |-----------|------|
@@ -1115,10 +1498,14 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 9. **Content has no delete path at all** (open question, found 2026-07-26). `backend/src/content/` contains `create, get, history, list, restore, update` — there is no `delete.ts`, and `infra/lib/api.ts` registers no `DELETE /content/{id}` route. The earlier note that "`content/delete.ts` is not wrapped by `withInvalidation`" was based on a file that does not exist. Whether content deletion is intentionally absent (soft-delete via status, retention policy) or a genuine gap needs an owner decision; if a delete handler is added later it must be wrapped.
 
-10. **Query-string traffic bypasses the cache entirely** (`cache-1` design consequence, ratified). Every request with a query string goes to the `%5Fdyn` twin and renders per request — including campaign links (`?utm_*`, `?ref`) and the referral-cookie path. This is deliberate: it is what lets the cacheable route hold zero dynamic APIs. `cache-3`'s query-string allowlist is the fix; until then, a tenant whose traffic is mostly campaign links gets little benefit from `cache-1`.
+10. **Query-string traffic bypasses the cache at the ORIGIN — narrowed, not closed, by `cache-3`.** `renderer/middleware.ts` still sends every request carrying a query string to the `%5Fdyn` twin, which renders per request. That is deliberate and load-bearing: it is what lets the cacheable route hold zero dynamic APIs. Note what it is *not*: it is not the reason the `cache-3` allowlist is safe. A warm bare-path entry is served at the edge before middleware runs, so the twin's `no-store` never applies to a stripped parameter on a warm URL — the allowlist is safe because of code inspection (nothing reads the non-listed parameters; the cacheable route passes `query={{}}` literally). See § *Why this list is the right list*. What the twin property does buy is that a query-string request can never *populate* an entry. What `cache-3` changed is the *edge*: a non-allowlisted parameter now resolves to the bare-path cache key, so `?utm_*` / `?fbclid` / `?ref` traffic to a **warm** URL is answered at the edge and never reaches the origin at all. Residual: a non-allowlisted parameter arriving at a **cold** URL still costs one twin render and still does not populate the entry. Deliberately not fixed by teaching middleware the same allowlist — that would put the list in two places (CDK + middleware) with nothing keeping them in sync, and the middleware copy failing open is a correctness bug while the CDK copy failing open is only a cache miss.
 
 11. **`new Date().getFullYear()` in the footer is frozen into cached HTML** (`renderer/src/app/[siteId]/layout.tsx`). Not a dynamic API, so it does not break caching — but with `revalidate = false` the copyright year in a cached page only updates on the next invalidation. Harmless in practice (the nightly flush runs on any change), noted so it is not mistaken for a bug later.
 
 12. **Next 16.2.9 emits a duplicated `Location` header for any redirect rendered on an ISR-mode route** (observed 2026-07-26). Both values are identical, and clients and the OpenNext Lambda handle it correctly (`curl -L` follows it; the APIGW response carries `"/x,/x"`). It is not specific to `cache-1`'s `?nf=1` handoff — the pre-existing content-redirect path (`permanentRedirect()` on an `IsRedirect` route) produces the same doubling. Noted so it is not mis-diagnosed as a handoff bug; a strict intermediary that rejects duplicate `Location` would affect both paths equally.
 
 13. **404 traffic is no longer absorbed at the edge** (`cache-1` D3 consequence, ratified). Every not-found costs a cached 307 plus a dynamic render on the twin, so scanner and dead-link traffic now reaches the SSR path and DynamoDB on every request instead of being served a cached 404. This is the deliberate price of never pinning a 404 for a URL that is published later. If 404 volume becomes a cost problem, the fix is a CloudFront-level answer for known-bad paths, not re-caching the 404.
+
+14. **Referral attribution is triggered client-side, and is not consent-gated** (`cache-3`). `components/ReferralCapture.tsx` is a constant inline script in the public site layout; it POSTs the resolved `?ref` / `?utm_source` value to `app/api/ref/route.ts`, which sets the cookie. It replaced a middleware `Set-Cookie` that could not survive the cache-key change (a warm campaign landing is answered at the edge, so the origin never sees the page request). The cookie's own attributes are **unchanged** — `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, 30 days — because the write stayed server-side; that is also the migration path, since a `document.cookie` write cannot overwrite the pre-deploy `HttpOnly` cookie (RFC 6265 §5.3 step 11) and would have frozen returning visitors' attribution for up to 30 days. Two known positions remain: capture is **not gated on the `CookieConsent` banner** (it was not gated before either), and the beacon is **fire-and-forget**, so a blocked or failed request silently loses attribution for that visit — the alternative that cannot fail cannot run on a cache HIT at all. If consent gating is wanted, it is a new slice and it applies to the pre-existing behaviour, not to this move.
+
+15. **The session-cookie predicate is deliberately duplicated across CDK and middleware** (`cache-3` revision 3). Gap 10 rejects duplicating the *query* allowlist into middleware, so the asymmetry needs stating: that duplication is avoidable (middleware does not need the list to be correct), this one is not. CloudFront must decide *before* the origin runs — that is the entire point of `x-has-session` — and middleware must decide the rendering mode, which CloudFront cannot do. Neither layer can delegate to the other, so both must implement "does this request carry a session cookie". What gap 10 warns about — *nothing keeping them in sync* — is answered here rather than dismissed: `probe-cache3-cffunc.mjs` §C extracts both predicates (the edge one from the synthesized template) and fails if their classifications diverge on any name in its corpus. **Rejected alternative:** having middleware read the `x-has-session` header instead of the cookie jar. It would remove the duplication, but it makes an origin routing decision depend on a header that is only trustworthy because *another* mechanism (`x-origin-verify`) says the request came through CloudFront, and it breaks outright in local `next start` and any direct-Lambda path where no CloudFront Function ran. A cookie read that works everywhere is worth one tested duplicate.

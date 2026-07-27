@@ -9,7 +9,7 @@ The public-facing multi-tenant website engine. A single Next.js 16 deployment se
 ## Internal Structure
 
 ```
-middleware.ts                                  # Package root (NOT src/) — edge: domain → tenant routing, referral cookie
+middleware.ts                                  # Package root (NOT src/) — edge: domain → tenant routing, ISR/twin split, unknown-host 404
 src/
 ├── app/
 │   ├── layout.tsx                             # Root HTML wrapper
@@ -23,13 +23,16 @@ src/
 │   │   ├── sitemap.xml/route.ts               # Dynamic sitemap from published content
 │   │   ├── llms.txt/route.ts                  # AI agent discovery (Markdown format)
 │   │   └── openai-feed/route.ts               # Product JSON feed (OpenAI format, 15min cache)
-│   └── api/
+│   └── api/                                   # 10 routes; all behind the CachingDisabled `api/*` behavior
+│       ├── account/orders/route.ts            # Signed-in customer's order history → backend proxy
 │       ├── auth/[...nextauth]/route.ts        # Per-tenant Google OAuth via NextAuth
 │       ├── comments/route.ts                  # GET (public) / POST (auth required) → backend proxy
 │       ├── consent/route.ts                   # GDPR consent logging → backend proxy
 │       ├── contact/route.ts                   # Contact form → backend proxy
 │       ├── leads/route.ts                     # Lead capture with referral cookie injection → backend
 │       ├── posts/route.ts                     # Blog post listing (direct DynamoDB, tag filter)
+│       ├── profile/route.ts                   # Signed-in customer's profile → backend proxy
+│       ├── ref/route.ts                       # Attribution beacon: sets amodx_ref (cache-3) — 204, no-store
 │       └── revalidate/route.ts                # ISR cache purge (called by admin after edits)
 ├── components/
 │   ├── SitePage.tsx                           # THE page render body — both catch-all routes call it
@@ -42,6 +45,7 @@ src/
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
 │   ├── CookieConsent.tsx                      # GDPR banner with accept/necessary/deny
 │   ├── PaddleLoader.tsx                       # Lazy Paddle.js script loader for payments
+│   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
     ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts
@@ -89,8 +93,17 @@ A request goes to the dynamic twin when **any** of these hold:
 
 - it has a query string (pagination, search, filters, `?preview=`, `?utm_*`/`?ref`,
   `checkout-confirm ?id&email`, `checkout-track ?email`)
-- it carries a NextAuth session cookie (`next-auth.session-token` /
-  `__Secure-next-auth.session-token`)
+- it carries a NextAuth session cookie — matched by **prefix** against
+  `SESSION_COOKIE_BASES = ['next-auth.session-token', '__secure-next-auth.session-token']`,
+  i.e. `name === base` or `name` starts with `base + '.'` (NextAuth's chunk separator),
+  compared case-insensitively. That covers the configured name and the `.0`/`.1` chunks
+  NextAuth emits when the JWT exceeds the 4096-byte cookie limit. The `__secure-` entry is
+  legacy/compatibility coverage — the explicit `cookies` block in
+  `src/app/api/auth/[...nextauth]/route.ts` replaces NextAuth's `__Secure-`-prefixed default,
+  so it is not emitted today. Do not turn this back into a list of exact names (the chunked
+  variants were missed until `cache-3` revision 3) and do not widen it back to a substring
+  test (revision 4 — a substring also matches unrelated names that embed the literal). The
+  same predicate has to hold in the CloudFront viewer-request Function (below)
 - it is preview (`/_site/`) or test-mode (`/tenant/`) traffic
 
 The four Route Handlers under `[siteId]` (`robots.txt`, `sitemap.xml`, `llms.txt`,
@@ -110,9 +123,32 @@ as a *private folder* and excludes it from routing entirely. `%5F` is the percen
 `_`, which Next decodes back into a routable literal segment — the build output prints it as
 `/[siteId]/_dyn/[[...slug]]`.
 
-Also sets `amodx_ref` cookie from `?ref` or `?utm_source` query params (30-day, httpOnly).
-Both triggers are query params, so those requests are already on the dynamic twin — a
-`Set-Cookie` can never land on a cacheable response.
+**The middleware sets no cookie on a page response** (since `cache-3`). The `amodx_ref`
+attribution cookie used to be set here from `?ref` / `?utm_source`. It is now a two-part
+mechanism: `components/ReferralCapture.tsx` — a constant inline script rendered from
+`app/[siteId]/layout.tsx` — reads the visitor's own URL and POSTs the resolved value to
+`app/api/ref/route.ts`, which sets the cookie.
+
+The reason the *trigger* moved into the browser is the CloudFront cache key, not tidiness:
+`cache-3` removed `ref`/`utm_source` from it, so `/p?ref=x` resolves to the `/p` entry and a
+warm URL is answered at the edge — the origin, and therefore this file, never runs for
+exactly the campaign traffic the cookie exists to attribute.
+
+The reason the *write* stayed on the origin is migration. Visitors carrying the pre-deploy
+cookie hold it with `HttpOnly`, and RFC 6265 §5.3 step 11 requires the browser to ignore a
+`document.cookie` write over an `HttpOnly` cookie — a pure client-side write would have been
+a silent no-op for them for up to 30 days. The `Set-Cookie` comes back on an `/api/*` POST,
+which is uncacheable three ways over (POST, the `CachingDisabled` behavior, `no-store`), so
+it keeps `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` and the 30-day window unchanged.
+Sole consumer is `app/api/leads/route.ts`, which reads it server-side via `cookies()`.
+
+Failure mode, deliberately accepted: the beacon is fire-and-forget, so a blocked or failed
+request loses attribution for that visit. The alternative that cannot fail — capture on the
+origin — cannot run at all on a cache HIT.
+
+The one `Set-Cookie` middleware still emits is `amodx_preview_base`, on the `/_site/`
+preview branch only — that traffic is rewritten to the force-dynamic twin and is never
+stored by either cache layer.
 
 ## Page Rendering Pipeline
 
@@ -144,6 +180,14 @@ legacy `/products/<id>` route. Steps:
    passes `null`, so a cached render of a non-`Public` page is the "Restricted Access" shell
    and can never hold another visitor's content; a request carrying a session cookie is on the
    dynamic twin and gets the real render.
+   **This takes two mechanisms, not one, and only one of them is in this repo's runtime
+   code.** Middleware picks the twin — but middleware runs at the origin, and a warm
+   CloudFront entry is answered before the origin is consulted. The edge half is
+   `x-has-session` in the CloudFront cache key (`infra/lib/renderer-hosting.ts`), which is
+   what makes an authenticated request miss the anonymous entry in the first place. Without
+   it, a logged-in visitor is served the cached "Restricted Access" shell — hazard **H3**,
+   closed in `cache-3` revision 3. Never state this gate as working from the middleware rule
+   alone.
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
 5. **Post grid prefetch:** server-side fetches posts for any `postGrid` blocks (avoids client "window is undefined")
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
@@ -194,11 +238,61 @@ Other cache surfaces, unchanged by the slice:
   or swallow a failed read. Both get stored. The second half is now enforced in
   `lib/dynamo.ts` itself — see § *Direct DynamoDB Access*.
 
-One open hazard this slice surfaced and did **not** close — read
-`docs/caching-architecture.md` § *Open hazards activated by cache-1* before deploying: the
-`RSC` request header changes the response body without being in the CloudFront cache key
-(**H1**, fixed by `cache-3`, which must ship first or together). The second hazard,
-cacheable not-found responses (**H2**), was closed inside `cache-1`.
+One hazard `cache-1` surfaced and did **not** close: the `RSC` request header changes the
+response body without being in the CloudFront cache key (**H1**). **`cache-3` closed it**
+by adding the four `Vary` headers to `RendererCachePolicy`'s allowlist — but nothing in
+Track CACHE is deployed yet, and the ordering constraint is hard: `cache-3` first, or all
+three together, never `cache-1` alone. The second hazard, cacheable not-found responses
+(**H2**), was closed inside `cache-1`. A third (**H3**, the cache key being blind to the
+session cookie) was found in review of `cache-3` and closed in its revision 3 — see the
+signal-pairing table below. Read `docs/caching-architecture.md` § *Open hazards activated by
+cache-1* before deploying.
+
+`cache-3` also narrowed the query-string carve-out at the **edge**: the CloudFront cache key
+now allowlists only `page`, `q`, `availability`, `id`, `email`, `preview`, `nf`, so a
+campaign or tracking parameter on a warm URL is answered from that URL's entry without
+reaching the origin.
+
+**Both of middleware's rendering-mode signals have an edge counterpart, and they must stay
+paired.** Middleware only executes on a CloudFront miss, so each signal it discriminates on
+has to be in the cache key or the corresponding request never reaches it:
+
+| Middleware signal | Cache-key counterpart |
+|---|---|
+| query string → twin | the 7-parameter query allowlist |
+| session cookie → twin | `x-has-session: 0\|1`, derived from the cookie jar by the viewer-request CloudFront Function |
+
+The session pairing is hazard **H3**, closed in `cache-3` revision 3. The function matches
+cookie names with the *same* prefix predicate over the *same* `SESSION_COOKIE_BASES` list
+this file declares, and the two are pinned equal by `probe-cache3-cffunc.mjs` (which reads
+the edge list out of the synthesized CloudFormation template, not the `.ts` source); if they
+ever diverge, an authenticated request classified anonymous at the edge is served the cached
+anonymous page. Cookies themselves are **not** in the cache key — only that one derived bit.
+
+**Scope caveat.** Routing a session request to the twin is not the same as authenticating it.
+The twin's `readSessionToken()` (`[siteId]/%5Fdyn/[[...slug]]/page.tsx`) reads two exact,
+unchunked cookie names and does not reassemble chunks, so a visitor whose JWT was chunked
+renders with `sessionToken: null` and is denied gated content — after correctly bypassing the
+cache. Deferred debt, tracked in `docs/TECH-DEBT.md`.
+
+What makes that allowlist safe is **not** the middleware rule below. Two separate reasons,
+neither of them a middleware property:
+
+- a parameter that changes the representation is safe because it **is keyed** — being in the
+  key is what forces an edge miss and gets the request to the origin at all;
+- a parameter that is *not* keyed is safe because **code inspection proves nothing reads
+  it**, so the origin would render the bare-path representation for it anyway (this route
+  passes `query={{}}` literally — it is in ISR mode and cannot await `searchParams`).
+
+The middleware rule below is unchanged — at the origin, *any* query string still goes to the
+twin — but that only governs requests that reach the origin. On a warm entry CloudFront
+answers before middleware runs, so the twin's `no-store` cannot rescue a stripped parameter.
+What the rule does buy is that a query-string request can never **populate** an entry, so
+junk cannot warm a bogus one. Full argument: `docs/caching-architecture.md` § *Why this list
+is the right list*.
+
+**`nf` must stay in the allowlist**: it is `lib/not-found-handoff.ts`'s `NOT_FOUND_PARAM`,
+and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
 
 ## Direct DynamoDB Access (`lib/dynamo.ts`)
 

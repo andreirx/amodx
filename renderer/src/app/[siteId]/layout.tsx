@@ -14,6 +14,7 @@ import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
 import { URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
+import { ReferralCapture } from "@/components/ReferralCapture";
 
 export const revalidate = false;
 
@@ -89,6 +90,14 @@ export default async function SiteLayout({ children, params }: Props) {
     return (
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
             <div className="site-wrapper flex flex-col min-h-screen">
+                {/* Referral attribution trigger — first, so the beacon is issued during
+                    HTML parse rather than after hydration. cache-3 moved this out of
+                    middleware.ts: `ref`/`utm_source` are no longer in the CloudFront cache
+                    key, so a campaign landing is answered from the edge and the origin
+                    never sees the page request. The cookie itself is still written
+                    server-side, by app/api/ref/route.ts. */}
+                <ReferralCapture />
+
                 <ThemeInjector
                     theme={config.theme}
                     tenantId={config.id}

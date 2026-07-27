@@ -253,18 +253,32 @@ Dual-Write Patterns (eventual consistency within TransactWrite):
 │                                                                    │
 │  Viewer Request Function (CloudFront Function):                    │
 │    Copy Host → X-Forwarded-Host (before CF overwrites Host)        │
+│    Inject x-origin-verify (proves the request came via CF)         │
+│    Derive x-has-session = '1' if any cookie name PREFIX-matches    │
+│      'next-auth.session-token' or '__secure-…' (name, or name +    │
+│      '.' + chunk index), else '0' — written on EVERY request,      │
+│      so a viewer cannot forge a key partition                      │
 │                                                                    │
 │  Cache Policy:                                                     │
-│    Key = X-Forwarded-Host + path + query strings                   │
+│    Key (cache-3): X-Forwarded-Host + path                          │
+│      + RSC header family (RSC, Next-Router-Prefetch,               │
+│        Next-Router-State-Tree, Next-Router-Segment-Prefetch)       │
+│      + x-has-session (0|1) — else a logged-in visitor shares       │
+│        the anonymous entry and gets the cached "Restricted         │
+│        Access" shell on gated pages (hazard H3)                    │
+│      + query ALLOWLIST: page, q, availability, id, email,          │
+│        preview, nf — any other param collapses onto the            │
+│        bare-path entry and is answered at the edge                 │
 │    defaultTtl = 0 (respect origin Cache-Control)                   │
 │    maxTtl = 365 days                                               │
-│    cookies = none (not part of cache key)                          │
+│    cookies = none — only the derived x-has-session bit, never      │
+│      a cookie value (that would key on a per-visitor credential)   │
 │    compression = gzip + brotli                                     │
 │                                                                    │
 │  Origin Request Policy:                                            │
 │    Forward: Accept, Accept-Language, Content-Type,                 │
 │             X-Forwarded-Host, x-tenant-id, x-automation-key        │
-│    Query strings: all                                              │
+│    Query strings: all (forwarded to origin, NOT the cache key)     │
 │    Cookies: all (forwarded to origin, not in cache key)            │
 │                                                                    │
 │  Behaviors:                                                        │
@@ -317,9 +331,15 @@ Dual-Write Patterns (eventual consistency within TransactWrite):
 │     otherwise                                                       │
 │       → rewrite to /{cleanHost}{path}        (cacheable / ISR)      │
 │                                                                     │
-│  Referral Tracking:                                                 │
-│     ?ref= or ?utm_source= → set amodx_ref cookie (30 days)          │
-│     (both are query params, so always on the dynamic twin)          │
+│  Referral Tracking: NOT here since cache-3 — the middleware sets    │
+│     no cookies on page responses. components/ReferralCapture.tsx    │
+│     reads ?ref= / ?utm_source= in the browser and POSTs to          │
+│     /api/ref, which sets amodx_ref (HttpOnly, 30 days). The trigger │
+│     had to leave the origin because those params are no longer in   │
+│     the CloudFront cache key, so a warm URL is answered at the edge │
+│     without invoking the origin at all; the WRITE stayed on the     │
+│     origin so it can overwrite the pre-deploy HttpOnly cookie.      │
+│     (amodx_preview_base on /_site/ is unchanged — never cacheable.) │
 └─────────────────┬───────────────────────────────────────────────────┘
                   │
                   ▼
@@ -647,6 +667,10 @@ TENANT DATA ISOLATION:
     Cache key includes X-Forwarded-Host
     → /shop1.com/about ≠ /shop2.com/about
     → separate cache entries per tenant
+    Cache key also includes x-has-session (0|1)
+    → an authenticated visitor never matches the anonymous entry
+    → both headers are OVERWRITTEN by the CF Function, so neither
+      is viewer-forgeable
 
 
 PUBLIC API TENANT VERIFICATION (orders, coupons):

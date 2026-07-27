@@ -229,8 +229,77 @@ export class RendererHosting extends Construct {
             authType: lambda.FunctionUrlAuthType.NONE,
         });
 
-        // 5. CloudFront Function to preserve original Host header + inject origin verification
-        // Phase 6.1: Injects x-origin-verify header so Lambda can verify request came through CloudFront
+        // 5. CloudFront Function (viewer request). Three jobs, all of them cache-key or
+        //    origin-trust concerns — see the cache policy below for how the outputs are used.
+        //
+        //    a) `x-forwarded-host` — the original Host, so the origin can resolve the tenant
+        //       (Phase 4). Keyed, so tenants never share an entry.
+        //    b) `x-origin-verify` — proves the request came through CloudFront (Phase 6.1).
+        //       NOT keyed; it is a constant.
+        //    c) `x-has-session` — cache-3 revision 3, decision CACHE3-SESSION-KEY option B.
+        //
+        //    (c) exists because the cache policy keys on NO cookies. Without it, a
+        //    logged-in visitor's request has the SAME cache key as an anonymous one: once
+        //    the anonymous entry for an access-gated page is warm, CloudFront answers it at
+        //    the edge and the origin never runs — so `renderer/middleware.ts` never gets to
+        //    route the request to the `no-store` dynamic twin, and the visitor is served the
+        //    "Restricted Access" shell that the cacheable route renders for `sessionToken:
+        //    null` (`renderer/src/components/SitePage.tsx`, ACCESS GATEKEEPER). Keying on a
+        //    one-bit derivative of the cookie jar forces that request to miss.
+        //
+        //    Why a derived BOOLEAN rather than adding the cookie to the cache key: the token
+        //    value is per-visitor, so keying on it would give every logged-in visitor a
+        //    private set of entries — unbounded fragmentation — and would put a credential
+        //    into the cache key. One bit adds at most one partition, and in practice adds
+        //    zero stored entries: every `x-has-session: 1` request is routed to the
+        //    force-dynamic twin, whose `no-store` response `minTtl: 0` refuses to store.
+        //
+        //    Why it is set UNCONDITIONALLY (both '1' and '0') rather than only on a match:
+        //    the header is in the cache key, and a viewer can send any header they like. If
+        //    the function only wrote the header on a match, an attacker-supplied
+        //    `x-has-session: <random>` would survive into the key and mint an entry per
+        //    value — reintroducing exactly the fragmentation vector the query allowlist
+        //    below removes. Overwriting on every request bounds the key to two values.
+        //
+        //    Cookie-name matching — the SHARED SOURCE OF TRUTH is the NextAuth cookie
+        //    configuration at `renderer/src/app/api/auth/[...nextauth]/route.ts:36-46`,
+        //    which sets `cookies.sessionToken.name = 'next-auth.session-token'`. next-auth
+        //    4.24.14 merges that object OVER its defaults with a top-level spread
+        //    (`node_modules/next-auth/core/init.js:59-61`), replacing the whole
+        //    `sessionToken` entry — so the `__Secure-` prefix that `defaultCookies()` would
+        //    apply on https does NOT apply while that config stands. What is actually
+        //    emitted today is:
+        //
+        //      next-auth.session-token                 (unchunked)
+        //      next-auth.session-token.0, .1, …        (chunked: core/lib/cookie.js:152
+        //                                               names chunks `<configured>.<i>`)
+        //
+        //    `__Secure-next-auth.session-token` and its chunks are matched as
+        //    COMPATIBILITY/LEGACY coverage — the name next-auth would emit if the explicit
+        //    `cookies` block were ever removed, and the name any cookie issued before that
+        //    block existed still carries in a visitor's jar. No repo evidence shows it being
+        //    emitted now; matching it costs nothing and a missed session cookie is the
+        //    expensive direction.
+        //
+        //    The match is by PREFIX over exactly those two base names: `name === base` or
+        //    `name` starts with `base + '.'` (the chunk separator). NOT a substring test —
+        //    a substring test also matches unrelated names that merely embed the literal
+        //    (`x-next-auth.session-token-decoy`, `next-auth.session-tokenX`), which is an
+        //    unnecessary cache-bypass surface. `renderer/middleware.ts`
+        //    (`SESSION_COOKIE_BASES` / `hasSessionCookie()`) applies the identical predicate
+        //    to the identical base list, so the two detectors classify every possible cookie
+        //    name identically — the property that matters, because a request this function
+        //    calls anonymous but middleware calls authenticated would hit the warm anonymous
+        //    entry and reopen the hole. `probe-cache3-cffunc.mjs` §C pins that equality.
+        //
+        //    Comparison is case-insensitive (hence the lowercase base literals): cookie
+        //    names are case-sensitive per RFC 6265, so this over-matches slightly. Over-match
+        //    is the safe direction — it routes a request to the uncached twin, which renders
+        //    correctly and merely misses the cache — and middleware over-matches identically.
+        //
+        //    ES5 only: CloudFront Functions runtime 1.0 is ECMAScript 5.1. No let/const, no
+        //    arrow functions, no template literals (which would also collide with the CDK
+        //    template literal this source is embedded in).
         const hostRewriteFunction = new cloudfront.Function(this, 'HostRewriteFunction', {
             functionName: `${stackName}-HostRewrite`,
             code: cloudfront.FunctionCode.fromInline(`
@@ -239,6 +308,25 @@ function handler(event) {
     var host = request.headers.host ? request.headers.host.value : '';
     request.headers['x-forwarded-host'] = { value: host };
     request.headers['x-origin-verify'] = { value: '${props.originVerifySecret}' };
+
+    var SESSION_COOKIE_BASES = ['next-auth.session-token', '__secure-next-auth.session-token'];
+    var hasSession = '0';
+    var jar = request.cookies || {};
+    for (var name in jar) {
+        var lower = name.toLowerCase();
+        for (var i = 0; i < SESSION_COOKIE_BASES.length; i++) {
+            var base = SESSION_COOKIE_BASES[i];
+            if (lower === base || lower.indexOf(base + '.') === 0) {
+                hasSession = '1';
+                break;
+            }
+        }
+        if (hasSession === '1') {
+            break;
+        }
+    }
+    request.headers['x-has-session'] = { value: hasSession };
+
     return request;
 }
             `),
@@ -260,16 +348,122 @@ function handler(event) {
             cookieBehavior: cloudfront.OriginRequestCookieBehavior.all(),
         });
 
-        // Phase 4: Custom cache policy for multi-tenant ISR
-        // CRITICAL: Cache key MUST include X-Forwarded-Host for tenant isolation
+        // Phase 4 / slice cache-3: cache key for the multi-tenant ISR default behavior.
+        //
+        // The cache key decides two things: which stored response a viewer gets, and
+        // whether the origin is consulted AT ALL. A header or parameter left out of this
+        // key collapses onto the bare key, and if that entry is warm CloudFront answers
+        // from it — the origin, the middleware and the render never run.
+        //
+        // The origin request policy above (which forwards `Accept`, all cookies and the
+        // FULL query string) only comes into play on an edge MISS. So "anything left out
+        // of the key still reaches the render" is a cache-MISS property, not a general
+        // one, and it is never the reason an omission is safe. See the two-half safety
+        // argument on the query allowlist below for what the reason actually is.
+        //
+        // Rationale and the per-parameter justification live in
+        // docs/caching-architecture.md § "Cache Policy (Default Behavior)".
         const rendererCachePolicy = new cloudfront.CachePolicy(this, 'RendererCachePolicy', {
             cachePolicyName: `${stackName}-RendererCache`,
             defaultTtl: cdk.Duration.seconds(0),  // Respect origin Cache-Control headers
             maxTtl: cdk.Duration.days(365),
-            minTtl: cdk.Duration.seconds(0),
-            headerBehavior: cloudfront.CacheHeaderBehavior.allowList('X-Forwarded-Host'),  // Tenant isolation
-            queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
-            cookieBehavior: cloudfront.CacheCookieBehavior.none(),  // Don't cache by cookie
+            minTtl: cdk.Duration.seconds(0),      // 0 => a `no-store` origin response is not stored
+
+            // HEADERS: tenant isolation + the RSC content-negotiation family.
+            //
+            // `X-Forwarded-Host` (set by the viewer-request CloudFront Function from the
+            // incoming Host) keeps `shop-a.example.com/about` and `shop-b.example.com/about`
+            // in separate entries.
+            //
+            // The four `RSC`/`Next-Router-*` headers mirror the origin's own `Vary`.
+            // CloudFront does not honour origin `Vary`, and `RSC: 1` flips the response body
+            // from an HTML document to a React flight payload (measured, cache-1). Without
+            // them one unauthenticated `curl -H 'RSC: 1'` pins `text/x-component` at the
+            // edge under a page's HTML URL and every later visitor gets raw flight text
+            // (hazard H1 — this is the whole reason cache-1 was not deployable before this).
+            // Only `RSC` changes the body today; the other three are keyed anyway so that a
+            // future Next version that starts negotiating on them cannot reintroduce H1.
+            //
+            // `x-has-session` is the one-bit session discriminator the viewer-request
+            // Function above derives from the cookie jar (hazard H3, closed in revision 3 of
+            // this slice). It is what stops an authenticated request from matching a warm
+            // ANONYMOUS entry — cookies are deliberately absent from this key, so without it
+            // the two requests are indistinguishable at the edge and an access-gated page
+            // would serve its cached "Restricted Access" shell to a logged-in visitor. The
+            // Function overwrites the header on every request, so it can only ever take the
+            // values '0' and '1'; a viewer cannot inject a third.
+            headerBehavior: cloudfront.CacheHeaderBehavior.allowList(
+                'X-Forwarded-Host',
+                'RSC',
+                'Next-Router-Prefetch',
+                'Next-Router-State-Tree',
+                'Next-Router-Segment-Prefetch',
+                'x-has-session',
+            ),
+
+            // QUERY STRINGS: explicit allowlist (was `all()`).
+            //
+            // `all()` let any `?utm_*`, `?fbclid`, or attacker-chosen junk parameter mint a
+            // distinct entry — a guaranteed miss and an SSR Lambda invocation per unique
+            // value. A parameter NOT listed here collapses onto the bare-path entry and,
+            // once that entry is warm, is answered at the edge WITHOUT REACHING THE LAMBDA.
+            //
+            // Safety argument — read this before editing the list. It has two halves and
+            // NEITHER of them is about the middleware: on a warm entry CloudFront answers
+            // before middleware runs, so nothing middleware does can rescue the key.
+            //
+            //   (a) A parameter that changes the rendered representation MUST be in this
+            //       list. Being in the key is what forces an edge miss and gets the request
+            //       to the origin at all. Nothing downstream can rescue a parameter that was
+            //       stripped here: the origin never sees the request. (`?page=2` served the
+            //       page-1 entry is the concrete failure this prevents.)
+            //   (b) A parameter that is NOT in this list is safe only because no code reads
+            //       it, so the origin would render the bare-path representation for it
+            //       anyway. That is a code-inspection claim, verified in
+            //       renderer/src: the complete set of `query.*` reads in the render body is
+            //       `page`, `q`, `availability`, `id`, `email` (components/SitePage.tsx),
+            //       `preview` (both %5Fdyn twins) and `nf` (lib/not-found-handoff.ts) — i.e.
+            //       exactly this list. The cacheable route itself passes `query={{}}`
+            //       literally (it is in ISR mode and cannot await searchParams), so the
+            //       stored representation is a pure function of host + path + the RSC
+            //       headers above. `_rsc` is the one non-listed parameter that reaches that
+            //       route, and it is measured not to change the body — the `RSC` header
+            //       does, and that header is now keyed.
+            //
+            // cache-1's property that middleware routes every query-string request to the
+            // `no-store` %5Fdyn twin is NOT the safety argument (a warm bare-path entry is
+            // served before middleware runs). What it buys is narrower and still useful: a
+            // request carrying a query string can never POPULATE an entry, so a junk
+            // parameter cannot warm a bogus one, and a listed parameter always renders
+            // fresh rather than from a stale variant.
+            queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList(
+                // Pagination on category / shop / search listings (SitePage.tsx: `query.page`).
+                'page',
+                // Search term (SitePage.tsx: `query.q`, also read in generateMetadata).
+                'q',
+                // Shop in-stock filter (SitePage.tsx: `query.availability`).
+                'availability',
+                // Order-confirmation lookup pair (SitePage.tsx: `query.id` + `query.email`).
+                'id',
+                'email',
+                // Draft preview on the tenant's own domain (%5Fdyn pages: `query.preview`).
+                // Must bypass the edge or an editor would be served the published entry.
+                'preview',
+                // MANDATORY — not an optimisation. The not-found handoff redirects
+                // `/p` -> `/p?nf=1` and that 307 IS cacheable (lib/not-found-handoff.ts).
+                // Without `nf` in the key, `/p?nf=1` collapses onto `/p`, hits the stored
+                // 307 and redirects to itself: an infinite client redirect loop on every
+                // 404.
+                'nf',
+            ),
+
+            // COOKIES: deliberately not in the key. Cookie VALUES are per-visitor, so keying
+            // on any of them (the session token above all) would give each visitor a private
+            // set of entries and put a credential in the cache key. The one cookie-derived
+            // fact the key needs — "does this request carry a session?" — arrives as the
+            // `x-has-session` header instead. `RendererOriginPolicy` still forwards all
+            // cookies to the origin, so the render sees the real jar on a miss.
+            cookieBehavior: cloudfront.CacheCookieBehavior.none(),
             enableAcceptEncodingGzip: true,
             enableAcceptEncodingBrotli: true,
         });
