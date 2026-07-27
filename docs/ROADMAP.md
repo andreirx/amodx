@@ -8,6 +8,12 @@ Slices are fine-grained: one slice = one deployable/verifiable/rollback-reasoned
 Status taxonomy and naming are defined in `docs/documentation.md`. All slices below are
 `PLANNED` until implementation begins.
 
+**Standing operator directive (human, 2026-07-27): no CDK/infra changes without a named,
+real gain.** Slice packets forbid `infra/` edits by default; exceptions must state the
+concrete gain and are reviewed at the cdk-diff gate. (Hygiene, refactors, or version
+bumps alone do not qualify — `dep-1`'s aws-cdk-lib step stays deferred under this rule
+until its CVE exposure becomes real gain.)
+
 ## Current Priority
 
 **Track CACHE — serving-layer remediation** (`cache-1` → `cache-2` → `cache-3`), inserted
@@ -49,7 +55,7 @@ operator-run only until made local.
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `test-1` | Fast gates: `typecheck` (`tsc --noEmit`) script per workspace + root aggregate; CI job for build+typecheck (today a type regression ships silently — no build CI exists) | PLANNED |
+| `test-1` | Fast gates: `typecheck` (`tsc --noEmit`) script per workspace + root aggregate; CI job for build+typecheck (today a type regression ships silently — no build CI exists) | IMPLEMENTED 2026-07-27 — review pending. `.github/workflows/ci.yml` (credential-free: build → typecheck → `backend test:unit`) + `typecheck` in all 8 workspaces. No `src/` changes were needed — the estate was already type-clean. CI must use `npm install`, not `npm ci`: the lockfile is macOS-only (`docs/TECH-DEBT.md`) |
 | `test-2` | Serving-contract characterization suite: automate the cache-1 header-probe matrix (`next build`+`next start`+local DDB stub; MISS→HIT, twin no-store, not-found, zero-DDB-on-HIT) as a runnable suite — the regression net for the CACHE track | PLANNED |
 | `test-3` | Pure unit layer for pure logic: shared schemas + `normalizeEmail` (with fnd-1), backend pure helpers (cache-2 path construction), plugins parser (with vid-1) | PLANNED |
 | `test-4` | Infra truth: delete the commented-out jest stub that reports PASS 1/1 while asserting nothing; real `cdk synth` snapshot tests + CI synth job. Unblocks `dep-1` | PLANNED |
