@@ -8,6 +8,8 @@ ratified (cache-3's changes are in the same tree; CloudFormation applies the cac
 ## Preconditions
 
 - Working tree clean on `main`; root `npm run build` green.
+- **SEC-1 committed** (`docs/slices/sec-1-audit-remediation-2026-07.md`): the deploy
+  must carry the patched `next` (middleware-bypass fix) / `next-auth` / `sharp`.
 - Staging is ~630 resources behind the repo (measured 2026-07-26) — the staging deploy
   absorbs that drift BY DESIGN (ratified staged-reconcile). Skim `cdk diff` for staging
   only for surprises in stateful resources (DynamoDB tables, S3 buckets, Cognito pools —
@@ -34,6 +36,7 @@ Let `$H` = a staging tenant host with a published page `/p`, all curls through C
 | 8 | create a page at a previously-404'd slug, request it | page renders (stored 307 was purged by content/create) |
 | 9 | visit `https://$H/p?ref=test` in a browser | `amodx_ref` cookie set via `/api/ref`; a following anonymous `curl -sI https://$H/p` carries NO `Set-Cookie` |
 | 10 | CloudWatch: renderer Lambda invocations | drop sharply for repeated page views vs pre-deploy |
+| 11 | `curl -sI 'https://$H/_next/image?url=<asset>&w=256&q=75'` | 200 image — patched sharp/libvips serving normally |
 
 ## Step 3 — production
 
