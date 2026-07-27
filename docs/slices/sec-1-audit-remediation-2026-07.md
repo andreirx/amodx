@@ -1,7 +1,7 @@
 # SEC-1: Assessed dependency remediation (weekly audit failure 2026-07-27)
 
-- **Status:** PLANNED — executes the moment TEST-1 releases the working tree
-  (lockfile conflict); MUST land before the Track CACHE staging deploy
+- **Status:** IMPLEMENTED 2026-07-27 (see §Outcome); residual: sharp/postcss inside
+  Next's bundled tree await an upstream Next release (TECH-DEBT)
 - **Track:** Maintenance (assessed, per operator directive 2026-07-27: risks, blast
   radius, and ACTUAL impact per package — not a blind `npm audit fix`)
 - **Executor:** operator (dependency bumps + verification; no relay needed)
@@ -37,3 +37,22 @@
 ## Rollback
 
 Single revert of the SEC-1 commit restores the previous pinned lockfile; redeploy.
+
+## Outcome (2026-07-27)
+
+Applied: next 16.2.9→16.2.12 (middleware-bypass + Server-Actions DoS fixed),
+next-auth 4.24.14→4.24.15 (getToken throw + homoglyph normalizer fixed), axios 1.18.1,
+react-router-dom 7.18.1, postcss/fast-uri/linkify-it/uuid transitives. Extra movement
+in the lockfile = transitive chains of the flagged families only (hono/body-parser via
+MCP SDK, agent-base via axios, nanoid via postcss) — inspected, explainable.
+Verification: full root build GREEN, root typecheck GREEN (first use of test-1's
+gate), backend unit suite GREEN. Backend audit: 0 vulnerabilities.
+
+**Residual (accepted, tracked):** renderer still reports 3 high + 1 moderate — all
+inside Next.js's OWN bundled dependency tree (its internal sharp/postcss for image
+optimization). npm's suggested "fix" (next@9.3.3) is a downgrade artifact, not a real
+option. Our direct next is at the latest 16.2.x. Resolution arrives with the next
+upstream Next patch; until then the weekly security-audit workflow will keep failing
+on the renderer job. Impact unchanged from the assessment table (sharp parses tenant
+uploads — the exposure narrows to Next's internal usage). Monitor Next releases;
+re-run `npm audit fix` when 16.2.13+ lands.
