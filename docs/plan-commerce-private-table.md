@@ -87,10 +87,11 @@ The new table holds only customer-private commerce entities:
 - `CUSTOMER#<normalizedEmail>`
 - `COUNTER#ORDER`
 
-where `normalizedEmail = normalizeEmail(customerEmail)` (shared utility — trim +
-lowercase; no inline `toLowerCase()`). The current checkout only lowercases, so the
-migration must align historical keys to this normalized form and all new writes must use
-it.
+where `normalizedEmail = normalizeEmail(customerEmail)` (shared utility — `NFKC → trim →
+lowercase` per PD-001 as amended and ratified 2026-07-28; the order is load-bearing, see
+PD-001 § *Amendment record*; no inline `toLowerCase()`). The current checkout only lowercases,
+so the migration must align historical keys to this normalized form and all new writes must
+use it.
 
 Keys remain the same:
 

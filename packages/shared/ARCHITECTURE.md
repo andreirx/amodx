@@ -10,10 +10,16 @@ This is the single source of truth for all domain types and validation schemas. 
 
 ```
 src/
-└── index.ts    # Single monolithic file (~524 lines) exporting all schemas, types, enums, and constants
+├── index.ts            # All Zod schemas, types, enums, constants; re-exports the modules below
+├── normalizeEmail.ts   # normalizeEmail() — the canonical email identity primitive (PD-001, slice fnd-1)
+├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
+└── country-packs/      # Per-country locale/currency/address packs
 ```
 
-Everything lives in one file. All exports are top-level from `src/index.ts`.
+`src/index.ts` is the single public entry point: every sibling module is re-exported from it,
+so consumers always import from `@amodx/shared` and never from a subpath. The schemas live in
+`index.ts` itself; a sibling module exists only where the code is **behaviour rather than
+shape** — a function with its own contract and its own test file.
 
 ## Domain Entities
 
@@ -61,6 +67,16 @@ Everything lives in one file. All exports are top-level from `src/index.ts`.
 ### Constants
 
 - `THEME_PRESETS` — 5 built-in themes: standard, midnight, editorial, corporate, vibrant
+
+### Functions
+
+| Function | Contract | Used by |
+|----------|----------|---------|
+| `normalizeEmail(raw)` | `NFKC → trim → lowercase`. Pure, deterministic, idempotent, no locale/env/IO. Its output IS the `CUSTOMER#<email>` sort key and the pre-image of the Cognito username hash (PD-001) | **Nothing yet** — slice `fnd-1` added the primitive and migrated zero call sites by design; `fnd-2` migrates the 14 inline sites (inventory in `docs/slices/fnd-1-normalize-email.md`) |
+
+> **`normalizeEmail` is not an ordinary helper.** Changing its output is a DynamoDB key
+> migration across every tenant, not a refactor. Its order of operations is load-bearing and
+> pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
 
 ## Key Patterns
 

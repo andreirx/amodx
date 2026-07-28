@@ -68,6 +68,17 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    third mutation round confirms it. **The generalisable rule: an assertion whose expected
    value is computed the same way the implementation computes it cannot detect the
    implementation being wrong.** Assert against the specification's value, not the code's.*
+   *Status: `fnd-1` (2026-07-28) closed the `normalizeEmail` item above —
+   `packages/shared/test/normalizeEmail.test.ts`, 30 tests, in the same shared suite as the
+   schemas (70 total). It is the layer's clearest case of the §7 rule, because the unit layer
+   is the ONLY layer that can test it: the function has zero call sites by design (`fnd-2`
+   migrates them), so there is no wire to drive. Two conventions it establishes for
+   identity-primitive tests: (a) the file is **pure ASCII by rule** — every non-ASCII
+   character is a `\uXXXX` escape, checked with `LC_ALL=C grep -n '[^ -~\t]'`, because
+   composed and decomposed `é` are indistinguishable on screen and an editor that normalizes
+   on save would silently delete the exact distinction under test; (b) idempotence is pinned
+   as its own assertion, which is what caught the documented operation order being
+   non-idempotent — falsified by flipping the implementation and observing 2 of 30 fail.*
    A unit test earns its place by pinning a branch the wire cannot reach cheaply or a
    contract that spans workspaces — TTL expiry, cache eviction, fail-open, schema
    accept/reject, `OrderSchema.status` ↔ `STATUS_LABELS`. Restating what

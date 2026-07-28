@@ -612,3 +612,41 @@ register rather than only from a closed slice.
   comes from an authenticated tenant admin and lands in a React-escaped attribute; a
   `javascript:` URL in `src` is inert in every current browser (unlike `href`). Address: a
   shared image-URL guard applied across the package, if it is judged worth the surface.
+
+## fnd-1 residuals (2026-07-28)
+
+`fnd-1` added `normalizeEmail()` to `@amodx/shared` and **deliberately changed zero call
+sites** (its § Non-scope). The estate therefore still normalizes email identity inline and
+inconsistently — that is not a regression the slice introduced, it is the pre-existing state
+the slice exists to make fixable. Everything below is `fnd-2`'s work; the full table with
+`file:line` is `docs/slices/fnd-1-normalize-email.md` § *Call-site inventory*.
+
+- **Three email-keyed reads apply NO normalization at all — the highest-priority item.**
+  `backend/src/customers/get.ts:24` and `:35` and `backend/src/customers/update.ts:31` build
+  `CUSTOMER#<email>` / `CUSTORDER#<email>#` straight from a raw path parameter, while
+  checkout (`backend/src/orders/create.ts:337`) writes the key lowercased. An admin opening
+  `Customer@x.com` therefore misses the record checkout wrote as `customer@x.com` and sees
+  "not found" rather than an error. Pre-existing; unchanged by `fnd-1`.
+- **Eleven inline `.toLowerCase()` sites lowercase but never `trim()` or NFKC** (5 files).
+  Two are not merely key reads: `backend/src/orders/public-get.ts:23` is the **authorization**
+  compare for anonymous order lookup, and `backend/src/resources/presign.ts:35` gates signed
+  asset URLs by order history. A migration that changes normalization changes what those two
+  admit — `fnd-2` must treat them as security-relevant, not as mechanical replacements.
+- **`EMAILLIMIT#<email>` is bypassable by encoding.** `backend/src/orders/create.ts:393` keys
+  the order-confirmation email rate limit on a lowercased-only address, so `a@x.com` and a
+  fullwidth or decomposed-accent variant get independent hourly budgets. Low severity (the
+  limit is anti-bombing, not authorization) but it is a real hole in a control that exists.
+- **Validation runs before normalization, i.e. the wrong way round.**
+  `backend/src/orders/create.ts:30` parses the raw body with `OrderInputSchema` and lowercases
+  at `:293`, so the value actually persisted was never validated in the form it was persisted
+  in. The verdicts differ in practice — a fullwidth `＠` address fails `z.string().email()`
+  raw and passes after NFKC. `fnd-1` pins the *rule* by test; `fnd-2` fixes the *call sites*.
+- **`fnd-2` is a key migration, not a refactor.** Any persisted `CUSTOMER#<email>` whose stored
+  form differs from `normalizeEmail(email)` becomes unreachable the moment its readers switch.
+  It needs expand-before-contract: dual-read old+new keys, backfill, then contract. Do not
+  schedule it as a mechanical find-and-replace.
+- **Accepted, not debt (recorded so it is not "fixed" by mistake):** the Unicode default
+  lowercase of `İ` (U+0130) is `i` + COMBINING DOT ABOVE, so `İSMAIL@x.com` and `ismail@x.com`
+  are different identities. The alternative, `toLocaleLowerCase("tr")`, makes the identity key
+  depend on ambient locale. Determinism wins; if a tenant ever hits it, the fix is a support
+  merge, not a change to the function.

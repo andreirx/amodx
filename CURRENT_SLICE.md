@@ -120,13 +120,19 @@ Review `cache-3`, then **deploy cache-3 + cache-1 + cache-2 together** with the 
 operator verification each slice doc specifies. Track TEST is code-complete —
 `test-1`…`test-4` are all implemented and committed (`c37ca9a`, `6a46760`, `931a3ff`,
 `30787ed`), review pending. **Track A is now code-complete too** — `vid-1` (`571286e`),
-`vid-2` (`e8da608`) and `vid-3` are implemented, review pending — so the next implementation
-slice is **`fnd-1` (shared `normalizeEmail`)**, then begin Track B (`cmrc-1`). The `fnd-1`
-and Track B/C/D slice docs are not yet authored — generate them per `docs/ROADMAP.md` when
-their track starts.
+`vid-2` (`e8da608`) and `vid-3` (`a6301da`) are implemented, review pending. **`fnd-1` is
+now implemented too** (see § Recently Completed), so the next implementation slice is
+**`fnd-2`** — the call-site migration `fnd-1` deliberately did not do — and then Track B
+(`cmrc-1`). The `fnd-2` and Track B/C/D slice docs are not yet authored; generate them per
+`docs/ROADMAP.md` when their track starts. The PD-001 normalization amendment `fnd-2` depends
+on is **ratified and in the file** (`docs/platform-decisions.md` PD-001 § *Amendment record —
+normalization rule (RATIFIED 2026-07-28)*), so `fnd-2` is unblocked — but it stays a DynamoDB
+key migration: it must run expand-before-contract, because reversing the normalization rule
+after it lands is a second migration across every tenant.
 
-*(Updated 2026-07-28 on `vid-3` completion. Per-slice status lives in `docs/ROADMAP.md`,
-which outranks this file — `docs/VISION.md` § Decision hierarchy.)*
+*(Updated 2026-07-28 on `fnd-1` completion. The previous revision said the `fnd-1` slice doc
+was "not yet authored" — stale: `bb7e1d2` authored it. Per-slice status lives in
+`docs/ROADMAP.md`, which outranks this file — `docs/VISION.md` § Decision hierarchy.)*
 
 *(Corrected 2026-07-28 during `vid-2`. This paragraph still listed `test-3` and `test-4` as
 work "to finish" after they had been committed, and listed `vid-1`/`vid-2` as not started.
@@ -139,6 +145,33 @@ ratified CACHE → TEST → A on 2026-07-26, and the ROADMAP outranks this file 
 
 ## Recently Completed
 
+- `fnd-1` — shared `normalizeEmail()` (2026-07-28). The platform identity primitive of
+  PD-001 now exists once, in `packages/shared/src/normalizeEmail.ts`: `NFKC → trim →
+  lowercase`, pure, zero-dependency, safe in browser bundles. **It migrates nothing** — zero
+  call-site changes by design, so no key computed today changes tomorrow; the 14 inline sites
+  are enumerated for `fnd-2` in the slice doc § *Call-site inventory*. The defect class it
+  retires is the invisible one: composed `é` (U+00E9) and decomposed `é` (U+0065 U+0301)
+  render identically and today write two different `CUSTOMER#` records for one human, which
+  in the console looks like two customers rather than like a bug.
+  **One deviation from the slice text as first written, raised not hidden — since ratified:**
+  the slice said `trim → NFKC → lowercase`; that order provably fails the slice's own
+  idempotence requirement, because the compatibility decomposition of a spacing diacritic is
+  SPACE + combining mark, so NFKC *re-introduces* leading whitespace the trim already passed
+  (50 code points). Shipped as `NFKC → trim → lowercase`, which is idempotent across every
+  code point U+0000–U+2FFFF in three positions, and a pre-trim was measured to be dead code
+  rather than defence-in-depth. Falsified, not asserted: flipping the implementation to the
+  previously documented order fails 2 of the suite's 30 tests. Ratified 2026-07-28; PD-001
+  § Invariants, the slice doc § Scope and the shipped function now all name the same order.
+  **A dropped doc edit the slice caught, now closed:** commit `bb7e1d2` claims "PD-001 amended
+  (NFKC + validate-after-normalize, human-ratified)" but `git show --stat` showed it changed
+  only the fnd-1 slice doc, leaving PD-001 reading `lowercase + trim` — a contradiction inside
+  the binding-invariants file. The operator has since applied the amendment; PD-001 carries a
+  RATIFIED amendment record and nothing is outstanding. All gates green (full
+  build, 8/8 typecheck, 70 shared + 51 backend-unit + 172 plugins + 29 renderer + 20
+  serving-contract + 15 infra, all credential-free). `cd backend && npm test` is `NOT RUN` —
+  it needs real staging DynamoDB. Zero packages added; `package-lock.json` untouched. MCP sync
+  **checked and not owed** (`OBSERVED`: `tools/mcp-server/src` does not import `@amodx/shared`).
+  Status `IMPLEMENTED`, review pending; `docs/ROADMAP.md` § Foundation is authoritative.
 - `vid-3` — `video-hero` block: background embeds + tabbed source picker (2026-07-28).
   **Track A is complete.** `video-hero/VideoHeroRender.tsx` now branches on
   `parseVideoSource` and nothing else, so no render path in `packages/plugins` carries a

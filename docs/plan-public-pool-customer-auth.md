@@ -137,8 +137,13 @@ The public pool username is `<tenantId>#<sha256hex(normalizedEmail)>`, produced 
 - `custom:tenant_id` is still written at sign-up, for the future direct-JWT path
   (PD-003).
 
-**Email normalization** is `lowercase + trim`, implemented once as a shared utility in
-`packages/shared` and used by checkout, all auth handlers, and username construction.
+**Email normalization** is `NFKC → trim → lowercase` (PD-001 as amended and ratified
+2026-07-28; the order is load-bearing — see PD-001 § Amendment record), implemented once as
+`normalizeEmail()` in `packages/shared` and it MUST be used by checkout, all auth handlers, and
+username construction. Any email-format validation runs on the NORMALIZED form, never on raw
+input. That is the required end state, not today's: `fnd-1` (2026-07-28) shipped the primitive
+with **zero** consumers, and the call-site migration is `fnd-2` — see § Dependencies and
+`docs/slices/fnd-1-normalize-email.md` § *Call-site inventory*.
 See Email normalization & username derivation below. This is load-bearing: divergent normalization
 forks `CUSTOMER#email` records and breaks anonymous-order → registered-account linking.
 
@@ -479,9 +484,13 @@ the browser.
 
 **Helper placement (architecture fork resolved — Option B for Phase 1):**
 
-- `normalizeEmail(input: string): string` → `input.trim().toLowerCase()` lives in
-  `@amodx/shared`. It is a pure string op, safe for every consumer (backend, renderer,
-  admin, plugins, MCP).
+- `normalizeEmail(input: string): string` → **SHIPPED by `fnd-1` (2026-07-28)** as
+  `input.normalize("NFKC").trim().toLowerCase()` in `@amodx/shared`
+  (`src/normalizeEmail.ts`, re-exported from `src/index.ts`). It is a pure string op, safe
+  for every consumer (backend, renderer, admin, plugins, MCP). The NFKC step and its position
+  *before* the trim are both ratified (PD-001 § Amendment record); trim-before-NFKC is not
+  idempotent, because the compatibility decomposition of a spacing diacritic begins with a
+  space. Read the module header before changing it — its output is a DynamoDB sort key.
 - `cognitoUsername(tenantId, normalizedEmail): string` →
   `` `${tenantId}#${sha256hex(normalizedEmail)}` `` lives in a **renderer server-only**
   lib (`renderer/src/lib/server/customer-auth.ts`) and uses Node `crypto`. It is the
@@ -519,7 +528,7 @@ built, or anonymous-order → registered-account linking forks into duplicate
 |------|--------|-------|
 | `infra/lib/renderer-hosting.ts` | Pass `COGNITO_PUBLIC_*` env + client-secret ARN to renderer; grant `secretsmanager:GetSecretValue` | A1 |
 | `packages/shared/src/index.ts` | Add `customerAuth` to IntegrationsSchema | A2 |
-| `packages/shared/src/index.ts` | Add `normalizeEmail` (portable, pure) | A3 |
+| `packages/shared/src/normalizeEmail.ts` | **DONE — `fnd-1`, 2026-07-28.** `normalizeEmail` (portable, pure); re-exported from `src/index.ts`. Call-site migration is `fnd-2`, not done | A3 |
 | `renderer/src/lib/server/customer-auth.ts` | **NEW** — server-only `cognitoUsername()` + `secretHashFor()` (Node `crypto`) | A3, A4 |
 | `infra/lib/auth.ts` | **Pool replacement**: `signInAliases: { username: true }`, `userPassword: true`, `preventUserExistenceErrors: true`, `generateSecret: true` (confidential client), branded email templates; keep `RETAIN`, manually delete the orphaned dormant pool after zero-user verification | A4, E3 |
 | `renderer/src/app/api/auth/[...nextauth]/route.ts` | CredentialsProvider (server-derived username) + session callback + first-sign-in `CUSTOMER#` upsert | B1–B3 |
@@ -542,10 +551,14 @@ built, or anonymous-order → registered-account linking forks into duplicate
 - Cognito public pool exists but **must be replaced** (A4) before use — not a no-op.
 - NextAuth already installed in renderer.
 - `CUSTOMER#email` DynamoDB pattern already handles identity linking (tenant-scoped).
-- `normalizeEmail` in `@amodx/shared` (portable, pure); `cognitoUsername` in a renderer
-  server-only lib (Node `crypto`) — NOT in shared, which browser bundles (admin/plugins)
-  import. Checkout currently lowercases inline (`customerEmail.toLowerCase()`, no
-  `.trim()`, no shared util) and MUST be migrated to `normalizeEmail()` before this work.
+- `normalizeEmail` in `@amodx/shared` — **exists as of `fnd-1` (2026-07-28)**; `cognitoUsername`
+  in a renderer server-only lib (Node `crypto`) — NOT in shared, which browser bundles
+  (admin/plugins) import. Checkout still lowercases inline (`customerEmail.toLowerCase()`, no
+  `.trim()`, no shared util) and MUST be migrated to `normalizeEmail()` before this work:
+  `fnd-1` shipped the primitive and migrated **zero** call sites by design. The full migration
+  list — 14 lines across 7 files, incl. three that build keys from a completely raw email — is
+  `docs/slices/fnd-1-normalize-email.md` § *Call-site inventory*, and it is `fnd-2`'s scope.
+  Treat it as a key migration (expand-before-contract), not a find-and-replace.
 - `@aws-sdk/client-cognito-identity-provider` added to `renderer/package.json` (not
   currently present). Installing triggers the repo rule: audit vulnerabilities and
   explain high-priority findings. The Cognito calls are gated by a confidential client +

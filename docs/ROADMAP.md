@@ -93,7 +93,8 @@ Shared primitives more than one track depends on. Not a feature track.
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `fnd-1` | Shared `normalizeEmail()` (`trim + lowercase`) in `@amodx/shared` — used by commerce `CUSTOMER#` keys (B) and all of customer auth (C) | PLANNED |
+| `fnd-1` | Shared `normalizeEmail()` (**NFKC → trim → lowercase**, per PD-001 as amended 2026-07-28) in `@amodx/shared` — the normalizer that commerce `CUSTOMER#` keys (B) and all of customer auth (C) will be migrated onto by `fnd-2`; it has no consumers yet | IMPLEMENTED 2026-07-28 — review pending. Adds the primitive + 30 contract tests; **zero call-site changes**. No open ratification: the NFKC-before-trim order was ratified 2026-07-28 (trim-before-NFKC provably breaks idempotence — slice doc § Ordering deviation) and PD-001 § Invariants now carries it |
+| `fnd-2` | Migrate the 14 inline email call sites onto `normalizeEmail()` — **key migration**, expand-before-contract (dual-read → backfill → contract). Inventory: `docs/slices/fnd-1-normalize-email.md` § Call-site inventory | PLANNED — not yet authored |
 
 ## Track A — Video embed
 
@@ -176,7 +177,10 @@ Hygiene work, not a feature track.
 ## Cross-cutting dependencies
 
 - `fnd-1` (`normalizeEmail`) is a prerequisite for `cmrc` `CUSTOMER#` key normalization (B)
-  and all of Track C (it feeds `cognitoUsername` and every `CUSTOMER#` write).
+  and all of Track C (it feeds `cognitoUsername` and every `CUSTOMER#` write). **`fnd-1`
+  ships the primitive only — it migrates nothing.** The estate's 14 inline email-key sites
+  still disagree with it and with each other until `fnd-2` runs, and `fnd-2` is a key
+  migration (expand-before-contract), not a refactor.
 - `cmrc-*` proves the private-table + cross-table-transaction pattern that `appt-*`
   reuses.
 - Track C's renderer-proxy customer sessions precede `appt-4` customer endpoints.

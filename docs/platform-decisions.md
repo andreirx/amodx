@@ -69,10 +69,27 @@ portable helper or maintain test-parity with the renderer helper.
   anti-spoof boundary: a client cannot target another tenant's account namespace.
 - `email` is a Cognito user attribute, NOT a pool-wide sign-in alias. Email-as-alias
   enforces pool-global email uniqueness, which contradicts tenant-local identity.
-- Email normalization is `lowercase + trim`, implemented once as a shared utility in
-  `packages/shared`, and used identically by checkout, auth (register / confirm /
-  sign-in / forgot / reset), customer profile, and appointments. Divergent
-  normalization silently forks `CUSTOMER#email` records.
+- Email normalization is `NFKC → trim → lowercase` *(amended 2026-07-28: NFKC human-ratified
+  — trigger: next-auth homoglyph-bypass CVE, closed while zero keys are persisted; the
+  NFKC-before-trim order operator-ratified under the slice's idempotence requirement — the
+  reverse order is non-idempotent for 50 code points whose compatibility decomposition
+  begins with a space, EXECUTED sweep in fnd-1 § Ordering deviation; confusable detection
+  explicitly REJECTED at the key layer)*, implemented once as `normalizeEmail()` in
+  `packages/shared` (`src/normalizeEmail.ts`), and it MUST be used identically by checkout,
+  auth (register / confirm / sign-in / forgot / reset), customer profile, and appointments.
+  Divergent normalization silently forks `CUSTOMER#email` records.
+  **Any email-format validation runs on the NORMALIZED form, never on raw input** — the two
+  verdicts differ (a fullwidth `＠` address fails `z.string().email()` raw and passes after
+  NFKC), so validating raw and persisting normalized would store a value never validated in
+  the form it was stored in.
+  *Conformance status — this paragraph states the rule, not the estate* (`OBSERVED` 2026-07-28,
+  `git grep -n normalizeEmail -- '*.ts' '*.tsx'`): **nothing conforms yet.** `fnd-1` shipped the
+  primitive and migrated **zero** call sites by design, so the one tracked reference today is
+  the shared package's own export line; every live email key is still built by an inline
+  `.toLowerCase()` or by no normalization at all, and no call site validates after normalizing.
+  Conforming the call sites is `fnd-2` — 14 lines across 7 files, enumerated in
+  `docs/slices/fnd-1-normalize-email.md` § *Call-site inventory* — and it is a key migration
+  (expand-before-contract), not a find-and-replace.
 - Within a tenant, `<tenantId>#<sha256hex(email)>` is unique (deterministic hash of the
   normalized email), so Cognito enforces one account per (tenant, email). Across tenants
   the tenant prefix differs, so the same email yields independent accounts.
@@ -82,6 +99,16 @@ portable helper or maintain test-parity with the renderer helper.
   (`id: z.string()`, slug-or-supplied). Enforce `<= 63` in `TenantConfigSchema` / tenant
   creation, or guard in the username helper + the customer-auth enable path so an
   over-length tenant cannot enable email/password auth.
+
+### Amendment record — normalization rule (RATIFIED 2026-07-28)
+
+The bullet above IS the ratified rule. History: NFKC substance human-ratified 2026-07-28;
+the intended file edit was missed in commit `bb7e1d2` (changed only the fnd-1 slice doc —
+caught by the fnd-1 build's `git show --stat` verification); the NFKC-before-trim order
+was surfaced by the fnd-1 builder's idempotence sweep and operator-ratified same day.
+Blast radius note stands: `normalizeEmail()` output is a DynamoDB sort key and the Cognito
+username hash pre-image — changing it after `fnd-2` migrates call sites is a key migration
+across every tenant, not a code change.
 
 ---
 

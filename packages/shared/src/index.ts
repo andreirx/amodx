@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// Re-export the canonical email normalizer (PD-001 identity primitive, slice `fnd-1`).
+// Every consumer that builds an email-keyed identity MUST derive it through this.
+export { normalizeEmail } from "./normalizeEmail.js";
+
 // Re-export media classification module
 export {
     ALLOWED_IMAGE_MIMES, ALLOWED_VIDEO_MIMES, ALLOWED_UPLOAD_MIMES,
