@@ -145,7 +145,7 @@ Updated: 2026-03-23
 >   redundant — the header is the discriminator). **Still not deployed.** The ordering
 >   constraint stands: deploy `cache-3` first, or `cache-3` + `cache-1` + `cache-2` together.
 >   Never `cache-1` alone. The post-deploy RSC probe in
->   `docs/slices/cache-3-cache-key-hygiene.md` § *Deployment* is the operator's confirmation
+>   `docs/shipped/slices/cache-3-cache-key-hygiene.md` § *Deployment* is the operator's confirmation
 >   that H1 is actually closed in production.
 >
 > **Second re-verification (`cache-1` revise run, 2026-07-26).** Two further findings closed:

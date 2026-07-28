@@ -1,6 +1,6 @@
 # FND-1: Shared normalizeEmail() (platform identity primitive)
 
-- **Status:** IMPLEMENTED 2026-07-28 — review pending (§ Build run; latest cycle
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   § *Reconciliation run*). No open ratification:
   the shipped operation order **NFKC → trim → lowercase** was ratified 2026-07-28 and is now
   the text of both `docs/platform-decisions.md` PD-001 § Invariants and this document's
@@ -338,7 +338,7 @@ Re-run in full against a fresh build anyway, because a doc-only cycle is still a
   PD-003 (Cognito as login substrate).
 - `docs/plan-public-pool-customer-auth.md` § *Helper placement* (why `normalizeEmail` is
   shared and `cognitoUsername` is renderer-server-only) and its File Summary row A3.
-- `docs/slices/sec-1-audit-remediation-2026-07.md:15` — the `next-auth` homoglyph advisory
+- `docs/shipped/slices/sec-1-audit-remediation-2026-07.md:15` — the `next-auth` homoglyph advisory
   that made the NFKC question a PD-001 amendment input before `fnd-1`.
 - `docs/ROADMAP.md` § Foundation; `docs/testing-strategy.md` §7 (pure unit layer, `test-3`).
 - Next: `fnd-2` (call-site migration + backfill), Track C `auth-1`.

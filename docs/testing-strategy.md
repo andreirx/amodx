@@ -111,7 +111,7 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    *(The role contract on this line read "confined to 3 Lambdas" until 2026-07-28; corrected
    to the four named roles by operator decision `test4-invalidation-role-contract` — the
    synthesized template always had 4, so the plan was wrong, not the infra. See
-   `docs/slices/test-4-infra-truth.md` § Finding 2 and `docs/caching-architecture.md`
+   `docs/shipped/slices/test-4-infra-truth.md` § Finding 2 and `docs/caching-architecture.md`
    § Key Architectural Decision.)*
    *Status: implemented as `infra/test/amodx-stack.test.ts` (`test-4`, 2026-07-28) — 15 named
    assertions, raised to **17** by `cache-6` on 2026-07-28 (`(g)` the `_next/image*` query key,

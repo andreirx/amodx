@@ -1,6 +1,6 @@
 # VID-2: Inline `video` Plugin Embed + Direct-Media Fix (FEATURE)
 
-- **Status:** IMPLEMENTED 2026-07-28 — review pending. See § *Build run 2026-07-28*.
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
 - **Track:** A — Video embed
 - **Depends:** `vid-1` (parser)
 - **Source plan:** `docs/plan-youtube-vimeo-embed.md` (Phase 2 — Video Plugin Update)
@@ -92,7 +92,7 @@ the iframe-for-direct-media defect is gone. Pattern established for `vid-3`.
 ## References
 
 - `docs/plan-youtube-vimeo-embed.md` — Phase 2; Definition of Done items 2,3,4,8,9,10,11.
-- `docs/slices/vid-1-youtube-vimeo-url-parser.md`.
+- `docs/shipped/slices/vid-1-youtube-vimeo-url-parser.md`.
 - `CLAUDE.md` — Critical Rules 1 (split entry), 6 (no hardcoded colors).
 - `docs/block-types.md` — update embed support on completion.
 

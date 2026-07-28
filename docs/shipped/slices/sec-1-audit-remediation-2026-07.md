@@ -1,6 +1,6 @@
 # SEC-1: Assessed dependency remediation (weekly audit failure 2026-07-27)
 
-- **Status:** IMPLEMENTED 2026-07-27 (see §Outcome); residual: sharp/postcss inside
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   Next's bundled tree await an upstream Next release (TECH-DEBT)
 - **Track:** Maintenance (assessed, per operator directive 2026-07-27: risks, blast
   radius, and ACTUAL impact per package — not a blind `npm audit fix`)

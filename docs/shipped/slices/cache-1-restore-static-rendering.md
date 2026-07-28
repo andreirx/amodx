@@ -1,6 +1,6 @@
 # CACHE-1: Restore static/ISR rendering for public pages
 
-- **Status:** IN_REVIEW *(revise run 4 complete 2026-07-26: D4 closed with no carve-outs — a
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   missing `TABLE_NAME` and `/api/posts` now fail loudly too, measured under `next start` and
   through the built OpenNext Lambda. Deploy still gated on `cache-3` — H1.)*
 
@@ -631,7 +631,7 @@ runs only on first render after invalidation and on carve-out views.
 | `renderer/src/lib/dynamo.ts` | the 18 remaining read helpers no longer swallow AWS errors; file-header comment states the rule, its two deliberate exceptions, and the one `catch` that legitimately stays (`mapTenant`'s legacy `JSON.parse`) |
 | `renderer/src/lib/not-found-handoff.ts` | comment ripple: the stale "`getTenantConfig()` … now throws" note generalised to all helpers, plus the measured limit of the handoff's self-healing property (the canonical URL stays pinned to the 307) |
 | `docs/caching-architecture.md` | new § *Failed reads throw — enforced repo-wide in the renderer* under the serving contract; new § *Probe: a read that fails AFTER tenant resolution*; harness inventory updated; corrected the DynamoDB stub port in the reproduction recipe (`4599` → `8123`, the port the stub actually binds) |
-| `docs/slices/cache-1-restore-static-rendering.md` | this section, the revise-run-3 outcome, status line |
+| `docs/shipped/slices/cache-1-restore-static-rendering.md` | this section, the revise-run-3 outcome, status line |
 
 Not code, but part of the evidence: `probe-harness/ddb-stub.mjs` gained
 `/__ctl/fail-content-{on,off}` and a second published fixture page;

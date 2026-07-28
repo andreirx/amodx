@@ -1,6 +1,6 @@
 # TEST-1: Fast gates — typecheck scripts + CI build/typecheck/unit
 
-- **Status:** IMPLEMENTED 2026-07-27 (revision 3 — decision `TEST1-LOCKFILE` applied: the lockfile
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   is repaired **surgically**, `npm ci` retained) — review pending. Authoritative build run is
   § Build run 2026-07-27 revision 3. The earlier sections are retained for history only:
   revision 1 rows 7 and 9 are **superseded** by revision 3 rows S5/S7/S8; revision 2's

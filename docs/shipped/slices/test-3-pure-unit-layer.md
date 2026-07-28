@@ -1,6 +1,6 @@
 # TEST-3: Pure unit layer for existing pure logic
 
-- **Status:** IMPLEMENTED 2026-07-28 — review pending (evidence: TEST-3 build report; relay approved)
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
 - **Track:** TEST
 - **Depends:** test-1 (CI), test-2 (pattern precedent)
 - **Source:** `docs/testing-strategy.md` §1

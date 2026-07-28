@@ -1,6 +1,6 @@
 # VID-1: YouTube/Vimeo URL Parser (SUPPORT)
 
-- **Status:** IMPLEMENTED 2026-07-28, revision 3 — review pending (§ *Build run*,
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   § *Revision 1*, § *Revision 2*, § *Ratified amendment*, § *Lockfile*). **Both open
   decisions are now closed**; no question is outstanding against this slice. Revision 3
   changed no code and no behaviour: it records decision `VID1_LOCKFILE_SCOPE` (operator,

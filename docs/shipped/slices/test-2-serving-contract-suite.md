@@ -1,6 +1,6 @@
 # TEST-2: Serving-contract characterization suite (renderer)
 
-- **Status:** IMPLEMENTED 2026-07-28, revision 2 — review pending (§ Build run below)
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
 - **Track:** TEST
 - **Depends:** test-1 (CI exists to run it); cache-1/2/3 committed (the contract)
 - **Source:** `docs/testing-strategy.md` §2; `docs/caching-architecture.md`

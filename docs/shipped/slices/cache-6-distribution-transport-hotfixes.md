@@ -1,6 +1,6 @@
 # CACHE-6: Distribution transport hotfixes (revalidation header + image query strings)
 
-- **Status:** IMPLEMENTED 2026-07-28, **revision 2** (review iteration 1's two required
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   changes applied — documentation reconciliation only, **no code and no comment changed**;
   revision 1 applied iteration 0's two truth corrections), review
   pending. Authored by the operator the same day from live staging probe findings. Nothing

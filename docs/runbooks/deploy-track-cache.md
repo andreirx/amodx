@@ -12,12 +12,12 @@ CloudFront was stripping `x-revalidation-token` (so `/api/revalidate` 401'd ever
 caller — **probe 7 could not have passed on cache-2 alone**) and stripping `?url&w&q` on
 `_next/image*` (so the image Lambda 500'd — **probe 11 was a check that could not pass**).
 Both are `infra/lib/renderer-hosting.ts` only. See
-`docs/slices/cache-6-distribution-transport-hotfixes.md`.
+`docs/shipped/slices/cache-6-distribution-transport-hotfixes.md`.
 
 ## Preconditions
 
 - Working tree clean on `main`; root `npm run build` green.
-- **SEC-1 committed** (`docs/slices/sec-1-audit-remediation-2026-07.md`): the deploy
+- **SEC-1 committed** (`docs/shipped/slices/sec-1-audit-remediation-2026-07.md`): the deploy
   must carry the patched `next` (middleware-bypass fix) / `next-auth` / `sharp`.
 - Staging is ~630 resources behind the repo (measured 2026-07-26) — the staging deploy
   absorbs that drift BY DESIGN (ratified staged-reconcile). Skim `cdk diff` for staging

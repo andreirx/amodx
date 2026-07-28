@@ -1,6 +1,6 @@
 # CACHE-2: Fix ISR revalidation keying (domain, not tenantId)
 
-- **Status:** IMPLEMENTED 2026-07-26 (revised same day for operator decisions `CACHE-2-D1` /
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   `CACHE-2-D2`, both now applied) — code + IAM complete, review pending, **NOT DEPLOYED**.
   Track CACHE deploys only after `cache-3` (H1); nothing in this slice is live.
 - **Track:** CACHE — serving-layer remediation
@@ -452,7 +452,7 @@ backend/vitest.unit.config.ts                (new — AWS-free runner)
 backend/package.json                         (test:unit script)
 infra/lib/api.ts                             (CACHE-2-D2 — one line: grantRead on the revalidation secret)
 docs/caching-architecture.md                 (§5 rewritten; Known Gaps 2,4,7; nightly-flush list; open-next note)
-docs/slices/cache-2-isr-revalidation-keying.md (this file)
+docs/shipped/slices/cache-2-isr-revalidation-keying.md (this file)
 docs/ROADMAP.md                              (cache-2 status)
 docs/TECH-DEBT.md                            (CreateContentFunc grant entry removed — fixed; alias entry kept)
 CURRENT_SLICE.md                             (priority + status)

@@ -88,7 +88,7 @@ portable helper or maintain test-parity with the renderer helper.
   the shared package's own export line; every live email key is still built by an inline
   `.toLowerCase()` or by no normalization at all, and no call site validates after normalizing.
   Conforming the call sites is `fnd-2` — 14 lines across 7 files, enumerated in
-  `docs/slices/fnd-1-normalize-email.md` § *Call-site inventory* — and it is a key migration
+  `docs/shipped/slices/fnd-1-normalize-email.md` § *Call-site inventory* — and it is a key migration
   (expand-before-contract), not a find-and-replace.
 - Within a tenant, `<tenantId>#<sha256hex(email)>` is unique (deterministic hash of the
   normalized email), so Cognito enforces one account per (tenant, email). Across tenants

@@ -1,6 +1,6 @@
 # TEST-4: Infra truth — real cdk synth assertions, delete the lying stub
 
-- **Status:** IMPLEMENTED 2026-07-28 — review pending (see § Build run 2026-07-28, then
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   § Revise cycle 2026-07-28 for the `(d)` contract correction, then
   § Revise cycle 2026-07-28 round 2 for the doc-only reconciliation fixes)
 - **Track:** TEST

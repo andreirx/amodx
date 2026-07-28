@@ -1,6 +1,6 @@
 # VID-3: `video-hero` Block Embed (FEATURE)
 
-- **Status:** IMPLEMENTED 2026-07-28 — review pending, nothing deployed
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   (§ *Build run 2026-07-28*). Maturity reached: MATURE.
 - **Track:** A — Video embed
 - **Depends:** `vid-1` (parser), `vid-2` (render pattern established)
@@ -243,4 +243,4 @@ the no-scan rule, or a clean-architecture boundary.
 
 - `docs/plan-youtube-vimeo-embed.md` — Phase 3; Definition of Done items 5,6,7,12;
   Files-to-Modify; Future Considerations.
-- `docs/slices/vid-1-youtube-vimeo-url-parser.md`, `docs/slices/vid-2-inline-video-embed.md`.
+- `docs/shipped/slices/vid-1-youtube-vimeo-url-parser.md`, `docs/shipped/slices/vid-2-inline-video-embed.md`.

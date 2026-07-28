@@ -144,7 +144,7 @@ interface EmbedOptions {
 
 ### Phase 2: Video Plugin Update (FEATURE)
 
-**IMPLEMENTED 2026-07-28 as slice `vid-2`** (`docs/slices/vid-2-inline-video-embed.md`,
+**IMPLEMENTED 2026-07-28 as slice `vid-2`** (`docs/shipped/slices/vid-2-inline-video-embed.md`,
 § *Build run 2026-07-28*); review pending, nothing deployed. Two points below were decided
 in-flight and the plan text now reads as implemented:
 
@@ -177,7 +177,7 @@ in-flight and the plan text now reads as implemented:
 
 ### Phase 3: VideoHero Plugin Update (FEATURE)
 
-**IMPLEMENTED 2026-07-28 as slice `vid-3`** (`docs/slices/vid-3-video-hero-block.md`,
+**IMPLEMENTED 2026-07-28 as slice `vid-3`** (`docs/shipped/slices/vid-3-video-hero-block.md`,
 § *Build run 2026-07-28*); review pending, nothing deployed. Track A is code-complete. Three
 points were decided in-flight and the text below reads as implemented:
 
@@ -462,6 +462,6 @@ them and both re-stated here so this list is not read as unqualified:
 Items **12, 18-24 are `NOT RUN` and are the OPERATOR's** — every one of them is a measurement
 on a real browser or device (viewport cover, mobile autoplay policy, hydration), and rows
 18-22 additionally want a live tenant page. They are itemized as a checklist in
-`docs/slices/vid-3-video-hero-block.md` § *Operator visual checklist*. Their automated
+`docs/shipped/slices/vid-3-video-hero-block.md` § *Operator visual checklist*. Their automated
 counterparts — which assert what the server EMITS, not what a browser does with it — are
 `packages/plugins/test/videoPlugin.test.ts` and `test/videoHeroPlugin.test.ts`.

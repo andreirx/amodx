@@ -143,7 +143,7 @@ The public pool username is `<tenantId>#<sha256hex(normalizedEmail)>`, produced 
 username construction. Any email-format validation runs on the NORMALIZED form, never on raw
 input. That is the required end state, not today's: `fnd-1` (2026-07-28) shipped the primitive
 with **zero** consumers, and the call-site migration is `fnd-2` — see § Dependencies and
-`docs/slices/fnd-1-normalize-email.md` § *Call-site inventory*.
+`docs/shipped/slices/fnd-1-normalize-email.md` § *Call-site inventory*.
 See Email normalization & username derivation below. This is load-bearing: divergent normalization
 forks `CUSTOMER#email` records and breaks anonymous-order → registered-account linking.
 
@@ -557,7 +557,7 @@ built, or anonymous-order → registered-account linking forks into duplicate
   `.trim()`, no shared util) and MUST be migrated to `normalizeEmail()` before this work:
   `fnd-1` shipped the primitive and migrated **zero** call sites by design. The full migration
   list — 14 lines across 7 files, incl. three that build keys from a completely raw email — is
-  `docs/slices/fnd-1-normalize-email.md` § *Call-site inventory*, and it is `fnd-2`'s scope.
+  `docs/shipped/slices/fnd-1-normalize-email.md` § *Call-site inventory*, and it is `fnd-2`'s scope.
   Treat it as a key migration (expand-before-contract), not a find-and-replace.
 - `@aws-sdk/client-cognito-identity-provider` added to `renderer/package.json` (not
   currently present). Installing triggers the repo rule: audit vulnerabilities and

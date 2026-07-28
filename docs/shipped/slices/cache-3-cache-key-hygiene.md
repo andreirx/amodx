@@ -1,6 +1,6 @@
 # CACHE-3: Cache-key hygiene — RSC header family + query-string allowlist + no Set-Cookie on cached HTML
 
-- **Status:** IMPLEMENTED 2026-07-27, **revision 5** (iteration-3 review's three required
+- **Status:** SHIPPED 2026-07-28 — deployed to production by the human, verified live (staging probe suite + prod probes: bijup.com s-maxage/Hit/age, session bypass, nf no-loop)
   changes applied, all documentation: the mandatory staging deploy command needs
   `-c stage=staging`; the CDK scope statements corrected from "a two-property edit on an
   existing construct" to the real three deltas across two constructs; two name ripples

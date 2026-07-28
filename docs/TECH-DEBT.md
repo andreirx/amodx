@@ -252,7 +252,7 @@ and query allowlists, `CookieBehavior: none`, TTLs, the viewer-request CloudFron
 both keyed behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
 `cloudfront:CreateInvalidation` blast radius, and both flush schedules — each carrying the
 slice or decision that ratified it. CI job `infra-synth`. Mutation-checked in five rounds.
-`docs/slices/test-4-infra-truth.md` § *Build run*.
+`docs/shipped/slices/test-4-infra-truth.md` § *Build run*.
 
 Deliberately **not** a `toMatchSnapshot()`: a snapshot over 410 resources fails on every
 unrelated change and is re-blessed rather than read.
@@ -623,7 +623,7 @@ register rather than only from a closed slice.
 sites** (its § Non-scope). The estate therefore still normalizes email identity inline and
 inconsistently — that is not a regression the slice introduced, it is the pre-existing state
 the slice exists to make fixable. Everything below is `fnd-2`'s work; the full table with
-`file:line` is `docs/slices/fnd-1-normalize-email.md` § *Call-site inventory*.
+`file:line` is `docs/shipped/slices/fnd-1-normalize-email.md` § *Call-site inventory*.
 
 - **Three email-keyed reads apply NO normalization at all — the highest-priority item.**
   `backend/src/customers/get.ts:24` and `:35` and `backend/src/customers/update.ts:31` build
