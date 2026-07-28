@@ -25,8 +25,12 @@ lib/
 └── renderer-hosting.ts         # OpenNext → Lambda + CloudFront for Next.js SSR
 
 test/
-└── infra.test.ts               # Jest test for stack synthesis
+├── amodx-stack.test.ts         # Real `Template.fromStack` assertions over the whole stack
+└── no-dotenv.cjs               # `.env*` blindfold for the builds the synth spawns
 ```
+
+See § *Testing* near the end of this document — the suite has behaviour worth knowing about
+before you run it.
 
 ## Stack Composition (`amodx-stack.ts`)
 
@@ -108,6 +112,42 @@ Writes runtime config files to S3 during deployment:
 - **Renderer config:** TABLE_NAME, API_URL, NEXTAUTH_SECRET, API key secret name → Lambda env vars
 
 Uses `AwsCustomResource` with `S3.putObject`, cache-control `no-cache`.
+
+## Testing
+
+`cd infra && npm test` — jest + ts-jest, CI job `infra-synth`. Added by slice `test-4`;
+rationale and the assertion → ratified-property map are in
+`docs/slices/test-4-infra-truth.md`.
+
+`test/amodx-stack.test.ts` synthesizes the **real** `AmodxStack` once and makes 15 named
+assertions over the resulting template: the CloudFront cache key (header + query allowlists,
+`CookieBehavior: none`, TTLs), the viewer-request Function on the default and `api/*`
+behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
+`cloudfront:CreateInvalidation` blast radius (4 roles, asserted in two named categories: the
+**3 request-path** cache Lambdas — the least-privilege set — plus **1 deploy-time** role, CDK's
+`BucketDeployment` custom resource), and both flush schedules. Not a snapshot: a snapshot over
+410 resources gets re-blessed instead of read.
+
+Three things to know before running it:
+
+- **It takes ≈58 s and rebuilds `renderer/.open-next` and `admin/dist`.** Not a design choice
+  of the test — `RendererHosting` and `AdminHosting` run those builds inside their constructors
+  (`lib/renderer-hosting.ts:62`, `lib/admin-hosting.ts:31`), so *any* synth does this. Both are
+  gitignored outputs that a deploy regenerates. Tracked in `docs/TECH-DEBT.md`.
+  Consequence to know: consecutive runs are **not** independent. If a run is interrupted, the
+  next one can die in `beforeAll` with `ENOTEMPTY … .next/standalone/node_modules/next` and
+  report *all 15* assertions red for a reason unrelated to infra — `rm -rf renderer/.next` and
+  re-run before believing a wholesale failure.
+- **It is credential-free and enforces that itself.** The test stack passes
+  `config: { domains: {} }`, so `AmodxDomains` — the only synth-time context provider
+  (`HostedZone.fromLookup`) — is never built; and the suite strips credential-shaped
+  environment variables, closes the SDK's file and IMDS credential paths, and hides
+  `renderer/.env*` + `admin/.env*` from the whole spawned process tree via `no-dotenv.cjs`.
+  Assertions `(iso1)`–`(iso3)` fail if any of that regresses.
+- **`jest.config.js` pins `moduleFileExtensions` with `ts` before `js`,** the jest equivalent of
+  the `--prefer-ts-exts` that `cdk.json` passes to ts-node. `lib/` and `bin/` carry untracked
+  compiled `*.js` leftovers from before `tsconfig.json` gained `noEmit: true`; without the pin,
+  jest loads those instead of the sources. Assertion `(src1)` fails if the pin is removed.
 
 ## Deployment
 

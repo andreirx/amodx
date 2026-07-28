@@ -29,8 +29,13 @@ Grouped by the parent that owns the fix:
      because the version is exact-pinned). Clears all four at once.
    - **Runtime exposure:** none. CDK is build/deploy tooling, never bundled into a Lambda or the
      renderer, and never parses untrusted URLs / YAML / brace input.
-   - **Gated on** the CDK infra test suite (see "CDK infra test suite is a placeholder" below): add a
-     synth snapshot + `cdk synth` baseline *before* bumping.
+   - ~~**Gated on** the CDK infra test suite~~ — **GATE SATISFIED 2026-07-28 by `test-4`.**
+     `infra/test/amodx-stack.test.ts` runs a real `Template.fromStack` on every push (CI job
+     `infra-synth`). Note what this gate does and does not give you: the 15 assertions are
+     **named**, not a snapshot, so a `2.241.0 → 2.260.0` bump that changes the cache key, the
+     invalidation blast radius or a flush schedule fails with the property's name — but a bump
+     that changes anything *not* asserted passes silently. Before bumping, also run a manual
+     `cdk synth` of both stages and diff the templates by hand; there is no baseline artifact.
 2. **`open-next` 3.1.3 / `esbuild` (renderer build, build-time).** `esbuild` + `open-next` (mod). The
    advisory is the `esbuild --serve` dev-server CORS hole; open-next uses esbuild as a one-shot bundler,
    not a server. `--force` → `open-next@0.0.1` (absurd downgrade). **Fix:** move open-next forward to a
@@ -48,7 +53,8 @@ Grouped by the parent that owns the fix:
    downgrades). Dev-only test tooling, never deployed. **Fix:** refresh the infra jest/ts-jest stack to
    versions with a patched `js-yaml` — not a downgrade.
 
-**Order when `dep-1` runs:** (1) activate CDK infra tests + CI `cdk synth` baseline → (2) bump
+**Order when `dep-1` runs:** (1) ~~activate CDK infra tests + CI `cdk synth` baseline~~ **DONE
+(`test-4`, 2026-07-28)** → (2) bump
 `aws-cdk-lib → 2.260.0` (clears both HIGH + `yaml` + `brace-expansion`) → (3) move `open-next` forward
 for `esbuild` → (4) Next.js 16.3 stable for `postcss` → (5) review `next-auth`/`uuid` in Track C →
 (6) refresh jest/ts-jest.
@@ -166,8 +172,110 @@ The "glow" (HDR Caustics) pipeline currently uses `colors[0]` only and ignores t
 ### Existing tenants with page effect intensity > 0.15
 The PageEffectConfigSchema intensity cap was lowered from 0.5 to 0.15. Existing tenants with higher values stored in DynamoDB will render fine (renderer reads raw JSON, no validation). But when they open Admin > Settings, the intensity slider now caps at 0.15. Their stored value will display clamped. On save, the old higher value is replaced. No data loss but a subtle visual change they didn't request.
 
-### CDK infra test suite is a placeholder
-`infra/test/infra.test.ts` is entirely commented out (CDK scaffold boilerplate). No snapshot test, no resource assertions, no CI synthesis step. This means CDK upgrades, construct changes, or dependency bumps have zero automated verification. Must be activated before any aws-cdk-lib version change.
+### ~~CDK infra test suite is a placeholder~~ — CLOSED by `test-4` (2026-07-28)
+**Was:** `infra/test/infra.test.ts` was entirely commented out (CDK scaffold boilerplate) yet
+reported PASS 1/1. No resource assertions, no CI synthesis step — CDK upgrades, construct
+changes and dependency bumps had zero automated verification.
+
+**Now:** the stub is deleted. `infra/test/amodx-stack.test.ts` runs a real
+`Template.fromStack(new AmodxStack(...))` and makes 15 **named** assertions — cache-key header
+and query allowlists, `CookieBehavior: none`, TTLs, the viewer-request CloudFront Function on
+both keyed behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
+`cloudfront:CreateInvalidation` blast radius, and both flush schedules — each carrying the
+slice or decision that ratified it. CI job `infra-synth`. Mutation-checked in five rounds.
+`docs/slices/test-4-infra-truth.md` § *Build run*.
+
+Deliberately **not** a `toMatchSnapshot()`: a snapshot over 410 resources fails on every
+unrelated change and is re-blessed rather than read.
+
+### Two `no-dotenv.cjs` copies (`renderer/` and `infra/`)
+**Found:** `test-4` (2026-07-28). **Priority:** low.
+
+`renderer/test/serving-contract/no-dotenv.cjs` (`test-2`) and `infra/test/no-dotenv.cjs`
+(`test-4`) implement the same `fs`-layer `.env*` blindfold. They differ in scope — the renderer
+copy is hard-scoped to `renderer/`; the infra copy must also cover `admin/`, because the synth
+runs the admin vite build too — and `test-4`'s writable surface excluded `renderer/**`, so the
+copy was the available move.
+
+**Trigger for consolidating:** a third caller, or any workspace gaining a `packages/test-utils`
+for another reason. Do not create such a package *for this*: it would add a build-order edge to
+the monorepo to save ~40 lines. If they are ever merged, the merged file must keep both the
+audit journal and the `throwIfNoEntry` handling — those are load-bearing for the `(iso*)`
+assertions, not decoration.
+
+### Stale compiled `*.js` / `*.d.ts` in `infra/lib` and `infra/bin` shadow the TypeScript sources
+**Found:** `test-4` (2026-07-28). **Priority:** medium — it produced a false green once already.
+
+`infra/lib/` and `infra/bin/` carry untracked, gitignored compiled artifacts (`amodx-stack.js`,
+`renderer-hosting.js`, …) dated 2026-01-27, left over from before `infra/tsconfig.json` gained
+`noEmit: true`. They predate the entire CACHE track:
+
+    grep -c 'RendererCachePolicy\|x-has-session' infra/lib/renderer-hosting.js   -> 0
+    grep -c 'DebounceFlushFunc'                  infra/lib/amodx-stack.js        -> 0
+
+Any tool whose module resolution prefers `.js` over `.ts` silently loads that seven-month-old
+stack. `infra/cdk.json` has always guarded the deploy path (`ts-node --prefer-ts-exts`);
+`test-4`'s first run was NOT guarded and synthesized the stale snapshot — 10 assertions failed
+for a reason that had nothing to do with the current source.
+
+**Mitigated, not fixed:** `infra/jest.config.js` now pins
+`moduleFileExtensions: ['ts','tsx','js','json','node']`, and assertion `(src1)` fails if that
+ordering is removed. The files themselves were left in place on purpose: they are the
+operator's working-tree detritus, and deleting them would hide the hazard from the next tool
+that has no guard.
+
+**Fix when convenient:** `rm infra/lib/*.js infra/lib/*.d.ts infra/bin/*.js infra/bin/*.d.ts`
+locally, and consider whether anything still needs `npm run build -w infra` (today it is
+`tsc` against a `noEmit: true` config, i.e. a typecheck wearing the name `build`).
+
+### CDK constructs run application builds inside their constructors
+**Found:** `test-4` (2026-07-28). **Priority:** medium. **Blocked on:** the standing
+"no `infra/lib` changes" directive.
+
+`RendererHosting` and `AdminHosting` shell out to real builds from their constructors —
+`execSync('npm run build:open')` at `infra/lib/renderer-hosting.ts:62` and
+`execSync('npm run build')` at `infra/lib/admin-hosting.ts:31` — both with an inherited
+`{...process.env}`. So `cdk synth` (and therefore any synth-based test) is neither cheap nor a
+pure function of the CDK source. Three consequences:
+
+1. `cd infra && npm test` takes ≈58 s and **rebuilds `renderer/.open-next` and `admin/dist`**
+   as a side effect. Both are gitignored and every deploy regenerates them, so nothing durable
+   is lost — but a test that rebuilds two applications is surprising and it makes the CI job a
+   multi-minute one.
+2. The suite cannot be credential-free by omission. `next build` loads `renderer/.env.local`
+   (a real `AMODX_API_KEY`, `TABLE_NAME`, `AWS_REGION` on this checkout) and `vite build` loads
+   `admin/.env.local`. `test-4` had to add `infra/test/no-dotenv.cjs` +
+   `installProcessTreeIsolation()` to close that; the leak is *in the construct*, and the test
+   can only work around it from outside.
+3. A future test that wants to assert a construct in isolation cannot instantiate it without
+   triggering a build. `test-4` rejected stubbing `execSync` because the resulting graph
+   differs from the deployed one.
+4. **Consecutive runs are not independent.** `OBSERVED` 2026-07-28: a `renderer/.next/standalone`
+   tree left behind by a previous run made `next build` die with
+   `ENOTEMPTY: directory not empty, rmdir …/.next/standalone/node_modules/next`, which threw in
+   `beforeAll` and turned **all 15** assertions red for a reason with nothing to do with infra.
+   `rm -rf renderer/.next` clears it. CI is unaffected (clean checkout); a developer re-running
+   locally, especially after interrupting a run, is not.
+
+**Fix:** move build orchestration to a deploy script / `npm run` step and have the constructs
+consume an already-built directory (failing loudly if it is absent). Then a synth is pure,
+the test drops to seconds, and the isolation apparatus above becomes unnecessary.
+
+### ~~`docs/caching-architecture.md` says CloudFront invalidation reaches 3 roles; the template has 4~~ — CLOSED 2026-07-28
+**Found:** `test-4` (2026-07-28). **Closed:** same slice, revise cycle, by operator decision
+`test4-invalidation-role-contract`.
+
+**Was:** § *Key Architectural Decision: No CloudFront IAM on Mutation Lambdas* said
+`cloudfront:CreateInvalidation` is "limited to 3 specialized Lambdas". The synthesized template
+grants it to **4** roles: `DebounceFlushFunc`, `InvalidationFlushFunc`, `NightlyCacheFlushFunc`
+— and `CustomCDKBucketDeployment…ServiceRole`, CDK's own asset-upload custom resource, which
+gets the permission because `renderer-hosting.ts:539` passes `distribution: this.distribution`
+to `s3deploy.BucketDeployment`.
+
+**Resolution:** the template is the evidence and it wins — the contract was corrected, not the
+infra. That section now states the four roles and the split that matters: 3 **request-path**
+Lambdas (the least-privilege claim) + 1 **deploy-time** role that holds the action only during
+`cdk deploy`. Assertion `(d)` pins both categories by name and fails on a fifth grant.
 
 ### `playwright.yml` still deletes the lockfile; lockfile Linux entries are fragile
 Recorded by slice `test-1` (2026-07-27), **updated after the lockfile was repaired** in the same

@@ -13,11 +13,17 @@ the target architecture. Track TEST in `docs/ROADMAP.md` implements it.
 | admin | 0 (no runner installed) | — | — | 0 |
 | packages/shared | 1 file, `npm test` — `test/schemas.test.ts` (`test-3`); 40 tests over the invariant-bearing parses (single `domain`, `urlPrefixes` English defaults, `ContentStatus`, the seven order statuses, `IntegrationsSchema`) | — | — | — |
 | plugins/effects | 0 | — | — | — |
-| infra | jest file 100% commented out, reports PASS 1/1 | — | — | — |
-| CI | `ci.yml` job `build-typecheck-unit`: build → typecheck (8 workspaces) → `backend test:unit` (`test-1`, 2026-07-27) → `packages/shared` + `renderer` unit (`test-3`, 2026-07-28); credential-free, every push/PR; the three unit steps together ≈2 s | `ci.yml` job `serving-contract` (`test-2`, 2026-07-28): the renderer suite above, also credential-free. `playwright.yml` runs the staging-mutating suites (secrets-gated) | — | ↑ |
+| infra | — | 1 file, AWS-free, `npm test` (jest + ts-jest, both already present) — `test/amodx-stack.test.ts` (`test-4`); 15 named assertions over a real `Template.fromStack(new AmodxStack(...))`; ≈58 s, because two application builds run inside the CDK constructors (§6) | — | — |
+| CI | `ci.yml` job `build-typecheck-unit`: build → typecheck (8 workspaces) → `backend test:unit` (`test-1`, 2026-07-27) → `packages/shared` + `renderer` unit (`test-3`, 2026-07-28); credential-free, every push/PR; the three unit steps together ≈2 s | `ci.yml` jobs `serving-contract` (`test-2`, 2026-07-28) and `infra-synth` (`test-4`, 2026-07-28): the renderer and infra suites above, both credential-free. `playwright.yml` runs the staging-mutating suites (secrets-gated) | — | ↑ |
 
 Hazards: backend suites mutate shared staging state (unattended-unsafe, forbidden to
-relays); `.env.test` holds live secrets; the infra "suite" is a false green.
+relays); `.env.test` holds live secrets. The infra false green is **closed** (`test-4`) — and
+closing it surfaced a second, subtler one worth carrying as a rule: jest's default
+`moduleFileExtensions` resolves `js` before `ts`, so `infra/`'s untracked compiled
+`lib/*.js` leftovers shadowed the TypeScript sources and the first run silently synthesized a
+seven-month-old stack. Any new jest suite in a workspace that has ever emitted JS next to its
+TS must pin `moduleFileExtensions` (jest's equivalent of the `--prefer-ts-exts` that
+`infra/cdk.json` already passes to ts-node) **and** assert the resolved path — see `(src1)`.
 
 `ci.yml` deliberately references no `secrets.*` and sets no `env:` — it is the fast gate of
 §7 and nothing in it can touch AWS. It installs with `npm ci`, so CI is pinned to the reviewed
@@ -66,15 +72,42 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    to the new contract (middleware 404 + no-store), then encode the deploy-runbook
    probes (RSC, junk-param, nf, warm-edge session) as automated checks.
 6. **Infra** — `cdk synth` assertions (Template.fromStack): cache policy allowlists,
-   CF function presence, IAM boundaries (e.g. CloudFront invalidation confined to 3
-   Lambdas). Deletes the lying stub. Unblocks dep-1.
+   CF function presence, IAM boundaries (e.g. `cloudfront:CreateInvalidation` confined to
+   **3 request-path Lambdas** — debounce, flush, nightly — **plus 1 deploy-time role**,
+   CDK's `BucketDeployment` custom resource, which holds the action only while `cdk deploy`
+   runs). Deletes the lying stub. Unblocks dep-1.
+   *(The role contract on this line read "confined to 3 Lambdas" until 2026-07-28; corrected
+   to the four named roles by operator decision `test4-invalidation-role-contract` — the
+   synthesized template always had 4, so the plan was wrong, not the infra. See
+   `docs/slices/test-4-infra-truth.md` § Finding 2 and `docs/caching-architecture.md`
+   § Key Architectural Decision.)*
+   *Status: implemented as `infra/test/amodx-stack.test.ts` (`test-4`, 2026-07-28) — 15 named
+   assertions, each carrying the slice or decision that ratified the property it pins, plus
+   three isolation self-checks; zero new dependencies. Mutation-checked in **five rounds**
+   across two different `infra/lib` files and three assertion families (`(a2)`, `(e2)`, `(d)`×3
+   — a removed request-path grant, an added fifth grant, a second removed request-path grant);
+   every round failed **only** its target assertion, and every temporary edit was reverted and
+   proven reverted by `shasum` equality plus an empty `git diff -- infra/lib infra/bin`.
+   Named assertions, NOT
+   `toMatchSnapshot()`: a snapshot over 410 resources fails on every unrelated change and gets
+   re-blessed rather than read, which is a green that means "someone pressed `-u`".
+   Two corrections to the plan above came out of the implementation, and both are now folded
+   into it: the invalidation blast radius is **4** roles (3 request-path + 1 deploy-time), where
+   the plan had said 3 — the fourth is CDK's own `BucketDeployment` custom resource, which holds
+   `cloudfront:CreateInvalidation` so it can invalidate after uploading assets — and the suite is
+   ≈58 s rather than instant, because `RendererHosting` and `AdminHosting`
+   run the renderer OpenNext build and the admin vite build **inside their constructors**. That
+   second fact is also why this suite needs its own `.env*` blindfold
+   (`infra/test/no-dotenv.cjs`): without it, `next build` would load the operator's real
+   `AMODX_API_KEY` and `TABLE_NAME`, exactly as `test-2` measured for the renderer. Lifting
+   build orchestration out of the constructs is `docs/TECH-DEBT.md`.*
 7. **CI ordering** — every push: build + typecheck + unit (fast, no credentials), plus the
    serving-contract suite as a parallel job. On demand / nightly: local-DDB integration.
    Post-deploy: e2e vs staging.
-   *Status: `.github/workflows/ci.yml` carries both credential-free jobs —
+   *Status: `.github/workflows/ci.yml` carries three credential-free jobs —
    `build-typecheck-unit` (`test-1`, extended by `test-3` with the `packages/shared` and
-   `renderer` unit steps) and `serving-contract` (`test-2`). The backend local-DDB and
-   post-deploy legs are still unimplemented.*
+   `renderer` unit steps), `serving-contract` (`test-2`) and `infra-synth` (`test-4`). The
+   backend local-DDB and post-deploy legs are still unimplemented.*
 
 ## Invariants
 

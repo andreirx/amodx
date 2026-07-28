@@ -1403,7 +1403,11 @@ Previous design granted `cloudfront:CreateInvalidation` to ALL ~70 Lambdas via a
 - **Flush Lambda**: Has CloudFront IAM + DDB read/write. Only called by admin "GO LIVE NOW" button.
 - **Nightly Flush Lambda**: Has CloudFront IAM + S3 read/delete. Independent safety net.
 
-This follows the principle of least privilege — CloudFront access is limited to 3 specialized Lambdas instead of 70.
+This follows the principle of least privilege — on the request path, CloudFront access is limited to those 3 specialized Lambdas instead of 70.
+
+**The synthesized template grants `cloudfront:CreateInvalidation` to 4 roles, not 3.** The fourth is CDK's own `CustomCDKBucketDeployment…ServiceRole`: `renderer-hosting.ts` passes `distribution: this.distribution` to `s3deploy.BucketDeployment`, so the custom resource can invalidate the static assets it has just uploaded. It is **deploy-time tooling** — it holds the permission only while `cdk deploy` runs, never in response to visitor or admin traffic — so the least-privilege property above is unaffected. It is named here because it is a real grant, and a doc that omits it makes a reader treat the fourth grant as an intrusion.
+
+`infra/test/amodx-stack.test.ts` assertion `(d)` pins this contract in both categories: the 3 request-path roles by name, the 1 deploy-time role by name, and it fails on any fifth grant or on a known role acquiring the action twice. *(Contract corrected 2026-07-28 from "3 Lambdas" — operator decision `test4-invalidation-role-contract`, `docs/slices/test-4-infra-truth.md` § Finding 2. The template always had 4; the doc was wrong, not the infra.)*
 
 ### Nightly Flush Lambda
 

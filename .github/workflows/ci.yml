@@ -131,3 +131,58 @@ jobs:
       - name: Serving-contract suite (builds + serves the renderer, local DDB stub)
         working-directory: renderer
         run: npm run test:serving
+
+  infra-synth:
+    # The CloudFront half of the same contract (test-4). `serving-contract` above measures the
+    # ORIGIN end-to-end but cannot see the edge, so the cache-key allowlists, the viewer-request
+    # CloudFront Function and the IAM blast radius of cache invalidation are asserted here
+    # against a REAL `cdk synth` of `AmodxStack` — no snapshot file, no fixture template.
+    #
+    # A separate job for the same two reasons as `serving-contract`: a failure mode worth
+    # reading in isolation, and a different (larger) prerequisite set.
+    #
+    # CREDENTIAL-FREE, and again not only by omission. It reads no `secrets.*` and sets no
+    # `env:`. On top of that the suite itself cannot reach AWS: the test stack is constructed
+    # with no `domains.root`, so `route53.HostedZone.fromLookup` — the stack's only synth-time
+    # context provider — is never instantiated, and `installProcessTreeIsolation()` strips every
+    # credential-shaped variable, points the SDK's file credential chain at a nonexistent path,
+    # disables IMDS and hides `renderer/.env*` + `admin/.env*` from the whole process tree.
+    # `(iso1)`-`(iso3)` fail if any of that regresses.
+    #
+    # WHY THIS JOB IS SLOW AND WHY THAT IS NOT A BUG: `Template.fromStack` runs the renderer
+    # OpenNext build, the admin vite build and ~65 esbuild bundles, because those builds are
+    # invoked from inside the CDK constructors (infra/lib/renderer-hosting.ts:62,
+    # infra/lib/admin-hosting.ts:31). 52-58 s on a warm developer machine; a cold runner has no
+    # build caches. Removing that cost means lifting build orchestration out of the constructs,
+    # which is an `infra/lib` change (docs/TECH-DEBT.md).
+    name: infra synth assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Same pin, same reason as the jobs above.
+          node-version: '22'
+
+      - name: Install dependencies
+        # See the `npm ci` note in the first job — the same lockfile caveat applies, and it
+        # bites here too: the synth runs admin's `vite build`, which is exactly where a missing
+        # `@rollup/rollup-linux-x64-gnu` entry surfaced last time.
+        run: npm ci
+
+      # The synth builds the renderer and admin itself, so neither is built here — but both
+      # resolve types and code from these three packages, and so does esbuild when it bundles
+      # the backend handlers for every NodejsFunction.
+      - name: Build synth prerequisites (shared -> effects -> plugins)
+        run: |
+          npm run build -w packages/shared
+          npm run build -w packages/effects
+          npm run build -w packages/plugins
+
+      - name: Infra synth assertions (real Template.fromStack, no AWS)
+        working-directory: infra
+        run: npm test
