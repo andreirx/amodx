@@ -41,7 +41,7 @@ src/blocks/<name>/
 | `pricing` | Pricing Table | headline, subheadline, plans[] (title, price, interval, features, highlight) | — |
 | `image` | Image | src, alt, caption, width, aspectRatio | full, wide, centered |
 | `contact` | Contact Form | headline, description, buttonText, successMessage, tags | — |
-| `video` | Video Embed | url, caption, width, autoplay | centered, wide, full |
+| `video` | Video Embed | url, caption, width, autoplay | centered, wide, full; YouTube/Vimeo → iframe, direct media → native `<video>`, unrecognized → nothing (see § *The `video` block's render contract*) |
 | `leadMagnet` | Lead Magnet | headline, description, buttonText, resourceId, fileName, tags | — |
 | `cta` | Call to Action | headline, subheadline, buttonText, buttonLink, style | simple, card, band |
 | `features` | Feature Grid | headline, subheadline, items[] (title, description, icon), columns | 2, 3, or 4 columns |
@@ -99,19 +99,53 @@ reference belongs in a plugin's `*Editor.tsx`, not here.
 `vid-1` characterized only `videoSource.ts` and did not re-audit the others.)*
 
 `videoSource.ts` is the SUPPORT module `vid-2` (`video`) and `vid-3` (`video-hero`) consume.
-After those slices, **no render path carries its own video-URL regex** — the one in
-`video/VideoRender.tsx` today is what `vid-2` deletes.
+`vid-2` **deleted** the inline YouTube regex from `video/VideoRender.tsx`; `video-hero` is
+still on its own path until `vid-3`. After `vid-3`, no render path carries a video-URL regex.
+
+## The `video` block's render contract (slice `vid-2`)
+
+`video/VideoRender.tsx` branches on `parseVideoSource(attrs.url).kind` and nothing else:
+
+| Kind | Element | `src` | Notes |
+|------|---------|-------|-------|
+| `youtube` / `vimeo` | `<iframe>` | `buildEmbedUrl(kind, providerId, { autoplay })` — **rebuilt from the validated id**, nothing of the pasted string survives | `loading="lazy"` + `title` (the caption, else `"Embedded video"`) |
+| `direct` | `<video controls>` | `embedUrl`, which for this kind IS the raw URL | `autoPlay` implies `muted` + `playsInline`, or the browser blocks it; no `loading` |
+| `unknown` | *(none — returns `null`)* | — | Empty `url` classifies here too. **No markup at all**, so a bad URL leaves no artifact on a public page |
+
+The `unknown` branch is silent by design, so the author's only signal is editor-side:
+`video/VideoEditor.tsx` shows a provider indicator (icon shape + label, `text-muted-foreground`
+— never brand colour, Critical Rule 6) for the three recognized kinds, and a neutral-token
+warning callout for a non-empty unrecognized URL. Validation is warning-only and never blocks
+a save. Both surfaces call the SAME classifier, so what the editor promises and what the page
+renders cannot drift.
+
+**Do not read "the parser returned an `embedUrl`" as "the parser returned a safe URL"** —
+true for `youtube`/`vimeo`, false for `direct` (`docs/TECH-DEBT.md` § *vid-1 residuals*).
+The render path's three defences are: provider URLs are rebuilt from a validated id;
+`direct` is constrained by `isDirectMediaUrl`'s http(s) scheme guard; and `rawUrl` is **never**
+rendered — it stays in the editor for echo-back. No `dangerouslySetInnerHTML` on this path.
 
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
 
-Scope is the pure modules in `src/common/` only. The plugin components are React + Tiptap
-and need a DOM/RTL harness, which is `docs/testing-strategy.md` §4 and not yet built — so
-`include` is pinned to `test/` and must not be widened to `src/` without that harness.
-Tests import `src/`, never `dist/`, so a stale build cannot read as a passing contract.
-The suite is credential-free by construction (nothing under test has an import at all) and
-runs in CI's `build-typecheck-unit` job.
+| Suite | Covers |
+|-------|--------|
+| `test/videoSource.test.ts` (`vid-1`) | The parser's classification and emitted URLs |
+| `test/videoPlugin.test.ts` (`vid-2`) | What each classification **emits** — `RENDER_MAP["video"]` markup per kind, plus `VideoEditor`'s indicator/warning output |
+
+`vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
+components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path
+the renderer's SSR uses and needs **no DOM, no jsdom, no RTL, and no new dependency** — so the
+suite stays in the `environment: "node"` run and stays credential-free. What it cannot reach
+is INTERACTION (typing, `onChange`, Tiptap commands); that still needs the DOM/RTL harness of
+`docs/testing-strategy.md` §4. Importing `src/render.ts` in a node environment is itself the
+SSR-safety smoke test for the whole render entry — a top-level `window` reference anywhere in
+it fails that import.
+
+`include` is pinned to `test/` and must not be widened to `src/`. Tests import `src/`, never
+`dist/`, so a stale build cannot read as a passing contract. Runs in CI's
+`build-typecheck-unit` job.
 
 ## Adding a New Plugin
 

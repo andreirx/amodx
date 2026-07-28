@@ -520,3 +520,40 @@ silently into a wrong answer.
   `embedUrl` is rebuilt from a validated id and none of the caller's string survives. `vid-2`
   must not read "the parser returns an embedUrl" as "the parser returns a safe embedUrl" —
   that is true for `youtube`/`vimeo` and false for `direct`.)*
+  *(**Discharged for the `video` block, 2026-07-28, `vid-2`.** `video/VideoRender.tsx` never
+  renders `rawUrl`; provider kinds get a URL rebuilt by `buildEmbedUrl` from the validated id;
+  `direct` gets `embedUrl` inside a JSX attribute, which React escapes, and the scheme guard
+  bounds it to http(s)/relative; the file uses no `dangerouslySetInnerHTML`. Pinned by
+  `test/videoPlugin.test.ts` § *hostile input renders nothing*, which asserts the END-TO-END
+  result — `javascript:`/`vbscript:`/`data:`/`file:` media-lookalikes and a markup-injection
+  attempt all produce the empty string. **Still open for `video-hero`**, which does not use
+  the parser until `vid-3`.)*
+
+## vid-2 residuals (2026-07-28)
+
+Both items are **admin-side styling**, both are recorded rather than fixed because fixing
+either is a design-system change with callers well outside slice `vid-2`'s writable surface.
+
+- **No semantic `warning` token in the admin design system.** `admin/src/index.css`
+  `@theme inline` defines `muted`, `accent`, `destructive`, `border`, `primary`, `secondary`,
+  `card`, `popover`, `chart-1..5` and `sidebar-*` — and no warning/caution family.
+  `docs/plan-youtube-vimeo-embed.md` § *Editor UX* asks for an "amber warning" on an
+  unrecognized video URL; `bg-amber-50` would be a hardcoded colour (CLAUDE.md Critical
+  Rule 6) and `destructive` is the wrong semantic — nothing failed, and the validation is
+  deliberately warning-only and non-blocking. So `VideoEditor.tsx`'s callout uses the neutral
+  fallback the slice doc prescribes: `border-border` + `bg-muted` + `text-muted-foreground`,
+  with the `TriangleAlert` icon SHAPE carrying the severity. Consequence: a warning and an
+  informational note are visually identical in the admin today. Address: add
+  `--warning` / `--warning-foreground` to `admin/src/index.css` (light + dark) and the
+  `@theme inline` map, then switch this callout and any others; it is a design-system slice,
+  not a plugin slice.
+- **`video/VideoEditor.tsx` retains pre-existing hardcoded chrome colours.** `vid-2` removed
+  the one that was actively wrong — the fixed YouTube-red badge (`bg-red-50 text-red-600`) on
+  a block that now also serves Vimeo and uploaded media — and replaced it with the detected
+  provider in theme tokens. It did **not** touch `border-gray-200`, `bg-white`,
+  `bg-gray-50/50`, `text-gray-700`, or the local `Input`'s `focus:border-red-500`: those are
+  the shared visual language of every plugin editor in the package (see
+  `html/HtmlEditor.tsx`, `reviews-carousel/ReviewsCarouselEditor.tsx`, which are wholesale
+  amber), so changing them in one file would make it the odd one out rather than fix
+  anything. `test/videoPlugin.test.ts` asserts vid-2 did not ADD to the set. Address: a
+  package-wide editor-chrome tokenization pass, once the warning family above exists.

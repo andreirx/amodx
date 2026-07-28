@@ -109,17 +109,24 @@ source for the slice inventory:
 
 ## In Progress
 
-None. Track A slice docs exist (`vid-1`, `vid-2`, `vid-3`); implementation not started.
+None. Track A: `vid-1` and `vid-2` are **IMPLEMENTED, review pending** (see § Recently
+Completed); `vid-3` (`video-hero`) is the remaining slice and is not started.
 
 ## Next
 
 Review `cache-3`, then **deploy cache-3 + cache-1 + cache-2 together** with the post-deploy
-operator verification each slice doc specifies. Then finish Track TEST — `test-3` (pure unit
-layer) and `test-4` (infra `cdk synth` truth; `test-1` and `test-2` are implemented, review
-pending) — then `vid-1` → `vid-2` → `vid-3` (Track A), then `fnd-1` (shared
+operator verification each slice doc specifies. Track TEST is code-complete —
+`test-1`…`test-4` are all implemented and committed (`c37ca9a`, `6a46760`, `931a3ff`,
+`30787ed`), review pending. Track A: `vid-1` (`571286e`) and `vid-2` are implemented, review
+pending, so **`vid-3` (`video-hero`) is the next implementation slice**; then `fnd-1` (shared
 `normalizeEmail`), then begin
 Track B (`cmrc-1`). The `fnd-1` and Track B/C/D slice docs are not yet authored — generate
 them per `docs/ROADMAP.md` when their track starts.
+
+*(Corrected 2026-07-28 during `vid-2`. This paragraph still listed `test-3` and `test-4` as
+work "to finish" after they had been committed, and listed `vid-1`/`vid-2` as not started.
+Per-slice status lives in `docs/ROADMAP.md`, which outranks this file — `docs/VISION.md`
+§ Decision hierarchy.)*
 
 *(Track TEST was missing from this list until 2026-07-28. `docs/ROADMAP.md` § Track order
 ratified CACHE → TEST → A on 2026-07-26, and the ROADMAP outranks this file — see
@@ -127,6 +134,38 @@ ratified CACHE → TEST → A on 2026-07-26, and the ROADMAP outranks this file 
 
 ## Recently Completed
 
+- `vid-2` — inline `video` plugin: parser-driven embeds + native `<video>` (2026-07-28).
+  `video/VideoRender.tsx` now branches on `parseVideoSource` and nothing else — its inline
+  YouTube regex is deleted. YouTube/Vimeo get an `<iframe>` whose `src` is **rebuilt from the
+  validated provider id** (`loading="lazy"`, `title`); direct `.mp4`/`.webm` get a native
+  `<video controls>`, which is the defect fix — they were previously piped to an iframe and
+  did not play reliably; an unrecognized or empty URL renders **nothing at all**, not an empty
+  black 16:9 box (decision `VID2-UNKNOWN-OUTPUT`). Because the page is silent, the author's
+  only signal is editor-side: `VideoEditor.tsx` shows a provider indicator (icon shape +
+  label, `text-muted-foreground`) and a warning callout on a non-empty unrecognized URL.
+  Both surfaces call the same classifier, so the editor's promise and the page's behaviour
+  cannot drift. New `test/videoPlugin.test.ts` (38 tests) asserts **rendered output** through
+  `RENDER_MAP["video"]` using `renderToStaticMarkup` — no DOM/jsdom/RTL harness, no package
+  added to the tree. Discharges `vid-1` residual 4 (output encoding) for `video`; still open
+  for `video-hero`. **CSP finding: there is no CSP anywhere in the estate**, so the embeds are
+  unblocked today — a future CSP must allow `frame-src` for `www.youtube.com`,
+  `www.youtube-nocookie.com` and `player.vimeo.com` or every video block goes blank at once.
+  **Plugins-only change; `.github/workflows/ci.yml` is not touched** (`OBSERVED`: byte-identical
+  to `HEAD`). No CI edit was needed — the `vid-1` step `Plugins unit tests` runs `npm test` in
+  `packages/plugins`, which is `vitest run` with no path argument, so it discovers
+  `videoPlugin.test.ts` by glob. Surfaced, not acted on: that step's title and comment now
+  under-describe the job (it also gates rendered output, and React does now enter it via
+  `react-dom/server`) — a name-vs-behaviour drift proposed for a future CI-scoped slice, see
+  `docs/slices/vid-2-inline-video-embed.md` § *CI comment — surfaced, not acted on*.
+  Status `IMPLEMENTED`, review pending; `docs/ROADMAP.md` § Track A is authoritative.
+
+  *(Corrected in revision 2. Revision 0 made a comment-only `ci.yml` edit, revision 1 reverted
+  it, but this entry still claimed "one CI *comment* correction" against an unchanged file.)*
+- `vid-1` — video URL parser (2026-07-28, committed 571286e). Four-way classification
+  (`youtube` / `vimeo` / `direct` / `unknown`) in `packages/plugins/src/common/videoSource.ts`,
+  pure and zero-import, plus the plugins workspace's first test harness. Ratified contract
+  amendment `VID1-DIRECT-SCHEME-CONTRACT`: `direct` requires an absent/`http`/`https` scheme.
+  Status `IMPLEMENTED`, review pending; `docs/ROADMAP.md` § Track A is authoritative.
 - `test-2` — serving-contract characterization suite (2026-07-28).
   `renderer/test/serving-contract/` + `npm run test:serving`: 16 assertions, one per row of
   `docs/caching-architecture.md` § *Serving contract*, plus 4 harness isolation self-checks,

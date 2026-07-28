@@ -144,6 +144,21 @@ interface EmbedOptions {
 
 ### Phase 2: Video Plugin Update (FEATURE)
 
+**IMPLEMENTED 2026-07-28 as slice `vid-2`** (`docs/slices/vid-2-inline-video-embed.md`,
+§ *Build run 2026-07-28*); review pending, nothing deployed. Two points below were decided
+in-flight and the plan text now reads as implemented:
+
+- The `unknown` row of the render table said *"Empty container, no element"*. The `video`
+  plugin renders **nothing at all** (`return null`) — decision `VID2-UNKNOWN-OUTPUT`, taken
+  because an empty 16:9 container is a black hole on a live page and both binding
+  Definition-of-Done statements (this plan's item 4, the slice's item 3) say "renders
+  nothing". The empty-`url` and unrecognized-`url` cases therefore share one code path.
+  This does **not** amend Phase 3: `video-hero`'s `unknown` still falls back to the poster.
+- *"Display amber warning"* below could not be satisfied without a hardcoded colour — the
+  admin design system has no semantic warning token (`VID2-WARNING-TOKEN`). The callout uses
+  neutral theme tokens with a `TriangleAlert` icon carrying the severity by shape; the
+  missing token is tracked in `docs/TECH-DEBT.md` § *vid-2 residuals*.
+
 **Schema:** No change — `url: string` remains.
 
 **VideoEditor.tsx:**
@@ -264,14 +279,18 @@ scheme guard rejects them; the fourth proves the amendment did not narrow legiti
 - [ ] `parseVideoSource("/uploads/clip.mp4")` → `kind: "direct"` (relative media-library path unaffected)
 
 ### Video Plugin (Inline)
-- [ ] YouTube URL → iframe with embed URL renders
-- [ ] Vimeo URL → iframe with embed URL renders
-- [ ] Direct .mp4 URL → native `<video>` tag renders (defect fix)
-- [ ] Direct .webm URL → native `<video>` tag renders
-- [ ] Unknown URL → empty container, no broken element
-- [ ] Empty URL → no render
-- [ ] `loading="lazy"` present on iframe (not on native video)
-- [ ] `title` attribute present on iframe
+
+All eight are `EXECUTED` as assertions on rendered output in
+`packages/plugins/test/videoPlugin.test.ts` (`vid-2`), not manual checks.
+
+- [x] YouTube URL → iframe with embed URL renders
+- [x] Vimeo URL → iframe with embed URL renders
+- [x] Direct .mp4 URL → native `<video>` tag renders (defect fix)
+- [x] Direct .webm URL → native `<video>` tag renders
+- [x] Unknown URL → no broken element *(renders nothing — see `VID2-UNKNOWN-OUTPUT` above)*
+- [x] Empty URL → no render
+- [x] `loading="lazy"` present on iframe (not on native video)
+- [x] `title` attribute present on iframe
 
 ### VideoHero Plugin
 - [ ] YouTube URL → background iframe with autoplay/mute/loop params
@@ -283,11 +302,15 @@ scheme guard rejects them; the fourth proves the amendment did not narrow legiti
 - [ ] No `loading="lazy"` on VideoHero (above-the-fold)
 
 ### Editor UX
-- [ ] YouTube URL shows YouTube icon (Lucide `Youtube`)
-- [ ] Vimeo URL shows video icon (Lucide `Video`)
-- [ ] Direct URL shows no special indicator (or generic media icon)
-- [ ] Unknown URL shows amber warning text
-- [ ] Icons use `text-muted-foreground`, not brand colors
+
+The `video` plugin's five rows are `EXECUTED` in `videoPlugin.test.ts`; `video-hero`'s editor
+is Phase 3.
+
+- [x] YouTube URL shows YouTube icon (Lucide `Youtube`)
+- [x] Vimeo URL shows video icon (Lucide `Video`)
+- [x] Direct URL shows a generic media icon (Lucide `FileVideo`) + the label "Media file"
+- [x] Unknown URL shows warning text *(neutral tokens, not amber — `VID2-WARNING-TOKEN`)*
+- [x] Icons use `text-muted-foreground`, not brand colors
 
 ### Integration
 - [ ] SSR → no hydration mismatch
