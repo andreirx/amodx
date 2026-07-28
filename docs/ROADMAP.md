@@ -101,7 +101,7 @@ Source: `docs/plan-youtube-vimeo-embed.md`. Independent; plugin-local; no migrat
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `vid-1` | YouTube/Vimeo/direct/unknown URL parser (`videoSource.ts`, SUPPORT) | PLANNED |
+| `vid-1` | YouTube/Vimeo/direct/unknown URL parser (`videoSource.ts`, SUPPORT) | IMPLEMENTED 2026-07-28, **revision 3** — review pending; **no decision outstanding**. `packages/plugins/src/common/videoSource.ts` (pure, total, zero imports) + `test/videoSource.test.ts` (68 tests, ≈0.14 s), the plugins workspace's **first** test harness; CI step `Plugins unit tests` in the existing credential-free `build-typecheck-unit` job. All 10 rows of the plan's original Testing Checklist pass with the plan's expected values (slice doc § *Parser output*). Mutation-checked in 2 rounds (re-run at revision 1), each failing only its target assertions, each reverted and proven reverted by hash. **Zero packages added to the tree** — `vitest@4.1.8` was already there for backend + shared, so `npm install` reported `up to date` and `npm audit` is unchanged at 46 (3 mod / 43 high). The one deviation raised at revision 0 is **RATIFIED** (`VID1-DIRECT-SCHEME-CONTRACT` = RETAIN, operator 2026-07-28): `isDirectMediaUrl` rejects non-http(s) schemes, so `javascript:…/x.mp4` cannot be classified `direct` and reach `vid-2`'s `<video src>`. It is now an amendment to `docs/plan-youtube-vimeo-embed.md` rule 3 (plan doc edited, so plan and code agree), pinned by 4 discriminating tests — deleting the guard fails exactly those 4. Revision 1 changed **no behaviour**: two code files touched, one a comment and one the test file. **Revision 2** clears the revision-1 review's two required changes: (a) the `direct` kind's `embedUrl` is restored to the plan's contract — the **raw** URL, so `embedUrl === rawUrl`; the trimmed value was a *second*, never-ratified deviation that a same-shaped test had pinned in place (now mutation-checked: round 3 fails exactly that one test); (b) `docs/TECH-DEBT.md`'s dependency-audit counts are reconciled against a freshly executed root `npm audit` — the tracker's "2 high + 27 moderate" was stale, 46 (3 mod / 43 high) is correct, and the delta plus the new `sharp`/`react-router` HIGHs, the cleared `uuid`/`js-yaml` items and the evidence that `npm audit fix` clears none of them are all written into the tracker. Still 68 tests, unchanged CI step. **Revision 3** closes the second and last open question and changes **no code**: the revision-2 review escalated the root `package-lock.json` diff against the task packet's "ZERO changes outside…" wording, and the operator ratified it (`VID1_LOCKFILE_SCOPE`) — an npm-workspace devDependency cannot be declared without the root lockfile recording it, and CI's `npm ci` fails outright when a manifest and the lockfile disagree, so the constraint as worded was unsatisfiable. The diff is authorized narrowly, as an ancillary of the permitted `vitest` devDependency: metadata only, **zero** `node_modules/` entries added (measured, not asserted). Every gate re-measured green against the current tree, and the parser output table re-derived from the built `dist/` artifact rather than source |
 | `vid-2` | Inline `video` plugin: iframe embeds + native `<video>` for direct media (defect fix) | PLANNED |
 | `vid-3` | `video-hero` block: tabbed Upload/Library/Embed + background iframe cover | PLANNED |
 
@@ -160,13 +160,18 @@ Hygiene work, not a feature track.
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `dep-1` | Dependency-audit remediation for the **non-backend** workspaces — renderer/build (`open-next`/`esbuild`, `next`/`postcss`), infra (`aws-cdk-lib` → `fast-uri`/`brace-expansion`/`yaml`, + the `jest`/`ts-jest` test toolchain), and auth (`next-auth`/`uuid`). No `--force`; no NextAuth downgrade. Detail + grouping in `docs/TECH-DEBT.md`. | PLANNED |
+| `dep-1` | Dependency-audit remediation for the **non-backend** workspaces — renderer (`next` → `postcss`/`sharp`, `open-next`/`esbuild`), infra (`aws-cdk-lib` → bundled `fast-uri`/`yaml`), admin (`react-router` 8.x), and the repo-wide `brace-expansion` tooling leaf. No `--force`. Detail, owners and ordering in `docs/TECH-DEBT.md`. | PLANNED |
 
 > Backend's 2 critical `vitest`/`@vitest/ui` advisories were fixed first (`vitest ^4.1.8`,
 > 0 backend vulnerabilities, tests green). A non-breaking `npm audit fix` (2026-06-29) then cleared
-> 4 more HIGH (`linkify-it`, `form-data`, `undici`, `vite`) + the non-breaking moderates. `dep-1`
-> covers only what remains — 2 high + 27 moderate, all needing a version-pin bump or a `--force`
-> breaking change (grouped in `docs/TECH-DEBT.md`).
+> 4 more HIGH (`linkify-it`, `form-data`, `undici`, `vite`) + the non-breaking moderates; `next-auth`
+> → `uuid` and the `jest` → `js-yaml` moderates have since cleared too (`OBSERVED` 2026-07-28).
+> `dep-1` covers what remains: **46 findings — 43 high, 3 moderate** (`EXECUTED` 2026-07-28, root
+> `npm audit`), all needing a version-pin bump or a breaking change. That is not the same set as the
+> earlier "2 high + 27 moderate" — the advisory database moved in both directions; `brace-expansion`
+> alone accounts for 36 of the 46 nodes. **Numbers are true only as of their measurement date;
+> re-run `npm audit` before acting** (grouped, with owners and runtime-exposure notes, in
+> `docs/TECH-DEBT.md`).
 
 ## Cross-cutting dependencies
 

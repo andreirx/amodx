@@ -64,9 +64,9 @@ jobs:
       - name: Typecheck (all 8 workspaces, tsc --noEmit)
         run: npm run typecheck
 
-      # The three pure-unit suites (test-1 seeded backend's; test-3 added the other two).
-      # Separate steps rather than one aggregated script so a red run names the workspace
-      # in the step title without anyone having to open the log.
+      # The four pure-unit suites (test-1 seeded backend's; test-3 added the next two;
+      # vid-1 added the plugins one). Separate steps rather than one aggregated script so a
+      # red run names the workspace in the step title without anyone having to open the log.
       #
       # Each runs a DIFFERENT runner invocation but the same guarantee: no AWS client is
       # ever constructed for real (the renderer suite mocks @aws-sdk/client-dynamodb and
@@ -80,6 +80,13 @@ jobs:
 
       - name: Shared schema unit tests (Zod contracts; zod is the only dependency)
         working-directory: packages/shared
+        run: npm test
+
+      - name: Plugins unit tests (videoSource URL parser; the module under test has no imports)
+        # `vid-1`. First test harness in this workspace. `packages/plugins/vitest.config.ts`
+        # narrows `include` to test/, so this can never pick up a React/Tiptap file from
+        # src/ and try to run it in a node environment.
+        working-directory: packages/plugins
         run: npm test
 
       - name: Renderer unit tests (tenant-directory TTL/bound/fail-open, not-found handoff)

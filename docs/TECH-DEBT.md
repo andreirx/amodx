@@ -16,48 +16,113 @@ Items tracked here are known issues that don't block production but should be ad
   `linkify-it` (renderer, Tiptap editor chain), `form-data` (mcp-server → axios), `undici`
   (backend Lambda runtime + mcp-server), `vite` (admin + backend build), plus `markdown-it`,
   `@babel/core`, `js-yaml` (eslint path). Full rebuild green: exit 0, 8/8 workspaces.
+- **`next-auth` → `uuid`** — was item 4 below; cleared by `sec-1`'s `next-auth 4.24.13 → 4.24.15`.
+  `OBSERVED` 2026-07-28: `next-auth`'s manifest now declares `uuid: ^11.1.1` and the tree resolves
+  `uuid@11.1.1`, so the vulnerable bundled v3/v5/v6 copy no longer exists. `uuid` does not appear
+  in `npm audit` at all.
+- **`jest` / `ts-jest` → `js-yaml`** — was item 5 below (~19 of the then-27 moderates); cleared
+  upstream, not by us. `OBSERVED` 2026-07-28: `@istanbuljs/load-nyc-config` resolves
+  `js-yaml@3.15.0`, a **patched 3.x**, and neither `js-yaml` nor `@istanbuljs/load-nyc-config`
+  appears in `npm audit`. The jest tree is still in the audit, but now for `brace-expansion`
+  (item 1 below) — a different advisory with a different owner. Do not read "jest is still listed"
+  as "this item came back."
 
-**Remaining — 2 high + 27 moderate (whole repo).** Every one needs a `--force` breaking downgrade or a
-deliberate version-pin bump; none clears with plain `npm audit fix`. **Do NOT run `npm audit fix --force`.**
-Grouped by the parent that owns the fix:
+**Remaining — 46 findings: 43 high, 3 moderate (whole repo).** `EXECUTED` 2026-07-28 at the repo root
+(`npm audit`; roots and owners enumerated from `npm audit --json`). A root-level audit covers all 8
+workspaces through the hoisted `node_modules`, so "whole repo" is literal.
 
-1. **`aws-cdk-lib` 2.241.0 — exact pin in `infra/package.json` (deploy-time).** `aws-cdk-lib` (HIGH —
-   OS command injection in NodejsFunction bundling), bundled `fast-uri` (HIGH — path traversal / host
-   confusion), `yaml` (mod — stack overflow), `brace-expansion` (mod — ReDoS). All four are **bundled
-   inside the cdk tarball**, so `npm audit fix` cannot dedupe them out.
-   - **Fix:** bump the pin `2.241.0 → 2.260.0` — semver-*minor*, not major (shows as `--force` only
-     because the version is exact-pinned). Clears all four at once.
+> **Why this is not the previous `2 high + 27 moderate`.** That line was accurate when written; the
+> advisory database moved under it, in both directions. Two items cleared (`uuid`, `js-yaml` — see
+> *Cleared* above, −21ish moderates), and three moved the other way: `brace-expansion` was re-rated
+> **moderate → high** and gained three new advisories, which alone accounts for **36 of the 46**
+> nodes; `sharp` and `react-router` are new HIGH advisories against packages that were already
+> installed. Net: fewer moderates, far more highs. **A count in this file is only true as of its
+> measurement date — re-run `npm audit` before acting on it, do not trust the number.**
+
+Every remaining item needs a `--force` breaking downgrade or a deliberate version-pin bump.
+**`EXECUTED` 2026-07-28: a non-breaking `npm audit fix` clears nothing** — `npm audit fix --dry-run`
+reports 118 added / 45 changed / 1 removed and a post-fix count of **still 46 (43 high, 3 moderate)**.
+This matters because `npm audit --json` marks items 4 and 5 below `"fixAvailable": true`; the dry-run
+shows that flag is not borne out for either. **Do NOT run `npm audit fix --force`.**
+
+Grouped by the parent that owns the fix, largest blast radius first:
+
+1. **`brace-expansion` (HIGH) — 36 of the 46 nodes, dev/build tooling only.** Installed `1.1.16`;
+   the advisories cover **`<=5.0.7`, i.e. every published version**, which is why nothing dedupes it
+   away. Four advisories, all denial-of-service: zero-step sequence process hang / memory exhaustion,
+   a large numeric range that defeats the documented `max` protection, and ReDoS.
+   - **Owners (four independent trees, one shared leaf):** the `eslint` / `@typescript-eslint` stack
+     (admin `eslint ^9.39.1`, renderer `eslint ^9`, `eslint-config-next`), the infra `jest` /
+     `ts-jest` stack (`@jest/*`, `babel-jest`, `jest-*`, `ts-jest`), `open-next` (renderer build),
+     and `@node-minify/core`. Reached via `glob` → `minimatch` → `brace-expansion` in most paths.
+   - **`npm audit` proposes `eslint@10.8.0` (semver-major) and that clears only the eslint subtree** —
+     the jest, open-next and node-minify paths keep their own copies. There is no one-bump fix.
+   - **Runtime exposure: none.** Every owner is lint or test or build tooling; `brace-expansion` is
+     not present in any Lambda bundle or the renderer runtime, and none of these tools expands a
+     brace pattern that a tenant or end user controls — the patterns come from our own config files.
+   - **Fix:** move each owner forward as its ecosystem ships a patched `minimatch`/`brace-expansion`.
+     Low urgency, high node count; do **not** let the count drive priority ahead of items 2–3.
+2. **`next` 16.2.x → `postcss` + `sharp` (renderer).** Two HIGH advisory roots behind one parent.
+   - `postcss` (HIGH, 3 advisories): XSS via unescaped `</style>` in CSS stringify output, **and**
+     arbitrary file read / information disclosure via an attacker-controlled `sourceMappingURL`.
+     Build-time; the renderer does not stringify tenant content through PostCSS.
+   - `sharp` **0.34.5** (HIGH): inherited libvips CVE-2026-33327 / -33328 / -35590 / -35591. Fixed in
+     `sharp >= 0.35.0`. Pulled in as `next`'s optional image-optimization dependency.
+   - **Exposure — assess before `dep-1` closes, do not assume build-time.** `INFERRED`, not verified:
+     unlike `postcss`, `sharp` runs at **request time** in Next's image optimizer, so if the deployed
+     OpenNext bundle includes the image-optimization function, a malicious image reaching that path
+     is live attack surface. Whoever runs `dep-1` must first establish (a) whether the deployed
+     bundle ships `sharp`, and (b) whether any un-trusted image can reach it, or whether every
+     optimized image originates from an authenticated tenant-admin upload. Record the answer here.
+   - **`npm audit` proposes `next@9.3.3`** — an absurd six-major downgrade; ignore it.
+     **Fix:** Next.js >= 16.3 stable (16.3 was canary when first written — re-check), which carries
+     both a patched `postcss` and `sharp >= 0.35.0`.
+3. **`aws-cdk-lib` 2.241.0 — exact pin in `infra/package.json` (deploy-time).** `aws-cdk-lib` itself
+   (HIGH, 3 advisories — OS command injection in NodejsFunction bundling, the same in Docker
+   bundling, CodeBuild S3 log encryption), plus two dependencies **bundled inside the cdk tarball**:
+   `fast-uri` **3.1.0** (HIGH, 4 advisories — path traversal via percent-encoded dot segments, host
+   confusion via percent-encoded authority delimiters) and `yaml` 1.x (moderate — stack overflow on
+   deeply nested collections).
+   - Note the hoisted root `fast-uri` is already the patched `3.1.4`; the vulnerable copy is only the
+     nested `node_modules/aws-cdk-lib/node_modules/fast-uri`. `npm audit` marks it
+     `"fixAvailable": true`, but it is bundled, and the dry-run above confirms plain `audit fix`
+     does not remove it.
+   - **Fix:** bump the pin `2.241.0 → 2.262.1` (the version `npm audit` now names; it was 2.260.0
+     when this entry was first written) — semver-*minor*, not major, and it shows as `--force` only
+     because the version is exact-pinned. Clears all three at once.
    - **Runtime exposure:** none. CDK is build/deploy tooling, never bundled into a Lambda or the
-     renderer, and never parses untrusted URLs / YAML / brace input.
+     renderer, and never parses untrusted URLs or YAML.
    - ~~**Gated on** the CDK infra test suite~~ — **GATE SATISFIED 2026-07-28 by `test-4`.**
      `infra/test/amodx-stack.test.ts` runs a real `Template.fromStack` on every push (CI job
      `infra-synth`). Note what this gate does and does not give you: the 15 assertions are
-     **named**, not a snapshot, so a `2.241.0 → 2.260.0` bump that changes the cache key, the
+     **named**, not a snapshot, so a `2.241.0 → 2.262.1` bump that changes the cache key, the
      invalidation blast radius or a flush schedule fails with the property's name — but a bump
      that changes anything *not* asserted passes silently. Before bumping, also run a manual
      `cdk synth` of both stages and diff the templates by hand; there is no baseline artifact.
-2. **`open-next` 3.1.3 / `esbuild` (renderer build, build-time).** `esbuild` + `open-next` (mod). The
-   advisory is the `esbuild --serve` dev-server CORS hole; open-next uses esbuild as a one-shot bundler,
-   not a server. `--force` → `open-next@0.0.1` (absurd downgrade). **Fix:** move open-next forward to a
-   release carrying patched esbuild.
-3. **`next` / `postcss` (renderer, build-time).** `postcss` XSS via unescaped `</style>` in CSS
-   stringify, bundled in `next`. `--force` → `next@9.3.3`. **Fix:** Next.js ≥ 16.3 stable (16.3 is
-   canary as of writing). The renderer does not inject user content into CSS-stringify paths.
-4. **`next-auth` 4.x / `uuid` (renderer, server-side runtime).** `uuid` missing buffer-bounds check in
-   v3/v5/v6 when `buf` is passed, bundled in next-auth. `--force` → `next-auth@3.29.10` (breaking).
-   **Do NOT downgrade NextAuth.** We never pass a custom `buf`, so standard usage is unaffected. Resolve
-   during the Track C / customer-auth dependency review.
-5. **`jest` / `ts-jest` toolchain (infra test, dev-only).** ~19 of the 27 moderate:
-   `@istanbuljs/load-nyc-config → js-yaml` quadratic DoS, propagated up the whole jest tree (`@jest/*`,
-   `babel-jest`, `jest`, `ts-jest`, …). `--force` → `jest@25` / `ts-jest@27` (ancient breaking
-   downgrades). Dev-only test tooling, never deployed. **Fix:** refresh the infra jest/ts-jest stack to
-   versions with a patched `js-yaml` — not a downgrade.
+4. **`react-router` / `react-router-dom` 7.18.1 (HIGH) — admin SPA.** New advisory: RSC-mode CSRF
+   bypass allowing action execution before the 400 response. Vulnerable range `7.12.0 - 8.2.0`, so
+   the fix is `>= 8.2.1` — **outside** admin's declared `react-router-dom: ^7.10.1`, i.e. a
+   **semver-major** upgrade despite `npm audit` reporting `"fixAvailable": true` (the dry-run above
+   shows that flag clears nothing).
+   - **Exposure:** the admin is a Vite **client-side** SPA — it does not run React Router in RSC
+     mode, which is the mode the advisory requires. `INFERRED` from admin's build setup; confirm
+     before deciding, then either upgrade to 8.x during a dedicated admin slice or record a reasoned
+     acceptance here. Do not fold a router major into an unrelated slice.
+5. **`open-next` 3.1.3 / `esbuild` (renderer build, build-time; the 2 remaining moderates).** The
+   advisories are the `esbuild --serve` dev-server CORS hole and an arbitrary file read in the same
+   dev server; open-next uses esbuild as a one-shot bundler, never as a server. `--force` →
+   `open-next@0.0.1` (absurd downgrade). **Fix:** move open-next forward to a release carrying
+   patched esbuild.
 
 **Order when `dep-1` runs:** (1) ~~activate CDK infra tests + CI `cdk synth` baseline~~ **DONE
-(`test-4`, 2026-07-28)** → (2) bump
-`aws-cdk-lib → 2.260.0` (clears both HIGH + `yaml` + `brace-expansion`) → (3) move `open-next` forward
-for `esbuild` → (4) Next.js 16.3 stable for `postcss` → (5) review `next-auth`/`uuid` in Track C →
-(6) refresh jest/ts-jest.
+(`test-4`, 2026-07-28)** → (2) **answer the `sharp` runtime-exposure question in item 2** — it is the
+only remaining item with a plausible request-time path, so it sets the urgency of everything else →
+(3) bump `aws-cdk-lib → 2.262.1` (clears 1 HIGH root + bundled `fast-uri` + `yaml`) → (4) Next.js
+16.3 stable for `postcss` + `sharp` → (5) move `open-next` forward for `esbuild` → (6) decide
+`react-router` 8.x in an admin-owned slice → (7) let the `brace-expansion` owners age forward.
+
+**Re-measure before acting.** `npm audit` at the repo root; `npm audit --json` for the roots/owners.
+Do not carry the numbers above into a slice report without re-running them.
 
 ---
 
@@ -415,3 +480,43 @@ positions rather than assumed coverage:
 - **Test files outside typecheck:** `packages/shared` and `backend` test dirs are not
   in `tsconfig.include`, so `typecheck` doesn't cover them. Address: test-4 or a
   one-line tsconfig ride-along in the next slice touching those workspaces.
+  *(2026-07-28, `vid-1`: `packages/plugins/test/` joins the list — same cause, and here a
+  one-line `include` widening is the WRONG fix, because that tsconfig also drives
+  `npm run build` and would emit the test file into `dist/`. The correct fix for all three
+  is a `tsconfig.test.json` per workspace plus a second `tsc --noEmit` invocation, which is
+  three files of structure for a gap that has caught nothing yet — deferred deliberately.)*
+
+## vid-1 residuals (2026-07-28)
+
+Parser-module gaps in `packages/plugins/src/common/videoSource.ts`. All four are **chosen
+positions**, each pinned by a test that asserts the current behaviour, so none can regress
+silently into a wrong answer.
+
+- **`youtube.com/live/{id}` and legacy `youtube.com/v/{id}` classify as `unknown`.** The
+  plan enumerates four YouTube forms and these are not among them. A tenant pasting a
+  livestream URL gets the graceful-degradation path (nothing rendered), not a broken embed.
+  Address: one line each in `youtubeId()` when a tenant asks.
+- **`youtube-nocookie.com` classifies as `unknown`.** Privacy mode is explicit non-scope in
+  the slice; the plan parks it as a future tenant-level setting. Note the asymmetry this
+  creates: a tenant who has *already* pasted a nocookie URL gets no embed. Address: with the
+  privacy-mode setting, not before.
+- **Vimeo unlisted-video privacy hashes (`vimeo.com/{id}/{hash}`) classify as `unknown`.**
+  Playing those needs `?h={hash}` on the player URL, which `ParsedVideoSource` does not
+  model. Emitting `player.vimeo.com/video/{id}` without it would 404 at the player — a
+  broken embed is worse than no embed. Address: needs a field on `ParsedVideoSource`, so it
+  is a schema-shaped change, not a regex tweak.
+- **`isDirectMediaUrl`'s scheme guard is defence in depth, not output encoding.** RATIFIED
+  2026-07-28 as an amendment to the plan's `direct` rule (`VID1-DIRECT-SCHEME-CONTRACT` =
+  RETAIN) — so the guard itself is *not* debt, and `docs/plan-youtube-vimeo-embed.md` rule 3
+  was edited to match. The debt is what it does **not** cover: it stops
+  `javascript:`/`data:`/`vbscript:`/`file:` reaching `kind: "direct"`, but `vid-2` and `vid-3`
+  still own not putting an arbitrary tenant string into an attribute unencoded — and
+  `ParsedVideoSource.rawUrl` still carries the raw input for editor echo-back even when
+  `kind` is `unknown`. Address: as part of those slices' render paths.
+  *(Sharpened at revision 2, 2026-07-28: for `kind: "direct"` the plan's contract is that
+  `embedUrl` **is** the raw URL — `embedUrl === rawUrl`, byte for byte, no normalization of
+  any kind. So the only thing standing between a tenant-pasted string and `<video src>` on
+  that path is the scheme guard plus whatever `vid-2` does. Contrast the provider path, where
+  `embedUrl` is rebuilt from a validated id and none of the caller's string survives. `vid-2`
+  must not read "the parser returns an embedUrl" as "the parser returns a safe embedUrl" —
+  that is true for `youtube`/`vimeo` and false for `direct`.)*

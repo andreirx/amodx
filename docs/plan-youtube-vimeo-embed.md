@@ -104,8 +104,19 @@ export function isDirectMediaUrl(url: string): boolean;
 **Detection logic (four-way classification):**
 1. **YouTube**: regex for all URL variants, extract 11-char ID → `kind: "youtube"`
 2. **Vimeo**: regex for numeric ID after `vimeo.com/` or `player.vimeo.com/video/` → `kind: "vimeo"`
-3. **Direct media**: URL ends with `.mp4`, `.webm`, `.mov`, `.m4v`, `.ogg` (case-insensitive, ignoring query params) → `kind: "direct"`, `embedUrl` = raw URL
+3. **Direct media**: URL ends with `.mp4`, `.webm`, `.mov`, `.m4v`, `.ogg` (case-insensitive, ignoring query params) **and** its scheme is absent (relative / scheme-relative), `http`, or `https` → `kind: "direct"`, `embedUrl` = raw URL
 4. **Unknown**: anything else → `kind: "unknown"`, `embedUrl: null`
+
+**Amendment 2026-07-28 (decision `VID1-DIRECT-SCHEME-CONTRACT`, ratified during `vid-1`
+review):** rule 3's scheme requirement was added to this plan after the fact. The original
+rule classified purely by extension, which makes `javascript:alert(1)//clip.mp4` a `direct`
+result — and rule 3 says `embedUrl` = the raw URL, which Phase 2/3 then put in a
+`<video src>`. Defence in depth belongs at the boundary that owns the classification, so a
+non-http(s) scheme now yields `unknown` (render nothing). This tightens a region the plan
+had left unspecified: no URL in § *Testing Checklist* changes classification, and the
+root-relative media-library form (`/uploads/clip.mp4`) still classifies `direct`. It does
+**not** relieve Phase 2/3 of encoding output — see `docs/TECH-DEBT.md` § *vid-1 residuals*.
+Pinned by test (`packages/plugins/test/videoSource.test.ts`, § scheme guard).
 
 **Render behavior by kind:**
 
@@ -243,6 +254,14 @@ Before shipping, verify:
 - [ ] `parseVideoSource("https://example.com/video.webm?token=abc")` → `kind: "direct"` (ignores query params)
 - [ ] `parseVideoSource("https://example.com/random-page")` → `kind: "unknown"`, `embedUrl: null`
 - [ ] `parseVideoSource("")` → `kind: "unknown"`, `embedUrl: null`
+
+Added by the 2026-07-28 scheme amendment to rule 3 (`VID1-DIRECT-SCHEME-CONTRACT`). The
+first three are *discriminating* — the URI path ends in a media extension, so only the
+scheme guard rejects them; the fourth proves the amendment did not narrow legitimate input:
+- [ ] `parseVideoSource("javascript:alert(1)//clip.mp4")` → `kind: "unknown"`, `embedUrl: null`
+- [ ] `parseVideoSource("data:text/html;base64,AAAA/clip.mp4")` → `kind: "unknown"`, `embedUrl: null`
+- [ ] `parseVideoSource("file:///x.mp4")` → `kind: "unknown"`, `embedUrl: null`
+- [ ] `parseVideoSource("/uploads/clip.mp4")` → `kind: "direct"` (relative media-library path unaffected)
 
 ### Video Plugin (Inline)
 - [ ] YouTube URL → iframe with embed URL renders

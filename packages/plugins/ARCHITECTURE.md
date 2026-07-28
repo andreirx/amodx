@@ -77,6 +77,42 @@ All render components receive: `{ attrs: <schema type>, tenantId?: string }`
 
 Client-side components (contact form, lead magnet, post grid) use `window.AMODX_TENANT_ID` for API calls and submit to `/api/contact`, `/api/leads`, or `/api/posts`.
 
+## Shared modules under `src/common/`
+
+Code more than one plugin needs. Imported by RELATIVE path from the plugin directories, so
+it works from both the `admin` and `render` entry points without either importing the other
+— which is what keeps Critical Rule 1 (plugin split entry) intact. A module here that is not
+SSR-safe would break the renderer's server bundle, so anything with a `window` / `document`
+reference belongs in a plugin's `*Editor.tsx`, not here.
+
+| Module | What |
+|--------|------|
+| `videoSource.ts` | **Video URL parser** (slice `vid-1`). `parseVideoSource()` classifies a pasted URL four ways — `youtube` \| `vimeo` \| `direct` \| `unknown` — returning `{ kind, rawUrl, embedUrl, providerId? }`. **`embedUrl` is not uniformly safe:** for `youtube`/`vimeo` it is *rebuilt* from a validated provider id (nothing of the caller's string survives), for `direct` it is the caller's raw URL *verbatim* (`embedUrl === rawUrl` — the plan's rule 3 contract; trimming happens only to classify), and for `unknown` it is `null`. `buildEmbedUrl()` / `buildBackgroundEmbedUrl()` construct player URLs from an id; `isDirectMediaUrl()` detects uploaded media — extension **and** an absent/`http`/`https` scheme, so a `javascript:`/`data:`/`file:` string ending in `.mp4` classifies `unknown`, never `direct` (ratified 2026-07-28, `VID1-DIRECT-SCHEME-CONTRACT`; it is defence in depth, **not** a substitute for encoding output in the render path). Pure, **total** (never throws; `""` → `unknown`, `embedUrl: null`), **zero imports** — so SSR-safety is a property of the file, not of a dependency. Unit-tested. |
+| `resolveButtonEffect.ts` | Converts the legacy `GlowEffectConfig` to the unified `EffectConfig` on read |
+| `resolveCoverColorTokens.ts` | Cover/overlay colour token resolution |
+| `EffectControls.tsx`, `EffectPreview.tsx` | Admin-side effect configuration UI; the only two entries `package.json` exports individually (`@amodx/plugins/common/EffectControls`, `…/EffectPreview`) for the admin app |
+| `ButtonEffectWrap.tsx` | Button effect compositor (four-layer shell + chip) |
+| `LazyEffectCanvas.tsx` | Lazily-loaded block background effect canvas; carries `'use client'` |
+| `InlineRichTextField.tsx`, `InlineRichTextRenderer.tsx` | Inline rich-text editing field and its render counterpart |
+
+*(The one-line descriptions of the pre-`vid-1` modules are read from their file headers;
+`vid-1` characterized only `videoSource.ts` and did not re-audit the others.)*
+
+`videoSource.ts` is the SUPPORT module `vid-2` (`video`) and `vid-3` (`video-hero`) consume.
+After those slices, **no render path carries its own video-URL regex** — the one in
+`video/VideoRender.tsx` today is what `vid-2` deletes.
+
+## Tests
+
+`npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
+
+Scope is the pure modules in `src/common/` only. The plugin components are React + Tiptap
+and need a DOM/RTL harness, which is `docs/testing-strategy.md` §4 and not yet built — so
+`include` is pinned to `test/` and must not be widened to `src/` without that harness.
+Tests import `src/`, never `dist/`, so a stale build cannot read as a passing contract.
+The suite is credential-free by construction (nothing under test has an import at all) and
+runs in CI's `build-typecheck-unit` job.
+
 ## Adding a New Plugin
 
 1. Create `src/blocks/<name>/` with schema.ts, Editor.tsx, Render.tsx, index.ts
