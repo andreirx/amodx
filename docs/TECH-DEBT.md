@@ -528,6 +528,15 @@ silently into a wrong answer.
   result — `javascript:`/`vbscript:`/`data:`/`file:` media-lookalikes and a markup-injection
   attempt all produce the empty string. **Still open for `video-hero`**, which does not use
   the parser until `vid-3`.)*
+  *(**Discharged for `video-hero` too, 2026-07-28, `vid-3` — this residual is now CLOSED.**
+  `video-hero/VideoHeroRender.tsx` never renders `rawUrl`; the provider kinds get a URL
+  rebuilt by `buildBackgroundEmbedUrl` from the validated id; `direct` gets `embedUrl` inside
+  a JSX attribute, which React escapes, bounded by the scheme guard; there is no
+  `dangerouslySetInnerHTML`. This was a REAL exposure, not a formality: before `vid-3` the
+  block dropped `videoSrc` into `<source src>` with no scheme check whatsoever, so
+  `javascript:…/clip.mp4` reached the attribute. Pinned by
+  `test/videoHeroPlugin.test.ts` § *hostile input degrades to the poster*. Note the one thing
+  it does NOT cover — `posterSrc` — which is carried forward below.)*
 
 ## vid-2 residuals (2026-07-28)
 
@@ -557,3 +566,49 @@ either is a design-system change with callers well outside slice `vid-2`'s writa
   amber), so changing them in one file would make it the odd one out rather than fix
   anything. `test/videoPlugin.test.ts` asserts vid-2 did not ADD to the set. Address: a
   package-wide editor-chrome tokenization pass, once the warning family above exists.
+
+## vid-3 residuals (2026-07-28)
+
+Track A is complete with `vid-3`; these are what it deliberately did not do. The first two
+are the slice doc's own § Non-scope, restated here so they are findable from the debt
+register rather than only from a closed slice.
+
+- **`youtube-nocookie.com` privacy mode.** Not a parser gap that can be patched in isolation:
+  a nocookie URL classifies `unknown` today (`vid-1` residuals above), and the plan parks the
+  fix as a TENANT-LEVEL setting — the tenant chooses privacy mode and every embed on the site
+  switches origin. That means a `TenantConfig` field, a Settings control, and a way to get
+  that setting into a pure plugin render component that today receives only `{ attrs,
+  tenantId? }`. Address: as a small slice of its own, not as a regex change. A future CSP must
+  then allow `frame-src https://www.youtube-nocookie.com` as well.
+- **oEmbed provider metadata (title, duration, channel, Vimeo thumbnails).** `vid-3`'s editor
+  shows a real thumbnail for YouTube only, because YouTube has a static id-derivable URL
+  (`img.youtube.com/vi/{id}/hqdefault.jpg`) and Vimeo does not — its thumbnail needs an oEmbed
+  round trip. That means a network call from a plugin editor, which nothing in this package
+  does today, plus caching and a failure mode. Consequence meanwhile: the Vimeo preview is an
+  id-labelled placeholder, not a picture. Address: with the schema Option B work below, which
+  is where fetched metadata would be stored.
+- **Schema Option B — a normalized `VideoSourceSchema`.** Both blocks keep a dumb string
+  (`url` / `videoSrc`) and re-parse it on every render, which is Option A of
+  `docs/plan-youtube-vimeo-embed.md` § *Architecture Decisions 1* and is correct while the
+  parse is a pure nanosecond regex with no metadata to keep. It stops being correct the moment
+  anything needs to be STORED alongside the id — oEmbed metadata, a per-block privacy-mode
+  override, a Vimeo unlisted-video hash. Address: migration of two blocks' persisted attrs, so
+  it needs a real data-migration slice; do not do it incidentally.
+- **The `video-hero` cover sizer is viewport-relative, not container-relative.** The ratified
+  sizer (plan § Phase 3) uses `177.7778vh` / `100vh` / `56.25vw`, while the hero section is
+  `min-h-[70vh]` — a *minimum*. If an author's headline, subheadline and CTA push the section
+  TALLER than the viewport, the box can stop covering the bottom of it and the overlay colour
+  shows through. Not reachable at default content lengths, and over-covering (the normal case)
+  is harmless because the section is `overflow-hidden`. A container-relative version needs
+  `container-type: size` on the section plus `cqw`/`cqh` units — well supported now, but it
+  changes the ratified geometry, so it is a decision, not a tidy-up. Address: only if the
+  operator's landscape/portrait checks find a real case.
+- **`posterSrc` is not validated anywhere.** `vid-3` put `videoSrc` behind the parser's scheme
+  guard and thereby closed the `vid-1` residual for this block — but `posterSrc` is an IMAGE
+  URL, outside `parseVideoSource`'s domain, and still reaches `<img src>` / `<video poster>`
+  exactly as it did before. Unchanged pre-existing surface, and the same is true of every
+  image-bearing plugin in the package (`image`, `hero`, `carousel`, `testimonials`), so this
+  is a package-wide gap rather than a `video-hero` one. Bounded by the fact that the value
+  comes from an authenticated tenant admin and lands in a React-escaped attribute; a
+  `javascript:` URL in `src` is inert in every current browser (unlike `href`). Address: a
+  shared image-URL guard applied across the package, if it is judged worth the surface.

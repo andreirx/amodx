@@ -177,6 +177,28 @@ in-flight and the plan text now reads as implemented:
 
 ### Phase 3: VideoHero Plugin Update (FEATURE)
 
+**IMPLEMENTED 2026-07-28 as slice `vid-3`** (`docs/slices/vid-3-video-hero-block.md`,
+§ *Build run 2026-07-28*); review pending, nothing deployed. Track A is code-complete. Three
+points were decided in-flight and the text below reads as implemented:
+
+- The `unknown` row of the render table (*"Empty container, falls back to poster image"*) is
+  implemented as **poster, or no backdrop at all when no poster is set** — there is no empty
+  container element either way. This is the deliberate divergence from Phase 2's
+  `VID2-UNKNOWN-OUTPUT`: the inline block renders nothing because an empty 16:9 box is a hole
+  in a content column, the hero renders the poster because it still has to have a backdrop
+  behind its headline and CTA.
+- The sizer CSS below is implemented as an **inline style object**, not a stylesheet class.
+  `packages/plugins` emits no CSS — `npm run build` is bare `tsc`, there is no bundler and no
+  `.css` file — so a class would need a new delivery mechanism, and a Tailwind arbitrary value
+  would make the cover depend on the consuming app's `@source` scan resolving
+  `w-[177.7778vh]`. The `@supports not (min-width: 100%)` fallback is dropped: `min-width` is
+  supported by every browser in the estate's support matrix, and the `@supports` block's own
+  `177.78vh`/`100vh` values are what the base rule already computes.
+- **`muted` and `loop` are inert on the embed kinds.** `buildBackgroundEmbedUrl` hardcodes
+  both (an unmuted background embed is refused autoplay everywhere; YouTube loops only via
+  `playlist={id}`), so the editor replaces those two checkboxes with a statement of fact when
+  the source is a provider embed rather than offering controls that silently do nothing.
+
 **Schema:** No change — `videoSrc: string` remains.
 
 **VideoHeroEditor.tsx:**
@@ -293,18 +315,25 @@ All eight are `EXECUTED` as assertions on rendered output in
 - [x] `title` attribute present on iframe
 
 ### VideoHero Plugin
-- [ ] YouTube URL → background iframe with autoplay/mute/loop params
-- [ ] Vimeo URL → background iframe with `?background=1`
-- [ ] Direct .mp4 URL → native `<video>` tag (existing behavior)
-- [ ] Unknown URL → falls back to poster image only
-- [ ] Background iframe covers viewport on landscape (wide) screen
-- [ ] Background iframe covers viewport on portrait (tall) screen
-- [ ] No `loading="lazy"` on VideoHero (above-the-fold)
+
+Five of the seven are `EXECUTED` as assertions on rendered output in
+`packages/plugins/test/videoHeroPlugin.test.ts` (`vid-3`). The two viewport rows are
+**measurements, not assertions** — a static-markup harness has no layout — so they stay
+manual and are itemized in the slice doc's § *Operator visual checklist*. What the suite
+pins in their place is the cover MECHANISM: the emitted sizer declarations.
+
+- [x] YouTube URL → background iframe with autoplay/mute/loop params *(each parameter asserted by name, including the `playlist={id}` pairing without which `loop=1` is inert)*
+- [x] Vimeo URL → background iframe with `?background=1`
+- [x] Direct .mp4 URL → native `<video>` tag (existing behavior)
+- [x] Unknown URL → falls back to poster image only
+- [ ] Background iframe covers viewport on landscape (wide) screen — **OPERATOR**
+- [ ] Background iframe covers viewport on portrait (tall) screen — **OPERATOR**
+- [x] No `loading="lazy"` on VideoHero (above-the-fold)
 
 ### Editor UX
 
-The `video` plugin's five rows are `EXECUTED` in `videoPlugin.test.ts`; `video-hero`'s editor
-is Phase 3.
+The `video` plugin's five rows are `EXECUTED` in `videoPlugin.test.ts`; the `video-hero`
+rows below are `EXECUTED` in `videoHeroPlugin.test.ts` (`vid-3`).
 
 - [x] YouTube URL shows YouTube icon (Lucide `Youtube`)
 - [x] Vimeo URL shows video icon (Lucide `Video`)
@@ -313,9 +342,19 @@ is Phase 3.
 - [x] Icons use `text-muted-foreground`, not brand colors
 
 ### Integration
-- [ ] SSR → no hydration mismatch
-- [ ] Mobile iOS Safari → document autoplay limitations if they occur
-- [ ] Mobile Android Chrome → document autoplay limitations if they occur
+
+All three are **OPERATOR** rows and remain so after `vid-3`. The automated suites reach the
+STATIC markup both blocks emit — which is the input to hydration, not hydration itself — and
+they run in a `node` environment with no device, so an autoplay policy cannot be observed
+from them. The nearest automated proxy that does exist is credible but partial: both render
+components are pure functions of `attrs` with no state, no effect and no `window` reference,
+and `packages/plugins`' test suites import `src/render.ts` in a node environment, which fails
+outright on any top-level browser API. That makes a hydration mismatch *unlikely by
+construction*; it does not make it `OBSERVED`.
+
+- [ ] SSR → no hydration mismatch — **OPERATOR**
+- [ ] Mobile iOS Safari → document autoplay limitations if they occur — **OPERATOR**
+- [ ] Mobile Android Chrome → document autoplay limitations if they occur — **OPERATOR**
 
 ---
 
@@ -335,12 +374,26 @@ is Phase 3.
 | `packages/plugins/src/common/videoSource.ts` | NEW — parser module |
 | `packages/plugins/src/video/VideoEditor.tsx` | Add provider detection UI |
 | `packages/plugins/src/video/VideoRender.tsx` | Use parser, add Vimeo, add a11y |
-| `packages/plugins/src/video-hero/VideoHeroEditor.tsx` | Add tabbed selector with Embed tab |
-| `packages/plugins/src/video-hero/VideoHeroRender.tsx` | Conditional iframe render for embeds |
-| `packages/plugins/ARCHITECTURE.md` | Update with new common module, changed render paths |
-| `docs/block-types.md` | Document embed support for video and video-hero |
-| `docs/TECH-DEBT.md` | Add future considerations (youtube-nocookie, oEmbed metadata) |
-| `tools/mcp-server/src/index.ts` | Sync block schemas if MCP exposes video/video-hero attributes |
+| `packages/plugins/src/video-hero/VideoHeroEditor.tsx` | Add tabbed selector with Embed tab — DONE (`vid-3`) |
+| `packages/plugins/src/video-hero/VideoHeroRender.tsx` | Conditional iframe render for embeds — DONE (`vid-3`) |
+| `packages/plugins/ARCHITECTURE.md` | Update with new common module, changed render paths — DONE |
+| `docs/block-types.md` | Document embed support for video and video-hero — DONE |
+| `docs/TECH-DEBT.md` | Add future considerations (youtube-nocookie, oEmbed metadata) — DONE (§ *vid-3 residuals*) |
+| `tools/mcp-server/src/index.ts` | Sync block schemas if MCP exposes video/video-hero attributes — **NO CHANGE NEEDED**, verified `OBSERVED` 2026-07-28 |
+
+**MCP sync, checked and recorded** (`CLAUDE.md` § Definition of Done, "Check that the MCP
+server reflects the changes"). The condition in that row is *"if MCP exposes video/video-hero
+attributes"*, and it does not, for either half:
+
+- `videoHero` appears in neither `BLOCK_SCHEMAS` nor `add_block`'s `type` enum in
+  `tools/mcp-server/src/index.ts` — the MCP surface has never included this block.
+- The `video` entry that IS there describes only `url` / `caption` / `width` / `autoplay`, all
+  unchanged, and its description already reads *"supporting YouTube, Vimeo, or direct MP4
+  links"*, which `vid-2` made true.
+
+Neither `vid-2` nor `vid-3` changed a schema, so there is nothing to sync. **Adding
+`videoHero` to the MCP surface is new scope**, not reconciliation — it would let the AI author
+hero blocks it cannot author today — and is surfaced for the operator rather than built.
 
 ## Build Verification
 
@@ -389,3 +442,26 @@ All five must succeed before PR. (Backend is included per repo rules even though
 22. Manual test: Invalid URL shows warning, renders gracefully (empty container)
 23. Manual test: VideoHero background on mobile (document autoplay limitations)
 24. SSR test: No hydration mismatch
+
+### Status after `vid-3` (2026-07-28)
+
+Items **1-11 and 13-17 are met**; the plan's three phases are all IMPLEMENTED and Track A is
+code-complete. Reviews are pending on `vid-1`/`vid-2`/`vid-3` and nothing is deployed.
+
+Two items are met with a **ratified deviation**, both recorded above at the phase that made
+them and both re-stated here so this list is not read as unqualified:
+
+- **9** — *"amber warning"*: the admin design system has no semantic warning token, so the
+  callout uses neutral tokens with a `TriangleAlert` icon carrying the severity
+  (`VID2-WARNING-TOKEN`, `docs/TECH-DEBT.md` § *vid-2 residuals*). The `video-hero` callout
+  follows the same rule with hero-specific copy — it says the poster will show, because that
+  is what actually happens there.
+- **16** — the MCP server exposes no `video-hero` schema and no changed `video` attribute, so
+  the conditional does not fire. See § *Files to Modify* for the observation.
+
+Items **12, 18-24 are `NOT RUN` and are the OPERATOR's** — every one of them is a measurement
+on a real browser or device (viewport cover, mobile autoplay policy, hydration), and rows
+18-22 additionally want a live tenant page. They are itemized as a checklist in
+`docs/slices/vid-3-video-hero-block.md` § *Operator visual checklist*. Their automated
+counterparts — which assert what the server EMITS, not what a browser does with it — are
+`packages/plugins/test/videoPlugin.test.ts` and `test/videoHeroPlugin.test.ts`.

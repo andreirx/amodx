@@ -109,19 +109,24 @@ source for the slice inventory:
 
 ## In Progress
 
-None. Track A: `vid-1` and `vid-2` are **IMPLEMENTED, review pending** (see § Recently
-Completed); `vid-3` (`video-hero`) is the remaining slice and is not started.
+None. **Track A is code-complete**: `vid-1`, `vid-2` and `vid-3` are all **IMPLEMENTED,
+review pending** (see § Recently Completed). Nothing in Track A is deployed, and its
+operator-owned visual/device checks are still `NOT RUN` —
+`docs/slices/vid-3-video-hero-block.md` § *Operator visual checklist*.
 
 ## Next
 
 Review `cache-3`, then **deploy cache-3 + cache-1 + cache-2 together** with the post-deploy
 operator verification each slice doc specifies. Track TEST is code-complete —
 `test-1`…`test-4` are all implemented and committed (`c37ca9a`, `6a46760`, `931a3ff`,
-`30787ed`), review pending. Track A: `vid-1` (`571286e`) and `vid-2` are implemented, review
-pending, so **`vid-3` (`video-hero`) is the next implementation slice**; then `fnd-1` (shared
-`normalizeEmail`), then begin
-Track B (`cmrc-1`). The `fnd-1` and Track B/C/D slice docs are not yet authored — generate
-them per `docs/ROADMAP.md` when their track starts.
+`30787ed`), review pending. **Track A is now code-complete too** — `vid-1` (`571286e`),
+`vid-2` (`e8da608`) and `vid-3` are implemented, review pending — so the next implementation
+slice is **`fnd-1` (shared `normalizeEmail`)**, then begin Track B (`cmrc-1`). The `fnd-1`
+and Track B/C/D slice docs are not yet authored — generate them per `docs/ROADMAP.md` when
+their track starts.
+
+*(Updated 2026-07-28 on `vid-3` completion. Per-slice status lives in `docs/ROADMAP.md`,
+which outranks this file — `docs/VISION.md` § Decision hierarchy.)*
 
 *(Corrected 2026-07-28 during `vid-2`. This paragraph still listed `test-3` and `test-4` as
 work "to finish" after they had been committed, and listed `vid-1`/`vid-2` as not started.
@@ -134,6 +139,36 @@ ratified CACHE → TEST → A on 2026-07-26, and the ROADMAP outranks this file 
 
 ## Recently Completed
 
+- `vid-3` — `video-hero` block: background embeds + tabbed source picker (2026-07-28).
+  **Track A is complete.** `video-hero/VideoHeroRender.tsx` now branches on
+  `parseVideoSource` and nothing else, so no render path in `packages/plugins` carries a
+  video-URL regex any more. `youtube`/`vimeo` → a background `<iframe>` whose `src` is
+  **rebuilt from the validated provider id** by `buildBackgroundEmbedUrl` (YouTube's six
+  background params including the `playlist={id}` pairing without which `loop=1` is inert;
+  Vimeo's `?background=1`), with `title`, `allow="autoplay; …"` and deliberately **no**
+  `loading="lazy"` — the opposite call from `vid-2`'s inline block, because this is above the
+  fold, and the suite cross-checks both so a copy-paste between them fails. `direct` keeps
+  the existing native `<video>`; `unknown` falls back to the **poster** — or to no backdrop
+  at all when none is set — which is the deliberate divergence from `VID2-UNKNOWN-OUTPUT`
+  (`VID3-UNKNOWN-POSTER`): an empty 16:9 box is a hole in a content column, but a hero still
+  needs a backdrop behind its headline. **The defect retired:** before this slice every
+  non-empty `videoSrc` produced a `<video>`, so a pasted YouTube link rendered a media
+  element pointed at an HTML page — no playback, no error, and the poster suppressed. It also
+  **closes `vid-1` residual 4** for this block, which was a real exposure: `videoSrc` went
+  into `<source src>` with no scheme check at all. `VideoHeroEditor.tsx` gains the plan's
+  tabbed Upload | Library | Embed selector, a provider indicator and warning callout on the
+  same classifier the page uses, and a YouTube thumbnail preview. Because
+  `buildBackgroundEmbedUrl` hardcodes mute+loop, the Muted/Loop checkboxes are **replaced by
+  a statement of fact** on embed sources rather than left as controls that silently do
+  nothing. New `test/videoHeroPlugin.test.ts` (66 tests, `renderToStaticMarkup` through
+  `RENDER_MAP["videoHero"]`, `vid-2`'s pattern); plugins suite now **172**. Zero packages
+  added; `package-lock.json` and `.github/workflows/ci.yml` untouched. All gates green
+  (5-package rebuild, 8-workspace typecheck, 172 + 20 + 51 + 29 + 15 across five
+  credential-free runners). **Viewport cover, mobile autoplay and hydration are `NOT RUN` and
+  are the operator's** — a 9-item checklist is in the slice doc. MCP sync **checked and not
+  owed** (`OBSERVED`: `videoHero` is in neither `BLOCK_SCHEMAS` nor `add_block`'s enum);
+  adding it is new scope, surfaced not built. Status `IMPLEMENTED`, review pending;
+  `docs/ROADMAP.md` § Track A is authoritative.
 - `vid-2` — inline `video` plugin: parser-driven embeds + native `<video>` (2026-07-28).
   `video/VideoRender.tsx` now branches on `parseVideoSource` and nothing else — its inline
   YouTube regex is deleted. YouTube/Vimeo get an `<iframe>` whose `src` is **rebuilt from the

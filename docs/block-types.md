@@ -29,6 +29,11 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 
 ## Video embed support
 
+Both video blocks store a **plain string** and share one classifier. Neither has a provider
+field, and nothing about the provider is persisted (plan Option A).
+
+### `video` — inline player (slices `vid-1`, `vid-2`)
+
 The `video` block's `url` is a **plain string**; there is no provider field to set. One
 parser — `packages/plugins/src/common/videoSource.ts` — classifies it, and both the admin
 editor and the public render branch on that single classification (slices `vid-1`, `vid-2`).
@@ -50,8 +55,36 @@ blank, never a broken embed. The admin editor shows a warning callout for any no
 unrecognized URL, so an author who pastes one is told before publishing; the warning does not
 block saving.
 
-`video-hero` (`videoSrc`) is NOT yet on this parser — it remains native-`<video>`-only until
-slice `vid-3`.
+### `video-hero` (slice `vid-3`)
+
+`video-hero`'s `videoSrc` is on the SAME parser and the same four kinds. What differs is what
+each kind renders, because this block is a full-bleed background rather than an inline player:
+
+| Classifies as | Public hero renders |
+|---------------|---------------------|
+| `youtube` | background `<iframe>`, `?autoplay=1&mute=1&loop=1&playlist=ID&controls=0&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3` |
+| `vimeo` | background `<iframe>`, `?background=1` (Vimeo's own background mode subsumes the whole YouTube set) |
+| `direct` | native `<video autoplay playsinline>` with `object-cover` — unchanged behaviour |
+| `unknown`, including an empty `videoSrc` | **the poster image**, or no backdrop at all when none is set |
+
+The `unknown` row is the one deliberate difference from the inline `video` block, which
+renders nothing: a hero still has to have a backdrop behind its headline and CTA.
+
+Three consequences authors and reviewers should know:
+
+- **`muted` and `loop` are ignored on the embed kinds.** A background embed must be muted or
+  no browser will autoplay it, and YouTube only loops via the `playlist={id}` pairing. The
+  editor replaces those two checkboxes with a note when the source is an embed, so the UI does
+  not offer a control that does nothing.
+- **A stored URL the parser does not recognize now shows the poster instead of a dead
+  `<video>`.** Before `vid-3` any non-empty `videoSrc` produced a `<video>` element — a pasted
+  YouTube link rendered a media element pointed at an HTML page and failed silently. Media
+  library uploads are unaffected: the S3 key keeps the original filename, so the extension
+  survives and those URLs still classify `direct`.
+- **The hero iframe is deliberately NOT `loading="lazy"`** — it is above the fold. The inline
+  `video` block is lazy for the opposite reason. Do not copy one to the other.
+
+Both blocks' editors warn on a non-empty unrecognized URL and neither blocks saving.
 
 ## Rules
 

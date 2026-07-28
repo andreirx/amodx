@@ -99,8 +99,10 @@ reference belongs in a plugin's `*Editor.tsx`, not here.
 `vid-1` characterized only `videoSource.ts` and did not re-audit the others.)*
 
 `videoSource.ts` is the SUPPORT module `vid-2` (`video`) and `vid-3` (`video-hero`) consume.
-`vid-2` **deleted** the inline YouTube regex from `video/VideoRender.tsx`; `video-hero` is
-still on its own path until `vid-3`. After `vid-3`, no render path carries a video-URL regex.
+`vid-2` **deleted** the inline YouTube regex from `video/VideoRender.tsx`; `vid-3` put
+`video-hero` on the same parser. **No render path in this package now carries a video-URL
+regex, and none may grow one** — both video blocks branch on `parseVideoSource` and nothing
+else, so they cannot disagree about what a pasted URL means.
 
 ## The `video` block's render contract (slice `vid-2`)
 
@@ -125,6 +127,44 @@ The render path's three defences are: provider URLs are rebuilt from a validated
 `direct` is constrained by `isDirectMediaUrl`'s http(s) scheme guard; and `rawUrl` is **never**
 rendered — it stays in the editor for echo-back. No `dangerouslySetInnerHTML` on this path.
 
+## The `video-hero` block's render contract (slice `vid-3`)
+
+`video-hero/VideoHeroRender.tsx` branches on `parseVideoSource(attrs.videoSrc).kind`:
+
+| Kind | Background element | `src` | Notes |
+|------|--------------------|-------|-------|
+| `direct` | native `<video autoplay playsinline>` | `embedUrl`, which for this kind IS the raw URL | `muted` / `loop` stay author-controlled; `object-cover` does the covering |
+| `youtube` / `vimeo` | `<iframe>` | `buildBackgroundEmbedUrl(kind, providerId)` — **rebuilt from the validated id** | cover via the inline sizer below; `title`; `allow="autoplay; …"`; **no** `loading="lazy"` |
+| `unknown` | the poster `<img>`, or nothing when no poster is set | — | Empty `videoSrc` classifies here too |
+
+Note the deliberate divergence from the `video` block: `unknown` there renders **nothing**
+(`VID2-UNKNOWN-OUTPUT`), because an empty 16:9 box is a black hole in a content column. Here
+it renders the **poster**, because a hero is a full-bleed text/CTA surface that still has to
+have a backdrop. Both are ratified; they are not an inconsistency to "fix".
+
+**Why the iframe needs a sizer at all.** `object-fit: cover` is a property of REPLACED
+elements. An `<iframe>` is not one — it is a viewport onto another document, and the provider
+letterboxes its 16:9 video inside whatever box it is given. So cover is done by sizing the
+box: `width: max(177.7778vh, 100%)` against `height: max(100vh, 56.25vw)`, centred with
+`translate(-50%, -50%)`. Both pairs are exactly 16:9, so whichever wins the video fills the
+box and the overflow crops symmetrically — landscape wins on the `vh` pair, portrait on the
+`vw` pair. It is an **inline style**, not a class: this package emits no CSS (`npm run build`
+is bare `tsc`, there is no bundler and no `.css` file), so a class would need a new delivery
+mechanism, and a Tailwind arbitrary value would make the cover depend on the consuming app's
+`@source` scan. It is geometry, not colour, so Critical Rule 6 is not in play.
+
+Known boundary, recorded in `docs/TECH-DEBT.md` § *vid-3 residuals*: the `vh` terms are
+viewport-relative while the section is `min-h-[70vh]`, so a hero made taller than the
+viewport by its own headline/CTA can stop being fully covered.
+
+The editor mirrors the render: `VideoHeroEditor.tsx` has a **tabbed** Upload | Library |
+Embed selector over the single `videoSrc` attribute, a provider indicator and warning callout
+driven by the SAME classifier, a YouTube thumbnail preview
+(`img.youtube.com/vi/{id}/hqdefault.jpg` — `hqdefault`, not `maxresdefault`, which 404s for
+sub-720p uploads), and — because `buildBackgroundEmbedUrl` hardcodes mute+loop — it replaces
+the Muted/Loop checkboxes with a statement of fact whenever the source is a provider embed,
+rather than leaving two controls that silently do nothing.
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -133,6 +173,7 @@ rendered — it stays in the editor for echo-back. No `dangerouslySetInnerHTML` 
 |-------|--------|
 | `test/videoSource.test.ts` (`vid-1`) | The parser's classification and emitted URLs |
 | `test/videoPlugin.test.ts` (`vid-2`) | What each classification **emits** — `RENDER_MAP["video"]` markup per kind, plus `VideoEditor`'s indicator/warning output |
+| `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_MAP["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
 components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path
@@ -142,6 +183,18 @@ is INTERACTION (typing, `onChange`, Tiptap commands); that still needs the DOM/R
 `docs/testing-strategy.md` §4. Importing `src/render.ts` in a node environment is itself the
 SSR-safety smoke test for the whole render entry — a top-level `window` reference anywhere in
 it fails that import.
+
+`vid-3` follows the same pattern, and adds one caveat worth knowing before writing the next
+editor test: `VideoHeroEditor` embeds `InlineRichTextField`, whose Tiptap `useEditor` detects
+SSR, logs one notice, and returns `null`. The field therefore renders empty under
+`renderToStaticMarkup`. That is expected — the editor is browser-only by construction — but
+it means an assertion about rich-text OUTPUT cannot be written in this harness.
+
+Neither suite can reach anything requiring layout. `vid-3`'s cover geometry is asserted as
+EMITTED CSS declarations; whether those declarations visually cover a landscape and a
+portrait viewport, whether mobile autoplay is permitted by the device, and whether hydration
+is visually smooth are MEASUREMENTS and remain the operator's — see
+`docs/slices/vid-3-video-hero-block.md` § *Operator visual checklist*.
 
 `include` is pinned to `test/` and must not be widened to `src/`. Tests import `src/`, never
 `dist/`, so a stale build cannot read as a passing contract. Runs in CI's
