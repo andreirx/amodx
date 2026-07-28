@@ -729,3 +729,20 @@ of thing `dep-1` must confirm from the request path rather than assume from a st
 
 None of this is a reason to hold the fix — a broken image pipeline is the larger harm — but
 `dep-1`'s `sharp >= 0.35.0` bump is on the critical path either way.
+
+## Image optimization: second, deeper defect (2026-07-28, staging probes post-cache-6)
+
+- **What:** with cache-6's transport fix deployed (query params now reach the image
+  Lambda), the optimizer fails at its upstream fetch: `TypeError: a is not a function`
+  (CloudWatch, ImageOptFunction) — the open-next@3.1.3 image handler is
+  runtime-incompatible with next@16. Layer 1 of the defect (CloudFront stripping
+  url/w/q) is FIXED; layer 2 makes optimized images still 500 until resolved.
+- **Prod impact:** unchanged from before (images were already 500 via layer 1); no
+  regression from any Track CACHE deploy.
+- **Proper solution:** the open-next upgrade slice (option C lineage from CACHE-1-D2):
+  upgrade open-next to a Next-16-supporting major, re-run the FULL serving-contract
+  suite (test-2) + live probe suite — the upgrade swaps the entire serving adapter, so
+  it is its own production-sensitive slice, not a ride-along.
+- **When:** before any tenant work that depends on next/image; otherwise next in the
+  CACHE track after the combined deploy ships.
+- **Status:** OPEN
