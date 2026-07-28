@@ -14,7 +14,7 @@ the target architecture. Track TEST in `docs/ROADMAP.md` implements it.
 | packages/shared | 1 file, `npm test` — `test/schemas.test.ts` (`test-3`); 40 tests over the invariant-bearing parses (single `domain`, `urlPrefixes` English defaults, `ContentStatus`, the seven order statuses, `IntegrationsSchema`) | — | — | — |
 | packages/plugins | 1 file, `npm test` — `test/videoSource.test.ts` (`vid-1`, revision 3); 68 tests over the four-way URL classification, the two embed-URL builders, the ratified non-http(s) scheme guard (`VID1-DIRECT-SCHEME-CONTRACT`), the plan's `direct` output contract (`embedUrl === rawUrl`) and the module's totality (11 adversarial inputs, none throws). **First suite in this workspace.** Covers `src/common/` only — the plugin components are React + Tiptap and need the §4 harness, so `vitest.config.ts` pins `include` to `test/` | — | — | — |
 | packages/effects | 0 | — | — | — |
-| infra | — | 1 file, AWS-free, `npm test` (jest + ts-jest, both already present) — `test/amodx-stack.test.ts` (`test-4`); 15 named assertions over a real `Template.fromStack(new AmodxStack(...))`; ≈58 s, because two application builds run inside the CDK constructors (§6) | — | — |
+| infra | — | 1 file, AWS-free, `npm test` (jest + ts-jest, both already present) — `test/amodx-stack.test.ts` (`test-4`, extended by `cache-6`); **17** named assertions over a real `Template.fromStack(new AmodxStack(...))`; ≈58 s, because two application builds run inside the CDK constructors (§6) | — | — |
 | CI | `ci.yml` job `build-typecheck-unit`: build → typecheck (8 workspaces) → `backend test:unit` (`test-1`, 2026-07-27) → `packages/shared` + `renderer` unit (`test-3`, 2026-07-28) → `packages/plugins` unit (`vid-1`, 2026-07-28); credential-free, every push/PR; the four unit steps together ≈2 s | `ci.yml` jobs `serving-contract` (`test-2`, 2026-07-28) and `infra-synth` (`test-4`, 2026-07-28): the renderer and infra suites above, both credential-free. `playwright.yml` runs the staging-mutating suites (secrets-gated) | — | ↑ |
 
 Hazards: backend suites mutate shared staging state (unattended-unsafe, forbidden to
@@ -114,7 +114,10 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    `docs/slices/test-4-infra-truth.md` § Finding 2 and `docs/caching-architecture.md`
    § Key Architectural Decision.)*
    *Status: implemented as `infra/test/amodx-stack.test.ts` (`test-4`, 2026-07-28) — 15 named
-   assertions, each carrying the slice or decision that ratified the property it pins, plus
+   assertions, raised to **17** by `cache-6` on 2026-07-28 (`(g)` the `_next/image*` query key,
+   `(h)` the `RendererOriginPolicy` header list — both pinning a live production defect that
+   shipped precisely because no assertion covered the list; each mutation-checked in its own
+   round, failing only its own target), each carrying the slice or decision that ratified the property it pins, plus
    three isolation self-checks; zero new dependencies. Mutation-checked in **five rounds**
    across two different `infra/lib` files and three assertion families (`(a2)`, `(e2)`, `(d)`×3
    — a removed request-path grant, an added fifth grant, a second removed request-path grant);

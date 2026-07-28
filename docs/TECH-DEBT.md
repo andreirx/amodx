@@ -74,6 +74,10 @@ Grouped by the parent that owns the fix, largest blast radius first:
      is live attack surface. Whoever runs `dep-1` must first establish (a) whether the deployed
      bundle ships `sharp`, and (b) whether any un-trusted image can reach it, or whether every
      optimized image originates from an authenticated tenant-admin upload. Record the answer here.
+     **Partial input from `cache-6`, not an answer:** § *cache-6 residuals* → *`sharp` request-time
+     exposure* confirms the function is deployed, and warns that CloudFront's current query-string
+     stripping does **not** bound exposure, because the same Lambda has an unauthenticated Function
+     URL. (b) must therefore be answered across every path to the function, not just the edge one.
    - **`npm audit` proposes `next@9.3.3`** — an absurd six-major downgrade; ignore it.
      **Fix:** Next.js >= 16.3 stable (16.3 was canary when first written — re-check), which carries
      both a patched `postcss` and `sharp >= 0.35.0`.
@@ -94,7 +98,7 @@ Grouped by the parent that owns the fix, largest blast radius first:
      renderer, and never parses untrusted URLs or YAML.
    - ~~**Gated on** the CDK infra test suite~~ — **GATE SATISFIED 2026-07-28 by `test-4`.**
      `infra/test/amodx-stack.test.ts` runs a real `Template.fromStack` on every push (CI job
-     `infra-synth`). Note what this gate does and does not give you: the 15 assertions are
+     `infra-synth`). Note what this gate does and does not give you: the 17 assertions are
      **named**, not a snapshot, so a `2.241.0 → 2.262.1` bump that changes the cache key, the
      invalidation blast radius or a flush schedule fails with the property's name — but a bump
      that changes anything *not* asserted passes silently. Before bumping, also run a manual
@@ -650,3 +654,78 @@ the slice exists to make fixable. Everything below is `fnd-2`'s work; the full t
   are different identities. The alternative, `toLocaleLowerCase("tr")`, makes the identity key
   depend on ambient locale. Determinism wins; if a tenant ever hits it, the fix is a support
   merge, not a change to the function.
+
+## cache-6 residuals (2026-07-28)
+
+### `_next/image*` webp/avif negotiation does not happen at the edge
+**Found:** `cache-6`. **Priority:** medium (bandwidth, not correctness). **Pre-existing** —
+`cache-6` did not introduce it and did not widen it.
+
+The OpenNext image adapter emits `Vary: Accept` and Next's optimizer selects the output format
+from the request's `Accept` header. CloudFront does not honour origin `Vary`, and `Accept` is
+in neither `ImageCachePolicy`'s key nor any origin request policy on that behavior, so the
+optimizer always sees no `Accept` and falls back to the source format. Identical under the
+managed `CACHING_OPTIMIZED` policy this replaced: `cache-6` changed which *query parameters*
+are keyed, not which *headers* are.
+
+**Do not fix by adding `Accept` to the cache key.** Raw `Accept` strings are high-cardinality
+and would fragment every image across browser versions — the same fragmentation `cache-3`
+removed from the default behavior's query allowlist. The shape that works is a normalized
+one-bit-per-format header derived in a viewer-request CloudFront Function, exactly as
+`x-has-session` is derived. Not scoped.
+
+**Trigger for doing it:** image bandwidth showing up in the CloudFront bill, or a Lighthouse
+"serve images in next-gen formats" finding on a real tenant.
+
+### Nothing derives the CloudFront allowlists from the code that depends on them
+**Found:** `cache-6`. **Priority:** medium.
+
+Both `cache-6` defects are the same shape: *an input the application requires was absent from a
+CDK allowlist, and CloudFront deleted it*. Assertions `(g)` and `(h)` in
+`infra/test/amodx-stack.test.ts` now pin both lists exactly, which stops a regression — but
+nothing detects the **next** omission, because nothing extracts the required set from the
+consumers (`renderer/src/app/api/revalidate/route.ts`'s `headers.get('x-revalidation-token')`,
+the optimizer's `const { url, w, q } = query`).
+
+`cache-3`'s `probe-cache3-cffunc.mjs` §C is the pattern that would close it — extract both
+sides, fail on divergence. Deliberately not applied here: one of the two consumer sides is a
+destructure inside Next's own bundled source, so the extraction would be far more fragile than
+the cookie-name comparison it would be modelled on, and a flaky guard on a deploy-gating suite
+is worse than a documented gap.
+
+### `sharp` request-time exposure — `cache-6` enables one path; `dep-1` still owns the answer
+**Found:** `cache-6`, as a ripple of D2. **Priority:** informational; owner is `dep-1`.
+
+The dependency tracker's item 2 asks whoever runs `dep-1` to establish "(a) whether the
+deployed bundle ships `sharp`, and (b) whether any un-trusted image can reach it". `cache-6`
+supplies half of (a): the image-optimization Lambda **is** deployed and
+`renderer/.open-next/image-optimization-function/` **is** built into the stack (`OBSERVED`).
+
+**Correction, 2026-07-28 (review iteration 0).** The first version of this entry claimed live
+request-time exposure is "zero today", on the grounds that CloudFront strips the query string
+so every request 500s before an image is fetched or decoded. **That does not follow, and the
+claim is withdrawn.** CloudFront is not the only path to the function. The same Lambda carries
+its own Function URL with `AuthType: NONE` and a `lambda:InvokeFunctionUrl` permission for
+`Principal: "*"` — `OBSERVED` in `infra/cdk.out/AmodxStack.template.json`
+(`RendererHostingImageOptFunctionFunctionUrl279D4F6A`,
+`RendererHostingImageOptFunctioninvokefunctionurl3C0532AE`), source
+`infra/lib/renderer-hosting.ts:152-154`. A request sent straight to that URL never traverses
+the distribution, so nothing strips its query string and it reaches the optimizer **today**.
+Edge behaviour bounds one path; it establishes nothing about exposure.
+
+The accurate statement is therefore: **`cache-6` enables the CloudFront path to the optimizer.
+It neither creates nor removes the Function-URL path, and it neither raises nor lowers the
+exposure `dep-1` has to characterise.** What `dep-1` must still determine is unchanged in
+substance and now explicitly two-part: the **reachable input set** — which `url` values the
+optimizer will actually fetch and decode, across *every* path that reaches it, not just the
+CloudFront one — and the `sharp` version that is actually shipped in the bundle.
+
+One lead, offered as a lead and not an answer: the built bundle contains the literal string
+`remotePatterns:[]` (`OBSERVED` in `renderer/.open-next/image-optimization-function/index.mjs`;
+`renderer/next.config.*` sets no `images` config, so this is Next's default). *If* that is the
+config the request path actually consults, it would reject absolute remote URLs and leave only
+same-origin `url` values. Whether it is, is `INFERRED` and unverified — it is exactly the kind
+of thing `dep-1` must confirm from the request path rather than assume from a string match.
+
+None of this is a reason to hold the fix — a broken image pipeline is the larger harm — but
+`dep-1`'s `sharp >= 0.35.0` bump is on the critical path either way.

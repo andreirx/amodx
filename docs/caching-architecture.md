@@ -508,6 +508,12 @@ behaviours of the serving layer the moment it started caching.
 All three are kept with their measurements. **No fix is deployed yet** — the whole CACHE
 track is uncommitted-to-production as of 2026-07-27; see `CURRENT_SLICE.md` for deploy order.
 
+**Two further defects, D1 and D2, are recorded in the NEXT section, not this one.** They were
+found by live probing in `cache-6` and they are a different class: neither was activated by
+`cache-1`, neither is a cache-key defect, and both were already broken in production before
+this track began. Keeping this section's title honest is why they are not filed as "H4/H5"
+here — see § *Transport defects found in `cache-6`*.
+
 ### H1 — the `RSC` header was not in the CloudFront cache key — CLOSED in `cache-3` (was: high)
 
 **State before the fix:** `RendererCachePolicy` keyed on path + all query strings +
@@ -722,6 +728,98 @@ the caveat in that section and `docs/TECH-DEBT.md`.
 Post-deploy this needs a **warm-edge** probe, not an origin probe — see the `cache-3` slice
 doc § *Deployment*, probe 6. A `curl` against the origin cannot fail this way.
 
+---
+
+## Transport defects found in `cache-6` (both CLOSED, neither deployed)
+
+Two defects found on 2026-07-28 by probing the **deployed** staging distribution, and one of
+them re-observed on production `amodx.net`. They are filed apart from H1–H3 on purpose:
+those are **cache-key** defects that `cache-1` activated, whereas these two are **transport**
+defects — CloudFront deleting request data before the origin ever sees it — that were already
+broken in production and are independent of whether anything is cached at all.
+
+The shared shape is worth naming once, because it is the class of bug the CDK makes easy to
+write. A CloudFront behavior forwards to its origin exactly (cache-policy keys ∪
+origin-request-policy allowlist). Anything else is **deleted, not merely unkeyed**. So an
+omission from either list is not a caching subtlety; it is a request field that does not
+reach the application. Both fixes are in `infra/lib/renderer-hosting.ts` and both are pinned
+by named assertions in `infra/test/amodx-stack.test.ts` — `(h)` and `(g)` respectively —
+because in both cases the reason the defect shipped is that **nothing asserted the list**.
+
+### D1 — `x-revalidation-token` was stripped, so every deployed ISR purge 401'd (was: high)
+
+**State before the fix.** `RendererOriginPolicy`'s header allowlist named seven headers and
+`x-revalidation-token` was not one of them. `backend/src/lib/revalidate.ts` sends that header
+(lines 87 and 125) and `renderer/src/app/api/revalidate/route.ts` answers **401** whenever it
+does not equal `REVALIDATION_SECRET`. Backend callers reach the renderer through the
+distribution, so CloudFront deleted the credential in flight and the endpoint compared `null`
+against the secret. **Every deployed Layer-2 purge has always failed**, for the whole life of
+the endpoint.
+
+`OBSERVED` 2026-07-28 on staging: the token in the Lambda's environment and the value in
+Secrets Manager have matching sha digests (so the secret was never the problem), `POST
+/api/revalidate` through the distribution returns 401, and
+`aws cloudfront get-origin-request-policy` shows the seven-header list.
+
+**This is not a duplicate of `cache-2`, and fixing one without the other fixes nothing.**
+`cache-2` corrected *which path* the purge names (domain-keyed, not tenantId-keyed); D1
+corrects *whether the request is authorised at all*. A correctly addressed purge that 401s is
+still a no-op, and a 200 purge of a path that cannot exist is also a no-op. Both land in the
+same deploy.
+
+**State after the fix (`cache-6`).** `'x-revalidation-token'` is the eighth entry in the
+origin-request policy. It is deliberately **not** in either cache key: a credential must never
+become a cache-key partition, and the behavior that serves `/api/*` is `CACHING_DISABLED`
+anyway.
+
+Post-deploy check (`NOT RUN`, operator): `POST /api/revalidate` through the distribution
+returns 200 **and** the corresponding `_cache/<buildId>/<host>/<path>.cache` object is gone
+from the asset bucket. The 200 alone is not sufficient evidence — it only proves the header
+arrived.
+
+### D2 — `_next/image*` had its query string deleted, so image optimization 500'd (was: high)
+
+**State before the fix.** The behavior used the AWS-managed `CACHING_OPTIMIZED` policy, which
+keys on the path and nothing else, and it had **no origin-request policy**. Keys ∪ allowlist
+was therefore empty: CloudFront deleted `?url&w&q` on the way to the image Lambda.
+`next/dist/server/image-optimizer.js` does `const { url, w, q } = query` and throws
+`"url" parameter is required` (`OBSERVED` in the built bundle), which the OpenNext adapter
+turns into a 500. **Image optimization was broken for every tenant**, `OBSERVED` identically
+on staging and on production `amodx.net`.
+
+**State after the fix (`cache-6`).** A dedicated `ImageCachePolicy` whose query-string key is
+exactly `url,w,q`, headers `none`, cookies `none`, gzip+brotli on, `defaultTtl` 1 day,
+`maxTtl` 365 d, `minTtl` 0.
+
+Three things about that shape are load-bearing rather than tuning:
+
+- **One policy, not policy + ORP.** Keyed values are always forwarded, so keying the three
+  parameters forwards them as a consequence. The alternative — keep the managed policy and add
+  an origin-request policy — forwards them *without* keying them, which converts the 500 into a
+  subtler bug: the first requested width is stored under the bare path and served to every
+  other width.
+- **Exactly three query parameters, no more.** Any fourth is one the optimizer does not read,
+  so keying it mints a distinct entry and a distinct 1.5 GB Lambda invocation per
+  `?url=…&cachebust=<n>` — the junk-parameter fragmentation `cache-3` removed from the default
+  behavior. State the claim precisely: `url,w,q` is the optimizer's **required query-string
+  input set**, not its entire input — the output format is negotiated on the `Accept` *header*,
+  which is deliberately out of this key (see **Known residual** below, and Known Gap 16).
+- **`defaultTtl` is a floor, not the policy.** The adapter always emits its own directive —
+  `public,max-age=<maxAge>,immutable` on success, `public,max-age=60` on failure — so the
+  origin governs and the 1-day default only applies to a response carrying no directive.
+
+**Known residual, unchanged by this fix:** the adapter emits `Vary: Accept` and CloudFront does
+not honour origin `Vary`; `Accept` is neither keyed nor forwarded, so webp/avif content
+negotiation does not happen at the edge and the optimizer sees no `Accept`. That was equally
+true under `CACHING_OPTIMIZED`, so this is a pre-existing gap being *recorded* rather than
+introduced — `docs/TECH-DEBT.md`.
+
+Post-deploy check (`NOT RUN`, operator): `curl -sI '<domain>/_next/image?url=%2F_assets%2F…&w=640&q=75'`
+returns 200 with an `image/*` content type, and a second request with `w=1080` returns
+different bytes rather than the 640 variant.
+
+---
+
 ### `open-next@3.1.3` vs Next 16 — VERIFIED (2026-07-26)
 
 > Corrects a false claim in the first version of this section: it stated `open-next` was
@@ -912,6 +1010,13 @@ Calls the renderer's `/api/revalidate` endpoint with a secret token. The rendere
 contract is `{ domain, slug }` or `{ tag }` and is unchanged by `cache-2`** — it purges
 exactly the path it is told.
 
+> **Read this before debugging a purge that "does nothing" against a deployed stack.** Until
+> `cache-6`, CloudFront **stripped the `x-revalidation-token` header** and this endpoint
+> answered 401 to every caller that arrived through the distribution — which is every backend
+> caller. The transport, not the path and not the secret, was the reason nothing was ever
+> purged in a deployed environment. Fixed in `cache-6` (§ *Transport defects found in
+> `cache-6`*, D1); **not deployed yet**, so the 401 is still the live behaviour today.
+
 #### The key is the domain, not the tenant id (fixed in `cache-2`)
 
 An ISR entry is keyed by the path **middleware rewrote the request to**, and the S3 object
@@ -1023,11 +1128,22 @@ CloudFront Distribution
 ├── api/* → Lambda Function URL (CACHING_DISABLED)
 │   └── Comments, account, revalidation — never cached
 │
-├── _next/image* → Image Optimization Lambda (cached)
+├── _next/image* → Image Optimization Lambda (ImageCachePolicy)
+│   └── Cache Key: url, w, q — and NO other query parameter. Those three are the
+│                  optimizer's REQUIRED QUERY-STRING inputs (not its entire input:
+│                  it negotiates format on the Accept header too, which is neither
+│                  keyed nor forwarded — Known Gap 16), and keying them is also
+│                  what FORWARDS them
+│                  (slice cache-6 D2; no origin request policy on this behavior)
+│
 ├── _next/static/* → S3 (immutable, long-lived cache)
 ├── assets/* → S3 (immutable, long-lived cache)
 └── favicon.ico → S3 (cached)
 ```
+
+Both Lambda-backed behaviors (default and `api/*`) also carry `RendererOriginPolicy` — the
+**transport** list, see § *Origin Request Policy* below. The three S3 behaviors and
+`_next/image*` carry none, so for them the cache key alone decides what the origin receives.
 
 ### Cache Policy (Default Behavior)
 
@@ -1341,9 +1457,39 @@ CDK template literal, invisible to `tsc`, to lint and to the `infra` jest suite.
 The bottom three rows are the evidence for dropping `_rsc`. Without them the claim would be
 an inference from the origin's `Vary` header; with them it is measured on this build.
 
+### Origin Request Policy (`RendererOriginPolicy`)
+
+Source of truth: `infra/lib/renderer-hosting.ts`. Attached to the **default** and **`api/*`**
+behaviors only.
+
+This is the **transport** list and it answers a different question from the cache policy above.
+The cache policy decides *which stored response a viewer gets, and whether the origin is
+consulted at all*. This one decides *which request headers the origin is permitted to see* —
+on hits and on misses alike. A header in neither list is **deleted by CloudFront**, so an
+omission here is not a caching subtlety: the header does not exist as far as the renderer
+Lambda is concerned.
+
+| Header | Why it is forwarded |
+|---|---|
+| `Accept`, `Accept-Language`, `Content-Type` | ordinary content negotiation / request bodies |
+| `X-Forwarded-Host` | how the origin resolves the tenant at all (§ *Multi-Tenant Isolation*) |
+| `x-origin-verify` | origin trust — the renderer rejects requests without it (Phase 6.1) |
+| `x-tenant-id`, `x-automation-key` | admin/automation calls proxied through the renderer |
+| `x-revalidation-token` | **added by `cache-6`.** The ISR purge credential. Its absence 401'd every deployed purge — § *Transport defects found in `cache-6`*, D1 |
+
+Cookies and query strings are forwarded in full (`all()`), which is why the render sees the
+real cookie jar on a miss even though cookies are absent from the cache key.
+
+Pinned by assertion `(h)` in `infra/test/amodx-stack.test.ts`. It asserts the list **exactly
+and in order**, because the D1 defect existed precisely for as long as nothing asserted it.
+
 ### /api/* Behavior
 
 Explicit `CACHING_DISABLED` policy. Without this, API routes (comments POST, account actions, revalidation endpoint) would fall through to the default behavior and get cached — returning stale JSON to authenticated users.
+
+It is also the only behavior on which `x-revalidation-token` can be *acted* on, since
+`/api/revalidate` lives here. The header is forwarded on the default behavior too (one shared
+origin request policy) but nothing there reads it.
 
 ### Multi-Tenant Isolation
 
@@ -1557,3 +1703,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 14. **Referral attribution is triggered client-side, and is not consent-gated** (`cache-3`). `components/ReferralCapture.tsx` is a constant inline script in the public site layout; it POSTs the resolved `?ref` / `?utm_source` value to `app/api/ref/route.ts`, which sets the cookie. It replaced a middleware `Set-Cookie` that could not survive the cache-key change (a warm campaign landing is answered at the edge, so the origin never sees the page request). The cookie's own attributes are **unchanged** — `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, 30 days — because the write stayed server-side; that is also the migration path, since a `document.cookie` write cannot overwrite the pre-deploy `HttpOnly` cookie (RFC 6265 §5.3 step 11) and would have frozen returning visitors' attribution for up to 30 days. Two known positions remain: capture is **not gated on the `CookieConsent` banner** (it was not gated before either), and the beacon is **fire-and-forget**, so a blocked or failed request silently loses attribution for that visit — the alternative that cannot fail cannot run on a cache HIT at all. If consent gating is wanted, it is a new slice and it applies to the pre-existing behaviour, not to this move.
 
 15. **The session-cookie predicate is deliberately duplicated across CDK and middleware** (`cache-3` revision 3). Gap 10 rejects duplicating the *query* allowlist into middleware, so the asymmetry needs stating: that duplication is avoidable (middleware does not need the list to be correct), this one is not. CloudFront must decide *before* the origin runs — that is the entire point of `x-has-session` — and middleware must decide the rendering mode, which CloudFront cannot do. Neither layer can delegate to the other, so both must implement "does this request carry a session cookie". What gap 10 warns about — *nothing keeping them in sync* — is answered here rather than dismissed: `probe-cache3-cffunc.mjs` §C extracts both predicates (the edge one from the synthesized template) and fails if their classifications diverge on any name in its corpus. **Rejected alternative:** having middleware read the `x-has-session` header instead of the cookie jar. It would remove the duplication, but it makes an origin routing decision depend on a header that is only trustworthy because *another* mechanism (`x-origin-verify`) says the request came through CloudFront, and it breaks outright in local `next start` and any direct-Lambda path where no CloudFront Function ran. A cookie read that works everywhere is worth one tested duplicate.
+
+16. **`_next/image*` does not honour the optimizer's own `Vary: Accept`** (found in `cache-6`, **pre-existing**, not introduced by it). The OpenNext image adapter returns `Vary: Accept` and Next's optimizer picks webp/avif from the request's `Accept` header — but CloudFront does not honour origin `Vary`, and `Accept` is in neither the `ImageCachePolicy` key nor any origin request policy on that behavior, so the optimizer always sees no `Accept` and falls back to the source format. This was equally true under the previous managed `CACHING_OPTIMIZED` policy: `cache-6` changed which query parameters are keyed, not which headers are. **Do not "fix" it by adding `Accept` to the cache key** — raw `Accept` strings are high-cardinality and would fragment every image across browser versions. The real fix, if the bandwidth is worth a slice, is a normalized one-bit-per-format header derived in a viewer-request CloudFront Function, exactly as `x-has-session` is derived (§ *`x-has-session`*). Not scoped; surfaced.
+
+17. **The two CloudFront allowlists have no cross-check against the code that depends on them** (found in `cache-6`). `cache-6`'s two defects — a stripped `x-revalidation-token` and a stripped `?url&w&q` — were both "a header/parameter the application requires is absent from the CDK list", and both survived in production because the only thing pinning either list was the list itself. Assertions `(g)` and `(h)` now pin them, which stops a *regression*; nothing detects the *next* such omission, because nothing derives the required set from the consumers (`revalidate/route.ts`'s header read, the optimizer's `{ url, w, q }` destructure). The `cache-3` `probe-cache3-cffunc.mjs` §C pattern — extract both sides, fail on divergence — is the shape that would; it is not applied here. Deliberately deferred: the consumer side is a Next-internal destructure, so the extraction is fragile in a way the cookie-name comparison is not.

@@ -333,6 +333,11 @@ function handler(event) {
         });
 
         // 6. Custom Origin Request Policy that forwards X-Forwarded-Host + origin verification
+        //
+        // This policy is the TRANSPORT list, not the cache-key list. A header absent from it is
+        // deleted by CloudFront before the origin ever sees the request — on a MISS as well as a
+        // HIT — so an omission here is not a caching subtlety, it is a header that does not exist
+        // as far as the renderer Lambda is concerned.
         const originRequestPolicy = new cloudfront.OriginRequestPolicy(this, 'RendererOriginPolicy', {
             originRequestPolicyName: `${stackName}-RendererOriginPolicy`,
             headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList(
@@ -342,7 +347,23 @@ function handler(event) {
                 'X-Forwarded-Host',
                 'x-origin-verify',  // Phase 6.1: Origin verification header
                 'x-tenant-id',
-                'x-automation-key'
+                'x-automation-key',
+                // slice cache-6 defect 1. The ISR purge credential.
+                //
+                // `backend/src/lib/revalidate.ts` sends `x-revalidation-token: <secret>` and
+                // `renderer/src/app/api/revalidate/route.ts` rejects with 401 when the header does
+                // not equal `REVALIDATION_SECRET`. Until this entry existed CloudFront STRIPPED the
+                // header, so the endpoint saw `null` and answered 401 to every caller that arrived
+                // through the distribution — which is every backend caller, because `RENDERER_URL`
+                // is the distribution. Deployed ISR (Layer 2) purges therefore never worked, and
+                // that is independent of the purge KEY defect `cache-2` fixed: cache-2 corrected
+                // the path being purged, this corrects whether the request is authorised at all.
+                //
+                // Both behaviors that use this policy (default and `api/*`) get it; only `api/*`
+                // can act on it, since `/api/revalidate` lives there. It is deliberately NOT in
+                // either cache key — a credential must never become a cache-key partition, and
+                // `api/*` is CACHING_DISABLED anyway.
+                'x-revalidation-token',
             ),
             queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
             cookieBehavior: cloudfront.OriginRequestCookieBehavior.all(),
@@ -520,10 +541,58 @@ function handler(event) {
 
         // Add image optimization behavior if available
         if (imageOptUrl) {
+            // slice cache-6 defect 2. `url`, `w`, `q` are everything the image optimizer needs
+            // FROM THE QUERY STRING — its required query-input set, which is not the same as its
+            // entire input: it also negotiates the output format on the `Accept` HEADER, and that
+            // header is deliberately outside this key (see the `Vary: Accept` note below).
+            //
+            // `next/dist/server/image-optimizer.js` destructures `const { url, w, q } = query` and
+            // throws `"url" parameter is required` when `url` is absent; the OpenNext adapter turns
+            // that throw into a 500. This behavior previously used the AWS-managed
+            // CACHING_OPTIMIZED policy, which keys on NOTHING but the path — and with no
+            // origin-request policy attached, the keyed set is also the FORWARDED set. CloudFront
+            // therefore deleted `?url&w&q` on the way to the Lambda and every optimized image on
+            // every tenant answered 500. OBSERVED on staging and on prod.
+            //
+            // The fix is one policy, not two constructs: putting the three parameters in the CACHE
+            // KEY forwards them as a consequence (keyed values are always sent to the origin), so
+            // no origin-request policy is needed here and none is added — the alternative (managed
+            // policy + a new ORP) would forward them without keying them, which fixes the 500 and
+            // then serves the first-requested width to every subsequent width at the same `url`.
+            //
+            // EXACTLY `url,w,q`, no more: any OTHER QUERY parameter is one the optimizer does not
+            // read, so keying it would mint a distinct entry — and a distinct 1.5 GB Lambda
+            // invocation — for `?url=...&cachebust=<n>` junk.
+            //
+            // Headers and cookies are out of the key for the same fragmentation reason, and that
+            // has a known cost rather than none: the adapter emits `Vary: Accept` and picks
+            // webp/avif from the request's `Accept`, so with `Accept` neither keyed nor forwarded
+            // the optimizer always sees none and falls back to the source format. PRE-EXISTING —
+            // CACHING_OPTIMIZED did not forward `Accept` either — so it is recorded in
+            // docs/TECH-DEBT.md and Known Gap 16, not changed here. Do not "fix" it by adding raw
+            // `Accept` to the key; that fragments every image across browser versions.
+            //
+            // TTLs: `defaultTtl` only applies when the origin sends no cache directive. The adapter
+            // always sends one — `public,max-age=<result.maxAge>,immutable` on success and
+            // `public,max-age=60` on failure — so in practice the origin governs and the 1-day
+            // default is the floor for a response that somehow carries no directive. `minTtl: 0`
+            // keeps a `no-store` unstorable, matching RendererCachePolicy.
+            const imageCachePolicy = new cloudfront.CachePolicy(this, 'ImageCachePolicy', {
+                cachePolicyName: `${stackName}-ImageCache`,
+                defaultTtl: cdk.Duration.days(1),
+                maxTtl: cdk.Duration.days(365),
+                minTtl: cdk.Duration.seconds(0),
+                headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+                queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList('url', 'w', 'q'),
+                cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+                enableAcceptEncodingGzip: true,
+                enableAcceptEncodingBrotli: true,
+            });
+
             additionalBehaviors['_next/image*'] = {
                 origin: new origins.HttpOrigin(cdk.Fn.parseDomainName(imageOptUrl.url)),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+                cachePolicy: imageCachePolicy,
                 allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
             };
         }

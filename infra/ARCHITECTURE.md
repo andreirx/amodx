@@ -115,11 +115,12 @@ Uses `AwsCustomResource` with `S3.putObject`, cache-control `no-cache`.
 
 ## Testing
 
-`cd infra && npm test` — jest + ts-jest, CI job `infra-synth`. Added by slice `test-4`;
-rationale and the assertion → ratified-property map are in
-`docs/slices/test-4-infra-truth.md`.
+`cd infra && npm test` — jest + ts-jest, CI job `infra-synth`. Added by slice `test-4`,
+extended by `cache-6`; rationale and the assertion → ratified-property map are in
+`docs/slices/test-4-infra-truth.md` and
+`docs/slices/cache-6-distribution-transport-hotfixes.md`.
 
-`test/amodx-stack.test.ts` synthesizes the **real** `AmodxStack` once and makes 15 named
+`test/amodx-stack.test.ts` synthesizes the **real** `AmodxStack` once and makes 17 named
 assertions over the resulting template: the CloudFront cache key (header + query allowlists,
 `CookieBehavior: none`, TTLs), the viewer-request Function on the default and `api/*`
 behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
@@ -127,6 +128,21 @@ behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
 **3 request-path** cache Lambdas — the least-privilege set — plus **1 deploy-time** role, CDK's
 `BucketDeployment` custom resource), and both flush schedules. Not a snapshot: a snapshot over
 410 resources gets re-blessed instead of read.
+
+**Two of the 17 were added by `cache-6` (2026-07-28)**, and both pin a **transport** list —
+what CloudFront lets reach the origin — rather than a cache-key property. Each covers a defect
+that shipped to production precisely because no assertion covered the list:
+
+- `(g)` — `_next/image*` is keyed by a dedicated `ImageCachePolicy` on exactly `url,w,q`, the
+  optimizer's required query-string inputs, and the behavior must actually reference that
+  policy. Distinct from `(a2)`, which pins the *default* behavior's seven-parameter allowlist.
+- `(h)` — `RendererOriginPolicy` forwards exactly eight headers, `x-revalidation-token`
+  included. Distinct from `(a1)`, which pins the six headers in the cache *key*: `(a1)` governs
+  which stored response a viewer gets, `(h)` governs what the origin is allowed to see at all,
+  on hits and misses alike.
+
+Rationale for both: `docs/slices/cache-6-distribution-transport-hotfixes.md` and
+`docs/caching-architecture.md` § *Transport defects found in `cache-6`*.
 
 Three things to know before running it:
 
@@ -136,7 +152,7 @@ Three things to know before running it:
   gitignored outputs that a deploy regenerates. Tracked in `docs/TECH-DEBT.md`.
   Consequence to know: consecutive runs are **not** independent. If a run is interrupted, the
   next one can die in `beforeAll` with `ENOTEMPTY … .next/standalone/node_modules/next` and
-  report *all 15* assertions red for a reason unrelated to infra — `rm -rf renderer/.next` and
+  report *all 17* assertions red for a reason unrelated to infra — `rm -rf renderer/.next` and
   re-run before believing a wholesale failure.
 - **It is credential-free and enforces that itself.** The test stack passes
   `config: { domains: {} }`, so `AmodxDomains` — the only synth-time context provider

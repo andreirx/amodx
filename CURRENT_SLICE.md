@@ -2,8 +2,34 @@
 
 ## Current Priority
 
-**Track CACHE is code-complete and awaiting one combined deploy.** All three slices are
+**Track CACHE is code-complete and awaiting one combined deploy.** All **four** slices are
 implemented; nothing is deployed.
+
+`cache-6` — distribution transport hotfixes — is **IMPLEMENTED 2026-07-28, revision 2 (review
+iteration 1's two documentation-reconciliation changes applied — `infra/ARCHITECTURE.md` 15 →
+17 assertions, and the § *Files changed* table reconciled against the deterministic `git diff`
+inventory; revision 2 changed no code and no comment, proven by `shasum`), review
+pending** (`docs/slices/cache-6-distribution-transport-hotfixes.md` § *Build run*, § *Revision
+1*, § *Revision 2*). It is the newest and
+the only one that fixes behaviour which was **already broken in production**, independent of
+whether anything is cached:
+
+- **D1 — no deployed ISR purge has ever worked.** `RendererOriginPolicy` did not forward
+  `x-revalidation-token`, so CloudFront stripped the credential and `/api/revalidate` answered
+  401 to every backend caller. Read this together with `cache-2`: that slice fixed *which path*
+  is purged, this one fixes *whether the request is authorised at all*. Deploying `cache-2`
+  without `cache-6` ships correct paths to an endpoint that still 401s — purging nothing.
+- **D2 — image optimization returns 500 for every tenant.** `_next/image*` used the managed
+  `CACHING_OPTIMIZED` policy with no origin request policy, so CloudFront deleted `?url&w&q`
+  and the optimizer threw `"url" parameter is required`. OBSERVED on staging **and on prod**.
+
+`cache-6` is **order-independent** — it neither gates nor is gated by the other three — so it
+joins the same combined deploy. Expect a cold `_next/image*` cache afterwards; every entry it
+strands is a cached 500, so that is pure upside. Its two post-deploy probes are **live-only**
+and cannot be substituted by an origin `curl` or by the synth suite, because the defects are
+CloudFront deleting request data before the origin runs: `/api/revalidate` must return 200
+**and** the matching `_cache/…` S3 object must disappear, and `_next/image?url=…&w=640&q=75`
+must return an `image/*` 200 whose bytes differ from the `w=1080` response.
 
 `cache-3` — CloudFront cache-key hygiene — is **IMPLEMENTED 2026-07-27 (revision 5 —
 review iteration 3's three required changes applied; revision 4 applied review iteration 2's
@@ -80,20 +106,24 @@ deploy together.
 Its deploy gate — `cache-3` — is now implemented, so the gate is satisfied in code and
 pending review.
 
-**Deploy order: cache-3 → cache-1 + cache-2 (one combined deploy is fine), staged
+**Deploy order: cache-3 → cache-1 + cache-2 + cache-6 (one combined deploy is fine), staged
 staging-first.** Never `cache-1` alone: that window is exactly H1 on live tenants. The
-`CACHE-2-D2` grant is part of cache-2, not an optional extra step. Post-deploy verification
-is per-slice and all of it is still NOT RUN: the cache-key probes (RSC, junk-param,
-404-loop, attribution, **warm-edge session**) in the cache-3 slice doc § Deployment, the
-header probes + rollback in the cache-1 slice doc, and the ISR purge check in the cache-2
-slice doc. Expect a functionally cold Layer-1 cache on
-deploy — changing the cache key strands every existing entry under the old key (Layer 2 is
-untouched, so refill is mostly an origin ISR hit rather than fresh SSR).
+`CACHE-2-D2` grant is part of cache-2, not an optional extra step. `cache-6` carries no
+ordering constraint of its own, but it must not be dropped from the deploy that carries
+`cache-2`, or the corrected purge paths ship into an endpoint that still 401s. Post-deploy
+verification is per-slice and all of it is still NOT RUN: the cache-key probes (RSC,
+junk-param, 404-loop, attribution, **warm-edge session**) in the cache-3 slice doc
+§ Deployment, the header probes + rollback in the cache-1 slice doc, the ISR purge check in
+the cache-2 slice doc, and the two live-transport probes in the cache-6 slice doc. Expect a
+functionally cold Layer-1 cache on deploy — changing the cache key strands every existing
+entry under the old key (Layer 2 is untouched, so refill is mostly an origin ISR hit rather
+than fresh SSR), and a cold `_next/image*` cache for the same reason.
 
 Read before implementation: `docs/VISION.md` → `docs/ROADMAP.md` → this file →
 `docs/slices/cache-1-restore-static-rendering.md` →
 `docs/slices/cache-2-isr-revalidation-keying.md` →
-`docs/slices/cache-3-cache-key-hygiene.md` → `docs/caching-architecture.md`.
+`docs/slices/cache-3-cache-key-hygiene.md` →
+`docs/slices/cache-6-distribution-transport-hotfixes.md` → `docs/caching-architecture.md`.
 
 ## Planning phase — COMPLETE
 
@@ -116,8 +146,8 @@ operator-owned visual/device checks are still `NOT RUN` —
 
 ## Next
 
-Review `cache-3`, then **deploy cache-3 + cache-1 + cache-2 together** with the post-deploy
-operator verification each slice doc specifies. Track TEST is code-complete —
+Review `cache-3` and `cache-6`, then **deploy cache-3 + cache-1 + cache-2 + cache-6 together**
+with the post-deploy operator verification each slice doc specifies. Track TEST is code-complete —
 `test-1`…`test-4` are all implemented and committed (`c37ca9a`, `6a46760`, `931a3ff`,
 `30787ed`), review pending. **Track A is now code-complete too** — `vid-1` (`571286e`),
 `vid-2` (`e8da608`) and `vid-3` (`a6301da`) are implemented, review pending. **`fnd-1` is
@@ -145,6 +175,14 @@ ratified CACHE → TEST → A on 2026-07-26, and the ROADMAP outranks this file 
 
 ## Recently Completed
 
+- `cache-6` — distribution transport hotfixes (2026-07-28). Two production-impacting defects
+  repaired in `infra/lib/renderer-hosting.ts`: the stripped `x-revalidation-token` (no deployed
+  ISR purge has ever worked) and the stripped `?url&w&q` on `_next/image*` (image optimization
+  500s for every tenant, on prod too). Both now pinned by named infra assertions, 15 → 17.
+  Revision 1 (same day) applied review iteration 0's two truth corrections — documentation and
+  comments only, the CDK behaviour is unchanged from revision 0.
+  Status `IMPLEMENTED`, not `SHIPPED` — authoritative status is § Current Priority above;
+  this entry is a pointer, not a second source of truth.
 - `fnd-1` — shared `normalizeEmail()` (2026-07-28). The platform identity primitive of
   PD-001 now exists once, in `packages/shared/src/normalizeEmail.ts`: `NFKC → trim →
   lowercase`, pure, zero-dependency, safe in browser bundles. **It migrates nothing** — zero

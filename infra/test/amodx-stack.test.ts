@@ -56,6 +56,11 @@
  * (`infra/cdk.out/AmodxStack-staging.template.json`, synthesized WITH domains): the cache
  * policy, all six behaviors, the CloudFront Function, the four invalidation grants and both
  * EventBridge rules are byte-identical there.
+ *
+ * That diff predates `cache-6`, so it says nothing about the two properties `cache-6` added —
+ * `ImageCachePolicy` and the eighth `RendererOriginPolicy` header. Neither is domain-shaped
+ * (one is a query-string key, the other a header allowlist), so the same argument covers them,
+ * but it is an argument here rather than a measurement. Labelled INFERRED, not OBSERVED.
  */
 
 import * as fs from 'node:fs';
@@ -134,6 +139,26 @@ function onlyResource(type: string): any {
         throw new Error(`expected exactly 1 ${type}, found ${keys.length}: ${keys.join(', ')}`);
     }
     return { logicalId: keys[0], ...found[keys[0]] };
+}
+
+/**
+ * The one CloudFront cache policy whose logical id contains `logicalIdPart`.
+ *
+ * A bare `onlyResource` over the type was enough until `cache-6`, which added a
+ * SECOND policy (`ImageCachePolicy`) so that `_next/image*` keys on its query string. Logical
+ * ids are the construct path with a CDK hash suffix, so `RendererCachePolicy` and
+ * `ImageCachePolicy` are unambiguous substrings of exactly one id each.
+ */
+function cachePolicyByConstructId(logicalIdPart: string): any {
+    const found = Object.entries(template.findResources('AWS::CloudFront::CachePolicy')).filter(
+        ([id]) => id.includes(logicalIdPart),
+    );
+    if (found.length !== 1) {
+        throw new Error(
+            `expected 1 cache policy whose logical id contains "${logicalIdPart}", found ${found.length}`,
+        );
+    }
+    return { logicalId: found[0][0], ...(found[0][1] as any) };
 }
 
 function rendererDistributionConfig(): any {
@@ -231,7 +256,7 @@ describe('RendererCachePolicy — the CloudFront cache key', () => {
         //
         // ADDING a header here is a cache-key change: read § "Why the header allowlist has six
         // entries" before touching it. REMOVING one reopens the hazard named next to it.
-        const headers = onlyResource('AWS::CloudFront::CachePolicy').Properties.CachePolicyConfig
+        const headers = cachePolicyByConstructId('RendererCachePolicy').Properties.CachePolicyConfig
             .ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig;
         expect(headers.HeaderBehavior).toBe('whitelist');
         expect(headers.Headers).toEqual([
@@ -260,7 +285,7 @@ describe('RendererCachePolicy — the CloudFront cache key', () => {
         // redirects `/p` -> `/p?nf=1` and that 307 is itself cacheable. Drop `nf` from the key
         // and `/p?nf=1` collapses onto `/p`, hits the stored 307, and every 404 becomes an
         // infinite client redirect loop.
-        const qs = onlyResource('AWS::CloudFront::CachePolicy').Properties.CachePolicyConfig
+        const qs = cachePolicyByConstructId('RendererCachePolicy').Properties.CachePolicyConfig
             .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig;
         expect(qs.QueryStringBehavior).toBe('whitelist');
         expect(qs.QueryStrings).toEqual([
@@ -281,7 +306,7 @@ describe('RendererCachePolicy — the CloudFront cache key', () => {
         // `RendererOriginPolicy` still forwards all cookies to the origin, so the render sees
         // the real jar on a miss. Flipping this to `all`/`whitelist` is a fragmentation and
         // credential-exposure change, not a tuning knob.
-        const cookies = onlyResource('AWS::CloudFront::CachePolicy').Properties.CachePolicyConfig
+        const cookies = cachePolicyByConstructId('RendererCachePolicy').Properties.CachePolicyConfig
             .ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig;
         expect(cookies).toEqual({ CookieBehavior: 'none' });
     });
@@ -292,7 +317,7 @@ describe('RendererCachePolicy — the CloudFront cache key', () => {
         // `cache-1` relies on to keep query-string and session traffic out of the cache.
         // `DefaultTTL: 0` means the origin's own `Cache-Control` decides, which is what the
         // serving-contract suite measures at the origin.
-        const config = onlyResource('AWS::CloudFront::CachePolicy').Properties.CachePolicyConfig;
+        const config = cachePolicyByConstructId('RendererCachePolicy').Properties.CachePolicyConfig;
         expect(config.DefaultTTL).toBe(0);
         expect(config.MinTTL).toBe(0);
         expect(config.MaxTTL).toBe(31536000); // cdk.Duration.days(365)
@@ -326,7 +351,7 @@ describe('Renderer distribution behaviors', () => {
         // nothing. Without this assertion, (a1)-(a4) could all pass on a distribution that
         // caches nothing.
         expect(behavior().CachePolicyId).toEqual({
-            Ref: onlyResource('AWS::CloudFront::CachePolicy').logicalId,
+            Ref: cachePolicyByConstructId('RendererCachePolicy').logicalId,
         });
     });
 
@@ -356,6 +381,86 @@ describe('Renderer distribution behaviors', () => {
                 policy: MANAGED_CACHING_OPTIMIZED,
             });
         }
+    });
+
+    test("(g) _next/image* keys on EXACTLY url,w,q — the optimizer's required query inputs", () => {
+        // Slice `cache-6` defect 2. Before it, this behavior used the managed CACHING_OPTIMIZED
+        // policy with NO origin-request policy attached. That policy keys on nothing but the path,
+        // and with no ORP the keyed set is also the FORWARDED set — so CloudFront deleted the
+        // query string on the way to the image Lambda, `next/dist/server/image-optimizer.js`
+        // destructured `const { url, w, q } = query` into three undefineds, and the adapter turned
+        // the resulting throw into a 500 `"url" parameter is required`. OBSERVED live on staging
+        // AND on prod: image optimization was broken for every tenant.
+        //
+        // This assertion is the thing whose absence let that ship. It pins two properties, and
+        // BOTH are load-bearing in opposite directions:
+        //
+        //   - The three parameters must be PRESENT. Being in the cache key is what forwards them
+        //     (keyed values always reach the origin), so their presence here IS the fix. Removing
+        //     one is the 500 coming back — or, for `w`, the subtler version: every width served
+        //     the first-requested width's bytes.
+        //   - There must be NO OTHER QUERY PARAMETER. A fourth one is a parameter the optimizer
+        //     does not read, so keying it mints a distinct entry and a distinct 1.5 GB Lambda
+        //     invocation per `?url=...&cachebust=<n>` — the same junk-parameter fragmentation
+        //     `cache-3` removed from the default behavior.
+        //
+        // Scope of the claim, precisely: `url,w,q` is the optimizer's required QUERY-STRING input
+        // set and this policy's full query dimension — NOT its entire input. It also negotiates
+        // the output format on the `Accept` header, which is deliberately outside the key (below).
+        const policy = cachePolicyByConstructId('ImageCachePolicy');
+        const params = policy.Properties.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin;
+
+        // The behavior must actually USE it — otherwise the policy above could be a correct
+        // resource attached to nothing, which is exactly the shape of the defect being fixed.
+        expect(behavior('_next/image*').CachePolicyId).toEqual({ Ref: policy.logicalId });
+
+        expect(params.QueryStringsConfig.QueryStringBehavior).toBe('whitelist');
+        expect(params.QueryStringsConfig.QueryStrings).toEqual(['url', 'w', 'q']);
+
+        // Headers and cookies stay out for the fragmentation reason above. Consequence recorded
+        // rather than fixed: the adapter emits `Vary: Accept` and CloudFront does not honour
+        // origin `Vary`, so webp/avif negotiation does not happen at the edge. That is
+        // PRE-EXISTING — CACHING_OPTIMIZED did not forward `Accept` either — and is tracked in
+        // docs/TECH-DEBT.md, not changed here.
+        expect(params.HeadersConfig).toEqual({ HeaderBehavior: 'none' });
+        expect(params.CookiesConfig).toEqual({ CookieBehavior: 'none' });
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (h) RendererOriginPolicy — the TRANSPORT list
+//     Ratified by `cache-6` (defect 1). Distinct concern from (a): the cache policy decides
+//     which stored response a viewer gets; this policy decides which headers the origin is
+//     allowed to SEE AT ALL, on hits and misses alike.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('RendererOriginPolicy — what reaches the origin', () => {
+    test('(h) header allowlist is EXACTLY the eight forwarded headers, in order', () => {
+        // `x-revalidation-token` is the entry `cache-6` added, and its absence was a live
+        // production defect, not a hypothetical: `backend/src/lib/revalidate.ts` sends it and
+        // `renderer/src/app/api/revalidate/route.ts` 401s when it does not equal
+        // `REVALIDATION_SECRET`. CloudFront stripped it, every backend caller reaches the
+        // renderer THROUGH the distribution (`RENDERER_URL`), so deployed ISR purges had never
+        // worked. Note this is independent of `cache-2`, which fixed the purge PATH — a correctly
+        // addressed purge that 401s is still a no-op.
+        //
+        // REMOVING any entry deletes that header at the edge. `x-origin-verify` is origin trust
+        // (Phase 6.1 — the renderer rejects requests without it), `X-Forwarded-Host` is how the
+        // origin resolves the tenant at all. ADDING one is cheap but not free: it is a new input
+        // the origin can be made to see by any viewer, so it needs the same justification the
+        // seven originals have.
+        const headers = onlyResource('AWS::CloudFront::OriginRequestPolicy').Properties
+            .OriginRequestPolicyConfig.HeadersConfig;
+        expect(headers.HeaderBehavior).toBe('whitelist');
+        expect(headers.Headers).toEqual([
+            'Accept',
+            'Accept-Language',
+            'Content-Type',
+            'X-Forwarded-Host',
+            'x-origin-verify',
+            'x-tenant-id',
+            'x-automation-key',
+            'x-revalidation-token',
+        ]);
     });
 });
 
