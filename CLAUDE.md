@@ -47,6 +47,12 @@ npm run typecheck                        # tsc --noEmit, all 8 workspaces (run A
 cd admin && npm run dev                  # Admin dev server
 cd renderer && npm run dev               # Renderer dev server
 cd backend && npm test                   # Vitest (uses real staging DynamoDB)
+cd backend && npm run test:unit          # Vitest, pure units — no AWS, no credentials
+cd renderer && npm run test:serving      # Serving-contract suite: next build + next start
+                                         #   + local DynamoDB stub. No AWS, no credentials,
+                                         #   ~10s. RUN THIS before proposing changes under
+                                         #   renderer app/[siteId]/, middleware.ts or
+                                         #   lib/dynamo.ts — see renderer/test/serving-contract/
 ```
 
 ## Definition of Done
@@ -83,6 +89,8 @@ Each package has an **ARCHITECTURE.md** with internal architecture. Read before 
 | `docs/growth-engine.md` | Signals, research, social posting |
 | `docs/commerce.md` | Cart, checkout, orders, delivery |
 | `docs/authentication-architecture.md` | Auth system, Cognito, NextAuth |
+| `docs/caching-architecture.md` | Anything touching caching, ISR, CloudFront, or the renderer's serving behaviour. Its § *Serving contract* has an executable form — `renderer/test/serving-contract/`; a failing test there is a contract change, and both must move together |
+| `docs/testing-strategy.md` | Adding or changing tests; which layer a new test belongs in |
 
 ## Codebase Intelligence (rmap)
 

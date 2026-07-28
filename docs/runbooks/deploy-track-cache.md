@@ -61,4 +61,10 @@ ratio (target >80% within a day as caches warm) and Lambda invocation counts.
   probes pass in production (operator).
 - `cache-4` (instant per-page go-live; debounce only for bulk) and `cache-5`
   (domain-onboarding vs unknown-host cache) get slice docs next.
-- Track TEST starts (test-2 automates probes 1–8 as the regression suite).
+- Track TEST: `test-2` is **implemented** (2026-07-28) — `cd renderer && npm run test:serving`
+  runs the ORIGIN half of these probes as a committed suite in ~9 s with no credentials, and
+  measured no drift from the `next` 16.2.12 bump. It does **not** replace anything in this
+  runbook: every probe below that needs a warm CloudFront edge (RSC, junk-param, attribution,
+  and above all the **warm-edge session probe**) is by construction unreachable from the
+  origin and stays operator-run. `test-4` is the slice that would cover the CloudFront
+  cache policy and viewer-request Function, and it is not started.

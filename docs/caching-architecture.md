@@ -31,6 +31,17 @@ The invariant the serving layer must satisfy for either cache layer to hold HTML
 terms of the behaviour measured on `next@16.2.9` (see **Measured serving behaviour** below),
 not in terms of the Next.js documentation.
 
+> **This section has an executable form: `renderer/test/serving-contract/`
+> (`cd renderer && npm run test:serving`, ROADMAP slice `test-2`).** Every assertion there
+> pins one row of this document and cites the section by name. Changing serving behaviour
+> means changing both, in the same slice. **Re-measured on `next@16.2.12` (2026-07-28, the
+> version `sec-1` bumped to): every row below is unchanged from the 16.2.9 measurements** —
+> `s-maxage=31536000` + `x-nextjs-cache: MISS→HIT` on the ISR route,
+> `private, no-cache, no-store, max-age=0, must-revalidate` on the twin, `private, no-store`
+> on the middleware 404s, no `Cache-Control` header at all on a thrown render, and
+> `RSC: 1` still flipping the body to `text/x-component`. The version bump introduced no
+> contract drift.
+
 > **A route serves cacheable HTML if and only if BOTH hold:**
 > 1. it exports `generateStaticParams()` (returning `[]` is enough — it opts the route into
 >    the full-route cache without prerendering anything at build time); **and**
@@ -324,7 +335,40 @@ OpenNext incremental cache; the header matrix (`probe.sh`); the host-verdict-tra
 missing-`TABLE_NAME` / `/api/posts` probe (`probe-config-and-api.sh`, which starts and stops
 its own server on port 3112); and an API-Gateway-v2 driver for the built Lambda
 (`opennext-drive.mjs`).
-Productising this into a runnable suite is ROADMAP slice `test-2`, not `cache-1`.
+
+**This recipe is now committed as a suite** — ROADMAP slice `test-2`,
+`renderer/test/serving-contract/` (`cd renderer && npm run test:serving`). It rebuilds the
+renderer, boots `next start` on an ephemeral port against an in-process DynamoDB stub, and
+asserts 16 of the rows below (plus four harness self-checks), each test named after the row it
+pins. The stub offers the same *fault injection* as the `cache-1` harness above — a read
+failure that spares tenant resolution — but as a plain method, `failContentReads(true)`, not
+over HTTP: the stub and the assertions share one process there, so the `/__ctl/…` plane has
+no caller. Credential-free, ≈9 s, and a CI job (`ci.yml` → `serving-contract`).
+**A failing test there is a contract change, not a flaky test**: update
+this document and the suite in the same slice (`docs/testing-strategy.md` § Invariants).
+What it does *not* cover, deliberately: anything at the edge (the cache key, `RSC`,
+`x-has-session` — those are `cdk synth` assertions, slice `test-4`) and the OpenNext Lambda
+bundle (`cache-1` re-measured every row through it; a committed harness is a separate slice).
+The one-off probe scripts above remain the record of how the rows were first measured.
+
+One difference from the ad-hoc recipe above, and it matters if you copy either: the committed
+suite gives its child processes a **constructed** environment rather than an inherited one,
+and hides `renderer/.env*` from them. The ad-hoc `npx next start` line inherits the shell and
+lets Next merge `.env.local` — measured 2026-07-28, that pulled the operator's real
+`AMODX_API_KEY` and `API_URL` into the process. Harmless when you are probing by hand and
+know it; not acceptable in a committed gate, where it would mean the suite could pass because
+of a credential a fork's CI does not have.
+
+The hiding mechanism travels in **`NODE_OPTIONS`**, because `next build` is a process *tree*:
+it forks build/export workers that call `@next/env#loadEnvConfig` themselves, and
+`next/dist/lib/worker.js` gives jest-worker an explicit `forkOptions.execArgv`, which drops
+the parent's argv flags while still inheriting the environment. Measured 2026-07-28 on this
+repo, a real build covers **14 processes**; with the hook removed the build announces
+`- Environments: .env.local` in its own output. Assertions `(iso1)`–`(iso4)` in
+`renderer/test/serving-contract/contract.test.mjs` keep all of that honest — `(iso3)` reads
+the hook's per-process journal back out of the real build/boot and also asserts Next's own
+first-party `- Environments:` report is absent. Details and the measured matrices:
+`renderer/test/serving-contract/README.md` § *Credential-free* and `no-dotenv.cjs` § DELIVERY.
 
 The OpenNext driver needs a **local** S3 endpoint. Without one the bundle's incremental cache
 talks to real AWS S3 (observed once during the `cache-1` run: `InvalidAccessKeyId`, HTTP 403,

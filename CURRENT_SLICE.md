@@ -114,14 +114,35 @@ None. Track A slice docs exist (`vid-1`, `vid-2`, `vid-3`); implementation not s
 ## Next
 
 Review `cache-3`, then **deploy cache-3 + cache-1 + cache-2 together** with the post-deploy
-operator verification each slice doc specifies. Then
-`vid-1` → `vid-2` → `vid-3` (Track A), then `fnd-1` (shared
+operator verification each slice doc specifies. Then finish Track TEST — `test-3` (pure unit
+layer) and `test-4` (infra `cdk synth` truth; `test-1` and `test-2` are implemented, review
+pending) — then `vid-1` → `vid-2` → `vid-3` (Track A), then `fnd-1` (shared
 `normalizeEmail`), then begin
 Track B (`cmrc-1`). The `fnd-1` and Track B/C/D slice docs are not yet authored — generate
 them per `docs/ROADMAP.md` when their track starts.
 
+*(Track TEST was missing from this list until 2026-07-28. `docs/ROADMAP.md` § Track order
+ratified CACHE → TEST → A on 2026-07-26, and the ROADMAP outranks this file — see
+`docs/VISION.md` § Decision hierarchy — so the omission was staleness, not a re-ordering.)*
+
 ## Recently Completed
 
+- `test-2` — serving-contract characterization suite (2026-07-28).
+  `renderer/test/serving-contract/` + `npm run test:serving`: 16 assertions, one per row of
+  `docs/caching-architecture.md` § *Serving contract*, plus 4 harness isolation self-checks,
+  run against `next build` + `next start` + an in-process DynamoDB stub. ≈10 s, **zero new
+  dependencies** (`node:test`). Credential-free *by construction* — the child processes get a
+  built environment, not an inherited one, and cannot read `renderer/.env*` (revision 1;
+  before it, the operator's real `AMODX_API_KEY` was reaching the renderer). Revision 2 moved
+  the `.env*` hook from an argv `--require` to `NODE_OPTIONS`, so it covers the whole process
+  tree `next build` forks, and made the coverage a **measurement** — `(iso3)` reads the hook's
+  own per-process journal back out of the real build/boot (14 processes covered) and asserts
+  Next's first-party `- Environments:` report is absent.
+  New CI job `serving-contract` in `.github/workflows/ci.yml`.
+  Touches no renderer/infra/backend source — the only non-doc change outside `test/` is the
+  renderer `test:serving` script. **Its first run is also the regression check `sec-1`'s
+  `next` 16.2.9 → 16.2.12 bump never received: no contract drift, every measured row
+  identical** (slice doc § Build run). Status `IMPLEMENTED`, review pending.
 - `cache-3` — cache-key hygiene (2026-07-27, revision 5). CloudFront cache policy: RSC
   header family added (closes H1), `x-has-session` added (closes H3),
   `queryStringBehavior: all()` → a 7-parameter allowlist; the viewer-request CloudFront

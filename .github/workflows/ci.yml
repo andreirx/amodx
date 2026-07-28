@@ -67,3 +67,46 @@ jobs:
       - name: Backend unit tests (no AWS, no credentials)
         working-directory: backend
         run: npm run test:unit
+
+  serving-contract:
+    # The executable form of docs/caching-architecture.md § "Serving contract" (test-2).
+    # A separate job, not a step of the one above, for two reasons: it is the only gate that
+    # boots a server and so has a failure mode of its own worth reading in isolation, and it
+    # needs only the three packages the renderer imports — not admin, infra or mcp-server.
+    #
+    # STILL CREDENTIAL-FREE, and not only by omission here. It reads no `secrets.*` and sets
+    # no `env:`; on top of that, renderer/test/serving-contract/harness.mjs CONSTRUCTS the
+    # environment of the renderer it spawns (four OS variables pass through; everything else
+    # is a literal) and hides `renderer/.env*` from every process in the tree that build
+    # spawns. So this job cannot pass because of a credential a fork's CI would not have —
+    # assertions `(iso1)`-`(iso4)` fail if that regresses, and `(iso3)` measures the coverage
+    # rather than assuming it. All DynamoDB traffic is pinned to an in-process stub on
+    # 127.0.0.1.
+    name: serving contract (renderer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Same pin, same reason: node:test is the suite's runner and 22 is the Lambda runtime.
+          node-version: '22'
+
+      - name: Install dependencies
+        # See the `npm ci` note in the job above — the same lockfile caveat applies.
+        run: npm ci
+
+      # Only the packages the renderer resolves types and code from. The suite runs
+      # `next build` itself, so the renderer is deliberately NOT built here.
+      - name: Build renderer prerequisites (shared -> effects -> plugins)
+        run: |
+          npm run build -w packages/shared
+          npm run build -w packages/effects
+          npm run build -w packages/plugins
+
+      - name: Serving-contract suite (builds + serves the renderer, local DDB stub)
+        working-directory: renderer
+        run: npm run test:serving

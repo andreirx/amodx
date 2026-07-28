@@ -54,7 +54,17 @@ src/
     ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
     ├── routing.ts                             # useTenantUrl() client hook for preview-mode URL generation
     └── routing-server.ts                      # getPreviewBase() — reads amodx_preview_base cookie (dynamic twin only)
+test/
+└── serving-contract/                          # `npm run test:serving` — see README.md there
+    ├── contract.test.mjs                      # 16 contract-row assertions + 4 harness isolation self-checks
+    ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection
+    ├── harness.mjs                            # next build / next start on an ephemeral port / HTTP helper
+    ├── no-dotenv.cjs                          # NODE_OPTIONS preload: hides renderer/.env* from the whole child process tree; journals its own coverage
+    └── fixtures.mjs                           # tenant + ROUTE# + CONTENT# items, `.test` TLD hosts
 ```
+
+`test/` is `.mjs`, outside `tsconfig.json`'s `include`, so neither `tsc --noEmit` nor
+`next build` compiles it. It adds no dependency to the package (`node:test` runner).
 
 ## Multi-Tenancy Routing
 
@@ -222,6 +232,14 @@ What this means when editing the renderer:
   mode, not whether the code is clean; and a route can be `●` while every render 500s. Verify
   with response headers (`Cache-Control`, `x-nextjs-cache`) against `next build` +
   `next start`.
+- **Run `npm run test:serving` before proposing any change under `app/[siteId]/`,
+  `middleware.ts` or `lib/dynamo.ts`.** `test/serving-contract/` is that verification,
+  committed: it does the `next build` + `next start` + header check for you against a local
+  DynamoDB stub, in ~9 s, with no credentials. It is demonstrably able to catch exactly the
+  bullet above — reintroducing one `headers()` call in the ISR page turns 7 of its 16
+  contract-row assertions red (slice `test-2` § Build run, DoD 3). A failure there is a **contract
+  change**: fix the regression, or update the suite *and*
+  `docs/caching-architecture.md` in the same slice.
 
 Other cache surfaces, unchanged by the slice:
 

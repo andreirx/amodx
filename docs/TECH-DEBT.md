@@ -250,6 +250,28 @@ The `@amodx/effects` package contains WGSL shaders as TypeScript string constant
 ### Replace `any` types in admin pages
 Several admin pages (Orders, Customers, Products, etc.) use `any` types for API responses. Create proper TypeScript interfaces using the shared schemas.
 
+### Serving-contract suite — coverage the origin cannot reach (slice `test-2`)
+
+`renderer/test/serving-contract/` pins the origin half of `docs/caching-architecture.md`
+§ *Serving contract*. Three gaps are deliberate, documented here so they stay known
+positions rather than assumed coverage:
+
+1. **The CloudFront half is untested by anything runnable.** The cache-key header allowlist,
+   the query-string allowlist, and the `x-has-session` viewer-request Function
+   (`infra/lib/renderer-hosting.ts`) are inline ES5 in a CDK template literal — invisible to
+   `tsc`, to lint and to the `infra` suite. `cache-3` exercised them with
+   `probe-cache3-cffunc.mjs`, which is **not committed** (it lives with that slice's relay
+   working state). Hazards H1 and H3 both live in that layer. Owner: slice `test-4`
+   (`cdk synth` assertions), which should adopt that probe rather than re-derive it.
+2. **The OpenNext Lambda bundle is not driven by any committed harness.** `cache-1`
+   re-measured every row through the built bundle by hand; the driver is likewise
+   uncommitted. Slice-doc § Non-scope calls this out as a separate slice if wanted.
+3. **Two measured rows were left unasserted** because they sit outside the ratified
+   assertion list: `/_dyn/<path>` from the wire (measured `404` + `private, no-store` — a
+   cache-*bypass* surface, so worth pinning) and `RSC: 1` flipping the body to
+   `text/x-component` (the origin premise the H1 fix rests on). Both measured green on
+   2026-07-28; see the slice doc § *Not built*.
+
 ---
 
 ## Completed
