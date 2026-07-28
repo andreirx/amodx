@@ -64,9 +64,30 @@ jobs:
       - name: Typecheck (all 8 workspaces, tsc --noEmit)
         run: npm run typecheck
 
+      # The three pure-unit suites (test-1 seeded backend's; test-3 added the other two).
+      # Separate steps rather than one aggregated script so a red run names the workspace
+      # in the step title without anyone having to open the log.
+      #
+      # Each runs a DIFFERENT runner invocation but the same guarantee: no AWS client is
+      # ever constructed for real (the renderer suite mocks @aws-sdk/client-dynamodb and
+      # next/navigation at the import boundary), no `.env*` is read, nothing binds a port.
+      # None of them needs the build above — they import TypeScript sources directly — but
+      # they are placed after it so a compile-level breakage is reported by the build step,
+      # which says so plainly, rather than as a transform error inside a test run.
       - name: Backend unit tests (no AWS, no credentials)
         working-directory: backend
         run: npm run test:unit
+
+      - name: Shared schema unit tests (Zod contracts; zod is the only dependency)
+        working-directory: packages/shared
+        run: npm test
+
+      - name: Renderer unit tests (tenant-directory TTL/bound/fail-open, not-found handoff)
+        # NOT the serving-contract suite — that is the `serving-contract` job below and is
+        # the only gate here that boots a server. `renderer/vitest.config.ts` narrows
+        # `include` to test/unit/ so the two can never run each other.
+        working-directory: renderer
+        run: npm test
 
   serving-contract:
     # The executable form of docs/caching-architecture.md § "Serving contract" (test-2).

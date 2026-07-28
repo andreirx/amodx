@@ -7,12 +7,14 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "4.1.13"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
   }
 }

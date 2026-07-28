@@ -163,6 +163,20 @@ job is to be green from a bare checkout should not add that risk for a feature i
 use. `test-3` may still add vitest to `renderer` for pure unit tests — that is orthogonal;
 the two can coexist, and porting this file if it ever becomes worthwhile is mechanical.
 
+**Update, `test-3` (2026-07-28): it did.** `renderer/test/unit/` is a vitest suite and
+`npm test -w renderer` runs it; this file still runs only under `npm run test:serving`. The
+lockfile risk above did not materialise — vitest 4.1.8 was ALREADY in the tree for
+`backend`, so the change added a `devDependencies` line to two workspace manifests and
+resolved zero new packages (verified: `npm ci --dry-run` against the hand-edited lockfile
+in an isolated copy, 1571 packages, exit 0 — the same count as before).
+
+The two suites are kept apart by `renderer/vitest.config.ts`, whose `include` is narrowed
+to `test/unit/**/*.test.ts`. Do not widen it: vitest's default glob matches
+`contract.test.mjs`, and running this file under vitest would bypass `harness.mjs` — which
+is the thing that CONSTRUCTS the child environment. The credential-free claim would then be
+asserted rather than measured, which is precisely the failure mode `(iso1)`–`(iso4)` exist
+to prevent.
+
 ## Deliberate limits
 
 - **Origin only.** No CloudFront, no warm-edge probes — slice non-scope. The cache-key half

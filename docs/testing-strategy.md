@@ -4,16 +4,17 @@ Ratified direction 2026-07-27 (human: "characterize existing testing and fill ga
 not superficially"). Estate characterized by file-level audit 2026-07-27; this doc is
 the target architecture. Track TEST in `docs/ROADMAP.md` implements it.
 
-## Current estate (measured 2026-07-27)
+## Current estate (measured 2026-07-27; unit column re-measured 2026-07-28 after `test-3`)
 
 | Surface | Unit | Integration | API | E2E |
 |---|---|---|---|---|
-| backend | 1 file (`test/unit/revalidate-paths.test.ts`, AWS-free) | 8 suites vs LIVE staging DDB + API GW (`.env.test`) | same 8 suites | — |
-| renderer | 0 | 1 suite, AWS-free (`test/serving-contract/`, `npm run test:serving`, `test-2`) | — | 2 playwright specs vs deployed staging; `public-site.spec.ts` asserts the pre-cache-1 "Site Not Found" 200 shell — STALE |
+| backend | 3 files, AWS-free, `npm run test:unit` — `revalidate-paths` (`test-1`), `availability`, `order-email` (`test-3`); 51 tests | 8 suites vs LIVE staging DDB + API GW (`.env.test`) | same 8 suites | — |
+| renderer | 2 files, AWS-free, `npm test` (`vitest.config.ts`, `include: test/unit/`) — `tenant-directory`, `not-found-handoff` (`test-3`); 29 tests | 1 suite, AWS-free (`test/serving-contract/`, `npm run test:serving`, `test-2`) | — | 2 playwright specs vs deployed staging; `public-site.spec.ts` asserts the pre-cache-1 "Site Not Found" 200 shell — STALE |
 | admin | 0 (no runner installed) | — | — | 0 |
-| plugins/shared/effects | 0 | — | — | — |
+| packages/shared | 1 file, `npm test` — `test/schemas.test.ts` (`test-3`); 40 tests over the invariant-bearing parses (single `domain`, `urlPrefixes` English defaults, `ContentStatus`, the seven order statuses, `IntegrationsSchema`) | — | — | — |
+| plugins/effects | 0 | — | — | — |
 | infra | jest file 100% commented out, reports PASS 1/1 | — | — | — |
-| CI | `ci.yml` job `build-typecheck-unit` (`test-1`, 2026-07-27): build → typecheck (8 workspaces) → `backend test:unit`; credential-free, every push/PR | `ci.yml` job `serving-contract` (`test-2`, 2026-07-28): the renderer suite above, also credential-free. `playwright.yml` runs the staging-mutating suites (secrets-gated) | — | ↑ |
+| CI | `ci.yml` job `build-typecheck-unit`: build → typecheck (8 workspaces) → `backend test:unit` (`test-1`, 2026-07-27) → `packages/shared` + `renderer` unit (`test-3`, 2026-07-28); credential-free, every push/PR; the three unit steps together ≈2 s | `ci.yml` job `serving-contract` (`test-2`, 2026-07-28): the renderer suite above, also credential-free. `playwright.yml` runs the staging-mutating suites (secrets-gated) | — | ↑ |
 
 Hazards: backend suites mutate shared staging state (unattended-unsafe, forbidden to
 relays); `.env.test` holds live secrets; the infra "suite" is a false green.
@@ -34,6 +35,16 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    logic. Gate: runs in relays and CI on every change. First targets: shared schemas +
    `normalizeEmail` (fnd-1), plugins `videoSource` (vid-1), renderer
    `tenant-directory`/`not-found-handoff`, backend pure helpers.
+   *Status: `test-3` (2026-07-28) delivered the layer for the logic that exists today —
+   `packages/shared` schemas, renderer `tenant-directory` + `not-found-handoff`, backend
+   `availability` + `order-email`; 120 tests, ≈0.6 s of runtime across the three
+   workspaces, zero new packages in the dependency tree (vitest 4.1.8 was already there for
+   backend). Still outstanding by design: `normalizeEmail` does not exist until `fnd-1` and
+   `videoSource` until `vid-1`; admin needs an RTL harness (§4).*
+   A unit test earns its place by pinning a branch the wire cannot reach cheaply or a
+   contract that spans workspaces — TTL expiry, cache eviction, fail-open, schema
+   accept/reject, `OrderSchema.status` ↔ `STATUS_LABELS`. Restating what
+   `test/serving-contract/` already measures end-to-end is duplication, not coverage.
 2. **Serving-contract (renderer integration)** — the cache probe matrix automated
    against `next build` + `next start` + a local DynamoDB stub. Pins MEASURED behavior
    (docs/caching-architecture.md §Measured serving behaviour), including warts. The
@@ -61,8 +72,9 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    serving-contract suite as a parallel job. On demand / nightly: local-DDB integration.
    Post-deploy: e2e vs staging.
    *Status: `.github/workflows/ci.yml` carries both credential-free jobs —
-   `build-typecheck-unit` (`test-1`) and `serving-contract` (`test-2`). The backend
-   local-DDB and post-deploy legs are still unimplemented.*
+   `build-typecheck-unit` (`test-1`, extended by `test-3` with the `packages/shared` and
+   `renderer` unit steps) and `serving-contract` (`test-2`). The backend local-DDB and
+   post-deploy legs are still unimplemented.*
 
 ## Invariants
 

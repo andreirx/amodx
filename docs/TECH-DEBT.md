@@ -289,3 +289,21 @@ positions rather than assumed coverage:
 - ~~Footer enhancement~~ — DONE (company details, footer links, legal links, multi-column layout)
 - ~~Product variants admin tab~~ — DONE (VariantsTab in ProductEditor with groups + options)
 - ~~Customer accounts (Phase 5E)~~ — DONE (NextAuth Google OAuth, account page, order history, checkout pre-fill)
+
+## test-3 residuals (2026-07-28, from ratification packet TEST3-SLICEDOC-STATUS)
+
+- **F-SHARED-1 (PRODUCT BUG, migration-sensitive):** `ShippingAddressSchema.country`
+  defaults to literal `"Romania"`, violating the universal-default rule; persisted
+  orders carry the value. Fix needs a schema default change + decision on existing
+  rows. Address: before Track B storage cutover (cmrc-4) at the latest.
+- **F-BACKEND-2 (PRODUCT BUG):** `isProductAvailable` compares availableFrom/Until
+  against the UTC day, not tenant-local time — products flip availability at the
+  wrong hour for non-UTC tenants. Address: with commerce work or sooner.
+- **F-BACKEND-1:** `invalidate-cdn.ts` has no pure seam; unit coverage skipped per
+  slice instruction (no src changes). Address: opportunistically when the file next
+  changes (cache-4 touches it).
+- **F-RENDERER-1:** `tenant-directory.ts` lacks an injectable clock/lookup; tests use
+  a module-registry substitute. Acceptable; a seam only if the module grows.
+- **Test files outside typecheck:** `packages/shared` and `backend` test dirs are not
+  in `tsconfig.include`, so `typecheck` doesn't cover them. Address: test-4 or a
+  one-line tsconfig ride-along in the next slice touching those workspaces.
