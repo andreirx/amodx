@@ -190,3 +190,21 @@ Hygiene work, not a feature track.
   reuses.
 - Track C's renderer-proxy customer sessions precede `appt-4` customer endpoints.
 - PD-001/002/003 (`docs/platform-decisions.md`) are binding across B, C, and D.
+
+## Backlog / Discovery Tracks (added 2026-07-30, human notes reconciled against repo)
+
+Known product opportunities. NOT active slices until promoted into Current Priority and
+decomposed into `docs/slices/`. Reconciliation: video embeds are SHIPPED (Track A);
+commerce-privacy IS Track B; the rest below. Discovery plans to author first (in this
+order, doc-only, can proceed while Track B runs): `EMAIL` (sales/migration friction),
+`REV` (API/media/legal unknowns), `STATIC` (raw-HTML security boundary).
+
+| Track | Scope | Repo head start | Gate |
+|---|---|---|---|
+| REV | Reviews with images: bulk import (CSV/JSON+media ZIP) first, then admin moderation, renderer gallery, Google/FB connectors last | Review CRUD + moderation + reviews-carousel block + schema `source: google/imported` exist; MISSING images field, importer, connectors | Discovery: media rights/consent, connector API access (claims in human notes unverified) |
+| STATIC | Lovable/static HTML pages: isolation model → S3 + page schema → admin upload/preview → renderer route | Sanitized `html` block plugin + S3 assets origin exist | `static-1` isolation decision is RATIFICATION-CLASS (raw script vs the session/cookie boundary); sandboxed iframe from asset origin = default candidate |
+| AI | In-panel admin AI (MCP) | `plan-ai-admin.md`, LlmGateway hedge, operator-side tools/mcp-server | `ai-0` provider/tooling decision record; preview/apply only, full audit, admin-only |
+| CART | Abandoned cart recovery: snapshots → consent/capture → scheduler+templates → suppression → analytics | None | HARD-GATED on Track B (snapshots live in commerce-private table) + consent model |
+| EVT | Events (capacity, attendees, tickets, waitlist) — distinct domain from Track D appointments (resource booking) | None; reuses D's kernel concepts only | After Track D |
+| LINK | Linktree-style pages: link-list plugin → page template → optional analytics | None; vid-1-shaped plugin work | None — filler candidate between heavy tracks |
+| EMAIL | Domain-email onboarding (cPanel migration friction): email audit → guided DNS for external mailbox providers (Workspace/M365/Zoho/existing cPanel) → SES DKIM/DMARC health → optional SES inbound aliases → migration checklist | Outbound SES verified-identity sending only | NOT a mail server. Commercially heaviest backlog item; WorkMail-EOL/SES-receiving claims from human notes to be verified in `email-1` |
