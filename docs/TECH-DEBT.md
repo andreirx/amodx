@@ -746,3 +746,16 @@ None of this is a reason to hold the fix — a broken image pipeline is the larg
 - **When:** before any tenant work that depends on next/image; otherwise next in the
   CACHE track after the combined deploy ships.
 - **Status:** OPEN
+
+## MCP server runtime floor (2026-08-01, resolved incident)
+
+- **What happened:** SEC-1's @modelcontextprotocol/sdk bump requires Node >= 20 (uses
+  the `File` global). Claude Desktop resolved an older node -> server crashed
+  ~7s after initialize with `ReferenceError: File is not defined` ("Server
+  disconnected"). Fixed by pinning `/opt/homebrew/bin/node` in
+  claude_desktop_config.json (backup: .bak-2026-08-01) and declaring
+  `engines.node >= 20` in tools/mcp-server/package.json.
+- **Residual:** engines is advisory at runtime; a version check at server startup
+  (fail-fast with a clear message, matching the existing e2366e9 fail-fast pattern)
+  would make this loud. Add with the next mcp-server slice.
+- **Status:** incident RESOLVED; startup version check OPEN
