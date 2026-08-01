@@ -4,6 +4,7 @@ import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { formatFromHeader } from "../lib/email-from.js";
 
 const ses = new SESClient({});
 const s3 = new S3Client({});
@@ -114,8 +115,12 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             The Team
         `;
 
+        // No tenant config (hence no site name) is loaded on the Paddle fulfilment
+        // path, and the ratified hotfix forbids adding DDB reads to send paths, so the
+        // From carries the platform brand label (DEFAULT_FROM_NAME) rather than a bare
+        // address — the ratified "fall back to the platform default" behaviour.
         await ses.send(new SendEmailCommand({
-            Source: FROM_EMAIL,
+            Source: formatFromHeader(undefined, FROM_EMAIL),
             Destination: { ToAddresses: [email] },
             Message: {
                 Subject: { Data: subject },

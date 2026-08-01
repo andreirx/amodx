@@ -759,3 +759,27 @@ None of this is a reason to hold the fix — a broken image pipeline is the larg
   (fail-fast with a clear message, matching the existing e2366e9 fail-fast pattern)
   would make this loud. Add with the next mcp-server slice.
 - **Status:** incident RESOLVED; startup version check OPEN
+
+## EMAIL-HOTFIX-1 residuals (2026-08-01)
+
+`EMAIL-HOTFIX-1` implemented the ratified ship-now half of D-EMAIL-6 (option D): the `From`
+header now carries the tenant `siteName` as an RFC 5322 display name at all six SES send
+sites, via `backend/src/lib/email-from.ts` (`formatFromHeader`). When a send site has no
+tenant name in scope, the display name falls back to the platform brand label
+(`DEFAULT_FROM_NAME`, "AMODX") — a bare address is never emitted. The sender ADDRESS is
+unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversight):
+
+- **The full per-tenant sender identity is unshipped — this is only the brand-*label*, not a
+  per-tenant sending domain.** Mail still leaves from the one shared platform address, so
+  F-EMAIL-1's DKIM/SPF/deliverability half is untouched. That is `email-2a` (ratified
+  D-EMAIL-6 option B / D-EMAIL-1). Do not read the display-name fix as closing F-EMAIL-1.
+- **`Reply-To` was NOT added** (ratified D-EMAIL-6.4 defers it until an explicit
+  reply-address contract exists; see F-EMAIL-2 / F-EMAIL-2b). Customer replies to order mail
+  still reach the platform inbox, not the merchant, for every tenant.
+- **`backend/src/webhooks/paddle.ts` carries the platform brand label, not a tenant name.**
+  The Paddle digital-delivery path loads no tenant config, and the hotfix forbids adding a
+  DDB read to a send path, so its `From` reads `"AMODX" <…>` rather than the buyer's tenant
+  name. Cost to personalise: one `GetItem` (`SYSTEM` / `TENANT#<id>`) per webhook to fetch
+  `name`. Fold into `email-2a` where tenant config is loaded anyway.
+- **Status:** display-name change IMPLEMENTED (uncommitted, pending review/deploy); per-tenant
+  identity + Reply-To + paddle tenant-name personalisation OPEN (→ `email-2a`)

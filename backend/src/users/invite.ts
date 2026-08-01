@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { renderTemplate } from "../lib/order-email.js";
+import { formatFromHeader } from "../lib/email-from.js";
 import crypto from "crypto";
 
 const cognito = new CognitoIdentityProviderClient({});
@@ -79,7 +80,7 @@ const _handler: Handler = async (event) => {
             const renderedBody = renderTemplate(emailBody, vars);
 
             await ses.send(new SendEmailCommand({
-                Source: SES_FROM_EMAIL,
+                Source: formatFromHeader(body.siteName, SES_FROM_EMAIL),
                 Destination: { ToAddresses: [email] },
                 Message: {
                     Subject: { Data: renderedSubject, Charset: "UTF-8" },

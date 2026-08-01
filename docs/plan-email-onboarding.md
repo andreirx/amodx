@@ -541,6 +541,19 @@ candidate for immediate shipping outside this track, in the same spirit as `cach
 configured one (see F-EMAIL-2b and D-EMAIL-6 sub-decision D.i), so the absent-value
 behaviour must be specified before it ships.
 
+> **IMPLEMENTED (`EMAIL-HOTFIX-1`, 2026-08-01, uncommitted — pending review/deploy) —
+> display-name half only.** The `From` display name is applied at all six SES send sites via
+> `backend/src/lib/email-from.ts` (`formatFromHeader`, RFC 5322/2047-correct for quotes,
+> commas, diacritics, emoji, and CR/LF injection; unit-tested in
+> `backend/test/unit/email-from.test.ts`). A send site with no tenant name in scope (Paddle
+> fulfilment) falls back to the platform brand label (`DEFAULT_FROM_NAME`, "AMODX"), never a
+> bare address. Per the ratified D-EMAIL-6 sub-decision, the **`Reply-To` half was NOT
+> implemented** (deferred, D-EMAIL-6.4) — so this narrows F-EMAIL-1's *symptom* but closes
+> neither F-EMAIL-1 nor F-EMAIL-2. The sender address is unchanged; the per-tenant sending
+> identity remains `email-2a` (option B). Residuals — Reply-To, per-tenant sender identity,
+> and personalising Paddle's `From` with the buyer's tenant name — are tracked in
+> `docs/TECH-DEBT.md` § *EMAIL-HOTFIX-1 residuals*.
+
 ### 4.1 `email-1` — Audit and decisions
 
 - **Scope.** This document. Current-state audit with executed evidence; verification of the

@@ -5,6 +5,7 @@ import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { publishAudit } from "../lib/events.js";
 import { verifyRecaptcha, getRecaptchaErrorMessage, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
+import { formatFromHeader } from "../lib/email-from.js";
 
 
 const ses = new SESClient({});
@@ -76,7 +77,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         // 3. Send Email
         await ses.send(new SendEmailCommand({
-            Source: FROM_EMAIL,
+            Source: formatFromHeader(config?.name, FROM_EMAIL),
             Destination: { ToAddresses: [recipient] },
             ReplyToAddresses: [email],
             Message: {

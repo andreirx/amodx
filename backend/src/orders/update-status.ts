@@ -6,6 +6,7 @@ import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
+import { formatFromHeader } from "../lib/email-from.js";
 
 const ses = new SESClient({});
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
@@ -96,6 +97,11 @@ const _handler: Handler = async (event) => {
                 }));
                 const tenantConfig = tenantRes.Item;
                 const siteName = tenantConfig?.name || "Our Shop";
+                // From display name uses the raw tenant name so an unnamed tenant falls
+                // back to the platform brand ("AMODX"), NOT the template-only "Our Shop"
+                // (EMAIL-HOTFIX-1 review-1). siteName stays "Our Shop"-defaulted for the
+                // email body/subject templates below.
+                const fromHeader = formatFromHeader(tenantConfig?.name, FROM_EMAIL);
                 const adminEmail = tenantConfig?.integrations?.contactEmail;
                 const processingEmail = tenantConfig?.integrations?.orderProcessingEmail;
 
@@ -141,7 +147,7 @@ const _handler: Handler = async (event) => {
                     // Send to customer
                     if (template.sendToCustomer) {
                         await ses.send(new SendEmailCommand({
-                            Source: FROM_EMAIL,
+                            Source: fromHeader,
                             Destination: { ToAddresses: [customerEmail] },
                             Message: {
                                 Subject: { Data: `[${siteName}] ${renderedSubject}` },
@@ -157,7 +163,7 @@ const _handler: Handler = async (event) => {
 
                     if (internalRecipients.size > 0) {
                         await ses.send(new SendEmailCommand({
-                            Source: FROM_EMAIL,
+                            Source: fromHeader,
                             Destination: { ToAddresses: [...internalRecipients] },
                             Message: {
                                 Subject: { Data: `[${siteName}] ${renderedSubject}` },
