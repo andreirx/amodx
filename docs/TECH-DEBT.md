@@ -687,6 +687,15 @@ nothing detects the **next** omission, because nothing extracts the required set
 consumers (`renderer/src/app/api/revalidate/route.ts`'s `headers.get('x-revalidation-token')`,
 the optimizer's `const { url, w, q } = query`).
 
+**The next omission arrived (`cache-7`, 2026-08-05), exactly as predicted.** A third header
+pair required by a consumer — `x-prerender-revalidate` + `x-isr`, sent by open-next's
+RevalidationFunction (`node_modules/open-next/dist/adapters/revalidate.js:25-26`) — was absent
+from the same `(h)` allowlist, so background ISR regeneration was a no-op for every page in
+prod. It was caught by an operator reading CloudWatch, not by any guard; assertion `(h)` was
+updated to ten headers *after* the fact. The consumer this time is a `headers: {...}` literal
+inside open-next's *own bundled source*, i.e. the harder-to-extract side this item already
+flagged. The trigger below stands, now with two data points behind it.
+
 `cache-3`'s `probe-cache3-cffunc.mjs` §C is the pattern that would close it — extract both
 sides, fail on divergence. Deliberately not applied here: one of the two consumer sides is a
 destructure inside Next's own bundled source, so the extraction would be far more fragile than

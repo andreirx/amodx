@@ -364,6 +364,41 @@ function handler(event) {
                 // either cache key — a credential must never become a cache-key partition, and
                 // `api/*` is CACHING_DISABLED anyway.
                 'x-revalidation-token',
+                // slice cache-7. The OpenNext background-ISR revalidation protocol. Same
+                // transport-defect class as `x-revalidation-token` above: absent here, CloudFront
+                // deletes these before the origin (the renderer server Lambda) sees them.
+                //
+                // The RevalidationFunction (SQS consumer, `.open-next/revalidation-function`)
+                // sends BOTH headers on its HEAD re-render request — verified in the INSTALLED
+                // open-next@3.1.3 source, `node_modules/open-next/dist/adapters/revalidate.js:25-26`:
+                //   headers: { "x-prerender-revalidate": <previewModeId>, "x-isr": "1" }
+                // The HEAD goes to `https://${host}${url}` (revalidate.js:22) where `host` is the
+                // public tenant domain the server recorded (`internalEvent.headers.host`,
+                // `dist/core/routing/util.js:413` → enqueued at util.js:313), i.e. the request
+                // traverses THIS distribution and THIS policy.
+                //
+                // Both are load-bearing, and each is stripped today:
+                //   - `x-prerender-revalidate` is the credential Next checks to authorise a
+                //     BLOCKING re-render, and open-next's cacheInterceptor short-circuits the
+                //     cache lookup when it is present (`dist/core/routing/cacheInterceptor.js:103`).
+                //     Absent, the HEAD returns a cached body, not `x-nextjs-cache: REVALIDATED`,
+                //     so revalidate.js:35-37 records EVERY page as "Failed to revalidate" (the
+                //     OBSERVED prod symptom).
+                //   - `x-isr: "1"` is what makes the regenerated page PERSIST. open-next patches
+                //     Next's static-generation store so that `isISRRevalidation` forces
+                //     `isOnDemandRevalidate = false` (`dist/build/patch/patchedAsyncStorage.js:9-11`,
+                //     flag set at `dist/core/requestHandler.js:79`); without it Next treats the
+                //     re-render as on-demand and does NOT write it back to the S3 incremental
+                //     cache, so the entry stays STALE even if the HEAD "succeeds". It also
+                //     bypasses tenant middleware for the internal request
+                //     (`dist/core/routing/middleware.js:27`). Forwarding one without the other
+                //     would silence the log yet leave the page stale — both, or neither.
+                //
+                // Like `x-revalidation-token`, NEITHER is in any cache key: they are
+                // markers/credentials, must not partition entries, and the revalidation HEAD only
+                // reaches the origin on an edge miss/stale-revalidation anyway.
+                'x-prerender-revalidate',
+                'x-isr',
             ),
             queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
             cookieBehavior: cloudfront.OriginRequestCookieBehavior.all(),

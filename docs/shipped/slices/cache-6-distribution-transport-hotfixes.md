@@ -78,7 +78,7 @@ Implemented exactly the two changes in § Scope. Nothing deployed; nothing commi
 |---|---|
 | `infra/lib/renderer-hosting.ts` | (1) `'x-revalidation-token'` added as the 8th `RendererOriginPolicy` header, with the defect-1 rationale. (2) `_next/image*` gets a dedicated `ImageCachePolicy` (`url,w,q` keyed; headers/cookies none; gzip+brotli; 1 d / 365 d / 0) replacing `CACHING_OPTIMIZED`, with the defect-2 rationale. **No other edit** — proven by template diff, below. |
 | `infra/test/amodx-stack.test.ts` | New `(g)` (image query key) and `(h)` (ORP header list). New helper `cachePolicyByConstructId()` — `onlyResource('AWS::CloudFront::CachePolicy')` throws now that a second policy exists, so the five existing call sites in `(a1)`–`(a4)`/`(b2)` were repointed at `RendererCachePolicy` by name. Header note scoping the pre-`cache-6` staging diff. |
-| `docs/caching-architecture.md` | New § *Transport defects found in `cache-6`* (D1, D2, with the post-deploy checks); new § *Origin Request Policy*; § *Distribution Layout* image row; a warning box on § *Invalidation Mechanisms 5* for anyone debugging a dead purge; Known Gaps 16 + 17. |
+| `docs/caching-architecture.md` | New § *Transport defects found in `cache-6`* (D1, D2, with the post-deploy checks) — *later renamed § *Transport defects — CloudFront deletes a required request field* by `cache-7`, which added D3 to it*; new § *Origin Request Policy*; § *Distribution Layout* image row; a warning box on § *Invalidation Mechanisms 5* for anyone debugging a dead purge; Known Gaps 16 + 17. |
 | `docs/TECH-DEBT.md` | New § *cache-6 residuals*: the `Vary: Accept` gap, the missing allowlist↔consumer cross-check, and the `sharp` exposure ripple into `dep-1`. |
 | `docs/testing-strategy.md` | infra estate row and §6 status: 15 → **17** named assertions. |
 | `docs/runbooks/deploy-track-cache.md` | Title + preamble now cover four slices, with the paragraph explaining why `cache-6` changes what two existing probes *mean*. Probe 7 annotated (needs `cache-2` **and** `cache-6`; check for a 401 before suspecting the path); probe 11 annotated with the pre-`cache-6` 500. New probes **7b** (purge returns 200 **and** the `_cache/…` S3 object is gone — the 200 alone only proves transport) and **11b** (`w=1080` bytes ≠ `w=256` bytes — the only probe that distinguishes "`w` is in the cache key" from "`w` merely reached the origin"). New rollback note: reverting either change restores the *pre-existing broken* behaviour, so it is a return to broken, not to safe. Stale line corrected — it read "`test-4` … is not started". |
@@ -101,9 +101,10 @@ Every one appears above. Nothing outside `infra/lib/renderer-hosting.ts` and
 That section is titled **"Open hazards activated by cache-1"**, and neither defect was
 activated by `cache-1` — both predate the whole track and neither is a cache-key defect. Filing
 them there would have made the section's title false, which is the one thing a heading may not
-be. They are instead in an adjacent section, § *Transport defects found in `cache-6`*, named
-**D1/D2** rather than H4/H5 to keep the two classes distinguishable, and § *Open hazards* now
-carries a forward pointer to it explaining why. The instruction's intent — both recorded as
+be. They are instead in an adjacent section, § *Transport defects found in `cache-6`* (renamed
+§ *Transport defects — CloudFront deletes a required request field* by `cache-7`, which added a
+third defect D3 to the same section), named **D1/D2** rather than H4/H5 to keep the two classes
+distinguishable, and § *Open hazards* now carries a forward pointer to it explaining why. The instruction's intent — both recorded as
 found-and-fixed, next to the hazards, discoverable from them — is met.
 
 ### Evidence

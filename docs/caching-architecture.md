@@ -512,7 +512,7 @@ track is uncommitted-to-production as of 2026-07-27; see `CURRENT_SLICE.md` for 
 found by live probing in `cache-6` and they are a different class: neither was activated by
 `cache-1`, neither is a cache-key defect, and both were already broken in production before
 this track began. Keeping this section's title honest is why they are not filed as "H4/H5"
-here — see § *Transport defects found in `cache-6`*.
+here — see § *Transport defects — CloudFront deletes a required request field*.
 
 ### H1 — the `RSC` header was not in the CloudFront cache key — CLOSED in `cache-3` (was: high)
 
@@ -730,21 +730,28 @@ doc § *Deployment*, probe 6. A `curl` against the origin cannot fail this way.
 
 ---
 
-## Transport defects found in `cache-6` (both CLOSED, neither deployed)
+## Transport defects — CloudFront deletes a required request field (D1–D2 `cache-6`, D3 `cache-7`)
 
-Two defects found on 2026-07-28 by probing the **deployed** staging distribution, and one of
-them re-observed on production `amodx.net`. They are filed apart from H1–H3 on purpose:
-those are **cache-key** defects that `cache-1` activated, whereas these two are **transport**
-defects — CloudFront deleting request data before the origin ever sees it — that were already
-broken in production and are independent of whether anything is cached at all.
+D1–D2 were found on 2026-07-28 by probing the **deployed** staging distribution, one of them
+re-observed on production `amodx.net`; both **shipped to production with `cache-6` on
+2026-07-28** (`CURRENT_SLICE.md` § *Shipped 2026-07-28*, Tracks CACHE 1,2,3,6 — "deployed ISR
+purging working for the first time" is D1). D3 was found on 2026-08-05 from a live prod incident
+(the RevalidationFunction logging "Failed to revalidate" for every host); it is CLOSED in code by
+`cache-7` but **not deployed yet**. All three are filed apart from H1–H3 on purpose: those are
+**cache-key**
+defects that `cache-1` activated, whereas these three are **transport** defects — CloudFront
+deleting request data before the origin ever sees it — that were already broken in production
+and are independent of whether anything is cached at all.
 
 The shared shape is worth naming once, because it is the class of bug the CDK makes easy to
 write. A CloudFront behavior forwards to its origin exactly (cache-policy keys ∪
 origin-request-policy allowlist). Anything else is **deleted, not merely unkeyed**. So an
 omission from either list is not a caching subtlety; it is a request field that does not
-reach the application. Both fixes are in `infra/lib/renderer-hosting.ts` and both are pinned
-by named assertions in `infra/test/amodx-stack.test.ts` — `(h)` and `(g)` respectively —
-because in both cases the reason the defect shipped is that **nothing asserted the list**.
+reach the application. All three fixes are in `infra/lib/renderer-hosting.ts` and each is
+pinned by a named assertion in `infra/test/amodx-stack.test.ts`: D1 and D3 by `(h)` (the
+`RendererOriginPolicy` header allowlist — a header omission), D2 by `(g)` (the `_next/image*`
+behavior's query-string key — a parameter omission). In every case the reason the defect
+shipped is that **nothing asserted the list**.
 
 ### D1 — `x-revalidation-token` was stripped, so every deployed ISR purge 401'd (was: high)
 
@@ -817,6 +824,98 @@ introduced — `docs/TECH-DEBT.md`.
 Post-deploy check (`NOT RUN`, operator): `curl -sI '<domain>/_next/image?url=%2F_assets%2F…&w=640&q=75'`
 returns 200 with an `image/*` content type, and a second request with `w=1080` returns
 different bytes rather than the 640 variant.
+
+### D3 — `x-prerender-revalidate` + `x-isr` stripped, so background ISR regeneration is a no-op (`cache-7`, was: high)
+
+**State before the fix.** `RendererOriginPolicy` named eight headers; neither
+`x-prerender-revalidate` nor `x-isr` was among them. open-next's RevalidationFunction — the
+SQS consumer in `.open-next/revalidation-function`, wired at
+`infra/lib/renderer-hosting.ts` §4.3 — sends **both** on the HEAD request it makes to
+re-render a stale page. `OBSERVED` in the installed open-next@3.1.3 bundle,
+`node_modules/open-next/dist/adapters/revalidate.js:22-27`:
+
+```js
+https.request(`https://${host}${url}`, {
+  method: "HEAD",
+  headers: { "x-prerender-revalidate": prerenderManifest.preview.previewModeId, "x-isr": "1" },
+}, ...)
+```
+
+`host` is the public tenant domain the server recorded (`internalEvent.headers.host`,
+`dist/core/routing/util.js:413`, enqueued at util.js:313), so the HEAD traverses **this**
+distribution and **this** policy — exactly the D1 geometry. CloudFront deleted both, so:
+
+- `x-prerender-revalidate` — the credential Next checks to run a *blocking* re-render, and the
+  signal open-next's `cacheInterceptor` uses to skip its own cache lookup
+  (`dist/core/routing/cacheInterceptor.js:103`) — never arrived. The HEAD got a cached body,
+  not `x-nextjs-cache: REVALIDATED`, so revalidate.js:35-37 pushed the record onto
+  `failedRecords` and logged **"Failed to revalidate"**. `OBSERVED` in prod CloudWatch, every
+  host, 2026-08-05.
+- `x-isr: "1"` — the marker open-next turns into `isISRRevalidation`
+  (`dist/core/requestHandler.js:79`), which its patched static-generation store uses to force
+  `isOnDemandRevalidate = false` (`dist/build/patch/patchedAsyncStorage.js:9-11`) so the
+  re-render is **written back to the S3 incremental cache** instead of treated as a throwaway
+  on-demand render; it also bypasses tenant middleware for the internal request
+  (`dist/core/routing/middleware.js:27`) — never arrived either. This is why forwarding only
+  the credential would have been a *trap*: the log would go quiet (a `REVALIDATED` response is
+  produced) while the S3 entry silently stayed stale. Both, or neither.
+
+**Why this surfaced as "a new article never joins the listing pages" — and the `s-maxage=2`
+question (slice §4).** Nothing here is time-based ISR. The freshness model, `OBSERVED` in code
+and in the installed open-next@3.1.3 source, is:
+
+- Every cacheable route is `export const revalidate = false`
+  (`renderer/src/app/[siteId]/[[...slug]]/page.tsx:22`, `[siteId]/layout.tsx:19`,
+  `[siteId]/products/[productId]/page.tsx:9`). open-next maps `revalidate === false` to a
+  **one-year** directive — `s-maxage=31536000, stale-while-revalidate=2592000` — measured in the
+  *`open-next@3.1.3` vs Next 16* table above (rows: published page, legacy product). That is the
+  header on a **fresh** read.
+- **The `s-maxage=2` is not a route config and not folklore — it is a runtime rewrite keyed on
+  the response's cache STATE, not on the route.** open-next's `fixISRHeaders()`
+  (`node_modules/open-next/dist/core/routing/util.js:364`) runs on the way out of every response
+  and branches on the `x-nextjs-cache` header the incremental-cache read produced:
+  - `x-nextjs-cache: STALE` → it **overwrites** Cache-Control with
+    `s-maxage=2, stale-while-revalidate=2592000` (`util.js:389-396`; the inline comment there:
+    "In order for CloudFront SWR to work, we set the stale-while-revalidate value to 2 seconds …
+    CloudFront will cache the stale data for a short period while we revalidate in the
+    background"). This is exactly the header the incident OBSERVED on the listing pages — it is
+    genuine, and the earlier claim that it was folklore (a repo-source grep found no literal
+    `s-maxage=2`) was checking the wrong layer: the value is injected at runtime by open-next,
+    so it can never appear in renderer/plugins/infra source.
+  - `x-nextjs-cache: HIT` at the SSG default → **left untouched**: the HIT branch recomputes a
+    remaining TTL only when the extracted `s-maxage` is set *and* `!== 31536000`
+    (`util.js:372-388`), so a fresh one-year page keeps `s-maxage=31536000`.
+  - `x-nextjs-cache: REVALIDATED` (the response to a successful re-render) → rewritten to
+    `private, no-cache, no-store` (`util.js:365-368`).
+
+  So a listing page and a plain page carry **different** Cache-Control not because they are
+  different routes — they are the same catch-all route — but because at the moment of the
+  incident the listing page's incremental entry was in **STALE** state and the article page's
+  was **HIT/fresh**. The header difference is a state difference, and `fixISRHeaders()` is the
+  mechanism.
+- Staleness is driven **on demand, not by the clock**. On publish, the backend calls the
+  renderer's `/api/revalidate`, which runs `revalidatePath()` / `revalidateTag()`
+  (`renderer/src/app/api/revalidate/route.ts:23,35-38`). That flips the affected incremental
+  entries to STALE *without* changing the route's `revalidate = false`. The next visitor to such
+  a page is served the still-cached body, but the read returns `x-nextjs-cache: STALE`, which
+  simultaneously (a) makes `fixISRHeaders()` emit the `s-maxage=2` SWR header above and (b) is
+  the *only* condition under which open-next enqueues an SQS revalidation message
+  (`revalidateIfRequired`, `util.js:281-282`). So the SQS RevalidationFunction fires on this
+  stack for the on-demand path — and every one of those firings hit D3 and failed, leaving the
+  page STALE indefinitely. Because STALE re-emits `s-maxage=2` on every read, CloudFront keeps
+  serving from the 30-day `stale-while-revalidate` window until the nightly `/*` flush. That is
+  the reported symptom end to end, and the slice's production evidence stands.
+
+**State after the fix (`cache-7`).** `'x-prerender-revalidate'` and `'x-isr'` are the ninth and
+tenth entries of `RendererOriginPolicy`. Like `x-revalidation-token`, they are in **no** cache
+key: both are markers/credentials that must not partition entries, and the revalidation HEAD
+only reaches the origin on the stale-revalidation fetch anyway. Pinned by assertion `(h)` in
+`infra/test/amodx-stack.test.ts` (now ten headers, order-exact).
+
+Post-deploy check (`NOT RUN`, operator): publish/update a post, then watch the
+RevalidationFunction logs go quiet (no "Failed to revalidate"); a listing/tag page that read
+`x-nextjs-cache: STALE` returns to a fresh render within seconds instead of at the nightly
+flush.
 
 ---
 
@@ -1014,8 +1113,10 @@ exactly the path it is told.
 > `cache-6`, CloudFront **stripped the `x-revalidation-token` header** and this endpoint
 > answered 401 to every caller that arrived through the distribution — which is every backend
 > caller. The transport, not the path and not the secret, was the reason nothing was ever
-> purged in a deployed environment. Fixed in `cache-6` (§ *Transport defects found in
-> `cache-6`*, D1); **not deployed yet**, so the 401 is still the live behaviour today.
+> purged in a deployed environment. Fixed in `cache-6` (§ *Transport defects — CloudFront
+> deletes a required request field*, D1) and **deployed to production 2026-07-28**, so purges
+> now reach this endpoint; a stack synthesised or deployed from a pre-`cache-6` revision still
+> exhibits the 401.
 
 #### The key is the domain, not the tenant id (fixed in `cache-2`)
 
@@ -1475,7 +1576,8 @@ Lambda is concerned.
 | `X-Forwarded-Host` | how the origin resolves the tenant at all (§ *Multi-Tenant Isolation*) |
 | `x-origin-verify` | origin trust — the renderer rejects requests without it (Phase 6.1) |
 | `x-tenant-id`, `x-automation-key` | admin/automation calls proxied through the renderer |
-| `x-revalidation-token` | **added by `cache-6`.** The ISR purge credential. Its absence 401'd every deployed purge — § *Transport defects found in `cache-6`*, D1 |
+| `x-revalidation-token` | **added by `cache-6`.** The ISR purge credential. Its absence 401'd every deployed purge — § *Transport defects — CloudFront deletes a required request field*, D1 |
+| `x-prerender-revalidate` + `x-isr` | **added by `cache-7`.** open-next's background-ISR revalidation protocol (blocking re-render credential + write-back marker). Their absence made every SQS revalidation a no-op — § *Transport defects — CloudFront deletes a required request field*, D3 |
 
 Cookies and query strings are forwarded in full (`all()`), which is why the render sees the
 real cookie jar on a miss even though cookies are absent from the cache key.

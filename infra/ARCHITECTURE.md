@@ -136,13 +136,16 @@ that shipped to production precisely because no assertion covered the list:
 - `(g)` — `_next/image*` is keyed by a dedicated `ImageCachePolicy` on exactly `url,w,q`, the
   optimizer's required query-string inputs, and the behavior must actually reference that
   policy. Distinct from `(a2)`, which pins the *default* behavior's seven-parameter allowlist.
-- `(h)` — `RendererOriginPolicy` forwards exactly eight headers, `x-revalidation-token`
-  included. Distinct from `(a1)`, which pins the six headers in the cache *key*: `(a1)` governs
-  which stored response a viewer gets, `(h)` governs what the origin is allowed to see at all,
-  on hits and misses alike.
+- `(h)` — `RendererOriginPolicy` forwards exactly ten headers, `x-revalidation-token`
+  (`cache-6`) plus `x-prerender-revalidate` + `x-isr` (`cache-7`, the open-next background-ISR
+  revalidation protocol) included. Distinct from `(a1)`, which pins the six headers in the cache
+  *key*: `(a1)` governs which stored response a viewer gets, `(h)` governs what the origin is
+  allowed to see at all, on hits and misses alike. `cache-7` extended the list `(h)` pins; it did
+  not add a new assertion, so the count of 17 above is unchanged.
 
-Rationale for both: `docs/slices/cache-6-distribution-transport-hotfixes.md` and
-`docs/caching-architecture.md` § *Transport defects found in `cache-6`*.
+Rationale: `docs/slices/cache-6-distribution-transport-hotfixes.md`,
+`docs/slices/cache-7-prerender-revalidate-header.md`, and `docs/caching-architecture.md`
+§ *Transport defects — CloudFront deletes a required request field*.
 
 Three things to know before running it:
 
