@@ -1,6 +1,8 @@
 # CACHE-7: Forward OpenNext's revalidation header (background ISR refresh is dead)
 
-- **Status:** PLANNED (operator-authored 2026-08-05 from live prod incident)
+- **Status:** SHIPPED 2026-08-05 — staging + prod deployed (human pre-authorized), verified
+  live: RevalidationFunction errors ceased post-propagation (last 06:19Z, none since);
+  the reported article appears in blogroll + homepage grids; fresh renders confirmed
 - **Track:** CACHE
 - **CDK-change justification:** repairs broken prod behavior (real gain, probe/log-proven):
   the OpenNext RevalidationFunction fails EVERY page ("Failed to revalidate", CloudWatch,
