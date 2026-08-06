@@ -792,3 +792,16 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   `name`. Fold into `email-2a` where tenant config is loaded anyway.
 - **Status:** display-name change IMPLEMENTED (uncommitted, pending review/deploy); per-tenant
   identity + Reply-To + paddle tenant-name personalisation OPEN (→ `email-2a`)
+
+## Google OAuth client inactivity clocks (operational note, 2026-08-06)
+
+- Google deletes OAuth clients after 5 months without a sign-in/token exchange
+  (incident: amodx-481815 deletion warning; resolved by human logging in periodically).
+- Applies PER CLIENT: the live tenant-configured client (blog comments/account
+  sign-in) and the test client each have their own clock; per-tenant Google clients
+  (Critical Rule 8 pattern) will each carry one.
+- Track C input: once customer auth ships, real traffic keeps live clients warm; the
+  auth settings card should surface "Google sign-in last used" per tenant (same
+  health-card pattern as the EMAIL plan's DNS checker) so dormant clients are visible
+  before Google's mail arrives.
+- Until then: human logs in via blog comments every ~4 months.
