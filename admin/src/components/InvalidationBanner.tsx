@@ -3,18 +3,28 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 /**
- * Persistent banner showing pending CDN cache invalidation status.
+ * Persistent banner showing pending SITE-WIDE (bulk) CDN cache invalidation status.
  *
- * Polls GET /system/invalidation every 15 seconds. When changes are pending,
- * shows a countdown to automatic cache flush with a "GO LIVE NOW" button.
+ * Since cache-4a, an ordinary edit (a single page/product/category) goes live in seconds via
+ * the targeted fast-lane invalidation and is NEVER "pending" — it does not write the
+ * SYSTEM#CDN_PENDING marker this banner reads, so it never appears here. Only BULK / site-wide
+ * mutations (theme changes, tenant settings, imports, popups, forms, bulk price adjustment,
+ * PRODUCT/CATEGORY creation) arm the debounced `/*` flush, and only those show this banner.
+ * Note the asymmetry: PAGE creation (`content/create`) is ORDINARY, not bulk — its slug is a
+ * known path that may already hold a cached `307→?nf=1` (a pre-publish probe), so the fast lane
+ * has a specific edge entry to clear; a brand-new product/category URL was never requested and
+ * has no edge entry, so only `/*` can refresh the listings it now appears on. See
+ * docs/caching-architecture.md § "Invalidation model".
  *
- * The countdown ticks client-side every second (cosmetic, not authoritative).
- * The server timestamp is the source of truth — client drift is corrected
- * on each poll cycle.
+ * Polls GET /system/invalidation every 15 seconds. When a bulk change is pending, shows a
+ * countdown to the automatic `/*` flush with a "GO LIVE NOW" button.
+ *
+ * The countdown ticks client-side every second (cosmetic, not authoritative). The server
+ * timestamp is the source of truth — client drift is corrected on each poll cycle.
  *
  * States:
- *   - No pending changes → banner hidden (zero DOM footprint)
- *   - Changes pending → amber banner with countdown + "GO LIVE NOW" button
+ *   - No bulk change pending → banner hidden (zero DOM footprint)
+ *   - Bulk change pending → amber banner with countdown + "GO LIVE NOW" button
  *   - Flushing → banner shows "Publishing..." (disabled button)
  *   - Flush complete → banner disappears
  */
@@ -110,7 +120,7 @@ export function InvalidationBanner() {
             <div className="flex items-center gap-2 text-amber-800">
                 <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 <span>
-                    Changes pending {remainingMs > 0
+                    Site-wide changes pending {remainingMs > 0
                         ? <> &mdash; going live in <span className="font-mono font-semibold">{countdown}</span></>
                         : <> &mdash; going live shortly</>
                     }

@@ -11,12 +11,17 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 13 files in total)
+├── lib/                   # (selected modules; 15 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── events.ts          # EventBridge publishAudit() helper
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
-│   ├── invalidate-cdn.ts  # withInvalidation() HOF — writes the debounce marker (CloudFront, Layer 1)
-│   ├── revalidate.ts      # ISR purge (Layer 2): revalidateTenantPaths() + the /api/revalidate transport
+│   ├── invalidate-cdn.ts  # Two invalidation classes (cache-4a): withInvalidation() HOF → bulk `/*`
+│   │                      #   debounce marker; enqueueEdgeInvalidation() → ordinary edits' targeted
+│   │                      #   fast-lane paths (String Set + `rev`) drained by the debounce Lambda
+│   ├── edge-invalidation.ts # PURE: fast-lane coalescing — dedupe changed paths, /* over 30 distinct
+│   │                        #   (FAST_LANE_WILDCARD_THRESHOLD). Test seam, like revalidate-paths.ts
+│   ├── revalidate.ts      # Drives BOTH layers (cache-4a): revalidateTenantPaths() → edge fast lane +
+│   │                      #   ISR purge (Layer 2) via the /api/revalidate transport
 │   └── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
 ├── auth/
 │   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
@@ -175,9 +180,28 @@ Run: `cd backend && npm test` or `npx vitest run <path>` for a single file.
 
 ### Pure unit — `test/unit/**/*.test.ts`, config `vitest.unit.config.ts`
 
-No `setupFiles`, so no `.env.test`, no credentials, no AWS calls of any kind. For logic that
-can be exercised off-target: today `lib/revalidate-paths.ts` (the ISR purge-path rule, slice
-`cache-2`). A module belongs here only if it imports neither `lib/db.ts` nor an AWS SDK
-client — keeping that true is what keeps the suite runnable in CI and on a laptop.
+No `setupFiles`, so no `.env.test`, no credentials, no real AWS calls of any kind. Two shapes of
+test live here, both credential-free:
+
+1. **Pure modules — imported and called directly, no mocks.** A module qualifies when it imports
+   neither `lib/db.ts` nor an AWS SDK client. Today: `lib/revalidate-paths.ts` (the ISR purge-path
+   rule, `cache-2`) and `lib/edge-invalidation.ts` (the fast-lane coalescing rule, `cache-4a` —
+   dedupe + the `/*` collapse over 30 distinct paths). These exist partly *as* pure test seams,
+   extracted from AWS-touching callers precisely so the rule can be pinned here.
+
+2. **AWS-boundary modules — the SDK/`db` boundary is mocked at module load (`vi.mock`), so no
+   credentials and no network.** This is how `cache-4a`'s stateful invalidation logic is covered
+   without staging: `test/unit/debounce-flush.test.ts` mocks `@aws-sdk/client-cloudfront`,
+   `@aws-sdk/client-dynamodb`, and `@aws-sdk/lib-dynamodb` with a stateful in-memory store that
+   honours the two update expressions the drain issues (`ADD ... #rev`, conditional `DELETE`),
+   and `test/unit/invalidate-cdn.test.ts` mocks `lib/db.ts` to prove `enqueueEdgeInvalidation()`
+   merges the path String Set and bumps `rev` in ONE atomic `UpdateCommand`. Reach for this shape
+   only when the logic under test is genuinely control-flow/expression correctness (marker
+   retention, generation-safe cleanup, atomicity) that a pure extraction cannot capture — the
+   mock must model only the SDK contract the code depends on, nothing more. `debounce-flush.test.ts`
+   additionally uses `vi.useFakeTimers()` + a `runHandler()` helper (`vi.runAllTimersAsync`) to
+   fast-forward the drain Lambda's 6-iteration / 5×10s-sleep polling loop in microseconds: the
+   handler no longer returns early (it must keep draining the fast lane the whole window — `cache-4a`
+   review-3), so the sleeps have to be driven by fake timers rather than waited out.
 
 Run: `cd backend && npm run test:unit`.

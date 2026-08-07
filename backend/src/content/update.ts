@@ -8,7 +8,6 @@ import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -200,4 +199,6 @@ const _handler: AmodxHandler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+// cache-4a: ORDINARY class — edge invalidated via the fast lane in `revalidateTenantPaths()`
+// (targeted, ~10s). No `withInvalidation()`, so an ordinary page edit is never "pending".
+export const handler = _handler;

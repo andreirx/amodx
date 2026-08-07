@@ -9,7 +9,6 @@ import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -173,4 +172,8 @@ const _handler: AmodxHandler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+// cache-4a: ORDINARY class — no `withInvalidation()`. The edge (Layer 1) is invalidated by the
+// fast lane inside `revalidateTenantPaths()` (targeted, ~10s), so this edit is never "pending"
+// and raises no "GO LIVE NOW" banner. A brand-new slug can already hold a cacheable 307→?nf=1
+// (see the comment above the revalidate call), which the fast lane now clears in seconds.
+export const handler = _handler;

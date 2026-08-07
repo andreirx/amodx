@@ -2,6 +2,7 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { db, TABLE_NAME } from "./db.js";
 import { purgeTargets, type PurgeKind, type TenantRouting } from "./revalidate-paths.js";
+import { enqueueEdgeInvalidation } from "./invalidate-cdn.js";
 
 /**
  * Phase 4: Backend revalidation helper.
@@ -184,20 +185,19 @@ export async function revalidateTenantPaths(
     const requested = slugs.filter((s): s is string => !!s && !!s.trim());
     if (requested.length === 0) return;
 
-    // Checked before the DynamoDB read: if revalidation is off there is nothing to resolve
-    // a domain for, and the warning must still name the paths that went unpurged (DoD 3).
-    if (!rendererUrl || !secretName) {
-        warnRevalidationDisabled(`${kind} ${requested.join(", ")} (tenant ${tenantId})`);
-        return;
-    }
-
+    // cache-4a: the tenant routing read now happens BEFORE the renderer gate, because it feeds
+    // BOTH cache layers and Layer 1 does not need the renderer. Previously this early-returned
+    // when RENDERER_URL was unset, saving one GetItem — but ordinary handlers no longer carry
+    // the `withInvalidation()` `/*` backstop, so the edge fast lane (Layer 1) must fire even on
+    // a deployment without a configured root domain. Cost: one ~5ms GetItem per ordinary
+    // mutation when revalidation is otherwise disabled. It is the reason the edge goes live.
     let routing: TenantRouting;
     try {
         routing = await getTenantRouting(tenantId);
     } catch (e) {
         console.error(
-            `[Revalidate] Tenant routing lookup failed for ${tenantId}; skipped ISR purge of ` +
-            `${kind} ${requested.join(", ")}`, e,
+            `[Revalidate] Tenant routing lookup failed for ${tenantId}; skipped BOTH the edge ` +
+            `fast-lane and the ISR purge of ${kind} ${requested.join(", ")}`, e,
         );
         return;
     }
@@ -206,9 +206,21 @@ export async function revalidateTenantPaths(
     if (targets.length === 0) {
         console.warn(
             `[Revalidate] Tenant ${tenantId} has no 'domain' on its tenant record — skipped ` +
-            `ISR purge of ${kind} ${requested.join(", ")}. Production traffic is keyed by ` +
+            `edge + ISR purge of ${kind} ${requested.join(", ")}. Production traffic is keyed by ` +
             `domain, so there is no cache entry to address until a domain is configured.`,
         );
+        return;
+    }
+
+    // Layer 1 (CloudFront edge): enqueue the exact changed URI paths for an immediate targeted
+    // invalidation. Independent of RENDERER_URL — the debounce Lambda drains this against the
+    // distribution directly. This is what makes an ordinary edit go live in seconds.
+    await enqueueEdgeInvalidation(targets.map((t) => t.slug));
+
+    // Layer 2 (OpenNext ISR in S3): purge via the renderer. Gated on renderer config — if it
+    // is off, Layer 1 has still fired and the nightly S3 flush is the backstop (DoD 3).
+    if (!rendererUrl || !secretName) {
+        warnRevalidationDisabled(`${kind} ${requested.join(", ")} (tenant ${tenantId})`);
         return;
     }
 

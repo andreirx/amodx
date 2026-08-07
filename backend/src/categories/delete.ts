@@ -5,7 +5,6 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -71,4 +70,6 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+// cache-4a: ORDINARY class — the deleted category's URL (now a not-found handoff) is invalidated
+// via the fast lane in `revalidateTenantPaths()` (targeted, ~10s). No `withInvalidation()`.
+export const handler = _handler;

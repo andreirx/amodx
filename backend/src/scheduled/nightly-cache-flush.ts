@@ -9,7 +9,9 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dyn
  *
  * Skips entirely if no mutations happened since the last nightly flush.
  * Uses two DynamoDB markers to decide:
- *   - SYSTEM#CDN_LAST_CHANGE  — written by withInvalidation() on every mutation, never deleted
+ *   - SYSTEM#CDN_LAST_CHANGE  — high-water mark, never deleted. Written by withInvalidation()
+ *                               (bulk class) AND enqueueEdgeInvalidation() (ordinary class,
+ *                               cache-4a) on every cache-relevant mutation
  *   - SYSTEM#CDN_LAST_NIGHTLY_FLUSH — written by this Lambda after a successful flush
  *
  * If lastChange <= lastFlush (or no changes ever), the Lambda exits immediately.

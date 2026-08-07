@@ -7,7 +7,6 @@ import { publishAudit } from "../lib/events.js";
 import {requireRole} from "../auth/policy.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
-import { withInvalidation } from "../lib/invalidate-cdn.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -89,4 +88,6 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+// cache-4a: ORDINARY class — edge invalidated via the fast lane in `revalidateTenantPaths()`
+// (targeted, ~10s). No `withInvalidation()`, so an ordinary product edit is never "pending".
+export const handler = _handler;

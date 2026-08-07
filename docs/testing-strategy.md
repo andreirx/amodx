@@ -4,11 +4,11 @@ Ratified direction 2026-07-27 (human: "characterize existing testing and fill ga
 not superficially"). Estate characterized by file-level audit 2026-07-27; this doc is
 the target architecture. Track TEST in `docs/ROADMAP.md` implements it.
 
-## Current estate (measured 2026-07-27; unit column re-measured 2026-07-28 after `test-3`, then after `vid-1`)
+## Current estate (measured 2026-07-27; unit column re-measured 2026-07-28 after `test-3`, then after `vid-1`, then 2026-08-07 after `cache-4a`)
 
 | Surface | Unit | Integration | API | E2E |
 |---|---|---|---|---|
-| backend | 3 files, AWS-free, `npm run test:unit` — `revalidate-paths` (`test-1`), `availability`, `order-email` (`test-3`); 51 tests | 8 suites vs LIVE staging DDB + API GW (`.env.test`) | same 8 suites | — |
+| backend | 8 files, AWS-free, `npm run test:unit` — `revalidate-paths` (`test-1`), `availability`, `order-email` (`test-3`), `email-from` (`email-hotfix-1`), `email-key-normalization` (`fnd-2`), and the three `cache-4a` suites `edge-invalidation` (pure path coalescing/planning), `invalidate-cdn` (`enqueueEdgeInvalidation` atomic `ADD #paths + rev` via mocked `lib/db.ts`), `debounce-flush` (bulk-marker retention + fast-lane generation-race + fast-lane-after-bulk drain, fake timers); 102 tests | 8 suites vs LIVE staging DDB + API GW (`.env.test`) | same 8 suites | — |
 | renderer | 2 files, AWS-free, `npm test` (`vitest.config.ts`, `include: test/unit/`) — `tenant-directory`, `not-found-handoff` (`test-3`); 29 tests | 1 suite, AWS-free (`test/serving-contract/`, `npm run test:serving`, `test-2`) | — | 2 playwright specs vs deployed staging; `public-site.spec.ts` asserts the pre-cache-1 "Site Not Found" 200 shell — STALE |
 | admin | 0 (no runner installed) | — | — | 0 |
 | packages/shared | 1 file, `npm test` — `test/schemas.test.ts` (`test-3`); 40 tests over the invariant-bearing parses (single `domain`, `urlPrefixes` English defaults, `ContentStatus`, the seven order statuses, `IntegrationsSchema`) | — | — | — |

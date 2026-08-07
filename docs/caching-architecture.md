@@ -1,6 +1,8 @@
 # AMODX Caching Architecture
 
-Two-layer cache with debounced on-demand invalidation. No time-based ISR.
+Two-layer cache with on-demand invalidation in **two classes** (since `cache-4a`): ordinary
+edits invalidate their exact changed paths at the edge in seconds; bulk/global mutations use
+the debounced `/*` sledgehammer. No time-based ISR. See § *Invalidation model (two classes)*.
 
 ---
 
@@ -233,25 +235,46 @@ User receives HTML
 User ──> CloudFront (HIT) ──> Return cached HTML (< 50ms, no Lambda invocation)
 ```
 
-### Content Mutation (Admin Edit)
+### Content Mutation (Admin Edit) — ORDINARY class (since `cache-4a`)
+
+An edit to an **existing** page/product/category goes live in seconds. Both cache layers are
+purged from the **same** computed path list (`purgeTargets`), and neither is "pending".
 
 ```
-Admin saves page ──> Backend Lambda (content/update.ts)
+Admin saves page ──> Backend Lambda (content/update.ts)   [NO withInvalidation() wrapper]
                          │
                          ├── Write to DynamoDB
                          │
-                         ├── revalidatePath() ──> POST /api/revalidate
-                         │                            │
-                         │                            └── Next.js revalidatePath()
-                         │                                └── Invalidates S3 ISR cache (Layer 2)
-                         │
-                         └── withInvalidation() HOF
-                              └── DynamoDB PutItem: SYSTEM#CDN_PENDING marker
-                                   └── Debounce flush Lambda picks it up after 15 min
-                                        └── CloudFront /* invalidation (Layer 1)
+                         └── revalidateTenantPaths(tenantId, "page", [newSlug, oldSlug?])
+                              │   (resolves tenant domain; purgeTargets → {domain, slug}[])
+                              │
+                              ├── Layer 1 (edge): enqueueEdgeInvalidation([slug...])   [runs FIRST]
+                              │      └── DDB: ADD slugs to SYSTEM#CDN_FAST_PENDING.paths (String Set)
+                              │           + ADD 1 to .rev (generation counter, same atomic write)
+                              │           └── Debounce Lambda drains it every ~10s
+                              │                └── CloudFront TARGETED invalidation of those paths
+                              │
+                              └── Layer 2 (ISR): POST /api/revalidate { domain, slug }
+                                     └── Next.js revalidatePath("/<domain><slug>")  (S3 entry cleared)
 ```
 
-### Debounced Invalidation Flow
+The CloudFront path is the **viewer URI** (`/about`, `/produs/inel`) — host-agnostic, so no
+domain is prepended (unlike the S3 key `/<domain>/<slug>`). Same-path collateral across tenants
+is accepted: a collided page refills from warm ISR without SSR.
+
+### Content Mutation — BULK class (theme, tenant settings, imports, popups, forms, …)
+
+A site-wide or many-entity mutation keeps the `withInvalidation()` → debounced `/*` flow and
+shows the "GO LIVE NOW" banner, because its affected path set is unknowable or too large.
+
+```
+Bulk mutation ──> Backend Lambda ──> withInvalidation() HOF
+                                        └── DDB PutItem: SYSTEM#CDN_PENDING { updatedAt }
+                                             + SYSTEM#CDN_LAST_CHANGE { updatedAt }
+                                                  └── Debounce Lambda fires /* after 15 min quiet
+```
+
+### Debounced Invalidation Flow (BULK class only)
 
 ```
 Mutation 1 (10:00) ──> Writes SYSTEM#CDN_PENDING { updatedAt: 10:00 }
@@ -259,11 +282,20 @@ Mutation 2 (10:03) ──> Overwrites marker { updatedAt: 10:03 }    ← timer r
 Mutation 3 (10:08) ──> Overwrites marker { updatedAt: 10:08 }    ← timer resets
                        ... admin stops editing ...
 10:23 ──> Debounce Lambda reads marker, 10:08 + 15min = 10:23 → EXPIRED
-          ├── CloudFront /* invalidation submitted
-          └── Marker deleted (conditional on updatedAt match)
+          ├── CloudFront /* invalidation submitted (at most once per invocation — bulkHandled latch)
+          │     └── if it THROWS or is skipped (no distribution): BOTH markers retained,
+          │        the NEXT EventBridge invocation (~1 min) retries the bulk /*. Nothing is
+          │        deleted on failure. The fast lane keeps draining this invocation regardless.
+          └── on success: CDN_PENDING deleted (conditional on updatedAt match).
+                SYSTEM#CDN_FAST_PENDING is deliberately NOT deleted — a path enqueued between
+                the /* submit and a delete would be lost; the next ~10s fast-lane drain (this
+                same invocation — the loop does not return after the bulk branch) covers it (one
+                redundant targeted invalidation at worst, never dropped work).
 ```
 
 ### Admin "GO LIVE NOW"
+
+Bypasses the 15-min wait for the **bulk** class only (ordinary edits are never pending).
 
 ```
 Admin clicks button ──> POST /system/invalidation
@@ -272,6 +304,85 @@ Admin clicks button ──> POST /system/invalidation
                              └── Delete SYSTEM#CDN_PENDING marker
                                   └── Banner disappears
 ```
+
+---
+
+## Invalidation model (two classes)
+
+`cache-4a` split every cache-relevant mutation into one of two classes. The class is decided
+by **whether the handler knows its changed paths** — which is exactly whether it calls
+`revalidateTenantPaths()`. That call now drives BOTH cache layers from one path list; the
+`withInvalidation()` HOF drives only the bulk `/*` debounce.
+
+### Per-mutation-class table
+
+| Class | Handlers | Layer 1 (edge) | Layer 2 (ISR) | Banner / "GO LIVE" | Time to live |
+|---|---|---|---|---|---|
+| **Ordinary** (computable public path with a possible cached entry) | `content/create`, `content/update`, `products/update`, `products/delete`, `categories/update`, `categories/delete` | **targeted** paths via `CDN_FAST_PENDING`, drained ~10s | `revalidatePath` per slug | **no** — never pending | **seconds** |
+| **Bulk / global** (unknown or large path set) | `themes/manage`, `tenant/create`, `tenant/settings`, `popups/*`, `forms/*`, `products/create`, `categories/create`, `products/bulk-price`, `reviews/*`, `content/restore`, `import/{woocommerce,wordpress,media}` | `/*` via `CDN_PENDING`, debounced 15 min | — (imports/settings not path-scoped) | **yes** | ≤15 min, or instant via GO LIVE NOW |
+
+Classification rationale, recorded per the slice DoD:
+
+- **Ordinary** = a single page/product/category whose public URL is computable (`purgeTargets`)
+  AND could already hold a cached edge entry at that path. The old URL is added on a rename; a
+  delete invalidates the now-404 path. This is why `content/create` is ordinary despite being a
+  *creation*: a page's slug is a known path that may already be answering a cached `307→?nf=1`
+  (a pre-publish probe stored the not-found handoff — see § "Which render outcomes are
+  cacheable"), so there IS a specific entry to invalidate in seconds. The distinction is "known
+  cache path", not "pre-existing entity".
+- **`products/create` / `categories/create` are bulk**, not ordinary: a brand-new entity URL
+  has no cached edge entry of its own (nothing ever requested it), so there is no targeted
+  path worth firing — only the listing/nav pages it now appears on need refreshing, and those
+  are not enumerable. `/*` is the honest answer. (Candidate future ordinary work: also purge
+  the parent category/listing paths.)
+- **`reviews/*`, `content/restore` are bulk** for now: a review is keyed by `productId`, and a
+  restore by `nodeId`, not by slug — resolving the slug is an extra read this slice did not add.
+  Candidate future ordinary reclassification; recorded, not built.
+- **`forms/*`, `popups/*`, `themes/manage`, `tenant/*`, `import/*`, `products/bulk-price`** are
+  genuinely site-wide or many-entity — their affected path set is unknowable or too large, so
+  `/*` is correct.
+
+### Volume / coalescing math (DoD 4 — the invalidation-volume guardrail)
+
+CloudFront free tier is **1000 invalidation paths / month**; beyond that, **$0.005 / path**.
+The billed unit is **one path per `CreateInvalidation` submission** — CloudFront charges each
+path *every time it is submitted*, not once per globally distinct URL. The fast lane's coalescing
+makes that ≈ **one charge per distinct edited path within a single ~10s drain window**, but two
+things re-bill an already-charged path and the estimates below are steady-state, not a hard cap:
+
+- A path edited again in a **later** drain window is a fresh submission → billed again. "Distinct
+  edited path" means distinct-per-window, summed across windows; a page saved in three separate
+  ~10s windows bills three paths, not one.
+- A `rev` race that retains the marker (§ *Debounce Flush Lambda*, race safety) re-submits the
+  same paths on the next drain → billed again. This is **bounded**: at most one redundant targeted
+  invalidation per race, never a `/*` escalation.
+
+Within one window, three mechanisms hold the count down:
+
+1. **Dedupe within a drain window.** Changed paths accumulate in a DynamoDB String Set via
+   `ADD` (atomic, dedupes across concurrent mutations). Re-saving the same page 10× in one
+   ~10s window = **1** path, not 10.
+2. **Batched drain.** The debounce Lambda fires **one** `CreateInvalidation` per ~10s window
+   carrying all deduped paths that arrived in it — not one call per path.
+3. **Wildcard fallback (stampede guardrail).** If a single drain ever finds more than
+   `FAST_LANE_WILDCARD_THRESHOLD` (**30**) distinct paths, it collapses to a single `/*`,
+   which bills as **1** path and nukes everything. So no drain can ever emit >30 targeted
+   paths, and a scripted bulk-edit session degrades gracefully to the `/*` behaviour instead
+   of stampeding the path count.
+
+Worked volume:
+
+- A page rename = 2 paths (new + old). A plain edit = 1. A product/category edit = 1 (2 on
+  rename). So free tier covers ≈ **33 distinct edited paths / day** across all 99 tenants.
+- Typical small-agency load (say 10 tenants × ~5 edits/day × ~1.4 paths ≈ 70 paths/day ≈
+  2100/month) sits just over free tier — overage ≈ **$5.50/month**. Heavier load scales
+  linearly at half a cent per distinct edited path.
+- **Escape hatch:** a pathologically noisy tenant can be moved to the bulk class (reinstate
+  `withInvalidation()`, drop the fast-lane path), trading seconds-to-live for `/*` at 1
+  path/flush. No such tenant exists today; recorded as the operator lever.
+
+The **bulk** class is unaffected by this math: every bulk mutation is `/*` = 1 path per
+debounced flush regardless of how many entities it touched (an import of 500 products = 1).
 
 ---
 
@@ -973,15 +1084,20 @@ unexercised until tag-based revalidation is adopted (Known Gap 5, `cache-4`).
 
 ## Invalidation Mechanisms
 
-### 1. withInvalidation() HOF — Debounced CloudFront Invalidation
+### 1. withInvalidation() HOF — Debounced CloudFront Invalidation (BULK class only, since `cache-4a`)
 
 **File**: `backend/src/lib/invalidate-cdn.ts`
 
-Higher-order function wrapping the cache-relevant mutation handlers — **26 wrapped handler
-exports across 25 files** (`themes/manage.ts` wraps two: `createHandler` and
-`deleteHandler`). Verified 2026-07-26 by `grep -rn "withInvalidation(" backend/src`; the
-previously documented "51 handlers total" was wrong. Note `backend/src/scheduled/nightly-cache-flush.ts`
-mentions `withInvalidation()` in a comment only — it is not wrapped, and must not be.
+> **`cache-4a` narrowed this HOF to the BULK class.** The six ORDINARY handlers
+> (`content/create`, `content/update`, `products/update`, `products/delete`,
+> `categories/update`, `categories/delete`) no longer carry it — their edge invalidation is the
+> targeted fast lane (§ *2b*), and they must never be "pending". See § *Invalidation model*.
+
+Higher-order function wrapping the **bulk-class** cache-relevant mutation handlers — **20
+wrapped handler exports across 19 files** (`themes/manage.ts` wraps two: `createHandler` and
+`deleteHandler`). Verified 2026-08-07 by `grep -rnE "^export const [a-zA-Z]+ = withInvalidation\(" backend/src` (anchored to exports; the unanchored grep also matches two doc examples in invalidate-cdn.ts) (26/25
+before `cache-4a` removed six). Note `backend/src/scheduled/nightly-cache-flush.ts` mentions
+`withInvalidation()` in a comment only — it is not wrapped, and must not be.
 
 After a successful 2xx response the HOF writes **two** DynamoDB markers in a single
 `Promise.all`, both under `PK: SYSTEM`:
@@ -1006,21 +1122,28 @@ Properties:
 - **Best-effort**: Marker write errors are logged but don't fail the response.
 - **Unconditional overwrite**: PutItem always wins. Latest mutation timestamp is the source of truth.
 
-#### Wrapped Handlers (cache-relevant only)
+#### Wrapped Handlers (BULK class — cache-relevant, path set unknowable/large)
 
-Only handlers that change what visitors see on cached pages are wrapped. Transactional mutations (orders, leads, contact submissions, customer profile updates, admin user management, signals, coupons, delivery config, assets, resources) are NOT wrapped — they do not affect cached page content.
+Only bulk/global handlers are wrapped. Transactional mutations (orders, leads, contact
+submissions, customer profile updates, admin user management, signals, coupons, delivery
+config, assets, resources) are NOT wrapped — they do not affect cached page content. The six
+ORDINARY handlers are no longer wrapped either (§ *2b*).
 
-| Domain | Files |
+| Domain | Files (wrapped = bulk `/*`) |
 |--------|-------|
-| Content | create, update, restore |
-| Products | create, update, delete, bulk-price |
-| Categories | create, update, delete |
+| Content | restore |
+| Products | create, bulk-price |
+| Categories | create |
 | Reviews | create, update, delete |
 | Popups | create, update, delete |
 | Forms | create, update, delete |
 | Themes | manage (createHandler, deleteHandler) |
 | Tenant | create, settings (updateHandler) |
 | Import | woocommerce, wordpress, media |
+
+**Moved to the ORDINARY fast lane by `cache-4a` (no longer wrapped):** `content/create`,
+`content/update`, `products/update`, `products/delete`, `categories/update`,
+`categories/delete`.
 
 #### Not Wrapped (transactional / non-cache-visible)
 
@@ -1042,31 +1165,104 @@ These handlers do NOT trigger CloudFront invalidation, the admin "changes pendin
 | Resources | presign | Presigned URL generation |
 | Webhooks | paddle | Payment fulfillment email |
 
-### 2. Debounce Flush Lambda
+### 2b. Fast-lane targeted invalidation (ORDINARY class, `cache-4a`)
+
+**Files**: `backend/src/lib/invalidate-cdn.ts` (`enqueueEdgeInvalidation`),
+`backend/src/lib/edge-invalidation.ts` (pure coalescing, unit-tested),
+`backend/src/lib/revalidate.ts` (call site).
+
+`revalidateTenantPaths()` now drives **both** layers from one `purgeTargets` list. It calls
+`enqueueEdgeInvalidation(slugs)` **before** the Layer-2 ISR purge (and before the renderer gate,
+so the edge fires even when ISR is disabled — see *RENDERER_URL independence* below).
+`enqueueEdgeInvalidation` `ADD`s the viewer URI paths to the DynamoDB String Set
+`SYSTEM#CDN_FAST_PENDING.paths`, `ADD`s 1 to the generation counter `SYSTEM#CDN_FAST_PENDING.rev`
+(both in one atomic UpdateItem), and bumps `CDN_LAST_CHANGE` (so the nightly backstop still runs
+after an ordinary-only day). It does **not** write `CDN_PENDING` — ordinary edits are never
+pending. The debounce Lambda drains that set every ~10s (§ *2*).
+
+- **Generation-safe drain (`rev`).** A String Set carries no write generation, so a re-edit of a
+  path already in the set is invisible at the membership level — an unguarded `DELETE` at cleanup
+  would erase the second edit. Every enqueue atomically increments `rev`; the drain snapshots
+  `rev` with the paths and only deletes the drained members while `rev` is unchanged, otherwise
+  it retains the whole marker for a redundant re-invalidation next cycle. (Closed CACHE-4A/review-1.)
+
+- **Mechanism choice (recorded).** Option B — a fast-lane DDB marker drained by the existing
+  debounce Lambda — was **forced** by the "no CDK / CloudFront rights confined to the two
+  already-authorized functions" constraint. Option A (direct `CreateInvalidation` from ~20
+  mutation Lambdas) would require granting `cloudfront:CreateInvalidation` to all of them = an
+  IAM/CDK change = the slice's STOP condition. The debounce Lambda already holds
+  `grantReadWriteData` + `cloudfront:CreateInvalidation` (`infra/lib/amodx-stack.ts`), and
+  mutation Lambdas already hold `grantReadWriteData`, so cache-4a is code-only.
+- **Coalescing / volume guardrail.** See § *Invalidation model → Volume / coalescing math*.
+  `edge-invalidation.ts#planEdgeInvalidation` dedupes and collapses to `/*` above 30 distinct
+  paths per drain.
+- **Path is host-agnostic.** A CloudFront invalidation matches the request URI, so the fast
+  lane invalidates `/about` for *every* tenant that has it. Same-path collateral is accepted
+  (refills from warm ISR without SSR). The ISR key stays `/<domain>/<slug>` (§ *5*).
+- **RENDERER_URL independence.** The routing read + edge enqueue happen **before** the renderer
+  gate, so an ordinary edit still goes live at the edge even on a deployment without a
+  configured root domain (where Layer-2 ISR purge is disabled). Cost: one ~5ms `GetItem` on
+  such deployments. Accepted tech debt: if that routing read itself fails transiently, an
+  ordinary edit gets no invalidation and no `CDN_LAST_CHANGE` that cycle — bounded, self-heals
+  on the next edit or GO LIVE NOW; recorded, not fixed here.
+
+### 2. Debounce Flush Lambda (drains BOTH classes)
 
 **File**: `backend/src/scheduled/debounce-flush.ts`
 
-Triggered by EventBridge every 1 minute. Internally loops 6 times with 10-second sleeps, giving effective 10-second polling resolution on the 15-minute debounce window.
+Triggered by EventBridge every 1 minute. Internally loops 6 iterations, sleeping 10s BETWEEN them
+— **5 sleeps ≈ 50s** of polling (the last iteration does not sleep), plus per-iteration operation
+time. EventBridge re-invokes at the ~60s mark, so the gap between one invocation's last drain and
+the next invocation's first drain is also ~10s: the fast lane holds effective ~10-second
+resolution **across** invocations, not because a single invocation spans a full minute.
 
 ```
-EventBridge (every 1 min) ──> Debounce Lambda
+EventBridge (every 1 min) ──> Debounce Lambda, each of 6 iterations (10s sleep BETWEEN, ≈50s total):
                                   │
-                                  ├── Read SYSTEM#CDN_PENDING from DDB
-                                  │   └── Not found? Return immediately (~5ms)
+                                  ├── A. drainFastLane():
+                                  │      read SYSTEM#CDN_FAST_PENDING {paths (String Set), rev}
+                                  │      → planEdgeInvalidation (dedupe; /* if >30 distinct)
+                                  │      → CloudFront TARGETED invalidation
+                                  │      → DELETE drained members, COND rev unchanged
+                                  │        (any concurrent enqueue bumped rev → retain whole marker)
                                   │
-                                  ├── Found, updatedAt < 15 min ago?
-                                  │   └── Sleep 10s, loop again (up to 6x)
-                                  │
-                                  └── Found, updatedAt >= 15 min ago?
-                                      ├── CloudFront /* invalidation
-                                      └── Delete marker (conditional on updatedAt)
+                                  └── B. read SYSTEM#CDN_PENDING (bulk debounce), at most ONCE/invocation:
+                                         ├── absent?        → keep polling (fast lane needs it)
+                                         ├── < 15 min old?  → keep polling
+                                         └── >= 15 min old? → CloudFront /* ; latch bulkHandled ;
+                                                              delete CDN_PENDING (cond. on updatedAt).
+                                                              CDN_FAST_PENDING is NOT deleted here —
+                                                              the next fast-lane drain covers it.
+                                                              The LOOP CONTINUES (does not return) —
+                                                              drainFastLane keeps firing every ~10s.
 ```
 
-**Race condition safety**: The delete uses `ConditionExpression: updatedAt = :original`. If a new mutation arrived between read and delete, the condition fails. The marker survives and the next cycle picks it up.
+**Why it never returns early — neither on an absent `CDN_PENDING` nor after the bulk `/*` submit**
+(both DID pre-`cache-4a` / pre-review-3): the fast lane must keep draining for the whole ~50s
+polling window, or a path enqueued mid-window — including one enqueued the instant a bulk `/*`
+fires — would wait up to a full minute for the next EventBridge tick. The bulk branch is instead
+gated by a `bulkHandled` latch: it submits `/*` **at most once per invocation** (success, transient
+failure, or skip all latch it), then the loop keeps running `drainFastLane()` every ~10s. A failed
+bulk retries on the NEXT EventBridge invocation; the fast lane does not wait for it. Worst-case
+fast-lane time-to-live is therefore the ~10s inter-iteration gap (plus the ≤10s inter-invocation
+gap), not a minute. (Fixes CACHE-4A/review-3, where the bulk branch `return`ed and stranded a
+mid-invocation edit for ~1 min.)
 
-**Cost**: ~43,200 invocations/month (1/min). When idle (no pending changes), each invocation does 1 DDB read and returns in ~5ms. When changes are pending, loops for up to 60s. Total cost: under $0.10/month.
+**Race condition safety**: `CDN_PENDING` delete uses `ConditionExpression: updatedAt = :original` (a mutation arriving between read and delete fails the condition; the marker survives, next cycle picks it up). `CDN_FAST_PENDING` cleanup is `DELETE #paths :drained` guarded by `ConditionExpression: #rev = :rev` — the generation counter snapshotted with the paths. A String Set carries no write generation, so a re-edit of an **already-queued** path is invisible at the membership level; an unguarded delete would erase that second edit. The `rev` guard closes it: any concurrent enqueue (same OR different path) increments `rev` in the same atomic UpdateItem that merges the set, so the condition fails and the **entire** marker is retained — nothing is deleted — for a redundant-but-correct re-invalidation next cycle. When the condition holds, no enqueue happened since the read, so the drained members are the whole set and removing them clears it. Cleanup runs **after** a successful CloudFront call, so a failed invalidation retries. (Two defects closed here: dropped-work-on-failure in CACHE-4A/review-0, and this same-path generation race in CACHE-4A/review-1.)
 
-**Warm Lambda**: Invoked every minute, never cold-starts. Consistent ~5ms latency on the DDB read.
+**Cost**: ~43,200 invocations/month (1/min) at 256 MB (0.25 GB). Since `cache-4a` each
+invocation runs its full ~50s polling window (5×10s sleeps; ≈6 DDB reads + fast-lane drains) —
+whether idle OR after firing a bulk `/*` (the loop no longer returns early in either case,
+review-3) — instead of returning in ~5ms. That is 43,200 × 50 s × 0.25 GB ≈ **540,000 GB-s/month**.
+Against Lambda's 400,000 GB-s/month always-free tier that leaves ≈140,000 billable GB-s ≈
+**$2.33/month** compute if this function alone claims the free tier — and up to ≈$9/month
+worst case if the account-wide free tier is already consumed by other workloads (the tier is
+per-account, not per-function). Requests (43,200/month) stay inside the 1M-request free tier
+(≈$0). This is a real, non-trivial line item: `cache-4a` deliberately traded the idle-exit
+micro-optimization (a near-zero-cost warm poll) for seconds-to-live edge invalidation. Correcting
+the pre-`cache-4a` "well under a dollar" claim (CACHE-4A/review-4).
+
+**Warm Lambda**: Invoked every minute, effectively stays warm (the 1/min schedule reduces cold-start likelihood; it does not guarantee retained execution environments).
 
 ### 3. System API — Status + Manual Flush
 
@@ -1089,15 +1285,19 @@ see the banner for their own pending changes. The file's own header comment stil
 
 **File**: `admin/src/components/InvalidationBanner.tsx`
 
-Persistent banner in `AdminLayout.tsx`, above page content. Polls `GET /system/invalidation` every 15 seconds. When changes are pending, shows countdown with "GO LIVE NOW" button.
+Persistent banner in `AdminLayout.tsx`, above page content. Polls `GET /system/invalidation` every 15 seconds. When a **bulk** change is pending, shows countdown with "GO LIVE NOW" button.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  * Changes pending — going live in 7:42    [GO LIVE NOW]    │
+│  * Site-wide changes pending — going live in 7:42  [GO LIVE NOW] │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Countdown ticks client-side every second (cosmetic). Server timestamp is source of truth, corrected on each 15-second poll.
+Since `cache-4a` the banner reflects the **bulk class only** — it reads `CDN_PENDING`, and
+ordinary edits no longer write that marker, so a single page/product/category edit is already
+live and never appears here. The label reads "Site-wide changes pending" so it does not mislead
+an editor into thinking their just-saved page is still queued. Countdown ticks client-side every
+second (cosmetic). Server timestamp is source of truth, corrected on each 15-second poll.
 
 ### 5. revalidatePath() / revalidateTag() — ISR Layer
 
@@ -1108,6 +1308,11 @@ Calls the renderer's `/api/revalidate` endpoint with a secret token. The rendere
 `revalidatePath("/" + domain + slug)`, which deletes that S3 ISR entry. **The renderer's
 contract is `{ domain, slug }` or `{ tag }` and is unchanged by `cache-2`** — it purges
 exactly the path it is told.
+
+> **Since `cache-4a`, `revalidateTenantPaths()` also fires Layer 1.** After computing
+> `purgeTargets`, it calls `enqueueEdgeInvalidation(slugs)` (§ *2b*) for the immediate targeted
+> CloudFront invalidation, then does the per-slug ISR `revalidatePath` below. The Layer-1
+> enqueue runs **before** the `RENDERER_URL` gate; the Layer-2 loop stays behind it.
 
 > **Read this before debugging a purge that "does nothing" against a deployed stack.** Until
 > `cache-6`, CloudFront **stripped the `x-revalidation-token` header** and this endpoint
@@ -1184,7 +1389,7 @@ Scheduled Lambda triggered by EventBridge cron at **02:00 UTC daily**. Skips ent
 
 | Marker | Written by | Deleted by |
 |--------|-----------|------------|
-| `SYSTEM#CDN_LAST_CHANGE` | `markCdnPending()` in `withInvalidation()` on each cache-relevant mutation | Never (persistent high-water mark) |
+| `SYSTEM#CDN_LAST_CHANGE` | BULK class: `markCdnPending()` in `withInvalidation()`. ORDINARY class (since `cache-4a`): `enqueueEdgeInvalidation()`. Both bump it on each cache-relevant mutation | Never (persistent high-water mark) |
 | `SYSTEM#CDN_LAST_NIGHTLY_FLUSH` | This Lambda, after both flush steps succeed | Never (persistent high-water mark) |
 
 At invocation:
@@ -1679,11 +1884,11 @@ IAM grants: `cloudfront:CreateInvalidation` + S3 read/delete on the asset bucket
 | SQS FIFO Revalidation Queue | Background page regeneration (OpenNext internal) |
 | Warmer Lambda | Scheduled every 5 min, prevents cold starts |
 | Image Optimization Lambda | On-demand image resizing, cached by CloudFront |
-| Debounce Flush Lambda | Every 1 min (10s internal), fires CloudFront invalidation after 15-min debounce |
+| Debounce Flush Lambda | Every 1 min (10s internal). Drains BOTH classes: fast-lane TARGETED invalidations of ordinary edits' changed paths (`CDN_FAST_PENDING`, ~10s) + the bulk `/*` after the 15-min debounce (`CDN_PENDING`) |
 | Nightly Cache Flush Lambda | 02:00 UTC daily, clears both cache layers |
 | Invalidation Status Lambda | GET /system/invalidation — admin UI polling |
 | Invalidation Flush Lambda | POST /system/invalidation — "GO LIVE NOW" |
-| DynamoDB Marker | SYSTEM#CDN_PENDING — single-row debounce state |
+| DynamoDB Markers | `SYSTEM#CDN_PENDING` (bulk `/*` debounce) + `SYSTEM#CDN_FAST_PENDING` (ordinary edits' changed paths as a String Set + `rev` generation counter) + `SYSTEM#CDN_LAST_CHANGE` (nightly-flush high-water mark) — single row each |
 | EventBridge Rules (x2) | Triggers debounce (1/min) + nightly flush (02:00 UTC) |
 
 ---
@@ -1717,7 +1922,9 @@ IAM grants: `cloudfront:CreateInvalidation` + S3 read/delete on the asset bucket
 | Debounce flush | ~4-8/day (one per editing session) | Free |
 | Manual "GO LIVE NOW" | ~2-5/day | Free |
 | Nightly flush | 1/day | Free |
-| **Total** | ~200-400/month | Free (well within 1,000/month free tier) |
+| **Total (bulk/manual/nightly lanes only)** | ~200-400/month | Free | 
+
+> Combined with the cache-4a fast lane (~2,100 changed-path invalidations/month at current edit volume), the account total is ~2,300-2,500 paths/month — beyond the 1,000 free paths, marginal cost ≈ $0.005/path ≈ **$7-8/month**, traded for instant go-live. The earlier "10-20x reduction" conclusion described the pre-fast-lane design and is superseded by this combined model.
 
 Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces this by ~10-20x.
 
@@ -1726,9 +1933,10 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 | Item | Value |
 |------|-------|
 | Invocations | 43,200/month (1/min) |
-| Idle duration | ~5ms (1 DDB read) |
-| Active duration | up to 60s (when pending) |
-| Estimated cost | < $0.10/month |
+| Memory | 256 MB (0.25 GB) — `infra/lib/amodx-stack.ts` `DebounceFlushFunc` |
+| Duration | ~50s every invocation since `cache-4a` (6 iterations, 5×10s sleeps between them + operation time, so the fast lane stays at ~10s resolution across invocations) — no idle-exit; ≈12 DDB reads/invocation when nothing is pending |
+| GB-s/month | 43,200 × 50 s × 0.25 GB ≈ **540,000 GB-s** |
+| Estimated cost | ≈**$2.33/month** compute if this function alone claims Lambda's 400,000 GB-s always-free tier (140,000 billable GB-s × $0.0000166667); up to ≈$9/month if the account-wide free tier is consumed by other workloads. Requests are free (43,200 ≪ 1M/month). *Non-trivial: `cache-4a` traded near-zero idle-exit polling for seconds-to-live edge invalidation. Corrects the pre-`cache-4a` "< $0.10/month" figure (CACHE-4A/review-4).* |
 
 ---
 
@@ -1746,7 +1954,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 5. **CloudFront IAM removed from mutation Lambdas**: The post-construction grant loop is deleted. Mutation Lambdas lose `RENDERER_DISTRIBUTION_ID` env var and `cloudfront:CreateInvalidation` IAM. Since the HOF no longer calls CloudFront (it writes DDB instead), this is safe.
 
-6. **First mutation after deploy**: Writes `SYSTEM#CDN_PENDING` marker to DDB. Debounce Lambda picks it up within 10 seconds. CloudFront invalidation fires 15 minutes later. Existing cached pages remain unchanged until the invalidation propagates (~30 seconds).
+6. **First mutation after deploy**: an ORDINARY edit `ADD`s its changed paths to `SYSTEM#CDN_FAST_PENDING` (+ bumps `rev`); the fast-lane drain fires a TARGETED CloudFront invalidation within ~10s and the edge serves fresh in seconds — no banner. A BULK mutation instead writes `SYSTEM#CDN_PENDING`; the Debounce Lambda fires `/*` 15 minutes later and shows the "GO LIVE NOW" banner meanwhile. Existing cached pages remain unchanged until the relevant invalidation propagates (~30 seconds).
 
 ### No Breaking Changes
 
@@ -1762,8 +1970,8 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 ### Key Metrics
 
 1. **CloudFront Cache Hit Ratio** — Target > 95%. It was structurally ~0% for HTML before `cache-1` (the origin sent `no-store`). After `cache-1` this metric becomes meaningful and is the primary signal that the serving layer is healthy: if it stays near 0%, the origin is still emitting `no-store` and something reintroduced a dynamic API into a cacheable route.
-2. **Debounce Lambda Duration** — CloudWatch Logs for `DebounceFlushFunc`. Idle invocations should be < 100ms. Active loops up to 60s.
-3. **SYSTEM#CDN_PENDING marker age** — If the marker persists beyond 20 minutes, the debounce Lambda may be failing. Check CloudWatch Logs.
+2. **Debounce Lambda Duration** — CloudWatch Logs for `DebounceFlushFunc`. Since `cache-4a` EVERY invocation runs the full ~50s polling window (5×10s sleeps; the fast lane drains each ~10s iteration); a consistently sub-second duration means the loop is exiting early and the fast lane is not draining.
+3. **`SYSTEM#CDN_PENDING` marker age** — If the bulk marker persists beyond 20 minutes, the debounce Lambda may be failing its `/*` submit (it now retains the marker on a failed/skipped submit — see § *Debounce Flush Lambda*). Check CloudWatch Logs. A persistently non-empty `SYSTEM#CDN_FAST_PENDING.paths` set likewise means the fast-lane drain or its CloudFront call is failing.
 4. **Invalidation Count** — CloudFront console. Should be dramatically lower than before (single digits per day vs. hundreds).
 
 ### Deployed Alarms
