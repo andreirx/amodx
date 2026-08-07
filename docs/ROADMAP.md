@@ -14,6 +14,12 @@ concrete gain and are reviewed at the cdk-diff gate. (Hygiene, refactors, or ver
 bumps alone do not qualify — `dep-1`'s aws-cdk-lib step stays deferred under this rule
 until its CVE exposure becomes real gain.)
 
+**Execution reorder (human, 2026-08-07): Track B (commerce-private) DEFERRED — not
+urgent (commerce is test-only; no live commerce tenants). The implementation wave for
+the ratified plans runs first: fnd-2 → cache-4 → REV (rev-1..4) → STATIC (static-1..4)
+→ EMAIL (email-2, email-2a, email-3). Track B resumes after, on the human's word; its
+pre-condition (F-SHARED-1 Romania default) rides in this wave (see rev/cmrc notes).**
+
 ## Current Priority
 
 **Track CACHE — serving-layer remediation** (`cache-1` → `cache-2` → `cache-3`, plus the
