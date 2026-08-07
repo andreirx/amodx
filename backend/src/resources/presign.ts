@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import { normalizeEmail } from "@amodx/shared";
 
 const s3 = new S3Client({});
 const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET!;
@@ -31,14 +32,16 @@ async function hasUserPurchasedProduct(
         return false;
     }
 
-    // Query orders for this customer
-    const emailLower = userEmail.toLowerCase();
+    // Query orders for this customer. fnd-2: canonical identity form (was
+    // `userEmail.toLowerCase()`; renamed from `emailLower` — the entitlement check must
+    // read the CUSTORDER# adjacency under the same key checkout wrote).
+    const normalizedEmail = normalizeEmail(userEmail);
     const ordersResult = await db.send(new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
         ExpressionAttributeValues: {
             ":pk": `TENANT#${tenantId}`,
-            ":sk": `CUSTORDER#${emailLower}#`,
+            ":sk": `CUSTORDER#${normalizedEmail}#`,
         },
         ProjectionExpression: "items",
     }));

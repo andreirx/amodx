@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { normalizeEmail } from "@amodx/shared";
 
 /**
  * Customer profile update — called via renderer proxy only.
@@ -48,9 +49,16 @@ const _handler: AmodxHandler = async (event) => {
             return { statusCode: 400, body: JSON.stringify({ error: "Email is required" }) };
         }
 
-        // Validate email format
+        // fnd-2 (PD-001): normalize to the canonical identity form BEFORE validating format —
+        // validation must run on the normalized value, not raw. Was `email.toLowerCase()`
+        // (renamed from the misleading `emailLower`, which no longer describes the trim + NFKC
+        // it now does). normalizeEmail is idempotent, so the CUSTOMER# key built below is stable.
+        const normalizedEmail = normalizeEmail(email);
+
+        // Validate email format on the NORMALIZED form. A fullwidth-＠ / NFKC address that the
+        // raw regex would reject folds to canonical ASCII and validates as the stored form.
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(normalizedEmail)) {
             return { statusCode: 400, body: JSON.stringify({ error: "Invalid email format" }) };
         }
 
@@ -59,13 +67,12 @@ const _handler: AmodxHandler = async (event) => {
             return { statusCode: 400, body: JSON.stringify({ error: "Invalid birthday format. Use YYYY-MM-DD" }) };
         }
 
-        const emailLower = email.toLowerCase();
         const now = new Date().toISOString();
 
         // Check if customer exists
         const existing = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${emailLower}` },
+            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` },
             ProjectionExpression: "email"
         }));
 
@@ -99,7 +106,7 @@ const _handler: AmodxHandler = async (event) => {
 
         const result = await db.send(new UpdateCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${emailLower}` },
+            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` },
             UpdateExpression: `SET ${updates.join(", ")}`,
             ExpressionAttributeValues: values,
             ReturnValues: "ALL_NEW"

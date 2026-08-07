@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { normalizeEmail } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -26,9 +27,13 @@ const _handler: Handler = async (event) => {
         const body = JSON.parse(event.body);
         const { notes } = body;
 
+        // fnd-2: was RAW. Normalize so the admin note-write targets the same CUSTOMER#
+        // record checkout created (see customers/get.ts for the missed-record failure).
+        const normalizedEmail = normalizeEmail(email);
+
         const result = await db.send(new UpdateCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${email}` },
+            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` },
             UpdateExpression: "SET notes = :notes, updatedAt = :now",
             ExpressionAttributeValues: {
                 ":notes": notes ?? "",

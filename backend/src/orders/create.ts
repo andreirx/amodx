@@ -5,7 +5,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
-import { OrderInputSchema } from "@amodx/shared";
+import { OrderInputSchema, normalizeEmail } from "@amodx/shared";
 import { formatFromHeader } from "../lib/email-from.js";
 
 const ses = new SESClient({});
@@ -28,7 +28,17 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         // --- Zod validation (Phase 1.1) ---
-        const parseResult = OrderInputSchema.safeParse(JSON.parse(event.body));
+        // fnd-2 (PD-001): email-format validation MUST run on the NORMALIZED form, not raw.
+        // Fold customerEmail through normalizeEmail BEFORE the schema's z.string().email()
+        // sees it. The two verdicts differ — a fullwidth-＠ / NFKC / whitespace address fails
+        // .email() raw but passes once canonicalised — so validating raw and persisting the
+        // normalized value would store a form that was never validated as stored. Non-string
+        // / missing customerEmail is left untouched for the schema to reject as before.
+        const rawBody = JSON.parse(event.body);
+        if (rawBody && typeof rawBody.customerEmail === "string") {
+            rawBody.customerEmail = normalizeEmail(rawBody.customerEmail);
+        }
+        const parseResult = OrderInputSchema.safeParse(rawBody);
         if (!parseResult.success) {
             return {
                 statusCode: 400,
@@ -44,6 +54,14 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             shippingAddress, billingDetails, paymentMethod, requestedDeliveryDate,
             couponCode, recaptchaToken
         } = parseResult.data;
+
+        // fnd-2: customerEmail already arrived normalized from validation above, so this
+        // re-derivation is byte-identical (normalizeEmail is idempotent). Kept explicit as
+        // the ONE canonical identity form: every CUSTOMER# / CUSTORDER# / EMAILLIMIT# key,
+        // the persisted customerEmail attribute, and the SES recipient below key/route on
+        // this — never on raw input — so the write path cannot fork from the read paths
+        // (customers/get, renderer account).
+        const normalizedEmail = normalizeEmail(customerEmail);
 
         const now = new Date().toISOString();
         const orderId = crypto.randomUUID();
@@ -291,7 +309,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                         tenantId,
                         orderNumber,
                         items: validatedItems,
-                        customerEmail: customerEmail.toLowerCase(),
+                        customerEmail: normalizedEmail,
                         customerName,
                         customerPhone: customerPhone || null,
                         shippingAddress: shippingAddress || null,
@@ -320,7 +338,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                     TableName: TABLE_NAME,
                     Item: {
                         PK: `TENANT#${tenantId}`,
-                        SK: `CUSTORDER#${customerEmail.toLowerCase()}#${orderId}`,
+                        SK: `CUSTORDER#${normalizedEmail}#${orderId}`,
                         orderNumber,
                         total,
                         status: "placed",
@@ -335,7 +353,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                     TableName: TABLE_NAME,
                     Key: {
                         PK: `TENANT#${tenantId}`,
-                        SK: `CUSTOMER#${customerEmail.toLowerCase()}`
+                        SK: `CUSTOMER#${normalizedEmail}`
                     },
                     UpdateExpression: [
                         // Only set name/phone/address on FIRST order (protect existing customer data)
@@ -391,7 +409,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         if (FROM_EMAIL && customerEmail) {
             try {
                 // Phase 1.4: Email rate limiting - prevent email bombing
-                const emailKey = `EMAILLIMIT#${customerEmail.toLowerCase()}`;
+                const emailKey = `EMAILLIMIT#${normalizedEmail}`;
                 const hour = Math.floor(Date.now() / 3600000);
 
                 const emailLimitRes = await db.send(new GetCommand({
@@ -455,7 +473,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 const vars: Record<string, string> = {
                     orderNumber,
                     customerName,
-                    customerEmail: customerEmail.toLowerCase(),
+                    customerEmail: normalizedEmail,
                     customerPhone: customerPhone || "",
                     status: "placed",
                     statusLabel: STATUS_LABELS["placed"],
@@ -480,7 +498,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 if (template.sendToCustomer) {
                     await ses.send(new SendEmailCommand({
                         Source: fromHeader,
-                        Destination: { ToAddresses: [customerEmail.toLowerCase()] },
+                        Destination: { ToAddresses: [normalizedEmail] },
                         Message: {
                             Subject: { Data: `[${siteName}] ${renderedSubject}` },
                             Body: { Text: { Data: renderedBody } }

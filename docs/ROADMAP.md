@@ -106,7 +106,7 @@ Shared primitives more than one track depends on. Not a feature track.
 | Slice | Scope | Status |
 |-------|-------|--------|
 | `fnd-1` | Shared `normalizeEmail()` (**NFKC → trim → lowercase**, per PD-001 as amended 2026-07-28) in `@amodx/shared` — the normalizer that commerce `CUSTOMER#` keys (B) and all of customer auth (C) will be migrated onto by `fnd-2`; it has no consumers yet | SHIPPED 2026-07-28 (prod) |
-| `fnd-2` | Migrate the 14 inline email call sites onto `normalizeEmail()` — **key migration**, expand-before-contract (dual-read → backfill → contract). Inventory: `docs/shipped/slices/fnd-1-normalize-email.md` § Call-site inventory | PLANNED — not yet authored |
+| `fnd-2` | Migrate the 14 inline email call sites onto `normalizeEmail()`. As authored (`docs/slices/fnd-2-normalize-email-callsites.md`, PD-001 as amended) this is the **call-site refactor only** — the persisted-key backfill (expand-before-contract) is scoped OUT and carried as finding **F-FND2-1** to a future data slice gated behind Track B. Inventory: `docs/shipped/slices/fnd-1-normalize-email.md` § Call-site inventory | IMPLEMENTED 2026-08-07 (credential-free suites green; deploy/staging + backfill pending) |
 
 ## Track A — Video embed
 
@@ -191,8 +191,12 @@ Hygiene work, not a feature track.
 - `fnd-1` (`normalizeEmail`) is a prerequisite for `cmrc` `CUSTOMER#` key normalization (B)
   and all of Track C (it feeds `cognitoUsername` and every `CUSTOMER#` write). **`fnd-1`
   ships the primitive only — it migrates nothing.** The estate's 14 inline email-key sites
-  still disagree with it and with each other until `fnd-2` runs, and `fnd-2` is a key
-  migration (expand-before-contract), not a refactor.
+  disagreed with it and with each other until `fnd-2`. As amended (PD-001), `fnd-2` performs
+  the **call-site refactor** — all 14 sites now derive keys through `normalizeEmail()`; for
+  ASCII addresses the derived key is byte-identical to the old `.toLowerCase()` form, so
+  live records stay reachable. The **persisted-key backfill** (expand-before-contract for the
+  rare non-ASCII/whitespace key written pre-`fnd-2`) is the remaining key migration, deferred
+  as finding **F-FND2-1** to a future data slice gated behind Track B.
 - `cmrc-*` proves the private-table + cross-table-transaction pattern that `appt-*`
   reuses.
 - Track C's renderer-proxy customer sessions precede `appt-4` customer endpoints.

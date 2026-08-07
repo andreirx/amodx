@@ -47,7 +47,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS, normalizeEmail } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -485,7 +485,7 @@ export async function getCustomerOrders(tenantId: string, email: string) {
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: {
                 ":pk": `TENANT#${tenantId}`,
-                ":sk": `CUSTORDER#${email.toLowerCase()}#`,
+                ":sk": `CUSTORDER#${normalizeEmail(email)}#`,
             },
             ProjectionExpression: "orderNumber, total, #s, createdAt, SK",
             ExpressionAttributeNames: { "#s": "status" },
@@ -512,7 +512,7 @@ export async function getCustomerProfile(tenantId: string, email: string) {
 
     const result = await docClient.send(new GetCommand({
         TableName: tableName,
-        Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${email.toLowerCase()}` },
+        Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizeEmail(email)}` },
         ProjectionExpression: "email, #n, phone, birthday, defaultAddress",
         ExpressionAttributeNames: { "#n": "name" },
     }));

@@ -1,6 +1,7 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { normalizeEmail } from "@amodx/shared";
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -19,8 +20,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
         if (!result.Item) return { statusCode: 404, body: JSON.stringify({ error: "Order not found" }) };
 
-        // Verify email ownership (case-insensitive)
-        if (result.Item.customerEmail.toLowerCase() !== email.toLowerCase()) {
+        // Verify email ownership. fnd-2: both sides go through the canonical normalizer so
+        // the authorization compare cannot be defeated by — or fail on — an encoding variant
+        // (fullwidth/NFKC/whitespace) of the same address.
+        if (normalizeEmail(result.Item.customerEmail) !== normalizeEmail(email)) {
             return { statusCode: 404, body: JSON.stringify({ error: "Order not found" }) };
         }
 

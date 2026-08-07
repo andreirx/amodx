@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { normalizeEmail } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -18,10 +19,15 @@ export const handler: Handler = async (event) => {
         const auth = event.requestContext.authorizer.lambda;
         requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
 
+        // fnd-2: this read was previously RAW — an admin opening `Customer@x.com` missed the
+        // record checkout wrote as `customer@x.com`. Normalize the path param so admin reads
+        // land on the same CUSTOMER# / CUSTORDER# keys the write path produces.
+        const normalizedEmail = normalizeEmail(email);
+
         // Fetch customer record
         const customerResult = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${email}` }
+            Key: { PK: `TENANT#${tenantId}`, SK: `CUSTOMER#${normalizedEmail}` }
         }));
 
         if (!customerResult.Item) return { statusCode: 404, body: JSON.stringify({ error: "Customer not found" }) };
@@ -32,7 +38,7 @@ export const handler: Handler = async (event) => {
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: {
                 ":pk": `TENANT#${tenantId}`,
-                ":sk": `CUSTORDER#${email}#`
+                ":sk": `CUSTORDER#${normalizedEmail}#`
             }
         }));
 

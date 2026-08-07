@@ -206,9 +206,11 @@ describe("ordering rule -- email format validation must run on the NORMALIZED fo
      * `OrderInputSchema.customerEmail` is the estate's public-checkout email validator and
      * stands in here for every `z.string().email()` field in the package.
      *
-     * SCOPE: this pins the RULE. It does NOT claim the call sites obey it -- today
-     * `backend/src/orders/create.ts:30` parses the RAW body and lowercases at :293, i.e.
-     * validate-then-normalize, the wrong way round. Correcting that is `fnd-2`.
+     * SCOPE: this pins the RULE at the schema level. The call sites that validate email format
+     * were brought into conformance by `fnd-2` (revise cycle, F-FND2-3): `orders/create.ts`
+     * now folds `customerEmail` through `normalizeEmail` BEFORE `OrderInputSchema.safeParse`,
+     * and `customers/public-update.ts` normalizes before its regex. The site-level composition
+     * is pinned in `backend/test/unit/email-key-normalization.test.ts`.
      */
     const order = (email: string) => ({
         items: [{ productId: "00000000-0000-4000-8000-000000000000", quantity: 1 }],
