@@ -1,6 +1,7 @@
 # CACHE-4b: Tag-based ISR revalidation — listing pages refresh when their content changes
 
-- **Status:** BLOCKED-DEFERRED 2026-08-07 — OpenNext 3.1.3 does not persist custom tags
+- **Status:** WITHDRAWN 2026-08-08 (human) — the freshness gap it targeted is closed to an acceptable degree by cache-7 (SWR self-heal, seconds) + cache-4a (instant path purge). Tag-precision "refresh every page showing X" is not worth the OpenNext dependency; opennext-1 stays a pure image fix. Original block reason below stands as the technical record.
+- **Superseded status:** BLOCKED-DEFERRED 2026-08-07 — OpenNext 3.1.3 does not persist custom tags
   for App Router full-route cache entries (`generateStaticParams()=>[]` routes produce
   APP_PAGE entries; `adapters/cache.js:209-213` derives tags only for FETCH/legacy PAGE).
   So `revalidateTag()` has no path mapping to resolve — the mechanism is INERT on the
