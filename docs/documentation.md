@@ -101,6 +101,7 @@ Prefixes:
 - `appt-` — appointments / scheduling (Track D)
 - `ai-` — admin AI (Track E, deferred)
 - `dep-` — dependency / maintenance remediation
+- `rev-` — reviews-with-images import (Track REV; plan `docs/plan-reviews-import.md`)
 
 Sub-slices use a letter suffix when one slice splits: `auth-2a-...`, `auth-2b-...`.
 

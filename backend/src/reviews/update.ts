@@ -1,4 +1,5 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
+import type { Review } from "@amodx/shared";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
@@ -24,7 +25,11 @@ const _handler: Handler = async (event) => {
         if (!id) return { statusCode: 400, body: JSON.stringify({ error: "Missing review ID" }) };
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing body" }) };
 
-        const body = JSON.parse(event.body);
+        // Type the untrusted body against the shared review contract (rev-1): `productId` and
+        // the mutable allow-list below now bind to `ReviewSchema` field names, so a schema
+        // rename breaks this compile. Annotation only — no runtime validation added (that would
+        // be a behavior change, deferred to rev-2).
+        const body = JSON.parse(event.body) as Partial<Review>;
         const { productId } = body;
 
         if (!productId) {
@@ -33,25 +38,29 @@ const _handler: Handler = async (event) => {
 
         const now = new Date().toISOString();
 
-        // Build dynamic update expression from allowed fields
-        const allowedFields: Record<string, string> = {
+        // Build dynamic update expression from allowed fields. Keys are constrained to `keyof
+        // Review`, so the moderation mutable-field allow-list stays tied to the schema — if one
+        // of these field names drifts out of `ReviewSchema`, this object fails to compile.
+        const allowedFields = {
             status: "status",
             content: "content",
             authorName: "authorName",
             rating: "rating",
-        };
+        } satisfies Partial<Record<keyof Review, string>>;
 
         const expressionParts: string[] = ["#updatedAt = :updatedAt"];
         const expressionNames: Record<string, string> = { "#updatedAt": "updatedAt" };
         const expressionValues: Record<string, unknown> = { ":updatedAt": now };
 
+        const bodyByKey = body as Record<string, unknown>; // string-indexed view for the dynamic loop
         for (const [inputKey, dbKey] of Object.entries(allowedFields)) {
-            if (body[inputKey] !== undefined) {
+            const value = bodyByKey[inputKey];
+            if (value !== undefined) {
                 const placeholder = `:${inputKey}`;
                 const nameToken = `#${inputKey}`;
                 expressionParts.push(`${nameToken} = ${placeholder}`);
                 expressionNames[nameToken] = dbKey;
-                expressionValues[placeholder] = body[inputKey];
+                expressionValues[placeholder] = value;
             }
         }
 

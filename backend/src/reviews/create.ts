@@ -1,4 +1,5 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
+import type { Review } from "@amodx/shared";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
@@ -22,7 +23,12 @@ const _handler: Handler = async (event) => {
         if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
         if (!event.body) return { statusCode: 400, body: "Missing Body" };
 
-        const body = JSON.parse(event.body);
+        // Type the untrusted request body against the shared review contract (rev-1): the
+        // destructure below now binds field NAMES to `ReviewSchema`, so a schema rename breaks
+        // this compile. Partial<Review> — the client sends a subset; this is a type annotation
+        // only, NOT runtime validation (adding validation would be a behavior change; deferred
+        // to rev-2, tracked in docs/TECH-DEBT.md § "Review `source` enum defects").
+        const body = JSON.parse(event.body) as Partial<Review>;
 
         const { productId, source, authorName, rating, content, googleReviewId, status } = body;
 
@@ -41,6 +47,13 @@ const _handler: Handler = async (event) => {
                 id,
                 tenantId,
                 productId,
+                // KNOWN DEFECT (F-REV1-x, deferred to a future validate-on-write slice): this
+                // write bypasses Zod. It persists "manual" when `source` is omitted — a value the
+                // pre-rev-1 schema rejected, so ReviewSchema was WIDENED to admit it (it is now a
+                // legacy enum member). "manual" should NOT be the source of a new review; the
+                // fix is to validate the body with ReviewSchema and default `source` to
+                // "internal". Left unchanged here — REV-IMPL-1 is types-only, no behavior change.
+                // See docs/TECH-DEBT.md § "Review `source` enum defects".
                 source: source || "manual",
                 authorName,
                 rating,

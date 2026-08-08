@@ -1,8 +1,17 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
+import type { Review } from "@amodx/shared";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+
+/**
+ * Exactly the fields this handler projects from DynamoDB (see the ProjectionExpression below).
+ * Deriving it from `Review` (rev-1) ties the projected shape to the shared contract: a rename of
+ * any of these fields in `ReviewSchema` breaks this compile — the § 2.1 "projection silently
+ * drops a field" risk becomes a type error. Type annotation only; no query/behavior change.
+ */
+type ReviewListItem = Pick<Review, "id" | "productId" | "authorName" | "rating" | "content" | "source" | "status" | "createdAt">;
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -34,7 +43,8 @@ export const handler: Handler = async (event) => {
             ScanIndexForward: false
         }));
 
-        return { statusCode: 200, body: JSON.stringify({ items: result.Items || [] }) };
+        const items = (result.Items ?? []) as ReviewListItem[];
+        return { statusCode: 200, body: JSON.stringify({ items }) };
     } catch (e: any) {
         return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
     }

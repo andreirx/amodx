@@ -224,6 +224,45 @@ The asset upload flow (`backend/src/assets/create.ts`) uses presigned PUT URLs. 
 
 ## Medium Priority (Code Quality)
 
+### Review `source` enum defects — write path bypasses Zod, forcing a compat widening (F-REV1-x / D1); the two review systems' enums diverge (D2)
+Surfaced by the `plan-reviews-import.md` audit (§ 2.5); recorded here with the `rev-1` slice,
+which touches `ReviewSchema` but does **not** change handler behavior (packet: types-only, no
+behavior change). Both are for `rev-2` to reconcile when it opens the System-A write path.
+
+- **F-REV1-x / D1 — `create.ts` writes values the shared schema never accepted; the write path
+  bypasses Zod (shared-first rule violated historically).** `backend/src/reviews/create.ts`
+  persists two shapes the pre-`rev-1` `ReviewSchema` rejected, and has done so since inception:
+  `source: source || "manual"` (create.ts:57) and `googleReviewId: googleReviewId || null`
+  (create.ts:61). `"manual"` was **not** a member of the original `source` enum
+  (`google | internal | imported`), and `googleReviewId` was `z.string().optional()`, which
+  rejects `null`. The reviewer PROVED this against the working tree (`safeParse` on the exact
+  persisted row returned `false`), so the "every existing row parses" backward-compat requirement
+  was in direct conflict with the strict schema.
+  **Resolution taken in `rev-1` (revise cycle, 2026-08-08 — evidence wins):** the SCHEMA was
+  widened to describe **persisted reality** — `source` now includes `"manual"` (annotated legacy
+  member; the default stays `"internal"`), and `googleReviewId` is `z.string().nullable().optional()`.
+  This is a compat widening, **not** a fix of the underlying defect.
+  **The underlying defect remains:** `create.ts` (and `update.ts`) write records **without ever
+  parsing them through `ReviewSchema`** — a source-tree grep finds no runtime
+  `ReviewSchema.parse()`/`safeParse()` in any handler; `rev-1` added only compile-time `type`
+  annotations. So the write path can still drift from the contract silently, and `"manual"` — a
+  value that should never be the source of a *new* review — is still what the handler writes when
+  the caller omits `source`. The renderer only special-cases `"google"`, so the value renders
+  identically today and hides the drift.
+  **Fix (separate future slice, NOT `rev-1`):** introduce validate-on-write — parse the POST body
+  with `ReviewSchema` on the create/update path and default `source` to `"internal"` (stop writing
+  `"manual"`). Changing the write path is a behavior change out of scope for the types-only
+  `rev-1`; it needs its own slice.
+- **D2 — the two review systems' `source` enums diverge.** System A (DB), after the F-REV1-x compat
+  widening: `google | internal | imported | manual`. System B (`reviews-carousel` block,
+  `packages/plugins/src/reviews-carousel/schema.ts`): `google | facebook | manual`. `"facebook"`
+  exists only in the block, `"imported"` only in the DB, and `"manual"`/`"internal"` are two names
+  for the same idea now present (post-widening) in different combinations across the two systems.
+  Any cross-system feature (e.g. rendering an imported FB review through System A) trips over this.
+  Unifying them is a schema-migration decision (`rev-6` adds `"facebook"` to System A per the plan
+  § 4.6; the validate-on-write fix should also retire `"manual"` in favor of `"internal"` on the
+  DB side), not a cosmetic rename.
+
 ### Split Settings page into sections
 The Settings page (`admin/src/pages/Settings.tsx`) is ~1300 lines covering site identity, theme, analytics, identity providers, payments, GDPR, commerce bar, URL prefixes, company details, legal links, and more. Split into tabbed sections.
 

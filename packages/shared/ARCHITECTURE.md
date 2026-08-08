@@ -67,6 +67,12 @@ shape** — a function with its own contract and its own test file.
 ### Constants
 
 - `THEME_PRESETS` — 5 built-in themes: standard, midnight, editorial, corporate, vibrant
+- `MAX_REVIEW_IMAGES` (= 12) — upper bound on photos carried INLINE (as metadata) on one
+  `ReviewSchema` row (D-REV-1, ratified). Bounds the entry COUNT, not photo size (bytes live in
+  S3). It bounds only the images' CONTRIBUTION to the item: 12 × ~2.1 KB worst-case metadata
+  ≈ 25 KB (< 7% of the DynamoDB 400 KB item cap). It is not a whole-item size guarantee —
+  `ReviewSchema.content` and other string fields are unbounded. See the constant's header in
+  `src/index.ts` for the full budget; `plan-reviews-import.md` D-REV-1.
 
 ### Functions
 
