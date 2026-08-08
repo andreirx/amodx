@@ -27,9 +27,10 @@ import {
  *
  * Why the image action lives behind a moderation mutation at all: the ratified spine
  * (plan-reviews-import header) is that the moderation gate governs the PUBLIC OBJECT, not merely
- * the render. Approving an image is the act that may copy a private byte-screened derivative to
- * the public bucket — so approval MUST be derived from the tenant-scoped review RECORD, never the
- * client body (a caller cannot forge "the review is approved" to force a private→public copy).
+ * the render. Approving an image is the act that may copy a private staged ORIGINAL to the public
+ * bucket (moderation-only pipeline, D-REV-4 SUPERSEDED — no byte-screen) — so approval MUST be
+ * derived from the tenant-scoped review RECORD, never the client body (a caller cannot forge "the
+ * review is approved" to force a private→public copy).
  */
 
 // Bucket wiring for the approve-image path (unused by the default field update). Read at module
@@ -99,9 +100,13 @@ async function updateReviewFields(args: {
     const { tenantId, id, body } = args;
     const { productId } = body;
 
-    if (!productId) {
-        return { statusCode: 400, body: JSON.stringify({ error: "Missing productId (needed to construct key)" }) };
-    }
+    // Sort key follows the rev-1 scope model (D-REV-5): a product review is keyed under its
+    // product; a business (site-scope) review — the DEFAULT scope for bulk imports (rev-2b) — has
+    // NO productId and lives under the DISJOINT `SITEREVIEW#` namespace. Mirrors the same routing
+    // already used by the approve-image action above, so the moderation status transition
+    // (pending → approved/hidden) works for BOTH scopes. Without this, an imported business review
+    // surfaced in the list (list.ts) could never be approved — rev-2b finding #1.
+    const sk = productId ? `REVIEW#${productId}#${id}` : `SITEREVIEW#${id}`;
 
     const now = new Date().toISOString();
 
@@ -135,7 +140,7 @@ async function updateReviewFields(args: {
         TableName: TABLE_NAME,
         Key: {
             PK: `TENANT#${tenantId}`,
-            SK: `REVIEW#${productId}#${id}`,
+            SK: sk,
         },
         UpdateExpression: `SET ${expressionParts.join(", ")}`,
         ExpressionAttributeNames: expressionNames,
@@ -148,12 +153,12 @@ async function updateReviewFields(args: {
 
 /**
  * `action: "approve-image"` — approve one review image and, iff the review is ALSO approved,
- * promote the byte-screened normalized derivative from the private quarantine to the public
- * bucket, then rewrite the entry's `assetKey` to the resulting PUBLIC key.
+ * promote the staged ORIGINAL from the private quarantine to the public bucket, then rewrite the
+ * entry's `assetKey` to the resulting PUBLIC key.
  *
  * Approval is DERIVED FROM THE ROW (never the client body). The entry's `assetKey` is a KEY, never
- * a URL (rev-1 ReviewImageSchema): pre-promotion it holds the private `.../normalized.jpg` staging
- * key rev-2 wrote; promotion rewrites it to the public asset key. The public URL is derived at
+ * a URL (rev-1 ReviewImageSchema): pre-promotion it holds the private `.../original` staging key the
+ * importer wrote; promotion rewrites it to the public asset key. The public URL is derived at
  * render via the existing asset-record/CDN pattern (`${CDN_URL}/${key}`), served raw — never
  * next/image (opennext-1 parking rule).
  */
@@ -251,9 +256,9 @@ async function approveReviewImage(args: {
             tableName: TABLE_NAME,
         });
         if (!res.promoted) {
-            // Promotion refused (e.g. the byte-screened normalized derivative is missing). Do NOT
-            // persist an "approved" image with no public object behind it — surface it so the
-            // caller retries once the derivative exists.
+            // Promotion refused (e.g. the staged original is gone/expired, or an untyped object).
+            // Do NOT persist an "approved" image with no public object behind it — surface it so the
+            // caller retries once the staged original is present.
             return { statusCode: 502, body: JSON.stringify({ error: `Promotion failed: ${res.reason}` }) };
         }
         promoted = true;

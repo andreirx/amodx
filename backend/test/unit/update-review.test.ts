@@ -13,7 +13,7 @@ import {
     PutCommand,
     DeleteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { reviewNormalizedKey } from "../../src/lib/review-media.js";
+import { reviewOriginalKey } from "../../src/lib/review-media.js";
 
 /**
  * REV-2a — the WIRING proof for the FOLDED handler (REV2A-INFRA-SURFACE = option B): the review-
@@ -24,7 +24,7 @@ import { reviewNormalizedKey } from "../../src/lib/review-media.js";
  *   • the DEFAULT (no `action`) field update is UNCHANGED — existing callers unaffected;
  *   • approval is DERIVED FROM THE TENANT-SCOPED ROW, never the client body — a pending review is
  *     not promoted even if the body forges `status: "approved"`;
- *   • on an approved review, the private normalized derivative is COPIED to public and the entry's
+ *   • on an approved review, the private staged ORIGINAL is COPIED to public and the entry's
  *     `assetKey` is REPLACED with the public KEY (not a URL);
  *   • the PER-IMAGE concurrency guard: a concurrent duplicate approval loses (conditional update
  *     fails) and its promoted public object is ROLLED BACK — one wins, no double-copy, no orphan.
@@ -47,7 +47,7 @@ beforeAll(async () => {
     handler = (await import("../../src/reviews/update.js")).handler;
 });
 
-const STAGING_KEY = reviewNormalizedKey("t1", "b1", "img1");
+const STAGING_KEY = reviewOriginalKey("t1", "b1", "img1");
 
 function reviewItem(status: string, imageStatus = "pending", assetKey = STAGING_KEY) {
     return {
@@ -86,7 +86,9 @@ beforeEach(() => {
     ddbmock.on(PutCommand).resolves({});
     ddbmock.on(DeleteCommand).resolves({});
     s3mock.on(CopyObjectCommand).resolves({});
-    s3mock.on(HeadObjectCommand).resolves({ ContentLength: 12345 });
+    // Source head (private) supplies the declared type; destination head (public) the true size —
+    // one stub with both fields serves both calls in the promotion path.
+    s3mock.on(HeadObjectCommand).resolves({ ContentType: "image/jpeg", ContentLength: 12345 });
     s3mock.on(DeleteObjectCommand).resolves({});
 });
 
@@ -109,14 +111,23 @@ describe("PUT /reviews/{id} — DEFAULT action (field update) is unchanged", () 
         expect(input.ConditionExpression).toBe("attribute_exists(SK)");
     });
 
-    it("400s a field update with no productId (needed to construct the key)", async () => {
+    it("routes a no-productId field update to the SITEREVIEW# namespace (rev-2b finding #1)", async () => {
+        // A business (site-scope) review has NO productId (rev-1 D-REV-5). The moderation status
+        // transition must reach it under the DISJOINT SITEREVIEW# key — mirroring approve-image —
+        // so imported business reviews surfaced in the list can actually be approved/hidden.
+        ddbmock.on(UpdateCommand).resolves({});
         const res = await handler(event({ status: "approved" }));
-        expect(res.statusCode).toBe(400);
+        expect(res.statusCode).toBe(200);
+        const updates = ddbmock.commandCalls(UpdateCommand);
+        expect(updates).toHaveLength(1);
+        const input = updates[0].args[0].input as any;
+        expect(input.Key.SK).toBe("SITEREVIEW#r1");
+        expect(input.ConditionExpression).toBe("attribute_exists(SK)");
     });
 });
 
 describe("PUT /reviews/{id} — action: approve-image", () => {
-    it("promotes on an approved review: copies the derivative and REPLACES assetKey with the public key", async () => {
+    it("promotes on an approved review: copies the staged original and REPLACES assetKey with the public key", async () => {
         ddbmock.on(GetCommand).resolves({ Item: reviewItem("approved") });
         ddbmock.on(UpdateCommand).resolves({});
 
@@ -124,7 +135,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         expect(res.statusCode).toBe(200);
         expect(JSON.parse(res.body).promoted).toBe(true);
 
-        // The normalized derivative was copied to the PUBLIC bucket.
+        // The staged original was copied to the PUBLIC bucket.
         const copies = s3mock.commandCalls(CopyObjectCommand);
         expect(copies).toHaveLength(1);
         expect(String(copies[0].args[0].input.CopySource)).toContain(STAGING_KEY);
@@ -192,7 +203,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         expect(step2.statusCode).toBe(200);
         expect(JSON.parse(step2.body).promoted).toBe(true);
 
-        // The derivative was copied to public and the entry's assetKey became the PUBLIC key
+        // The original was copied to public and the entry's assetKey became the PUBLIC key
         // (written on the element path, not as a full-array replacement).
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(1);
         const input = ddbmock.commandCalls(UpdateCommand)[0].args[0].input as any;
@@ -230,8 +241,8 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         // independently — neither can restore the other's entry to its stale pending/staging
         // snapshot (which is what a full-array last-writer-wins overwrite would do, orphaning the
         // first promotion's public object).
-        const KEY0 = reviewNormalizedKey("t1", "b1", "img1");
-        const KEY1 = reviewNormalizedKey("t1", "b1", "img2");
+        const KEY0 = reviewOriginalKey("t1", "b1", "img1");
+        const KEY1 = reviewOriginalKey("t1", "b1", "img2");
         const twoImageReview = {
             ...reviewItem("approved"),
             images: [

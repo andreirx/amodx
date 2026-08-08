@@ -23,12 +23,10 @@ src/
 │   ├── revalidate.ts      # Drives BOTH layers (cache-4a): revalidateTenantPaths() → edge fast lane +
 │   │                      #   ISR purge (Layer 2) via the /api/revalidate transport
 │   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
-│   ├── review-media.ts     # rev-2a staged-media SPINE (sharp-free): declared type-AND-size STAGE to
-│   │                       #   the private quarantine + PROMOTION gate (both-approvals → copy the
-│   │                       #   normalized derivative to public, write Asset record) + rollback
-│   ├── review-media-screen.ts # rev-2a STEP 2 (sharp): byte-level decode+re-encode; the ONLY module
-│   │                          #   that pulls sharp — kept separate so update.ts stays sharp-free
-│   └── review-media-ingest.ts # rev-2a staging path: stage → screen → write normalized.jpg (pulls sharp)
+│   └── review-media.ts     # rev-2a staged-media SPINE (no image decode; D-REV-4 SUPERSEDED): declared
+│                           #   type-AND-size STAGE to the private quarantine + PROMOTION gate
+│                           #   (both-approvals → copy the staged ORIGINAL to public, Asset record) +
+│                           #   rollback. Human moderation, not a byte-screen, is the content control.
 ├── auth/
 │   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
 │   ├── context.ts         # AuthorizerContext type definition
@@ -48,12 +46,17 @@ src/
 │   └── delete.ts          # DELETE /products/{id}
 ├── reviews/
 │   ├── create.ts          # POST /reviews
-│   ├── list.ts            # GET /reviews (admin, all statuses)
+│   ├── list.ts            # GET /reviews (admin, all statuses). No productId → merges BOTH the
+│   │                      #   REVIEW#<productId># and DISJOINT SITEREVIEW# namespaces (rev-1
+│   │                      #   D-REV-5) via two PK+begins_with queries (never a Scan), so imported
+│   │                      #   business (site-scope) reviews are visible for moderation (rev-2b)
 │   ├── update.ts          # PUT /reviews/{id} — TWO actions on one contract (rev-2a):
 │   │                      #   default = field update; `action:"approve-image"` = staged-media
-│   │                      #   promotion (approval DERIVED FROM THE ROW, never the body)
-│   ├── delete.ts          # DELETE /reviews/{id}
-│   └── public-list.ts     # GET /public/reviews/{productId} (approved only)
+│   │                      #   promotion (approval DERIVED FROM THE ROW, never the body).
+│   │                      #   Both actions route no-productId reviews to the SITEREVIEW# key.
+│   ├── delete.ts          # DELETE /reviews/{id} (no productId → SITEREVIEW# key)
+│   └── public-list.ts     # GET /public/reviews/{productId} (approved product reviews only;
+│                          #   a public site-review render surface is rev-4 gallery, not built here)
 ├── comments/
 │   ├── create.ts          # POST /comments (public or authed)
 │   ├── list.ts            # GET /comments
@@ -97,7 +100,23 @@ src/
 └── import/
     ├── wordpress.ts       # WordPress XML import handler
     ├── wxr-parser.ts      # WXR XML parser utility
-    └── html-to-tiptap.ts  # HTML → Tiptap JSON converter
+    ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
+    ├── woocommerce.ts     # POST /import/woocommerce — product CSV import
+    ├── media.ts           # POST /import/media — bulk media import
+    ├── reviews.ts         # POST /import/reviews (rev-2b) — attestation-gated bulk review import.
+    │                      #   Import-family instance #3 (own NodejsFunction). ORDER (all validation
+    │                      #   is read-only BEFORE the first write): parse source → decode+bound the
+    │                      #   media ZIP (fflate, zip-bomb guard) → write the IMMUTABLE ImportBatch
+    │                      #   FIRST (D-REV-3 attestation; write-once ConditionExpression) → per-row
+    │                      #   map → stage each photo via lib/review-media.stageReviewImage (declared
+    │                      #   type+size gate, NO decode — moderation is the content control) →
+    │                      #   pending reviews (site scope → SITEREVIEW#, product → REVIEW#<pid>#) →
+    │                      #   structured ReviewImportReport (shared DTO — the admin→backend boundary
+    │                      #   crossing; full per-row + per-image disposition). Bulk CDN invalidation.
+    └── reviews-parse.ts   # rev-2b PURE parser SEAM (no AWS/S3/DDB): CSV/JSON parse, per-row
+                           #   validation (malformed → per-row rejection, never abort-the-batch),
+                           #   MAX_REVIEW_IMAGES count cap enforced pre-staging, ZIP-entry MIME
+                           #   inference, extractImageRefs. Unit-tested against fixtures.
 
 test/
 ├── setup.ts               # Loads .env.test, validates TABLE_NAME

@@ -68,15 +68,14 @@ Grouped by the parent that owns the fix, largest blast radius first:
      Build-time; the renderer does not stringify tenant content through PostCSS.
    - `sharp` **0.34.5** (HIGH): inherited libvips CVE-2026-33327 / -33328 / -35590 / -35591. Fixed in
      `sharp >= 0.35.0`. Pulled in as `next`'s optional image-optimization dependency.
-     - **rev-2a scope note (2026-08-08):** the REMAINING flagged `sharp` node is now **only** this
-       `next` 0.34.5 copy. `rev-2a` added `sharp` **^0.35.0** (resolves **0.35.3**, PATCHED) as a
-       direct `backend/` dependency for the review-media byte-screen
-       (`backend/src/lib/review-media-screen.ts`) — a second, separate install that `npm audit`
-       does **not** flag (its advisory range is `< 0.35.0`; 0.35.3 is outside it). So `dep-1` still
-       owns closing the `next` 0.34.5 advisory; the backend decoder that processes untrusted
-       imported review bytes is already on the patched family. Note: `sharp`'s prebuilt libvips
-       (0.34.5 **and** 0.35.3 here) carries AV1/AVIF but **not HEVC** — a real HEVC `.heic` will not
-       decode until a deployed libvips ships HEVC (surfaced in `review-media-screen.test.ts`).
+     - **rev-2a/2b scope note (2026-08-08, updated by rev-2b revise cycle 2):** the ONLY `sharp`
+       node in the tree is now this `next` 0.34.5 copy. `rev-2a` briefly added a direct `backend/`
+       `sharp` **^0.35.0** for the review-media byte-screen, but **D-REV-4 was SUPERSEDED (human,
+       2026-08-08): the byte-screen is dropped and `sharp` was removed from `backend/package.json`
+       entirely** (the `review-media-screen.ts`/`review-media-ingest.ts` modules deleted). So there
+       is no backend image decoder any more — imported review bytes are gated by declared type+size
+       and the HUMAN moderation gate, not a decode. `dep-1` still owns closing the `next` 0.34.5
+       advisory; nothing in the backend depends on `sharp`.
    - **Exposure — assess before `dep-1` closes, do not assume build-time.** `INFERRED`, not verified:
      unlike `postcss`, `sharp` runs at **request time** in Next's image optimizer, so if the deployed
      OpenNext bundle includes the image-optimization function, a malicious image reaching that path
@@ -876,4 +875,22 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   uploads (rev-2a direct-upload path, not bulk import).
 - Fix if it becomes real: a pure-JS EXIF stripper (e.g. strip APP1 marker) on
   promotion — zero native dependency, no Docker. Not built now.
+- Status: TRACKED residual, deliberately deferred.
+
+## Bulk-import media-ZIP expansion residual (2026-08-08, rev-2b review-0 #3)
+
+- `backend/src/import/reviews.ts` bounds ZIP expansion via fflate's `filter` callback
+  BEFORE inflation: per-entry declared uncompressed size (`originalSize`) ≤ the 10 MB
+  per-image cap, aggregate ≤ 256 MB, ≤ 10 000 entries. This runs before the first DDB
+  write, so a corrupt or bomb-like archive is a clean 400 with no orphan attestation
+  batch (fixture-tested).
+- Residual: `originalSize` is read from the ZIP directory — attacker-declared. A
+  malformed header could under-state size. Second line of defence: the per-entry
+  ACTUAL-bytes 10 MB guard in `stageReviewImage` (on `bytes.length`, after inflation of
+  that single entry). A bomb of many under-declared small entries is still bounded by
+  the entry-count and aggregate ceilings.
+- Fix if it becomes real: a fully streaming bounded inflate that aborts mid-entry when
+  actual output crosses the cap. fflate's `unzipSync` has no bounded-output mode, so
+  this would need the streaming `Unzip` API. Not built now — the layered guards above
+  hold within the ≤10 MB API-Gateway request-body limit.
 - Status: TRACKED residual, deliberately deferred.

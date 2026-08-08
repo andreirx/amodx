@@ -692,17 +692,25 @@ Commerce routes live in `infra/lib/api-commerce.ts` (NestedStack, ~234 resources
 ## Review Images — Staged Media Pipeline (rev-2a)
 
 Imported review photos are attacker-influenced third-party bytes, so they never reach the public
-bucket directly. The ratified spine (D-REV-2 / D-REV-4, `docs/plan-reviews-import.md`) is
-**private-stage → byte-screen → promote**, and *the moderation gate governs the public object,
+bucket directly. The ratified spine (D-REV-2, `docs/plan-reviews-import.md`) is
+**private-stage → human moderation → promote**, and *the moderation gate governs the public object,
 not merely the render*.
+
+**D-REV-4 SUPERSEDED (2026-08-08, human): no automated byte-screening.** `sharp` was dropped from
+the backend entirely — its Linux-binary-on-Lambda cost outweighed a benefit that was mostly
+privacy+display, not security. The **human moderation gate is the content control**: every staged
+image lands `pending` and a human approves it before it can go public. The declared **type-AND-size**
+STAGE gate (allowlist JPEG/PNG/WebP/AVIF; HEIC rejected by a pure MIME check) is all that runs
+pre-approval — those formats display natively, so no re-encode is needed. Promotion copies the
+staged **original** (no normalized derivative). RESIDUAL (tracked, TECH-DEBT): a raw original may
+carry EXIF/GPS — Google/FB exports strip it server-side; a pure-JS EXIF strip is the revisit, not
+built now.
 
 **Backend modules** (`backend/src/lib/`):
 
 | Module | Step | Notes |
 |--------|------|-------|
-| `review-media.ts` | STAGE + PROMOTE (sharp-free) | Declared **type-AND-size** gate → write raw bytes to the PRIVATE quarantine (`review-staging/<tenant>/<batch>/<id>/original`). `promoteReviewImage()` copies the normalized derivative to public **only** when review AND image are both approved, writes an `Asset` record, and compensates (deletes the public object) on any post-copy failure. |
-| `review-media-screen.ts` | SCREEN (sharp) | Decode + re-encode to a normalized JPEG; a non-image / SVG / GIF / HEIC is rejected ON BYTES. HEIC (HEVC) fails the real decode attempt and is mapped to the ratified "export as JPEG" message. The **only** module that pulls `sharp`. |
-| `review-media-ingest.ts` | WIRING (sharp) | stage → screen → write `.../normalized.jpg` (the only object promotion may copy). |
+| `review-media.ts` | STAGE + PROMOTE | Declared **type-AND-size** gate → write raw bytes to the PRIVATE quarantine (`review-staging/<tenant>/<batch>/<id>/original`). `promoteReviewImage()` copies the **staged original** to public **only** when review AND image are both approved, records the original's declared **type + true size** as the `Asset`, and compensates (deletes the public object) on any post-copy failure. No `sharp`. |
 
 **Approval action** — `PUT /reviews/{id}` with `{ action: "approve-image", productId?, imageIndex }`
 (REV2A-INFRA-SURFACE option B: rides the existing handler additively; no dedicated Lambda/route,
@@ -736,12 +744,14 @@ same EDITOR/TENANT_ADMIN roles):
 
 **Infra**: one S3 lifecycle rule expires `review-staging/` after 30 days (`infra/lib/uploads.ts`).
 The moderation function gets least-privilege S3 grants — on the PUBLIC bucket, exactly
-`s3:PutObject`/`s3:GetObject`/`s3:DeleteObject` (CopyObject dest, HeadObject, rollback delete) wired
-in the nested stack; on the PRIVATE bucket, a lone `s3:GetObject` scoped to `review-staging/*`
-(CopyObject source) wired in the parent stack (composition root). Neither uses `grantReadWrite`/
-`grantRead`, whose bucket-list / abort / tagging / retention / legal-hold / version-delete
-convenience set is refused; the boundary is pinned by name in `infra/test/amodx-stack.test.ts`
-(`rev2a-iam`). `sharp` is pinned to `>=0.35.0` (patched family) in `backend/package.json`.
+`s3:PutObject`/`s3:GetObject`/`s3:DeleteObject` (CopyObject dest, HeadObject for true size, rollback
+delete) wired in the nested stack; on the PRIVATE bucket, a lone `s3:GetObject` scoped to
+`review-staging/*` (HeadObject for the original's type + CopyObject source) wired in the parent stack
+(composition root). Neither uses `grantReadWrite`/`grantRead`, whose bucket-list / abort / tagging /
+retention / legal-hold / version-delete convenience set is refused; the boundary is pinned by name in
+`infra/test/amodx-stack.test.ts` (`rev2a-iam`). The backend carries **no `sharp` dependency**
+(D-REV-4 superseded); the bulk-review importer (`POST /import/reviews`) is a plain `NodejsFunction`
+whose only extra dep is the pure-JS `fflate` ZIP reader.
 
 ## Product Availability Filtering
 

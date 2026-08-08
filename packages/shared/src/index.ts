@@ -1426,6 +1426,96 @@ export const ImportBatchSchema = z.object({
 });
 export type ImportBatch = z.infer<typeof ImportBatchSchema>;
 
+/**
+ * Structured result of ONE bulk review import (rev-2b), returned by `POST /import/reviews` and
+ * rendered by the admin import UI (the "Report as output surface" DoD).
+ *
+ * This is a RESPONSE DTO, not a persisted or re-parsed entity — it is BUILT by the backend
+ * importer and CONSUMED by the admin (a documented backend→admin boundary crossing). Per the
+ * clean-architecture directive, data crossing a boundary is a raw, simple structure: plain TS
+ * types, no Zod. Nothing ever validates a report at runtime (there is no read path that parses
+ * one back), so a schema would be dead weight — the type is the contract, shared as the single
+ * source of truth so the admin renders the exact shape the importer emits.
+ *
+ * Concrete current users: producer = `backend/src/import/reviews.ts`; consumer = the admin
+ * Reviews import dialog. Axis: NONE — this is a shared DTO, not an abstraction over variation.
+ * Rejected alternative: a Zod schema (unearned — the report is never parsed/validated).
+ */
+export interface ReviewImportRowResult {
+    /** 0-based index of the row in the source CSV/JSON, so a rejection is traceable to its line. */
+    index: number;
+    status: "accepted" | "rejected";
+    /** Set when accepted: the id of the written review. */
+    reviewId?: string;
+    /** Set when accepted: which key namespace the review landed under. */
+    scope?: "product" | "site";
+    productId?: string;
+    /** Count of images that passed the declared type+size stage gate and were attached to the accepted review (no byte-screen — D-REV-4 SUPERSEDED). */
+    imagesAccepted?: number;
+    /** Set when rejected: why the whole row was rejected (never silently skipped). */
+    reason?: string;
+}
+
+/**
+ * FULL per-image disposition in a bulk import (rev-2b, revise cycle #3). The deep-vertical output
+ * surface is the COMPLETE disposition of every referenced photo — not only the failures: an
+ * ACCEPTED image is a first-class entry carrying the PRIVATE staged `assetKey` and its staged byte
+ * `size`, so the operator sees exactly what was staged, keyed to its row and ZIP entry. A REJECTED
+ * image carries the reason it was dropped (missing from the ZIP, off the declared-type/size gate,
+ * or belonging to a rejected row).
+ *
+ * MODERATION-ONLY pipeline (D-REV-4 SUPERSEDED 2026-08-08 — the automated byte-screen was dropped): there is no
+ * decode step, so an accepted entry carries the staged BYTE size (`size`), not pixel dimensions —
+ * width/height would require the decoder we deliberately removed. The staged original is the object
+ * a human approves and promotes (rev-2a); the moderation gate is the content control.
+ *
+ * Modeled as a SUM TYPE on `status` — an image is accepted XOR rejected and each variant carries
+ * DISJOINT valid data (accepted → assetKey + size; rejected → reason). This is the domain-modeling
+ * rule (mutually-exclusive states as a sum type, each variant holding only the data valid in that
+ * state); the rejected alternative — two parallel `accepted`/`rejected` arrays, or one struct with
+ * a boolean + nullable assetKey/reason — is the defect-shaped type the directive forbids. Growth
+ * axis: variants FIXED (accepted|rejected), so a discriminated union is the right dispatch — the
+ * admin renders both by matching `status`.
+ */
+export type ReviewImportImageResult =
+    | {
+          status: "accepted";
+          /** 0-based index of the owning row. */
+          rowIndex: number;
+          /** The ZIP entry name the row referenced. */
+          entry: string;
+          /** PRIVATE staged original key. Promotion to the public bucket is rev-2a's approval path. */
+          assetKey: string;
+          /** Staged byte size of the original (the true byte count, = the ZIP entry's length). */
+          size: number;
+      }
+    | {
+          status: "rejected";
+          /** 0-based index of the owning row. */
+          rowIndex: number;
+          /** The ZIP entry name the row referenced. */
+          entry: string;
+          reason: string;
+      };
+
+export interface ReviewImportReport {
+    /** The immutable ImportBatch this import wrote FIRST; every accepted review references it. */
+    batchId: string;
+    format: "csv" | "json";
+    totalRows: number;
+    accepted: number;
+    rejected: number;
+    /** Per-row outcome (accepted with ids, or rejected with a reason) — every row appears once. */
+    rows: ReviewImportRowResult[];
+    /**
+     * FULL per-image disposition across all rows — every referenced photo appears once, accepted
+     * (with `assetKey` + the staged original's BYTE size — no normalization exists post-D-REV-4) OR
+     * rejected (with `reason`). The row result's `imagesAccepted` is the per-row rollup of the
+     * accepted entries here.
+     */
+    images: ReviewImportImageResult[];
+}
+
 // --- POPUPS ---
 
 export const PopupSchema = z.object({

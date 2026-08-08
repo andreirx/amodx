@@ -4,17 +4,26 @@ import { AssetSchema, MAX_UPLOAD_BYTES, type Asset } from "@amodx/shared";
 import { db } from "./db.js";
 
 /**
- * REV-2a — staged media pipeline (private-stage → byte-screen → promote), the SECURITY half of
- * D-REV-2 / D-REV-4. This module carries the two ends of that spine that do NOT depend on the
- * byte-level decoder: the private-bucket STAGING write (declared-type gate) and the PROMOTION
- * gate (both-approvals → copy the normalized derivative to public). The middle step — the
- * sharp-based BYTE-LEVEL SCREEN that produces `normalized.jpg` — is deliberately NOT in this
- * file: see the `screenReviewImage` contract note below and the slice's STOP condition.
+ * REV-2a — staged media pipeline (private-stage → HUMAN MODERATION → promote), the SECURITY half of
+ * D-REV-2. This module carries both ends of that spine: the private-bucket STAGING write (declared
+ * type-AND-size gate) and the PROMOTION gate (both-approvals → copy the staged ORIGINAL to public).
+ *
+ * D-REV-4 SUPERSEDED (2026-08-08, human): there is NO automated byte-screen. The image-decode
+ * dependency was dropped entirely — its native-Linux-binary-on-Lambda cost outweighed a benefit
+ * that was mostly privacy+display, not security. The HUMAN MODERATION gate is now the content
+ * control: every imported/added image
+ * lands `pending` and a human approves it before it can go public ("admins check what they import
+ * regardless"). No normalization step means no `normalized.jpg` derivative — promotion copies the
+ * staged ORIGINAL, whose declared type/size become the public Asset record's. The declared
+ * type-AND-size STAGE gate (below) is all that runs pre-approval; the allowlisted formats
+ * (JPEG/PNG/WebP/AVIF) all display natively, so nothing is lost by not re-encoding. RESIDUAL
+ * (tracked, TECH-DEBT): a raw original may carry EXIF/GPS — Google/FB exports strip it server-side
+ * (primary path safe); a pure-JS EXIF strip is the revisit, NOT built now.
  *
  * Spine principle (ratified, plan-reviews-import header): the moderation gate governs the
  * PUBLIC OBJECT, not merely the render. Nothing reaches the public assets bucket until BOTH the
- * review and the specific image are approved AND the bytes have been through the byte-screen —
- * the public bucket only ever receives the normalized derivative, never a raw imported byte.
+ * review and the specific image are approved by a human — the public bucket only ever receives an
+ * object a moderator explicitly released.
  */
 
 // ── Quarantine key namespace ────────────────────────────────────────────────────────────────
@@ -31,20 +40,12 @@ export function reviewStagingBase(tenantId: string, batchId: string, imageId: st
 
 /**
  * The raw, as-declared bytes exactly as they arrived (a ZIP entry, or a fetched connector URL).
- * NEVER promoted — the byte-screen reads this and the promotion step copies the NORMALIZED
- * derivative instead. Expires with the quarantine lifecycle rule.
+ * This IS the object promotion copies to public on approval (D-REV-4 SUPERSEDED — no normalized
+ * derivative; see the STEP 2 note below). Until approved it lives only in the private quarantine
+ * and expires with the lifecycle rule.
  */
 export function reviewOriginalKey(tenantId: string, batchId: string, imageId: string): string {
     return `${reviewStagingBase(tenantId, batchId, imageId)}/original`;
-}
-
-/**
- * The byte-screened, re-encoded JPEG derivative the screen step writes. This is the ONLY object
- * promotion is allowed to copy to the public bucket. Named `.jpg` because the screen normalizes
- * every accepted input (AVIF/WebP/PNG/JPEG) to a single JPEG output format (D-REV-4).
- */
-export function reviewNormalizedKey(tenantId: string, batchId: string, imageId: string): string {
-    return `${reviewStagingBase(tenantId, batchId, imageId)}/normalized.jpg`;
 }
 
 // ── Declared-type input allowlist (STEP 1 — staging gate) ───────────────────────────────────
@@ -58,8 +59,10 @@ export function reviewNormalizedKey(tenantId: string, batchId: string, imageId: 
 // attacker-influenced third-party content and gets the tighter list.
 //
 // HONEST SCOPE: this is a check on the DECLARED content-type only — a claim, not the bytes. A
-// text file DECLARED `image/jpeg` passes this gate; catching that is the byte-screen's job
-// (STEP 2), not this one. See D-REV-2 vs D-REV-4 in plan-reviews-import.
+// text file DECLARED `image/jpeg` passes this gate (there is no byte-level check any more, D-REV-4
+// SUPERSEDED). The content control on what actually reaches the public is the HUMAN MODERATION gate
+// (STEP 2): every staged image is `pending` until a moderator approves it. See D-REV-2 in
+// plan-reviews-import.
 export const REVIEW_IMAGE_INPUT_MIMES = new Set<string>([
     "image/jpeg",
     "image/jpg",
@@ -69,10 +72,27 @@ export const REVIEW_IMAGE_INPUT_MIMES = new Set<string>([
 ]);
 
 /**
- * The single, ratified rejection message for genuine HEIC/HEVC input (REV2A-HEIC-RUNTIME).
- * ONE source of truth so the DECLARED gate (this module) and the BYTE-LEVEL screen
- * (review-media-screen.ts, which rejects real .heic bytes by their ISOBMFF container brand)
- * emit the exact same operator guidance. rev-3's upload/import UI surfaces this verbatim.
+ * File extension for a promoted public asset key, derived from the ORIGINAL's declared MIME. With
+ * the byte-screen removed the promoted object is the raw original (JPEG/PNG/WebP/AVIF), so the
+ * public key + Asset.fileName must carry the TRUE extension — a `.jpg` key for a PNG object would
+ * be a name-mismatch defect. Only the allowlisted types reach promotion; an unexpected type falls
+ * back to `bin` so the key is still valid (never a wrong-format lie). One caller: `promoteReviewImage`.
+ */
+const REVIEW_MIME_EXT: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/avif": "avif",
+};
+function reviewAssetExt(contentType: string): string {
+    return REVIEW_MIME_EXT[contentType.trim().toLowerCase()] ?? "bin";
+}
+
+/**
+ * The single, ratified rejection message for genuine HEIC/HEVC input (REV2A-HEIC-RUNTIME). HEIC is
+ * rejected at the DECLARED gate below by a pure string/MIME check — no decode (there is no
+ * byte-screen any more, D-REV-4 SUPERSEDED). rev-3's upload/import UI surfaces this verbatim.
  */
 export const HEIC_REJECTION_REASON =
     "HEIC not supported — export as JPEG (iPhone: share/upload flows convert automatically)";
@@ -89,7 +109,8 @@ export type ReviewImageInputCheck =
 /**
  * STEP 1 gate: is the DECLARED content-type an allowlisted review-image type? Rejects SVG and
  * every non-image outright, and HEIC with a specific export-as-JPEG message. Does NOT inspect
- * bytes (that is `screenReviewImageBytes`).
+ * bytes — that trust is deferred to the HUMAN MODERATION gate (D-REV-4 SUPERSEDED), not an
+ * automated byte-screen.
  */
 export function checkReviewImageInput(declaredContentType: string | undefined): ReviewImageInputCheck {
     const mime = (declaredContentType ?? "").trim().toLowerCase();
@@ -123,8 +144,8 @@ export type StageResult =
 /**
  * STEP 1 — STAGING WRITE. Write incoming bytes to the PRIVATE bucket under the quarantine
  * prefix, after the declared TYPE-AND-SIZE gate (D-REV-2). Records the declared type as object
- * metadata so the screen step and any audit can see what the importer CLAIMED it was. No public
- * exposure: the private bucket has BlockPublicAccess.BLOCK_ALL and no CloudFront origin
+ * metadata so PROMOTION (which copies this original) and any audit can see what the importer
+ * CLAIMED it was. No public exposure: the private bucket has BlockPublicAccess.BLOCK_ALL and no CloudFront origin
  * (infra/lib/uploads.ts).
  *
  * SIZE GATE (D-REV-2 "declared type-AND-size"): the image-kind cap is the platform's own
@@ -199,20 +220,15 @@ export async function stageReviewImage(args: {
     return { staged: true, stagedKey, contentType: check.contentType };
 }
 
-// ── STEP 2 — BYTE-LEVEL SCREEN (D-REV-4) — lives in review-media-screen.ts ───────────────────
-// `screenReviewImageBytes` (decode the staged original with sharp, prove the bytes ARE a
-// decodable image of an allowlisted format, emit a normalized JPEG; decode failure → rejected +
-// reason) is intentionally in a SEPARATE module so that `sharp` — a heavyweight NATIVE dependency
-// — is NOT pulled into the bundle of the staging/promotion/moderation Lambda, which does only S3
-// copies and DDB writes. sharp is pinned to the patched family (>= 0.35.0, backend/package.json:
-// resolves 0.35.3) — the slice packet's original "0.34.5" pin was corrected against this repo's
-// own evidence (docs/TECH-DEBT.md item 2: 0.34.5 carries HIGH libvips CVEs, fixed in >= 0.35.0).
-// The byte-screen writes the `.../normalized.jpg` derivative (reviewNormalizedKey below) that the
-// PROMOTION step is the ONLY consumer of. The staging path that WIRES stage→screen→write-normalized
-// together lives in `review-media-ingest.ts` (rev-2a) — it, and the future rev-2 import Lambda, are
-// the only things that pull `sharp`. This module and `reviews/update.ts` (the existing review
-// moderation handler that now carries the `action: "approve-image"` promotion path) stay
-// sharp-free: they do only S3 copies and DDB writes, so `sharp` is never bundled there.
+// ── STEP 2 — HUMAN MODERATION (D-REV-4 SUPERSEDED) ───────────────────────────────────────────
+// There is NO automated byte-screen step. The image-decode dependency was removed from the backend
+// entirely (2026-08-08, human): the whole pipeline is now `stage → human approval → promote`. What
+// used to be STEP 2 (a decode+re-encode producing `normalized.jpg`) is replaced by the human
+// moderation gate — a
+// moderator reviews every pending image and approves it before promotion (rev-3 UI; the
+// `approve-image` action in reviews/update.ts is the handler seam today). Because there is no
+// normalized derivative, promotion copies the staged ORIGINAL (below). The allowlisted input
+// formats (JPEG/PNG/WebP/AVIF) all display natively, so no re-encode is needed for display.
 
 // ── STEP 3 — PROMOTION ──────────────────────────────────────────────────────────────────────
 
@@ -226,7 +242,7 @@ export function promotionAllowed(reviewStatus: string, imageStatus: string): boo
 }
 
 /**
- * STEP 3 result. `assetKey` is the PUBLIC S3 object key of the promoted derivative — this is
+ * STEP 3 result. `assetKey` is the PUBLIC S3 object key of the promoted ORIGINAL — this is
  * what the moderation wiring records on the `ReviewImage` entry (rev-1 `ReviewImageSchema.assetKey`
  * is documented as a KEY, not a URL). The public URL is DERIVED at render from that key via the
  * existing asset-record/CDN pattern (`assets/create.ts:60` — `publicUrl = ${CDN_URL}/${key}`);
@@ -238,24 +254,28 @@ export type PromoteResult =
     | { promoted: false; reason: string };
 
 /**
- * STEP 3 — PROMOTION. On (review approved AND image approved), copy the byte-screened NORMALIZED
- * derivative (never the raw original) from the private quarantine to the PUBLIC assets bucket,
- * then write a contract-complete AssetSchema record (including the derivative's TRUE size, read
- * back with HeadObject). The original stays in quarantine and expires with the lifecycle rule.
+ * STEP 3 — PROMOTION (moderation-only pipeline, D-REV-4 SUPERSEDED). On (review approved AND image
+ * approved), copy the staged ORIGINAL from the private quarantine to the PUBLIC assets bucket, then
+ * write a contract-complete AssetSchema record carrying the ORIGINAL's declared type + TRUE byte
+ * size. There is no normalized derivative any more — the original IS the object a human released.
  *
- * The copy SOURCE is `sourceStagingKey` — the ReviewImage entry's CURRENT `assetKey`, which rev-2's
- * importer set to the private `.../normalized.jpg` derivative. Two STRUCTURAL guards make the
- * spine unbypassable, independent of the caller:
+ * The copy SOURCE is `sourceStagingKey` — the ReviewImage entry's CURRENT `assetKey`, which the
+ * importer set to the private `.../original` key. Two STRUCTURAL guards make the spine unbypassable,
+ * independent of the caller:
  *   • TENANT ISOLATION — the source MUST live under this tenant's quarantine prefix
  *     (`review-staging/<tenantId>/`); a key naming another tenant's staged object is refused.
- *   • DERIVATIVE-ONLY — the source MUST end in `/normalized.jpg`; the raw `/original` (untrusted
- *     bytes that never went through the byte-screen) can never be promoted, and a key that is
- *     already a PUBLIC asset key (no staging prefix) is refused as "already promoted" (idempotent
- *     signal for the handler), so a double-approve cannot re-copy or clobber.
+ *   • ORIGINAL-ONLY — the source MUST end in `/original` (the exact object the STAGE gate wrote);
+ *     any other staging key is refused, and a key that is already a PUBLIC asset key (no staging
+ *     prefix) is refused as "already promoted" (idempotent signal for the handler), so a
+ *     double-approve cannot re-copy or clobber.
  *
- * Returns the PUBLIC `assetKey` to record on the entry. CopyObject (server-side) is used rather
- * than stream-through-Lambda: the bytes never transit this process, and the true size comes from
- * HeadObject on the copied object.
+ * TYPE comes from a HeadObject on the SOURCE (pre-copy): its `ContentType` (the declared type the
+ * STAGE gate recorded) drives the public key extension + the copy's content-type. A source read that
+ * fails, or an untyped object, refuses BEFORE any copy — nothing to roll back on that edge. The TRUE
+ * SIZE is read from a HeadObject on the DESTINATION (post-copy), so the Asset record carries the
+ * ACTUAL public object's byte count; a failure there (or AssetSchema.parse / the ASSET# PutCommand)
+ * runs the compensation below — delete the copied object so no orphan survives. CopyObject
+ * (server-side) is used rather than stream-through-Lambda: the bytes never transit this process.
  */
 export async function promoteReviewImage(args: {
     tenantId: string;
@@ -283,23 +303,49 @@ export async function promoteReviewImage(args: {
             reason: `source "${args.sourceStagingKey}" is not a private staging key for tenant "${args.tenantId}" (already promoted, cross-tenant, or invalid)`,
         };
     }
-    // DERIVATIVE-ONLY: only the byte-screened normalized.jpg may be promoted, never the raw original.
-    if (!args.sourceStagingKey.endsWith("/normalized.jpg")) {
+    // ORIGINAL-ONLY: only the staged `/original` (the object the STAGE gate wrote) may be promoted.
+    if (!args.sourceStagingKey.endsWith("/original")) {
         return {
             promoted: false,
-            reason: `source "${args.sourceStagingKey}" is not the normalized derivative — only the byte-screened normalized.jpg may be promoted, never the raw original`,
+            reason: `source "${args.sourceStagingKey}" is not the staged original — only the quarantined /original may be promoted`,
         };
     }
 
+    // TYPE from the SOURCE, pre-copy. HeadObject uses s3:GetObject (already granted for the CopyObject
+    // source), so this adds no IAM surface. A read failure (object gone/expired) returns before any
+    // public object is created — nothing to roll back on this edge. The content-type is what the STAGE
+    // write recorded (the declared, allowlisted type); fall back to the declared-content-type
+    // metadata, then refuse rather than guess — it drives both the public key extension and the copy.
+    let sourceContentType: string;
+    try {
+        const srcHead = await s3.send(
+            new HeadObjectCommand({ Bucket: args.privateBucket, Key: args.sourceStagingKey }),
+        );
+        sourceContentType =
+            srcHead.ContentType?.trim().toLowerCase() ||
+            srcHead.Metadata?.["declared-content-type"]?.trim().toLowerCase() ||
+            "";
+        if (!sourceContentType) {
+            return {
+                promoted: false,
+                reason: `staged source "${args.sourceStagingKey}" has no content-type; refusing to promote an untyped object`,
+            };
+        }
+    } catch (e: unknown) {
+        const detail = e instanceof Error ? e.message : String(e);
+        return { promoted: false, reason: `could not read staged source: ${detail}` };
+    }
+
     const assetId = crypto.randomUUID();
-    const publicKey = `${args.tenantId}/${assetId}.jpg`;
+    const ext = reviewAssetExt(sourceContentType);
+    const publicKey = `${args.tenantId}/${assetId}.${ext}`;
 
     await s3.send(
         new CopyObjectCommand({
             Bucket: args.publicBucket,
             Key: publicKey,
             CopySource: encodeURI(`${args.privateBucket}/${args.sourceStagingKey}`),
-            ContentType: "image/jpeg",
+            ContentType: sourceContentType,
             MetadataDirective: "REPLACE",
         }),
     );
@@ -314,7 +360,7 @@ export async function promoteReviewImage(args: {
     let asset: Asset;
     try {
         const head = await s3.send(new HeadObjectCommand({ Bucket: args.publicBucket, Key: publicKey }));
-        // TRUE SIZE (contract): the AssetSchema record must carry the derivative's REAL byte size.
+        // TRUE SIZE (contract): the AssetSchema record must carry the copied object's REAL byte size.
         // HeadObject.ContentLength is typed optional; if S3 returns it absent/non-finite/negative we
         // must NOT fall back to a fabricated `0` (that would persist a lie about the object). Refuse
         // instead — the throw drops into the catch below, which runs the rollback (delete the copied
@@ -330,8 +376,8 @@ export async function promoteReviewImage(args: {
         asset = AssetSchema.parse({
             id: assetId,
             tenantId: args.tenantId,
-            fileName: `${assetId}.jpg`,
-            fileType: "image/jpeg",
+            fileName: `${assetId}.${ext}`,
+            fileType: sourceContentType,
             size: trueSize,
             s3Key: publicKey,
             publicUrl,

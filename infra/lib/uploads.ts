@@ -48,7 +48,8 @@ export class AmodxUploads extends Construct {
             // bytes are staged under the `review-staging/` quarantine prefix (see
             // backend/src/lib/review-media.ts REVIEW_STAGING_PREFIX). This ONE lifecycle rule
             // expires those staged originals 30 days after they land, so an import that is never
-            // promoted (bytes screened + both approvals) does not accumulate untrusted third-party
+            // promoted (both review + image approved by a human — D-REV-4 SUPERSEDED, no byte-screen)
+            // does not accumulate untrusted third-party
             // content indefinitely. Scope is bounded to the prefix: nothing else in this private
             // bucket (product PDFs, zips) is touched. The prefix string is one contract with the
             // backend key builder — keep them in sync.

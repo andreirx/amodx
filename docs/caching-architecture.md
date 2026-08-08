@@ -319,7 +319,7 @@ by **whether the handler knows its changed paths** — which is exactly whether 
 | Class | Handlers | Layer 1 (edge) | Layer 2 (ISR) | Banner / "GO LIVE" | Time to live |
 |---|---|---|---|---|---|
 | **Ordinary** (computable public path with a possible cached entry) | `content/create`, `content/update`, `products/update`, `products/delete`, `categories/update`, `categories/delete` | **targeted** paths via `CDN_FAST_PENDING`, drained ~10s | `revalidatePath` per slug | **no** — never pending | **seconds** |
-| **Bulk / global** (unknown or large path set) | `themes/manage`, `tenant/create`, `tenant/settings`, `popups/*`, `forms/*`, `products/create`, `categories/create`, `products/bulk-price`, `reviews/*`, `content/restore`, `import/{woocommerce,wordpress,media}` | `/*` via `CDN_PENDING`, debounced 15 min | — (imports/settings not path-scoped) | **yes** | ≤15 min, or instant via GO LIVE NOW |
+| **Bulk / global** (unknown or large path set) | `themes/manage`, `tenant/create`, `tenant/settings`, `popups/*`, `forms/*`, `products/create`, `categories/create`, `products/bulk-price`, `reviews/*`, `content/restore`, `import/{woocommerce,wordpress,media,reviews}` | `/*` via `CDN_PENDING`, debounced 15 min | — (imports/settings not path-scoped) | **yes** | ≤15 min, or instant via GO LIVE NOW |
 
 Classification rationale, recorded per the slice DoD:
 

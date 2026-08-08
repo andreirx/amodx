@@ -396,6 +396,56 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('MediaImportInt', mediaImportFunc),
         });
 
+        // --- REVIEW IMPORT (rev-2b) ---
+        // Instance #3 of the import-family pattern — siblings ImportFunc + MediaImportFunc above (and
+        // WooImportFunc in the commerce nested stack): its own NodejsFunction + POST /import/reviews
+        // route + the stack's default authorizer (TENANT_ADMIN enforced in-handler), exactly as they
+        // do it. NOT a new deployable unit — no new stack/bucket/table.
+        //
+        // PLAIN NodejsFunction — no special bundling (D-REV-4 SUPERSEDED 2026-08-08): the byte-screen
+        // was removed, so this Lambda no longer pulls a native image-decode dependency (which needed
+        // a `.node` binary externalised + installed for Linux). Its only extra dep is `fflate`, a
+        // pure-JS ZIP reader that esbuild bundles normally — so it uses the shared `nodeProps`
+        // bundling like every other importer, with no `externalModules`/`nodeModules` native-binary
+        // entries and no Docker/layer deploy caveat.
+        const reviewImportFunc = new nodejs.NodejsFunction(this, 'ReviewImportFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/import/reviews.ts'),
+            handler: 'handler',
+            timeout: cdk.Duration.minutes(15),
+            memorySize: 3008,
+            environment: {
+                ...nodeProps.environment,
+                PRIVATE_BUCKET: props.privateBucket.bucketName,
+            },
+        });
+        // Least-privilege, matching what the slice authorised: DDB read+write (ImportBatch + review
+        // writes, and the withInvalidation CDN_PENDING marker) and PRIVATE-bucket PUT only (stages
+        // the raw `/original` under review-staging/). NO public-bucket grant — promotion to the
+        // public bucket is rev-2a's UpdateReviewFunc on human approval. EVENT_BUS_NAME is in
+        // nodeProps.environment and the constructor's end-of-body loop grants PutEvents to every
+        // NodejsFunction (publishAudit), so no per-function event grant is added here.
+        props.table.grantReadWriteData(reviewImportFunc);
+        // S3: EXACTLY `s3:PutObject`, and ONLY under the `review-staging/` quarantine prefix
+        // (review-2b review-1 blocking least-privilege finding). `grantPut(fn)` was REFUSED: with no
+        // object-key pattern CDK scopes it to the WHOLE bucket (`<bucketArn>/*`) AND grants the wider
+        // put-family (`s3:PutObjectLegalHold`/`Retention`/`*Tagging`, `s3:Abort*`) — a blast radius
+        // over every tenant's private objects (product PDFs, zips) if this handler is exploited. The
+        // handler issues ONE S3 op — `PutObjectCommand` staging `.../original` under this prefix
+        // (backend/src/lib/review-media.ts `stageReviewImage`) — so it needs one action, prefix-scoped.
+        // Mirrors rev-2a's UpdateReviewFunc private read (amodx-stack.ts). Pinned by
+        // infra/test/amodx-stack.test.ts (rev2b-iam).
+        reviewImportFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['s3:PutObject'],
+            resources: [`${props.privateBucket.bucketArn}/review-staging/*`],
+        }));
+
+        this.httpApi.addRoutes({
+            path: '/import/reviews',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('ReviewImportInt', reviewImportFunc),
+        });
+
         // --- TENANTS ---
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {
             ...nodeProps,

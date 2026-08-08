@@ -16,7 +16,6 @@ import {
     promoteReviewImage,
     rollbackPromotedReviewImage,
     reviewOriginalKey,
-    reviewNormalizedKey,
     HEIC_REJECTION_REASON,
     REVIEW_STAGING_PREFIX,
 } from "../../src/lib/review-media.js";
@@ -24,9 +23,10 @@ import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
 
 /**
- * REV-2a — the SECURITY-half proofs for the staged media pipeline that do NOT depend on the
- * byte-level decoder. The byte-level SCREEN (STEP 2 / sharp) is proven separately against real
- * fixtures in `review-media-screen.test.ts`; this file exercises the sharp-free ends of the spine.
+ * REV-2a — the SECURITY-half proofs for the staged media pipeline (moderation-only, D-REV-4
+ * SUPERSEDED — there is no byte-level decoder any more; the native image-decode dependency was
+ * removed from the backend). The whole pipeline is STAGE → human approval → PROMOTE, and this file
+ * proves both effectful ends.
  *
  * Pure/mocked: no AWS, no credentials. Runs under `npm run test:unit` (vitest.unit.config.ts,
  * no setupFiles). S3 and the DynamoDB document client are mocked with aws-sdk-client-mock.
@@ -34,8 +34,12 @@ import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
  * Covers:
  *   - STAGING declared TYPE-AND-SIZE gate: accept the real types, reject SVG + disguised/non-image,
  *     require a valid declared size and record it as object metadata.
- *   - PROMOTION gate: requires BOTH approvals, copies the NORMALIZED derivative only, and
- *     COMPENSATES a post-copy failure so no public orphan survives.
+ *   - PROMOTION gate: requires BOTH approvals, copies the staged ORIGINAL only (moderation-only
+ *     pipeline, D-REV-4 SUPERSEDED — no byte-screen), records the original's declared type + true
+ *     size, and COMPENSATES a post-copy failure so no public orphan survives.
+ *
+ * NOTE: the deleted `review-media-screen.ts` / `review-media-ingest.ts` (image-decode) modules and
+ * their tests were removed with the byte-screen (D-REV-4 SUPERSEDED); this is the only review-media test.
  */
 
 const s3mock = mockClient(S3Client);
@@ -70,7 +74,8 @@ describe("checkReviewImageInput — declared-type allowlist (STEP 1)", () => {
     });
 
     // Ratified amendment: HEIC/HEIF is rejected with the EXACT export-as-JPEG guidance message,
-    // not a bare denial — the declared gate emits the same string the byte-screen does.
+    // not a bare denial — a pure string/MIME check at the declared gate (no decode; D-REV-4
+    // SUPERSEDED — there is no byte-screen).
     it.each(["image/heic", "image/heif"])("rejects HEIC-family %s with the ratified guidance message", (mime) => {
         const r = checkReviewImageInput(mime);
         expect(r.accepted).toBe(false);
@@ -90,8 +95,9 @@ describe("checkReviewImageInput — declared-type allowlist (STEP 1)", () => {
     });
 
     // HONEST SCOPE, pinned as a test so it cannot be silently mis-read: a text file DECLARED
-    // image/jpeg PASSES this gate. The declared gate is a claim-check, not byte inspection —
-    // catching the fake .jpg-that-is-text is the byte-screen (STEP 2), not this step.
+    // image/jpeg PASSES this gate. The declared gate is a claim-check, not byte inspection. With
+    // the byte-screen removed (D-REV-4 SUPERSEDED), catching a fake .jpg-that-is-text is the HUMAN
+    // MODERATION gate's job (every staged image is pending until approved), not this step.
     it("passes bytes that only CLAIM to be jpeg (declared gate is not byte inspection)", () => {
         expect(checkReviewImageInput("image/jpeg").accepted).toBe(true);
     });
@@ -199,8 +205,8 @@ describe("promotionAllowed — exhaustive gate truth table", () => {
 describe("promoteReviewImage — gate + structural source guards + assetKey contract", () => {
     const base = {
         tenantId: "t1",
-        // Source = the entry's current assetKey: the PRIVATE normalized derivative rev-2 wrote.
-        sourceStagingKey: reviewNormalizedKey("t1", "b1", "img1"),
+        // Source = the entry's current assetKey: the PRIVATE staged `/original` the importer wrote.
+        sourceStagingKey: reviewOriginalKey("t1", "b1", "img1"),
         uploadedBy: "moderator@example.com",
         privateBucket: "amodx-private-staging",
         publicBucket: "amodx-assets-staging",
@@ -222,22 +228,22 @@ describe("promoteReviewImage — gate + structural source guards + assetKey cont
         expect(ddbmock.commandCalls(PutCommand)).toHaveLength(0);
     });
 
-    it("DERIVATIVE-ONLY: refuses to promote the raw /original (never byte-screened)", async () => {
+    it("ORIGINAL-ONLY: refuses a staging key that is not the /original", async () => {
         const r = await promoteReviewImage({
             ...base,
-            sourceStagingKey: reviewOriginalKey("t1", "b1", "img1"),
+            sourceStagingKey: `${REVIEW_STAGING_PREFIX}t1/b1/img1/something-else`,
             reviewStatus: "approved",
             imageStatus: "approved",
         });
         expect(r.promoted).toBe(false);
-        expect(r.promoted === false && r.reason).toMatch(/normalized|original/i);
+        expect(r.promoted === false && r.reason).toMatch(/original/i);
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
     });
 
     it("TENANT ISOLATION: refuses a source key under another tenant's quarantine prefix", async () => {
         const r = await promoteReviewImage({
             ...base,
-            sourceStagingKey: reviewNormalizedKey("t2", "b1", "img1"), // t2, not t1
+            sourceStagingKey: reviewOriginalKey("t2", "b1", "img1"), // t2, not t1
             reviewStatus: "approved",
             imageStatus: "approved",
         });
@@ -257,49 +263,74 @@ describe("promoteReviewImage — gate + structural source guards + assetKey cont
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
     });
 
-    it("on BOTH approved: copies the NORMALIZED derivative, records the PUBLIC assetKey, writes a contract-complete asset", async () => {
+    it("on BOTH approved: copies the staged ORIGINAL, records the PUBLIC assetKey with the original's type + true size", async () => {
         s3mock.on(CopyObjectCommand).resolves({});
-        s3mock.on(HeadObjectCommand).resolves({ ContentLength: 20480 });
+        // Source HeadObject (private) carries the declared type; destination HeadObject (public) the
+        // true size. A single stub with BOTH fields serves both calls.
+        s3mock.on(HeadObjectCommand).resolves({ ContentType: "image/png", ContentLength: 20480 });
         ddbmock.on(PutCommand).resolves({});
 
         const r = await promoteReviewImage({ ...base, reviewStatus: "approved", imageStatus: "approved" });
         expect(r.promoted).toBe(true);
         if (!r.promoted) return; // narrow for TS
 
-        // DERIVATIVE-ONLY: the copy source is the normalized key, and never the original.
+        // ORIGINAL-ONLY: the copy source is the /original key.
         const copies = s3mock.commandCalls(CopyObjectCommand);
         expect(copies).toHaveLength(1);
         const copySource = String(copies[0].args[0].input.CopySource);
-        expect(copySource).toContain(reviewNormalizedKey("t1", "b1", "img1"));
-        expect(copySource).not.toContain(reviewOriginalKey("t1", "b1", "img1"));
+        expect(copySource).toContain(reviewOriginalKey("t1", "b1", "img1"));
         expect(copies[0].args[0].input.Bucket).toBe("amodx-assets-staging");
+        // The copy carries the ORIGINAL's declared content-type (not a hardcoded image/jpeg).
+        expect(copies[0].args[0].input.ContentType).toBe("image/png");
 
         // TRUE size comes from HeadObject on the copied object, not from any declared value.
         expect(r.asset.size).toBe(20480);
 
-        // Contract-complete: the persisted item validates against the shared AssetSchema.
+        // Contract-complete: the persisted item validates against the shared AssetSchema, and its
+        // fileType + key extension track the ORIGINAL's type (a .jpg key for a PNG would be a lie).
         const put = ddbmock.commandCalls(PutCommand);
         expect(put).toHaveLength(1);
         const item = put[0].args[0].input.Item!;
         expect(item.PK).toBe("TENANT#t1");
         expect(String(item.SK).startsWith("ASSET#")).toBe(true);
         expect(() => AssetSchema.parse(item)).not.toThrow();
-        expect(item.fileType).toBe("image/jpeg");
+        expect(item.fileType).toBe("image/png");
 
         // assetKey CONTRACT (rev-1): the KEY is recorded on the entry, not a URL. It is the
         // public S3 object key; the public URL is derived from it (and returned for audit only).
-        expect(r.assetKey).toBe(`t1/${r.assetId}.jpg`);
+        expect(r.assetKey).toBe(`t1/${r.assetId}.png`);
         expect(r.assetKey).not.toContain("://");
         expect(r.publicUrl).toBe(`https://cdn.example.com/${r.assetKey}`);
     });
 
+    it("refuses BEFORE any copy when the staged source has no content-type", async () => {
+        // The source HeadObject returns no ContentType/metadata → we refuse rather than guess a type.
+        // Nothing is copied, so there is nothing to roll back on this pre-copy edge.
+        s3mock.on(HeadObjectCommand).resolves({ ContentLength: 20480 }); // no ContentType
+        const r = await promoteReviewImage({ ...base, reviewStatus: "approved", imageStatus: "approved" });
+        expect(r.promoted).toBe(false);
+        expect(r.promoted === false && r.reason).toMatch(/content-type|untyped/i);
+        expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
+    });
+
+    it("refuses BEFORE any copy when the source read fails", async () => {
+        s3mock.on(HeadObjectCommand).rejects(new Error("source head failed"));
+        const r = await promoteReviewImage({ ...base, reviewStatus: "approved", imageStatus: "approved" });
+        expect(r.promoted).toBe(false);
+        expect(r.promoted === false && r.reason).toMatch(/staged source/i);
+        expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
+    });
+
     // POST-COPY COMPENSATION: the public COPY already succeeded, so a failure in either remaining
-    // step (HeadObject for true size, or the ASSET# PutCommand) must delete the copied object —
-    // otherwise a live public image would exist with no record pointing at it (an orphan outside
-    // the handler's final-update rollback path). Both failure edges are proven.
-    it("rolls back the copied public object when HeadObject fails after the copy", async () => {
+    // step (the DESTINATION HeadObject for true size, or the ASSET# PutCommand) must delete the
+    // copied object — otherwise a live public image would exist with no record pointing at it (an
+    // orphan outside the handler's final-update rollback path). Both failure edges are proven. The
+    // mocks are BUCKET-SCOPED: the source (private) head succeeds so the copy is reached, and the
+    // destination (public) head is the one that fails.
+    it("rolls back the copied public object when the destination HeadObject fails after the copy", async () => {
         s3mock.on(CopyObjectCommand).resolves({});
-        s3mock.on(HeadObjectCommand).rejects(new Error("head failed"));
+        s3mock.on(HeadObjectCommand, { Bucket: "amodx-private-staging" }).resolves({ ContentType: "image/jpeg" });
+        s3mock.on(HeadObjectCommand, { Bucket: "amodx-assets-staging" }).rejects(new Error("head failed"));
         s3mock.on(DeleteObjectCommand).resolves({});
         ddbmock.on(DeleteCommand).resolves({});
 
@@ -316,16 +347,17 @@ describe("promoteReviewImage — gate + structural source guards + assetKey cont
         expect(String(del[0].args[0].input.Key)).toMatch(/^t1\/.+\.jpg$/);
     });
 
-    // TRUE-SIZE contract (review-5): HeadObject may return no ContentLength. We must NOT record a
-    // fabricated `size: 0` — that would persist a lie about the derivative. A missing/invalid size
-    // fails promotion and runs the SAME post-copy rollback (delete the copied object, write no
+    // TRUE-SIZE contract (review-5): the destination HeadObject may return no ContentLength. We must
+    // NOT record a fabricated `size: 0` — that would persist a lie about the object. A missing/invalid
+    // size fails promotion and runs the SAME post-copy rollback (delete the copied object, write no
     // record), leaving no public orphan and no false-size asset. Both absent and negative are proven.
     it.each([
-        ["absent ContentLength", {} as { ContentLength?: number }],
-        ["negative ContentLength", { ContentLength: -1 }],
-    ])("rolls back when HeadObject returns %s (never records a fabricated size)", async (_label, headResult) => {
+        ["absent ContentLength", { ContentType: "image/jpeg" } as { ContentType: string; ContentLength?: number }],
+        ["negative ContentLength", { ContentType: "image/jpeg", ContentLength: -1 }],
+    ])("rolls back when the destination HeadObject returns %s (never records a fabricated size)", async (_label, headResult) => {
         s3mock.on(CopyObjectCommand).resolves({});
-        s3mock.on(HeadObjectCommand).resolves(headResult);
+        s3mock.on(HeadObjectCommand, { Bucket: "amodx-private-staging" }).resolves({ ContentType: "image/jpeg" });
+        s3mock.on(HeadObjectCommand, { Bucket: "amodx-assets-staging" }).resolves(headResult);
         s3mock.on(DeleteObjectCommand).resolves({});
         ddbmock.on(DeleteCommand).resolves({});
 
@@ -342,7 +374,7 @@ describe("promoteReviewImage — gate + structural source guards + assetKey cont
 
     it("rolls back the copied public object AND the asset record when the ASSET# PutCommand fails", async () => {
         s3mock.on(CopyObjectCommand).resolves({});
-        s3mock.on(HeadObjectCommand).resolves({ ContentLength: 20480 });
+        s3mock.on(HeadObjectCommand).resolves({ ContentType: "image/jpeg", ContentLength: 20480 });
         ddbmock.on(PutCommand).rejects(new Error("ddb put failed"));
         s3mock.on(DeleteObjectCommand).resolves({});
         ddbmock.on(DeleteCommand).resolves({});

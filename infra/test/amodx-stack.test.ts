@@ -602,8 +602,9 @@ describe('PrivateAssetsBucket — review-staging quarantine lifecycle', () => {
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // (rev2a-iam) UpdateReviewFunc — least-privilege S3 for the promotion path + env wiring
 //     Ratified by `rev-2a` (REV2A-INFRA-SURFACE = option B) and review-2's blocking least-privilege
-//     finding. The review moderation handler's `action: "approve-image"` path promotes a
-//     byte-screened derivative PRIVATE→PUBLIC (backend/src/lib/review-media.ts). It issues EXACTLY
+//     finding. The review moderation handler's `action: "approve-image"` path promotes the
+//     staged ORIGINAL PRIVATE→PUBLIC (moderation-only pipeline, D-REV-4 SUPERSEDED — no
+//     byte-screened derivative; backend/src/lib/review-media.ts). It issues EXACTLY
 //     three public-bucket object operations — CopyObject (`s3:PutObject`), HeadObject (`s3:GetObject`)
 //     and the rollback DeleteObject (`s3:DeleteObject`) — and ONE private read, `s3:GetObject` on the
 //     CopyObject source under `review-staging/`. It must hold those and NOTHING WIDER. The prior
@@ -689,6 +690,82 @@ describe('UpdateReviewFunc — rev-2a promotion least-privilege', () => {
         for (const key of ['PRIVATE_BUCKET', 'UPLOADS_BUCKET', 'UPLOADS_CDN_URL']) {
             expect(Object.prototype.hasOwnProperty.call(vars, key)).toBe(true);
         }
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (rev2b-iam) ReviewImportFunc — least-privilege S3 for the bulk-import staging path
+//     Ratified by `rev-2b` (import-family instance #3) and review-1's blocking least-privilege
+//     finding. The bulk-import handler (backend/src/import/reviews.ts) issues EXACTLY ONE S3
+//     operation — `PutObjectCommand` staging each raw `/original` under the `review-staging/`
+//     quarantine prefix (backend/src/lib/review-media.ts `stageReviewImage`). It must hold
+//     `s3:PutObject` and NOTHING WIDER, prefix-scoped. The prior `grantPut(fn)` convenience call
+//     scoped to the WHOLE bucket (`<bucketArn>/*`) and also conferred the put-family
+//     (PutObjectLegalHold/Retention/*Tagging, Abort*) — a blast radius over every tenant's private
+//     objects (product PDFs, zips) if this handler is exploited. These assertions pin the boundary
+//     by NAME so a future convenience grant fails HERE. Mirrors (rev2a-iam) for UpdateReviewFunc.
+//     Prose: docs/slices/rev-2b-bulk-import.md § "Infra".
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('ReviewImportFunc — rev-2b import least-privilege', () => {
+    /** The one bulk-review-import Lambda across the stack tree (parent api stack). */
+    function reviewImportFunc(): { template: Template; roleLogicalId: string; props: any } {
+        for (const t of allTemplates) {
+            const fns = Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) =>
+                id.includes('ReviewImportFunc'),
+            );
+            if (fns.length === 0) continue;
+            if (fns.length !== 1) throw new Error(`expected 1 ReviewImportFunc, found ${fns.length}`);
+            const props = (fns[0][1] as any).Properties;
+            const roleLogicalId = props.Role['Fn::GetAtt'][0] as string;
+            return { template: t, roleLogicalId, props };
+        }
+        throw new Error('ReviewImportFunc not found in any template');
+    }
+
+    /** Every S3 statement (action/resource normalized) on the ReviewImportFunc role, in its template. */
+    function s3Statements(): Array<{ actions: string[]; resources: string[] }> {
+        const { template: t, roleLogicalId } = reviewImportFunc();
+        const out: Array<{ actions: string[]; resources: string[] }> = [];
+        for (const [, policy] of Object.entries(t.findResources('AWS::IAM::Policy'))) {
+            const roles = ((policy as any).Properties.Roles as any[]).map((r) => String(r.Ref));
+            if (!roles.includes(roleLogicalId)) continue;
+            for (const s of (policy as any).Properties.PolicyDocument.Statement as any[]) {
+                const actions: string[] = (Array.isArray(s.Action) ? s.Action : [s.Action]).map(String);
+                if (!actions.some((a) => a.startsWith('s3:'))) continue;
+                const resources = (Array.isArray(s.Resource) ? s.Resource : [s.Resource]).map(
+                    (r: unknown) => JSON.stringify(r),
+                );
+                out.push({ actions, resources });
+            }
+        }
+        return out;
+    }
+
+    test('(rev2b-iam-1) the ONLY S3 action on this role is s3:PutObject', () => {
+        // The whole S3 vocabulary granted to this role. A future `grantPut`/`grantReadWrite` — which
+        // adds the put-family and/or bucket-list — grows this set and fails here.
+        const granted = [
+            ...new Set(s3Statements().flatMap((s) => s.actions).filter((a) => a.startsWith('s3:'))),
+        ].sort();
+        expect(granted).toEqual(['s3:PutObject']);
+    });
+
+    test('(rev2b-iam-2) the s3:PutObject grant is a single statement scoped to review-staging/', () => {
+        // One statement, one action, and prefix-scoped so a defect here cannot write anywhere in the
+        // private bucket except the quarantine — never a product PDF/zip, never the bucket root.
+        const puts = s3Statements().filter(
+            (s) => s.actions.length === 1 && s.actions[0] === 's3:PutObject',
+        );
+        expect(puts).toHaveLength(1);
+        expect(puts[0].resources).toHaveLength(1);
+        expect(puts[0].resources[0]).toContain('review-staging/*');
+    });
+
+    test('(rev2b-iam-3) PRIVATE_BUCKET is wired on the function', () => {
+        // The handler reads process.env.PRIVATE_BUCKET to target the staging PUT; a missing var is a
+        // runtime failure invisible to the IAM checks above.
+        const vars = reviewImportFunc().props.Environment.Variables;
+        expect(Object.prototype.hasOwnProperty.call(vars, 'PRIVATE_BUCKET')).toBe(true);
     });
 });
 

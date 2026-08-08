@@ -23,13 +23,18 @@ const _handler: Handler = async (event) => {
         const productId = event.queryStringParameters?.productId;
 
         if (!tenantId || !id) return { statusCode: 400, body: JSON.stringify({ error: "Missing ID" }) };
-        if (!productId) return { statusCode: 400, body: JSON.stringify({ error: "Missing productId query parameter" }) };
+
+        // Sort key follows the rev-1 scope model (D-REV-5): a product review is keyed under its
+        // product; a business (site-scope) review — the DEFAULT scope for bulk imports (rev-2b) —
+        // has NO productId and lives under the DISJOINT `SITEREVIEW#` namespace. A missing productId
+        // is therefore a site-scope delete, not an error (mirrors update.ts / approve-image routing).
+        const sk = productId ? `REVIEW#${productId}#${id}` : `SITEREVIEW#${id}`;
 
         await db.send(new DeleteCommand({
             TableName: TABLE_NAME,
             Key: {
                 PK: `TENANT#${tenantId}`,
-                SK: `REVIEW#${productId}#${id}`
+                SK: sk
             }
         }));
 

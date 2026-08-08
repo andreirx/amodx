@@ -249,14 +249,16 @@ export class AmodxStack extends cdk.Stack {
     });
 
     // rev-2a (REV2A-INFRA-SURFACE): the review moderation handler's `action: "approve-image"` path
-    // promotes a byte-screened derivative from the PRIVATE quarantine to the public bucket. Its
+    // promotes the staged ORIGINAL from the PRIVATE quarantine to the public bucket (moderation-only
+    // pipeline, D-REV-4 SUPERSEDED — no byte-screened derivative). Its
     // least-privilege PRIVATE read is scoped to the `review-staging/` quarantine prefix and wired
     // HERE, in the composition root, directly against the existing function CommerceApi exposes —
     // rather than through a nested-stack `privateBucket` prop. Grant on an existing bucket to the
     // existing function: the exact authorized rev-2a infra surface, no new deployable unit.
-    // LEAST-PRIVILEGE (review-2 blocking finding): promotion reads the byte-screened source with a
-    // single CopyObject, so the handler needs ONLY `s3:GetObject`, and ONLY under the quarantine
-    // prefix. `grantRead` was refused: it also confers bucket-wide `s3:List*` / `s3:GetBucket*`,
+    // LEAST-PRIVILEGE (review-2 blocking finding): promotion reads the staged original from the
+    // quarantine — a HeadObject for its declared type + the CopyObject source, both `s3:GetObject` —
+    // so the handler needs ONLY `s3:GetObject`, and ONLY under the quarantine prefix. `grantRead` was
+    // refused: it also confers bucket-wide `s3:List*` / `s3:GetBucket*`,
     // widening this handler to enumerate the whole private bucket (product PDFs, zips). One action,
     // prefix-scoped. Pinned by infra/test/amodx-stack.test.ts (rev2a-iam).
     commerceApi.updateReviewFunc.addToRolePolicy(new iam.PolicyStatement({

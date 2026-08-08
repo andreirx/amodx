@@ -390,13 +390,14 @@ export class CommerceApi extends NestedStack {
 
         // rev-2a (REV2A-INFRA-SURFACE = option B, human-ratified): the review-image approval action
         // rides THIS existing moderation handler additively (PUT /reviews/{id}, `action:
-        // "approve-image"`) — no dedicated Lambda, no new route. On approval it may promote a
-        // byte-screened derivative from the PRIVATE quarantine to the PUBLIC assets bucket. The
-        // PUBLIC-bucket grant + env are wired here (using the pre-existing `uploadsBucket` prop the
-        // nested stack already carries). The PRIVATE-bucket read grant + PRIVATE_BUCKET env are
-        // wired in the PARENT stack against `updateReviewFunc` (exposed above), so this nested stack
-        // needs NO `privateBucket` prop (REV2A-INFRA-SURFACE removal). No sharp here — the
-        // byte-screen (sharp) is the separate import Lambda's concern (rev-2), never bundled here.
+        // "approve-image"`) — no dedicated Lambda, no new route. On approval it may promote the
+        // staged ORIGINAL from the PRIVATE quarantine to the PUBLIC assets bucket (moderation-only
+        // pipeline, D-REV-4 SUPERSEDED — no byte-screen). The PUBLIC-bucket grant + env are wired
+        // here (using the pre-existing `uploadsBucket` prop the nested stack already carries). The
+        // PRIVATE-bucket read grant + PRIVATE_BUCKET env are wired in the PARENT stack against
+        // `updateReviewFunc` (exposed above), so this nested stack needs NO `privateBucket` prop
+        // (REV2A-INFRA-SURFACE removal). No native image-decode dependency anywhere — it was removed
+        // from the backend entirely (D-REV-4 SUPERSEDED).
         const updateReviewFunc = new nodejs.NodejsFunction(this, 'UpdateReviewFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/reviews/update.ts'),
@@ -411,8 +412,8 @@ export class CommerceApi extends NestedStack {
         table.grantReadWriteData(updateReviewFunc);
         // rev-2a LEAST-PRIVILEGE (REV2A-INFRA-SURFACE, review-2 blocking finding): the promotion
         // path (backend/src/lib/review-media.ts) touches the PUBLIC bucket with EXACTLY three object
-        // operations — CopyObject writes the normalized derivative (`s3:PutObject`), HeadObject reads
-        // its true size (`s3:GetObject`), and the concurrency-guard rollback removes an orphaned copy
+        // operations — CopyObject writes the promoted original (`s3:PutObject`), HeadObject reads its
+        // true size (`s3:GetObject`), and the concurrency-guard rollback removes an orphaned copy
         // (`s3:DeleteObject`). `grantReadWrite` was refused here: it also confers bucket-list,
         // multipart-abort, tagging, retention, legal-hold and version-delete — actions this handler
         // never issues, that would let a defect in it enumerate or mutate any tenant's public assets.

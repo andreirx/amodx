@@ -24,8 +24,8 @@
     "@aws-sdk/s3-request-presigner": "^3.1008.0",
     "aws-jwt-verify": "^5.1.1",
     "fast-xml-parser": "^5.4.2",
+    "fflate": "^0.8.2",
     "htmlparser2": "^10.0.0",
-    "sharp": "^0.35.0",
     "zod": "4.1.13"
   },
   "devDependencies": {
