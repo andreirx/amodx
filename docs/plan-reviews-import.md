@@ -3,6 +3,18 @@
 > two human rulings recorded 2026-08-05: (1) SVG is REJECTED outright — no rasterize
 > branch; input allowlist = JPEG/JPG, PNG, WebP, AVIF — **HEIC amended OUT 2026-08-08 (human)**: HEVC decode is patent-encumbered and absent from standard image runtimes; converting requires the same patented decode; iOS auto-converts to JPEG in sharing/upload flows and Google/FB exports never serve HEIC. Genuine .heic input is REJECTED with an explicit "iPhone photo? Export as JPEG" message in the import report / upload UI; (2) images live in S3 — the review record holds only bounded
 > per-image METADATA entries; the DDB 400KB cap bounds entry count, never photo size.
+> > **D-REV-4 SUPERSEDED 2026-08-08 (human): no automated byte-screening.** sharp is
+> dropped entirely (its Linux-binary-on-Lambda cost outweighed a benefit that was
+> mostly privacy+display, not security). The HUMAN MODERATION gate is the content
+> control — every imported image lands `pending` and a human approves before it goes
+> public ("admins check what they import regardless"). The `stage` step keeps its
+> DECLARED type+size guard + allowlist (JPEG/PNG/WebP/AVIF — all display natively, so
+> no normalization is lost; HEIC still rejected). Promotion copies the ORIGINAL on
+> approval. RESIDUAL, tracked (TECH-DEBT): imported customer photos may carry EXIF/GPS;
+> Google/FB exports strip it server-side (primary path safe); a pure-JS EXIF strip is
+> the revisit if direct device-uploads become a heavy path — NOT built now (less
+> machinery, per the ruling).
+> 
 > Spine principle binding on all phases: the moderation gate governs the PUBLIC
 > OBJECT (private-stage → screen → promote), not merely the render.
 > (Recovery note: this file spent 2026-08-01→08-07 in a git stash created by the

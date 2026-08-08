@@ -866,3 +866,14 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
 - Standing: rev-4 gallery + any new image UI must use raw asset URLs, never next/image,
   until this lands.
 - Status: PARKED (not OPEN debt - a deliberate deferral with a named revisit trigger)
+
+## Review-image EXIF/privacy residual (2026-08-08, D-REV-4 superseded)
+
+- sharp byte-screening dropped (human 2026-08-08); moderation is the content gate.
+- Residual: imported customer review photos MAY carry EXIF/GPS metadata. Mitigated for
+  the PRIMARY path — Google/FB strip EXIF server-side on their own ingestion, so
+  exported review photos arrive clean. The exposure is only direct device-origin
+  uploads (rev-2a direct-upload path, not bulk import).
+- Fix if it becomes real: a pure-JS EXIF stripper (e.g. strip APP1 marker) on
+  promotion — zero native dependency, no Docker. Not built now.
+- Status: TRACKED residual, deliberately deferred.
