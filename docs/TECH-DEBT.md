@@ -805,3 +805,16 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   health-card pattern as the EMAIL plan's DNS checker) so dormant clients are visible
   before Google's mail arrives.
 - Until then: human logs in via blog comments every ~4 months.
+
+## opennext-1 PARKED (human 2026-08-08)
+
+- Decision: skip the OpenNext 3.1.3 -> Next-16-supporting upgrade for now.
+- Consequence: `_next/image` optimization stays 500 (pre-existing, no regression;
+  raw/direct image URLs work; renderer galleries use raw asset URLs, not next/image).
+  cache-4b (tag revalidation) stays WITHDRAWN - it was the other thing this unblocked.
+- Revisit trigger: a real need for on-the-fly image resizing (e.g. tenant-uploaded
+  hero images at multiple breakpoints hurting load), OR a Next/OpenNext security
+  advisory forcing the bump. Until then, not worth the full serving-adapter swap risk.
+- Standing: rev-4 gallery + any new image UI must use raw asset URLs, never next/image,
+  until this lands.
+- Status: PARKED (not OPEN debt - a deliberate deferral with a named revisit trigger)
