@@ -4,6 +4,14 @@ import { z } from "zod";
 // Every consumer that builds an email-keyed identity MUST derive it through this.
 export { normalizeEmail } from "./normalizeEmail.js";
 
+// Re-export the STATIC-1 iframe sandbox contract (D-STATIC-1). Framework-agnostic
+// constant consumed by static-4's renderer shell; guarded by packages/shared/test/sandbox.test.ts.
+export {
+    STATIC_PAGE_SANDBOX_TOKENS,
+    STATIC_PAGE_SANDBOX_ATTR,
+    STATIC_PAGE_SANDBOX_FORBIDDEN_TOKENS,
+} from "./sandbox.js";
+
 // Re-export media classification module
 export {
     ALLOWED_IMAGE_MIMES, ALLOWED_VIDEO_MIMES, ALLOWED_UPLOAD_MIMES,

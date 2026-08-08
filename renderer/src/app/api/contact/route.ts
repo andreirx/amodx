@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantConfig } from "@/lib/dynamo";
 import { getRendererKey } from "@/lib/api-client";
+import { isFirstPartyWrite } from "@/lib/origin-guard";
 
 /**
  * Contact form proxy.
  * Derives tenant from host header (server-side, not client-supplied).
  * Authenticates to backend with renderer API key so the backend can
  * distinguish this from an anonymous browser call and skip Origin verification.
+ *
+ * STATIC-1: because the backend skips Origin verification for the RENDERER role
+ * (tenant-verify.ts), the browser Origin is only checkable HERE. isFirstPartyWrite
+ * closes this credential-free proxy to cross-site / null-origin writes. The first-party
+ * caller is ContactRender.tsx (same-origin fetch).
  */
 export async function POST(req: NextRequest) {
+    // STATIC-1 isolation barrier: reject cross-site / null-origin (sandboxed opaque-frame) writes.
+    if (!isFirstPartyWrite(req)) {
+        return NextResponse.json({ error: "Cross-origin write rejected" }, { status: 403 });
+    }
     try {
         const body = await req.json();
 

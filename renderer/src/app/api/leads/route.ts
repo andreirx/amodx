@@ -2,14 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getTenantConfig } from "@/lib/dynamo";
 import { getRendererKey } from "@/lib/api-client";
+import { isFirstPartyWrite } from "@/lib/origin-guard";
 
 /**
  * Lead capture proxy.
  * Derives tenant from host header (server-side, not client-supplied).
  * Authenticates to backend with renderer API key.
  * Preserves referral cookie enrichment from original implementation.
+ *
+ * STATIC-1: anonymous credential-free write → same-origin guarded (isFirstPartyWrite).
+ * The first-party caller is LeadMagnetRender.tsx (same-origin fetch).
  */
 export async function POST(req: NextRequest) {
+    // STATIC-1 isolation barrier: reject cross-site / null-origin (sandboxed opaque-frame) writes.
+    if (!isFirstPartyWrite(req)) {
+        return NextResponse.json({ error: "Cross-origin write rejected" }, { status: 403 });
+    }
     try {
         const body = await req.json();
 
