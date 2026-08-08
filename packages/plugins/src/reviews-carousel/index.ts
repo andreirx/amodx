@@ -21,6 +21,8 @@ export const ReviewsCarouselPlugin: PluginDefinition = {
         addAttributes() {
             return {
                 headline: { default: 'Customer Reviews' },
+                scope: { default: 'manual' },
+                productId: { default: '' },
                 items: { default: [] },
                 showSource: { default: true },
                 autoScroll: { default: false },

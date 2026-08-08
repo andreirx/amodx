@@ -319,6 +319,13 @@ The renderer reads directly from DynamoDB for performance (bypasses backend API)
 - `getContentBySlug(tenantId, slug)` — route lookup → content fetch, handles redirects
 - `getProductById(tenantId, productId)` — direct get
 - `getPosts(tenantId, tag?, limit)` — query all published LATEST content, filter/sort in-memory
+- `getProductReviews(tenantId, productId)` — approved reviews for one SKU (`REVIEW#<productId>#`)
+- `getSiteReviews(tenantId)` — approved SITE-scope reviews (`SITEREVIEW#`), business-level "about us"
+
+  Both project the raw rows (incl. the `images` metadata array) and keep the `#src` alias on the
+  reserved word `source` (prod hotfix `fed5924` — an un-aliased `source` invalidates the whole
+  projection and 500s the page). They resolve nothing themselves; photo resolution is § *Review
+  images* below.
 
 **Error semantics — one rule, no exceptions inside this file** (human decision CACHE-1-D4,
 2026-07-26; widened by review-1 the same day). No helper here catches an AWS/SDK error, and
@@ -349,6 +356,47 @@ Two read paths outside this file keep different internals on purpose: `lib/tenan
 whole estate on a blip — the render repeats the lookup and throws anyway; and
 `lib/api-client.ts` (Secrets Manager) returns `""`, which its callers forward to the backend,
 which rejects it, so the route still answers a non-2xx rather than a 200 with empty data.
+
+## Review images (`lib/review-images.ts`) — slice `rev-4`
+
+Approved review photos reach visitor markup in two render surfaces: the **product page** review
+section (`SitePage.tsx` `ProductPageView`) and the **reviews-carousel block** in a DB scope
+(`SitePage.tsx` prefetch branches → `@amodx/plugins` `reviewsCarousel`). `lib/review-images.ts` is
+the single support module both share, so they cannot drift on the security-critical rules:
+
+- **`toPublicReviewPhotos(images, cdnBase)`** — the public-boundary filter + key→URL resolver. A
+  `ReviewImage` (rev-1) carries a bare S3 **`assetKey`** and a per-image moderation `status`, never
+  a URL. This keeps an image ONLY when `status === "approved"` AND its key is non-empty and NOT
+  under the private staging prefix (`review-staging/`, a synced duplicate of the backend single
+  source — the renderer cannot import backend code), then resolves each to `${cdnBase}/${assetKey}`.
+  Pure and base-injected → unit-testable with no AWS. Mirrors `backend/src/reviews/public-list.ts`.
+- **`toCarouselReviewItems(reviews, cdnBase)`** — maps DB review rows onto the carousel block's
+  item shape (narrowing the System-A `source` enum to the block's `google|facebook|manual` badge
+  enum) and calls `toPublicReviewPhotos` per review. Two callers: the `site-reviews` and
+  `product-reviews-by-id` prefetch branches in `SitePage`.
+- **`reviewAssetCdnBase()`** — reads `UPLOADS_CDN_URL`, returns `""` when unset (deliberate graceful
+  degradation: text/stars/author still render, only photos are omitted — a throw would 500 every
+  review page until infra wires the var). **Deploy gate:** the renderer server Lambda does not yet
+  receive `UPLOADS_CDN_URL` (`infra/lib/renderer-hosting.ts`, outside rev-4's writable surface); until
+  wired, photos degrade to absent. Tracked in `docs/TECH-DEBT.md`.
+
+**Boundary, stated precisely.** The `UPLOADS_CDN_URL` env var and the key→URL resolution stay
+server-side, but the RESOLVED `${base}/${key}` is a PUBLIC URL that DOES ship to the client inside
+the raw `<img src>`/`<a href>` — exactly as a product `imageLink` reaches the client already
+resolved. What is protected is the private staging key and the unapproved image, never the public
+CDN host. Photos are RAW asset URLs rendered with `<img loading="lazy">`, **never** `next/image`
+(opennext-1 parking rule); the block additionally gates photo markup to DB scopes (see the plugins
+ARCHITECTURE § *The `reviews-carousel` block's render contract*).
+
+**No dynamic API.** Both surfaces are plain cacheable-route DynamoDB reads (the same pattern as
+`getPosts`), so `test/serving-contract/` stays green. Moderation mutations
+(`backend/src/reviews/update.ts`) are on the **bulk** CDN-invalidation lane (`withInvalidation` →
+debounced `/*` flush / "GO LIVE NOW"), not the fast lane — correct, because a site-scope review can
+appear on any page, so there is no bounded set of changed paths to feed the targeted lane.
+
+Tests: `test/unit/review-images.test.ts` (the pure filter/resolver) and
+`test/unit/site-page-reviews.test.ts` (the `SitePage` SSR integration of all three surfaces:
+site-reviews carousel, product-reviews-by-id carousel, and product-page review photos).
 
 ## Authentication
 

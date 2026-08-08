@@ -16,7 +16,8 @@
 //
 // Phase 3.3: getCustomerOrders / getCustomerProfile are deliberately NOT imported here.
 // Customer-private data is fetched via session-validating API routes, not SSR.
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews } from "@/lib/dynamo";
+import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from "@/lib/review-images";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
@@ -525,6 +526,27 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 block.attrs._productPrefix = resolvedPrefixes.product || "/product";
                 block.attrs._categoryPrefix = resolvedPrefixes.category || "/category";
             }
+
+            // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here
+            // (server-side), REPLACING any authored `items`. Photo assetKeys are resolved to raw
+            // asset URLs on the SERVER: the `UPLOADS_CDN_URL` env var and the key→URL resolution stay
+            // server-side, while the RESOLVED public URL (base included) ships to the client in the
+            // raw `<img src>`, exactly as product `imageLink`s reach the client already-resolved.
+            // Both are plain cacheable-route DB reads (getSiteReviews / getProductReviews), NOT
+            // dynamic APIs.
+            //   • site-reviews          — the tenant's approved SITE-scope (SITEREVIEW#) reviews.
+            //   • product-reviews-by-id — a specific product's approved reviews, by `productId` attr.
+            if (block.type === 'reviewsCarousel' && block.attrs.scope === 'site-reviews') {
+                const { items } = await getSiteReviews(config.id);
+                block.attrs.items = toCarouselReviewItems(items, reviewAssetCdnBase());
+            }
+            if (block.type === 'reviewsCarousel' && block.attrs.scope === 'product-reviews-by-id') {
+                const productId = block.attrs.productId;
+                const { items } = productId
+                    ? await getProductReviews(config.id, productId)
+                    : { items: [] as any[] };
+                block.attrs.items = toCarouselReviewItems(items, reviewAssetCdnBase());
+            }
         }));
     }
     // -----------------------------------------
@@ -893,6 +915,22 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                                 </div>
                                 <div className="text-amber-500 text-sm mb-2">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
                                 {review.content && <p className="text-sm text-muted-foreground">{review.content}</p>}
+                                {/* rev-4: approved review photos. assetKey → raw asset URL resolved
+                                    server-side; bounded thumbnails, lazy, alt from schema; plain <a>
+                                    to the full image (lightbox-free, phase 1). NEVER next/image. */}
+                                {(() => {
+                                    const photos = toPublicReviewPhotos(review.images, reviewAssetCdnBase());
+                                    if (photos.length === 0) return null;
+                                    return (
+                                        <div className="flex flex-wrap gap-2 mt-3">
+                                            {photos.map((photo, i) => (
+                                                <a key={i} href={photo.url} target="_blank" rel="noopener noreferrer" className="block w-20 h-20 rounded-lg overflow-hidden border border-border">
+                                                    <img src={photo.url} alt={photo.alt || ""} loading="lazy" className="w-full h-full object-cover" />
+                                                </a>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         ))}
                     </div>

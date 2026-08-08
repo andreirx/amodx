@@ -140,6 +140,27 @@ Do not carry the numbers above into a slice report without re-running them.
 
 ## High Priority (Missing Features)
 
+### `UPLOADS_CDN_URL` is not wired to the renderer server Lambda (review photos degrade to absent)
+**Found:** `rev-4` build. **Scope:** ONE env var on `infra/lib/renderer-hosting.ts` (composition
+root) — deliberately deferred because `rev-4`'s writable surface bans infra edits.
+
+`rev-4` renders approved review photos by deriving `${UPLOADS_CDN_URL}/${assetKey}` at render
+(`renderer/src/lib/review-images.ts` `reviewAssetCdnBase`; the ratified rev-2a §4 pattern). The
+renderer server Lambda's `environment` block (`infra/lib/renderer-hosting.ts`, the `RendererServer`
+function) sets `TABLE_NAME`, `API_URL`, cache/auth vars — but **not** `UPLOADS_CDN_URL`. Backend
+handlers get it from `infra/lib/api-commerce.ts`; the renderer construct is never passed it.
+
+**Behaviour until wired:** `reviewAssetCdnBase()` returns `""` and `toPublicReviewPhotos` yields
+`[]` — reviews render text/stars/author correctly, photos are omitted, serving suite stays green.
+This is graceful degradation, NOT a crash. But note the caching consequence (dynamo.ts file
+header): a deployed renderer missing the var would render photo-less reviews and ISR could pin them
+for a year — so wiring the var is a **pre-deploy gate for rev-4**, and after wiring, existing
+photo-less cached pages need a purge.
+
+**Fix shape:** thread `uploadsCdnUrl` into `RendererHostingProps` (parent already computes
+`https://${uploads.distribution.distributionDomainName}` in `amodx-stack.ts`) and add
+`UPLOADS_CDN_URL: props.uploadsCdnUrl` to the `RendererServer` environment. One line + one prop.
+
 ### Chunked NextAuth session cookies are not reassembled (gated content denied)
 **Found:** `cache-3` revision 4 review. **Scope:** deferred — the fix is in the dynamic twin
 routes, which `cache-3` is explicitly barred from touching.

@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 /**
  * Renderer PURE unit tests (slice `test-3`). Run: `npm test -w renderer`.
@@ -22,6 +23,20 @@ import { defineConfig } from "vitest/config";
  * not.
  */
 export default defineConfig({
+    // `@/*` → `src/*` mirrors renderer/tsconfig.json `paths`. Needed so a unit test can import a
+    // module that itself imports via the `@/` alias (e.g. `components/SitePage.tsx`, whose rev-4
+    // prefetch-branch integration test drives the real module). Resolution only; no build, no server.
+    resolve: {
+        alias: {
+            "@": fileURLToPath(new URL("./src", import.meta.url)),
+        },
+        // Force ONE React instance. The monorepo has two copies (root 19.2.3, renderer 19.2.0);
+        // the built `@amodx/plugins/render` package resolves root's copy while the renderer's
+        // `react-dom/server` uses its own — a dual-instance render throws "null dispatcher" (useRef).
+        // Deduping makes the SitePage integration test render the real plugin components. No effect
+        // on production (Next/OpenNext bundles a single React); this is a test-graph resolution only.
+        dedupe: ["react", "react-dom"],
+    },
     test: {
         environment: "node",
         include: ["test/unit/**/*.test.ts"],

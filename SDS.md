@@ -159,7 +159,7 @@ Split entry points: `admin.ts` (Tiptap extensions, browser-only) / `render.ts` (
 | Post Grid | `postGrid` | headline, tag, limit, columns, blockWidth |
 | Carousel | `carousel` | slides[] (imageUrl, caption, link), autoplay, blockWidth |
 | Code Block | `codeBlock` | code, language (19 langs), filename, showLineNumbers, blockWidth |
-| Reviews Carousel | `reviewsCarousel` | headline, items[] (name, rating, text, source), blockWidth. Commerce-only |
+| Reviews Carousel | `reviewsCarousel` | headline, scope (`manual` \| `product-reviews-by-id` \| `site-reviews`), productId, items[] (name, rating, text, source, photos[]), blockWidth. Commerce-only. In a DB scope the renderer prefetch REPLACES `items` with approved reviews + approved photos (rev-4; see `docs/slices/rev-4-renderer-gallery.md`) |
 | Category Showcase | `categoryShowcase` | categoryId, limit, columns, showPrice, blockWidth. Commerce-only |
 | Markdown | `markdown` | content (raw markdown), blockWidth. Rendered with marked + highlight.js |
 

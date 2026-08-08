@@ -50,7 +50,7 @@ function formatDate(dateStr: string, locale = "ro-RO") {
     }
 }
 
-function ReviewCard({ item, showSource, locale, maxLines, expanded, onToggle }: { item: any; showSource: boolean; locale?: string; maxLines: number; expanded: boolean; onToggle: () => void }) {
+function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, onToggle }: { item: any; showSource: boolean; showPhotos: boolean; locale?: string; maxLines: number; expanded: boolean; onToggle: () => void }) {
     const initial = item.name?.charAt(0)?.toUpperCase() || "?";
     const color = getInitialColor(item.name || "");
     const textRef = useRef<HTMLParagraphElement>(null);
@@ -116,12 +116,46 @@ function ReviewCard({ item, showSource, locale, maxLines, expanded, onToggle }: 
                     )}
                 </div>
             )}
+
+            {/* Review photos (rev-4) — approved photos of a DB-scope review (site-reviews /
+                product-reviews-by-id), resolved to RAW asset URLs by the server prefetch. Bounded
+                thumbnails, lazy-loaded, alt from schema; plain <a> to the full image (lightbox-free,
+                phase 1). NEVER next/image.
+                GATED by `showPhotos` (= a DB scope). `photos` is NOT author-editable (schema.ts):
+                RenderBlocks passes persisted attrs through WITHOUT schema-parsing, so a hand-edited
+                "manual" block could carry an injected `photos` array. Rendering it would leak an
+                arbitrary author-supplied URL past the approved-only server filter, so a non-DB scope
+                emits no thumbnail regardless of what `item.photos` holds. */}
+            {showPhotos && Array.isArray(item.photos) && item.photos.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                    {item.photos.map((photo: { url: string; alt?: string }, i: number) => (
+                        <a
+                            key={i}
+                            href={photo.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-16 h-16 rounded-lg overflow-hidden border border-border"
+                        >
+                            <img
+                                src={photo.url}
+                                alt={photo.alt || ""}
+                                loading="lazy"
+                                className="w-full h-full object-cover"
+                            />
+                        </a>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
 
 export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
-    const { headline, items = [], showSource, autoScroll, maxLines = 4, locale } = attrs;
+    const { headline, items = [], showSource, autoScroll, maxLines = 4, locale, scope } = attrs;
+    // Photos render ONLY in a DB-backed scope, where the server prefetch has resolved them from
+    // approved System-A reviews (assetKey → raw asset URL). "manual" (and any legacy block with no
+    // scope) never shows photos — see the gate note in ReviewCard.
+    const showPhotos = scope === "site-reviews" || scope === "product-reviews-by-id";
     const scrollRef = useRef<HTMLDivElement>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(true);
@@ -181,6 +215,7 @@ export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
                             key={item.id}
                             item={item}
                             showSource={showSource}
+                            showPhotos={showPhotos}
                             locale={locale}
                             maxLines={maxLines}
                             expanded={expandedId === item.id}

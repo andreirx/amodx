@@ -165,6 +165,38 @@ sub-720p uploads), and — because `buildBackgroundEmbedUrl` hardcodes mute+loop
 the Muted/Loop checkboxes with a statement of fact whenever the source is a provider embed,
 rather than leaving two controls that silently do nothing.
 
+## The `reviews-carousel` block's render contract (slice `rev-4`)
+
+`reviewsCarousel` (`src/reviews-carousel/`) renders customer reviews as a horizontally-scrolling
+card strip. Beyond the authored fields it carries a **data-source discriminator**, `scope`
+(`ReviewsCarouselSchema`), with three values — the block is where a review's approved *photos*
+reach visitor markup:
+
+| `scope` | `items` source | Photos |
+|---------|----------------|--------|
+| `manual` (default) | author-typed `items` (unchanged original behaviour) | never rendered |
+| `product-reviews-by-id` | server prefetch REPLACES `items` with a product's approved reviews (by the `productId` attr) | rendered |
+| `site-reviews` | server prefetch REPLACES `items` with the tenant's approved SITE-scope (`SITEREVIEW#`) reviews | rendered |
+
+**The prefetch lives in the renderer, not here.** `ReviewsCarouselRender` is a pure view: it
+consumes an `items[]` whose `photos` are already resolved public URLs. The DB reads
+(`getSiteReviews` / `getProductReviews`), the approved-only + private-key-leak filter, and the
+assetKey→URL resolution all live in `renderer/src/lib/review-images.ts` + `SitePage.tsx`'s prefetch
+branches (see the renderer ARCHITECTURE § *Review images*). This keeps Critical Rule 1 (split
+entry) intact — the block imports no renderer/DB code.
+
+**Photos are DB-scope-gated in the render, defence-in-depth.** `items[].photos` is NOT
+author-editable (only the server prefetch writes it), but `RenderBlocks` passes persisted attrs
+through WITHOUT schema-parsing, so a hand-edited `manual`/legacy block could carry an injected
+`photos` array. `ReviewsCarouselRender` therefore emits photo markup ONLY when
+`scope ∈ {site-reviews, product-reviews-by-id}`; a non-DB scope renders no thumbnail regardless of
+`item.photos`, so an unmoderated URL can never reach markup. Photos render as bounded lazy `<img>`
+inside a plain `<a target="_blank">` to the full image — RAW asset URLs, **never** `next/image`
+(opennext-1 parking rule).
+
+The editor (`ReviewsCarouselEditor.tsx`) exposes the `scope` toggle and a `productId` input (shown
+only for `product-reviews-by-id`); in the two DB scopes the manual item editor is hidden.
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -174,6 +206,7 @@ rather than leaving two controls that silently do nothing.
 | `test/videoSource.test.ts` (`vid-1`) | The parser's classification and emitted URLs |
 | `test/videoPlugin.test.ts` (`vid-2`) | What each classification **emits** — `RENDER_MAP["video"]` markup per kind, plus `VideoEditor`'s indicator/warning output |
 | `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_MAP["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
+| `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_MAP["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
 components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path

@@ -16,7 +16,8 @@ function StarRating({ rating, onChange }: { rating: number; onChange: (r: number
 }
 
 export function ReviewsCarouselEditor(props: any) {
-    const { headline, items = [], showSource, autoScroll, maxLines = 4, blockWidth } = props.node.attrs;
+    const { headline, scope = 'manual', productId = '', items = [], showSource, autoScroll, maxLines = 4, blockWidth } = props.node.attrs;
+    const isDbScope = scope === 'site-reviews' || scope === 'product-reviews-by-id';
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -55,6 +56,19 @@ export function ReviewsCarouselEditor(props: any) {
                         <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Reviews Carousel</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            Source
+                            <select
+                                value={scope}
+                                onChange={e => update('scope', e.target.value)}
+                                className="text-xs bg-background border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                                <option value="manual">Manual (typed below)</option>
+                                <option value="product-reviews-by-id">Product reviews (by ID)</option>
+                                <option value="site-reviews">Site reviews (approved)</option>
+                            </select>
+                        </label>
+                        <div className="w-px h-4 bg-border" />
                         <BlockWidthControl value={blockWidth} onChange={v => update('blockWidth', v)} />
                         <div className="w-px h-4 bg-gray-200" />
                         <label className="flex items-center gap-1.5 text-xs text-amber-700">
@@ -91,7 +105,27 @@ export function ReviewsCarouselEditor(props: any) {
                     />
                 </div>
 
-                {/* Items */}
+                {/* DB-scope note — items come from the DB at render, not typed here */}
+                {isDbScope && (
+                    <div className="px-4 pb-3 space-y-2">
+                        <div className="rounded-lg border border-dashed border-border bg-muted/50 px-3 py-3 text-xs text-muted-foreground">
+                            {scope === 'site-reviews'
+                                ? <>This block shows your <strong>approved site reviews</strong> automatically — including their approved photos. The list is pulled at render time; the manual reviews are ignored while this source is selected.</>
+                                : <>This block shows a <strong>product&apos;s approved reviews</strong> automatically — including their approved photos. Enter the product ID below. The list is pulled at render time; the manual reviews are ignored.</>}
+                        </div>
+                        {scope === 'product-reviews-by-id' && (
+                            <input
+                                className="w-full text-sm bg-background border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                                value={productId}
+                                onChange={e => update('productId', e.target.value)}
+                                placeholder="Product ID (UUID)"
+                            />
+                        )}
+                    </div>
+                )}
+
+                {/* Items (manual authoring — hidden while a DB source is selected) */}
+                {!isDbScope && (
                 <div className="px-4 pb-3 space-y-2">
                     {items.map((item: any) => {
                         const isExpanded = expandedId === item.id;
@@ -139,6 +173,7 @@ export function ReviewsCarouselEditor(props: any) {
                         <Plus className="w-4 h-4" /> Add Review
                     </button>
                 </div>
+                )}
             </div>
         </NodeViewWrapper>
     );

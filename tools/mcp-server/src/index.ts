@@ -512,10 +512,12 @@ const BLOCK_SCHEMAS = {
         }
     },
     reviewsCarousel: {
-        description: "Horizontal scrolling carousel of customer/Google/Facebook reviews with star ratings, source badges, and optional auto-scroll.",
+        description: "Horizontal scrolling carousel of customer/Google/Facebook reviews with star ratings, source badges, optional auto-scroll, and (in a DB scope — site-reviews or product-reviews-by-id) approved review photos.",
         attrs: {
             headline: "string (e.g., 'What Our Customers Say')",
-            items: "array of review objects (see example)",
+            scope: "'manual' | 'product-reviews-by-id' | 'site-reviews' (default 'manual'). 'manual' renders the authored `items` below. 'product-reviews-by-id' ignores `items` and renders a specific product's approved moderated reviews (set `productId`). 'site-reviews' ignores `items` and renders the tenant's approved SITE-scope moderated reviews. Both DB scopes include approved review photos, pulled at render time.",
+            productId: "string (UUID) — required when scope is 'product-reviews-by-id'; ignored otherwise",
+            items: "array of review objects (see example) — used only when scope is 'manual'",
             showSource: "boolean (default true, shows Google/Facebook badge)",
             autoScroll: "boolean (default false)"
         },

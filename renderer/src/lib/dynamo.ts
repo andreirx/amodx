@@ -456,8 +456,55 @@ export async function getProductReviews(tenantId: string, productId: string) {
                 ":sk": `REVIEW#${productId}#`,
                 ":approved": "approved",
             },
+            // `#src` aliases the DynamoDB RESERVED keyword `source` — KEEP IT (prod hotfix fed5924:
+            // an un-aliased `source` makes the whole projection invalid, 500-ing every product page).
+            // `images` (rev-4) carries the per-photo metadata array; the render resolves approved
+            // photos to raw asset URLs via `toPublicReviewPhotos` (lib/review-images.ts). "images"
+            // is not a reserved word, so it needs no alias.
             ExpressionAttributeNames: { "#s": "status", "#src": "source" },
-            ProjectionExpression: "id, authorName, rating, content, #src, createdAt",
+            ProjectionExpression: "id, authorName, rating, content, #src, createdAt, images",
+            ExclusiveStartKey: lastKey,
+        }));
+        allItems.push(...(result.Items || []));
+        lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    const items = allItems.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const totalReviews = items.length;
+    const averageRating = totalReviews > 0 ? Math.round((items.reduce((s: number, r: any) => s + r.rating, 0) / totalReviews) * 10) / 10 : 0;
+
+    return { items, averageRating, totalReviews };
+}
+
+// 11b. Fetch approved SITE-scope reviews (rev-4).
+//
+// Business-level reviews (imported Google/FB reviews about the tenant, not one SKU) live under the
+// DISJOINT `SITEREVIEW#<id>` sort-key namespace (rev-1 D-REV-5), chosen so it shares NO prefix with
+// `REVIEW#<productId>#` and provably cannot alias. The renderer reads them directly — the site-
+// reviews carousel is fed by SERVER PREFETCH (SitePage), the same cacheable-route DB-read pattern as
+// getPosts/getProductsByCategory; NO dynamic API is introduced. Approved-only, like the product read.
+//
+// Failed reads THROW (file header): a swallowed error here would pin a "no reviews" page for a year.
+export async function getSiteReviews(tenantId: string) {
+    const tableName = requireTableName();
+
+    // Paginate through all results
+    const allItems: any[] = [];
+    let lastKey: any = undefined;
+
+    do {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            FilterExpression: "#s = :approved",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "SITEREVIEW#",
+                ":approved": "approved",
+            },
+            // `#src` aliases the reserved keyword `source` (see getProductReviews / fed5924).
+            ExpressionAttributeNames: { "#s": "status", "#src": "source" },
+            ProjectionExpression: "id, authorName, rating, content, #src, createdAt, images",
             ExclusiveStartKey: lastKey,
         }));
         allItems.push(...(result.Items || []));
