@@ -456,8 +456,8 @@ export async function getProductReviews(tenantId: string, productId: string) {
                 ":sk": `REVIEW#${productId}#`,
                 ":approved": "approved",
             },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, authorName, rating, content, source, createdAt",
+            ExpressionAttributeNames: { "#s": "status", "#src": "source" },
+            ProjectionExpression: "id, authorName, rating, content, #src, createdAt",
             ExclusiveStartKey: lastKey,
         }));
         allItems.push(...(result.Items || []));
