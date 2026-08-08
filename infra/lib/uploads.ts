@@ -43,6 +43,23 @@ export class AmodxUploads extends Construct {
             autoDeleteObjects: false,
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // No Public Access
             // No CloudFront Origin Access - only Lambda Signed URLs
+
+            // REV-2a (D-REV-2 mitigation): abandoned-import cleanup. Raw imported review-media
+            // bytes are staged under the `review-staging/` quarantine prefix (see
+            // backend/src/lib/review-media.ts REVIEW_STAGING_PREFIX). This ONE lifecycle rule
+            // expires those staged originals 30 days after they land, so an import that is never
+            // promoted (bytes screened + both approvals) does not accumulate untrusted third-party
+            // content indefinitely. Scope is bounded to the prefix: nothing else in this private
+            // bucket (product PDFs, zips) is touched. The prefix string is one contract with the
+            // backend key builder — keep them in sync.
+            lifecycleRules: [
+                {
+                    id: 'ExpireReviewStagingQuarantine',
+                    prefix: 'review-staging/',
+                    expiration: cdk.Duration.days(30),
+                    enabled: true,
+                },
+            ],
         });
 
         // 3. Delivery (CDN for Public Bucket ONLY)

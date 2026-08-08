@@ -11,7 +11,7 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 15 files in total)
+├── lib/                   # (selected modules; 18 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── events.ts          # EventBridge publishAudit() helper
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
@@ -22,7 +22,13 @@ src/
 │   │                        #   (FAST_LANE_WILDCARD_THRESHOLD). Test seam, like revalidate-paths.ts
 │   ├── revalidate.ts      # Drives BOTH layers (cache-4a): revalidateTenantPaths() → edge fast lane +
 │   │                      #   ISR purge (Layer 2) via the /api/revalidate transport
-│   └── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
+│   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
+│   ├── review-media.ts     # rev-2a staged-media SPINE (sharp-free): declared type-AND-size STAGE to
+│   │                       #   the private quarantine + PROMOTION gate (both-approvals → copy the
+│   │                       #   normalized derivative to public, write Asset record) + rollback
+│   ├── review-media-screen.ts # rev-2a STEP 2 (sharp): byte-level decode+re-encode; the ONLY module
+│   │                          #   that pulls sharp — kept separate so update.ts stays sharp-free
+│   └── review-media-ingest.ts # rev-2a staging path: stage → screen → write normalized.jpg (pulls sharp)
 ├── auth/
 │   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
 │   ├── context.ts         # AuthorizerContext type definition
@@ -40,6 +46,14 @@ src/
 │   ├── get.ts             # GET /products/{id}
 │   ├── update.ts          # PUT /products/{id}
 │   └── delete.ts          # DELETE /products/{id}
+├── reviews/
+│   ├── create.ts          # POST /reviews
+│   ├── list.ts            # GET /reviews (admin, all statuses)
+│   ├── update.ts          # PUT /reviews/{id} — TWO actions on one contract (rev-2a):
+│   │                      #   default = field update; `action:"approve-image"` = staged-media
+│   │                      #   promotion (approval DERIVED FROM THE ROW, never the body)
+│   ├── delete.ts          # DELETE /reviews/{id}
+│   └── public-list.ts     # GET /public/reviews/{productId} (approved only)
 ├── comments/
 │   ├── create.ts          # POST /comments (public or authed)
 │   ├── list.ts            # GET /comments

@@ -68,6 +68,15 @@ Grouped by the parent that owns the fix, largest blast radius first:
      Build-time; the renderer does not stringify tenant content through PostCSS.
    - `sharp` **0.34.5** (HIGH): inherited libvips CVE-2026-33327 / -33328 / -35590 / -35591. Fixed in
      `sharp >= 0.35.0`. Pulled in as `next`'s optional image-optimization dependency.
+     - **rev-2a scope note (2026-08-08):** the REMAINING flagged `sharp` node is now **only** this
+       `next` 0.34.5 copy. `rev-2a` added `sharp` **^0.35.0** (resolves **0.35.3**, PATCHED) as a
+       direct `backend/` dependency for the review-media byte-screen
+       (`backend/src/lib/review-media-screen.ts`) — a second, separate install that `npm audit`
+       does **not** flag (its advisory range is `< 0.35.0`; 0.35.3 is outside it). So `dep-1` still
+       owns closing the `next` 0.34.5 advisory; the backend decoder that processes untrusted
+       imported review bytes is already on the patched family. Note: `sharp`'s prebuilt libvips
+       (0.34.5 **and** 0.35.3 here) carries AV1/AVIF but **not HEVC** — a real HEVC `.heic` will not
+       decode until a deployed libvips ships HEVC (surfaced in `review-media-screen.test.ts`).
    - **Exposure — assess before `dep-1` closes, do not assume build-time.** `INFERRED`, not verified:
      unlike `postcss`, `sharp` runs at **request time** in Next's image optimizer, so if the deployed
      OpenNext bundle includes the image-optimization function, a malicious image reaching that path

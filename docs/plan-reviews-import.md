@@ -1,9 +1,7 @@
 > **RATIFIED 2026-08-07 (human).** D-REV-1..5 ratified in their CONVERGED form
 > (packet: `.agent-manager/slices/REV-1/ratification-packet.md`, all-converged), plus
 > two human rulings recorded 2026-08-05: (1) SVG is REJECTED outright — no rasterize
-> branch; input allowlist = JPEG/JPG, PNG, HEIC, WebP (WebP added because Google
-> exports serve it; HEIC re-encoded to a browser-displayable derivative by the
-> D-REV-4 step); (2) images live in S3 — the review record holds only bounded
+> branch; input allowlist = JPEG/JPG, PNG, WebP, AVIF — **HEIC amended OUT 2026-08-08 (human)**: HEVC decode is patent-encumbered and absent from standard image runtimes; converting requires the same patented decode; iOS auto-converts to JPEG in sharing/upload flows and Google/FB exports never serve HEIC. Genuine .heic input is REJECTED with an explicit "iPhone photo? Export as JPEG" message in the import report / upload UI; (2) images live in S3 — the review record holds only bounded
 > per-image METADATA entries; the DDB 400KB cap bounds entry count, never photo size.
 > Spine principle binding on all phases: the moderation gate governs the PUBLIC
 > OBJECT (private-stage → screen → promote), not merely the render.

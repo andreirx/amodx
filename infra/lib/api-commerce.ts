@@ -28,6 +28,14 @@ interface CommerceApiProps extends NestedStackProps {
 }
 
 export class CommerceApi extends NestedStack {
+    /**
+     * The existing review moderation handler (`PUT /reviews/{id}`). Exposed so the PARENT stack
+     * (the composition root) can wire the rev-2a private-quarantine grant + PRIVATE_BUCKET env
+     * onto it WITHOUT a nested-stack `privateBucket` prop — grants on existing buckets to this one
+     * existing function are the exact authorized rev-2a infra surface (REV2A-INFRA-SURFACE).
+     */
+    public readonly updateReviewFunc: nodejs.NodejsFunction;
+
     constructor(scope: Construct, id: string, props: CommerceApiProps) {
         super(scope, id, {
             ...props,
@@ -380,12 +388,39 @@ export class CommerceApi extends NestedStack {
         });
         table.grantReadData(listReviewsFunc);
 
+        // rev-2a (REV2A-INFRA-SURFACE = option B, human-ratified): the review-image approval action
+        // rides THIS existing moderation handler additively (PUT /reviews/{id}, `action:
+        // "approve-image"`) — no dedicated Lambda, no new route. On approval it may promote a
+        // byte-screened derivative from the PRIVATE quarantine to the PUBLIC assets bucket. The
+        // PUBLIC-bucket grant + env are wired here (using the pre-existing `uploadsBucket` prop the
+        // nested stack already carries). The PRIVATE-bucket read grant + PRIVATE_BUCKET env are
+        // wired in the PARENT stack against `updateReviewFunc` (exposed above), so this nested stack
+        // needs NO `privateBucket` prop (REV2A-INFRA-SURFACE removal). No sharp here — the
+        // byte-screen (sharp) is the separate import Lambda's concern (rev-2), never bundled here.
         const updateReviewFunc = new nodejs.NodejsFunction(this, 'UpdateReviewFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/reviews/update.ts'),
             handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                UPLOADS_BUCKET: props.uploadsBucketName,
+                UPLOADS_CDN_URL: props.uploadsCdnUrl,
+            },
         });
+        this.updateReviewFunc = updateReviewFunc;
         table.grantReadWriteData(updateReviewFunc);
+        // rev-2a LEAST-PRIVILEGE (REV2A-INFRA-SURFACE, review-2 blocking finding): the promotion
+        // path (backend/src/lib/review-media.ts) touches the PUBLIC bucket with EXACTLY three object
+        // operations — CopyObject writes the normalized derivative (`s3:PutObject`), HeadObject reads
+        // its true size (`s3:GetObject`), and the concurrency-guard rollback removes an orphaned copy
+        // (`s3:DeleteObject`). `grantReadWrite` was refused here: it also confers bucket-list,
+        // multipart-abort, tagging, retention, legal-hold and version-delete — actions this handler
+        // never issues, that would let a defect in it enumerate or mutate any tenant's public assets.
+        // Object-scoped, three actions, nothing else. Pinned by infra/test/amodx-stack.test.ts (rev2a-iam).
+        updateReviewFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['s3:PutObject', 's3:GetObject', 's3:DeleteObject'],
+            resources: [`${props.uploadsBucket.bucketArn}/*`],
+        }));
 
         const deleteReviewFunc = new nodejs.NodejsFunction(this, 'DeleteReviewFunc', {
             ...nodeProps,
@@ -403,6 +438,8 @@ export class CommerceApi extends NestedStack {
 
         addRoute('CreateReview', 'POST /reviews', createReviewFunc);
         addRoute('ListReviews', 'GET /reviews', listReviewsFunc);
+        // PUT /reviews/{id} carries BOTH the field update and the rev-2a `action: "approve-image"`
+        // promotion action on one contract — no separate route (REV2A-INFRA-SURFACE option B).
         addRoute('UpdateReview', 'PUT /reviews/{id}', updateReviewFunc);
         addRoute('DeleteReview', 'DELETE /reviews/{id}', deleteReviewFunc);
         addRoute('PublicListReviews', 'GET /public/reviews/{productId}', publicListReviewsFunc, { noAuth: true });

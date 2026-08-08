@@ -685,9 +685,63 @@ Commerce routes live in `infra/lib/api-commerce.ts` (NestedStack, ~234 resources
 | GET/POST | `/coupons` | coupons/list, create |
 | GET/PUT/DELETE | `/coupons/{id}` | coupons/get, update, delete |
 | GET/POST | `/reviews` | reviews/list, create |
-| PUT/DELETE | `/reviews/{id}` | reviews/update, delete |
+| PUT/DELETE | `/reviews/{id}` | reviews/update (field update **and** `action:"approve-image"` — see below), delete |
 | POST | `/import/woocommerce` | import/woocommerce |
 | GET | `/reports/summary` | reports/summary |
+
+## Review Images — Staged Media Pipeline (rev-2a)
+
+Imported review photos are attacker-influenced third-party bytes, so they never reach the public
+bucket directly. The ratified spine (D-REV-2 / D-REV-4, `docs/plan-reviews-import.md`) is
+**private-stage → byte-screen → promote**, and *the moderation gate governs the public object,
+not merely the render*.
+
+**Backend modules** (`backend/src/lib/`):
+
+| Module | Step | Notes |
+|--------|------|-------|
+| `review-media.ts` | STAGE + PROMOTE (sharp-free) | Declared **type-AND-size** gate → write raw bytes to the PRIVATE quarantine (`review-staging/<tenant>/<batch>/<id>/original`). `promoteReviewImage()` copies the normalized derivative to public **only** when review AND image are both approved, writes an `Asset` record, and compensates (deletes the public object) on any post-copy failure. |
+| `review-media-screen.ts` | SCREEN (sharp) | Decode + re-encode to a normalized JPEG; a non-image / SVG / GIF / HEIC is rejected ON BYTES. HEIC (HEVC) fails the real decode attempt and is mapped to the ratified "export as JPEG" message. The **only** module that pulls `sharp`. |
+| `review-media-ingest.ts` | WIRING (sharp) | stage → screen → write `.../normalized.jpg` (the only object promotion may copy). |
+
+**Approval action** — `PUT /reviews/{id}` with `{ action: "approve-image", productId?, imageIndex }`
+(REV2A-INFRA-SURFACE option B: rides the existing handler additively; no dedicated Lambda/route,
+same EDITOR/TENANT_ADMIN roles):
+
+- Approval is **derived from the tenant-scoped review row**, never the client body.
+- **Ordering contract:** the **review record must already be `approved`** before any of its images
+  can be approved. `approve-image` on a still-`pending` review is refused with `409` and leaves the
+  image entry untouched — it never flips an image to `approved` without promoting it. (Without this,
+  an image could reach `approved` while its `assetKey` is still the private staging key: promotion
+  is skipped because the review is not approved, a later review approval does not retroactively
+  promote, and a repeat `approve-image` is refused because the image is no longer `pending` — a
+  permanently unpromotable image.) The moderator therefore approves the review first (default
+  field-update path, `status → approved`), then approves each image, which promotes it.
+- Transition is strictly **pending → approved** for the image entry; a `hidden` (or otherwise
+  non-pending) entry is refused with `409`.
+- On promotion the `ReviewImage.assetKey` is replaced with the **public S3 object KEY** (never a
+  URL; the URL is derived at render via `${CDN_URL}/${key}`, served as a raw asset URL — never
+  `next/image`, per the opennext-1 parking rule).
+- A per-image **optimistic-concurrency guard** pins the entry's own `status` + `assetKey` and the
+  review `status`. The final write updates **only the targeted element's document paths**
+  (`images[index].status`, and `images[index].assetKey` when promoted) — **never** a full-array
+  `SET images = …` replacement. A full-array write is last-writer-wins over every sibling, so a
+  concurrent approval of a *different* index would restore this entry to its stale pending/staging
+  snapshot and orphan the first promotion; element-path updates of distinct indices touch disjoint
+  attributes and are applied independently. If the final entry update fails for **any** reason after
+  the object was promoted — a lost concurrency race on the same index
+  (`ConditionalCheckFailedException` → `409`) **or** a non-conditional fault (throttle / network /
+  IAM → `500`) — the promoted public object **and** its `ASSET#` record are rolled back before the
+  error is returned. No double-copy, no orphan on any post-copy failure.
+
+**Infra**: one S3 lifecycle rule expires `review-staging/` after 30 days (`infra/lib/uploads.ts`).
+The moderation function gets least-privilege S3 grants — on the PUBLIC bucket, exactly
+`s3:PutObject`/`s3:GetObject`/`s3:DeleteObject` (CopyObject dest, HeadObject, rollback delete) wired
+in the nested stack; on the PRIVATE bucket, a lone `s3:GetObject` scoped to `review-staging/*`
+(CopyObject source) wired in the parent stack (composition root). Neither uses `grantReadWrite`/
+`grantRead`, whose bucket-list / abort / tagging / retention / legal-hold / version-delete
+convenience set is refused; the boundary is pinned by name in `infra/test/amodx-stack.test.ts`
+(`rev2a-iam`). `sharp` is pinned to `>=0.35.0` (patched family) in `backend/package.json`.
 
 ## Product Availability Filtering
 

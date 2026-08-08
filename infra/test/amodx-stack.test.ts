@@ -566,6 +566,133 @@ describe('cloudfront:CreateInvalidation blast radius', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
+// (rev2a) Private-bucket quarantine lifecycle
+//     Ratified by `rev-2a` (D-REV-2 mitigation, plan-reviews-import.md). Raw imported review
+//     media is staged under the `review-staging/` prefix on the PRIVATE assets bucket; this ONE
+//     lifecycle rule is the abandoned-import cleanup. Pinned here so a synth that drops or
+//     re-scopes the rule fails by name rather than silently letting untrusted third-party bytes
+//     accumulate forever. Prefix is a hard contract with backend/src/lib/review-media.ts.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('PrivateAssetsBucket — review-staging quarantine lifecycle', () => {
+    /** The one S3 bucket whose logical id contains `PrivateAssetsBucket`. */
+    function privateBucketProps(): any {
+        const found = Object.entries(template.findResources('AWS::S3::Bucket')).filter(([id]) =>
+            id.includes('PrivateAssetsBucket'),
+        );
+        if (found.length !== 1) {
+            throw new Error(`expected 1 PrivateAssetsBucket, found ${found.length}`);
+        }
+        return (found[0][1] as any).Properties;
+    }
+
+    test('(rev2a) EXACTLY one 30-day expiry rule on the review-staging/ prefix, enabled', () => {
+        // Bounded on purpose: exactly one rule, on exactly the quarantine prefix, so this cannot
+        // be read as blessing a blanket bucket expiry (product PDFs/zips must NOT expire).
+        const rules = privateBucketProps().LifecycleConfiguration?.Rules as any[] | undefined;
+        expect(rules).toBeDefined();
+        expect(rules).toHaveLength(1);
+
+        const rule = rules![0];
+        expect(rule.Status).toBe('Enabled');
+        expect(rule.Prefix).toBe('review-staging/');
+        expect(rule.ExpirationInDays).toBe(30);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (rev2a-iam) UpdateReviewFunc — least-privilege S3 for the promotion path + env wiring
+//     Ratified by `rev-2a` (REV2A-INFRA-SURFACE = option B) and review-2's blocking least-privilege
+//     finding. The review moderation handler's `action: "approve-image"` path promotes a
+//     byte-screened derivative PRIVATE→PUBLIC (backend/src/lib/review-media.ts). It issues EXACTLY
+//     three public-bucket object operations — CopyObject (`s3:PutObject`), HeadObject (`s3:GetObject`)
+//     and the rollback DeleteObject (`s3:DeleteObject`) — and ONE private read, `s3:GetObject` on the
+//     CopyObject source under `review-staging/`. It must hold those and NOTHING WIDER. The prior
+//     `grantReadWrite`/`grantRead` convenience calls also conferred bucket-list, GetBucket*, multipart
+//     abort, tagging, retention, legal-hold and version-delete — a blast radius over every tenant's
+//     assets if this handler is ever exploited. These assertions pin the boundary by NAME so a future
+//     convenience grant fails HERE rather than silently reopening it.
+//     Prose: docs/slices/rev-2a-staged-media-pipeline.md § "DoD / evidence".
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('UpdateReviewFunc — rev-2a promotion least-privilege', () => {
+    /** The one review-moderation Lambda across the stack tree (it lives in the CommerceApi nested stack). */
+    function updateReviewFunc(): { template: Template; roleLogicalId: string; props: any } {
+        for (const t of allTemplates) {
+            const fns = Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) =>
+                id.includes('UpdateReviewFunc'),
+            );
+            if (fns.length === 0) continue;
+            if (fns.length !== 1) throw new Error(`expected 1 UpdateReviewFunc, found ${fns.length}`);
+            const props = (fns[0][1] as any).Properties;
+            // `Role` is `Fn::GetAtt [<RoleLogicalId>, Arn]`; the default policy references it by Ref.
+            const roleLogicalId = props.Role['Fn::GetAtt'][0] as string;
+            return { template: t, roleLogicalId, props };
+        }
+        throw new Error('UpdateReviewFunc not found in any template');
+    }
+
+    /** Every S3 statement (action/resource normalized) on the UpdateReviewFunc role, in its own template. */
+    function s3Statements(): Array<{ actions: string[]; resources: string[] }> {
+        const { template: t, roleLogicalId } = updateReviewFunc();
+        const out: Array<{ actions: string[]; resources: string[] }> = [];
+        for (const [, policy] of Object.entries(t.findResources('AWS::IAM::Policy'))) {
+            const roles = ((policy as any).Properties.Roles as any[]).map((r) => String(r.Ref));
+            if (!roles.includes(roleLogicalId)) continue;
+            for (const s of (policy as any).Properties.PolicyDocument.Statement as any[]) {
+                const actions: string[] = (Array.isArray(s.Action) ? s.Action : [s.Action]).map(String);
+                if (!actions.some((a) => a.startsWith('s3:'))) continue;
+                const resources = (Array.isArray(s.Resource) ? s.Resource : [s.Resource]).map(
+                    (r: unknown) => JSON.stringify(r),
+                );
+                out.push({ actions, resources });
+            }
+        }
+        return out;
+    }
+
+    test('(rev2a-iam-1) the ONLY S3 actions on this role are GetObject/PutObject/DeleteObject', () => {
+        // The strongest single check: the UNION of every S3 action across every statement attached to
+        // this role. A future `grantReadWrite`/`grantRead` — or a fourth hand-written statement adding
+        // `s3:ListBucket` — grows this set and fails here. Collected WITHOUT de-dup across statements
+        // first, then set-reduced, so the assertion is about the granted VOCABULARY, not statement count.
+        const granted = [
+            ...new Set(s3Statements().flatMap((s) => s.actions).filter((a) => a.startsWith('s3:'))),
+        ].sort();
+        expect(granted).toEqual(['s3:DeleteObject', 's3:GetObject', 's3:PutObject']);
+    });
+
+    test('(rev2a-iam-2) private read is a lone s3:GetObject scoped to the review-staging/ prefix', () => {
+        // CopyObject's SOURCE. One action, and prefix-scoped so a defect here cannot read the private
+        // bucket's product PDFs/zips — only quarantined review media.
+        const priv = s3Statements().filter(
+            (s) => s.actions.length === 1 && s.actions[0] === 's3:GetObject',
+        );
+        expect(priv).toHaveLength(1);
+        expect(priv[0].resources).toHaveLength(1);
+        expect(priv[0].resources[0]).toContain('review-staging/*');
+    });
+
+    test('(rev2a-iam-3) public grant is EXACTLY Put/Get/Delete, object-scoped, NOT under review-staging', () => {
+        // CopyObject dest (Put), HeadObject (Get), rollback (Delete). Object-scoped (`/*`) because the
+        // promoted key is `<tenantId>/<assetId>.jpg`, not under the staging prefix.
+        const pub = s3Statements().filter((s) => s.actions.length === 3);
+        expect(pub).toHaveLength(1);
+        expect([...pub[0].actions].sort()).toEqual(['s3:DeleteObject', 's3:GetObject', 's3:PutObject']);
+        expect(pub[0].resources).toHaveLength(1);
+        expect(pub[0].resources[0]).toContain('/*');
+        expect(pub[0].resources[0]).not.toContain('review-staging');
+    });
+
+    test('(rev2a-iam-4) PRIVATE_BUCKET, UPLOADS_BUCKET and UPLOADS_CDN_URL are wired on the function', () => {
+        // The promotion code reads all three from process.env (backend/src/reviews/update.ts:37-39);
+        // a missing one is a runtime crash, invisible to the IAM checks above.
+        const vars = updateReviewFunc().props.Environment.Variables;
+        for (const key of ['PRIVATE_BUCKET', 'UPLOADS_BUCKET', 'UPLOADS_CDN_URL']) {
+            expect(Object.prototype.hasOwnProperty.call(vars, key)).toBe(true);
+        }
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
 // (e) EventBridge schedules
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('Cache-flush schedules', () => {
