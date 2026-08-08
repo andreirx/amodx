@@ -499,4 +499,61 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.match(res.header("cache-control"), /no-store/);
         assert.ok(String(res.header("set-cookie")).includes("amodx_ref=partner-a"));
     });
+
+    // ── ROW (g4) ─────────────────────────────────────────────────────────────────────────
+    // STATIC-EP: the anonymous credential-free write proxies enforce the STATIC-1 isolation
+    // barrier (`renderer/src/lib/origin-guard.ts` → `isFirstPartyWrite`) on the BUILT + served
+    // path, not just as an imported function in the route-level unit test. This is the
+    // evidence-upgrade the reviewer's rider asked for: the guard is exercised inside the real
+    // `next start` artifact with real request headers, so a regression that removes the guard
+    // call — or that admits an opaque-origin write — fails the serving contract.
+    //
+    // SCOPE OF THIS EVIDENCE (do not over-claim): this harness runs `next start` DIRECTLY, with
+    // no CloudFront in front of it, so it does NOT cover the CloudFront `Origin`-forwarding
+    // transport boundary — whether the edge actually forwards `Origin` to the origin. That
+    // allowlist is pinned separately by the infra assertion `(h)` in `amodx-stack.test.ts`.
+    // What these cases cover is the guard's OWN decision as it runs in the served renderer.
+    //
+    // A rejected write is a 403 with the guard's body BEFORE any tenant/backend hop. An
+    // accepted (same-origin) write PASSES the guard and proceeds; in this hermetic harness
+    // `API_URL` is unset, so it then fails downstream (config/parse) — the point is only that
+    // it is NOT the guard's 403. Asserting `!== 403` isolates exactly the guard's own decision
+    // without coupling to the proxy's downstream behaviour.
+    const HARDENED_WRITE_PROXIES = ["/api/consent", "/api/contact", "/api/leads"];
+    const REJECTION_BODY = "Cross-origin write rejected";
+
+    for (const route of HARDENED_WRITE_PROXIES) {
+        test(`(g4) ${route} REJECTS a null/cross-origin POST at the barrier (403)`, async () => {
+            const res = await request({
+                port: server.port,
+                path: route,
+                host: FIXTURE_HOST,
+                method: "POST",
+                // Opaque sandboxed-iframe shape: Origin: null, cross-site fetch metadata.
+                headers: {
+                    "content-type": "application/json",
+                    origin: "null",
+                    "sec-fetch-site": "cross-site",
+                },
+            });
+            assert.equal(res.status, 403, `${route} must reject the opaque-origin write`);
+            assert.match(res.body, new RegExp(REJECTION_BODY));
+        });
+
+        test(`(g4) ${route} ACCEPTS a same-origin POST past the barrier (not 403)`, async () => {
+            const res = await request({
+                port: server.port,
+                path: route,
+                host: FIXTURE_HOST,
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    origin: `https://${FIXTURE_HOST}`,
+                    "sec-fetch-site": "same-origin",
+                },
+            });
+            assert.notEqual(res.status, 403, `${route} must let the first-party write past the guard`);
+            assert.doesNotMatch(res.body, new RegExp(REJECTION_BODY));
+        });
+    }
 });

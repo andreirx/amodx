@@ -136,12 +136,15 @@ that shipped to production precisely because no assertion covered the list:
 - `(g)` — `_next/image*` is keyed by a dedicated `ImageCachePolicy` on exactly `url,w,q`, the
   optimizer's required query-string inputs, and the behavior must actually reference that
   policy. Distinct from `(a2)`, which pins the *default* behavior's seven-parameter allowlist.
-- `(h)` — `RendererOriginPolicy` forwards exactly ten headers, `x-revalidation-token`
-  (`cache-6`) plus `x-prerender-revalidate` + `x-isr` (`cache-7`, the open-next background-ISR
-  revalidation protocol) included. Distinct from `(a1)`, which pins the six headers in the cache
+- `(h)` — `RendererOriginPolicy` forwards exactly eleven headers: `x-revalidation-token`
+  (`cache-6`), `x-prerender-revalidate` + `x-isr` (`cache-7`, the open-next background-ISR
+  revalidation protocol), and `Origin` (`STATIC-EP`, the anonymous-write-endpoint hardening
+  transport dependency — the browser `Origin` that `renderer/src/lib/origin-guard.ts` needs to
+  reject cross-site/opaque-origin writes; CloudFront stripped it, so the guard was inert until this
+  entry existed). Distinct from `(a1)`, which pins the six headers in the cache
   *key*: `(a1)` governs which stored response a viewer gets, `(h)` governs what the origin is
-  allowed to see at all, on hits and misses alike. `cache-7` extended the list `(h)` pins; it did
-  not add a new assertion, so the count of 17 above is unchanged.
+  allowed to see at all, on hits and misses alike. `cache-7` then `STATIC-EP` each extended the
+  list `(h)` pins; neither added a new assertion, so the count of 17 above is unchanged.
 
 Rationale: `docs/slices/cache-6-distribution-transport-hotfixes.md`,
 `docs/slices/cache-7-prerender-revalidate-header.md`, and `docs/caching-architecture.md`

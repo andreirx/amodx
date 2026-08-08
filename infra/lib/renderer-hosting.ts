@@ -344,6 +344,16 @@ function handler(event) {
                 'Accept',
                 'Accept-Language',
                 'Content-Type',
+                // slice STATIC-EP. The browser's `Origin` on anonymous credential-free write
+                // POSTs (`/api/consent|contact|leads`). Same transport-defect class as
+                // `x-revalidation-token`/`x-prerender-revalidate` below: `renderer/src/lib/
+                // origin-guard.ts` (`isFirstPartyWrite`) rejects cross-site / opaque-origin
+                // (sandboxed-iframe, `Origin: null`) writes — the STATIC-1 isolation barrier —
+                // but CloudFront STRIPPED `Origin`, so the guard saw `null` on every production
+                // request and fell through to allow (inert). Forwarding it here is what makes
+                // the guard actually run at the edge-fronted origin. This is the origin-REQUEST
+                // policy (transport), NOT the cache-key policy — ZERO cache fragmentation.
+                'Origin',
                 'X-Forwarded-Host',
                 'x-origin-verify',  // Phase 6.1: Origin verification header
                 'x-tenant-id',

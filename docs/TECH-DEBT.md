@@ -762,7 +762,16 @@ from the same `(h)` allowlist, so background ISR regeneration was a no-op for ev
 prod. It was caught by an operator reading CloudWatch, not by any guard; assertion `(h)` was
 updated to ten headers *after* the fact. The consumer this time is a `headers: {...}` literal
 inside open-next's *own bundled source*, i.e. the harder-to-extract side this item already
-flagged. The trigger below stands, now with two data points behind it.
+flagged.
+
+**A third instance arrived (`STATIC-EP`, 2026-08-08), same shape.** `renderer/src/lib/origin-guard.ts`
+(`isFirstPartyWrite`) requires the browser `Origin` header to reject cross-site/opaque-origin writes
+to the anonymous `/api/consent|contact|leads` proxies, but `Origin` was absent from the same `(h)`
+allowlist, so CloudFront stripped it and the guard fell through to *allow* on every production
+request — inert. Unlike `cache-7` this consumer is first-party renderer code (the easy-to-extract
+side), yet it still shipped, because no guard derives the allowlist from it; assertion `(h)` was
+updated to eleven headers *after* the fact. The trigger below stands, now with three data points
+behind it.
 
 `cache-3`'s `probe-cache3-cffunc.mjs` §C is the pattern that would close it — extract both
 sides, fail on divergence. Deliberately not applied here: one of the two consumer sides is a

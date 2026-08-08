@@ -103,3 +103,44 @@ describe("isFirstPartyWrite — REJECTED (cross-site / opaque-origin sandbox wri
         }))).toBe(false);
     });
 });
+
+// STATIC-EP rider: FULL-origin comparison (scheme + host + port), not host-label alone. In
+// production the request carries X-Forwarded-Host (the public https host) and `host` is the
+// Lambda-URL host — so a same-host scheme downgrade or a foreign port is NOT first-party.
+describe("isFirstPartyWrite — REJECTED (full-origin strictness, not host-only)", () => {
+    it("rejects a scheme downgrade: public origin is https, Origin claims http", () => {
+        expect(isFirstPartyWrite(withHeaders({
+            host: "edge.lambda-url.eu-central-1.on.aws", // origin host — never the public host
+            "x-forwarded-host": "acme.test",             // public origin ⇒ https://acme.test
+            origin: "http://acme.test",                  // downgraded scheme
+        }))).toBe(false);
+    });
+
+    it("rejects a foreign port on the same host (https://acme.test:8443)", () => {
+        expect(isFirstPartyWrite(withHeaders({
+            host: "edge.lambda-url.eu-central-1.on.aws",
+            "x-forwarded-host": "acme.test",             // public origin ⇒ https://acme.test (:443)
+            origin: "https://acme.test:8443",
+        }))).toBe(false);
+    });
+
+    it("accepts an explicit default port (https://acme.test:443 == https://acme.test)", () => {
+        // Canonicalisation must treat the default port as equal, or real callers would break.
+        expect(isFirstPartyWrite(withHeaders({
+            host: "edge.lambda-url.eu-central-1.on.aws",
+            "x-forwarded-host": "acme.test",
+            origin: "https://acme.test:443",
+        }))).toBe(true);
+    });
+
+    it("rejects an Origin forged as the Lambda/origin Host when behind CloudFront", () => {
+        // STATIC-EP review-1: on the forwarded path `Host` is the (discoverable) function-URL
+        // origin host, NOT a public origin. An Origin claiming that host must NOT pass — only
+        // X-Forwarded-Host reconstructs the accepted public origin.
+        expect(isFirstPartyWrite(withHeaders({
+            host: "edge.lambda-url.eu-central-1.on.aws",
+            "x-forwarded-host": "acme.test",
+            origin: "https://edge.lambda-url.eu-central-1.on.aws",
+        }))).toBe(false);
+    });
+});

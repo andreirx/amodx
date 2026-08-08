@@ -58,11 +58,12 @@
  * EventBridge rules are byte-identical there.
  *
  * That diff predates `cache-6`, so it says nothing about the two properties `cache-6` added —
- * `ImageCachePolicy` and the eighth `RendererOriginPolicy` header — nor about the ninth and
- * tenth `RendererOriginPolicy` headers `cache-7` added (`x-prerender-revalidate`, `x-isr`).
- * None is domain-shaped (a query-string key and header allowlist entries), so the same argument
- * covers them, but it is an argument here rather than a measurement. Labelled INFERRED, not
- * OBSERVED.
+ * `ImageCachePolicy` and the eighth `RendererOriginPolicy` header — nor about the two
+ * `RendererOriginPolicy` headers `cache-7` added (`x-prerender-revalidate`, `x-isr`), nor about
+ * the `Origin` header `STATIC-EP` added (making eleven, forwarded transport only, in no cache
+ * key). None is domain-shaped (a query-string key and header allowlist entries), so the same
+ * argument covers them, but it is an argument here rather than a measurement. Labelled INFERRED,
+ * not OBSERVED.
  */
 
 import * as fs from 'node:fs';
@@ -436,7 +437,7 @@ describe('Renderer distribution behaviors', () => {
 //     allowed to SEE AT ALL, on hits and misses alike.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('RendererOriginPolicy — what reaches the origin', () => {
-    test('(h) header allowlist is EXACTLY the ten forwarded headers, in order', () => {
+    test('(h) header allowlist is EXACTLY the eleven forwarded headers, in order', () => {
         // `x-revalidation-token` is the entry `cache-6` added, and its absence was a live
         // production defect, not a hypothetical: `backend/src/lib/revalidate.ts` sends it and
         // `renderer/src/app/api/revalidate/route.ts` 401s when it does not equal
@@ -451,14 +452,22 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
         // the origin can be made to see by any viewer, so it needs the same justification the
         // seven originals have.
         //
-        // The last two, `x-prerender-revalidate` + `x-isr`, are `cache-7` — the SAME transport
-        // defect as `x-revalidation-token` above, a rung further along the ISR path. open-next's
+        // `x-prerender-revalidate` + `x-isr` are `cache-7` — the SAME transport defect as
+        // `x-revalidation-token` above, a rung further along the ISR path. open-next's
         // RevalidationFunction sends BOTH on its HEAD re-render (`revalidate.js:25-26` in the
         // installed open-next@3.1.3); the credential authorises a blocking re-render and the
         // `x-isr` marker forces the result to be written back to S3 rather than treated as a
         // throwaway on-demand render (`patchedAsyncStorage.js:9-11`). Stripped, every page logged
         // "Failed to revalidate" and stayed STALE until the nightly flush (OBSERVED, prod). They
         // are TRANSPORT-only, in no cache key — see the `(h)` prose in `renderer-hosting.ts`.
+        //
+        // `Origin` is `STATIC-EP` — the SAME transport-defect class again, this time on the
+        // read/write-endpoint hardening path. `renderer/src/lib/origin-guard.ts` rejects
+        // cross-site / opaque-origin (`Origin: null`, sandboxed-iframe) writes to the anonymous
+        // `/api/consent|contact|leads` proxies; CloudFront stripped `Origin`, so the guard saw
+        // `null` on every production request and allowed it — the guard was INERT until this
+        // entry existed. It is a transport header only, in NO cache key (it is on the origin-
+        // request policy, not `RendererCachePolicy`) → zero cache fragmentation.
         const headers = onlyResource('AWS::CloudFront::OriginRequestPolicy').Properties
             .OriginRequestPolicyConfig.HeadersConfig;
         expect(headers.HeaderBehavior).toBe('whitelist');
@@ -466,6 +475,7 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
             'Accept',
             'Accept-Language',
             'Content-Type',
+            'Origin',
             'X-Forwarded-Host',
             'x-origin-verify',
             'x-tenant-id',

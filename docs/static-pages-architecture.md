@@ -1,11 +1,12 @@
 # Static-HTML Pages — Isolation Architecture (Track STATIC)
 
 Records the **isolation model** and the **anonymous-write-endpoint hardening** delivered by
-slice `static-1` (docs/slices/static-1-isolation-endpoints.md). Design rationale and the
+slice `STATIC-EP` (docs/slices/static-endpoint-hardening.md) — the D-STATIC-1
+endpoint-hardening rider, precondition to the plan's `static-2`. Design rationale and the
 ratified decisions live in `docs/plan-static-html-pages.md` (D-STATIC-1..5, RATIFIED
 2026-08-07). This note is the *as-built* record; the plan is the *why*.
 
-Maturity: **PROTOTYPE**. `static-1` builds only the isolation barrier's contract + its
+Maturity: **PROTOTYPE**. `STATIC-EP` builds only the isolation barrier's contract + its
 precondition (endpoint hardening). Storage/schema (`static-2`), admin upload/preview
 (`static-3`), and the renderer iframe embed (`static-4`) are not built here.
 
@@ -64,14 +65,41 @@ renderer proxy hop, never at the backend. That hop is where the guard had to go.
 ### The guard
 
 `renderer/src/lib/origin-guard.ts` → `isFirstPartyWrite(req)`. Same-origin form POSTs pass
-(the browser sends `Origin: <site-host>` + `Sec-Fetch-Site: same-origin` on every POST);
-cross-site / opaque-origin (`Origin: null`, `Sec-Fetch-Site: cross-site`) fail. Matches the
-public host against **both** `x-forwarded-host` (behind CloudFront) and `host` (local
-`next start`). Non-browser callers (no `Origin`, no `Sec-Fetch-Site`) are allowed — they can
-forge `Origin` anyway, so blocking them buys no isolation against the browser-sandbox threat.
-Full rationale in the module header. Tests: `renderer/test/unit/origin-guard.test.ts`
-(both directions + edges) and `renderer/test/unit/anon-write-endpoints.test.ts` (per-endpoint
-wiring: cross-site → 403 before any backend hop; same-origin → proxied).
+(the browser sends `Origin: <site-origin>` + `Sec-Fetch-Site: same-origin` on every POST);
+cross-site / opaque-origin (`Origin: null`, `Sec-Fetch-Site: cross-site`) fail. It compares the
+**FULL origin — scheme + host + port**, not the host label alone (STATIC-EP reviewer's rider),
+reconstructed from the request: `x-forwarded-host` ⇒ the public origin is `https://…` (CloudFront
+terminates TLS + forces http→https, and `x-forwarded-proto` is *not* on the ORP allowlist so its
+presence is the scheme signal); the bare `host` (local `next start` / harness, never the
+production boundary) accepts either scheme. A scheme downgrade or a foreign port on the same host
+is therefore rejected. Non-browser callers (no `Origin`, no `Sec-Fetch-Site`) are allowed — they
+can forge `Origin` anyway, so blocking them buys no isolation against the browser-sandbox threat.
+Full rationale in the module header.
+
+**Transport dependency (the REVISE-cycle fix).** The guard only sees `Origin` because STATIC-EP
+adds it to the `RendererOriginPolicy` transport allowlist (`infra/lib/renderer-hosting.ts`).
+Before that, CloudFront **stripped** `Origin`, so in production the guard saw `null` on every
+request and fell through to allow — inert (the same defect class as cache-6/7: an
+operationally-required header eaten by the origin-request policy). `Origin` is on the
+origin-**request** policy, **not** the cache-key policy → **zero cache fragmentation** (pinned by
+assertion `(h)` in `infra/test/amodx-stack.test.ts`, now eleven forwarded headers, and documented
+in `docs/caching-architecture.md` § *Origin Request Policy*).
+
+Tests, and exactly what each layer covers:
+
+- `renderer/test/unit/origin-guard.test.ts` — the guard as an imported function: both directions,
+  edges, the full-origin scheme/port strictness cases, **and** the review-1 case that on the
+  forwarded path a `Host`-forged `Origin` (the Lambda/function-URL origin host) is rejected.
+- `renderer/test/unit/anon-write-endpoints.test.ts` — per-endpoint wiring: cross-site → 403 before
+  any backend hop; same-origin → proxied.
+- `renderer/test/serving-contract/contract.test.mjs` row `(g4)` — per hardened endpoint, a
+  `null`/cross-origin POST rejected (403) and a same-origin POST admitted past the guard,
+  exercised inside the **built + served** renderer (`next start`). This proves the guard runs in
+  the real artifact — it does **not** prove CloudFront forwards `Origin`, because the harness runs
+  `next start` with no edge in front of it.
+- `infra/test/amodx-stack.test.ts` assertion `(h)` — the CloudFront `Origin`-forwarding transport
+  boundary itself: that `Origin` is on the `RendererOriginPolicy` allowlist (now eleven headers).
+  This is the layer that pins the edge behaviour the serving suite cannot see.
 
 ### Per-endpoint disposition (full set — `find renderer/src/app/api -type f`, OBSERVED 2026-08-08)
 
@@ -104,5 +132,10 @@ The audit named consent/contact/ref/leads; the grep confirmed those four **plus*
   `ReferralCapture` beacon.
 - **In-frame phishing (residual (ii))** is a content-trust concern owned by `D-STATIC-5`,
   not a session-boundary breach — out of scope here.
-- **No infra changed.** No endpoint fix needed a config change; the guard is pure renderer
-  code. The asset-origin CORS pair (variant a1) is a `static-2`+spike concern, not `static-1`.
+- **One infra change — authorised by the REVISE cycle (2026-08-08, `static_ep_origin_transport`
+  = option A, operator-resolved).** The slice's "no infra unless an endpoint fix needs config →
+  STOP" clause fired correctly: the guard was inert because CloudFront stripped `Origin`. The
+  resolution adds `Origin` to the `RendererOriginPolicy` header allowlist (transport only, **not**
+  the cache key → zero cache fragmentation) so the guard actually runs. This is the sole infra
+  edit; the asset-origin CORS pair (variant a1) remains a `static-2`+spike concern, not part of
+  STATIC-EP.

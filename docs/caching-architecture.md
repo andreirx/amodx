@@ -1017,11 +1017,14 @@ and in the installed open-next@3.1.3 source, is:
   serving from the 30-day `stale-while-revalidate` window until the nightly `/*` flush. That is
   the reported symptom end to end, and the slice's production evidence stands.
 
-**State after the fix (`cache-7`).** `'x-prerender-revalidate'` and `'x-isr'` are the ninth and
-tenth entries of `RendererOriginPolicy`. Like `x-revalidation-token`, they are in **no** cache
+**State after the fix (`cache-7`).** `'x-prerender-revalidate'` and `'x-isr'` were the ninth and
+tenth entries added to `RendererOriginPolicy`. Like `x-revalidation-token`, they are in **no** cache
 key: both are markers/credentials that must not partition entries, and the revalidation HEAD
 only reaches the origin on the stale-revalidation fetch anyway. Pinned by assertion `(h)` in
-`infra/test/amodx-stack.test.ts` (now ten headers, order-exact).
+`infra/test/amodx-stack.test.ts` — ten headers as of `cache-7`; **`STATIC-EP` (2026-08-08) later
+added `Origin` as the eleventh** (the anonymous-write-endpoint hardening transport dependency —
+see § *Origin Request Policy* and the `(h)` assertion), so the allowlist `(h)` pins is now eleven
+headers, order-exact.
 
 Post-deploy check (`NOT RUN`, operator): publish/update a post, then watch the
 RevalidationFunction logs go quiet (no "Failed to revalidate"); a listing/tag page that read
@@ -1778,6 +1781,7 @@ Lambda is concerned.
 | Header | Why it is forwarded |
 |---|---|
 | `Accept`, `Accept-Language`, `Content-Type` | ordinary content negotiation / request bodies |
+| `Origin` | **added by `STATIC-EP`.** The browser `Origin` on anonymous credential-free write POSTs (`/api/consent|contact|leads`). `renderer/src/lib/origin-guard.ts` (`isFirstPartyWrite`) rejects cross-site / opaque-origin (sandboxed-iframe, `Origin: null`) writes — the STATIC-1 isolation barrier — but CloudFront stripped `Origin`, so the guard saw `null` and was inert. Same transport-defect class as `x-revalidation-token` (D1). Transport only; in **no** cache key → zero cache fragmentation. |
 | `X-Forwarded-Host` | how the origin resolves the tenant at all (§ *Multi-Tenant Isolation*) |
 | `x-origin-verify` | origin trust — the renderer rejects requests without it (Phase 6.1) |
 | `x-tenant-id`, `x-automation-key` | admin/automation calls proxied through the renderer |
