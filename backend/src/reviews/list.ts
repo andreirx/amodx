@@ -14,12 +14,22 @@ import { requireRole } from "../auth/policy.js";
  * `scope` is projected so the admin moderation UI can distinguish a business (site) review from a
  * product review even when `productId` is absent, and route the subsequent approve/delete call to
  * the correct sort-key namespace (rev-1 D-REV-5).
+ *
+ * rev-3 adds two projected fields the moderation UI needs and nothing else read before:
+ *   • `images` — the per-image METADATA array (assetKey + per-image status; rev-1 ReviewImageSchema).
+ *     The moderation UI renders per-image approve tiles and their disposition from it. Bounded by
+ *     MAX_REVIEW_IMAGES (~12 entries, ~2 KB each), so it stays well within the projected-item size.
+ *   • `importBatchId` — so the UI can filter reviews by import batch (set only on imported reviews).
+ * Both are additive to the SAME PK+begins_with Query — no new capability, no Scan.
  */
-type ReviewListItem = Pick<Review, "id" | "productId" | "scope" | "authorName" | "rating" | "content" | "source" | "status" | "createdAt">;
+type ReviewListItem = Pick<
+    Review,
+    "id" | "productId" | "scope" | "authorName" | "rating" | "content" | "source" | "status" | "createdAt" | "images" | "importBatchId"
+>;
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
-const PROJECTION = "id, productId, #sc, authorName, rating, content, source, #s, createdAt";
+const PROJECTION = "id, productId, #sc, authorName, rating, content, source, #s, createdAt, images, importBatchId";
 const NAMES = { "#s": "status", "#sc": "scope" } as const;
 
 async function queryPrefix(tenantId: string, prefix: string): Promise<ReviewListItem[]> {

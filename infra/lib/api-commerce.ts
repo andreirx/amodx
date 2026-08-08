@@ -442,6 +442,13 @@ export class CommerceApi extends NestedStack {
         // PUT /reviews/{id} carries BOTH the field update and the rev-2a `action: "approve-image"`
         // promotion action on one contract — no separate route (REV2A-INFRA-SURFACE option B).
         addRoute('UpdateReview', 'PUT /reviews/{id}', updateReviewFunc);
+        // rev-3 moderator VIEW route: a short-lived presigned GET for a review image (the PRIVATE
+        // staged original of a pending photo, or the public CDN URL once approved). It rides the SAME
+        // updateReviewFunc — which already carries PRIVATE_BUCKET env, `s3:GetObject` on
+        // `review-staging/*`, and UPLOADS_CDN_URL (rev-2a composition-root wiring) — so NO new
+        // deployable unit and NO new grant: the ONLY infra rev-3 adds is this route. The handler
+        // dispatches on the GET method to bypass withInvalidation (a view is not a mutation).
+        addRoute('ReviewImageViewUrl', 'GET /reviews/{id}/image-view-url', updateReviewFunc);
         addRoute('DeleteReview', 'DELETE /reviews/{id}', deleteReviewFunc);
         addRoute('PublicListReviews', 'GET /public/reviews/{productId}', publicListReviewsFunc, { noAuth: true });
 

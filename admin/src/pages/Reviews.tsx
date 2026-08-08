@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Star, Check, EyeOff, Trash2, Plus, Upload } from "lucide-react";
+import { Loader2, Star, Check, EyeOff, Trash2, Plus, Upload, Image as ImageIcon } from "lucide-react";
 import type { ReviewImportReport } from "@amodx/shared";
 import { buildImportReportView } from "@/lib/importReportView";
 
@@ -20,6 +20,15 @@ export default function Reviews() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState("");
     const [productFilter] = useState("");
+    // rev-3 moderation filters. All applied CLIENT-SIDE over the single list payload: the list
+    // handler returns every review (both scopes) with `scope`, `source`, `importBatchId`, and the
+    // per-image `images` array, so filtering needs no extra query. (Backend `list.ts` does not filter
+    // by status/scope/source; it returns all — see its docstring.)
+    const [scopeFilter, setScopeFilter] = useState("");
+    const [sourceFilter, setSourceFilter] = useState("");
+    const [batchFilter, setBatchFilter] = useState("");
+    // Which reviews have their per-image moderation tiles expanded.
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
     // Create review dialog state
     const [createOpen, setCreateOpen] = useState(false);
@@ -185,6 +194,40 @@ export default function Reviews() {
         }
     }
 
+    // rev-3 PER-IMAGE APPROVE — rides the EXISTING rev-2a promotion action on PUT /reviews/{id}
+    // (`action: "approve-image"`). The backend gate requires the REVIEW to be approved first and the
+    // image to be pending (pending→approved), then promotes the staged original to the public bucket
+    // and rewrites the entry's assetKey to the public key. We only surface the button when the UI
+    // state already satisfies that gate; a lost race still surfaces the backend's 409 message.
+    async function approveImage(id: string, productId: string | undefined, imageIndex: number) {
+        try {
+            const body: Record<string, unknown> = { action: "approve-image", imageIndex };
+            // Omit productId entirely for site-scope reviews so the backend routes to SITEREVIEW#
+            // (serializing `undefined` would send the string "undefined" — rev-2b finding #1).
+            if (productId) body.productId = productId;
+            await apiRequest(`/reviews/${id}`, { method: "PUT", body: JSON.stringify(body) });
+            loadReviews();
+        } catch (e: any) {
+            alert(e.message);
+        }
+    }
+
+    // rev-3 PER-IMAGE HIDE (REV3-IMG-HIDE-SCOPE = B) — rides `action: "hide-image"` on the same
+    // handler. A pure status flip to `hidden`; no promotion, no review-status gate. Hiding an already
+    // approved (public) image removes it from the site via the public-list status filter. Offered for
+    // any image that is not already hidden. NOTE: hide is terminal w.r.t. approval — approve-image
+    // only accepts pending→approved, so a hidden photo cannot be re-approved (backend contract).
+    async function hideImage(id: string, productId: string | undefined, imageIndex: number) {
+        try {
+            const body: Record<string, unknown> = { action: "hide-image", imageIndex };
+            if (productId) body.productId = productId;
+            await apiRequest(`/reviews/${id}`, { method: "PUT", body: JSON.stringify(body) });
+            loadReviews();
+        } catch (e: any) {
+            alert(e.message);
+        }
+    }
+
     async function handleDelete(id: string, productId?: string) {
         if (!confirm("Are you sure you want to delete this review?")) return;
         try {
@@ -241,8 +284,45 @@ export default function Reviews() {
         );
     }
 
+    // Scope distinguishes a business (site) review from a product review — a site review has no
+    // product (rev-1 D-REV-5). Site reviews are "listed distinctly" via this badge + the scope filter.
+    function scopeBadge(scope?: string) {
+        const isSite = scope === "site";
+        return (
+            <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${isSite ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                {isSite ? "site" : "product"}
+            </span>
+        );
+    }
+
+    // Per-image disposition (rev-1 ReviewImageSchema.status): pending | approved | hidden. The schema
+    // has no "rejected" state, so none is shown (a review-image is pending, approved, or hidden).
+    function imageStatusBadge(status: string) {
+        const colors: Record<string, string> = {
+            approved: "bg-primary/10 text-primary",
+            pending: "bg-muted text-muted-foreground",
+            hidden: "bg-secondary text-secondary-foreground",
+        };
+        return (
+            <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${colors[status] || "bg-muted text-muted-foreground"}`}>
+                {status}
+            </span>
+        );
+    }
+
     if (!currentTenant) return <div className="p-8">Select a site.</div>;
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+
+    // Distinct import batches present in the current payload — populates the batch filter dropdown.
+    const batchIds = Array.from(new Set(reviews.map((r) => r.importBatchId).filter(Boolean))) as string[];
+
+    // Client-side moderation filters (status + scope + source + importBatch), all AND-combined.
+    const filtered = reviews.filter((r) =>
+        (!statusFilter || r.status === statusFilter) &&
+        (!scopeFilter || (r.scope || "product") === scopeFilter) &&
+        (!sourceFilter || r.source === sourceFilter) &&
+        (!batchFilter || r.importBatchId === batchFilter),
+    );
 
     return (
         <div className="p-8 space-y-6">
@@ -455,9 +535,9 @@ export default function Reviews() {
                 </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
                 <Select value={statusFilter} onValueChange={v => setStatusFilter(v === "_all" ? "" : v)}>
-                    <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                    <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="_all">All Statuses</SelectItem>
                         <SelectItem value="approved">Approved</SelectItem>
@@ -465,6 +545,35 @@ export default function Reviews() {
                         <SelectItem value="hidden">Hidden</SelectItem>
                     </SelectContent>
                 </Select>
+                <Select value={scopeFilter} onValueChange={v => setScopeFilter(v === "_all" ? "" : v)}>
+                    <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Scopes" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="_all">All Scopes</SelectItem>
+                        <SelectItem value="product">Product</SelectItem>
+                        <SelectItem value="site">Site</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={sourceFilter} onValueChange={v => setSourceFilter(v === "_all" ? "" : v)}>
+                    <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Sources" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="_all">All Sources</SelectItem>
+                        <SelectItem value="internal">Internal</SelectItem>
+                        <SelectItem value="google">Google</SelectItem>
+                        <SelectItem value="imported">Imported</SelectItem>
+                        <SelectItem value="manual">Manual</SelectItem>
+                    </SelectContent>
+                </Select>
+                {batchIds.length > 0 && (
+                    <Select value={batchFilter} onValueChange={v => setBatchFilter(v === "_all" ? "" : v)}>
+                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="All Import Batches" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="_all">All Import Batches</SelectItem>
+                            {batchIds.map((b) => (
+                                <SelectItem key={b} value={b}>{b}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
             </div>
 
             <Card>
@@ -472,25 +581,34 @@ export default function Reviews() {
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                <TableHead>Scope</TableHead>
                                 <TableHead>Product ID</TableHead>
                                 <TableHead>Author</TableHead>
                                 <TableHead>Rating</TableHead>
                                 <TableHead>Content</TableHead>
                                 <TableHead>Source</TableHead>
+                                <TableHead>Photos</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {reviews.map((r) => (
-                                <TableRow key={r.id}>
+                            {filtered.map((r) => {
+                              const images: any[] = Array.isArray(r.images) ? r.images : [];
+                              const isOpen = !!expanded[r.id];
+                              return (
+                                <Fragment key={r.id}>
+                                <TableRow>
+                                    <TableCell>
+                                        {scopeBadge(r.scope)}
+                                    </TableCell>
                                     <TableCell className="text-sm font-mono text-muted-foreground">
                                         {/* Site-scope (business) reviews have no product — imported
                                             business reviews (rev-2b) land here under SITEREVIEW#. */}
                                         {r.productId || (r.scope === "site" ? "— (site)" : "—")}
                                     </TableCell>
                                     <TableCell className="font-medium">
-                                        {r.author || "Anonymous"}
+                                        {r.author || r.authorName || "Anonymous"}
                                     </TableCell>
                                     <TableCell>
                                         {renderRating(r.rating)}
@@ -504,6 +622,21 @@ export default function Reviews() {
                                     </TableCell>
                                     <TableCell>
                                         {sourceBadge(r.source)}
+                                    </TableCell>
+                                    <TableCell>
+                                        {images.length > 0 ? (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 px-2 text-xs"
+                                                onClick={() => setExpanded((e) => ({ ...e, [r.id]: !e[r.id] }))}
+                                            >
+                                                <ImageIcon className="mr-1 h-3.5 w-3.5" />
+                                                {images.length} {isOpen ? "▲" : "▼"}
+                                            </Button>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">—</span>
+                                        )}
                                     </TableCell>
                                     <TableCell>
                                         {statusBadge(r.status)}
@@ -566,11 +699,47 @@ export default function Reviews() {
                                         </div>
                                     </TableCell>
                                 </TableRow>
-                            ))}
-                            {reviews.length === 0 && (
+                                {isOpen && images.length > 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={9} className="bg-muted/30">
+                                            {/* PER-IMAGE moderation tiles. Thumbnails are fetched via the
+                                                presigned-GET view endpoint (staged private original for a
+                                                pending photo; public CDN URL once approved). Approve rides
+                                                the rev-2a promotion action; it is only offered when the review
+                                                is approved AND the image is pending — the backend gate. Hide
+                                                (rev-3 hide-image) is offered for any non-hidden image; it is a
+                                                pure status flip that pulls the photo from the public list. */}
+                                            {r.status !== "approved" && (
+                                                <p className="mb-2 text-xs text-muted-foreground">
+                                                    Approve the review first to enable per-photo approval (photos
+                                                    are promoted to the public bucket only after the review is approved).
+                                                </p>
+                                            )}
+                                            <div className="flex flex-wrap gap-4 py-2">
+                                                {images.map((img, i) => (
+                                                    <ImageTile
+                                                        key={i}
+                                                        reviewId={r.id}
+                                                        productId={r.productId}
+                                                        imageIndex={i}
+                                                        image={img}
+                                                        reviewApproved={r.status === "approved"}
+                                                        onApprove={() => approveImage(r.id, r.productId, i)}
+                                                        onHide={() => hideImage(r.id, r.productId, i)}
+                                                        imageStatusBadge={imageStatusBadge}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                </Fragment>
+                              );
+                            })}
+                            {filtered.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                                        No reviews yet.
+                                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                                        {reviews.length === 0 ? "No reviews yet." : "No reviews match the current filters."}
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -578,6 +747,93 @@ export default function Reviews() {
                     </Table>
                 </CardContent>
             </Card>
+        </div>
+    );
+}
+
+/**
+ * One per-image moderation tile (rev-3). A pending review photo is a PRIVATE staged original that
+ * has no public URL, so the thumbnail is fetched lazily from the presigned-GET view endpoint
+ * (GET /reviews/{id}/image-view-url). Once approved the same endpoint returns the public CDN URL.
+ *
+ * Approve is offered ONLY when the review is approved AND this image is pending — mirroring the
+ * backend gate (rev-2a): approving promotes the staged original to the public bucket and rewrites
+ * the entry's assetKey. Hide (rev-3 hide-image, REV3-IMG-HIDE-SCOPE = B) is offered for any image
+ * that is not already hidden — a pure status flip that removes the photo from the public list.
+ */
+function ImageTile(props: {
+    reviewId: string;
+    productId?: string;
+    imageIndex: number;
+    image: { status?: string; alt?: string };
+    reviewApproved: boolean;
+    onApprove: () => void;
+    onHide: () => void;
+    imageStatusBadge: (status: string) => React.ReactNode;
+}) {
+    const { reviewId, productId, imageIndex, image, reviewApproved, onApprove, onHide, imageStatusBadge } = props;
+    const [viewUrl, setViewUrl] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const qs = `imageIndex=${imageIndex}${productId ? `&productId=${encodeURIComponent(productId)}` : ""}`;
+        apiRequest(`/reviews/${reviewId}/image-view-url?${qs}`)
+            .then((res: { viewUrl?: string }) => {
+                if (!cancelled) setViewUrl(res.viewUrl ?? null);
+            })
+            .catch((e: any) => {
+                if (!cancelled) setError(e.message);
+            });
+        return () => { cancelled = true; };
+        // Re-fetch when the image transitions (its assetKey/status changes on approval).
+    }, [reviewId, productId, imageIndex, image.status]);
+
+    const status = image.status || "pending";
+    const canApprove = reviewApproved && status === "pending";
+    // Hide has no review-status gate (the backend permits it for any review status); offered for any
+    // image that is not already hidden.
+    const canHide = status !== "hidden";
+
+    return (
+        <div className="w-32 space-y-1">
+            <div className="flex h-32 w-32 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+                {viewUrl ? (
+                    // Raw <img>, never next/image (this is the admin SPA; opennext-1 is renderer-only).
+                    <img src={viewUrl} alt={image.alt || `Review photo ${imageIndex + 1}`} className="h-full w-full object-cover" />
+                ) : error ? (
+                    <span className="px-1 text-center text-[10px] text-destructive" title={error}>Preview unavailable</span>
+                ) : (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+            </div>
+            <div className="flex items-center justify-between">
+                {imageStatusBadge(status)}
+                <div className="flex items-center gap-0.5">
+                    {canApprove && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-primary hover:text-primary/80"
+                            title="Approve photo"
+                            onClick={onApprove}
+                        >
+                            <Check className="h-3.5 w-3.5" />
+                        </Button>
+                    )}
+                    {canHide && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            title="Hide photo"
+                            onClick={onHide}
+                        >
+                            <EyeOff className="h-3.5 w-3.5" />
+                        </Button>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

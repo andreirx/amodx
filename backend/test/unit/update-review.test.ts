@@ -363,3 +363,106 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         expect(res.statusCode).toBe(400);
     });
 });
+
+describe("PUT /reviews/{id} — action: hide-image", () => {
+    // rev-3 REV3-IMG-HIDE-SCOPE = B: a PURE per-image status flip to `hidden`. NO S3, NO promotion,
+    // NO assetKey rewrite — the counterpart to approve-image. Removal from the public site is the
+    // public-list status filter's job (proven in reviews-public-list.test.ts), not an S3 delete.
+
+    it("hides a PENDING image: status→hidden on the element path only, no S3, no array clobber", async () => {
+        ddbmock.on(GetCommand).resolves({ Item: reviewItem("approved", "pending") }); // review approved, image pending
+        ddbmock.on(UpdateCommand).resolves({});
+
+        const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
+        expect(res.statusCode).toBe(200);
+        const body = JSON.parse(res.body);
+        expect(body.message).toBe("Image hidden");
+        expect(body.changed).toBe(true);
+        expect(body.previousStatus).toBe("pending");
+
+        // Pure status flip — no S3 at all.
+        expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
+        expect(s3mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+
+        const updates = ddbmock.commandCalls(UpdateCommand);
+        expect(updates).toHaveLength(1);
+        const input = updates[0].args[0].input as any;
+        // Writes ONLY the targeted element's status path; never a whole `:images` array; never assetKey.
+        expect(input.UpdateExpression).toContain("#images[0].#status = :hiddenImageStatus");
+        expect(input.UpdateExpression).not.toContain("assetKey");
+        expect(input.ExpressionAttributeValues[":images"]).toBeUndefined();
+        expect(input.ExpressionAttributeValues[":hiddenImageStatus"]).toBe("hidden");
+        // Per-image concurrency guard pins the entry's prior status.
+        expect(input.ConditionExpression).toContain("#images[0].#status = :priorImageStatus");
+        expect(input.ExpressionAttributeValues[":priorImageStatus"]).toBe("pending");
+    });
+
+    it("hides an ALREADY-PROMOTED (approved, public-key) image → status→hidden, no S3 (public-list stops emitting it)", async () => {
+        // The "if already promoted, hidden means the public list stops emitting it" case. Hide is a
+        // status flip only — the public object is NOT deleted (ratified minimal-action consequence).
+        ddbmock.on(GetCommand).resolves({ Item: reviewItem("approved", "approved", "t1/promoted-abc.jpg") });
+        ddbmock.on(UpdateCommand).resolves({});
+
+        const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
+        expect(res.statusCode).toBe(200);
+        expect(JSON.parse(res.body).previousStatus).toBe("approved");
+        expect(s3mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+
+        const input = ddbmock.commandCalls(UpdateCommand)[0].args[0].input as any;
+        expect(input.ExpressionAttributeValues[":hiddenImageStatus"]).toBe("hidden");
+        expect(input.ExpressionAttributeValues[":priorImageStatus"]).toBe("approved");
+    });
+
+    it("hides an image on a NON-approved review (no review-status gate — unlike approve-image)", async () => {
+        // A moderator can pull any photo regardless of the review's own status; hide has no ordering
+        // gate because it never promotes.
+        ddbmock.on(GetCommand).resolves({ Item: reviewItem("pending", "pending") });
+        ddbmock.on(UpdateCommand).resolves({});
+        const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
+        expect(res.statusCode).toBe(200);
+        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(1);
+    });
+
+    it("IDEMPOTENT: an already-hidden image no-ops with no write", async () => {
+        ddbmock.on(GetCommand).resolves({ Item: reviewItem("approved", "hidden") });
+        const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
+        expect(res.statusCode).toBe(200);
+        expect(JSON.parse(res.body).changed).toBe(false);
+        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(0);
+    });
+
+    it("CONCURRENCY: a lost race (conditional failure) → 409, no S3 side effects", async () => {
+        // The entry changed under us (e.g. a concurrent same-index approve flipped the status). Hide
+        // is pure, so there is nothing to roll back — just the accurate 409, not the outer 404.
+        ddbmock.on(GetCommand).resolves({ Item: reviewItem("approved", "pending") });
+        ddbmock.on(UpdateCommand).rejects(
+            Object.assign(new Error("The conditional request failed"), { name: "ConditionalCheckFailedException" }),
+        );
+        const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
+        expect(res.statusCode).toBe(409);
+        expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
+        expect(s3mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+    });
+
+    it("routes a no-productId hide to the SITEREVIEW# namespace (site-scope review)", async () => {
+        const siteReview = { ...reviewItem("approved", "pending"), SK: "SITEREVIEW#r1", scope: "site", productId: undefined };
+        ddbmock.on(GetCommand).resolves({ Item: siteReview });
+        ddbmock.on(UpdateCommand).resolves({});
+        const res = await handler(event({ action: "hide-image", imageIndex: 0 }));
+        expect(res.statusCode).toBe(200);
+        const input = ddbmock.commandCalls(UpdateCommand)[0].args[0].input as any;
+        expect(input.Key.SK).toBe("SITEREVIEW#r1");
+    });
+
+    it("404s when the review row does not exist", async () => {
+        ddbmock.on(GetCommand).resolves({ Item: undefined });
+        const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
+        expect(res.statusCode).toBe(404);
+    });
+
+    it("400s on a missing/invalid imageIndex", async () => {
+        ddbmock.on(GetCommand).resolves({ Item: reviewItem("approved", "pending") });
+        const res = await handler(event({ action: "hide-image", productId: "p1" }));
+        expect(res.statusCode).toBe(400);
+    });
+});

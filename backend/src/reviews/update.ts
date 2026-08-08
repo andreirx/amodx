@@ -2,6 +2,8 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import type { Review } from "@amodx/shared";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
@@ -22,8 +24,12 @@ import {
  *   • `action: "approve-image"`: the review-image approval that TRIGGERS the staged-media
  *     promotion (rev-2a spine). It rides THIS existing handler ADDITIVELY rather than a dedicated
  *     Lambda/route — one moderation action does not earn a new deployable unit (the standing
- *     no-new-infra-without-named-gain directive). Existing auth/roles (EDITOR/TENANT_ADMIN) apply
- *     to both.
+ *     no-new-infra-without-named-gain directive). Existing auth/roles (EDITOR/TENANT_ADMIN) apply.
+ *   • `action: "hide-image"` (rev-3, REV3-IMG-HIDE-SCOPE = B, human-ratified 2026-08-08): the
+ *     per-image counterpart to approve-image. A PURE status transition to `hidden` on the targeted
+ *     entry — NO promotion, NO S3, NO assetKey rewrite. Removing an already-promoted (public) image
+ *     from the site is the job of the public-list status filter (it emits only `status==="approved"`
+ *     images), not an S3 delete — so hide is idempotent and side-effect-free. Same auth/roles.
  *
  * Why the image action lives behind a moderation mutation at all: the ratified spine
  * (plan-reviews-import header) is that the moderation gate governs the PUBLIC OBJECT, not merely
@@ -39,11 +45,24 @@ const PRIVATE_BUCKET = process.env.PRIVATE_BUCKET!;
 const PUBLIC_BUCKET = process.env.UPLOADS_BUCKET!;
 const PUBLIC_CDN_URL = process.env.UPLOADS_CDN_URL!;
 
+// One S3 client for the rev-3 moderator VIEW path (presigned GET). The promotion path (S3 copy/
+// head/delete) lives in lib/review-media.ts with its own client; this one only ever signs GETs.
+const s3 = new S3Client({});
+
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
+// The event type from the AWS Handler, and the concrete result shape every path here returns. Typed
+// single-arg (not the 3-arg AWS `Handler`) so the GET/PUT dispatcher can CALL the inner handlers
+// with one arg and forbid the `void` the AWS callback-style `Handler` return admits — AWS invokes
+// any `(event) => Promise<result>` function all the same.
+type ApiEvent = Parameters<Handler>[0];
+type ProxyResult = { statusCode: number; body: string };
 
-type ApproveImageBody = Partial<Review> & { action?: string; imageIndex?: number };
+// Untrusted body shape for BOTH per-image actions (approve-image / hide-image): the optional
+// `action` discriminator plus the targeted `imageIndex`, over the review field allow-list. Named for
+// the whole image-action family, not just approve, so the name matches every path that consumes it.
+type ImageActionBody = Partial<Review> & { action?: string; imageIndex?: number };
 
-const _handler: Handler = async (event) => {
+const _handler = async (event: ApiEvent): Promise<ProxyResult> => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         const auth = event.requestContext.authorizer.lambda;
@@ -63,11 +82,12 @@ const _handler: Handler = async (event) => {
         // Type the untrusted body against the shared review contract (rev-1): `productId` and the
         // mutable allow-list below bind to `ReviewSchema` field names, so a schema rename breaks
         // this compile. Annotation only — no runtime validation added (that is a rev-2 change).
-        const body = JSON.parse(event.body) as ApproveImageBody;
+        const body = JSON.parse(event.body) as ImageActionBody;
 
         // ── ACTION DISCRIMINATOR ─────────────────────────────────────────────────────────────
-        // Additive: only an explicit `action: "approve-image"` takes the promotion path. Any body
-        // without it keeps the original field-update semantics — existing callers are unaffected.
+        // Additive: an explicit `action` selects a per-image path (`approve-image` promotes;
+        // `hide-image` is a pure status flip). Any body WITHOUT `action` keeps the original
+        // field-update semantics — existing callers are unaffected.
         // NOTE: these are `return await …`, not bare `return …`. A bare `return promise` inside a
         // try block does NOT route the promise's REJECTION through this function's catch — the try
         // scope has already exited by the time it settles. `await` re-enters the try, so a rethrown
@@ -76,6 +96,9 @@ const _handler: Handler = async (event) => {
         // (ConditionalCheckFailed → 404; anything else → 500) instead of escaping as a raw rejection.
         if (body.action === "approve-image") {
             return await approveReviewImage({ tenantId, id, body, auth });
+        }
+        if (body.action === "hide-image") {
+            return await hideReviewImage({ tenantId, id, body });
         }
 
         return await updateReviewFields({ tenantId, id, body });
@@ -165,7 +188,7 @@ async function updateReviewFields(args: {
 async function approveReviewImage(args: {
     tenantId: string;
     id: string;
-    body: ApproveImageBody;
+    body: ImageActionBody;
     auth: AuthorizerContext;
 }) {
     const { tenantId, id, body, auth } = args;
@@ -358,4 +381,205 @@ async function approveReviewImage(args: {
     };
 }
 
-export const handler = withInvalidation(_handler);
+/**
+ * `action: "hide-image"` — moderate ONE review image OUT of the public site (rev-3,
+ * REV3-IMG-HIDE-SCOPE = B). The per-image counterpart to approve-image, deliberately the MINIMAL
+ * mirror: it sets the targeted entry's `status` to `hidden` and does NOTHING ELSE.
+ *
+ *   • NO promotion, NO S3, NO assetKey rewrite. The entry's key is left exactly as-is.
+ *   • For an already-promoted (public-key) image, "hidden" is enough to remove it from the site:
+ *     `public-list.ts` emits ONLY `status==="approved"` images, so a hidden entry stops appearing
+ *     with no object mutation. (The public bytes remain retrievable by direct CDN URL — that is the
+ *     ratified minimal-action consequence; a public-object GC is deliberately out of this slice.)
+ *   • Terminal w.r.t. approval: approve-image accepts only pending→approved (CYCLE-3), so a hidden
+ *     image is NOT re-approvable through that action — consistent with the existing contract.
+ *
+ * Allowed transitions: pending→hidden and approved→hidden. `hidden` is an idempotent no-op 200.
+ * Persisted under the SAME per-image optimistic-concurrency guard as approve-image (pin the
+ * targeted entry's prior `status` on its OWN document path), so a hide racing an approve of the same
+ * index loses cleanly (409) and concurrent DISTINCT-index writes never clobber. No review-level
+ * status gate: unlike approve (which needs an approved review to promote), hiding an image is
+ * always permitted — a moderator can pull any photo regardless of the review's own status.
+ */
+async function hideReviewImage(args: {
+    tenantId: string;
+    id: string;
+    body: ImageActionBody;
+}) {
+    const { tenantId, id, body } = args;
+    const { productId, imageIndex } = body;
+
+    if (typeof imageIndex !== "number" || !Number.isInteger(imageIndex) || imageIndex < 0) {
+        return { statusCode: 400, body: JSON.stringify({ error: "imageIndex (non-negative integer) is required" }) };
+    }
+
+    // Same scope-routing as every other path (rev-1 D-REV-5).
+    const sk = productId ? `REVIEW#${productId}#${id}` : `SITEREVIEW#${id}`;
+
+    const got = await db.send(
+        new GetCommand({ TableName: TABLE_NAME, Key: { PK: `TENANT#${tenantId}`, SK: sk } }),
+    );
+    const review = got.Item as (Review & Record<string, unknown>) | undefined;
+    if (!review) return { statusCode: 404, body: JSON.stringify({ error: "Review not found" }) };
+
+    const images = Array.isArray(review.images) ? review.images : [];
+    if (imageIndex >= images.length) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: `imageIndex ${imageIndex} out of range (review has ${images.length} image(s))` }),
+        };
+    }
+
+    const priorImageStatus: string = images[imageIndex].status;
+
+    // Idempotent no-op — already hidden. Distinct from a lost race (no write attempted).
+    if (priorImageStatus === "hidden") {
+        return { statusCode: 200, body: JSON.stringify({ message: "Image already hidden", changed: false }) };
+    }
+
+    // PER-IMAGE OPTIMISTIC-CONCURRENCY GUARD on the targeted element's OWN status path only — never
+    // the whole `images` array (the review-4 clobber fix), so concurrent distinct-index writes touch
+    // disjoint attributes. The condition pins the entry's prior `status`: a hide racing a same-index
+    // approve (which also flips status) → the loser's condition no longer matches → 409, no clobber.
+    const now = new Date().toISOString();
+    try {
+        await db.send(
+            new UpdateCommand({
+                TableName: TABLE_NAME,
+                Key: { PK: `TENANT#${tenantId}`, SK: sk },
+                UpdateExpression: `SET #images[${imageIndex}].#status = :hiddenImageStatus, #updatedAt = :updatedAt`,
+                ExpressionAttributeNames: {
+                    "#images": "images",
+                    "#status": "status",
+                    "#updatedAt": "updatedAt",
+                },
+                ExpressionAttributeValues: {
+                    ":hiddenImageStatus": "hidden",
+                    ":updatedAt": now,
+                    ":priorImageStatus": priorImageStatus,
+                },
+                ConditionExpression:
+                    `attribute_exists(SK) AND #images[${imageIndex}].#status = :priorImageStatus`,
+            }),
+        );
+    } catch (e: unknown) {
+        if (e instanceof Error && e.name === "ConditionalCheckFailedException") {
+            // The entry changed under us (concurrent approve/hide, or the row was deleted). No S3 or
+            // asset side effects to compensate — hide is pure. 409 (not the outer catch's 404) so the
+            // message is accurate: the request was well-formed but raced.
+            return {
+                statusCode: 409,
+                body: JSON.stringify({ error: "Review changed during moderation; no update applied" }),
+            };
+        }
+        throw e;
+    }
+
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ message: "Image hidden", changed: true, previousStatus: priorImageStatus }),
+    };
+}
+
+/**
+ * GET /reviews/{id}/image-view-url?imageIndex=N[&productId=…] — the rev-3 MODERATOR VIEW path.
+ *
+ * Why it exists: the moderation UI must show a thumbnail of each image BEFORE it is approved, but
+ * a pending image is a PRIVATE staged original (`review-staging/<tenant>/…/original`) in a bucket
+ * with BlockPublicAccess.BLOCK_ALL and no CloudFront origin (rev-2a). So the UI cannot build a URL
+ * for it — it must be handed a short-lived presigned GET. This mirrors the existing presign pattern
+ * (`resources/presign.ts` downloadHandler: `getSignedUrl(GetObjectCommand, { expiresIn: 300 })`),
+ * riding THIS existing handler/Lambda rather than a new deployable unit — updateReviewFunc already
+ * carries `PRIVATE_BUCKET`, `s3:GetObject` on `review-staging/*`, and `UPLOADS_CDN_URL` (rev-2a
+ * composition-root wiring), so it needs ZERO new grants. The ONLY infra is the route (api-commerce).
+ *
+ * It is a READ. It is routed on the GET method precisely so it does NOT pass through
+ * `withInvalidation` — minting a view URL must not mark the CDN pending or raise the "GO LIVE NOW"
+ * banner (that is a mutation side effect; a thumbnail view is not a mutation).
+ *
+ * Two cases, discriminated on the entry's `assetKey` READ FROM THE TENANT-SCOPED ROW (never the
+ * client), same trust rule as promotion:
+ *   • staged private original (key under THIS tenant's `review-staging/<tenant>/` quarantine) →
+ *     presigned GET on the PRIVATE bucket. The tenant-prefix check means we only ever sign this
+ *     tenant's own quarantined object.
+ *   • already-promoted PUBLIC object → its CDN URL (already public; no signing needed).
+ */
+async function viewImageUrl(event: ApiEvent): Promise<ProxyResult> {
+    const tenantId = event.headers["x-tenant-id"];
+    const auth = event.requestContext.authorizer.lambda;
+    const id = event.pathParameters?.id;
+
+    try {
+        requireRole(auth, ["EDITOR", "TENANT_ADMIN"], tenantId);
+    } catch (e: any) {
+        return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+    }
+
+    if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
+    if (!id) return { statusCode: 400, body: JSON.stringify({ error: "Missing review ID" }) };
+
+    const q = event.queryStringParameters ?? {};
+    const imageIndex = Number(q.imageIndex);
+    if (!Number.isInteger(imageIndex) || imageIndex < 0) {
+        return { statusCode: 400, body: JSON.stringify({ error: "imageIndex (non-negative integer) query param is required" }) };
+    }
+    const productId = q.productId;
+
+    // Same scope-routing as the mutation paths (rev-1 D-REV-5): product review under its product,
+    // business (site-scope) review under the DISJOINT SITEREVIEW# namespace.
+    const sk = productId ? `REVIEW#${productId}#${id}` : `SITEREVIEW#${id}`;
+
+    const got = await db.send(
+        new GetCommand({ TableName: TABLE_NAME, Key: { PK: `TENANT#${tenantId}`, SK: sk } }),
+    );
+    const review = got.Item as (Review & Record<string, unknown>) | undefined;
+    if (!review) return { statusCode: 404, body: JSON.stringify({ error: "Review not found" }) };
+
+    const images = Array.isArray(review.images) ? review.images : [];
+    if (imageIndex >= images.length) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: `imageIndex ${imageIndex} out of range (review has ${images.length} image(s))` }),
+        };
+    }
+
+    const assetKey = images[imageIndex].assetKey;
+    const imageStatus = images[imageIndex].status;
+
+    if (typeof assetKey === "string" && assetKey.startsWith(`${REVIEW_STAGING_PREFIX}${tenantId}/`)) {
+        // Pending/quarantined original — sign a private GET so the moderator can preview it.
+        const viewUrl = await getSignedUrl(
+            s3,
+            new GetObjectCommand({ Bucket: PRIVATE_BUCKET, Key: assetKey }),
+            { expiresIn: 300 },
+        );
+        return { statusCode: 200, body: JSON.stringify({ viewUrl, kind: "staged", status: imageStatus }) };
+    }
+
+    // Promoted (approved) image — already a public asset key; derive the CDN URL (assets/create.ts
+    // pattern), served raw, never next/image (opennext-1 parking rule).
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ viewUrl: `${PUBLIC_CDN_URL}/${assetKey}`, kind: "public", status: imageStatus }),
+    };
+}
+
+const _mutationHandler = withInvalidation(_handler);
+
+/**
+ * Route split for the ONE reviews-update Lambda (rev-3): the GET view route bypasses
+ * `withInvalidation` (read, no CDN marker); PUT keeps the unchanged mutation+invalidation path.
+ * The GET route carries method "GET"; PUT (and the unit tests that omit method) fall through to the
+ * mutation handler.
+ */
+export const handler = async (event: ApiEvent): Promise<ProxyResult> => {
+    if (event.requestContext.http?.method === "GET") {
+        try {
+            return await viewImageUrl(event);
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : "Internal error";
+            return { statusCode: 500, body: JSON.stringify({ error: message }) };
+        }
+    }
+    return _mutationHandler(event);
+};

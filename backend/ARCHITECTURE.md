@@ -49,14 +49,34 @@ src/
 │   ├── list.ts            # GET /reviews (admin, all statuses). No productId → merges BOTH the
 │   │                      #   REVIEW#<productId># and DISJOINT SITEREVIEW# namespaces (rev-1
 │   │                      #   D-REV-5) via two PK+begins_with queries (never a Scan), so imported
-│   │                      #   business (site-scope) reviews are visible for moderation (rev-2b)
-│   ├── update.ts          # PUT /reviews/{id} — TWO actions on one contract (rev-2a):
-│   │                      #   default = field update; `action:"approve-image"` = staged-media
-│   │                      #   promotion (approval DERIVED FROM THE ROW, never the body).
-│   │                      #   Both actions route no-productId reviews to the SITEREVIEW# key.
+│   │                      #   business (site-scope) reviews are visible for moderation (rev-2b).
+│   │                      #   rev-3: projection additively includes `images` (per-image tiles) and
+│   │                      #   `importBatchId` (batch filter) for the moderation UI.
+│   ├── update.ts          # PUT /reviews/{id} + GET /reviews/{id}/image-view-url — ONE Lambda,
+│   │                      #   dispatched on HTTP method. PUT carries THREE actions on one contract:
+│   │                      #     • default (no `action`) = allow-listed field update
+│   │                      #       (status/content/authorName/rating);
+│   │                      #     • `action:"approve-image"` (rev-2a) = per-image approval that TRIGGERS
+│   │                      #       staged-media promotion (private→public), approval DERIVED FROM THE
+│   │                      #       ROW, never the body;
+│   │                      #     • `action:"hide-image"` (rev-3, REV3-IMG-HIDE = B) = PURE per-image
+│   │                      #       status flip → `hidden`. No promotion/S3/assetKey rewrite; for an
+│   │                      #       already-promoted image, public-list simply stops emitting it.
+│   │                      #   All actions route no-productId reviews to the SITEREVIEW# key.
+│   │                      #   GET image-view-url (rev-3 moderator VIEW): mints a short-lived (300s)
+│   │                      #   presigned GET on the PRIVATE staged original of a PENDING image (that
+│   │                      #   object is not public until promoted), or returns the public CDN URL once
+│   │                      #   approved. Follows resources/presign.ts; rides this SAME Lambda (already
+│   │                      #   holds PRIVATE_BUCKET + s3:GetObject on review-staging/* + UPLOADS_CDN_URL
+│   │                      #   from rev-2a wiring), so ZERO new grants. Routed on GET precisely so it
+│   │                      #   BYPASSES withInvalidation — a read must not mark the CDN pending or raise
+│   │                      #   the GO-LIVE banner.
 │   ├── delete.ts          # DELETE /reviews/{id} (no productId → SITEREVIEW# key)
-│   └── public-list.ts     # GET /public/reviews/{productId} (approved product reviews only;
-│                          #   a public site-review render surface is rev-4 gallery, not built here)
+│   └── public-list.ts     # GET /public/reviews/{productId} — approved product reviews only. rev-3
+│                          #   deep-vertical: projects `images`, exposing ONLY approved + non-staging
+│                          #   (public-key) photos, so a private quarantine key can never leak into the
+│                          #   public payload. A public site-review render surface is rev-4 gallery,
+│                          #   not built here.
 ├── comments/
 │   ├── create.ts          # POST /comments (public or authed)
 │   ├── list.ts            # GET /comments
