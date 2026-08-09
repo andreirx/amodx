@@ -8,7 +8,7 @@ the target architecture. Track TEST in `docs/ROADMAP.md` implements it.
 
 | Surface | Unit | Integration | API | E2E |
 |---|---|---|---|---|
-| backend | 8 files, AWS-free, `npm run test:unit` — `revalidate-paths` (`test-1`), `availability`, `order-email` (`test-3`), `email-from` (`email-hotfix-1`), `email-key-normalization` (`fnd-2`), and the three `cache-4a` suites `edge-invalidation` (pure path coalescing/planning), `invalidate-cdn` (`enqueueEdgeInvalidation` atomic `ADD #paths + rev` via mocked `lib/db.ts`), `debounce-flush` (bulk-marker retention + fast-lane generation-race + fast-lane-after-bulk drain, fake timers); 102 tests | 8 suites vs LIVE staging DDB + API GW (`.env.test`) | same 8 suites | — |
+| backend | 8 files, AWS-free, `npm run test:unit` — `revalidate-paths` (`test-1`), `availability`, `order-email` (`test-3`), `email-from` (`email-hotfix-1`), `email-key-normalization` (`fnd-2`), and the three `cache-4a` suites `edge-invalidation` (pure path coalescing/planning), `invalidate-cdn` (`enqueueEdgeInvalidation` atomic `ADD #paths + rev` via mocked `lib/db.ts`), `debounce-flush` (bulk-marker retention + fast-lane generation-race + fast-lane-after-bulk drain, fake timers); 102 tests | 8 suites vs LIVE staging DDB + API GW (`.env.test`) | same 8 suites | `review-flow.spec.ts` (`test-5`) — deployed-staging review import→moderate→display round-trip; STAGED-image tenant isolation (tenant B blocked from presign-view + approve/promote a pre-promotion pending image) + post-promotion row isolation; fail-red cleanup assertion; `STAGING_E2E=1`-gated, manual `workflow_dispatch` CI job |
 | renderer | 2 files, AWS-free, `npm test` (`vitest.config.ts`, `include: test/unit/`) — `tenant-directory`, `not-found-handoff` (`test-3`); 29 tests | 1 suite, AWS-free (`test/serving-contract/`, `npm run test:serving`, `test-2`) | — | 2 playwright specs vs deployed staging; `public-site.spec.ts` asserts the pre-cache-1 "Site Not Found" 200 shell — STALE |
 | admin | 0 (no runner installed) | — | — | 0 |
 | packages/shared | 1 file, `npm test` — `test/schemas.test.ts` (`test-3`); 40 tests over the invariant-bearing parses (single `domain`, `urlPrefixes` English defaults, `ContentStatus`, the seven order statuses, `IntegrationsSchema`) | — | — | — |
@@ -103,6 +103,46 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
 5. **E2E (playwright)** — post-deploy verification vs staging: fix the stale 404 spec
    to the new contract (middleware 404 + no-store), then encode the deploy-runbook
    probes (RSC, junk-param, nf, warm-edge session) as automated checks.
+   *Status: `test-5` (2026-08-09) added `tests/e2e/review-flow.spec.ts` — the deployed-staging
+   round-trip for the review import→moderate→display flow, the authenticated-write gap the mocked
+   `backend/test/unit/review-import-fixture.test.ts` cannot close (it proves logic; this proves the
+   flow survives real AWS auth/IAM/S3 and DynamoDB reserved-keyword projection — it asserts `source`
+   returns on `/public/reviews/{productId}`, the exact layer that hid the `source` 500 from staging).
+   It proves the private→public MODERATION BOUNDARY (staged image NOT on the public CDN → after
+   approving BOTH review and image, promoted key IS on the CDN — an absence assertion PAIRED with a
+   same-detector positive control per the §Invariants rule) and tenant ISOLATION exercised in the real
+   lifecycle order: on the STAGED, pre-promotion PENDING image tenant B gets 404 both presign-viewing
+   AND approving/promoting tenant A's image (with the owner's `kind="staged"` 200 as the control,
+   proving we are genuinely pre-promotion), and post-promotion row isolation stays as a second
+   assertion. Cleanup is a NAMESPACE SWEEP (not id-enumeration, so failure-path residue is caught):
+   after exercising the real `DELETE /reviews/{id}` handler it deletes everything under this run's
+   unique tenant namespaces — a single-partition DynamoDB `Query` on `PK = TENANT#<tenant>` (scoped,
+   NOT a Scan) plus `ListObjectsV2` bounded to the run's S3 key prefixes (`review-staging/<tenant>/`
+   private, `<tenant>/` public) — for BOTH tenants; the post-cleanup verification RE-COUNTS each
+   namespace and is an ASSERTION — any residual (or unprovable-count) namespace turns the run RED. It is **staging-mutating and secrets-dependent**, so it is gated behind
+   `STAGING_E2E=1` and self-skips otherwise — never the credential-free gate. It also needs AWS
+   creds + `.env.test` beyond the two vars the current `playwright.yml` E2E step sets, and it mints a
+   real admin id-token (the master key authenticates as the emailless system-robot, which the import
+   handler's attestation identity gate 403s). Setup lives in `tests/e2e/support/staging-admin.ts`,
+   which resolves every id from the `AmodxStack-staging` CloudFormation outputs and HARD-ASSERTS the
+   staging account/region + that `.env.test` matches this stack (prod + staging share one AWS
+   account; prod has a distinct Api host + table) before any mutating call. TOKEN approach = the
+   slice's ratified fallback: temporarily add `ALLOW_ADMIN_USER_PASSWORD_AUTH` to the STAGING admin
+   app-client, `AdminInitiateAuth`, then REVERT ExplicitAuthFlows to the exact prior set in a
+   `finally` (verified). Run on-demand / pre-deploy via the ONE canonical, deterministic invocation
+   (`test-5` review-4): the root `test:e2e:staging` npm script BAKES IN `STAGING_E2E=1`, so opening the
+   gate does not depend on an inline shell env prefix reaching the Playwright worker (that indirection
+   proved non-deterministic in review — a spurious all-skipped run that still exits 0):*
+   ```bash
+   npm run test:e2e:staging   # = STAGING_E2E=1 playwright test review-flow --project=chromium --workers=1
+   ```
+   *CI (built by `test-5` revise-1, 2026-08-09; made deterministic in review-4): `.github/workflows/staging-e2e.yml`
+   — a manual `on: workflow_dispatch` job that supplies the AWS creds and the `ADMIN_API_URL` /
+   `TABLE_NAME` / `TEST_ADMIN_USER` / `TEST_ADMIN_PASSWORD` secrets and runs `npm run test:e2e:staging`
+   (the same script; the script sets `STAGING_E2E=1` itself), so the round-trip is a one-click pre-deploy check. It is a SEPARATE workflow file (the existing
+   `playwright.yml` jobs are untouched) and is deliberately NOT on the push/PR gate — it mutates shared
+   staging and needs staging creds. `TEST_ADMIN_USER` / `TEST_ADMIN_PASSWORD` are NEW repo secrets to
+   configure before the job can run.*
 6. **Infra** — `cdk synth` assertions (Template.fromStack): cache policy allowlists,
    CF function presence, IAM boundaries (e.g. `cloudfront:CreateInvalidation` confined to
    **3 request-path Lambdas** — debounce, flush, nightly — **plus 1 deploy-time role**,
@@ -143,7 +183,9 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    `build-typecheck-unit` (`test-1`, extended by `test-3` with the `packages/shared` and
    `renderer` unit steps and by `vid-1` with the `packages/plugins` step — four unit steps),
    `serving-contract` (`test-2`) and `infra-synth` (`test-4`). The
-   backend local-DDB and post-deploy legs are still unimplemented.*
+   backend local-DDB leg is still unimplemented; the post-deploy leg now has its first automated
+   member — `test-5`'s `review-flow.spec.ts` (§5) — runnable on-demand today (`STAGING_E2E=1`) and
+   wired as the manual `workflow_dispatch` job `.github/workflows/staging-e2e.yml`.*
 
 ## Invariants
 

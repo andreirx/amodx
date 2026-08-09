@@ -71,9 +71,12 @@ operator-run only until made local.
 | `test-2` | Serving-contract characterization suite: automate the cache-1 header-probe matrix (`next build`+`next start`+local DDB stub; MISS→HIT, twin no-store, not-found, zero-DDB-on-HIT) as a runnable suite — the regression net for the CACHE track | SHIPPED 2026-07-28 (prod) |
 | `test-3` | Pure unit layer for pure logic: shared schemas + `normalizeEmail` (with fnd-1), backend pure helpers (cache-2 path construction), plugins parser (with vid-1) | SHIPPED 2026-07-28 (prod) |
 | `test-4` | Infra truth: delete the commented-out jest stub that reports PASS 1/1 while asserting nothing; real `cdk synth` assertions — `Template.fromStack`, one **named** assertion per ratified property (NOT `toMatchSnapshot()`) — + CI synth job. Unblocks `dep-1`. *(Scope wording corrected 2026-07-28: this cell read "snapshot tests" while the ratified design and the shipped suite are named assertions.)* | SHIPPED 2026-07-28 (prod) |
+| `test-5` | Deployed-staging playwright round-trip for the review import→moderate→display flow (`tests/e2e/review-flow.spec.ts` + `tests/e2e/support/staging-admin.ts`) — the authenticated-write gap the mocked `review-import-fixture.test.ts` cannot close: real AWS auth/IAM/S3 + the DynamoDB reserved-keyword projection (asserts `source` returns on `/public/reviews/{id}`, the layer that hid the `source` 500). Proves the private→public moderation boundary, STAGED-image tenant isolation (tenant B blocked from presign-view **and** approve/promote a pre-promotion pending image) + post-promotion row isolation, and a fail-red namespace-sweep cleanup assertion. `STAGING_E2E=1`-gated (self-skips in the credential-free gate); mints a real admin id-token via the ratified staging-scoped, self-reverting Cognito auth-flow toggle. CI: separate manual `on: workflow_dispatch` job `.github/workflows/staging-e2e.yml` (NOT on the push/PR gate; existing `playwright.yml` untouched). | IMPLEMENTED 2026-08-09 — SHIPPED pending: configure the two new repo secrets (`TEST_ADMIN_USER` / `TEST_ADMIN_PASSWORD`) on the manual job + dispatch it green (operator action) |
 
-Deferred (documented, not slices yet): local-DynamoDB backend integration tests;
-playwright expansion (needs a deployed-target strategy).
+Deferred (documented, not slices yet): local-DynamoDB backend integration tests.
+*(The former "playwright expansion (needs a deployed-target strategy)" deferral is
+retired: `test-5` (above) delivers exactly that — a deployed-staging playwright
+round-trip — via the `STAGING_E2E=1`-gated manual `workflow_dispatch` job.)*
 
 Post-deploy operator verification (`x-cache: Hit`, Lambda invocation drop) is part of
 each slice's evidence — a cache slice is not SHIPPED on build green alone.

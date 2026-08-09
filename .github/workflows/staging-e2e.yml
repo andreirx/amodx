@@ -1,0 +1,65 @@
+# TEST-5 — MANUAL, credentialed deployed-staging e2e for the review import→moderate→display flow.
+#
+# WHY A SEPARATE WORKFLOW (not a job in playwright.yml): this round-trip MUTATES shared staging
+# (imports reviews, promotes an S3 object, briefly toggles a Cognito app-client auth flow) and needs
+# staging AWS creds + the test-admin secrets. It therefore must NEVER run on the credential-free
+# push/PR gate. `on: workflow_dispatch` makes it manual only — an operator triggers it on demand /
+# pre-deploy. The existing `playwright.yml` jobs are untouched; that spec self-skips there because
+# neither STAGING_E2E nor AWS creds are set on the push-triggered E2E step.
+#
+# REQUIRED REPO SECRETS (Settings → Secrets and variables → Actions):
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  — creds for the STAGING account (324037297014) with
+#       CloudFormation:DescribeStacks, Cognito admin (AdminGetUser / AdminUpdateUserAttributes /
+#       Describe+UpdateUserPoolClient / AdminInitiateAuth), DynamoDB (Get/Query/Delete on the staging
+#       table) and S3 (ListBucket/DeleteObject on the staging private+public buckets — the cleanup
+#       namespace sweep lists then batch-deletes this run's key prefixes). Same secret names the
+#       existing playwright.yml backend job already uses.
+#   ADMIN_API_URL / TABLE_NAME                 — already used by playwright.yml; the staging-admin
+#       helper HARD-ASSERTS these match the AmodxStack-staging CFN outputs before any mutating call.
+#   TEST_ADMIN_USER / TEST_ADMIN_PASSWORD      — NEW: the staging test admin (admin@staging.amodx.net)
+#       and its permanent password. The helper mints a real Cognito id-token from these; the master
+#       key can't be used (it authenticates as the emailless system-robot, which the import handler's
+#       attestation identity gate 403s).
+name: Staging E2E (manual)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  review-flow:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        # Must delete lockfile: it's generated on macOS but CI runs Linux (see playwright.yml).
+        run: rm -f package-lock.json && npm install
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run deployed-staging review-flow e2e
+        # ONE canonical invocation shared with operators: the `test:e2e:staging` npm script BAKES IN
+        # `STAGING_E2E=1` (root package.json), so the gate is set by the script itself — no reliance on
+        # an inline shell env assignment reaching the Playwright worker (that indirection is exactly
+        # what proved non-deterministic in review). AWS creds + admin secrets stay in env below.
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "eu-central-1"
+          TABLE_NAME: ${{ secrets.TABLE_NAME }}
+          ADMIN_API_URL: ${{ secrets.ADMIN_API_URL }}
+          TEST_ADMIN_USER: ${{ secrets.TEST_ADMIN_USER }}
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+        run: npm run test:e2e:staging
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: staging-e2e-report
+          path: playwright-report/
+          retention-days: 30

@@ -18,7 +18,8 @@
     "manage-domains": "tsx scripts/manage-domains.ts",
     "post-deploy": "npx tsx scripts/post-deploy.ts",
     "post-deploy-staging": "npx tsx scripts/post-deploy-staging.ts",
-    "migrate-commerce-private-table": "npx tsx scripts/migrate-commerce-private-table.ts"
+    "migrate-commerce-private-table": "npx tsx scripts/migrate-commerce-private-table.ts",
+    "test:e2e:staging": "STAGING_E2E=1 playwright test review-flow --project=chromium --workers=1"
   },
   "dependencies": {
     "autoprefixer": "^10.4.22",
