@@ -1,4 +1,19 @@
-# STATIC-EP: Isolation precondition — anonymous-write-endpoint hardening + sandbox contract
+# STATIC-EP: Isolation precondition
+## D-STATIC-EP-ORIGIN amended 2026-08-09 (human) — edge-function guard, not header-forward
+
+The Origin-header-forward approach FAILED deploy: CloudFront caps the origin-request
+policy at 10 headers and it was full (staging caught it, rolled back clean, prod
+untouched). Ratified fix: the origin check moves to the EXISTING viewer-request
+CloudFront Function, which already sees `Origin` (the 10-header limit governs only what
+reaches the Lambda, not what the edge function sees). The function 403s hostile
+cross-site / null-origin POSTs to the hardened endpoints BEFORE they reach the Lambda.
+REVERT the `Origin` addition to RendererOriginPolicy (back to 10 headers). The renderer
+origin-guard may stay as defense-in-depth IF it is inert without the header (document
+that it is now belt-and-suspenders, the edge function is the barrier), or be removed —
+builder's call, recorded.
+
+
+# (original) STATIC-EP: Isolation precondition — anonymous-write-endpoint hardening + sandbox contract
 
 > **Identity note (2026-08-08):** the ratified plan's `static-1` IS the isolation-model
 > DECISION (delivered via ratification, doc-only). This slice implements the D-STATIC-1

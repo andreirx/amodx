@@ -106,7 +106,8 @@ Grouped by the parent that owns the fix, largest blast radius first:
      renderer, and never parses untrusted URLs or YAML.
    - ~~**Gated on** the CDK infra test suite~~ — **GATE SATISFIED 2026-07-28 by `test-4`.**
      `infra/test/amodx-stack.test.ts` runs a real `Template.fromStack` on every push (CI job
-     `infra-synth`). Note what this gate does and does not give you: the 17 assertions are
+     `infra-synth`). Note what this gate does and does not give you: the 18 assertions — the
+     original 15 plus `cache-6`'s two transport pins and `STATIC-EP`'s `(i)` edge-guard — are
      **named**, not a snapshot, so a `2.241.0 → 2.262.1` bump that changes the cache key, the
      invalidation blast radius or a flush schedule fails with the property's name — but a bump
      that changes anything *not* asserted passes silently. Before bumping, also run a manual
@@ -315,11 +316,13 @@ reported PASS 1/1. No resource assertions, no CI synthesis step — CDK upgrades
 changes and dependency bumps had zero automated verification.
 
 **Now:** the stub is deleted. `infra/test/amodx-stack.test.ts` runs a real
-`Template.fromStack(new AmodxStack(...))` and makes 15 **named** assertions — cache-key header
-and query allowlists, `CookieBehavior: none`, TTLs, the viewer-request CloudFront Function on
-both keyed behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
-`cloudfront:CreateInvalidation` blast radius, and both flush schedules — each carrying the
-slice or decision that ratified it. CI job `infra-synth`. Mutation-checked in five rounds.
+`Template.fromStack(new AmodxStack(...))`; at `test-4` closure it made 15 **named** assertions —
+cache-key header and query allowlists, `CookieBehavior: none`, TTLs, the viewer-request
+CloudFront Function on both keyed behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors,
+the `cloudfront:CreateInvalidation` blast radius, and both flush schedules — each carrying the
+slice or decision that ratified it. (Since grown to **18**: `cache-6` +2 transport pins,
+`STATIC-EP` +1 edge-guard `(i)` — current inventory in `infra/ARCHITECTURE.md`.)
+CI job `infra-synth`. Mutation-checked in five rounds.
 `docs/shipped/slices/test-4-infra-truth.md` § *Build run*.
 
 Deliberately **not** a `toMatchSnapshot()`: a snapshot over 410 resources fails on every
@@ -764,14 +767,21 @@ updated to ten headers *after* the fact. The consumer this time is a `headers: {
 inside open-next's *own bundled source*, i.e. the harder-to-extract side this item already
 flagged.
 
-**A third instance arrived (`STATIC-EP`, 2026-08-08), same shape.** `renderer/src/lib/origin-guard.ts`
-(`isFirstPartyWrite`) requires the browser `Origin` header to reject cross-site/opaque-origin writes
-to the anonymous `/api/consent|contact|leads` proxies, but `Origin` was absent from the same `(h)`
-allowlist, so CloudFront stripped it and the guard fell through to *allow* on every production
-request — inert. Unlike `cache-7` this consumer is first-party renderer code (the easy-to-extract
-side), yet it still shipped, because no guard derives the allowlist from it; assertion `(h)` was
-updated to eleven headers *after* the fact. The trigger below stands, now with three data points
-behind it.
+**A third instance surfaced (`STATIC-EP`, 2026-08-08) — and this time the ORP could not absorb the
+fix, which is its own lesson.** `renderer/src/lib/origin-guard.ts` (`isFirstPartyWrite`) needs the
+browser `Origin` header to reject cross-site/opaque-origin writes to the anonymous
+`/api/consent|contact|leads` proxies, but `Origin` was absent from the `(h)` allowlist, so
+CloudFront stripped it and the guard was inert in production. The CYCLE-1 fix added `Origin` as an
+eleventh ORP header — and it **failed deploy on CloudFront's hard 10-header origin-request-policy
+cap** (staging caught it, rolled back; prod untouched). So `Origin` cannot ride the ORP at all: the
+list is full. Resolution (D-STATIC-EP-ORIGIN, human-ratified 2026-08-09): the origin barrier moved
+into the viewer-request CloudFront Function (`STATIC_EP_EDGE_ORIGIN_GUARD`), which sees `Origin`
+regardless of the cap and 403s the hostile POST at the edge; the renderer guard stays as inert-safe
+belt-and-suspenders. Two standing lessons: (1) the ORP is a **capacity-bounded** resource — the next
+required header has nowhere to go, so a header dependency must now consider the edge function as the
+alternative transport; (2) the extract-both-sides trigger below still applies, but the consumer here
+is now the edge function itself, pinned instead by assertion `(i)` (which drives the deployed guard
+source over its decision table — the divergence guard this item asks for, achieved for this case).
 
 `cache-3`'s `probe-cache3-cffunc.mjs` §C is the pattern that would close it — extract both
 sides, fail on divergence. Deliberately not applied here: one of the two consumer sides is a

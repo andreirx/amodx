@@ -120,7 +120,7 @@ extended by `cache-6`; rationale and the assertion → ratified-property map are
 `docs/slices/test-4-infra-truth.md` and
 `docs/slices/cache-6-distribution-transport-hotfixes.md`.
 
-`test/amodx-stack.test.ts` synthesizes the **real** `AmodxStack` once and makes 17 named
+`test/amodx-stack.test.ts` synthesizes the **real** `AmodxStack` once and makes 18 named
 assertions over the resulting template: the CloudFront cache key (header + query allowlists,
 `CookieBehavior: none`, TTLs), the viewer-request Function on the default and `api/*`
 behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
@@ -129,22 +129,28 @@ behaviors, `api/*` = CACHING_DISABLED, the S3 static behaviors, the
 `BucketDeployment` custom resource), and both flush schedules. Not a snapshot: a snapshot over
 410 resources gets re-blessed instead of read.
 
-**Two of the 17 were added by `cache-6` (2026-07-28)**, and both pin a **transport** list —
+**Two of the 18 were added by `cache-6` (2026-07-28)**, and both pin a **transport** list —
 what CloudFront lets reach the origin — rather than a cache-key property. Each covers a defect
 that shipped to production precisely because no assertion covered the list:
 
 - `(g)` — `_next/image*` is keyed by a dedicated `ImageCachePolicy` on exactly `url,w,q`, the
   optimizer's required query-string inputs, and the behavior must actually reference that
   policy. Distinct from `(a2)`, which pins the *default* behavior's seven-parameter allowlist.
-- `(h)` — `RendererOriginPolicy` forwards exactly eleven headers: `x-revalidation-token`
-  (`cache-6`), `x-prerender-revalidate` + `x-isr` (`cache-7`, the open-next background-ISR
-  revalidation protocol), and `Origin` (`STATIC-EP`, the anonymous-write-endpoint hardening
-  transport dependency — the browser `Origin` that `renderer/src/lib/origin-guard.ts` needs to
-  reject cross-site/opaque-origin writes; CloudFront stripped it, so the guard was inert until this
-  entry existed). Distinct from `(a1)`, which pins the six headers in the cache
+- `(h)` — `RendererOriginPolicy` forwards exactly ten headers: `x-revalidation-token`
+  (`cache-6`) plus `x-prerender-revalidate` + `x-isr` (`cache-7`, the open-next background-ISR
+  revalidation protocol) included. Distinct from `(a1)`, which pins the six headers in the cache
   *key*: `(a1)` governs which stored response a viewer gets, `(h)` governs what the origin is
-  allowed to see at all, on hits and misses alike. `cache-7` then `STATIC-EP` each extended the
-  list `(h)` pins; neither added a new assertion, so the count of 17 above is unchanged.
+  allowed to see at all, on hits and misses alike. `cache-7` extended the list `(h)` pins without
+  adding a new assertion. (`STATIC-EP` did NOT extend it: its CYCLE-1 `Origin` addition hit
+  CloudFront's hard 10-header cap on deploy and was reverted — the anonymous-write origin barrier
+  moved to the viewer-request CloudFront Function, pinned by the new named assertion `(i)` below,
+  D-STATIC-EP-ORIGIN.)
+- `(i)` — the viewer-request CloudFront Function's `STATIC_EP_EDGE_ORIGIN_GUARD` 403s a cross-site
+  / null-origin POST to `/api/consent|contact|leads` at the edge, before the renderer Lambda. The
+  assertion drives the shared guard source (`STATIC_EP_EDGE_ORIGIN_GUARD`, exported from
+  `renderer-hosting.ts`) over the full decision table AND asserts the deployed function body
+  contains it — so the deployed edge function is proven to run the verified logic. This is a new
+  assertion; it is the barrier `STATIC-EP` could not place on the ORP (see `(h)`).
 
 Rationale: `docs/slices/cache-6-distribution-transport-hotfixes.md`,
 `docs/slices/cache-7-prerender-revalidate-header.md`, and `docs/caching-architecture.md`
@@ -158,7 +164,7 @@ Three things to know before running it:
   gitignored outputs that a deploy regenerates. Tracked in `docs/TECH-DEBT.md`.
   Consequence to know: consecutive runs are **not** independent. If a run is interrupted, the
   next one can die in `beforeAll` with `ENOTEMPTY … .next/standalone/node_modules/next` and
-  report *all 17* assertions red for a reason unrelated to infra — `rm -rf renderer/.next` and
+  report *all 18* assertions red for a reason unrelated to infra — `rm -rf renderer/.next` and
   re-run before believing a wholesale failure.
 - **It is credential-free and enforces that itself.** The test stack passes
   `config: { domains: {} }`, so `AmodxDomains` — the only synth-time context provider

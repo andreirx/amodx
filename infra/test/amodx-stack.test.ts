@@ -58,12 +58,13 @@
  * EventBridge rules are byte-identical there.
  *
  * That diff predates `cache-6`, so it says nothing about the two properties `cache-6` added —
- * `ImageCachePolicy` and the eighth `RendererOriginPolicy` header — nor about the two
- * `RendererOriginPolicy` headers `cache-7` added (`x-prerender-revalidate`, `x-isr`), nor about
- * the `Origin` header `STATIC-EP` added (making eleven, forwarded transport only, in no cache
- * key). None is domain-shaped (a query-string key and header allowlist entries), so the same
- * argument covers them, but it is an argument here rather than a measurement. Labelled INFERRED,
- * not OBSERVED.
+ * `ImageCachePolicy` and the eighth `RendererOriginPolicy` header — nor about the ninth and
+ * tenth `RendererOriginPolicy` headers `cache-7` added (`x-prerender-revalidate`, `x-isr`).
+ * (`STATIC-EP` added NO ORP header: its CYCLE-1 `Origin` addition failed deploy on CloudFront's
+ * 10-header cap and was reverted — the origin guard moved to the viewer-request Function instead,
+ * pinned by `(i)` below.) None is domain-shaped (a query-string key and header allowlist entries),
+ * so the same argument covers them, but it is an argument here rather than a measurement. Labelled
+ * INFERRED, not OBSERVED.
  */
 
 import * as fs from 'node:fs';
@@ -73,6 +74,7 @@ import { spawnSync } from 'node:child_process';
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { AmodxStack } from '../lib/amodx-stack';
+import { STATIC_EP_EDGE_ORIGIN_GUARD } from '../lib/renderer-hosting';
 
 /** AWS-managed cache policy ids (stable, documented, and what the CDK enum resolves to). */
 const MANAGED_CACHING_DISABLED = '4135ea2d-6df8-44a3-9df3-4b5a84be39ad';
@@ -437,7 +439,7 @@ describe('Renderer distribution behaviors', () => {
 //     allowed to SEE AT ALL, on hits and misses alike.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('RendererOriginPolicy — what reaches the origin', () => {
-    test('(h) header allowlist is EXACTLY the eleven forwarded headers, in order', () => {
+    test('(h) header allowlist is EXACTLY the ten forwarded headers, in order', () => {
         // `x-revalidation-token` is the entry `cache-6` added, and its absence was a live
         // production defect, not a hypothetical: `backend/src/lib/revalidate.ts` sends it and
         // `renderer/src/app/api/revalidate/route.ts` 401s when it does not equal
@@ -452,8 +454,8 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
         // the origin can be made to see by any viewer, so it needs the same justification the
         // seven originals have.
         //
-        // `x-prerender-revalidate` + `x-isr` are `cache-7` — the SAME transport defect as
-        // `x-revalidation-token` above, a rung further along the ISR path. open-next's
+        // The last two, `x-prerender-revalidate` + `x-isr`, are `cache-7` — the SAME transport
+        // defect as `x-revalidation-token` above, a rung further along the ISR path. open-next's
         // RevalidationFunction sends BOTH on its HEAD re-render (`revalidate.js:25-26` in the
         // installed open-next@3.1.3); the credential authorises a blocking re-render and the
         // `x-isr` marker forces the result to be written back to S3 rather than treated as a
@@ -461,13 +463,12 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
         // "Failed to revalidate" and stayed STALE until the nightly flush (OBSERVED, prod). They
         // are TRANSPORT-only, in no cache key — see the `(h)` prose in `renderer-hosting.ts`.
         //
-        // `Origin` is `STATIC-EP` — the SAME transport-defect class again, this time on the
-        // read/write-endpoint hardening path. `renderer/src/lib/origin-guard.ts` rejects
-        // cross-site / opaque-origin (`Origin: null`, sandboxed-iframe) writes to the anonymous
-        // `/api/consent|contact|leads` proxies; CloudFront stripped `Origin`, so the guard saw
-        // `null` on every production request and allowed it — the guard was INERT until this
-        // entry existed. It is a transport header only, in NO cache key (it is on the origin-
-        // request policy, not `RendererCachePolicy`) → zero cache fragmentation.
+        // `Origin` is DELIBERATELY ABSENT (STATIC-EP / D-STATIC-EP-ORIGIN). The CYCLE-1 attempt to
+        // add it as an eleventh header failed deploy on CloudFront's hard 10-header ORP cap (staging
+        // caught it, rolled back; prod untouched), so the anonymous-write origin barrier moved to
+        // the viewer-request CloudFront Function, which sees `Origin` regardless of that cap. This
+        // list is therefore the SAME ten headers that are currently deployed; the edge guard is
+        // pinned by `(i)` below, not here.
         const headers = onlyResource('AWS::CloudFront::OriginRequestPolicy').Properties
             .OriginRequestPolicyConfig.HeadersConfig;
         expect(headers.HeaderBehavior).toBe('whitelist');
@@ -475,7 +476,6 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
             'Accept',
             'Accept-Language',
             'Content-Type',
-            'Origin',
             'X-Forwarded-Host',
             'x-origin-verify',
             'x-tenant-id',
@@ -484,6 +484,101 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
             'x-prerender-revalidate',
             'x-isr',
         ]);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (i) STATIC-EP / D-STATIC-EP-ORIGIN — the edge origin-guard in the viewer-request Function
+//     The anonymous-write origin barrier could not live on the ORP (its 10-header cap is full —
+//     see the note in `(h)`), so it moved INTO the viewer-request CloudFront Function, which sees
+//     `Origin` regardless of the cap. This block is that barrier's regression fence. It has two
+//     halves that together prove the DEPLOYED function enforces the verified decision table:
+//       1. the shared source `STATIC_EP_EDGE_ORIGIN_GUARD` (the exact ES5 spliced into the
+//          function) is driven as the pure function it is, over the full decision table; and
+//       2. the deployed function body (`FunctionCode`, joined out of its Fn::Join — it interpolates
+//          the origin-verify secret token, so it is not a bare string) CONTAINS that same source.
+//     Together: the deployed edge function runs logic (1), because its body contains (1).
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('viewer-request Function — STATIC-EP edge origin-guard (D-STATIC-EP-ORIGIN)', () => {
+    const HARDENED = ['/api/consent', '/api/contact', '/api/leads'];
+    const PUBLIC_HOST = 'acme.test';
+
+    // Reconstruct the deployed FunctionCode as text. CDK renders it as an `Fn::Join` because the
+    // function template literal interpolates `originVerifySecret` (a Secrets Manager token); the
+    // literal string segments joined back together contain everything except that secret — which
+    // the guard does not reference — so `.includes()` over it is exact for our assertions.
+    function deployedFunctionCode(): string {
+        const code = onlyResource('AWS::CloudFront::Function').Properties.FunctionCode;
+        if (typeof code === 'string') return code;
+        const join = code['Fn::Join'];
+        if (join && Array.isArray(join[1])) {
+            return join[1].map((p: unknown) => (typeof p === 'string' ? p : '')).join('');
+        }
+        throw new Error(`unexpected FunctionCode shape: ${JSON.stringify(code).slice(0, 120)}`);
+    }
+
+    // Drive the SHARED guard source as a pure function. It runs with `request` and `host` in scope
+    // in the real function; the harness supplies exactly those two, mirroring the deployed prelude
+    // (`var host = request.headers.host ? request.headers.host.value : ''`).
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const guard = new Function(
+        'event',
+        `var request = event.request;
+         var host = request.headers.host ? request.headers.host.value : '';
+         ${STATIC_EP_EDGE_ORIGIN_GUARD}
+         return request;`,
+    ) as (event: any) => any;
+
+    function run(o: { method: string; uri: string; host?: string; origin?: string }): any {
+        const headers: any = {};
+        if (o.host !== undefined) headers.host = { value: o.host };
+        if (o.origin !== undefined) headers.origin = { value: o.origin };
+        return guard({ request: { method: o.method, uri: o.uri, headers } });
+    }
+
+    for (const uri of HARDENED) {
+        test(`(i) ${uri}: same-origin POST passes to the origin (not a 403)`, () => {
+            // Pass-through returns the request object (no statusCode); a 403 returns a response.
+            const res = run({ method: 'POST', uri, host: PUBLIC_HOST, origin: `https://${PUBLIC_HOST}` });
+            expect(res.statusCode).toBeUndefined();
+        });
+
+        test(`(i) ${uri}: null-origin POST (sandboxed opaque frame) is rejected 403 at the edge`, () => {
+            const res = run({ method: 'POST', uri, host: PUBLIC_HOST, origin: 'null' });
+            expect(res.statusCode).toBe(403);
+        });
+
+        test(`(i) ${uri}: cross-site POST is rejected 403 at the edge`, () => {
+            const res = run({ method: 'POST', uri, host: PUBLIC_HOST, origin: 'https://evil.example' });
+            expect(res.statusCode).toBe(403);
+        });
+
+        test(`(i) ${uri}: POST with no Origin header is rejected 403 (browsers always send Origin on POST)`, () => {
+            const res = run({ method: 'POST', uri, host: PUBLIC_HOST });
+            expect(res.statusCode).toBe(403);
+        });
+
+        test(`(i) ${uri}: a scheme downgrade (http, not the https public origin) is rejected 403`, () => {
+            const res = run({ method: 'POST', uri, host: PUBLIC_HOST, origin: `http://${PUBLIC_HOST}` });
+            expect(res.statusCode).toBe(403);
+        });
+
+        test(`(i) ${uri}: GET passes through untouched even with a null Origin (only POST is gated)`, () => {
+            const res = run({ method: 'GET', uri, host: PUBLIC_HOST, origin: 'null' });
+            expect(res.statusCode).toBeUndefined();
+        });
+    }
+
+    test('(i) a non-hardened path POST (/api/ref, intentionally-open) is NOT gated by the edge guard', () => {
+        const res = run({ method: 'POST', uri: '/api/ref', host: PUBLIC_HOST, origin: 'null' });
+        expect(res.statusCode).toBeUndefined();
+    });
+
+    test('(i) the DEPLOYED viewer-request function body contains the exact shared guard + all three paths', () => {
+        const code = deployedFunctionCode();
+        expect(code).toContain(STATIC_EP_EDGE_ORIGIN_GUARD);
+        for (const uri of HARDENED) expect(code).toContain(`'${uri}'`);
+        expect(code).toContain('403');
     });
 });
 

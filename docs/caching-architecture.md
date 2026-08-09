@@ -1017,14 +1017,15 @@ and in the installed open-next@3.1.3 source, is:
   serving from the 30-day `stale-while-revalidate` window until the nightly `/*` flush. That is
   the reported symptom end to end, and the slice's production evidence stands.
 
-**State after the fix (`cache-7`).** `'x-prerender-revalidate'` and `'x-isr'` were the ninth and
-tenth entries added to `RendererOriginPolicy`. Like `x-revalidation-token`, they are in **no** cache
+**State after the fix (`cache-7`).** `'x-prerender-revalidate'` and `'x-isr'` are the ninth and
+tenth entries of `RendererOriginPolicy`. Like `x-revalidation-token`, they are in **no** cache
 key: both are markers/credentials that must not partition entries, and the revalidation HEAD
 only reaches the origin on the stale-revalidation fetch anyway. Pinned by assertion `(h)` in
-`infra/test/amodx-stack.test.ts` — ten headers as of `cache-7`; **`STATIC-EP` (2026-08-08) later
-added `Origin` as the eleventh** (the anonymous-write-endpoint hardening transport dependency —
-see § *Origin Request Policy* and the `(h)` assertion), so the allowlist `(h)` pins is now eleven
-headers, order-exact.
+`infra/test/amodx-stack.test.ts` (ten headers, order-exact). **`STATIC-EP` (D-STATIC-EP-ORIGIN,
+2026-08-09) added no header here:** its CYCLE-1 attempt to forward `Origin` as an eleventh entry
+failed deploy on CloudFront's hard 10-header origin-request-policy cap (staging caught it, rolled
+back; prod untouched), so the anonymous-write origin barrier moved to the viewer-request CloudFront
+Function instead — see § *Origin Request Policy* and infra assertion `(i)`.
 
 Post-deploy check (`NOT RUN`, operator): publish/update a post, then watch the
 RevalidationFunction logs go quiet (no "Failed to revalidate"); a listing/tag page that read
@@ -1781,7 +1782,6 @@ Lambda is concerned.
 | Header | Why it is forwarded |
 |---|---|
 | `Accept`, `Accept-Language`, `Content-Type` | ordinary content negotiation / request bodies |
-| `Origin` | **added by `STATIC-EP`.** The browser `Origin` on anonymous credential-free write POSTs (`/api/consent|contact|leads`). `renderer/src/lib/origin-guard.ts` (`isFirstPartyWrite`) rejects cross-site / opaque-origin (sandboxed-iframe, `Origin: null`) writes — the STATIC-1 isolation barrier — but CloudFront stripped `Origin`, so the guard saw `null` and was inert. Same transport-defect class as `x-revalidation-token` (D1). Transport only; in **no** cache key → zero cache fragmentation. |
 | `X-Forwarded-Host` | how the origin resolves the tenant at all (§ *Multi-Tenant Isolation*) |
 | `x-origin-verify` | origin trust — the renderer rejects requests without it (Phase 6.1) |
 | `x-tenant-id`, `x-automation-key` | admin/automation calls proxied through the renderer |
@@ -1790,6 +1790,15 @@ Lambda is concerned.
 
 Cookies and query strings are forwarded in full (`all()`), which is why the render sees the
 real cookie jar on a miss even though cookies are absent from the cache key.
+
+**`Origin` is intentionally NOT on this list (D-STATIC-EP-ORIGIN, 2026-08-09).** The list is at
+CloudFront's hard 10-header cap; `STATIC-EP`'s CYCLE-1 attempt to forward `Origin` as an eleventh
+entry failed deploy on that cap and was reverted. The anonymous-write origin barrier
+(`/api/consent|contact|leads`) therefore runs in the viewer-request CloudFront Function
+(`STATIC_EP_EDGE_ORIGIN_GUARD`, `infra/lib/renderer-hosting.ts`), which sees `Origin` regardless of
+the cap and 403s a cross-site / null-origin POST before it reaches the Lambda — pinned by assertion
+`(i)`. `renderer/src/lib/origin-guard.ts` remains as belt-and-suspenders but is inert in production
+(it never sees `Origin`). Do NOT "fix" this by adding `Origin` here — it will fail deploy.
 
 Pinned by assertion `(h)` in `infra/test/amodx-stack.test.ts`. It asserts the list **exactly
 and in order**, because the D1 defect existed precisely for as long as nothing asserted it.

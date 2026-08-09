@@ -17,6 +17,53 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 
+/**
+ * STATIC-EP / D-STATIC-EP-ORIGIN (human-ratified 2026-08-09) — the edge same-origin gate for the
+ * anonymous credential-free write proxies, enforced INSIDE the viewer-request CloudFront Function.
+ *
+ * WHY A STRING CONST RATHER THAN INLINE. This is the exact ES5 source spliced into
+ * `HostRewriteFunction` below (the `${...}` interpolation), so it is what actually deploys. It is
+ * exported so `infra/test/amodx-stack.test.ts` can drive it as the pure function it is — the
+ * deployed `FunctionCode` is a CloudFormation `Fn::Join` (it interpolates the origin-verify secret
+ * token), so it cannot be `eval`-ed directly; a shared const is the only single-source seam that
+ * lets the test verify the ACTUAL deployed decision logic instead of a drift-prone copy. The test
+ * also asserts the deployed (joined) function body CONTAINS this exact string, tying the two ends.
+ *   - Concrete current users: `HostRewriteFunction` (deploy) + `amodx-stack.test.ts` (unit test).
+ *   - Axis: none — this is a TEST SEAM (the deployed body is an Fn::Join, un-eval-able), the one
+ *     abstraction justification that applies. Rejected alternative: a hand-copied guard in the
+ *     test (drift risk on a security barrier) or eval of the deployed Fn::Join (blocked by the
+ *     secret token).
+ *
+ * CONTRACT. It runs with `request` (the CloudFront viewer-request `event.request`) and `host`
+ * (the viewer's public Host — the function runs BEFORE CloudFront rewrites Host to the origin it
+ * dials, so `host` is `acme.test`, not the Lambda-URL host) already in scope. For a state-changing
+ * POST to a hardened proxy it 403s unless `Origin` EXACTLY equals this request's own public origin
+ * (`https://<host>` — CloudFront force-redirects http→https, so https is the only public scheme, and
+ * exact string equality is a scheme+host+port match). A missing or `Origin: null` (sandboxed opaque
+ * frame) value never matches → 403. GET and every non-hardened path pass untouched. ES5 only
+ * (CloudFront Functions runtime 1.0): no let/const, no arrow functions, no template literals.
+ *
+ * The renderer-side `renderer/src/lib/origin-guard.ts` is now belt-and-suspenders ONLY: because
+ * `Origin` is not forwarded (see the ORP note below), the renderer never sees it in production and
+ * that guard is inert there. THIS edge function is the production barrier.
+ */
+export const STATIC_EP_EDGE_ORIGIN_GUARD = `
+    if (request.method === 'POST' &&
+        (request.uri === '/api/consent' || request.uri === '/api/contact' || request.uri === '/api/leads')) {
+        var reqOrigin = request.headers.origin ? request.headers.origin.value : '';
+        if (reqOrigin !== 'https://' + host) {
+            return {
+                statusCode: 403,
+                statusDescription: 'Forbidden',
+                headers: {
+                    'content-type': { value: 'application/json' },
+                    'cache-control': { value: 'no-store' }
+                },
+                body: '{"error":"Cross-origin write rejected"}'
+            };
+        }
+    }`;
+
 interface RendererHostingProps {
     table: dynamodb.Table;
     apiUrl: string;
@@ -229,14 +276,23 @@ export class RendererHosting extends Construct {
             authType: lambda.FunctionUrlAuthType.NONE,
         });
 
-        // 5. CloudFront Function (viewer request). Three jobs, all of them cache-key or
-        //    origin-trust concerns — see the cache policy below for how the outputs are used.
+        // 5. CloudFront Function (viewer request). Four jobs: (a)-(c) are cache-key / origin-trust
+        //    concerns (see the cache policy below for how the outputs are used); (d) is an origin
+        //    SECURITY barrier that can 403 the request outright.
         //
         //    a) `x-forwarded-host` — the original Host, so the origin can resolve the tenant
         //       (Phase 4). Keyed, so tenants never share an entry.
         //    b) `x-origin-verify` — proves the request came through CloudFront (Phase 6.1).
         //       NOT keyed; it is a constant.
         //    c) `x-has-session` — cache-3 revision 3, decision CACHE3-SESSION-KEY option B.
+        //    d) STATIC-EP / D-STATIC-EP-ORIGIN edge origin-guard — 403s a cross-site / null-origin
+        //       POST to `/api/consent|contact|leads` BEFORE it reaches the renderer Lambda. This is
+        //       the D-STATIC-1 isolation barrier's transport half. It lives HERE, not on the ORP,
+        //       because the origin-request policy's 10-header cap is full so `Origin` cannot be
+        //       forwarded (the CYCLE-1 header-forward failed deploy and was rolled back); the edge
+        //       function sees `Origin` regardless of that cap. Full contract on
+        //       `STATIC_EP_EDGE_ORIGIN_GUARD` (module top); the renderer `origin-guard.ts` is now
+        //       belt-and-suspenders only (inert in prod, where `Origin` is stripped).
         //
         //    (c) exists because the cache policy keys on NO cookies. Without it, a
         //    logged-in visitor's request has the SAME cache key as an anonymous one: once
@@ -306,6 +362,11 @@ export class RendererHosting extends Construct {
 function handler(event) {
     var request = event.request;
     var host = request.headers.host ? request.headers.host.value : '';
+
+    // (d) STATIC-EP edge origin-guard — see STATIC_EP_EDGE_ORIGIN_GUARD. Runs first so a rejected
+    // cross-site / null-origin write returns 403 at the edge before any other work.
+    ${STATIC_EP_EDGE_ORIGIN_GUARD}
+
     request.headers['x-forwarded-host'] = { value: host };
     request.headers['x-origin-verify'] = { value: '${props.originVerifySecret}' };
 
@@ -344,16 +405,14 @@ function handler(event) {
                 'Accept',
                 'Accept-Language',
                 'Content-Type',
-                // slice STATIC-EP. The browser's `Origin` on anonymous credential-free write
-                // POSTs (`/api/consent|contact|leads`). Same transport-defect class as
-                // `x-revalidation-token`/`x-prerender-revalidate` below: `renderer/src/lib/
-                // origin-guard.ts` (`isFirstPartyWrite`) rejects cross-site / opaque-origin
-                // (sandboxed-iframe, `Origin: null`) writes — the STATIC-1 isolation barrier —
-                // but CloudFront STRIPPED `Origin`, so the guard saw `null` on every production
-                // request and fell through to allow (inert). Forwarding it here is what makes
-                // the guard actually run at the edge-fronted origin. This is the origin-REQUEST
-                // policy (transport), NOT the cache-key policy — ZERO cache fragmentation.
-                'Origin',
+                // NOTE (slice STATIC-EP / D-STATIC-EP-ORIGIN, human-ratified 2026-08-09):
+                // `Origin` is DELIBERATELY NOT forwarded here. The CYCLE-1 attempt to add it
+                // hit CloudFront's hard 10-header origin-request-policy cap on deploy (staging
+                // caught it, rolled back clean, prod untouched). This allowlist is FULL at ten.
+                // The anonymous-write-endpoint origin barrier therefore lives in the
+                // viewer-request CloudFront Function above (which DOES see `Origin` — the
+                // 10-header cap governs only what reaches the Lambda, not what the edge function
+                // sees), NOT in the renderer Lambda. See the `(d)` prose on `HostRewriteFunction`.
                 'X-Forwarded-Host',
                 'x-origin-verify',  // Phase 6.1: Origin verification header
                 'x-tenant-id',

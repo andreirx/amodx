@@ -40,15 +40,24 @@
  *     isolation against the browser-sandbox threat this guard is for. Allow — matching the
  *     shape the backend already relies on for its own callers.
  *
- * WHERE THE `Origin` HEADER COMES FROM IN PRODUCTION
- * --------------------------------------------------
+ * PRODUCTION STATUS — BELT-AND-SUSPENDERS, INERT AT THE EDGE-FRONTED ORIGIN
+ * -------------------------------------------------------------------------
  * Behind CloudFront a request header only reaches this origin if it is on the
  * `RendererOriginPolicy` transport allowlist (`infra/lib/renderer-hosting.ts`); anything else
- * is stripped at the edge. STATIC-EP adds `Origin` to that allowlist — WITHOUT it this guard
- * saw `origin === null` on every production request and fell through to the allow branch,
- * i.e. it was inert (the same transport-defect class as cache-6/7). `Origin` goes into the
- * origin-REQUEST policy (forwarded to the origin), NOT the cache-key policy, so it causes ZERO
- * cache fragmentation.
+ * is stripped at the edge. `Origin` is DELIBERATELY NOT on that allowlist: the CYCLE-1 attempt
+ * to add it (so this guard would run in production) hit CloudFront's hard 10-header origin-request
+ * -policy cap on deploy and was reverted (D-STATIC-EP-ORIGIN, human-ratified 2026-08-09). So in
+ * production this guard sees `origin === null` on every request and falls through to the allow
+ * branch — it is INERT there. The real production barrier is the viewer-request CloudFront
+ * Function (`STATIC_EP_EDGE_ORIGIN_GUARD` in `infra/lib/renderer-hosting.ts`), which 403s a
+ * cross-site / null-origin POST to these three paths BEFORE it reaches this Lambda and which sees
+ * `Origin` regardless of the ORP cap.
+ *
+ * This module is retained as DEFENCE-IN-DEPTH and remains fully active where there is no
+ * CloudFront in front of the renderer — local `next start`, direct Lambda-URL invocation, and the
+ * serving-contract harness — which is why `renderer/test/serving-contract/contract.test.mjs` row
+ * `(g4)` still exercises it end-to-end. It is inert-SAFE: with `Origin`/`Sec-Fetch-Site` stripped
+ * it can only ever take the allow branch, so it never rejects a legitimate first-party caller.
  *
  * RECONSTRUCTING THE EXPECTED ORIGIN (scheme is the subtle part)
  * -------------------------------------------------------------

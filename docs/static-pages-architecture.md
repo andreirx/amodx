@@ -76,30 +76,62 @@ is therefore rejected. Non-browser callers (no `Origin`, no `Sec-Fetch-Site`) ar
 can forge `Origin` anyway, so blocking them buys no isolation against the browser-sandbox threat.
 Full rationale in the module header.
 
-**Transport dependency (the REVISE-cycle fix).** The guard only sees `Origin` because STATIC-EP
-adds it to the `RendererOriginPolicy` transport allowlist (`infra/lib/renderer-hosting.ts`).
-Before that, CloudFront **stripped** `Origin`, so in production the guard saw `null` on every
-request and fell through to allow — inert (the same defect class as cache-6/7: an
-operationally-required header eaten by the origin-request policy). `Origin` is on the
-origin-**request** policy, **not** the cache-key policy → **zero cache fragmentation** (pinned by
-assertion `(h)` in `infra/test/amodx-stack.test.ts`, now eleven forwarded headers, and documented
-in `docs/caching-architecture.md` § *Origin Request Policy*).
+**Where the barrier actually runs (D-STATIC-EP-ORIGIN, human-ratified 2026-08-09).** In production
+this renderer guard is **inert belt-and-suspenders**, and the real barrier is at the edge. Reason:
+the guard can only act on `Origin`, but behind CloudFront a header reaches the renderer Lambda only
+if it is on the `RendererOriginPolicy` transport allowlist — and that list is at CloudFront's hard
+**10-header cap**. CYCLE-1 tried to forward `Origin` as an eleventh header; it **failed deploy on
+that cap** (staging caught it, rolled back; prod untouched). So `Origin` is never forwarded, the
+renderer guard sees `null` on every production request, and it falls through to allow — inert, but
+inert-SAFE (with `Origin`/`Sec-Fetch-Site` stripped it can only ever allow, so it never rejects a
+real first-party caller).
+
+The barrier therefore lives in the **viewer-request CloudFront Function**
+(`STATIC_EP_EDGE_ORIGIN_GUARD` in `infra/lib/renderer-hosting.ts`), which sees `Origin` regardless
+of the ORP cap (the cap governs only what reaches the *Lambda*, not what the edge function sees).
+For a state-changing POST to `/api/consent|contact|leads` it 403s unless `Origin` exactly equals the
+request's own public origin (`https://<host>` — CloudFront force-redirects http→https, so https is
+the only public scheme and exact equality is a scheme+host+port match). A missing or `Origin: null`
+(sandboxed opaque frame) value never matches → 403. GET and every non-hardened path pass untouched.
+The renderer guard is retained as defence-in-depth and stays fully active where there is **no**
+CloudFront (local `next start`, direct Lambda-URL invocation, the serving-contract harness).
 
 Tests, and exactly what each layer covers:
 
-- `renderer/test/unit/origin-guard.test.ts` — the guard as an imported function: both directions,
-  edges, the full-origin scheme/port strictness cases, **and** the review-1 case that on the
-  forwarded path a `Host`-forged `Origin` (the Lambda/function-URL origin host) is rejected.
-- `renderer/test/unit/anon-write-endpoints.test.ts` — per-endpoint wiring: cross-site → 403 before
-  any backend hop; same-origin → proxied.
+- `infra/test/amodx-stack.test.ts` assertion `(i)` — **the production barrier.** Drives the shared
+  guard source `STATIC_EP_EDGE_ORIGIN_GUARD` (the exact ES5 spliced into the CloudFront Function)
+  over the full decision table — same-origin POST passes, null/cross-site/no-Origin/scheme-downgrade
+  POST → 403, GET and non-hardened paths untouched — **and** asserts the deployed function body
+  contains that same source. Together: the deployed edge function runs the verified logic.
+- `infra/test/amodx-stack.test.ts` assertion `(h)` — pins that `Origin` is **NOT** on the
+  `RendererOriginPolicy` allowlist (ten headers), i.e. the renderer guard is inert in production by
+  construction, and the CYCLE-1 header-forward stays reverted. Scope note: `(h)` asserts the
+  **synthesized** template's ORP is ten headers; it is *not* an observation that the synthesized ORP
+  equals the currently-**deployed** ORP. That deployed-state equality is a separate gate — see the
+  `cdk diff` pre-deploy gate below.
+- `renderer/test/unit/origin-guard.test.ts` — the belt-and-suspenders renderer guard as an imported
+  function: both directions, edges, the full-origin scheme/port strictness cases, **and** the
+  review-1 case that on the forwarded path a `Host`-forged `Origin` (the Lambda/function-URL origin
+  host) is rejected. Active in the no-CloudFront environments listed above.
+- `renderer/test/unit/anon-write-endpoints.test.ts` — per-endpoint renderer wiring: cross-site → 403
+  before any backend hop; same-origin → proxied.
 - `renderer/test/serving-contract/contract.test.mjs` row `(g4)` — per hardened endpoint, a
-  `null`/cross-origin POST rejected (403) and a same-origin POST admitted past the guard,
-  exercised inside the **built + served** renderer (`next start`). This proves the guard runs in
-  the real artifact — it does **not** prove CloudFront forwards `Origin`, because the harness runs
-  `next start` with no edge in front of it.
-- `infra/test/amodx-stack.test.ts` assertion `(h)` — the CloudFront `Origin`-forwarding transport
-  boundary itself: that `Origin` is on the `RendererOriginPolicy` allowlist (now eleven headers).
-  This is the layer that pins the edge behaviour the serving suite cannot see.
+  `null`/cross-origin POST rejected (403) and a same-origin POST admitted, exercised inside the
+  **built + served** renderer (`next start`). This exercises the **renderer** belt-and-suspenders
+  guard (the harness has no CloudFront in front, so `Origin` reaches the renderer here); it does
+  **not** exercise the edge function.
+- **Operator staging probe (`NOT RUN` gate).** The edge guard's true end-to-end proof is a
+  null-Origin POST to `/api/contact` through CloudFront returning 403 on staging — it cannot run in
+  any hermetic suite (no AWS) and is left as an operator pre-deploy check.
+- **`cdk diff` ORP-unchanged pre-deploy gate (`NOT RUN`).** The rider requires
+  `cd infra && npx cdk diff -c stage=staging` to confirm `RendererOriginPolicy` is **unchanged from
+  the currently-deployed state** (i.e. the CYCLE-1 eleventh-header add is fully reverted and this
+  slice adds no ORP delta). This reads the deployed CloudFormation stack and therefore needs AWS
+  credentials, which the hermetic build/test environment does not have (and the STATIC-EP packet
+  forbids staging tests at build time). It is **NOT RUN** here and remains an **unmet pre-deploy
+  gate** the operator must clear before deploy — not a satisfied condition. Assertion `(h)` bounds
+  the *synthesized* ORP to ten headers, which makes a non-empty ORP diff surprising, but that is
+  INFERRED equivalence, not the deployed-state OBSERVATION this gate requires.
 
 ### Per-endpoint disposition (full set — `find renderer/src/app/api -type f`, OBSERVED 2026-08-08)
 
@@ -108,9 +140,9 @@ The audit named consent/contact/ref/leads; the grep confirmed those four **plus*
 
 | Endpoint | Method(s) | Disposition | Evidence (file:line) | Reason |
 |----------|-----------|-------------|----------------------|--------|
-| `/api/consent` | POST | **HARDENED** | `consent/route.ts:16` | Anonymous credential-free write (CookieConsent.tsx). Cross-site not intended → `isFirstPartyWrite` gate. |
-| `/api/contact` | POST | **HARDENED** | `contact/route.ts:19` | Anonymous write (ContactRender.tsx). Backend skips Origin for RENDERER → guarded here. |
-| `/api/leads` | POST | **HARDENED** | `leads/route.ts:18` | Anonymous write (LeadMagnetRender.tsx). Cross-site not intended → gate. |
+| `/api/consent` | POST | **HARDENED** | edge guard src `infra/lib/renderer-hosting.ts:50-65`, injected into the viewer-request Function at `infra/lib/renderer-hosting.ts:368`; renderer belt-and-suspenders call `renderer/src/app/api/consent/route.ts:16` | Anonymous credential-free write (CookieConsent.tsx). Cross-site not intended → 403 at the edge CloudFront Function; renderer `isFirstPartyWrite` is belt-and-suspenders (inert in prod). |
+| `/api/contact` | POST | **HARDENED** | edge guard src `infra/lib/renderer-hosting.ts:50-65`, injected at `infra/lib/renderer-hosting.ts:368`; renderer belt-and-suspenders call `renderer/src/app/api/contact/route.ts:19` | Anonymous write (ContactRender.tsx). Backend skips Origin for RENDERER; edge function is the barrier (Lambda never sees `Origin` — ORP cap). |
+| `/api/leads` | POST | **HARDENED** | edge guard src `infra/lib/renderer-hosting.ts:50-65`, injected at `infra/lib/renderer-hosting.ts:368`; renderer belt-and-suspenders call `renderer/src/app/api/leads/route.ts:18` | Anonymous write (LeadMagnetRender.tsx). Cross-site not intended → edge 403; renderer guard belt-and-suspenders. |
 | `/api/ref` | POST | **INTENTIONALLY-OPEN** | `ref/route.ts:69`; rationale `ref/route.ts:56-59` | Standing ratified decision: attribution *tag*, not a credential; a top-level `?ref=` navigation does the same, more easily. Recorded in caching-architecture Known Gaps 14. Left open; flagged below as a residual-(i) item for the spike. |
 | `/api/comments` | GET (read), POST | **N/A** | POST session-gated `comments/route.ts:72-74` (getToken → 401) | Not a credential-free write. Cross-site fetch → Lax cookie withheld → 401 (plan § 3(a) fact 2). Already contained; no change. |
 | `/api/posts` | GET | **N/A** | `posts/route.ts:15` | Read-only. No write to harden. |
@@ -132,10 +164,13 @@ The audit named consent/contact/ref/leads; the grep confirmed those four **plus*
   `ReferralCapture` beacon.
 - **In-frame phishing (residual (ii))** is a content-trust concern owned by `D-STATIC-5`,
   not a session-boundary breach — out of scope here.
-- **One infra change — authorised by the REVISE cycle (2026-08-08, `static_ep_origin_transport`
-  = option A, operator-resolved).** The slice's "no infra unless an endpoint fix needs config →
-  STOP" clause fired correctly: the guard was inert because CloudFront stripped `Origin`. The
-  resolution adds `Origin` to the `RendererOriginPolicy` header allowlist (transport only, **not**
-  the cache key → zero cache fragmentation) so the guard actually runs. This is the sole infra
-  edit; the asset-origin CORS pair (variant a1) remains a `static-2`+spike concern, not part of
-  STATIC-EP.
+- **One infra change — the edge origin-guard (D-STATIC-EP-ORIGIN, human-ratified 2026-08-09).**
+  The slice's "no infra unless an endpoint fix needs config → STOP" clause fired correctly: the
+  renderer guard was inert because CloudFront strips `Origin`. CYCLE-1 tried to fix that by adding
+  `Origin` to the `RendererOriginPolicy` allowlist, but that **failed deploy on CloudFront's hard
+  10-header cap** (staging caught it, rolled back; prod untouched). Final resolution: the origin
+  barrier moved into the **existing viewer-request CloudFront Function**
+  (`STATIC_EP_EDGE_ORIGIN_GUARD`), which 403s a cross-site / null-origin POST to
+  `/api/consent|contact|leads` at the edge and sees `Origin` regardless of the ORP cap. The ORP is
+  **reverted to its deployed ten headers** (`Origin` is not on it). This is the sole infra edit; the
+  asset-origin CORS pair (variant a1) remains a `static-2`+spike concern, not part of STATIC-EP.

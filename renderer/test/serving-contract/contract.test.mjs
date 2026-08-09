@@ -503,16 +503,20 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // ── ROW (g4) ─────────────────────────────────────────────────────────────────────────
     // STATIC-EP: the anonymous credential-free write proxies enforce the STATIC-1 isolation
     // barrier (`renderer/src/lib/origin-guard.ts` → `isFirstPartyWrite`) on the BUILT + served
-    // path, not just as an imported function in the route-level unit test. This is the
-    // evidence-upgrade the reviewer's rider asked for: the guard is exercised inside the real
-    // `next start` artifact with real request headers, so a regression that removes the guard
-    // call — or that admits an opaque-origin write — fails the serving contract.
+    // path, not just as an imported function in the route-level unit test. The guard is exercised
+    // inside the real `next start` artifact with real request headers, so a regression that removes
+    // the guard call — or that admits an opaque-origin write — fails the serving contract.
     //
-    // SCOPE OF THIS EVIDENCE (do not over-claim): this harness runs `next start` DIRECTLY, with
-    // no CloudFront in front of it, so it does NOT cover the CloudFront `Origin`-forwarding
-    // transport boundary — whether the edge actually forwards `Origin` to the origin. That
-    // allowlist is pinned separately by the infra assertion `(h)` in `amodx-stack.test.ts`.
-    // What these cases cover is the guard's OWN decision as it runs in the served renderer.
+    // WHAT LAYER THIS IS (do not over-claim). After D-STATIC-EP-ORIGIN (human-ratified 2026-08-09)
+    // the PRODUCTION barrier is the viewer-request CloudFront Function (`STATIC_EP_EDGE_ORIGIN_GUARD`
+    // in `infra/lib/renderer-hosting.ts`), NOT this renderer guard: `Origin` is not forwarded to the
+    // Lambda (CloudFront's 10-header ORP cap is full), so in production `origin-guard.ts` is inert
+    // (belt-and-suspenders). This harness runs `next start` DIRECTLY, with no CloudFront in front of
+    // it, so `Origin` DOES reach the renderer here and these cases exercise the belt-and-suspenders
+    // renderer guard in the built artifact. They do NOT exercise the edge function. The edge guard's
+    // in-repo proof is the infra decision-table assertion `(i)` in `amodx-stack.test.ts`; its true
+    // end-to-end proof is the operator staging probe (a null-Origin POST to /api/contact through
+    // CloudFront returns 403) — a NOT-RUN gate here (no AWS in this suite).
     //
     // A rejected write is a 403 with the guard's body BEFORE any tenant/backend hop. An
     // accepted (same-origin) write PASSES the guard and proceeds; in this hermetic harness
