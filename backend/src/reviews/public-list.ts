@@ -40,8 +40,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 ":sk": `REVIEW#${productId}#`,
                 ":approved": "approved"
             },
-            ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "id, authorName, rating, content, source, createdAt, images"
+            ExpressionAttributeNames: { "#s": "status", "#src": "source" },
+            ProjectionExpression: "id, authorName, rating, content, #src, createdAt, images"
         }));
 
         const rows = ((result.Items ?? []) as StoredReviewItem[]).sort(
