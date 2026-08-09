@@ -90,6 +90,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 { name: "Resources", href: "/resources", icon: FileBox },
                 { name: "Team", href: "/users", icon: Shield },
                 { name: "WP Migration", href: "/migration", icon: ArrowRightLeft },
+                { name: "Email DNS", href: "/email", icon: Mail },
                 { name: "Settings", href: "/settings", icon: Settings },
             ]
         },

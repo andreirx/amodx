@@ -84,7 +84,12 @@ Standard template for all functions:
 - Bundling: esbuild, minified, source maps, `@aws-sdk/*` external
 - Environment: TABLE_NAME, EVENT_BUS_NAME, SES_FROM_EMAIL, secret names, bucket names
 
-30+ functions covering: content CRUD (6), products (5), comments (3), signals (3), leads (2), context (5), tenant (3), users (1), resources (3), assets (2), audit (3), contact (1), consent (1), themes (3), webhooks (1), import (1).
+30+ functions covering: content CRUD (6), products (5), comments (3), signals (3), leads (2), context (5), tenant (3), users (1), resources (3), assets (2), audit (3), contact (1), consent (1), themes (3), webhooks (1), import (1), email DNS (1).
+
+`EmailDnsCheckFunc` (slice `email-2`, `POST /email/dns-check`): read-only guided-DNS
+checker. One `NodejsFunction` + one route + `table.grantReadData` (it Gets the tenant record
+to derive the domain server-side; the DNS lookups themselves write nothing). Within the
+"route + grant" ceiling — no NestedStack, no SES/IAM identity change (that is `email-2a`).
 
 Custom Lambda authorizer validates Cognito JWT or master API key. Public routes (`POST /leads`, `/contact`, `/consent`) bypass auth.
 

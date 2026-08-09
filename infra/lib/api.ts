@@ -313,6 +313,22 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('GetSettingsSecretsInt', getSettingsSecretsFunc),
         });
 
+        // --- EMAIL (email-2: guided DNS read-only checker) ---
+        // Read-only. Grants ReadData because the handler Gets the tenant record to derive
+        // the domain server-side; it performs public DNS lookups but writes nothing.
+        const emailDnsCheckFunc = new nodejs.NodejsFunction(this, 'EmailDnsCheckFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/email/dns-check.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(emailDnsCheckFunc);
+
+        this.httpApi.addRoutes({
+            path: '/email/dns-check',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('EmailDnsCheckInt', emailDnsCheckFunc),
+        });
+
         // --- CONTACT ---
         const contactFunc = new nodejs.NodejsFunction(this, 'ContactFunc', {
             ...nodeProps,

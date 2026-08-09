@@ -31,6 +31,18 @@ src/
 │   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
 │   ├── context.ts         # AuthorizerContext type definition
 │   └── policy.ts          # requireRole(auth, roles[], tenantId?) access control
+├── email/                 # slice email-2 — guided DNS read-only checker (NO DNS writes, NO SES)
+│   ├── dns-check.ts       # POST /email/dns-check {provider} — the I/O EDGE. Derives the domain
+│   │                      #   from the tenant record (GetCommand only; never the body — §4.3
+│   │                      #   cross-tenant-leak rule), resolves each CHECKABLE recipe row in
+│   │                      #   PUBLIC DNS (1.1.1.1/8.8.8.8), returns per-row {expected, observed,
+│   │                      #   status, observedTtl, recordIndex}. `derive` rows get their expected
+│   │                      #   value from shared/deriveEmailDnsValue; checkable:false rows are never
+│   │                      #   queried. Read-only: writes nothing to DNS or DynamoDB.
+│   └── dns-map.ts         # PURE mapper SEAM (no network/AWS/clock): (expected, observed, priority,
+│                          #   lookupError) → {status, detail}. Owns the propagation-AMBIGUITY
+│                          #   labelling (missing/error are never verdicts) and MX-priority
+│                          #   comparison (wrong priority = mismatch). Unit-tested standalone.
 ├── content/
 │   ├── create.ts          # POST /content
 │   ├── list.ts            # GET /content

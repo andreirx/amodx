@@ -68,6 +68,7 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 | `/audit` | AuditLog | Activity history |
 | `/resources` | Resources | Private files |
 | `/users` | Users | Team management |
+| `/email` | Email | Guided DNS for mailbox providers + read-only DNS checker (slice `email-2`). Provider selector, copyable record table (static / domain-derived / console-generated rows), MX destructive-advice warning, per-record check verdict (theme-token status via icon, not colour). Reads `EMAIL_PROVIDER_RECIPES` from `@amodx/shared`; POSTs `/email/dns-check`. |
 | `/settings` | Settings | Site configuration |
 
 ## State Management

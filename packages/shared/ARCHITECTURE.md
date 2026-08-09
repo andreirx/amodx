@@ -79,6 +79,27 @@ shape** — a function with its own contract and its own test file.
 | Function | Contract | Used by |
 |----------|----------|---------|
 | `normalizeEmail(raw)` | `NFKC → trim → lowercase`. Pure, deterministic, idempotent, no locale/env/IO. Its output IS the `CUSTOMER#<email>` sort key and the pre-image of the Cognito username hash (PD-001) | **Nothing yet** — slice `fnd-1` added the primitive and migrated zero call sites by design; `fnd-2` migrates the 14 inline sites (inventory in `docs/slices/fnd-1-normalize-email.md`) |
+| `deriveEmailDnsValue(kind, domain)` | Pure. Computes a recipe value that depends on the tenant domain. Only variant today: `"m365-mx"` → `<domain dots→dashes>.mail.protection.outlook.com`. Exhaustive `switch` with an `assertNever` default — a new `EmailDnsDerivation` variant breaks the compile until handled. Consumed on BOTH sides of the admin↔backend boundary (slice `email-2`) | `backend/src/email/dns-check.ts` (server-authoritative `expected` for the M365 MX check) and `admin/src/pages/Email.tsx` (mirrors the same target for display/copy) |
+
+### Email guided-DNS catalogue (`EMAIL_PROVIDER_RECIPES`, slice `email-2`)
+
+Data-not-code recipes (Google Workspace / Microsoft 365 / Zoho / keep-existing) plus the
+`EmailDns*` DTOs that cross the admin↔backend boundary as raw JSON. Lives in `shared`
+because BOTH admin (renders the table) and the backend DNS-check handler (owns the
+server-authoritative `expected` value) consume it — the slice's own promotion gate.
+
+- `EmailProviderRecipe` / `EmailDnsRecipeRecord` — a provider's publishable record set.
+  `replacesMailRouting` is coupled to actually having an MX row (the destructive-advice
+  guard). A row's expected value is **static** (`value`), **derived** (`derive`, computed
+  from the domain — checkable), or **console-generated** (`checkable:false`, guidance only,
+  never checked). DMARC is deliberately EXCLUDED — it is `email-3`'s sending-health surface.
+- `EmailDnsCheckResponse` / `EmailDnsCheckRecordResult` — one read-only check's result.
+  Each row carries `recordIndex` (collision-free identity — a recipe may hold several
+  same-`(type,host)` rows, e.g. Zoho's three MX), `expectedPriority` + `observedMx` (MX
+  preference is compared — a right exchange at the wrong priority is a mismatch, not a
+  match), and `observedTtl` (null for MX/TXT/CNAME; the UI shows the resolver limitation).
+  `EmailDnsCheckStatus` = `match | mismatch | missing | error`; `missing`/`error` are
+  AMBIGUOUS (never a permanent verdict).
 
 > **`normalizeEmail` is not an ordinary helper.** Changing its output is a DynamoDB key
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
