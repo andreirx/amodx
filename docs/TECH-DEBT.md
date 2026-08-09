@@ -934,3 +934,20 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   this would need the streaming `Unzip` API. Not built now — the layered guards above
   hold within the ≤10 MB API-Gateway request-body limit.
 - Status: TRACKED residual, deliberately deferred.
+
+## OpenNext tag-cache GSI missing — non-fatal log noise (2026-08-09, batch-A prod deploy)
+
+- **Symptom:** renderer logs `Failed to get tags by path ValidationException: The table
+  does not have the specified index: revalidate` after the batch-A deploy. Pages serve
+  200 — NO user impact. Not present in the pre-deploy log window.
+- **Cause (INFERRED, not fully traced):** OpenNext's ISR revalidation (functional since
+  cache-7 forwarded x-prerender-revalidate) attempts a tag→path reverse lookup on the
+  tag-cache DynamoDB table, which lacks the GSI OpenNext expects. Same tag-infra gap
+  that got cache-4b WITHDRAWN; now exercised because revalidation actually runs.
+- **Impact:** cosmetic (log noise) + tag-based revalidation stays non-functional (we
+  don't use it — path-based cache-4a + SWR cover freshness). NOT a regression in
+  user-facing behavior; NOT a rollback trigger.
+- **Fix options (small follow-up slice, non-urgent):** (a) add the missing GSI to the
+  tag-cache table so the lookup succeeds (CDK), or (b) suppress/skip the tag path in
+  the OpenNext config. Decide when convenient; verify root cause first.
+- **Status:** OPEN, non-urgent. Flagged to human 2026-08-09.
