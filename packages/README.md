@@ -14,14 +14,14 @@ cd packages/shared && npm run build
 
 ## `plugins/`
 
-19 block plugins with split entry points to prevent SSR crashes:
+20 block plugins with split entry points to prevent SSR crashes:
 
 - `@amodx/plugins/admin` — Tiptap extensions (browser-only). Used by admin.
 - `@amodx/plugins/render` — React components (SSR-safe). Used by renderer.
 
 Each plugin: `schema.ts` (Zod) + `*Editor.tsx` (NodeViewWrapper) + `*Render.tsx` (pure React) + `index.ts` (PluginDefinition).
 
-Plugins: hero, pricing, image, contact, video, leadMagnet, cta, features, testimonials, columns, table, html, faq, postGrid, carousel, codeBlock, reviewsCarousel (commerce), categoryShowcase (commerce), markdown.
+Plugins: hero, videoHero, pricing, image, contact, video, leadMagnet, cta, features, testimonials, columns, table, html, faq, postGrid, carousel, codeBlock, reviewsCarousel (commerce), categoryShowcase (commerce), markdown.
 
 Dependencies: highlight.js (syntax highlighting), marked (markdown parsing), swiper (carousel).
 
@@ -29,5 +29,5 @@ Dependencies: highlight.js (syntax highlighting), marked (markdown parsing), swi
 
 1. Create `src/my-plugin/` with schema.ts, Editor.tsx, Render.tsx, index.ts
 2. Add to `REGISTRY` in `src/admin.ts`
-3. Add to `RENDER_MAP` in `src/render.ts`
+3. Add a lazy loader to `RENDER_LOADERS` in `src/render.ts` (dynamic `import()` thunk → `{ default: <Name>Render }`; perf-1 code-splitting)
 4. `npm run build`

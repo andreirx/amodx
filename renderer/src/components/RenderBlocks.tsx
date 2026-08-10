@@ -1,10 +1,22 @@
 "use client"; // <--- Add this
 
 import React from "react";
-import { RENDER_MAP } from "@amodx/plugins/render";
+import dynamic from "next/dynamic";
+import { RENDER_LOADERS } from "@amodx/plugins/render";
 import { FULL_BLEED_DEFAULTS } from "@amodx/shared";
 import { useTenantUrl } from "@/lib/routing"; // Import
 import Link from "next/link"; // Use Next Link for prefetching
+
+// perf-1: wrap each plugin render loader in a code-splitting boundary ONCE, at module
+// scope (stable component identity — never rebuild these per render, or blocks would
+// remount on every parent update). `ssr: true` keeps the block in the server-rendered
+// HTML (identical output, no CLS), while the client only downloads the render chunk for
+// block types actually present on the page. Was: a static RENDER_MAP that pulled all 20
+// plugin renders (+ highlight.js / marked / swiper) into one ~1.2 MB client chunk on
+// every content page. See docs/slices/perf-1-unused-js.md.
+const PLUGIN_COMPONENTS: Record<string, React.ComponentType<any>> = Object.fromEntries(
+    Object.entries(RENDER_LOADERS).map(([type, loader]) => [type, dynamic(loader, { ssr: true })])
+);
 
 // --- RECURSIVE HELPER ---
 const RenderChildren = ({ content }: { content: any[] }) => {
@@ -70,7 +82,7 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
     listItem: ListItem,
     blockquote: Blockquote,
     horizontalRule: HorizontalRule,
-    ...RENDER_MAP // Plugins
+    ...PLUGIN_COMPONENTS // Plugins (lazy, code-split per block type)
 };
 
 // Accept tenantId + contentMaxWidth (prose width) + siteMaxWidth (shell width)
@@ -95,7 +107,7 @@ export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth, 
     return (
         <>
             {blocks.map((block, index) => {
-                const Component = RENDER_MAP[block.type]; // e.g. PostGridRender
+                const Component = PLUGIN_COMPONENTS[block.type]; // e.g. PostGridRender (lazy)
 
                 // Fallback for core types not in plugin map (paragraph, heading...)
                 const CoreComponent = (CORE_COMPONENTS as any)[block.type];

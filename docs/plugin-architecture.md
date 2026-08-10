@@ -23,7 +23,11 @@ src/blocks/<name>/
 
 1. Create the four files above in `src/blocks/<name>/`.
 2. Add to REGISTRY array in `src/admin.ts`.
-3. Add to RENDER_MAP in `src/render.ts`.
+3. Add a lazy loader entry to `RENDER_LOADERS` in `src/render.ts` — a dynamic
+   `import()` thunk resolving to `{ default: <Name>Render }`. Do **not** eagerly
+   import render components here: the renderer code-splits each loader (`next/dynamic`)
+   so a page ships only the render chunks for the block types it actually renders
+   (perf-1). An eager import re-collapses every plugin into one client chunk.
 4. Rebuild: `npm run build -w @amodx/plugins`.
 
 ## Dependency Injection

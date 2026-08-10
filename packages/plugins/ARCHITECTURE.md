@@ -15,11 +15,17 @@ Three separate entry points keep bundles lean:
 |-------|-------------|---------|---------|
 | `src/index.ts` | `@amodx/plugins` | `types` only | Type-level imports |
 | `src/admin.ts` | `@amodx/plugins/admin` | `getExtensions()`, `getPluginList()` | Admin BlockEditor |
-| `src/render.ts` | `@amodx/plugins/render` | `RENDER_MAP` (key → React component) | Renderer RenderBlocks |
+| `src/render.ts` | `@amodx/plugins/render` | `RENDER_LOADERS` (key → lazy render loader) | Renderer RenderBlocks |
 
 - `getExtensions()` returns an array of Tiptap Node extensions for all plugins
 - `getPluginList()` returns `{key, label, icon}[]` for the editor toolbar insert menu
-- `RENDER_MAP` is a `Record<string, React.FC<any>>` mapping block type keys to render components
+- `RENDER_LOADERS` is a `Record<string, () => Promise<{ default: React.FC<any> }>>` mapping block type
+  keys to **dynamic `import()` thunks** (perf-1). It replaced the eager `RENDER_MAP`: because the
+  renderer's `RenderBlocks` is a client component, an eager map pulled every plugin (incl.
+  highlight.js / marked / swiper) into one ~1.2 MB client chunk on every content page. RenderBlocks
+  now wraps each loader in `next/dynamic`, so a page ships only the render chunks for the block types
+  it renders. The thunks are plain ESM `import()` — no framework coupling — so the split-entry rule
+  (render vs admin) holds. See `docs/slices/perf-1-unused-js.md`.
 
 ## Plugin File Structure
 
@@ -33,11 +39,15 @@ src/blocks/<name>/
 └── <Name>Render.tsx  # Pure React render component (SSR-safe)
 ```
 
-## All 15 Plugins
+## All 20 Plugins
+
+This table lists every key in `RENDER_LOADERS` (`src/render.ts`) — one row per registered
+render loader. It must stay in sync with that map (perf-1: 20 loaders).
 
 | Key | Label | Attributes | Styles/Variants |
 |-----|-------|-----------|-----------------|
 | `hero` | Hero Section | headline, subheadline, ctaText, ctaLink, imageSrc, style | center, split, minimal |
+| `videoHero` | Video Hero | headline, subheadline, videoSrc, posterSrc, ctaText, ctaLink, overlay/heading color tokens, muted, loop, blockWidth | direct → native `<video>`, YouTube/Vimeo → cover `<iframe>`, unknown → poster (see § *The `video-hero` block's render contract*) |
 | `pricing` | Pricing Table | headline, subheadline, plans[] (title, price, interval, features, highlight) | — |
 | `image` | Image | src, alt, caption, width, aspectRatio | full, wide, centered |
 | `contact` | Contact Form | headline, description, buttonText, successMessage, tags | — |
@@ -52,6 +62,10 @@ src/blocks/<name>/
 | `faq` | FAQ Accordion | headline, items[] (question, answer) | Generates FAQPage JSON-LD |
 | `postGrid` | Post Grid | headline, filterTag, limit, showImages, layout, columns | grid, list; 2 or 3 cols |
 | `carousel` | Carousel | headline, items[] (title, description, image, link), height, style | standard, coverflow (Swiper) |
+| `codeBlock` | Code Block | code, language, filename, showLineNumbers, blockWidth | 19 languages; dark `<pre><code>` + copy button |
+| `reviewsCarousel` | Reviews Carousel | headline, scope, productId, items[] (name, avatar, date, rating, text, source, photos), showSource, autoScroll, maxLines, blockWidth | manual / product-reviews-by-id / site-reviews (see § *The `reviews-carousel` block's render contract*) |
+| `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth | 2 / 3 / 4 columns |
+| `markdown` | Markdown | content, blockWidth | rendered via `marked` (async chunk) |
 
 ## Tiptap Integration Pattern
 
@@ -204,18 +218,29 @@ only for `product-reviews-by-id`); in the two DB scopes the manual item editor i
 | Suite | Covers |
 |-------|--------|
 | `test/videoSource.test.ts` (`vid-1`) | The parser's classification and emitted URLs |
-| `test/videoPlugin.test.ts` (`vid-2`) | What each classification **emits** — `RENDER_MAP["video"]` markup per kind, plus `VideoEditor`'s indicator/warning output |
-| `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_MAP["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
-| `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_MAP["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
+| `test/videoPlugin.test.ts` (`vid-2`) | What each classification **emits** — `RENDER_LOADERS["video"]` markup per kind, plus `VideoEditor`'s indicator/warning output |
+| `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_LOADERS["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
+| `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_LOADERS["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
+| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 20, so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
 components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path
 the renderer's SSR uses and needs **no DOM, no jsdom, no RTL, and no new dependency** — so the
 suite stays in the `environment: "node"` run and stays credential-free. What it cannot reach
 is INTERACTION (typing, `onChange`, Tiptap commands); that still needs the DOM/RTL harness of
-`docs/testing-strategy.md` §4. Importing `src/render.ts` in a node environment is itself the
-SSR-safety smoke test for the whole render entry — a top-level `window` reference anywhere in
-it fails that import.
+`docs/testing-strategy.md` §4.
+
+**SSR-safety binding (perf-1 correction).** Before perf-1, `src/render.ts` *eagerly* imported
+every render component, so merely importing it in a node environment executed all of them and a
+top-level `window` reference anywhere would fail that import. After perf-1 the entry holds only
+lazy `import()` thunks: importing `RENDER_LOADERS` executes NONE of the component modules, so it
+is NO LONGER a whole-entry SSR smoke test on its own. The per-plugin suites below each `await` and
+render only THEIR loader, so each covers only its own module. The whole-entry guarantee now lives
+in `test/renderLoaders.test.ts`: it `await`s every `RENDER_LOADERS` entry in `environment: "node"`,
+which forces each render module to load. That detects **module-load** SSR hazards (a top-level
+`window`/`document` reference in any registered render module) for all 20 loaders. It does NOT
+render each component, so it does not prove browser-free *render execution* — the per-plugin
+suites do that for the components they exercise.
 
 `vid-3` follows the same pattern, and adds one caveat worth knowing before writing the next
 editor test: `VideoHeroEditor` embeds `InlineRichTextField`, whose Tiptap `useEditor` detects
@@ -238,6 +263,7 @@ is visually smooth are MEASUREMENTS and remain the operator's — see
 1. Create `src/blocks/<name>/` with schema.ts, Editor.tsx, Render.tsx, index.ts
 2. Implement `PluginDefinition` interface from `src/types.ts`
 3. Add to REGISTRY array in `src/admin.ts`
-4. Add render component to RENDER_MAP in `src/render.ts`
+4. Add a lazy loader entry to `RENDER_LOADERS` in `src/render.ts` — a dynamic `import()` thunk
+   resolving to `{ default: <Name>Render }`; do NOT eagerly import (perf-1 code-splitting)
 5. Add block schema to MCP server's `get_block_schemas` tool if AI should use it
 6. Rebuild: `cd packages/plugins && npm run build`

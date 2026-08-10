@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RENDER_MAP } from "../src/render";
+import { RENDER_LOADERS } from "../src/render";
 import { ReviewsCarouselEditor } from "../src/reviews-carousel/ReviewsCarouselEditor";
 
 /**
@@ -11,8 +11,9 @@ import { ReviewsCarouselEditor } from "../src/reviews-carousel/ReviewsCarouselEd
  *   2. the `scope` toggle exists in the editor.
  *
  * Same harness rationale as `videoPlugin.test.ts`: `renderToStaticMarkup` is `react-dom/server`
- * (the renderer's own SSR path), needs no jsdom/window, and importing through `RENDER_MAP` doubles
- * as the SSR-safety smoke test for the render entry (`@amodx/plugins/render`).
+ * (the renderer's own SSR path), needs no jsdom/window, and `await`ing `RENDER_LOADERS["reviewsCarousel"]`
+ * loads the `reviewsCarousel` render module with no DOM (a module-load SSR check for THAT module
+ * only — the entry-wide check across all loaders lives in `test/renderLoaders.test.ts`).
  *
  * The APPROVED-ONLY + private-key-leak filter lives on the RENDERER side
  * (`renderer/src/lib/review-images.ts`, covered by `renderer/test/unit/review-images.test.ts`):
@@ -23,7 +24,7 @@ import { ReviewsCarouselEditor } from "../src/reviews-carousel/ReviewsCarouselEd
  * `scope` toggle exists in the editor.
  */
 
-const ReviewsCarousel = RENDER_MAP["reviewsCarousel"];
+const ReviewsCarousel = (await RENDER_LOADERS["reviewsCarousel"]()).default;
 
 function markup(attrs: any): string {
     return renderToStaticMarkup(React.createElement(ReviewsCarousel, { attrs }));

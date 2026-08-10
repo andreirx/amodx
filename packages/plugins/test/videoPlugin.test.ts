@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RENDER_MAP } from "../src/render";
+import { RENDER_LOADERS } from "../src/render";
 import { VideoEditor } from "../src/video/VideoEditor";
 import type { VideoSourceKind } from "../src/common/videoSource";
 
@@ -27,19 +27,22 @@ import type { VideoSourceKind } from "../src/common/videoSource";
  * therefore the editor's STATIC output for a given URL, not its typing behaviour; the
  * `onChange` wiring is unchanged by this slice and is out of this suite's reach.
  *
- * ## Why through RENDER_MAP rather than the component
+ * ## Why through RENDER_LOADERS rather than the component
  *
  * `src/render.ts` is the entry point the renderer imports (`@amodx/plugins/render`). Going
- * through `RENDER_MAP["video"]` asserts the wiring as well as the component, and importing
- * that module in a `node` environment is itself the SSR-safety smoke test for the whole
- * render entry: a top-level `window` reference anywhere in it would fail this file's import.
+ * through `RENDER_LOADERS["video"]` (the perf-1 lazy registry) asserts the wiring as well as
+ * the component, and `await`ing the thunk in a `node` environment loads the `video` render
+ * module with no DOM — so a top-level `window` reference in THAT module fails this file.
+ * Scope note: after perf-1 the loaders are lazy, so this only exercises the `video` module,
+ * NOT the whole render entry — the entry-wide module-load SSR check lives in
+ * `test/renderLoaders.test.ts`, which `await`s every loader.
  */
 
 // ---------------------------------------------------------------------------------------
 // Harness
 // ---------------------------------------------------------------------------------------
 
-const VideoRender = RENDER_MAP["video"];
+const VideoRender = (await RENDER_LOADERS["video"]()).default;
 
 interface VideoAttrs {
     url: string;

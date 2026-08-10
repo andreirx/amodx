@@ -16,11 +16,20 @@ import { renderToStaticMarkup } from "react-dom/server";
  * These tests fail if either branch is removed — see the negative assertions (manual marker must be
  * gone; the DB photo URL must be present).
  *
- * MOCKS. Only the DynamoDB reads (`@/lib/dynamo`) and Next's control-flow/auth modules are mocked —
+ * MOCKS. Only the DynamoDB reads (`@/lib/dynamo`) and Next's runtime-coupled modules are mocked —
  * the DB is the sole external boundary. `@/lib/review-images` (the code under test), `RenderBlocks`,
  * `@amodx/plugins/render`, and the whole render tree stay REAL, so the assertions are on the actual
  * SSR HTML. `renderToStaticMarkup` is `react-dom/server` (the renderer's own SSR path) and runs the
  * "use client" components in a single pass (effects skipped) exactly as an ISR prerender would.
+ *
+ * `next/dynamic` (perf-1): RenderBlocks wraps each plugin render in `next/dynamic` so a page ships
+ * only the render chunks for the block types it renders. Its `loadable` runtime is Next-runtime
+ * coupled and cannot execute under this bare `react-dom/server` harness (it resolves `React` to
+ * null → "invalid hook call"), exactly like `next/link` / `next/script` below. We stub it to a
+ * preload-then-synchronous-render shim: `renderSite()` awaits every registered plugin loader before
+ * rendering, so the REAL render component (e.g. `ReviewsCarouselRender`) still emits its markup in
+ * a single pass — mirroring how production's async server render resolves the dynamic import before
+ * the ISR HTML is cached. The split is a client-chunk change; the SSR HTML is unchanged.
  *
  * `UPLOADS_CDN_URL` is set here so `reviewAssetCdnBase()` resolves a non-empty base and photos
  * appear; production wiring of that env var into the renderer Lambda is the slice's deploy gate.
@@ -65,6 +74,27 @@ vi.mock("next/link", () => ({
     default: ({ href, children, ...rest }: any) =>
         React.createElement("a", { href: typeof href === "string" ? href : "#", ...rest }, children),
 }));
+// `next/dynamic` — see the header note. Registry is `vi.hoisted` so the mock factory (hoisted above
+// imports) can reach it; `dyn.React` is filled from the real import below and read only at render time.
+const dyn = vi.hoisted(() => ({
+    React: null as any,
+    loaders: [] as Array<() => Promise<void>>,
+    resolved: new Map<object, any>(),
+}));
+vi.mock("next/dynamic", () => ({
+    default: (loader: () => Promise<{ default: any }>) => {
+        const Dyn: any = (props: any) => {
+            const C = dyn.resolved.get(Dyn);
+            return C ? dyn.React.createElement(C, props) : null;
+        };
+        dyn.loaders.push(async () => {
+            const m = await loader();
+            dyn.resolved.set(Dyn, (m && (m.default ?? m)));
+        });
+        return Dyn;
+    },
+}));
+dyn.React = React;
 
 import { SitePage } from "@/components/SitePage";
 
@@ -104,6 +134,8 @@ async function renderSite(input: {
         query: input.query ?? {},
         cacheable: true,
     });
+    // Preload the dynamic plugin renders (see header note) so the real component renders in one pass.
+    await Promise.all(dyn.loaders.map((f) => f()));
     return renderToStaticMarkup(el as React.ReactElement);
 }
 

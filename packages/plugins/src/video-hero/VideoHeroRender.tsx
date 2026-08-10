@@ -84,7 +84,7 @@ function SubheadlineText({ rich, plain, className }: { rich?: any[]; plain?: str
  * Public-site render for the `video-hero` block — slice `vid-3`.
  *
  * SSR-safe: a pure function of `attrs`. No `window`/`document`, no state, no effect. It runs
- * in the renderer's SERVER bundle via `src/render.ts` → `RENDER_MAP["videoHero"]`, and its
+ * in the renderer's SERVER bundle via `src/render.ts` → `RENDER_LOADERS["videoHero"]`, and its
  * markup is cached inside ISR/CloudFront pages, so it must be deterministic in the block
  * attributes and nothing else (CLAUDE.md Critical Rule 1).
  *

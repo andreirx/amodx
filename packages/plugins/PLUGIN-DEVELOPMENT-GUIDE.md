@@ -38,18 +38,17 @@ export const PLUGIN_REGISTRY = [
 
 ### **File: `packages/plugins/src/render.ts`**
 ```typescript
-// ✅ CORRECT: Import ONLY the Render component (bypasses Tiptap)
-import { HeroRender } from './hero/HeroRender';
-import { ColumnsRender } from './columns/ColumnsRender';
-import { TableRender } from './table/TableRender';
+// perf-1: LAZY loaders, not eager imports. Each thunk is a dynamic import() of ONLY the Render
+// component (bypasses Tiptap). RenderBlocks wraps these in next/dynamic so a page ships only the
+// render chunks for the block types it renders. An eager import re-collapses every plugin into one
+// client chunk on every content page — do NOT do it.
+export type RenderLoader = () => Promise<{ default: React.FC<any> }>;
 
-// ❌ WRONG: Do NOT import the Plugin object here
-// import { ColumnsPlugin } from './columns';
-
-export const RENDER_MAP: Record<string, React.FC<any>> = {
-    'hero': HeroRender,          // Direct component reference
-    'columns': ColumnsRender,    // Direct component reference
-    'table': TableRender,        // Direct component reference
+export const RENDER_LOADERS: Record<string, RenderLoader> = {
+    'hero':    () => import('./hero/HeroRender').then(m => ({ default: m.HeroRender })),
+    'columns': () => import('./columns/ColumnsRender').then(m => ({ default: m.ColumnsRender })),
+    'table':   () => import('./table/TableRender').then(m => ({ default: m.TableRender })),
+    // ❌ WRONG: do NOT `import { ColumnsPlugin } from './columns'` — that pulls in the Tiptap editor.
 };
 ```
 
@@ -204,11 +203,10 @@ export const PLUGIN_REGISTRY = [
 ### **Step 2: Add to Render Registry**
 **File:** `packages/plugins/src/render.ts`
 ```typescript
-import { YourPluginRender } from './your-plugin/YourPluginRender';
-
-export const RENDER_MAP: Record<string, React.FC<any>> = {
+export const RENDER_LOADERS: Record<string, RenderLoader> = {
     // ... existing plugins
-    'yourplugin': YourPluginRender,  // ✅ Import ONLY the component
+    // ✅ Lazy loader → resolves to { default: <the render component> }. perf-1 code-splitting.
+    'yourplugin': () => import('./your-plugin/YourPluginRender').then(m => ({ default: m.YourPluginRender })),
 };
 ```
 
@@ -252,13 +250,11 @@ type: z.enum([
 **Fix:** Import only the `*Render.tsx` component
 
 ```typescript
-// ❌ WRONG
-import { ColumnsPlugin } from './columns';
-export const RENDER_MAP = { columns: ColumnsPlugin.renderComponent };
+// ❌ WRONG — imports the Tiptap Plugin object (drags the editor into the render bundle)
+export const RENDER_LOADERS = { columns: () => import('./columns').then(m => ({ default: m.ColumnsPlugin.renderComponent })) };
 
-// ✅ CORRECT
-import { ColumnsRender } from './columns/ColumnsRender';
-export const RENDER_MAP = { columns: ColumnsRender };
+// ✅ CORRECT — lazy import of the Render component only
+export const RENDER_LOADERS = { columns: () => import('./columns/ColumnsRender').then(m => ({ default: m.ColumnsRender })) };
 ```
 
 ---
@@ -283,7 +279,7 @@ npm run build -w @amodx/plugins
 
 ### **Error: TypeScript: "Property 'yourplugin' does not exist"**
 **Cause:** Plugin key mismatch between `index.ts` and `render.ts`
-**Fix:** Ensure the key in `PluginDefinition` matches the key in `RENDER_MAP`:
+**Fix:** Ensure the key in `PluginDefinition` matches the key in `RENDER_LOADERS`:
 ```typescript
 // In index.ts
 export const YourPlugin: PluginDefinition = {
@@ -292,8 +288,8 @@ export const YourPlugin: PluginDefinition = {
 };
 
 // In render.ts
-export const RENDER_MAP = {
-    'yourplugin': YourPluginRender,  // ← Must match above
+export const RENDER_LOADERS = {
+    'yourplugin': () => import('./your-plugin/YourPluginRender').then(m => ({ default: m.YourPluginRender })),  // ← Must match above
 };
 ```
 
@@ -344,7 +340,7 @@ Saves to DynamoDB (ContentItem.blocks[])
     ↓
 Next.js Renderer fetches blocks
     ↓
-RENDER_MAP['yourplugin'] → YourPluginRender
+RENDER_LOADERS['yourplugin'] → next/dynamic → YourPluginRender chunk (loaded on demand)
     ↓
 Renders to HTML (SSR/ISR)
     ↓

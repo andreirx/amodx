@@ -417,7 +417,13 @@ Per-tenant Google OAuth via NextAuth.js:
 
 ## Block Rendering (`RenderBlocks.tsx`)
 
-Merges core block types (paragraph, heading, lists, blockquote, horizontal rule) with plugin `RENDER_MAP` from `@amodx/plugins/render`. Handles Tiptap marks (bold, italic, link) and auto-rewrites internal links for preview mode via `useTenantUrl()`.
+Merges core block types (paragraph, heading, lists, blockquote, horizontal rule) with the plugin
+render components. **perf-1:** the plugins are loaded lazily — `RenderBlocks` builds a stable
+per-block-type map of `next/dynamic(loader, { ssr: true })` wrappers over `RENDER_LOADERS` from
+`@amodx/plugins/render`, so a page ships only the render chunks for the block types it actually
+renders (was: a static `RENDER_MAP` that co-bundled all ~20 plugins into one ~1.2 MB client chunk on
+every content page). `ssr: true` keeps each block in the server-rendered/ISR HTML unchanged. Handles
+Tiptap marks (bold, italic, link) and auto-rewrites internal links for preview mode via `useTenantUrl()`.
 
 ## Build & Deploy
 

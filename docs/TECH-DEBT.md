@@ -972,3 +972,11 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
 - **Slice:** `infra-split-1` (below). Gates the EMAIL track's remaining slices and any
   future backend feature.
 - **Status:** OPEN — #1 priority for backend deploys.
+
+## perf-1 residual: lucide icons ship eager (2026-08-10)
+
+- After perf-1, lucide icons remain EAGER at ~313KB — the single largest always-shipped
+  JS chunk (swiper/highlight.js/marked were successfully split to on-demand).
+- Fix candidate: per-icon named imports / tree-shaking so only used icons ship, or
+  lazy-load icon-heavy surfaces. Measurable against the Lighthouse baseline.
+- Status: OPEN, non-urgent (perf-1 still ~halved eager JS).

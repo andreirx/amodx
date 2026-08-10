@@ -5,7 +5,7 @@ import { buildEmbedUrl, parseVideoSource } from "../common/videoSource";
  * Public-site render for the `video` block — slice `vid-2`.
  *
  * SSR-safe: pure function of `attrs`, no `window`/`document`, no effect, no state. It runs
- * in the renderer's SERVER bundle (`src/render.ts` → `RENDER_MAP`), so a browser API here
+ * in the renderer's SERVER bundle (`src/render.ts` → `RENDER_LOADERS`), so a browser API here
  * is a build-time crash, not a runtime warning (CLAUDE.md Critical Rule 1). Its output is
  * also cached — it lands inside ISR/CloudFront pages — so the markup must be a deterministic
  * function of the block attributes and nothing else.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RENDER_MAP } from "../src/render";
+import { RENDER_LOADERS } from "../src/render";
 import { VideoHeroEditor } from "../src/video-hero/VideoHeroEditor";
 import { VideoHeroSchema } from "../src/video-hero/schema";
 import type { VideoSourceKind } from "../src/common/videoSource";
@@ -18,10 +18,12 @@ import type { VideoSourceKind } from "../src/common/videoSource";
  *
  * `renderToStaticMarkup` is `react-dom/server` — the same code path the renderer's SSR uses.
  * No DOM, no jsdom, no RTL, no new dependency, so the suite stays in the `environment:
- * "node"` run and stays credential-free. Going through `RENDER_MAP["videoHero"]` rather than
- * the component asserts the render-entry wiring too, and importing `src/render.ts` in a node
- * environment is itself the SSR-safety smoke test for the whole render entry: a top-level
- * `window` reference anywhere in it would fail this file's import.
+ * "node"` run and stays credential-free. Going through `RENDER_LOADERS["videoHero"]` (the
+ * perf-1 lazy registry) rather than the component asserts the render-entry wiring too, and
+ * `await`ing the thunk loads the `videoHero` (and `video`) render module with no DOM — so a
+ * top-level `window` reference in THAT module fails this file. Scope note: after perf-1 the
+ * loaders are lazy, so this only exercises the modules it awaits, NOT the whole render entry —
+ * the entry-wide module-load SSR check lives in `test/renderLoaders.test.ts`.
  *
  * What it CANNOT reach is anything that needs layout or a real browser. The cover geometry
  * is asserted here as EMITTED CSS (the declarations are a deterministic function of the
@@ -41,7 +43,8 @@ import type { VideoSourceKind } from "../src/common/videoSource";
 // Harness
 // ---------------------------------------------------------------------------------------
 
-const VideoHeroRender = RENDER_MAP["videoHero"];
+const VideoHeroRender = (await RENDER_LOADERS["videoHero"]()).default;
+const VideoRender = (await RENDER_LOADERS["video"]()).default;
 
 /** Schema defaults, so each test states only what it varies. */
 const DEFAULTS = {
@@ -333,7 +336,7 @@ describe("VideoHeroRender — above-the-fold loading (DoD 6)", () => {
         // reason (position on the page), and a copy-paste between the render files would
         // silently break whichever one it landed in.
         const inline = renderToStaticMarkup(
-            React.createElement(RENDER_MAP["video"], {
+            React.createElement(VideoRender, {
                 attrs: { url: "https://youtu.be/dQw4w9WgXcQ", width: "centered" },
             }),
         );
