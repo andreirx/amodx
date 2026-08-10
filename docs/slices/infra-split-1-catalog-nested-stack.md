@@ -10,7 +10,31 @@
 AmodxStack hit CloudFormation's hard 500-resource-per-stack limit (email-2 diff = 501).
 All backend deploys that add resources are blocked. Prod is fine at rest.
 
-## Design (ratified constraints — do NOT deviate)
+## Design v2 — FUNCTIONS-ONLY move (human-ratified 2026-08-10, after the v1 full-move
+## failed staging on an ApiGatewayV2 route-key collision)
+
+**Root cause of v1 failure:** moving an existing route between stacks collides on the
+shared HttpApi (CloudFormation creates the new `POST /products` before deleting the old
+→ duplicate route key → nested stack CREATE_FAILED → rollback). Proven on staging.
+
+**v2 approach — move the heavy resources, KEEP routes in the parent (zero downtime):**
+1. New `CatalogApi` NestedStack holds ONLY, for the catalog group (products 8, content 6,
+   import 4: woo/wp/media/reviews): the **Lambda Function + its Role + Policy + LogGroup**
+   (the 4 heavy resources per handler). ~18 handlers × 4 ≈ 70+ resources moved.
+2. The **Route + Integration + Lambda Permission STAY in the parent** (`api.ts`),
+   unchanged route keys → NO collision, NO route recreation, NO downtime. The parent's
+   Integration references the nested Function's ARN via a cross-stack prop the nested
+   stack EXPORTS (function ARNs out; the parent wires routes to them). Mirror how a
+   parent references a nested resource — but here the direction is: nested exports fn
+   refs, parent consumes them for its route integrations.
+3. Verify the parent still holds all catalog ROUTES (unchanged) and only the
+   FUNCTION/ROLE/POLICY/LOGGROUP moved. cdk diff must show the catalog Functions
+   delete-from-parent/create-in-nested, but the Routes/Integrations UNCHANGED (or only
+   their integration target ref updated in place — acceptable, no key change).
+
+**Original v1 constraints still binding:**
+
+### Original constraints (still binding)
 
 1. **Move ONLY the catalog/content group** currently in the MAIN stack (`api.ts`) into a
    NEW nested stack (`api-catalog.ts`, pattern-identical to the existing
@@ -42,7 +66,7 @@ stateful-resource moves; no email-2a/Track-B work.
    CommerceApi changes.
 3. Infra assertion suite green (update any assertions that referenced moved logical ids).
 4. **Staging rehearsal (operator-run, but the slice must produce the runbook):** deploy
-   to staging; after deploy, probe EVERY moved route (products CRUD, content, import
+   to staging; v2: staging deploy MUST succeed (no route CREATE_FAILED); then probe EVERY catalog route (products CRUD, content, import
    endpoints) returns its normal auth-gated status (not 404); existing commerce/other
    routes unaffected.
 5. **Prod deploy is a HUMAN gate** — the slice delivers the code + the staging rehearsal
