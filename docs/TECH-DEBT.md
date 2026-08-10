@@ -951,3 +951,24 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   tag-cache table so the lookup succeeds (CDK), or (b) suppress/skip the tag path in
   the OpenNext config. Decide when convenient; verify root cause first.
 - **Status:** OPEN, non-urgent. Flagged to human 2026-08-09.
+
+## CloudFormation 500-resource ceiling hit (2026-08-10) — stack-split required
+
+- **BLOCKER:** AmodxStack reached CFN's hard 500-resource-per-stack limit (email-2 diff
+  hit 501). Blocks ALL backend deploys that add resources (~7 per new Lambda feature).
+  Prod is fine at rest; only NEW deploys are blocked. Found on the batch-B (email-2)
+  prod diff.
+- **DECISION (human 2026-08-10): option A — nested-stack split.** Proven pattern (two
+  nested stacks already exist: CommerceApi, EngagementApi).
+- **DESIGN CONSTRAINT (human, cross-cutting with Track B):** the future commerce-private
+  table split (Track B: cmrc-*) adds a table + cross-table transactions + /customer/*
+  endpoints, and customers+orders ALREADY live in CommerceApi — so Track B EXTENDS
+  CommerceApi. Therefore this split must **NOT touch CommerceApi**; relieve the MAIN
+  stack instead by moving the catalog/content group (products 8, content 6, import 7 —
+  ~150+ resources) into a NEW nested stack. Boundary stays stable for Track B.
+- **RISK:** moving existing Lambdas into a nested stack can trigger CFN to RECREATE them
+  (functions + roles + routes). Safe for stateless Lambdas but API routes must not 404
+  mid-deploy — REHEARSE ON STAGING, verify every moved route still resolves, before prod.
+- **Slice:** `infra-split-1` (below). Gates the EMAIL track's remaining slices and any
+  future backend feature.
+- **Status:** OPEN — #1 priority for backend deploys.
