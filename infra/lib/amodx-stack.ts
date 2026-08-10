@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 import { AmodxDatabase } from './database';
 import { AmodxAuth } from './auth';
 import { AmodxApi } from './api';
+import { CatalogApi } from './api-catalog';
 import { CommerceApi } from './api-commerce';
 import { EngagementApi } from './api-engagement';
 import { AdminHosting } from './admin-hosting';
@@ -199,7 +200,27 @@ export class AmodxStack extends cdk.Stack {
     // Use the root domain if available, otherwise the CloudFront distribution domain
     const rendererBaseUrl = rootDomain ? `https://${rootDomain}` : undefined;
 
+    // 3a. Catalog API (NestedStack — content/products/import FUNCTIONS ONLY; INFRA-SPLIT-1 v2).
+    // Instantiated HERE in the composition root — the one place that owns every nested stack, next
+    // to CommerceApi/EngagementApi below — and BEFORE AmodxApi, because AmodxApi keeps the catalog
+    // ROUTES and wires their integrations to these functions (`catalog.*`). It moves only the heavy
+    // Function/Role/Policy resources out of the parent template to relieve CFN's 500-resource
+    // ceiling; the Routes/Integrations/Permissions stay in AmodxApi with UNCHANGED keys (the v2
+    // fix for the v1 route-key collision). Unlike CommerceApi/EngagementApi it takes NO httpApiId /
+    // authorizerFuncArn — it creates no routes — so the parent→nested reference direction here is
+    // "nested exports fn refs, parent consumes them for its route integrations." See api-catalog.ts.
+    const catalogApi = new CatalogApi(this, 'CatalogApi', {
+      table: db.table,
+      eventBus: amodxEvents.bus,
+      revalidationSecret: revalidationSecret,
+      rendererUrl: rendererBaseUrl,
+      uploadsBucket: uploads.bucket,
+      uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
+      privateBucket: uploads.privateBucket,
+    });
+
     const api = new AmodxApi(this, 'Api', {
+      catalog: catalogApi,
       table: db.table,
       userPoolId: auth.adminPool.userPoolId,
       userPoolClientId: auth.adminClient.userPoolClientId,

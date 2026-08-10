@@ -98,10 +98,13 @@ Build/typecheck green.
 
 ## Infra (WRITTEN this cycle — operator AUTHORIZED, revise 2026-08-08)
 
-`ReviewImportFunc` is registered in `infra/lib/api.ts` immediately after `ImportFunc` /
-`MediaImportFunc` — instance **#3** of the import-family pattern (WooImportFunc in the commerce
-nested stack is #4). A new Lambda **resource** within the existing api stack, NOT a new deployable
-unit (no new stack/bucket/table), so no STOP was triggered. What was written:
+`ReviewImportFunc` is registered immediately after `ImportFunc` / `MediaImportFunc` — instance
+**#3** of the import-family pattern (WooImportFunc in the commerce nested stack is #4). A new Lambda
+**resource**, NOT a new deployable unit (no new stack/bucket/table), so no STOP was triggered.
+(**Superseded by INFRA-SPLIT-1 v2, 2026-08-10:** the three import-family FUNCTIONS — `ImportFunc`,
+`MediaImportFunc`, `ReviewImportFunc` — now live in the `CatalogApi` nested stack
+`infra/lib/api-catalog.ts`; their routes, incl. `POST /import/reviews`, stay in `infra/lib/api.ts`.
+The least-privilege S3 grant below is unchanged and moved with the function.) What was written:
 
 - `NodejsFunction` on `backend/src/import/reviews.ts`, `timeout 15min`, `memorySize 3008` (matching
   the sibling importers). Env: `TABLE_NAME` + `EVENT_BUS_NAME` (from `nodeProps`) + `PRIVATE_BUCKET`.

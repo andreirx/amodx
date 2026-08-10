@@ -202,15 +202,16 @@ Commerce routes matched by `matchCommercePrefix()` against tenant's URL prefixes
 
 ## CDK Stack Structure
 
-Main stack + 2 nested stacks (CloudFormation 500-resource limit):
+Main stack + 3 nested stacks (CloudFormation 500-resource limit):
 
 | Stack | Resources | Contents |
 |-------|-----------|----------|
-| `AmodxApiStack` (parent) | ~390 | Content, context, settings, auth, assets, audit, users, webhooks, signals, research, themes |
-| `CommerceStack` (nested) | ~234 | Categories, products, orders, customers, delivery, coupons, reviews, reports, woo import |
-| `EngagementStack` (nested) | ~94 | Popups, forms |
+| `AmodxStack` (parent) | ~446 | Context, settings, auth, assets, audit, users, webhooks, signals, research, themes, contact, consent, leads, comments — plus ALL catalog **routes/integrations** (content, products, import) |
+| `CatalogApi` (nested) | ~56 | Content (6), products admin (5), import (3: wordpress/media/reviews) — **functions only**; their routes stay in the parent (INFRA-SPLIT-1 v2) |
+| `CommerceApi` (nested) | ~257 | Categories, public products, orders, customers, delivery, coupons, reviews, reports, woo import |
+| `EngagementApi` (nested) | ~93 | Popups, forms |
 
-Nested stacks use L1 `CfnRoute`/`CfnIntegration` (not `httpApi.addRoutes()`) to keep resources in the nested stack.
+`CommerceApi`/`EngagementApi` use L1 `CfnRoute`/`CfnIntegration` (routes live in the nested stack). `CatalogApi` moves only the Lambda **functions** out of the parent (500-ceiling relief); the parent keeps the catalog routes with unchanged keys and points its integrations at the moved functions via a cross-stack ref — see `docs/slices/infra-split-1-catalog-nested-stack.md`.
 
 Supporting constructs: `database.ts`, `auth.ts`, `renderer-hosting.ts`, `admin-hosting.ts`, `uploads.ts`, `events.ts`, `domains.ts`, `config-generator.ts`.
 

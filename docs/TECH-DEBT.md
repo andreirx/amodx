@@ -526,7 +526,7 @@ positions rather than assumed coverage:
 
 - ~~Coupon not wired through checkout~~ — DONE (server-side validation, atomic usage increment)
 - ~~Delivery date picker missing from checkout~~ — DONE (mini calendar, yearly holidays, lead-day skip)
-- ~~Split CDK api.ts~~ — DONE (parent + 2 NestedStacks)
+- ~~Split CDK api.ts~~ — DONE (parent + 3 NestedStacks: CatalogApi, CommerceApi, EngagementApi)
 - ~~Navbar shrink-on-scroll~~ — DONE (h-16→h-12, logo shrinks, CSS transitions)
 - ~~Commerce bar above navbar~~ — DONE (phone, social icons, cart total, CTA button)
 - ~~availableFrom/availableUntil not enforced~~ — DONE (filtered in all public endpoints + renderer SSR)
@@ -971,7 +971,18 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   mid-deploy — REHEARSE ON STAGING, verify every moved route still resolves, before prod.
 - **Slice:** `infra-split-1` (below). Gates the EMAIL track's remaining slices and any
   future backend feature.
-- **Status:** OPEN — #1 priority for backend deploys.
+- **v2 REVISION (human-ratified 2026-08-10, after v1 staging failure):** v1 moved
+  functions+routes+integrations into the new stack and FAILED staging — moving a live
+  ApiGatewayV2 route changes its logical id, so CFN created the new route before deleting the
+  old → duplicate route key on the shared HttpApi → nested `CREATE_FAILED` → rollback (the RISK
+  above, realized). v2 moves **only the catalog FUNCTIONS** (content 6, products admin 5, import
+  3 = 14 handlers) into `CatalogApi`; **routes stay in the parent** with unchanged keys, integrations
+  re-pointed cross-stack. Zero route recreation.
+- **Status:** IMPLEMENTED (v2, 2026-08-10) — code complete; credential-free synth green
+  (parent 433 with `domains:{}`; ~446 on real staging config, both < 500) and infra jest 45/45.
+  **Deploy gate still OPEN:** staging rehearsal + prod deploy are the human gate
+  (`docs/runbooks/deploy-infra-split-1.md`). Backend deploys remain blocked until staging
+  deploys green.
 
 ## perf-1 residual: lucide icons ship eager (2026-08-10)
 

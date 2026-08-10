@@ -12,11 +12,12 @@ AWS CDK (TypeScript) — 9 constructs across 3 CloudFormation stacks.
 
 | File | Purpose | Key resources |
 |------|---------|--------------|
-| `amodx-stack.ts` | Main orchestrator | Wires all constructs together |
+| `amodx-stack.ts` | Main orchestrator | Wires all constructs together; instantiates every NestedStack (`CatalogApi`, `CommerceApi`, `EngagementApi`) and hands `CatalogApi` into `AmodxApi` |
 | `database.ts` | DynamoDB | Single table, PAY_PER_REQUEST, PITR, 4 GSIs (Domain, Type, Status, Slug) |
 | `auth.ts` | Cognito | 2 user pools — admin (invite-only) + public (self-signup). Custom attributes: role, tenantId |
-| `api.ts` | Core API | API Gateway HTTP v2 + Lambda authorizer + ~50 handlers. Rate limit 50/s, burst 100 |
-| `api-commerce.ts` | Commerce API | NestedStack. Categories, products, orders, customers, delivery, coupons, reviews, reports |
+| `api.ts` | Core API | API Gateway HTTP v2 + Lambda authorizer + handlers. Owns ALL routes; wires the catalog routes to `CatalogApi`'s functions (passed in from `amodx-stack.ts`). Rate limit 50/s, burst 100 |
+| `api-catalog.ts` | Catalog API | NestedStack. Content, products (admin CRUD), import (wordpress/media/reviews) — **functions only**; routes stay in `api.ts` (INFRA-SPLIT-1 v2) |
+| `api-commerce.ts` | Commerce API | NestedStack. Categories, public products, orders, customers, delivery, coupons, reviews, reports |
 | `api-engagement.ts` | Engagement API | NestedStack. Popups, forms |
 | `renderer-hosting.ts` | Renderer | Lambda Function URL + CloudFront + S3 (static + ISR cache). CloudFront Function for X-Forwarded-Host |
 | `admin-hosting.ts` | Admin SPA | S3 + CloudFront + OAC. SPA routing (403/404 → index.html). ConfigGenerator custom resource |
@@ -27,9 +28,10 @@ AWS CDK (TypeScript) — 9 constructs across 3 CloudFormation stacks.
 
 ## NestedStack Pattern
 
-CloudFormation has a 500-resource limit. The API grew to 710+ resources, so commerce and engagement routes live in nested stacks. Nested stacks use L1 constructs (`CfnRoute`, `CfnIntegration`, `CfnAuthorizer`) because `httpApi.addRoutes()` creates resources in the parent stack.
+CloudFormation has a 500-resource limit. The API grew past it, so work is split across three nested stacks:
 
-Each nested stack creates its own `CfnAuthorizer` referencing the parent's auth Lambda ARN.
+- **`CommerceApi` / `EngagementApi`** move whole route groups (routes + integrations + functions) into the nested stack. They use L1 constructs (`CfnRoute`, `CfnIntegration`, `CfnAuthorizer`) because `httpApi.addRoutes()` creates resources in the parent stack, and each creates its own `CfnAuthorizer` referencing the parent's auth Lambda ARN.
+- **`CatalogApi` (INFRA-SPLIT-1 v2)** moves ONLY the Lambda **functions** (content/products/import) out of the parent; their **routes stay in `api.ts`** with unchanged keys. Moving a live route between stacks changes its logical id and collides on the shared HttpApi route key mid-update (proven on staging in v1), so v2 keeps every route put and only re-points the parent's integration target at the moved function via a cross-stack `Fn::GetAtt`. It therefore needs **no** nested `CfnAuthorizer` — its routes keep the HttpApi default authorizer.
 
 ## Domain Strategy
 

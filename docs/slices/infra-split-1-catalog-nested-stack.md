@@ -1,7 +1,22 @@
 # INFRA-SPLIT-1: Relieve the CFN 500-ceiling — catalog group → new nested stack
 
-- **Status:** PLANNED — #1 backend blocker (nothing that adds a Lambda deploys until this
-  lands). Prod-sensitive; staging-rehearsed; prod deploy is a HUMAN gate.
+- **Status:** IMPLEMENTED (2026-08-10, v2 functions-only) — code complete; infra jest suite green
+  (50 passed, incl. the split1-1..5 v2 invariants; split1-5 now pins the pre-split reconstruction to
+  the documented **501** and matches cdk.out: deployed parent 446, CatalogApi 57 of which 56 moved).
+  REAL `cdk synth -c stage=staging` green credential-free (parent 446 < 500) AND REAL, read-only
+  `cdk diff -c stage=staging AmodxStack-staging --no-change-set` EXECUTED green — 56 catalog resources
+  move out of the parent, catalog routes unchanged (integrations retargeted in place), no stateful
+  replacement, no Commerce/Engagement structural delta. Evidence:
+  `docs/runbooks/evidence/infra-split-1-synth-counts-staging.md`,
+  `docs/runbooks/evidence/infra-split-1-cdk-diff-staging.md`.
+  CatalogApi is instantiated in the composition root (`amodx-stack.ts`) alongside CommerceApi/
+  EngagementApi and passed into `AmodxApi`, which keeps the catalog routes. **Staging DEPLOY and prod
+  deploy remain OPEN at the HUMAN gate** (runbook: `docs/runbooks/deploy-infra-split-1.md`) — `cdk
+  deploy` mutates live infra in an account shared with prod, so a green deploy + the 14 route probes
+  are the operator's real-time go/no-go, not an autonomous builder step. That green `cdk deploy` is
+  the only thing that settles the v1 route-collision failure mode; still the #1 backend blocker until
+  staging deploys green. (Staging baseline is currently `UPDATE_ROLLBACK_COMPLETE` from the v1
+  rollback, so the deploy also carries pre-existing `POST /email/dns-check` drift — see the runbook.)
 - **Track:** Infra
 - **Decision:** option A (nested-stack split), human-ratified 2026-08-10.
 

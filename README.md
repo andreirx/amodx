@@ -24,7 +24,7 @@ packages/plugins/    19 block plugins (split admin/render entry)
 backend/             100+ Lambda handlers, 30 modules
 admin/               React 19 SPA, 39 pages, shadcn/ui
 renderer/            Next.js 16, OpenNext, multi-tenant SSR
-infra/               CDK stacks (main + 2 nested)
+infra/               CDK stacks (main + 3 nested: catalog, commerce, engagement)
 tools/mcp-server/    Claude Desktop MCP server + Playwright
 scripts/             Setup, domain management, post-deploy sync
 ```

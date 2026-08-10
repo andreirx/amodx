@@ -14,7 +14,8 @@ bin/
 
 lib/
 ├── amodx-stack.ts              # Main stack: composes all constructs, wires dependencies
-├── api.ts                      # HTTP API Gateway + 30+ Lambda functions + authorizer
+├── api.ts                      # HTTP API Gateway + authorizer + all routes; wires catalog routes to CatalogApi's functions (passed in)
+├── api-catalog.ts              # NestedStack: content/products/import FUNCTIONS (routes stay in api.ts; instantiated in amodx-stack.ts)
 ├── auth.ts                     # Two Cognito User Pools (Admin invite-only, Public self-signup)
 ├── database.ts                 # DynamoDB single table with 3 GSIs
 ├── uploads.ts                  # S3 buckets (public assets + private resources) + CloudFront CDN
@@ -41,7 +42,10 @@ AmodxStack
 ├── AmodxDatabase (DynamoDB table + 3 GSIs)
 ├── AmodxAuth (Admin Cognito Pool + Public Cognito Pool)
 ├── AmodxEvents (EventBridge bus + Audit rule + SQS DLQ)
-├── AmodxApi (HTTP API Gateway + 30+ Lambdas + Custom Authorizer)
+├── CatalogApi (NestedStack — content/products/import FUNCTIONS only; instantiated before AmodxApi and passed in; their routes live in AmodxApi)
+├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
+├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
+├── EngagementApi (NestedStack — popups, forms)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
 ├── AmodxAdminHosting (S3 + CloudFront)
 ├── AmodxDomains (Route53 + ACM certs)
@@ -84,7 +88,9 @@ Standard template for all functions:
 - Bundling: esbuild, minified, source maps, `@aws-sdk/*` external
 - Environment: TABLE_NAME, EVENT_BUS_NAME, SES_FROM_EMAIL, secret names, bucket names
 
-30+ functions covering: content CRUD (6), products (5), comments (3), signals (3), leads (2), context (5), tenant (3), users (1), resources (3), assets (2), audit (3), contact (1), consent (1), themes (3), webhooks (1), import (1), email DNS (1).
+Functions in the PARENT (`api.ts`): comments (3), signals (3), leads (2), context (5), tenant (3), users (1), resources (3), assets (2), audit (3), contact (1), consent (1), themes (3), webhooks (1), email DNS (1).
+
+Functions moved to the `CatalogApi` NestedStack (`api-catalog.ts`, INFRA-SPLIT-1 v2), **their routes still registered here in `api.ts`**: content CRUD (6), products admin CRUD (5), import (3: wordpress/media/reviews). The parent's integrations target these via a cross-stack `Fn::GetAtt`; the functions keep the same runtime/env/grants they had in the parent.
 
 `EmailDnsCheckFunc` (slice `email-2`, `POST /email/dns-check`): read-only guided-DNS
 checker. One `NodejsFunction` + one route + `table.grantReadData` (it Gets the tenant record

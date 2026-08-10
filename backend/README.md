@@ -60,11 +60,12 @@ All mutations call `publishAudit()` → EventBridge custom bus → Audit Worker 
 
 ## CDK Registration
 
-Main API stack (`infra/lib/api.ts`) + 2 nested stacks:
-- `api-commerce.ts` — categories, products, orders, customers, delivery, coupons, reviews, reports, woo import
+Main API stack (`infra/lib/api.ts`) + 3 nested stacks:
+- `api-catalog.ts` — content, products (admin CRUD), import (wordpress/media/reviews) — **functions only**; their routes stay in `api.ts` (INFRA-SPLIT-1 v2)
+- `api-commerce.ts` — categories, public products, orders, customers, delivery, coupons, reviews, reports, woo import
 - `api-engagement.ts` — popups, forms
 
-Nested stacks use L1 `CfnRoute`/`CfnIntegration` because `httpApi.addRoutes()` creates resources in the parent stack.
+`api-commerce.ts`/`api-engagement.ts` use L1 `CfnRoute`/`CfnIntegration` because `httpApi.addRoutes()` creates resources in the parent stack. `api-catalog.ts` instead moves only the **functions** out (500-ceiling relief) and lets the parent keep the routes with unchanged keys, targeting the moved functions via a cross-stack ref.
 
 ## Commands
 

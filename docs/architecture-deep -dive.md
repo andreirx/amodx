@@ -32,9 +32,10 @@ Reference document for software architects done on 2026-03-07.
 │ ├──────┤ │                    ┌─────┴──────────────────────────┐
 │ │_next/│ │                    │        100+ Lambda Handlers    │
 │ │static│─┼─► S3 Bucket        │                                │
-│ └──────┘ │   (assets+cache)   │  AmodxApiStack    (~390 res)   │
-└──────────┘                    │  CommerceStack    (~234 res)   │
-       │                        │  EngagementStack  (~94 res)    │
+│ └──────┘ │   (assets+cache)   │  AmodxStack       (~446 res)   │
+└──────────┘                    │  CatalogApi       (~56 res)    │
+       │                        │  CommerceApi      (~257 res)   │
+       │                        │  EngagementApi    (~93 res)    │
        │                        └─────┬────────┬────────┬────────┘
        │                              │        │        │
        │                              ▼        ▼        ▼
@@ -781,17 +782,24 @@ AmodxStack (parent, ~390 resources)
 ├── AmodxApi
 │   ├── API Gateway HTTP v2
 │   ├── Lambda Authorizer
-│   └── ~60 Lambda handlers (content, context, settings,
-│       auth, assets, resources, audit, users, webhooks,
-│       signals, research, themes, contact, consent, leads,
-│       comments, import)
+│   ├── Lambda handlers (context, settings, auth, assets,
+│   │   resources, audit, users, webhooks, signals, research,
+│   │   themes, contact, consent, leads, comments, email-dns)
+│   └── ALL routes (incl. the catalog routes below; their
+│       functions live in CatalogApi, targeted cross-stack)
 │
-├── CommerceStack (nested, ~234 resources)
+├── CatalogApi (nested, ~56 resources)  [INFRA-SPLIT-1 v2]
+│   │  FUNCTIONS ONLY — routes/integrations/permissions stay
+│   │  in the parent AmodxStack (unchanged route keys)
+│   └── Lambda handlers: content (6), products admin (5),
+│       import (3: wordpress, media, reviews)
+│
+├── CommerceApi (nested, ~257 resources)
 │   │  Uses L1 CfnRoute/CfnIntegration (keeps resources in nested stack)
-│   └── Lambda handlers: categories, products, orders, customers,
+│   └── Lambda handlers: categories, public products, orders, customers,
 │       delivery, coupons, reviews, reports, woo import
 │
-├── EngagementStack (nested, ~94 resources)
+├── EngagementApi (nested, ~93 resources)
 │   └── Lambda handlers: popups, forms
 │
 ├── RendererHosting
@@ -816,14 +824,23 @@ AmodxStack (parent, ~390 resources)
 
 
 NESTED STACK RATIONALE:
-  CloudFormation limit: 500 resources per stack
-  Parent stack: ~390 resources
-  Commerce stack: ~234 resources (would exceed limit if in parent)
-  Engagement stack: ~94 resources
+  CloudFormation limit: 500 resources per stack (hard cap)
+  Parent stack (AmodxStack): ~446 resources (was ~501 = over the cap
+    before INFRA-SPLIT-1; catalog functions moved out relieved it)
+  CatalogApi:    ~56 resources
+  CommerceApi:   ~257 resources (would exceed the cap if in parent)
+  EngagementApi: ~93 resources
 
-  Nested stacks use L1 CfnRoute/CfnIntegration instead of
-  httpApi.addRoutes() to keep resources counted against the
-  nested stack, not the parent.
+  CommerceApi/EngagementApi use L1 CfnRoute/CfnIntegration instead of
+  httpApi.addRoutes() to keep whole route groups (routes + functions)
+  counted against the nested stack, not the parent.
+
+  CatalogApi (INFRA-SPLIT-1 v2) is different: it holds ONLY the
+  content/products/import Lambda FUNCTIONS. Their routes stay in the
+  parent with unchanged keys — moving a live ApiGatewayV2 route between
+  stacks changes its logical id and collides on the shared HttpApi route
+  key mid-update (proven on staging in v1). The parent's integrations
+  re-point at the moved functions via a cross-stack Fn::GetAtt.
 ```
 
 ---

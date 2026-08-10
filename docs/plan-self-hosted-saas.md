@@ -65,7 +65,7 @@ At single-account scale, with the 2-per-stack CloudFront approach and shared S3 
 | DynamoDB Tables | 2 | +1 (control plane) | 2,500 | 1,248 stacks | Not a constraint |
 | EventBridge Event Buses | 1 | +1 | 100 | 98 stacks | ~498 (at 500) |
 | Lambda Concurrency | ~109 functions | — | 1,000 concurrent | ~50 active stacks | 10,000 (request increase early) |
-| CloudFormation Stacks | 3 (parent + 2 nested) | +1 | 2,000 | 665 stacks | Not a constraint |
+| CloudFormation Stacks | 4 (parent + 3 nested) | +1 | 2,000 | 665 stacks | Not a constraint |
 | Secrets Manager Secrets | 5 | ~3 | 500,000 | Not a constraint | — |
 
 **Binding constraint: CloudFront at 99 stacks with default limits.** Request limit increases to 500 on day one. This gives runway to ~249 stacks before needing multi-account.

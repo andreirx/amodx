@@ -89,6 +89,8 @@ let scratchDir: string;
 let template: Template;
 /** Parent + every NestedStack, so "and no other role" claims are stack-tree-wide. */
 let allTemplates: Template[];
+/** The CatalogApi NestedStack template alone (INFRA-SPLIT-1 v2 safety-invariant assertions). */
+let catalogTemplate: Template;
 
 /**
  * Replace this process's environment with one that carries no credential and no project
@@ -213,6 +215,30 @@ beforeAll(() => {
             .filter((c): c is cdk.NestedStack => c instanceof cdk.NestedStack)
             .map((nested) => Template.fromStack(nested)),
     ];
+
+    const nestedStacks = stack.node
+        .findAll()
+        .filter((c): c is cdk.NestedStack => c instanceof cdk.NestedStack);
+    const byId = new Map(nestedStacks.map((n) => [n.node.id, Template.fromStack(n)]));
+
+    const catalogNested = byId.get('CatalogApi');
+    if (!catalogNested) throw new Error('CatalogApi NestedStack not found in the stack tree');
+    catalogTemplate = catalogNested;
+
+    // Labeled per-template resource counts, logged once as INFRA-SPLIT-1 evidence. The parent count
+    // is the CFN-500 gate; the nested counts let a reviewer see at a glance that CommerceApi/
+    // EngagementApi were NOT restructured by this slice (only the new CatalogApi appears).
+    const count = (t: Template) => Object.keys(t.toJSON().Resources ?? {}).length;
+    const fns = (t: Template) => Object.keys(t.findResources('AWS::Lambda::Function')).length;
+    const parts = [`AmodxStack(parent)=${count(template)}/${fns(template)}fn`];
+    for (const id of ['CatalogApi', 'CommerceApi', 'EngagementApi']) {
+        const t = byId.get(id);
+        if (t) parts.push(`${id}=${count(t)}/${fns(t)}fn`);
+    }
+    // Raw counts from THIS synth omit the managed LogGroup per Lambda (cdk.json's
+    // useCdkManagedLogGroup flag is not loaded by `new cdk.App()`), so the deployed count of each
+    // template is its raw count + its function count. See (split1-5) for the full offset accounting.
+    console.log(`(split1) template resources/functions (credential-free domains:{} synth, log groups omitted): ${parts.join(', ')}`);
 });
 
 afterAll(() => {
@@ -812,7 +838,7 @@ describe('UpdateReviewFunc — rev-2a promotion least-privilege', () => {
 //     Prose: docs/slices/rev-2b-bulk-import.md § "Infra".
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('ReviewImportFunc — rev-2b import least-privilege', () => {
-    /** The one bulk-review-import Lambda across the stack tree (parent api stack). */
+    /** The one bulk-review-import Lambda across the stack tree (it lives in the CatalogApi nested stack since INFRA-SPLIT-1). */
     function reviewImportFunc(): { template: Template; roleLogicalId: string; props: any } {
         for (const t of allTemplates) {
             const fns = Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) =>
@@ -871,6 +897,162 @@ describe('ReviewImportFunc — rev-2b import least-privilege', () => {
         // runtime failure invisible to the IAM checks above.
         const vars = reviewImportFunc().props.Environment.Variables;
         expect(Object.prototype.hasOwnProperty.call(vars, 'PRIVATE_BUCKET')).toBe(true);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (split1) INFRA-SPLIT-1 v2 — the catalog FUNCTIONS-ONLY move, as a synthesized-template invariant
+//     Ratified by docs/slices/infra-split-1-catalog-nested-stack.md § "Design v2". The move exists
+//     to relieve CloudFormation's hard 500-resource ceiling by relocating the catalog group's heavy
+//     Lambda Functions into their own NestedStack template. v2 (not v1) is load-bearing: v1 moved the
+//     ROUTES too and CREATE_FAILED on staging because relocating a route changes its logical id, so
+//     CloudFormation created the new route key on the shared HttpApi before deleting the old one — a
+//     duplicate-key collision. These assertions pin the exact shape that avoids it: FUNCTIONS move to
+//     CatalogApi; ROUTES + INTEGRATIONS + PERMISSIONS stay in the parent with unchanged keys, their
+//     integrations retargeted in place to the moved functions via a cross-stack Fn::GetAtt.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety invariant)', () => {
+    // The 14 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
+    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 3.
+    const CATALOG_ROUTE_KEYS = [
+        'POST /content',
+        'GET /content',
+        'GET /content/{id}',
+        'PUT /content/{id}',
+        'GET /content/{id}/versions',
+        'POST /content/{id}/restore',
+        'POST /products',
+        'GET /products',
+        'GET /products/{id}',
+        'PUT /products/{id}',
+        'DELETE /products/{id}',
+        'POST /import/wordpress',
+        'POST /import/media',
+        'POST /import/reviews',
+    ];
+
+    test('(split1-1) CatalogApi holds EXACTLY the 14 catalog Lambda functions', () => {
+        // The heavy resources that moved out of the parent template to buy headroom under the 500
+        // ceiling. Exactly 14 — content 6 + products 5 + import 3 — so a stray function moved in
+        // (count > 14) or one left behind re-inflating the parent (count < 14) both fail here.
+        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(14);
+    });
+
+    test('(split1-2) CatalogApi contains NO route, integration, or Lambda permission — those stay in the parent', () => {
+        // The v2 boundary itself: ONLY Function/Role/Policy move. A route/integration/permission
+        // synthesized HERE would be the v1 mistake returning — a route recreated in another stack,
+        // which is the shared-HttpApi key collision that failed staging.
+        expect(catalogTemplate.findResources('AWS::ApiGatewayV2::Route')).toEqual({});
+        expect(catalogTemplate.findResources('AWS::ApiGatewayV2::Integration')).toEqual({});
+        expect(catalogTemplate.findResources('AWS::Lambda::Permission')).toEqual({});
+    });
+
+    test('(split1-3) CatalogApi contains NO stateful resource — no table, bucket, or user pool moved', () => {
+        // Hard slice constraint (§ "Resource-recreation reality"): moving a stateful resource changes
+        // its logical id → CloudFormation DELETEs then CREATEs it = data loss. The shared
+        // table/buckets/pools stay in the parent and are passed in by reference; none may be here.
+        expect(catalogTemplate.findResources('AWS::DynamoDB::Table')).toEqual({});
+        expect(catalogTemplate.findResources('AWS::DynamoDB::GlobalTable')).toEqual({});
+        expect(catalogTemplate.findResources('AWS::S3::Bucket')).toEqual({});
+        expect(catalogTemplate.findResources('AWS::Cognito::UserPool')).toEqual({});
+    });
+
+    test('(split1-4) the PARENT keeps all 14 catalog route keys, each wired INTO a CatalogApi function', () => {
+        // Both halves of the v2 fix, together: (a) every catalog route key is still in the PARENT
+        // template with its key unchanged — no collision on redeploy — and (b) each of those routes
+        // now integrates a function that lives in the CatalogApi NestedStack. (b) is what proves the
+        // functions actually moved: the integration's target is a cross-stack Fn::GetAtt on the
+        // CatalogApi nested-stack resource (whose logical id contains "CatalogApi"), NOT a bare
+        // Fn::GetAtt on a parent-local function. A function left behind in the parent would fail (b).
+        const routes = template.findResources('AWS::ApiGatewayV2::Route');
+        const integrations = template.findResources('AWS::ApiGatewayV2::Integration');
+
+        for (const key of CATALOG_ROUTE_KEYS) {
+            const match = Object.values(routes).filter((r) => (r as any).Properties.RouteKey === key);
+            expect({ key, count: match.length }).toEqual({ key, count: 1 });
+
+            // Route Target = `Fn::Join ['', ['integrations/', { Ref: <integrationLogicalId> }]]`.
+            const targetJson = JSON.stringify((match[0] as any).Properties.Target);
+            const refMatch = targetJson.match(/"Ref":"([^"]+)"/);
+            expect({ key, hasIntegrationRef: refMatch !== null }).toEqual({ key, hasIntegrationRef: true });
+
+            const integ = integrations[refMatch![1]];
+            expect({ key, integrationInParent: integ !== undefined }).toEqual({ key, integrationInParent: true });
+
+            const uriJson = JSON.stringify((integ as any).Properties.IntegrationUri);
+            expect({ key, wiredIntoCatalog: uriJson.includes('CatalogApi') }).toEqual({
+                key,
+                wiredIntoCatalog: true,
+            });
+        }
+    });
+
+    test('(split1-5) the DEPLOYED parent template is back under CloudFormation\'s 500-resource ceiling', () => {
+        // The reason the whole slice exists: email-2 pushed the single parent template to 501, over
+        // CFN's hard 500-per-template limit, blocking every backend deploy. Moving the catalog
+        // functions into their own template must bring the parent back under 500 AND keep the new
+        // nested template well under it too.
+        //
+        // THREE SYNTH-vs-DEPLOY OFFSETS this assertion corrects for, so it gates the number that
+        // actually deploys rather than the raw test synth. All three are VERIFIED against the real
+        // credentialed staging synth checked into infra/cdk.out (2026-08-10):
+        //   1. MANAGED LOG GROUPS. cdk.json sets `@aws-cdk/aws-lambda:useCdkManagedLogGroup=true`,
+        //      which makes the real `cdk synth` emit one AWS::Logs::LogGroup per Lambda. This test's
+        //      `new cdk.App()` does NOT load cdk.json's context, so its synth omits them. So each
+        //      template's log-group offset = its Lambda-function count.
+        //   2. AWS::CDK::Metadata. The real credentialed synth emits one CLI-analytics
+        //      AWS::CDK::Metadata per template; the credential-free `new cdk.App()` omits it. Proven
+        //      by cdk.out: CatalogApi = 42 core + 14 log groups + 1 CDK::Metadata = 57 (the test raw
+        //      is 42, so raw + fns = 56 undercounts the deployed template by this one). Added below as
+        //      NESTED_METADATA for the nested template; the parent's copy is folded into offset 3.
+        //   3. STAGE OVERHEAD. The credential-free `config:{domains:{}}` synth (see file header) omits
+        //      the fixed Route53/ACM/DomainName/ApiMapping resources, their domain custom-resource
+        //      satellites, and the parent's own CDK::Metadata that a real stage adds (13 total).
+        //      Calibrated whole against cdk.out's real parent (446) so the gate is not falsely
+        //      generous. Only the parent carries it — a nested template has no domain resources.
+        const rawParent = Object.keys(template.toJSON().Resources ?? {}).length;
+        const rawCatalog = Object.keys(catalogTemplate.toJSON().Resources ?? {}).length;
+        const parentFns = Object.keys(template.findResources('AWS::Lambda::Function')).length;
+        const catalogFns = Object.keys(catalogTemplate.findResources('AWS::Lambda::Function')).length;
+
+        // Per-template synthetic the credential-free `new cdk.App()` OMITS but the real credentialed
+        // `cdk synth` EMITS once per template: AWS::CDK::Metadata (CLI analytics). VERIFIED against
+        // infra/cdk.out (2026-08-10): the real staging CatalogApi template is 57 = 42 core (14 Fn +
+        // 14 Role + 14 Policy) + 14 managed log groups + 1 CDK::Metadata. The FIRST offset model here
+        // added only the log groups (catalogFns) and so undercounted the deployed nested template by
+        // exactly this one AWS::CDK::Metadata — the bug that made the pre-split reconstruction read
+        // 500 instead of the documented 501. The parent's own CDK::Metadata is likewise omitted by
+        // the test synth but is folded into PARENT_STAGE_OVERHEAD below (which is calibrated whole).
+        const NESTED_METADATA = 1;
+        // Fixed per-stage overhead the domains:{} test synth omits but a real stage adds: the
+        // Route53/ACM/DomainName/ApiMapping domain resources, the parent's own CDK::Metadata, and the
+        // domain custom-resource satellites (fn/role/policy/log-group). Calibrated whole so
+        // deployedParent equals the real staging synth (infra/cdk.out parent = 446). Not pure domain
+        // — hence not named DOMAIN_OVERHEAD.
+        const PARENT_STAGE_OVERHEAD = 13;
+
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 382 + 51 + 13 = 446 (== cdk.out)
+        const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 42 + 14 + 1 = 57 (== cdk.out)
+
+        // Reconstruct the pre-split parent count to show it was the 501 that email-2 hit against the
+        // hard 500-per-template ceiling. Of the 57 resources in the deployed CatalogApi template,
+        // exactly 56 MOVED out of the parent (14 handlers × {Function, Role, Policy, LogGroup}); the
+        // 57th — the nested template's own new AWS::CDK::Metadata — is synthesized fresh and did NOT
+        // come from the parent. The parent, in turn, GAINED exactly one resource that did not exist
+        // pre-split: the AWS::CloudFormation::Stack pointer to CatalogApi. So the before-count is the
+        // after-count minus that one new pointer, plus the 56 that moved out:
+        const catalogMoved = deployedCatalog - NESTED_METADATA;                 // 57 - 1 = 56
+        const impliedParentBefore = deployedParent - 1 /* new CFN::Stack */ + catalogMoved; // 446 - 1 + 56 = 501
+        console.log(
+            `(split1-5) DEPLOYED parent ≈ ${deployedParent} (raw ${rawParent} + ${parentFns} managed log groups + ${PARENT_STAGE_OVERHEAD} stage overhead); ` +
+                `DEPLOYED CatalogApi ≈ ${deployedCatalog} (raw ${rawCatalog} + ${catalogFns} log groups + ${NESTED_METADATA} CDK::Metadata), of which ${catalogMoved} moved from the parent. Both < 500. ` +
+                `Pre-split parent was ≈ ${impliedParentBefore} (email-2's 501, at CFN's 500 ceiling — the blocker this slice clears).`,
+        );
+        expect(deployedParent).toBeLessThan(500);
+        expect(deployedCatalog).toBeLessThan(500);
+        // Pin the reconstruction to the documented email-2 count so the explanatory output can never
+        // silently drift from the authoritative before/after story again (review-6 finding).
+        expect(impliedParentBefore).toBe(501);
     });
 });
 

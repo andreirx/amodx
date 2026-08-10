@@ -11,6 +11,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import { CatalogApi } from './api-catalog';
 
 interface AmodxApiProps {
     table: dynamodb.Table;
@@ -31,6 +32,12 @@ interface AmodxApiProps {
     recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
     publicPoolId?: string; // Public Cognito pool for customer auth (optional, wired when available)
     publicPoolClientId?: string; // Public Cognito pool client ID
+    // INFRA-SPLIT-1 v2: the catalog group's Lambda Functions live in this NestedStack (instantiated
+    // in the composition root, amodx-stack.ts, alongside CommerceApi/EngagementApi). AmodxApi keeps
+    // the catalog ROUTES/INTEGRATIONS/PERMISSIONS and points them at these moved functions via
+    // `catalog.*` — a cross-stack Fn::GetAtt. Passed IN (not constructed here) so all nested stacks
+    // are owned by the one composition root. See api-catalog.ts and amodx-stack.ts.
+    catalog: CatalogApi;
 }
 
 export class AmodxApi extends Construct {
@@ -134,81 +141,49 @@ export class AmodxApi extends Construct {
             timeout: cdk.Duration.seconds(29), // <--- 29s Timeout
         };
 
-        // --- CONTENT API ---
-        const createContentFunc = new nodejs.NodejsFunction(this, 'CreateContentFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/content/create.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadWriteData(createContentFunc);
-        props.revalidationSecret.grantRead(createContentFunc);  // cache-2: ISR purge on page create
+        // --- CATALOG GROUP (INFRA-SPLIT-1 v2) ---
+        // The content (6), products (5) and import (3) Lambda Functions moved OUT of this parent
+        // template into the CatalogApi NestedStack to relieve CloudFormation's 500-resource ceiling
+        // (email-2 synth hit 501). CatalogApi is instantiated in the composition root
+        // (amodx-stack.ts), like CommerceApi/EngagementApi, and handed in via `props.catalog` — the
+        // one place that owns every nested stack. AmodxApi keeps every catalog Route + Integration +
+        // Permission HERE, unchanged, and points its integrations at the moved functions via
+        // `catalog.*` — a cross-stack Fn::GetAtt reference. This is the FUNCTIONS-ONLY split: moving
+        // the routes too collides on the shared HttpApi route key (proven on staging v1). The routes
+        // keep the HttpApi default authorizer; CatalogApi carries no authorizer of its own. See
+        // api-catalog.ts.
+        const catalog = props.catalog;
 
-        const listContentFunc = new nodejs.NodejsFunction(this, 'ListContentFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/content/list.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadData(listContentFunc);
-
-        const getContentFunc = new nodejs.NodejsFunction(this, 'GetContentFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/content/get.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadData(getContentFunc);
-
-        const updateContentFunc = new nodejs.NodejsFunction(this, 'UpdateContentFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/content/update.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadWriteData(updateContentFunc);
-        props.revalidationSecret.grantRead(updateContentFunc);  // Phase 4: Cache invalidation
-
-        // History & Restore
-        const listHistoryFunc = new nodejs.NodejsFunction(this, 'ListHistoryFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/content/history.ts'),
-            handler: 'listVersionsHandler',
-        });
-        props.table.grantReadData(listHistoryFunc);
-
-        const restoreContentFunc = new nodejs.NodejsFunction(this, 'RestoreContentFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/content/restore.ts'),
-            handler: 'restoreHandler',
-        });
-        props.table.grantReadWriteData(restoreContentFunc);
-
+        // --- CONTENT API (routes only; functions live in CatalogApi) ---
         this.httpApi.addRoutes({
             path: '/content',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('CreateContentInt', createContentFunc),
+            integration: new integrations.HttpLambdaIntegration('CreateContentInt', catalog.createContentFunc),
         });
         this.httpApi.addRoutes({
             path: '/content',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListContentInt', listContentFunc),
+            integration: new integrations.HttpLambdaIntegration('ListContentInt', catalog.listContentFunc),
         });
         this.httpApi.addRoutes({
             path: '/content/{id}',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('GetContentInt', getContentFunc),
+            integration: new integrations.HttpLambdaIntegration('GetContentInt', catalog.getContentFunc),
         });
         this.httpApi.addRoutes({
             path: '/content/{id}',
             methods: [apigw.HttpMethod.PUT],
-            integration: new integrations.HttpLambdaIntegration('UpdateContentInt', updateContentFunc),
+            integration: new integrations.HttpLambdaIntegration('UpdateContentInt', catalog.updateContentFunc),
         });
         this.httpApi.addRoutes({
             path: '/content/{id}/versions',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListHistoryInt', listHistoryFunc),
+            integration: new integrations.HttpLambdaIntegration('ListHistoryInt', catalog.listHistoryFunc),
         });
         this.httpApi.addRoutes({
             path: '/content/{id}/restore',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('RestoreContentInt', restoreContentFunc),
+            integration: new integrations.HttpLambdaIntegration('RestoreContentInt', catalog.restoreContentFunc),
         });
 
         // --- CONTEXT API ---
@@ -368,98 +343,25 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ConsentInt', consentFunc),
         });
 
-        // --- IMPORT ---
-        const importFunc = new nodejs.NodejsFunction(this, 'ImportFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/import/wordpress.ts'),
-            handler: 'handler',
-            timeout: cdk.Duration.minutes(15),
-            memorySize: 3008,
-            environment: {
-                ...nodeProps.environment,
-                UPLOADS_BUCKET: props.uploadsBucket.bucketName,
-                UPLOADS_CDN_URL: props.uploadsCdnUrl,
-            }
-        });
-        props.table.grantReadWriteData(importFunc);
-        props.uploadsBucket.grantReadWrite(importFunc);
-
+        // --- IMPORT (routes only; ImportFunc/MediaImportFunc/ReviewImportFunc live in CatalogApi) ---
+        // The import-family functions (wordpress, media, reviews) and their grants/IAM moved to the
+        // CatalogApi NestedStack verbatim (INFRA-SPLIT-1 v2). Routes + integrations + permissions stay
+        // here with unchanged keys/logical ids. WooImportFunc is UNRELATED — it lives in the Commerce
+        // NestedStack and is out of scope.
         this.httpApi.addRoutes({
             path: '/import/wordpress',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('ImportInt', importFunc),
+            integration: new integrations.HttpLambdaIntegration('ImportInt', catalog.importFunc),
         });
-
-        // --- MEDIA IMPORT ---
-        const mediaImportFunc = new nodejs.NodejsFunction(this, 'MediaImportFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/import/media.ts'),
-            handler: 'handler',
-            timeout: cdk.Duration.minutes(15),
-            memorySize: 3008,
-            environment: {
-                ...nodeProps.environment,
-                UPLOADS_BUCKET: props.uploadsBucket.bucketName,
-                UPLOADS_CDN_URL: props.uploadsCdnUrl,
-            }
-        });
-        props.table.grantReadWriteData(mediaImportFunc);
-        props.uploadsBucket.grantReadWrite(mediaImportFunc);
-
         this.httpApi.addRoutes({
             path: '/import/media',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('MediaImportInt', mediaImportFunc),
+            integration: new integrations.HttpLambdaIntegration('MediaImportInt', catalog.mediaImportFunc),
         });
-
-        // --- REVIEW IMPORT (rev-2b) ---
-        // Instance #3 of the import-family pattern — siblings ImportFunc + MediaImportFunc above (and
-        // WooImportFunc in the commerce nested stack): its own NodejsFunction + POST /import/reviews
-        // route + the stack's default authorizer (TENANT_ADMIN enforced in-handler), exactly as they
-        // do it. NOT a new deployable unit — no new stack/bucket/table.
-        //
-        // PLAIN NodejsFunction — no special bundling (D-REV-4 SUPERSEDED 2026-08-08): the byte-screen
-        // was removed, so this Lambda no longer pulls a native image-decode dependency (which needed
-        // a `.node` binary externalised + installed for Linux). Its only extra dep is `fflate`, a
-        // pure-JS ZIP reader that esbuild bundles normally — so it uses the shared `nodeProps`
-        // bundling like every other importer, with no `externalModules`/`nodeModules` native-binary
-        // entries and no Docker/layer deploy caveat.
-        const reviewImportFunc = new nodejs.NodejsFunction(this, 'ReviewImportFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/import/reviews.ts'),
-            handler: 'handler',
-            timeout: cdk.Duration.minutes(15),
-            memorySize: 3008,
-            environment: {
-                ...nodeProps.environment,
-                PRIVATE_BUCKET: props.privateBucket.bucketName,
-            },
-        });
-        // Least-privilege, matching what the slice authorised: DDB read+write (ImportBatch + review
-        // writes, and the withInvalidation CDN_PENDING marker) and PRIVATE-bucket PUT only (stages
-        // the raw `/original` under review-staging/). NO public-bucket grant — promotion to the
-        // public bucket is rev-2a's UpdateReviewFunc on human approval. EVENT_BUS_NAME is in
-        // nodeProps.environment and the constructor's end-of-body loop grants PutEvents to every
-        // NodejsFunction (publishAudit), so no per-function event grant is added here.
-        props.table.grantReadWriteData(reviewImportFunc);
-        // S3: EXACTLY `s3:PutObject`, and ONLY under the `review-staging/` quarantine prefix
-        // (review-2b review-1 blocking least-privilege finding). `grantPut(fn)` was REFUSED: with no
-        // object-key pattern CDK scopes it to the WHOLE bucket (`<bucketArn>/*`) AND grants the wider
-        // put-family (`s3:PutObjectLegalHold`/`Retention`/`*Tagging`, `s3:Abort*`) — a blast radius
-        // over every tenant's private objects (product PDFs, zips) if this handler is exploited. The
-        // handler issues ONE S3 op — `PutObjectCommand` staging `.../original` under this prefix
-        // (backend/src/lib/review-media.ts `stageReviewImage`) — so it needs one action, prefix-scoped.
-        // Mirrors rev-2a's UpdateReviewFunc private read (amodx-stack.ts). Pinned by
-        // infra/test/amodx-stack.test.ts (rev2b-iam).
-        reviewImportFunc.addToRolePolicy(new iam.PolicyStatement({
-            actions: ['s3:PutObject'],
-            resources: [`${props.privateBucket.bucketArn}/review-staging/*`],
-        }));
-
         this.httpApi.addRoutes({
             path: '/import/reviews',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('ReviewImportInt', reviewImportFunc),
+            integration: new integrations.HttpLambdaIntegration('ReviewImportInt', catalog.reviewImportFunc),
         });
 
         // --- TENANTS ---
@@ -678,68 +580,34 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ModerateCommentInt', moderateCommentFunc),
         });
 
-        // --- PRODUCTS ---
-        const createProductFunc = new nodejs.NodejsFunction(this, 'CreateProductFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/products/create.ts'),
-            handler: 'handler',
-        });
-        props.table.grantWriteData(createProductFunc);
-
-        const listProductsFunc = new nodejs.NodejsFunction(this, 'ListProductsFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/products/list.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadData(listProductsFunc);
-
-        const getProductFunc = new nodejs.NodejsFunction(this, 'GetProductFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/products/get.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadData(getProductFunc);
-
-        const updateProductFunc = new nodejs.NodejsFunction(this, 'UpdateProductFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/products/update.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadWriteData(updateProductFunc);
-        props.revalidationSecret.grantRead(updateProductFunc);  // Cache invalidation
-
-        const deleteProductFunc = new nodejs.NodejsFunction(this, 'DeleteProductFunc', {
-            ...nodeProps,
-            entry: path.join(__dirname, '../../backend/src/products/delete.ts'),
-            handler: 'handler',
-        });
-        props.table.grantReadWriteData(deleteProductFunc);
-        props.revalidationSecret.grantRead(deleteProductFunc);  // Cache invalidation
-
+        // --- PRODUCTS (routes only; functions live in CatalogApi) ---
+        // Admin product CRUD functions moved to the CatalogApi NestedStack (INFRA-SPLIT-1 v2). The
+        // PUBLIC product routes (GET /public/products*) are UNRELATED — they live in the Commerce
+        // NestedStack and are out of scope.
         this.httpApi.addRoutes({
             path: '/products',
             methods: [apigw.HttpMethod.POST],
-            integration: new integrations.HttpLambdaIntegration('CreateProductInt', createProductFunc),
+            integration: new integrations.HttpLambdaIntegration('CreateProductInt', catalog.createProductFunc),
         });
         this.httpApi.addRoutes({
             path: '/products',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('ListProductsInt', listProductsFunc),
+            integration: new integrations.HttpLambdaIntegration('ListProductsInt', catalog.listProductsFunc),
         });
         this.httpApi.addRoutes({
             path: '/products/{id}',
             methods: [apigw.HttpMethod.GET],
-            integration: new integrations.HttpLambdaIntegration('GetProductInt', getProductFunc),
+            integration: new integrations.HttpLambdaIntegration('GetProductInt', catalog.getProductFunc),
         });
         this.httpApi.addRoutes({
             path: '/products/{id}',
             methods: [apigw.HttpMethod.PUT],
-            integration: new integrations.HttpLambdaIntegration('UpdateProductInt', updateProductFunc),
+            integration: new integrations.HttpLambdaIntegration('UpdateProductInt', catalog.updateProductFunc),
         });
         this.httpApi.addRoutes({
             path: '/products/{id}',
             methods: [apigw.HttpMethod.DELETE],
-            integration: new integrations.HttpLambdaIntegration('DeleteProductInt', deleteProductFunc),
+            integration: new integrations.HttpLambdaIntegration('DeleteProductInt', catalog.deleteProductFunc),
         });
 
         // --- USERS ---
