@@ -15,28 +15,7 @@ import { MediaPicker } from "@/components/MediaPicker";
 import { TagInput } from "@/components/ui/tag-input";
 
 import { THEME_PRESETS } from "@amodx/shared";
-
-const extractText = (blocks: any[]): string => {
-    let text = "";
-    const traverse = (node: any) => {
-        if (node.type === 'text') text += node.text + " ";
-        if (node.content) node.content.forEach(traverse);
-    };
-    blocks.forEach(traverse);
-    return text.substring(0, 160).trim();
-};
-
-// Helper to find first image
-const findImage = (blocks: any[]): string => {
-    let src = "";
-    const traverse = (node: any) => {
-        if (src) return;
-        if (node.type === 'image' && node.attrs?.src) src = node.attrs.src;
-        if (node.content) node.content.forEach(traverse);
-    };
-    blocks.forEach(traverse);
-    return src;
-};
+import { extractText, findImage } from "@/lib/seoExtract";
 
 // IMPROVED COLOR COMPONENT
 function ColorOverride({ label, value, onChange, onReset }: { label: string, value?: string, onChange: (v: string) => void, onReset: () => void }) {

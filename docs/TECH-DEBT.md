@@ -1009,13 +1009,17 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
 
 ## Two publish-flow bugs (2026-08-16, human-reported, diagnosed live)
 
-### 1. SEO auto-extraction is blind to markdown blocks (admin)
-- `extractText()`/`findImage()` (admin ContentEditor) walk only rich-text nodes; a
-  markdown block keeps its text in attrs → a page authored as one markdown block gets
+### 1. SEO auto-extraction is blind to markdown blocks (admin) — RESOLVED (seo-extract-md)
+- `extractText()`/`findImage()` (admin ContentEditor) walked only rich-text nodes; a
+  markdown block keeps its text in attrs → a page authored as one markdown block got
   EMPTY seoDescription/featuredImage → no meta description, no post-grid excerpt (the
   grid excerpt IS seoDescription — confirmed PostGridRender).
-- Fix (human-directed): treat markdown block content as page text — extract the
-  first ~160 chars (markdown syntax stripped) + first image ref. Slice: seo-extract-md.
+- Fixed: helpers moved to `admin/src/lib/seoExtract.ts` (test seam; sole consumer
+  ContentEditor — NOT promoted to packages/shared, only 1 consumer). Markdown-block
+  content now contributes stripped prose in document order (first ~160 chars) and
+  markdown image refs (`![alt](src)`) are found in document order. Pinned by
+  `admin/src/lib/seoExtract.test.ts` (bug case: one big markdown block →
+  non-empty description + image). Admin-side only; no backend/renderer change.
 
 ### 2. SWR refresh pipeline drowned by scanner junk → grids frozen stale (cache-8)
 - RevalidationFunction: 1,104 failures/12h, dominated by bot-scanner URLs

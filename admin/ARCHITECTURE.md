@@ -15,6 +15,7 @@ src/
 ├── index.css                   # Tailwind v4 imports
 ├── lib/
 │   ├── api.ts                  # apiRequest() — fetch wrapper with auth, tenant header, error handling
+│   ├── seoExtract.ts           # extractText()/findImage()/stripMarkdown() — SEO auto-extraction from a Tiptap block doc on save; walks rich-text AND markdown-atom blocks (attrs.content) in document order. Sole consumer: ContentEditor.tsx. Extracted from the page for a node-env test seam (see seoExtract.test.ts)
 │   └── utils.ts                # cn() (clsx + tailwind-merge)
 ├── components/
 │   ├── ui/                     # shadcn/ui primitives (Button, Input, Dialog, Select, Sheet, etc.)
