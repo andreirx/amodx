@@ -88,7 +88,7 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    (docs/caching-architecture.md §Measured serving behaviour), including warts. The
    regression net for Track CACHE and the future PPR track.
    *Status: implemented as `renderer/test/serving-contract/` (`test-2`, 2026-07-28) —
-   16 assertions, one per contract row, plus 2 harness isolation self-checks; ≈9 s;
+   26 contract-row assertions plus 4 harness isolation self-checks (30 tests); ≈9 s;
    credential-free by construction — the child processes get an explicitly built environment
    and cannot read `renderer/.env*` (that directory's `README.md` § "Credential-free" carries
    the measured matrix). Runner is `node:test`, not

@@ -127,6 +127,13 @@ Grouped by the parent that owns the fix, largest blast radius first:
    `open-next@0.0.1` (absurd downgrade). **Fix:** move open-next forward to a release carrying
    patched esbuild.
 
+6. **`patch-package` 8.0.1 → `yaml` 2.9.0 (root devDependency, install-time; 1 moderate).** Added by
+   cache-8 for the pinned open-next SWR patch. `yaml@2.9.0` carries a moderate "stack overflow via
+   deeply nested YAML collections" advisory. Exposure is **install-time only**: `patch-package` runs
+   in root `postinstall`, parsing yarn lockfiles/config — it is a root devDependency, never bundled
+   into any Lambda, and never parses request-time input. No production runtime path. **Fix:** upgrade
+   `patch-package` when it ships a release depending on a patched `yaml`.
+
 **Order when `dep-1` runs:** (1) ~~activate CDK infra tests + CI `cdk synth` baseline~~ **DONE
 (`test-4`, 2026-07-28)** → (2) **answer the `sharp` runtime-exposure question in item 2** — it is the
 only remaining item with a plausible request-time path, so it sets the urgency of everything else →
@@ -904,6 +911,14 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   advisory forcing the bump. Until then, not worth the full serving-adapter swap risk.
 - Standing: rev-4 gallery + any new image UI must use raw asset URLs, never next/image,
   until this lands.
+- **Un-parking dependency (cache-8):** the OpenNext bump must re-evaluate
+  `patches/open-next+3.1.3.patch` — the cache-8 mitigation (c) patch that rewrites
+  `fixISRHeaders()`'s edge SWR window `2592000 → 300`. An upgrade replaces the patched
+  `dist/core/routing/util.js`, so the patch will fail to apply. This trips BOTH guard layers:
+  LAYER 1 = serving row `(c2)` goes red (installed-source check, in CI); LAYER 2 =
+  `scripts/verify-opennext-patch.mjs` fails the pre-deploy gate (built-bundle check). Re-cut the
+  patch against the new `fixISRHeaders`, or drop it if the upstream default changed — and re-run
+  both guards.
 - Status: PARKED (not OPEN debt - a deliberate deferral with a named revisit trigger)
 
 ## Review-image EXIF/privacy residual (2026-08-08, D-REV-4 superseded)
@@ -1015,4 +1030,67 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   bounded value so edge staleness self-limits.
 - Interim mitigations used (manual): direct S3 ISR-object delete + CloudFront
   invalidation forces a synchronous fresh render (works regardless of the queue).
-- Slice: cache-8 (next up). Status: OPEN — this is the "is caching still buggy" answer: YES, this one.
+- Slice: cache-8. Status: **IMPLEMENTED (code complete; production/operator gate NOT RUN).
+  INVESTIGATION COMPLETE; MITIGATION (c) IMPLEMENTED (pinned open-next patch,
+  REVISE 2); (a),(b),(d) DEFERRED. The FLOOD ITSELF is still UNMITIGATED — (c) only bounds the
+  edge-staleness symptom to 5 min.** The root-cause trace is source-cited and stands
+  (`docs/caching-architecture.md` § "The SWR revalidation queue and the scanner-junk flood
+  (cache-8)"); the interim lever for the flood stays the manual S3-delete + CloudFront `/*`. The
+  remaining candidate fixes require an out-of-scope change (open-next fork or CDK); the durable fix
+  is `opennext-1` and/or a ratified queue-config change.
+  - **Mitigation d (middleware scanner shield) WITHDRAWN (review-1).** A `.php` door-level shield
+    was implemented, then removed: the claim that `.php` is "provably never a tenant page" is FALSE.
+    Counterexample (code-confirmed): tenant IDs are arbitrary strings (`tenant/create.ts`,
+    `@amodx/shared`) and `getTenantConfig()` resolves a bare `SYSTEM / TENANT#wk`; `content/update.ts`
+    persists an unsanitised slug (`/index.php` → `ROUTE#/index.php`). So `/wk/index.php` renders a
+    legitimate 200 that the shield would 404. While the first path segment can be any tenant ID and
+    the remainder any persisted route, NO path shape at the middleware layer is disjoint from
+    content — so no conservative shield exists. Pinned by serving-contract row `(h1)` (the
+    counterexample renders 200) + `(h2)` (a scanner path with no route still takes the ordinary
+    cacheable 307 — flood unmitigated). A shield may not be re-added until the counterexample is
+    defeated (e.g. by constraining tenant IDs AND sanitising update slugs — a boundary change out of
+    this slice's writable scope).
+    - History: review-0 first narrowed an extension-less denylist (`wp-admin`, `wp-json`, `xmlrpc`,
+      …) to `.php`-only (those roots are creatable content slugs); review-1 then showed `.php` itself
+      is not disjoint, forcing the full deferral above.
+  - CORRECTED finding (stands): junk records do NOT retry/park the FIFO group — the SQS event source
+    has no `reportBatchItemFailures`, so failed records are dropped, not re-queued.
+  - **Q3 finding (PROD-VERIFIED 2026-08-16, read-only CloudWatch + DynamoDB):** the operator's
+    "junk is noise" read is CONFIRMED. Over a 6h window, all 4,921 "Failed to revalidate" records are
+    **no-route paths** — scanner probes (`/.env`, `/admin.php`, credential files), WP/asset probes,
+    and phantom slugs with no `ROUTE#` (e.g. `/blog.bijup.com/cloudflare-emdash-validates-amodx`, a
+    renamed draft; the *published* article `/cloudflare-just-validated-amodx-too` has **0** failures).
+    **No genuinely-published page fails.** Each no-route path renders the cacheable `307 ?nf=1`
+    handoff → never `x-nextjs-cache: REVALIDATED` → fails every attempt → re-enqueues forever. Real
+    pages return 200 (STALE or fresh) and revalidate fine. The human-visible "frozen stale" symptom
+    is the CloudFront 30-day SWR re-pin of real pages, NOT queue starvation of them. (Also: the
+    "double-rewrite breaks legit revalidation" hypothesis was TESTED and REFUTED — the host-prefixed
+    `_nextRewroteUrl` carries a `.`, so middleware passes it through and `[siteId]=<host>` resolves.)
+    Full trace: `docs/caching-architecture.md` § cache-8 → "Root-cause Q3 (prod-log VERIFIED)".
+  - **(c) IMPLEMENTED — drop the swr=2592000 edge window to 300 via a pinned open-next patch (REVISE 2,
+    human-ratified option B, NOT a fork).** `patches/open-next+3.1.3.patch` (root `postinstall:
+    patch-package`) rewrites `fixISRHeaders()`'s two constants (`util.js:386` HIT-recompute, `:396`
+    STALE-serve) from `stale-while-revalidate=2592000` to `=300`, self-limiting edge/ISR staleness to
+    5 min when a background refresh fails. Trade-off: more origin renders after 300 s. **Guarded by
+    TWO layers (REVISE 3):** LAYER 1 = serving row `(c2)`, runs in CI with `npm run test:serving`,
+    asserts the patched `300` in the INSTALLED source `dist/core/routing/util.js` (catches a skipped
+    `postinstall` in ~ms, no build); LAYER 2 = `scripts/verify-opennext-patch.mjs`, a pre-deploy gate
+    (`docs/runbooks/deploy-track-cache.md` § Preconditions, NOT CI — `open-next build` is
+    multi-minute) that asserts the patched `s-maxage=2, stale-while-revalidate=300` survives
+    `open-next build` into the shipped SERVER bundle (`.open-next/server-functions/default/`, the
+    asset CDK uploads). Only `fixISRHeaders` is patched; `fixSWRCacheHeader` (`util.js:264`) and
+    `cacheInterceptor.js:56` are left as-is (the renderer emits no bare SWR; the interceptor is
+    disabled) — the built bundle therefore retains exactly ONE `2592000`, the fixSWRCacheHeader
+    replace-target `,"stale-while-revalidate=2592000"` (VERIFIED via the LAYER-2 script,
+    2026-08-16), which the script accounts for as an expected no-op rather than failing on. **`expireTime` (next.config) was tried
+    first per the operator's earlier REVISE and is a VERIFIED NO-OP** (why the patch was needed):
+    Next only emits `stale-while-revalidate` when `revalidate` is a number < expire
+    (`cache-control.js:13`), and the renderer's ISR pages are all `revalidate=false` → no SWR
+    directive emitted, header byte-identical with/without `expireTime` (MEASURED, serving harness;
+    pinned by serving row `(c1)`).
+  - Deferred, gated: (a) control the enqueue disposition = open-next fork (enqueue reads
+    incremental-cache STALE state, not a render header). (b) DLQ / `reportBatchItemFailures` / larger
+    MAX_REVALIDATE_CONCURRENCY = CDK queue change (slice STOP on CDK). Junk records re-enqueue on
+    every scanner hit and fail each attempt; making that structurally harmless is (b), still parked.
+    Operator gate (NOT RUN, belongs to the follow-up flood fix): post-deploy error-rate collapse + a
+    grid refresh completing without a manual purge.

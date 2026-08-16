@@ -56,7 +56,7 @@ src/
     └── routing-server.ts                      # getPreviewBase() — reads amodx_preview_base cookie (dynamic twin only)
 test/
 └── serving-contract/                          # `npm run test:serving` — see README.md there
-    ├── contract.test.mjs                      # 16 contract-row assertions + 4 harness isolation self-checks
+    ├── contract.test.mjs                      # 26 contract-row assertions + 4 harness isolation self-checks (30 tests)
     ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection
     ├── harness.mjs                            # next build / next start on an ephemeral port / HTTP helper
     ├── no-dotenv.cjs                          # NODE_OPTIONS preload: hides renderer/.env* from the whole child process tree; journals its own coverage

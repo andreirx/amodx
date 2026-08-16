@@ -29,6 +29,25 @@ export const MISSING_SLUG = "/no-such-page";
 export const D4_SLUG = "/d4-page";
 
 /**
+ * cache-8 COUNTEREXAMPLE fixture. A SECOND tenant whose ID is a bare, scanner-shaped string
+ * (`wk`), carrying a persisted route whose slug is a scanner-shaped `.php` path (`/index.php`).
+ *
+ * This is the exact shape that defeated the mitigation-d `.php` shield (review-1): a scanner
+ * probe `/<SCANNER_TENANT_ID><SCANNER_SLUG>` = `/wk/index.php` is NOT a garbage path — it binds
+ * the catch-all `[siteId]=wk`, `getTenantConfig("wk")` resolves this tenant via the
+ * `SYSTEM / TENANT#wk` fallback, and `/index.php` resolves this route. So it renders a
+ * legitimate 200, which a `.php` shield would have 404'd. Row `(h1)` pins that it renders.
+ *
+ * Tenant IDs are arbitrary strings (`backend/src/tenant/create.ts`, `@amodx/shared`) and
+ * `content/update.ts` persists an unsanitised slug (only prepends `/`), so both halves of this
+ * fixture are reachable through the real write paths — this is a real content shape, not a
+ * contrived one.
+ */
+export const SCANNER_TENANT_ID = "wk";
+export const SCANNER_SLUG = "/index.php";
+export const SCANNER_PAGE_TITLE = "WK Legit Index (scanner-shaped, real content)";
+
+/**
  * The DynamoDB table name the suite pins into the renderer's environment.
  *
  * Deliberately not a real table name: if `AWS_ENDPOINT_URL_DYNAMODB` were ever dropped
@@ -84,6 +103,53 @@ function routeItem(slug, nodeId) {
     };
 }
 
+// cache-8 counterexample tenant `wk` (see SCANNER_TENANT_ID above). Its ID is resolved only
+// via the `SYSTEM / TENANT#wk` PK fallback in getTenantConfig — its Domain is a distinct host
+// that no probe carries, so the domain GSI never claims the bare string `wk`.
+const scannerTenant = {
+    PK: "SYSTEM",
+    SK: `TENANT#${SCANNER_TENANT_ID}`,
+    id: SCANNER_TENANT_ID,
+    Domain: "wk-tenant.serving-contract.test",
+    domain: "wk-tenant.serving-contract.test",
+    name: "Scanner-Shaped Counterexample Tenant",
+    description: "Tenant whose ID and route are scanner-shaped yet legitimate (cache-8 row h1).",
+    status: "LIVE",
+    plan: "Pro",
+    commerceEnabled: false,
+    countryCode: "EN",
+    currency: "USD",
+    header: { showLogo: true, showTitle: true },
+    navLinks: [],
+    footerLinks: [],
+    theme: {},
+    integrations: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+};
+
+function scannerRouteItem(slug, nodeId) {
+    return {
+        PK: `TENANT#${SCANNER_TENANT_ID}`,
+        SK: `ROUTE#${slug}`,
+        TargetNode: `NODE#${nodeId}`,
+    };
+}
+
+function scannerContentItem(nodeId, slug, title) {
+    return {
+        PK: `TENANT#${SCANNER_TENANT_ID}`,
+        SK: `CONTENT#${nodeId}#LATEST`,
+        id: nodeId,
+        slug,
+        title,
+        status: "Published",
+        accessPolicy: { type: "Public", currency: "USD" },
+        commentsMode: "Hidden",
+        blocks: [],
+        createdAt: "2026-01-01T00:00:00.000Z",
+    };
+}
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -93,4 +159,8 @@ export const ITEMS = [
     contentItem("published", PUBLISHED_SLUG, "Published Fixture Page", "Published"),
     routeItem(D4_SLUG, "d4"),
     contentItem("d4", D4_SLUG, "D4 Fixture Page", "Published"),
+    // cache-8 counterexample: tenant `wk` with a persisted `.php` route.
+    scannerTenant,
+    scannerRouteItem(SCANNER_SLUG, "wk-index"),
+    scannerContentItem("wk-index", SCANNER_SLUG, SCANNER_PAGE_TITLE),
 ];

@@ -450,8 +450,14 @@ its own server on port 3112); and an API-Gateway-v2 driver for the built Lambda
 **This recipe is now committed as a suite** — ROADMAP slice `test-2`,
 `renderer/test/serving-contract/` (`cd renderer && npm run test:serving`). It rebuilds the
 renderer, boots `next start` on an ephemeral port against an in-process DynamoDB stub, and
-asserts 16 of the rows below (plus four harness self-checks), each test named after the row it
-pins. The stub offers the same *fault injection* as the `cache-1` harness above — a read
+asserts the rows below — including the `cache-8` rows `(c1)`, `(c2)` and `(h1)–(h2)` (§ *The SWR
+revalidation queue and the scanner-junk flood*; `(c1)` pins that an ISR page emits no
+`stale-while-revalidate`, so `expireTime` cannot bound the edge window; `(c2)` pins — in the
+installed open-next source `open-next build` bundles — that the patch bounds `fixISRHeaders()`'s edge
+window to `stale-while-revalidate=300` (LAYER 1; the built-bundle proof is the pre-deploy script
+`scripts/verify-opennext-patch.mjs`, LAYER 2 — see § *The SWR revalidation queue* → GUARD); `(h1)` is
+the counterexample that deferred the shield, `(h2)` the unmitigated-flood state)
+— plus four harness self-checks, each test named after the row it pins. The stub offers the same *fault injection* as the `cache-1` harness above — a read
 failure that spares tenant resolution — but as a plain method, `failContentReads(true)`, not
 over HTTP: the stub and the assertions share one process there, so the `/__ctl/…` plane has
 no caller. Credential-free, ≈9 s, and a CI job (`ci.yml` → `serving-contract`).
@@ -1083,6 +1089,277 @@ against real S3 latency/consistency. **`cache-2` did not exercise them either** 
 *keying* of the purge (`/<domain>/<path>`, § *Invalidation Mechanisms 5*) with a pure unit
 test, and left the live round-trip to its post-deploy operator gate. The tag cache stays
 unexercised until tag-based revalidation is adopted (Known Gap 5, `cache-4`).
+
+---
+
+## The SWR revalidation queue and the scanner-junk flood (cache-8)
+
+Live-diagnosed 2026-08-16 (`docs/TECH-DEBT.md` § "Two publish-flow bugs"): the
+RevalidationFunction logged **1,104 "Failed to revalidate" / 12h**, dominated by bot-scanner
+URLs (`/wk/index.php` and kin), while legitimate SWR grid refreshes (post grids on
+`s-maxage=2, stale-while-revalidate=…`) never completed — new articles / excerpt edits stayed
+invisible until the nightly `/*` flush. This section is the source-cited trace and the fix.
+It builds directly on § *D3* above (the SWR / `fixISRHeaders()` / on-demand-STALE mechanism);
+read that first.
+
+### How junk enters the revalidation queue (investigation, open-next 3.1.3 source-cited)
+
+**The active enqueue site for THIS deployment.** open-next 3.1.3 has **two** `queue.send` call
+sites, `OBSERVED` in the installed source: (1) `revalidateIfRequired()`
+(`node_modules/open-next/dist/core/routing/util.js:312`, inside the `x-nextjs-cache: STALE`
+guard at `:281-282`) and (2) `computeCacheControl()` in the cache interceptor
+(`cacheInterceptor.js:49`). Site (2) fires **only** when
+`globalThis.openNextConfig.dangerous?.enableCacheInterception` is truthy — the gate at
+`routingHandler.js:100`. This deployment's `renderer/open-next.config.ts` declares **no
+`dangerous` block** (`OBSERVED`), so `enableCacheInterception` is `undefined` → the interceptor
+never runs and site (2) is dead code here. **Site (1) — `revalidateIfRequired()` — is therefore
+the active enqueue path**, and everything below traces it. (If a future config ever sets
+`dangerous.enableCacheInterception: true`, re-open this: `cacheInterceptor.js` enqueues on a
+*different* condition and this whole trace would need revisiting.)
+
+The active enqueue is **one** condition, then: `revalidateIfRequired()` enqueues an SQS message
+**iff the response carries `x-nextjs-cache: STALE`**. Nothing about the URL, status, or the
+response's own `Cache-Control` gates it — only the incremental-cache read state. So a junk URL is
+enqueued exactly when it already has a **stored ISR entry that has been flipped to STALE**. It
+acquires one like this:
+
+1. A scanner requests `/wk/index.php` against a real tenant host. In `renderer/middleware.ts`
+   (pre-cache-8) the path carries a `.`, so the asset check returns `next()` **without
+   rewriting** — the request is *not* mapped to a tenant. Next then matches the top-level
+   catch-all `[siteId]/[[...slug]]` with `[siteId] = "wk"`.
+2. `getTenantConfig("wk")` returns `null` → `notFoundOrHandoff(cacheable=true, …)` →
+   `redirect(/wk/index.php?nf=1)`. On a route in full-route-cache mode a `redirect()` is
+   **stored** as a `307` with `s-maxage=31536000` (§ *Which render outcomes are cacheable*,
+   row `redirect()`). The junk URL now owns a cacheable ISR entry.
+3. Any later on-demand `revalidatePath()` / `revalidateTag()` that flips this entry to STALE
+   (e.g. a shared layout tag, or the broad publish-flow invalidations) makes the *next* probe
+   read return `x-nextjs-cache: STALE` → `fixISRHeaders()` rewrites it to
+   `s-maxage=2, stale-while-revalidate=2592000` **and** `revalidateIfRequired()` enqueues it.
+
+So the junk qualifies for revalidation for exactly the same reason a real stale page does — it
+is an indistinguishable cached `307`. **Mitigation (a) — "give the 404/handoff a disposition
+open-next won't enqueue" — is therefore NOT achievable without forking open-next:** the enqueue
+reads the incremental-cache STALE state, not any header the render controls, and § *Which render
+outcomes are cacheable* already established that an ISR-mode route has no per-response `no-store`
+outcome except a thrown 500. `VERIFIED` against `util.js:281-396`.
+
+### Could the failures starve legitimate refreshes? (Q2 hypothesis — a theoretical mode, refuted below)
+
+The RevalidationFunction (`dist/adapters/revalidate.js`) makes a `HEAD` request per record and
+counts it a **failure** unless the response is `200` **and** `x-nextjs-cache: REVALIDATED`
+(`revalidate.js:35-37`). A junk HEAD re-runs the same render and gets the `307` handoff — never
+`REVALIDATED` — so **every junk record fails, on every attempt**.
+
+The slice asked whether a failing record *retries/parks and starves the FIFO group*. **It does
+not retry — and that is the corrected finding.** The SQS→Lambda event-source mapping in
+`infra/lib/renderer-hosting.ts` §4.2–4.3 sets only `{ batchSize: 5 }`; it does **not** enable
+`reportBatchItemFailures` (`OBSERVED`: the synthesized `AWS::Lambda::EventSourceMapping` in
+`infra/cdk.out/AmodxStack.template.json` has no `FunctionResponseTypes`). The handler never
+throws — it returns `batchItemFailures`, which the converter (`dist/converters/sqs-revalidate.js`)
+builds but which SQS **ignores** without that setting. So a successful Lambda invocation deletes
+the entire batch, junk included. Failed junk is **dropped, not re-queued**; it cannot park at the
+head of a group.
+
+Were starvation to occur, the mechanism would be **throughput + retention**, not parking. This is a
+*theoretical* failure mode of the queue's shape — recorded here so the shape is on file — **not** an
+observed cause. The Q3 prod-log finding immediately below tests it against the observed window and
+**refutes** it: at the observed rate no real page was starved.
+
+- `generateMessageGroupId()` (`util.js:330-342`) deterministically buckets every path into one of
+  `MAX_REVALIDATE_CONCURRENCY` (default **10**) FIFO groups (`revalidate-0..9`). A FIFO queue
+  processes **one batch per group at a time, in order** — effective concurrency ≤ 10.
+- Each junk HEAD still costs a full origin render (DynamoDB lookup + `307`). At a *high enough* junk
+  rate the incoming junk *could* exceed what 10 serialized groups drain. Whether the OBSERVED 1,104
+  failures/12h (**~1.5/min**) reaches that threshold is answered below — it does **not**.
+- The queue's `retentionPeriod` is **1 hour** (§4.2). A legitimate SWR message that landed behind a
+  burst of junk in its group *could* wait and be purged at the 1-hour TTL before it is processed —
+  the contention hypothesis. The Q3 prod-log finding immediately below tests it: in the observed
+  window, legitimate *published* pages were **not** the ones showing as failures, so the dominant
+  edge-staleness driver is the CloudFront 30-day SWR re-pin, **not** queue starvation of real pages.
+
+### Root-cause Q3 (prod-log VERIFIED): which revalidations actually fail, and why
+
+The operator asked (slice REVISE item 3): *why do legitimate pages' revalidations fail — is 1,104
+junk fails/12h (~1.5/min) noise or starvation?* Answered against **prod CloudWatch**
+(`/aws/lambda/AmodxStack-RendererHostingRevalidationFunction833F-NsVN1hkERpzJ`, read-only
+`filter-log-events`, 2026-08-16). **Every finding below is `OBSERVED` in prod, not inferred.**
+
+1. **Every failing record is a path with NO matching route.** Over a representative 6-hour window
+   the function logged **4,921 "Failed to revalidate" events**. The distinct failing URLs are
+   entirely: dotted scanner probes (`/.env`, `/admin.php`, `/.git/config`, `/.aws/credentials`,
+   `/config.json`, …), WordPress/asset probes (`/blog.bijup.com/wp-admin/...`, `/…/assets/`), and a
+   handful of **phantom slugs that look real but have no `ROUTE#`**.
+2. **No genuinely-published page fails.** The one real-looking slug in the failures,
+   `/blog.bijup.com/cloudflare-emdash-validates-amodx`, has **no `ROUTE#` in DynamoDB**
+   (`AmodxTable`, `PK=TENANT#blog-bijup-com` — a renamed/never-published draft; the *published*
+   article is `/cloudflare-just-validated-amodx-too`). That published article appears **0 times** in
+   the failure set; the homepage does not appear either. Fetching each live: `/blogroll` → `200
+   MISS s-maxage=31536000` (freshly rendered), `/` and `/cloudflare-just-validated-amodx-too` →
+   `200 STALE s-maxage=2, swr=2592000`. Real pages return **200**, so their HEAD revalidation can
+   return `200 + REVALIDATED` and succeed — which is why they are absent from the failures.
+3. **The failure mechanism (why no-route paths fail forever).** The RevalidationFunction HEADs the
+   enqueued `url`; a record is counted failed unless the response is `200` **and**
+   `x-nextjs-cache: REVALIDATED` (`revalidate.js:35-37`). A no-route path renders the cacheable
+   `307 ?nf=1` not-found handoff — **never** `REVALIDATED` — so it fails on every attempt, and
+   because the STALE 307 entry persists it re-enqueues indefinitely. `OBSERVED` live:
+   `GET https://blog.bijup.com/cloudflare-emdash-validates-amodx` → `307 → /…?nf=1`,
+   `x-nextjs-cache: STALE`, `s-maxage=2, stale-while-revalidate=2592000`.
+4. **The `_nextRewroteUrl` double-prefix (why some junk URLs carry a host segment).** For a
+   *non-dotted* path the middleware rewrites `host/foo` → `/host/foo`, and open-next stores that
+   **already-rewritten** `_nextRewroteUrl` as the revalidate URL (`util.js:296-303`). The
+   RevalidationFunction then HEADs `https://<host>/<host>/foo` (host + the rewritten path) — hence
+   log URLs like `host: 'bijup.com', url: '/bijup.com/login'`. This does **not** cause real-page
+   failures: the doubled path carries a `.` (the host), so the middleware `path.includes('.')`
+   early-return passes it through unrewritten and `[siteId]=<host>` still resolves the tenant
+   (VERIFIED in the serving harness: `GET /<host>/<published-slug>` → `200 HIT`, same ISR key). The
+   earlier "double-rewrite breaks legit revalidation" hypothesis was **tested and refuted**.
+
+**Conclusion (confirms the operator's read).** The 1,104/12h are **noise** — a self-sustaining
+population of no-route `307`-handoff phantoms (scanner junk + renamed-draft slugs), none of which
+is a live published page. The human-visible "grids/pages frozen stale" symptom is a **separate**
+effect: real pages that have been flipped to STALE serve `s-maxage=2, stale-while-revalidate=2592000`,
+and CloudFront honours that 30-day SWR window — re-pinning the stale **edge** copy
+(`OBSERVED age=194 on s-maxage=2`) even when the origin revalidation itself succeeds. **The fix for
+that is mitigation (c) — bound the SWR window — which is open-next/CDK-gated (above). STOP: the
+diagnosis needs no forbidden boundary, but the remedy does.** Junk-eviction (mitigation a) stays
+deferred; the interim lever remains the manual S3-delete + `/*`.
+
+### Mitigation d (a middleware scanner shield) — DEFERRED: no path shape is disjoint from content
+
+The tempting fix is a door-level shield: short-circuit a scanner shape with the **same
+`404 + private, no-store`** the unknown-host gate produces, **before any rewrite/render/ISR
+machinery**. A shielded path would never render → never mint a cacheable `307` → never go STALE →
+never enqueue. Mitigation d was implemented that way for the `.php` shape and then **withdrawn**:
+the claim that a `.php` path is "provably never a tenant page" is **false** under AMODX's current
+contracts, and shipping it would `404` legitimate tenant content.
+
+**The counterexample (code-confirmed, two review rounds).** `/wk/index.php` is a *legitimate* page
+whenever a tenant `wk` has a `/index.php` route, and both halves are reachable through the real
+write paths:
+
+- **Tenant IDs are arbitrary strings.** `backend/src/tenant/create.ts` and the `@amodx/shared`
+  tenant schema accept `wk` (or any string) as an ID, and `getTenantConfig()`
+  (`renderer/src/lib/dynamo.ts`) falls back from the `GSI_Domain` lookup to a bare
+  `SYSTEM / TENANT#<identifier>` `GetItem` — so `getTenantConfig("wk")` resolves the real tenant
+  `wk`, **not** null.
+- **Slugs are not sanitised on update.** `content/create.ts` `cleanSlug` strips `.`, but
+  `content/update.ts` does **not** — it only prepends `/` — so a route `/index.php` is persistable
+  as `ROUTE#/index.php`.
+
+So `/wk/index.php` binds the catch-all `[siteId]=wk`, resolves the tenant, resolves the
+`/index.php` `ROUTE#`, and renders a real **200**. (The earlier "any dotted path is diverted by
+section A's `path.includes('.')` early-return, so it can never resolve a `ROUTE#`" argument is
+wrong: `next()` without a rewrite still routes the raw `/wk/index.php` to the catch-all with the
+first segment as `[siteId]`, and that segment can be a real tenant.) The same reasoning generalises:
+while the first path segment can be **any** tenant ID and the remainder **any** persisted route,
+**no path shape at this layer is disjoint from legitimate content** — so no conservative shield
+exists. Mitigation d is therefore **DEFERRED, not implemented**; `renderer/middleware.ts` carries
+**no** scanner shield.
+
+**Executable contract:** `renderer/test/serving-contract/contract.test.mjs` rows **(h1)–(h2)**:
+`(h1)` the counterexample — `/wk/index.php` (tenant `wk` + persisted `/index.php` route) renders
+`200` with the tenant's real page body and reaches the renderer read layer (`render > 0`), which a
+`.php` shield would have `404`'d; it goes red if any `.php`/scanner shield is re-added. `(h2)` the
+current **unmitigated** state — a scanner path with no matching route (`/wk/wp-login.php`) takes the
+ordinary cacheable `307 → ?nf=1` handoff, i.e. the junk still enters the pipeline exactly as
+diagnosed; there is no door-level shield.
+
+### Why the safe mitigations are all out of scope (source-cited)
+
+With d deferred, **every** candidate fix requires a change this slice's hard constraints forbid
+(no open-next fork, no CDK). The flood remains **unmitigated in code**; the durable fix is the
+parked `opennext-1` upgrade and/or a ratified queue-config change.
+
+- **Mitigation (a) — give the 404/handoff a disposition open-next won't enqueue** — is **not
+  achievable without forking open-next**: `revalidateIfRequired()` gates the enqueue on the
+  incremental-cache `x-nextjs-cache: STALE` state, not on any header the render controls
+  (`util.js:281-282`, `VERIFIED`), and § *Which render outcomes are cacheable* established that an
+  ISR-mode route has no per-response `no-store` outcome except a thrown 500. **Not built (fork-gated).**
+- **Mitigation (b) — make junk failures structurally harmless** (a DLQ, `reportBatchItemFailures`,
+  or a larger `MAX_REVALIDATE_CONCURRENCY`) is a **CDK / queue-config change** and the slice's
+  hard constraint is "no CDK unless a queue setting demands it (STOP)". Recorded as the operator
+  lever if a *non-scanner* revalidation ever fails in bulk. **Not built (CDK-gated).**
+- **Mitigation (c) — bound the edge SWR window** below 2592000. **IMPLEMENTED (REVISE 2, human-ratified
+  `cache8-mitigation-c-resolution = B`) as a pinned-dependency patch of open-next — code complete,
+  production/operator gate NOT RUN — see "The fix" below.** The operator first ratified trying Next's
+  `expireTime` config (`next.config.ts`) as a
+  renderer-source lever; **that was built, MEASURED, and reverted: `expireTime` is a verified no-op
+  for this renderer**, which is *why* the patch was needed. Two independent confirmations of the
+  no-op:
+  - **Source (Next 16.2.12).** `getCacheControlHeader()`
+    (`node_modules/next/dist/server/lib/cache-control.js:13`) emits `stale-while-revalidate` **only
+    when `revalidate` is a number and `revalidate < expire`**; `expire` is `expireTime`
+    (`base-server.js:1060`). The renderer's ISR pages are all `export const revalidate = false`
+    (OBSERVED — `app/[siteId]/layout.tsx:19`, `[[...slug]]/page.tsx:22`,
+    `products/[productId]/page.tsx:9`), so `revalidate` is **not a number** → no SWR directive is
+    emitted and `expireTime` has no attachment point.
+  - **Measured (serving harness, `next build && next start`).** With `expireTime: 300` set, the
+    published ISR page still emits exactly `cache-control: s-maxage=31536000` — **no
+    `stale-while-revalidate` at all**, byte-identical to the baseline. (Throwaway probe over the
+    serving-contract harness, 2026-08-16; pinned as a permanent contract by serving row `(c1)`.)
+
+  The `stale-while-revalidate=2592000` seen at the CloudFront edge is **not** a value Next emits —
+  it is a runtime constant open-next stamps in `fixISRHeaders()` (`util.js:386-396`, hardcoded on
+  BOTH the `STALE`-serving path and the `HIT`-recompute path) and in the inactive
+  `computeCacheControl()` (`cacheInterceptor.js:56`). `expireTime` is a Next config; it does not
+  flow into open-next's post-processing — so the window can only be bounded inside open-next itself.
+
+  **The fix (REVISE 2, human-ratified option B): a pinned-dependency PATCH, not a fork.**
+  `patches/open-next+3.1.3.patch` (applied by root `postinstall: patch-package`) rewrites the two
+  `fixISRHeaders()` constants — `util.js:386` (HIT-recompute) and `util.js:396` (STALE-serve) —
+  from `stale-while-revalidate=2592000` to `=300`. This self-limits edge + ISR staleness to
+  **5 minutes**: even when a background revalidation never completes, CloudFront treats the stored
+  copy as expired after 300 s and re-fetches from origin, instead of free-riding the stale bytes for
+  30 days until the nightly `/*` flush. **Trade-off (recorded):** more origin renders once the 300 s
+  window lapses (the prior 2592000 traded correctness for origin offload) — accepted; a 5-minute
+  worst-case staleness is far cheaper than month-old content.
+  - **Scope — what is deliberately NOT patched.** Only `fixISRHeaders()` (the packet-named
+    `util.js:386-396`). The other `2592000` in the same file — `fixSWRCacheHeader()` (`util.js:264`),
+    which rewrites a *bare* `stale-while-revalidate` — is left as-is: the renderer emits no bare SWR
+    directive for it to rewrite (all ISR pages are `revalidate=false`, confirmed above). The
+    `cacheInterceptor.js:56` window is also left as-is: that path is gated by
+    `dangerous.enableCacheInterception`, which `open-next.config.ts` leaves undefined, so it is
+    inert for this deployment.
+  - **GUARD — two layers (REVISE 3, operator-ratified `cache8-c2-guard-mechanism`).** The intent is
+    to fail loudly, before deploy, if what SHIPS loses the patch. Two artefacts cover that, at two
+    fidelities:
+    - **LAYER 1 — serving row `(c2)`, every unit run (~ms, no build).** Because the serving harness
+      runs `next start`, not the open-next Lambda bundle (README § "next start, not the OpenNext
+      Lambda bundle"), and `fixISRHeaders()` cannot be imported standalone (its transitive
+      extension-less imports resolve only inside open-next's own bundler — MEASURED), `(c2)` asserts
+      on the **installed source artefact** that `open-next build` bundles: it reads
+      `dist/core/routing/util.js` and requires the patched `300` present in `fixISRHeaders()` and the
+      `2592000` window gone from it. Catches the common "patch not applied" case (skipped
+      `postinstall` on a fresh clone) without paying for a build.
+    - **LAYER 2 — `scripts/verify-opennext-patch.mjs`, pre-deploy gate.** Proves the property LAYER 1
+      cannot: that the patched string survives *through* `open-next build` into the actual **server
+      Lambda bundle** (`.open-next/server-functions/default/`) — the exact asset CDK uploads
+      (`infra/lib/renderer-hosting.ts:211`). It builds the bundle if absent (the same
+      `npm run build:open` the deploy runs), then asserts the STALE-branch string
+      `s-maxage=2, stale-while-revalidate=300` is PRESENT and the comma-space fixISRHeaders 30-day
+      forms are ABSENT. It deliberately does NOT reject every `2592000`: the one that survives —
+      `,"stale-while-revalidate=2592000"` (comma-QUOTE) — is `fixSWRCacheHeader()`'s replace-target
+      (util.js:264, no-op for this deployment; see *Scope* above), which the script accounts for and
+      reports rather than failing on. A full Lambda-invoke harness was explicitly NOT built (REVISE 3):
+      grep of the shipped artefact proves the same emitted-header property with far less machinery.
+      **Placement:** manual / deploy-runbook gate (`docs/runbooks/deploy-track-cache.md`
+      § Preconditions), NOT CI — `open-next build` is a multi-minute step CI does not already run, so
+      wiring it there would silently slow every pipeline; LAYER 1 already covers the CI-affordable
+      case, and LAYER 2 runs at the deploy boundary where a build happens anyway.
+    - A skipped `postinstall` or an open-next upgrade past 3.1.3 fails LAYER 1 loudly and LAYER 2 at
+      the deploy gate — exactly the failure modes REVISE 2 requires. **Un-parking `opennext-1`
+      (docs/TECH-DEBT.md) must re-evaluate BOTH layers against this patch** — an upgrade replaces the
+      file it patches.
+
+**Operator gate (NOT RUN — the flood itself is still unmitigated):** mitigation (c) now bounds the
+edge-staleness *symptom* to 5 minutes, but the *flood* (scanner junk entering and failing in the
+revalidation queue) is unchanged — (a) is fork-gated, (b) is CDK-gated (both still deferred). The
+interim lever for the flood stays the manual S3-delete + `/*`. Post-deploy acceptance for (c): a
+STALE ISR page served from CloudFront now carries `stale-while-revalidate=300` (not 2592000), so a
+real page frozen by a failed background refresh self-heals within ~5 min instead of persisting to
+the nightly wipe. Full flood remediation still awaits the durable fix (`opennext-1` and/or a
+ratified queue-config change): RevalidationFunction "Failed to revalidate" rate collapses and a grid
+refresh completes within its window without a manual purge.
 
 ---
 

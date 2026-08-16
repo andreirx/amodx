@@ -1,0 +1,22 @@
+diff --git a/node_modules/open-next/dist/core/routing/util.js b/node_modules/open-next/dist/core/routing/util.js
+index efa4a4b..d0bf618 100644
+--- a/node_modules/open-next/dist/core/routing/util.js
++++ b/node_modules/open-next/dist/core/routing/util.js
+@@ -383,7 +383,7 @@ export function fixISRHeaders(headers) {
+         // 31536000 is the default s-maxage value for SSG pages
+         if (sMaxAge && sMaxAge !== 31536000) {
+             const remainingTtl = Math.max(sMaxAge - age, 1);
+-            headers[CommonHeaders.CACHE_CONTROL] = `s-maxage=${remainingTtl}, stale-while-revalidate=2592000`;
++            headers[CommonHeaders.CACHE_CONTROL] = `s-maxage=${remainingTtl}, stale-while-revalidate=300`;
+         }
+     }
+     if (headers[CommonHeaders.NEXT_CACHE] !== "STALE")
+@@ -393,7 +393,7 @@ export function fixISRHeaders(headers) {
+     // This will cause CloudFront to cache the stale data for a short period of time while we revalidate in the background
+     // Once the revalidation is complete, CloudFront will serve the fresh data
+     headers[CommonHeaders.CACHE_CONTROL] =
+-        "s-maxage=2, stale-while-revalidate=2592000";
++        "s-maxage=2, stale-while-revalidate=300";
+ }
+ /**
+  *

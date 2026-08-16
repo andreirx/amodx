@@ -19,6 +19,22 @@ Both are `infra/lib/renderer-hosting.ts` only. See
 - Working tree clean on `main`; root `npm run build` green.
 - **SEC-1 committed** (`docs/shipped/slices/sec-1-audit-remediation-2026-07.md`): the deploy
   must carry the patched `next` (middleware-bypass fix) / `next-auth` / `sharp`.
+- **cache-8 open-next SWR patch present in the SHIPPED bundle (MANDATORY GATE).** Run, from the
+  repo root:
+
+      node scripts/verify-opennext-patch.mjs
+
+  It must print `... guard: OK` and exit `0`. This builds (if needed) the exact `.open-next`
+  server bundle CDK uploads and asserts open-next's `fixISRHeaders()` edge window is the patched
+  `stale-while-revalidate=300`, not the 30-day `2592000` default. **Do not deploy the renderer if
+  this fails** — a fresh clone whose `postinstall` (`patch-package`) was skipped, or an open-next
+  upgrade past 3.1.3, ships the 30-day edge window and re-pins stale copies at CloudFront for a
+  month (cache-8 mitigation c). Fix: re-run `npx patch-package` (unapplied) or re-cut
+  `patches/open-next+3.1.3.patch` against the new `fixISRHeaders` (upgrade). This is LAYER 2 of the
+  guard; LAYER 1 (serving row `(c2)`, installed-source check) runs in CI with `npm run test:serving`.
+  Rationale for a deploy-gate rather than a CI step: `open-next build` is multi-minute and CI does
+  not already run it. See `docs/caching-architecture.md` § "The SWR revalidation queue and the
+  scanner-junk flood (cache-8)" → GUARD.
 - Staging is ~630 resources behind the repo (measured 2026-07-26) — the staging deploy
   absorbs that drift BY DESIGN (ratified staged-reconcile). Skim `cdk diff` for staging
   only for surprises in stateful resources (DynamoDB tables, S3 buckets, Cognito pools —

@@ -11,6 +11,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "patch-package",
     "build": "npm run build -w packages/shared && npm run build -w packages/effects && npm run build -w packages/plugins && npm run build -w backend && npm run build -w admin && npm run build -w renderer && npm run build -w tools/mcp-server && npm run build -w infra",
     "typecheck": "npm run typecheck -w packages/shared && npm run typecheck -w packages/effects && npm run typecheck -w packages/plugins && npm run typecheck -w backend && npm run typecheck -w admin && npm run typecheck -w renderer && npm run typecheck -w tools/mcp-server && npm run typecheck -w infra",
     "setup": "tsx scripts/setup.ts",
@@ -34,6 +35,7 @@
     "@aws-sdk/client-sts": "^3.980.0",
     "@playwright/test": "^1.57.0",
     "@types/node": "^24.10.1",
+    "patch-package": "^8.0.1",
     "prompts": "^2.4.2",
     "tsx": "^4.7.1"
   }

@@ -166,7 +166,10 @@ function spawnNext(args, stubUrl) {
  * processes the build spawned by their parent.
  */
 export async function buildRenderer(stubUrl) {
-    await rm(path.join(RENDERER_DIR, ".next"), { recursive: true, force: true });
+    // maxRetries: fs.rm can throw ENOTEMPTY on the deep symlinked trees open-next
+    // build emits into .next/standalone (hit 2026-08-16 when verify-opennext-patch
+    // ran before this suite); Node's documented remedy is built-in retry.
+    await rm(path.join(RENDERER_DIR, ".next"), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     return new Promise((resolve, reject) => {
         const child = spawnNext(["build"], stubUrl);
         let out = "";

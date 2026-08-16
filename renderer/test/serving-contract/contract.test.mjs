@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { startDdbStub } from "./ddb-stub.mjs";
 import {
     buildRenderer, startRenderer, request, rendererEnv, probeEnvLoading,
@@ -26,6 +27,7 @@ import {
 import {
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
+    SCANNER_TENANT_ID, SCANNER_SLUG, SCANNER_PAGE_TITLE,
 } from "./fixtures.mjs";
 
 /** The exact header a route in Next's full-route (ISR) cache mode emits. */
@@ -293,6 +295,85 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.equal(stats.hostGate, 0, "host verdict should still be warm from (a1)");
     });
 
+    // ── ROW (c1) ────────────────────────────────────────────────────────────────────────
+    // § "The SWR revalidation queue and the scanner-junk flood (cache-8)" → mitigation (c).
+    // The cache-8 REVISE ratified trying Next's `expireTime` to bound the edge SWR window. This
+    // row is the executable proof that expireTime is a NO-OP for this renderer: an ISR page here
+    // is `export const revalidate = false`, and Next only emits `stale-while-revalidate` when
+    // `revalidate` is a NUMBER < expire (next getCacheControlHeader, cache-control.js:13). So the
+    // page carries s-maxage but NO `stale-while-revalidate` at all — there is no SWR directive for
+    // expireTime to size. The `stale-while-revalidate=2592000` seen at the CloudFront edge is an
+    // open-next runtime constant (fixISRHeaders, util.js:388-396), NOT a Next-emitted value, so a
+    // Next config cannot bound it.
+    //
+    // IF THIS GOES RED because a `stale-while-revalidate` now appears here, someone added
+    // time-based ISR (`revalidate = <number>`) or an `expireTime` that took effect — a caching
+    // MODEL change: reconcile docs/caching-architecture.md § cache-8 mitigation (c) in the same
+    // slice, do not just update the assertion.
+    test("(c1) an ISR page emits s-maxage but NO stale-while-revalidate (expireTime has no attachment point)", async () => {
+        const res = await get(PUBLISHED_SLUG);
+        assert.equal(res.status, 200);
+        assert.match(res.header("cache-control"), new RegExp(S_MAXAGE));
+        assert.doesNotMatch(
+            res.header("cache-control"),
+            /stale-while-revalidate/,
+            "a revalidate=false page emits no SWR directive; the edge SWR window is an open-next constant, not a Next/expireTime value",
+        );
+    });
+
+    // ── ROW (c2) ────────────────────────────────────────────────────────────────────────
+    // § "The SWR revalidation queue and the scanner-junk flood (cache-8)" → mitigation (c),
+    // as ratified by REVISE 2 (`cache8-mitigation-c-resolution = B`): a PINNED-DEPENDENCY PATCH
+    // (`patches/open-next+3.1.3.patch`, applied by root `postinstall: patch-package`) rewrites the
+    // hardcoded 30-day edge SWR window in open-next's `fixISRHeaders()` from `2592000` to `300`.
+    //
+    // THIS ROW IS LAYER 1 OF A TWO-LAYER GUARD (REVISE 3, operator `cache8-c2-guard-mechanism`).
+    // LAYER 1 (here) reads the INSTALLED open-next source every unit run — fast, CI-affordable,
+    // catches a skipped `postinstall` in ms. LAYER 2 is `scripts/verify-opennext-patch.mjs`, a
+    // pre-deploy gate that asserts the patched constant survives `open-next build` INTO the shipped
+    // server bundle (the property this row cannot prove). See docs/caching-architecture.md § "The SWR
+    // revalidation queue and the scanner-junk flood (cache-8)" → GUARD, and the deploy runbook.
+    //
+    // WHY THIS ROW ASSERTS THE SHIPPED SOURCE ARTEFACT, NOT A LIVE EMITTED HEADER (verified, not
+    // assumed). The edge window is produced by `fixISRHeaders()` — an open-next *Lambda-adapter*
+    // function that only runs inside the deployed open-next bundle. This harness serves the site
+    // with `next start` (harness.mjs), NOT the open-next bundle (README.md § "next start, not the
+    // OpenNext Lambda bundle"), so `fixISRHeaders()` never executes here and no request through this
+    // server can carry its header. The function also cannot be imported and called in isolation: its
+    // transitive `adapters/config` → `adapters/logger` imports are extension-less and resolve only
+    // inside open-next's own bundler (MEASURED — a bare `import` throws MODULE_NOT_FOUND). So the
+    // faithful, low-fragility guard reads the EXACT `dist/core/routing/util.js` file that
+    // `open-next build` bundles into the RevalidationFunction/server Lambda and asserts the patched
+    // constant is present in `fixISRHeaders()` and the 2592000 window is gone from it.
+    //
+    // IF THIS GOES RED: either the patch did not apply (a fresh clone whose `postinstall` was skipped
+    // — run `npx patch-package`) or open-next was upgraded past 3.1.3 and the patch no longer matches
+    // (re-cut the patch against the new `fixISRHeaders`, or drop it if the upstream default changed).
+    // Both are exactly the "silently-unapplied patch / upgrade" cases REVISE 2 requires to fail loud.
+    // Un-parking `opennext-1` (docs/TECH-DEBT.md) must re-evaluate this patch.
+    test("(c2) open-next fixISRHeaders emits the patched stale-while-revalidate=300 edge window, not 2592000 (cache-8 mitigation c)", async () => {
+        const require = createRequire(import.meta.url);
+        const utilPath = require.resolve("open-next/core/routing/util.js");
+        const source = await readFile(utilPath, "utf8");
+        const start = source.indexOf("export function fixISRHeaders");
+        assert.ok(start >= 0, "fixISRHeaders not found — open-next layout changed; re-verify the patch target");
+        const rest = source.slice(start);
+        const nextExport = rest.indexOf("export function", "export function".length);
+        const body = nextExport > 0 ? rest.slice(0, nextExport) : rest;
+        // The STALE-serving branch — the exact header behind the prod symptom (s-maxage=2, age=194).
+        assert.match(
+            body,
+            /s-maxage=2, stale-while-revalidate=300\b/,
+            "the patched 300s STALE-path edge window is missing — patch unapplied or open-next upgraded",
+        );
+        // No 30-day window survives anywhere in fixISRHeaders (covers both the STALE and HIT branches).
+        assert.doesNotMatch(
+            body,
+            /stale-while-revalidate=2592000/,
+            "fixISRHeaders still carries the 2592000 (30-day) edge window — the cache-8 patch is not in effect",
+        );
+    });
+
     test("(a3) cacheable HTML carries no Set-Cookie (cache-3 F8)", async () => {
         // Middleware's referral capture was moved to components/ReferralCapture.tsx +
         // app/api/ref/route.ts precisely so page responses carry no Set-Cookie: a stored
@@ -397,6 +478,64 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             [],
             "a 404 in the ISR cache is the H2 regression",
         );
+    });
+
+    // ── ROW (h) ─────────────────────────────────────────────────────────────────────────
+    // § "cache-8": mitigation d (a middleware scanner shield) is DEFERRED, not implemented —
+    // NO path-shape shield exists. These rows pin WHY (the counterexample that defeats it) and
+    // the current UNMITIGATED state (scanner junk still enters the pipeline as an ordinary
+    // not-found handoff). See renderer/middleware.ts § "cache-8 … DEFERRED" and
+    // docs/caching-architecture.md § "The SWR revalidation queue and the scanner-junk flood".
+    //
+    // IF A FUTURE CHANGE RE-ADDS A `.php`/scanner SHIELD, (h1) goes red — that is the point:
+    // the shield may not be re-added until this counterexample is defeated (which, under the
+    // current arbitrary-tenant-ID + unsanitised-slug contracts, it cannot be at this layer).
+
+    test("(h1) COUNTEREXAMPLE: /wk/index.php is LEGITIMATE content and renders 200, not a shield 404", async () => {
+        // A tenant whose ID is the bare string `wk` (arbitrary tenant IDs — tenant/create.ts,
+        // @amodx/shared) with a persisted `.php` route (`/index.php` — content/update.ts stores
+        // an unsanitised slug). The probe path `/wk/index.php` therefore binds the catch-all
+        // `[siteId]=wk`, resolves the tenant via the SYSTEM/TENANT#wk fallback in getTenantConfig,
+        // resolves the `/index.php` ROUTE#, and renders a real 200. A `.php` middleware shield —
+        // the withdrawn mitigation d — would answer this with `404 no-store`, blocking legitimate
+        // tenant content. This row is the executable proof that no `.php` shield is admissible.
+        const { result: res, stats } = await readsDuring(() =>
+            get(`/${SCANNER_TENANT_ID}${SCANNER_SLUG}`),
+        );
+        assert.equal(res.status, 200, "the scanner-shaped-but-legitimate page must render, not be shielded");
+        assert.match(res.header("content-type"), /text\/html/);
+        assert.ok(res.body.includes(SCANNER_PAGE_TITLE), "the tenant's real page body must be served");
+        // Load-bearing: the request reached the renderer read layer (tenant + route resolution),
+        // which a door-level shield would have prevented (render === 0).
+        assert.ok(stats.render > 0, "a legitimate `.php` route must reach the renderer read layer");
+    });
+
+    test("(h2) DEFERRED STATE: a scanner path with no route takes the ordinary not-found handoff (NOT shielded)", async () => {
+        // With mitigation d deferred there is no special-casing: a scanner-shaped path that does
+        // NOT resolve to a route is handled exactly like any other unknown slug — the cacheable
+        // `307 → ?nf=1` handoff (docs/caching-architecture.md § "How a 404 stays out of the
+        // cache"). This is precisely the entry point of the flood the slice diagnosed: the junk
+        // still mints a cacheable 307. Pinning it makes any future shield a DELIBERATE contract
+        // change rather than a silent one, and documents that the flood is currently UNMITIGATED.
+        //
+        // `/wk/<missing>.php` uses the real tenant `wk` but a `.php` slug it has no route for.
+        // The catch-all binds `[siteId]=wk`, `[[...slug]]=["wp-login.php"]`, so the render's
+        // slugPath is `/wp-login.php` and the not-found handoff redirects to that slug + `?nf=1`
+        // (notFoundOrHandoff uses the slug path, not the siteId-prefixed URL) — the ordinary
+        // cacheable 307 that, in production, is the flood's ISR entry.
+        const res = await get(`/${SCANNER_TENANT_ID}/wp-login.php`);
+        assert.equal(res.status, 307, "an unshielded scanner path must take the ordinary not-found handoff");
+        assert.equal(
+            res.header("location"),
+            "/wp-login.php?nf=1",
+            "the junk still mints an ordinary cacheable 307 — the flood is unmitigated (mitigation d deferred)",
+        );
+        // The load-bearing discriminator: the 307 is a CACHEABLE ISR entry (s-maxage=31536000),
+        // exactly as row (d1) — this is the flood's entry point, NOT a no-store door-level shield.
+        // A `.php` shield would instead answer `404 + no-store` here (what mitigation d was, before
+        // (h1)'s counterexample deferred it).
+        assert.match(res.header("cache-control"), new RegExp(S_MAXAGE), "the junk 307 is a stored, cacheable ISR entry");
+        assert.doesNotMatch(res.header("cache-control"), /no-store/, "not a shield: the junk is not no-stored at the door");
     });
 
     // ── ROW (e) ─────────────────────────────────────────────────────────────────────────

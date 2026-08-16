@@ -23,6 +23,7 @@ a comment. Failing test = **contract change**, not a flaky test.
 | `b1` `b2` `b3` | query string **or** any ratified session-cookie shape → the `force-dynamic` twin (`no-store`); non-session cookies stay on the cacheable route (prefix match, not substring) |
 | `c` | unknown host → middleware `404` + `private, no-store`, **no render** |
 | `d1` `d2` `d3` | missing page → cacheable `307` → `?nf=1` → non-cacheable `404`; the `?nf=1` request never loops; the stored artefact is the 307 and **no 404 is ever stored** |
+| `c1` `c2` `h1` `h2` | **cache-8**: an ISR page emits `s-maxage` but **no** `stale-while-revalidate` (`expireTime` is inert — `c1`); open-next's `fixISRHeaders()` edge SWR window is the patched `300`, not `2592000`, in the bundled artefact (`c2`); `/wk/index.php` is legitimate content and renders `200`, so no path-shape scanner shield is admissible (`h1`); an unshielded scanner path still takes the ordinary cacheable `307` handoff (`h2`) |
 | `e1` `e2` | read failing *after* tenant resolution → `500` with **no** `Cache-Control` and no ISR entry; the same path caches normally once reads recover (human decision `CACHE-1-D4`) |
 | `f` | `?preview=true` → renders, `no-store` |
 | `g1` `g2` `g3` | `/api/*` never advertises a storable lifetime; `/api/posts` answers `400`/`500` rather than an empty `200`; the referral `Set-Cookie` lives on an uncacheable `/api` response |

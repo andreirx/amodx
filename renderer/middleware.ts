@@ -66,6 +66,50 @@ function hasSessionCookie(request: NextRequest): boolean {
     });
 }
 
+// --- cache-8: scanner-junk shield — INVESTIGATED, NOT SHIPPED (mitigation d DEFERRED) ---
+//
+// There is deliberately NO middleware short-circuit for bot-scanner shapes (`/wk/index.php`,
+// `/wp-login.php`, …) here. This is a recorded decision, not an omission: DO NOT re-add a
+// path-shape shield without first defeating the counterexample below.
+//
+// The flood is real and fully traced in docs/caching-architecture.md § "The SWR revalidation
+// queue and the scanner-junk flood (cache-8)": a scanner path mints a cacheable `307` not-found
+// handoff, that entry later flips to STALE, and open-next's `revalidateIfRequired()`
+// (`open-next/dist/core/routing/util.js:281-282`, verified against the installed 3.1.3 source)
+// enqueues it on the ONE condition `x-nextjs-cache: STALE` — not on any header the render
+// controls. The junk HEAD then re-renders the same `307`, never `REVALIDATED`, so it fails on
+// every attempt (`dist/adapters/revalidate.js:35-37`). Saturation of the 10 FIFO groups is a
+// THEORETICAL failure mode of this queue at higher rates, not the observed cause: at the OBSERVED
+// 1,104 failures/12h (~1.5/min) the prod-log investigation found NO published page in the failure
+// set, so real grid refreshes were not starved. The human-visible stale symptom is the CloudFront
+// 30-day edge-SWR re-pin (bounded to 5 min by mitigation c below).
+//
+// Mitigation d was to answer a scanner shape with `404 + no-store` BEFORE any render. It was
+// implemented for `.php` and then WITHDRAWN because the "`.php` is provably never a tenant page"
+// claim is FALSE under the current contracts (two review rounds, code-confirmed):
+//
+//   - tenant IDs are arbitrary strings — `backend/src/tenant/create.ts`, `@amodx/shared` accept
+//     `wk` (or anything), and `getTenantConfig()` falls back from the domain GSI to a bare
+//     `SYSTEM / TENANT#<identifier>` GetItem (`src/lib/dynamo.ts`), so `getTenantConfig("wk")`
+//     resolves the real tenant `wk`;
+//   - `content/update.ts` does NOT sanitise slugs (unlike `content/create.ts` `cleanSlug`): it
+//     only prepends `/`, so a route `/index.php` is persistable as `ROUTE#/index.php`.
+//
+// Therefore `/wk/index.php` binds the catch-all `[siteId]=wk`, resolves tenant `wk`, and renders
+// its `/index.php` route — a legitimate 200. A `.php` shield would 404 it. No path SHAPE is
+// disjoint from content while the first segment can be any tenant ID and the remainder any
+// persisted route, so no conservative shield exists at this layer. The counterexample is pinned
+// by serving-contract row `(h1)`; the deferred/unmitigated flood state by `(h2)`.
+//
+// The remaining fixes are out of this slice's scope (no fork, no CDK): controlling the enqueue
+// disposition needs an open-next fork (mitigation a); DLQ / reportBatchItemFailures / larger
+// concurrency is a CDK queue change (b). Bounding the 2592000 edge SWR window (mitigation c) IS
+// now shipped, and NOT at this layer: `patches/open-next+3.1.3.patch` rewrites open-next's
+// `fixISRHeaders()` edge window to `stale-while-revalidate=300` (applied by root `postinstall:
+// patch-package`, guarded by serving row `(c2)`). That bounds edge staleness to 5 min but does
+// NOT stop the junk flood — a scanner shield here is still deferred (the `(h1)` counterexample).
+// See docs/TECH-DEBT.md § cache-8 for the ledger and the `opennext-1` / queue-config follow-ups.
+
 // Route Handlers that live under [siteId]. They never enter the full-route cache whatever
 // the rendering mode, and each sets (or deliberately omits) its own Cache-Control on the
 // Response, so they need no twin — and they have none, so rewriting one to /_dyn lands on
@@ -101,6 +145,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // --- 1. DETERMINE DESTINATION URL ---
+    // (No cache-8 scanner shield here — see the "cache-8 … DEFERRED" note above.)
 
     // Default: Don't rewrite (pass through)
     let rewriteUrl = null;
