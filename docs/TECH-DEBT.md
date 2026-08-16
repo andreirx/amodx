@@ -991,3 +991,28 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
 - Fix candidate: per-icon named imports / tree-shaking so only used icons ship, or
   lazy-load icon-heavy surfaces. Measurable against the Lighthouse baseline.
 - Status: OPEN, non-urgent (perf-1 still ~halved eager JS).
+
+## Two publish-flow bugs (2026-08-16, human-reported, diagnosed live)
+
+### 1. SEO auto-extraction is blind to markdown blocks (admin)
+- `extractText()`/`findImage()` (admin ContentEditor) walk only rich-text nodes; a
+  markdown block keeps its text in attrs → a page authored as one markdown block gets
+  EMPTY seoDescription/featuredImage → no meta description, no post-grid excerpt (the
+  grid excerpt IS seoDescription — confirmed PostGridRender).
+- Fix (human-directed): treat markdown block content as page text — extract the
+  first ~160 chars (markdown syntax stripped) + first image ref. Slice: seo-extract-md.
+
+### 2. SWR refresh pipeline drowned by scanner junk → grids frozen stale (cache-8)
+- RevalidationFunction: 1,104 failures/12h, dominated by bot-scanner URLs
+  (/wk/index.php etc). Junk 404-class paths enter the revalidation queue, fail en
+  masse; legitimate SWR pages (post grids, s-maxage=2+swr) never successfully
+  refresh → new articles/excerpt edits invisible until the nightly wipe. ALSO:
+  CloudFront itself honors swr (observed age=194 on s-maxage=2) and re-caches stale
+  origin copies, extending the staleness to the edge.
+- Root-cause questions for the slice: why do nf-handoff/404 URLs enter revalidation
+  at all; should the middleware/nf design mark them non-revalidating; make junk
+  failures unable to starve legitimate refreshes; consider dropping swr=30d to a
+  bounded value so edge staleness self-limits.
+- Interim mitigations used (manual): direct S3 ISR-object delete + CloudFront
+  invalidation forces a synchronous fresh render (works regardless of the queue).
+- Slice: cache-8 (next up). Status: OPEN — this is the "is caching still buggy" answer: YES, this one.
