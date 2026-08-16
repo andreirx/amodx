@@ -11,6 +11,21 @@
 > D6 roadmap order unchanged, conditional `email-2a` slice, ship-now hotfix = From
 > DISPLAY NAME only, Reply-To deferred until an explicit reply-address contract exists.
 
+
+> **F-EMAIL-12 CORRECTED (human, 2026-08-16):** `mocheta.com` / `crm@mocheta.com` are NOT
+> a foreign workload — they belong to a separate CRM app of the SAME business (a tenant
+> of the business, not of amodx; potential future amodx integration). The shared SES
+> account is deliberate and treated as internal. What remains true and worth knowing:
+> both apps share one account-level suppression list, one reputation, and one quota —
+> a deliverability incident in either affects both. The "separate AWS account" open
+> question is DOWNGRADED from a risk item to a scaling option, revisit only if the two
+> workloads' sending volumes ever conflict.
+>
+> **email-2a DEFERRED-UNTIL-NEEDED (human, 2026-08-16):** no current tenant has their
+> own sending domain or needs a Reply-To. email-2a implements when the FIRST commerce
+> tenant with their own domain wants branded sending — that request IS the trigger. The
+> enablement procedure is documented NOW in `docs/runbooks/enable-branded-email.md`.
+
 # Domain-Email Onboarding Plan (Track EMAIL)
 
 ## Status
