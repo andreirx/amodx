@@ -57,8 +57,12 @@ jobs:
           cache: 'npm'
 
       - name: Install backend dependencies
+        # --ignore-scripts: npm ci from a workspace subdir executes the ROOT
+        # postinstall (patch-package, added by cache-8) without the root .bin on
+        # PATH -> exit 127. This job only audits the lockfile; no install script
+        # output (open-next patch, native binaries) is ever used here.
         working-directory: backend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Security audit (backend)
         # --omit=dev for the same reason as the root job: dev/build tooling
@@ -81,8 +85,10 @@ jobs:
           cache: 'npm'
 
       - name: Install renderer dependencies
+        # --ignore-scripts: same reason as the backend job (root postinstall
+        # fails from a subdir install; audit never uses script output).
         working-directory: renderer
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Security audit (renderer)
         # Same gate as the root job: the renderer's residual highs are the same
