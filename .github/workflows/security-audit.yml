@@ -27,10 +27,12 @@ jobs:
         run: npm ci
 
       - name: Security audit (high severity, production deps only)
-        # --omit=dev skips dev dependencies like aws-cdk-lib which have known
-        # blocked vulnerabilities (fast-uri, yaml, brace-expansion) that only
-        # affect build-time, not production runtime. See docs/TECH-DEBT.md.
-        run: npm audit --audit-level=high --omit=dev
+        # audit-gate wraps `npm audit --omit=dev --json`: fails on any unaccepted
+        # high/critical advisory, suppresses (loudly) only the exact GHSA ids we
+        # accepted — currently postcss+sharp pinned inside next 16.2.12. --omit=dev
+        # semantics kept: dev deps like aws-cdk-lib have known build-time-only
+        # vulnerabilities. See docs/TECH-DEBT.md § Dependency Audit Remediation.
+        run: node scripts/audit-gate.mjs
         continue-on-error: false
 
       - name: Security audit report
@@ -59,8 +61,10 @@ jobs:
         run: npm ci
 
       - name: Security audit (backend)
+        # --omit=dev for the same reason as the root job: dev/build tooling
+        # advisories (esbuild, vitest chains) never reach the Lambda runtime.
         working-directory: backend
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --omit=dev
         continue-on-error: false
 
   audit-renderer:
@@ -81,6 +85,8 @@ jobs:
         run: npm ci
 
       - name: Security audit (renderer)
+        # Same gate as the root job: the renderer's residual highs are the same
+        # next-16.2.12-pinned postcss/sharp advisories accepted in TECH-DEBT.
         working-directory: renderer
-        run: npm audit --audit-level=high
+        run: node ../scripts/audit-gate.mjs
         continue-on-error: false

@@ -8,6 +8,32 @@ Items tracked here are known issues that don't block production but should be ad
 
 `npm audit` status and the remaining **pinned** items. Tracked as ROADMAP slice `dep-1`.
 
+**2026-08-30 re-triage — in-range bumps + accepted-findings CI gate.** Advisory DB had moved again
+(root prod deps: 11 findings, 9 high). Full chain + reachability triage:
+- **Bumped in-range (lockfile-only, root + backend + renderer):** `fast-uri`, `hono`, `ip-address`,
+  `undici`, `nanoid`, `react-router(-dom)`, `sanitize-html`, `postcss` (hoisted copy), `esbuild`,
+  `js-yaml`. Root prod audit 11 → 3; backend 0 high. Reachability notes: the hono/fast-uri/
+  ip-address/undici highs all entered via `tools/mcp-server` (local tool, never deployed);
+  `sanitize-html` GHSA-vccv-cmxp-4j9h was unreachable with our allowlist (none of
+  action/formaction/data/poster/background are allowed attributes) but bumped anyway;
+  `react-router` CSRF advisory is RSC-mode-only (admin is a Vite SPA).
+- **Accepted (the 3 residual highs), enforced by `scripts/audit-gate.mjs`:** `postcss <=8.5.22`
+  (4 GHSAs) nested inside `next 16.2.12` — build-time processing of our own CSS; the runtime copy
+  (used by sanitize-html in the renderer Lambda) is hoisted 8.5.23, already fixed. `sharp <0.35.0`
+  (GHSA-f88m-g3jw-g9cj, libvips CVEs) — next pins `^0.34.5`, and the DEPLOYED image-optimizer
+  Lambda actually runs open-next's own hardcoded `sharp 0.32.6` (`open-next dist/build.js`
+  `SHARP_VERSION ?? "0.32.6"`). **Risk accepted by human 2026-08-30**: optimizer inputs are
+  tenant-admin uploads + operator-run review imports, not anonymous-user-supplied; blast radius is
+  one IAM-scoped Lambda with no table access. Fix path if ever revisited: `SHARP_VERSION=0.35.x`
+  at open-next build + artifact check for `@img/sharp-linux-x64` + staging image probe (sharp
+  ≥0.33 changed binary packaging; open-next's old-style install flags may not cross-install).
+  **Revisit triggers:** opennext-1 unparks (next upgrade clears all of these), or image sources
+  become externally supplied (e.g. tenant-visitor uploads).
+- **CI gate repaired:** `security-audit.yml` root + renderer jobs now run `scripts/audit-gate.mjs`
+  (fails on any unaccepted high/critical, prints suppressed hits loudly); backend job gained the
+  `--omit=dev` the root job always had. The workflow had been red since 2026-07-27 on accepted or
+  dev-only findings, which buries new real ones.
+
 **Cleared — no longer debt:**
 - **Backend criticals** (2026-06-01): `vitest 4.0.16 → 4.1.8`, removed the direct `@vitest/ui` devDep —
   both **GHSA-5xrq-8626-4rwp** (Vitest UI server file read/exec; dev-only, never in the Lambda runtime).
