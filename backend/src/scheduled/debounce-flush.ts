@@ -298,15 +298,22 @@ export const handler = async (): Promise<void> => {
         const fastHadWork = await drainFastLane();
 
         // B. Bulk debounce — CDN_PENDING → /* after the 15-min quiet window, at most once.
+        const bulkHandledBefore = bulkHandled;
         if (!bulkHandled) {
             bulkHandled = await flushBulkIfDue(i);
         }
+        // A bulk attempt THIS pass counts as work: review-0 deliberately leaves CDN_FAST_PENDING
+        // untouched when `/*` fires, so a path enqueued during the submit must get its ~10s drain
+        // in THIS invocation (review-3 test pins this) — one extra iteration, only on the rare
+        // pass where a bulk actually acted.
+        const bulkActedThisPass = bulkHandled && !bulkHandledBefore;
 
-        // IDLE-EXIT (ratified 2026-09-02): a pass with no fast-lane work has nothing left that
-        // benefits from ~10s resolution — the bulk lane re-checks at EventBridge tick resolution
-        // by design. Sleeping through the remaining iterations would bill ~50s of Lambda
-        // wall-clock per minute forever (the August 2026 cost incident — see header). Exit.
-        if (!fastHadWork) {
+        // IDLE-EXIT (ratified 2026-09-02): a pass where neither lane had work has nothing left
+        // that benefits from ~10s resolution — the bulk lane re-checks a 15-min clock at
+        // EventBridge tick resolution by design. Sleeping through the remaining iterations would
+        // bill ~50s of Lambda wall-clock per minute forever (the August 2026 cost incident — see
+        // header). Exit.
+        if (!fastHadWork && !bulkActedThisPass) {
             if (i === 0) console.log("[DebounceFlush] Idle — exiting until next EventBridge tick.");
             return;
         }
