@@ -1124,3 +1124,27 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
     every scanner hit and fail each attempt; making that structurally harmless is (b), still parked.
     Operator gate (NOT RUN, belongs to the follow-up flood fix): post-deploy error-rate collapse + a
     grid refresh completing without a manual purge.
+
+## DebounceFlush sleep-loop cost incident (2026-09-02, human-reported via AWS bill)
+
+**What happened:** cache-4a review-3 made the flush Lambda run its full 5×10s sleep loop every
+EventBridge minute even when idle, on prod AND staging. The review priced the extra GetItems
+(negligible) but not the Lambda wall-clock — `await sleep()` bills like work. Measured: duration
+jumped 23ms → 50.1s per invocation at the cache-4a deploy (staging Aug 7-8, prod Aug 9); the two
+functions consumed ~820K of August's 877K GB-s (93% of the account's Lambda usage), blowing the
+400K free tier — the first-ever Lambda bill ($7.92; steady state would be ~1.1M GB-s ≈ $12/mo).
+Attribution: Cost Explorer by usage type + CloudWatch Duration/Invocations across all 296
+functions. glamCRM was ruled out (not on the board).
+
+**Fix (human-ratified 2026-09-02, revising review-3):** idle-exit restored in
+`backend/src/scheduled/debounce-flush.ts` — the loop exits on the first pass with no fast-lane
+work; while paths exist (incl. retained-after-failure) the ~10s cadence holds. Revised contract:
+an edit enqueued while idle waits ≤1 EventBridge tick (~60s) for its FIRST drain, then ~10s
+resolution. Bulk lane re-checks at tick resolution (tolerates ~1-min latency by design).
+
+**Queued (ratified same date): event-driven fast lane** — the edit enqueue path async-triggers a
+drain directly, restoring the "visible in seconds from idle" promise at ~zero cost, and the
+scheduled tick remains as sweeper. Needs: backend enqueue-path change + one IAM invoke grant
+(named infra gain: ~$12/mo + the free tier back). Run as a relay slice with staging probe before
+prod. **Process lesson for reviews:** always-on Lambda wall-clock is a cost dimension reviewers
+must price — "free tier" claims need the GB-s arithmetic, not just request counts.

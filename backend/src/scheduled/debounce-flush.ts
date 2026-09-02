@@ -31,14 +31,20 @@ import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
  *      drains every ~10s. A failed bulk retries on the NEXT EventBridge invocation (~1 min);
  *      the fast lane does not wait for it.
  *
- * Why the loop never returns early — neither on an absent CDN_PENDING nor after a bulk `/*`
- * submission (both DID pre-cache-4a / pre-review-3): the fast lane must keep draining for the
- * whole invocation window, otherwise a path enqueued at second 5 (or one enqueued the instant a
- * bulk `/*` fires) would wait up to a full minute for the next EventBridge tick instead of the
- * next ~10s drain — violating the ordinary-edit "visible in seconds" contract (CACHE-4A/review-3).
- * The Lambda therefore runs its full ~50s of polling (5×10s sleeps) every minute even when idle —
- * a handful of extra ~5ms GetItems, well inside free tier. Correctness (seconds-to-live) over the
- * old idle-exit micro-optimization.
+ * IDLE-EXIT (human-ratified 2026-09-02, revising CACHE-4A/review-3): the loop exits early on the
+ * first iteration that finds NO fast-lane work (after that iteration's bulk check ran). While
+ * fast-lane paths exist — including retained-after-failure paths — the full ~10s cadence
+ * continues, so active drains keep review-3's resolution. Only the IDLE invocation is cheap.
+ *
+ * Why review-3's "never return early" was revised: it priced the extra GetItems (negligible) but
+ * not the Lambda wall-clock — `await sleep()` bills like work. Measured August 2026: 50.1s × 1,440
+ * invocations/day × 2 environments ≈ 1.1M GB-s/month, 2.7× the entire Lambda free tier and 93% of
+ * the account's Lambda bill, for a function 99.9% asleep. The revised contract: an edit enqueued
+ * while the flusher is idle waits up to one EventBridge tick (~60s) for its FIRST drain, then
+ * ~10s resolution while work remains. A bulk marker inside its 15-min window likewise re-checks
+ * at tick resolution (its lane tolerates ~1-min latency by design — see review-0 retry note).
+ * The full "visible in seconds even from idle" promise returns with the queued event-driven
+ * fast-lane slice (edit enqueue directly triggers a drain; see docs/TECH-DEBT.md 2026-09-02).
  *
  * Race condition safety:
  *   - CDN_PENDING delete uses ConditionExpression updatedAt = :original — a mutation that
@@ -113,8 +119,12 @@ async function submitInvalidation(items: string[], callerPrefix: string): Promis
  *      concurrent enqueue — even of a path already in the set, which is invisible at the
  *      set-membership level — bumps `rev` and fails the condition, so the whole marker is
  *      retained and re-invalidated next cycle rather than the second edit being silently dropped.
+ *
+ * Returns TRUE iff fast-lane work EXISTED this pass (paths present — drained, or retained after a
+ * failed invalidation), so the caller keeps the ~10s cadence while work remains and idle-exits
+ * otherwise. A failure path returns true: the retained paths ARE pending work.
  */
-async function drainFastLane(): Promise<void> {
+async function drainFastLane(): Promise<boolean> {
     let item;
     try {
         const res = await ddb.send(new GetCommand({
@@ -126,7 +136,7 @@ async function drainFastLane(): Promise<void> {
         item = res.Item;
     } catch (error) {
         console.error("[FastLane] Failed to read CDN_FAST_PENDING:", error);
-        return;
+        return true; // unknown state — assume work exists so the loop retries in ~10s, not ~60s
     }
 
     // DocumentClient returns a JS Set for a DynamoDB String Set (SS).
@@ -136,7 +146,7 @@ async function drainFastLane(): Promise<void> {
         : Array.isArray(stored)
             ? stored.filter((p): p is string => typeof p === "string")
             : [];
-    if (drained.length === 0) return;
+    if (drained.length === 0) return false;
 
     // Generation snapshot, read atomically with the paths above. `rev` may be absent on a marker
     // written before this change deployed — treat that as "no generation yet" and gate cleanup
@@ -144,15 +154,15 @@ async function drainFastLane(): Promise<void> {
     const rev = typeof item?.rev === "number" ? item.rev : undefined;
 
     const plan = planEdgeInvalidation(drained);
-    if (plan.length === 0) return;
+    if (plan.length === 0) return false;
 
     try {
         const submitted = await submitInvalidation(plan, "fastlane");
-        if (!submitted) return; // no distribution configured — keep the marker for later
+        if (!submitted) return true; // no distribution configured — marker kept, still pending work
         console.log(`[FastLane] Invalidated ${plan.length} path(s): ${plan.join(", ")}`);
     } catch (error) {
         console.error("[FastLane] CloudFront invalidation failed — keeping paths for next cycle:", error);
-        return;
+        return true; // retained paths are pending work — retry at ~10s cadence
     }
 
     // Generation-safe cleanup. Remove exactly the drained members, but ONLY if `rev` is unchanged
@@ -186,6 +196,7 @@ async function drainFastLane(): Promise<void> {
             console.error("[FastLane] Failed to remove drained paths (will re-invalidate next cycle):", error);
         }
     }
+    return true; // this pass HAD work — keep the ~10s cadence for any follow-on enqueues/retries
 }
 
 /**
@@ -278,21 +289,29 @@ async function flushBulkIfDue(iteration: number): Promise<boolean> {
 export const handler = async (): Promise<void> => {
     // At most ONE bulk `/*` submission per invocation. Once a submission has been ATTEMPTED
     // (success, transient failure, or skip) this latches true and the bulk branch is skipped for
-    // the rest of the invocation — but the loop KEEPS running so drainFastLane() fires every ~10s.
-    // A failed/skipped bulk retries on the NEXT EventBridge invocation; the fast lane never waits
-    // for it (CACHE-4A/review-3).
+    // the rest of the invocation. A failed/skipped bulk retries on the NEXT EventBridge
+    // invocation; the fast lane never waits for it (CACHE-4A/review-3).
     let bulkHandled = false;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-        // A. Fast lane — ordinary edits' changed paths, targeted, every ~10s, ALWAYS.
-        await drainFastLane();
+        // A. Fast lane — ordinary edits' changed paths, targeted, every ~10s while work exists.
+        const fastHadWork = await drainFastLane();
 
         // B. Bulk debounce — CDN_PENDING → /* after the 15-min quiet window, at most once.
         if (!bulkHandled) {
             bulkHandled = await flushBulkIfDue(i);
         }
 
-        // Keep polling for the whole window so the fast lane stays at ~10s resolution.
+        // IDLE-EXIT (ratified 2026-09-02): a pass with no fast-lane work has nothing left that
+        // benefits from ~10s resolution — the bulk lane re-checks at EventBridge tick resolution
+        // by design. Sleeping through the remaining iterations would bill ~50s of Lambda
+        // wall-clock per minute forever (the August 2026 cost incident — see header). Exit.
+        if (!fastHadWork) {
+            if (i === 0) console.log("[DebounceFlush] Idle — exiting until next EventBridge tick.");
+            return;
+        }
+
+        // Fast-lane work existed this pass — hold the ~10s cadence for follow-on drains.
         if (i < MAX_ITERATIONS - 1) {
             await sleep(POLL_INTERVAL_MS);
         }
