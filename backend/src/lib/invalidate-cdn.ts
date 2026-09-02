@@ -1,4 +1,5 @@
 import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { db, TABLE_NAME } from "./db.js";
 import { normalizeEdgePaths } from "./edge-invalidation.js";
 
@@ -42,6 +43,15 @@ import { normalizeEdgePaths } from "./edge-invalidation.js";
  *   retained for a redundant-but-correct re-invalidation next cycle. (Fixes CACHE-4A/review-1.)
  * - All mutation Lambdas already have DDB write access — no new IAM needed.
  * - Best-effort: marker write errors are logged but don't fail the response.
+ * - CACHE-9 (event-driven fast lane, ratified 2026-09-02): after the fast-lane marker write
+ *   succeeds, `enqueueEdgeInvalidation()` async-invokes the DebounceFlush function
+ *   (`InvocationType: "Event"`) so the drain runs within ~1s of the save instead of waiting up
+ *   to one EventBridge tick (~60s) when the scheduled flusher is idle (the idle-exit fix — see
+ *   `scheduled/debounce-flush.ts` header). This is a pure ACCELERATOR, never a correctness
+ *   dependency: the marker is already durable and the minute sweeper drains it within ~60s, so a
+ *   failed or skipped invoke is logged and swallowed and can never fail the edit-save path. The
+ *   bulk lane (`markCdnPending()`) is deliberately NOT accelerated — coalescing bursts of `/*`
+ *   is its whole job.
  *
  * @module
  */
@@ -51,6 +61,45 @@ const CDN_PENDING_PK = "SYSTEM";
 const CDN_PENDING_SK = "CDN_PENDING";
 const CDN_FAST_PENDING_SK = "CDN_FAST_PENDING";
 const CDN_LAST_CHANGE_SK = "CDN_LAST_CHANGE";
+
+// One reusable Lambda client per warm container (same lifecycle as `db`). Construction does no
+// I/O and needs no credentials eagerly, so it is inert on any deployment that never sets
+// DEBOUNCE_FLUSH_FUNCTION_NAME (the invoke below is skipped there).
+const lambdaClient = new LambdaClient({});
+
+/**
+ * CACHE-9 event-driven fast lane. Async-invoke the DebounceFlush function so it drains the
+ * fast-lane marker we just wrote within ~1s, rather than waiting up to one EventBridge tick
+ * (~60s) when the scheduled flusher is idle.
+ *
+ * Contract (all four points are load-bearing):
+ *  - `InvocationType: "Event"` — fire-and-forget at the Lambda SERVICE. The service returns 202
+ *    in ~10-20ms; the invoked function is NOT waited on. We get the ~1s drain without the caller
+ *    blocking on the flush.
+ *  - We MUST still `await` the `send`. A Lambda runtime FREEZES the moment the handler's promise
+ *    settles; an un-awaited SDK send may never leave the sandbox (the classic Lambda
+ *    fire-and-forget pitfall). Awaiting the send ≠ awaiting the flusher — it only awaits the 202.
+ *  - Best-effort ACCELERATOR, never a correctness dependency. The marker is already durably
+ *    written and the minute sweeper drains it within ~60s, so ANY failure here is logged and
+ *    swallowed. The edit-save path must never fail because this invoke failed.
+ *  - Function name arrives via env var. When unset (unit tests, deployments without the CACHE-9
+ *    wiring) the invoke is skipped silently — the sweeper contract still holds.
+ */
+async function triggerFastLaneDrain(): Promise<void> {
+    const functionName = process.env.DEBOUNCE_FLUSH_FUNCTION_NAME;
+    if (!functionName) return; // no wiring on this deployment — the minute sweeper still drains it
+
+    try {
+        await lambdaClient.send(new InvokeCommand({
+            FunctionName: functionName,
+            InvocationType: "Event", // async: 202 in ~10-20ms, the flusher runs on its own
+        }));
+        console.log(`[CDN] Fast-lane drain triggered (async-invoked ${functionName})`);
+    } catch (error) {
+        // Swallow: the marker is durable, the minute sweeper backstops. Never fail the edit.
+        console.error("[CDN] Fast-lane drain invoke failed (marker durable; sweeper backstops):", error);
+    }
+}
 
 async function markCdnPending(): Promise<void> {
     if (!TABLE_NAME) {
@@ -98,21 +147,27 @@ async function markCdnPending(): Promise<void> {
  * prepended (unlike the S3/ISR key `/<domain>/<slug>`). Same-path collateral across tenants is
  * accepted and cheap — a collided page refills from warm ISR without SSR (ratified, slice doc).
  *
- * Writes:
- *   - `CDN_FAST_PENDING.paths` via `ADD` to a String Set — atomic, deduped, coalescing — AND
- *     `CDN_FAST_PENDING.rev` via `ADD 1`, in the same atomic UpdateItem. `rev` is the write
- *     generation the drain conditions its cleanup on, so a same-path re-edit queued during a
- *     drain is never silently dropped (see the module docstring).
- *   - `CDN_LAST_CHANGE` — so the nightly S3 flush still runs after an ordinary-only day. This
- *     matters because ordinary handlers no longer go through `markCdnPending()` (which is what
- *     used to write this marker for them). Without it, a day of only-ordinary edits whose
- *     targeted invalidation somehow failed would let the nightly backstop skip.
+ * Runs three steps, deliberately DECOUPLED (not one `Promise.all`) so the CACHE-9 accelerator
+ * fires on the exact condition the slice requires — a successful MARKER write — independent of the
+ * high-water-mark put (CACHE-9/review-0 point 1):
+ *   1. `CDN_FAST_PENDING.paths` via `ADD` to a String Set — atomic, deduped, coalescing — AND
+ *      `CDN_FAST_PENDING.rev` via `ADD 1`, in the same atomic UpdateItem. `rev` is the write
+ *      generation the drain conditions its cleanup on, so a same-path re-edit queued during a
+ *      drain is never silently dropped (see the module docstring). This is the ONLY write the
+ *      drain depends on; a failure here logs and returns early (nothing durable to drain).
+ *   2. CACHE-9 accelerator — `triggerFastLaneDrain()` async-invokes the flusher. Placed BEFORE the
+ *      high-water put so a slow/failing put can never delay or cancel it.
+ *   3. `CDN_LAST_CHANGE` — so the nightly S3 flush still runs after an ordinary-only day. This
+ *      matters because ordinary handlers no longer go through `markCdnPending()` (which is what
+ *      used to write this marker for them). Without it, a day of only-ordinary edits whose
+ *      targeted invalidation somehow failed would let the nightly backstop skip. Independent
+ *      best-effort: its failure is logged and swallowed and never blocks step 2.
  *
  * Deliberately does NOT write `CDN_PENDING`: an ordinary edit must not raise the "GO LIVE NOW"
  * banner — nothing is pending, it went live in seconds.
  *
- * Best-effort, like `markCdnPending()`: a failed write is logged and swallowed so it can never
- * fail the mutation. The nightly flush is the backstop.
+ * Best-effort, like `markCdnPending()`: every write failure is logged and swallowed so it can
+ * never fail the mutation. The nightly flush is the backstop.
  */
 export async function enqueueEdgeInvalidation(paths: string[]): Promise<void> {
     if (!TABLE_NAME) {
@@ -125,27 +180,46 @@ export async function enqueueEdgeInvalidation(paths: string[]): Promise<void> {
 
     const now = Date.now();
 
+    // Step 1 — the load-bearing fast-lane marker. This is the ONLY write the drain depends on, so
+    // its success alone is what licenses (and obligates, per CACHE-9) the accelerator invoke. It is
+    // awaited on its own — NOT in a Promise.all with the high-water-mark put below — precisely so a
+    // failure of that independent put cannot rob a successfully-written marker of its drain trigger
+    // (CACHE-9/review-0 point 1: invoke after the marker UpdateItem succeeds). Its own failure is
+    // swallowed and returns early: there is no durable marker to drain, and the nightly flush
+    // backstops.
     try {
-        await Promise.all([
-            db.send(new UpdateCommand({
-                TableName: TABLE_NAME,
-                Key: { PK: CDN_PENDING_PK, SK: CDN_FAST_PENDING_SK },
-                // ADD merges the set members AND bumps the generation counter atomically — one
-                // UpdateItem, so `paths` and `rev` can never diverge. `rev` gates the drain's
-                // cleanup (see module docstring); without it a same-path re-edit is dropped.
-                UpdateExpression: "ADD #paths :p, #rev :one SET updatedAt = :t",
-                ExpressionAttributeNames: { "#paths": "paths", "#rev": "rev" },
-                ExpressionAttributeValues: { ":p": new Set(clean), ":one": 1, ":t": now },
-            })),
-            db.send(new PutCommand({
-                TableName: TABLE_NAME,
-                Item: { PK: CDN_PENDING_PK, SK: CDN_LAST_CHANGE_SK, updatedAt: now },
-            })),
-        ]);
-        console.log(`[CDN] Fast-lane enqueued ${clean.length} path(s) for immediate edge invalidation: ${clean.join(", ")}`);
+        await db.send(new UpdateCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: CDN_PENDING_PK, SK: CDN_FAST_PENDING_SK },
+            // ADD merges the set members AND bumps the generation counter atomically — one
+            // UpdateItem, so `paths` and `rev` can never diverge. `rev` gates the drain's
+            // cleanup (see module docstring); without it a same-path re-edit is dropped.
+            UpdateExpression: "ADD #paths :p, #rev :one SET updatedAt = :t",
+            ExpressionAttributeNames: { "#paths": "paths", "#rev": "rev" },
+            ExpressionAttributeValues: { ":p": new Set(clean), ":one": 1, ":t": now },
+        }));
     } catch (error) {
-        console.error("[CDN] Failed to enqueue fast-lane invalidation:", error);
-        // Don't fail the request — the fast lane is best-effort; nightly flush backstops.
+        console.error("[CDN] Failed to enqueue fast-lane marker (nothing to drain; nightly flush backstops):", error);
+        return; // no durable marker → nothing to accelerate, and the high-water put is moot too
+    }
+    console.log(`[CDN] Fast-lane enqueued ${clean.length} path(s) for immediate edge invalidation: ${clean.join(", ")}`);
+
+    // Step 2 — CACHE-9: the marker is now durable, so accelerate its drain. Deliberately BEFORE the
+    // high-water-mark put so a slow/failing put never delays or cancels the invoke.
+    // `triggerFastLaneDrain()` swallows its own failures, so this never throws and never fails the
+    // edit; a skipped/failed invoke just falls back to the minute sweeper.
+    await triggerFastLaneDrain();
+
+    // Step 3 — high-water mark for the nightly S3 flush. Fully independent of the fast lane: its
+    // own best-effort put, whose failure is logged and swallowed. It must NOT be able to block the
+    // drain trigger above, which is why it is decoupled from the marker write in step 1.
+    try {
+        await db.send(new PutCommand({
+            TableName: TABLE_NAME,
+            Item: { PK: CDN_PENDING_PK, SK: CDN_LAST_CHANGE_SK, updatedAt: now },
+        }));
+    } catch (error) {
+        console.error("[CDN] Failed to write fast-lane high-water mark (nightly flush may skip a quiet day):", error);
     }
 }
 

@@ -249,9 +249,11 @@ Admin saves page ──> Backend Lambda (content/update.ts)   [NO withInvalidati
                               │   (resolves tenant domain; purgeTargets → {domain, slug}[])
                               │
                               ├── Layer 1 (edge): enqueueEdgeInvalidation([slug...])   [runs FIRST]
-                              │      └── DDB: ADD slugs to SYSTEM#CDN_FAST_PENDING.paths (String Set)
-                              │           + ADD 1 to .rev (generation counter, same atomic write)
-                              │           └── Debounce Lambda drains it every ~10s
+                              │      ├── DDB: ADD slugs to SYSTEM#CDN_FAST_PENDING.paths (String Set)
+                              │      │        + ADD 1 to .rev (generation counter, same atomic write)
+                              │      └── CACHE-9: async-invoke DebounceFlush (InvocationType "Event")
+                              │           └── Debounce Lambda drains it in ~1s (and every ~10s while
+                              │                work remains; EventBridge minute tick is the sweeper)
                               │                └── CloudFront TARGETED invalidation of those paths
                               │
                               └── Layer 2 (ISR): POST /api/revalidate { domain, slug }
@@ -261,6 +263,32 @@ Admin saves page ──> Backend Lambda (content/update.ts)   [NO withInvalidati
 The CloudFront path is the **viewer URI** (`/about`, `/produs/inel`) — host-agnostic, so no
 domain is prepended (unlike the S3 key `/<domain>/<slug>`). Same-path collateral across tenants
 is accepted: a collided page refills from warm ISR without SSR.
+
+**CACHE-9 event-driven fast lane (ratified 2026-09-02).** The idle-exit cost fix (see the
+*DebounceFlush sleep-loop cost incident* below and `scheduled/debounce-flush.ts`) made the
+scheduled flusher exit in ~25ms when idle, so an edit enqueued while it sleeps would otherwise wait
+up to one EventBridge tick (~60s) for its FIRST drain. To restore "publish visible in seconds" at
+~zero cost, `enqueueEdgeInvalidation()` **async-invokes the DebounceFlush function**
+(`InvocationType: "Event"`, ~10-20ms 202) right after the fast-lane marker write succeeds, so the
+drain runs within ~1s of the save. Properties that make this safe:
+
+- **Accelerator, never a correctness dependency.** The marker is already durable; the EventBridge
+  minute tick REMAINS the sweeper/safety-net (a lost invoke drains within ~60s). A failed or
+  skipped invoke is logged and swallowed — the edit-save path never fails because the invoke did.
+- **The bulk lane is NOT accelerated.** Theme/global mutations keep the 15-min debounce + minute
+  tick: instant semantics are wrong for a lane whose job is to coalesce bursts of `/*`.
+- **Wiring is cycle-free (IAM `lambda:InvokeFunction`, not CloudFront IAM).** DebounceFlush is in
+  the parent stack, created after the CatalogApi/CommerceApi *nested* stacks that hold the six
+  ordinary handlers; a construct reference back to it would be a mutual stack dependency. So the
+  handlers are granted invoke on, and receive as an env var, the function's **explicit physical
+  name** (`amodx-debounce-flush<suffix>`, single source of truth in `infra/lib/amodx-stack.ts`) —
+  a plain string, no cross-stack token. Pinned by `infra/test/amodx-stack.test.ts` `(cache9-*)`.
+  The `cloudfront:CreateInvalidation` blast radius is unchanged (still the 3 request-path roles).
+- **Concurrency.** The async invoke can run the flusher concurrently with the scheduled tick (and
+  rapid edits fan out to several concurrent invocations). Both lanes are lossless without locks —
+  the fast lane's `rev`-conditional cleanup and the bulk lane's `updatedAt`-conditional delete make
+  concurrent execution at worst a bounded redundant invalidation. Full analysis in
+  `scheduled/debounce-flush.ts` header § CONCURRENCY.
 
 ### Content Mutation — BULK class (theme, tenant settings, imports, popups, forms, …)
 
@@ -318,7 +346,7 @@ by **whether the handler knows its changed paths** — which is exactly whether 
 
 | Class | Handlers | Layer 1 (edge) | Layer 2 (ISR) | Banner / "GO LIVE" | Time to live |
 |---|---|---|---|---|---|
-| **Ordinary** (computable public path with a possible cached entry) | `content/create`, `content/update`, `products/update`, `products/delete`, `categories/update`, `categories/delete` | **targeted** paths via `CDN_FAST_PENDING`, drained ~10s | `revalidatePath` per slug | **no** — never pending | **seconds** |
+| **Ordinary** (computable public path with a possible cached entry) | `content/create`, `content/update`, `products/update`, `products/delete`, `categories/update`, `categories/delete` | **targeted** paths via `CDN_FAST_PENDING`, drained in **~1s** (CACHE-9 event-driven invoke) then every **~10s** while work remains; minute tick is the sweeper | `revalidatePath` per slug | **no** — never pending | **seconds** |
 | **Bulk / global** (unknown or large path set) | `themes/manage`, `tenant/create`, `tenant/settings`, `popups/*`, `forms/*`, `products/create`, `categories/create`, `products/bulk-price`, `reviews/*`, `content/restore`, `import/{woocommerce,wordpress,media,reviews}` | `/*` via `CDN_PENDING`, debounced 15 min | — (imports/settings not path-scoped) | **yes** | ≤15 min, or instant via GO LIVE NOW |
 
 Classification rationale, recorded per the slice DoD:
@@ -347,8 +375,14 @@ Classification rationale, recorded per the slice DoD:
 CloudFront free tier is **1000 invalidation paths / month**; beyond that, **$0.005 / path**.
 The billed unit is **one path per `CreateInvalidation` submission** — CloudFront charges each
 path *every time it is submitted*, not once per globally distinct URL. The fast lane's coalescing
-makes that ≈ **one charge per distinct edited path within a single ~10s drain window**, but two
+makes that ≈ **one charge per distinct edited path within a single drain window**, but two
 things re-bill an already-charged path and the estimates below are steady-state, not a hard cap:
+
+A "drain window" is **~10s** (the cadence held while work remains) OR, for the first edit after an
+idle flusher, the **~1s** CACHE-9 event-driven drain — i.e. a single lone edit gets its own drain
+and bills as 1 path; the ~10s windows coalesce only *bursts* that arrive while the flusher is
+already cycling. The billing math is unchanged (still 1 path per distinct path per drain); the
+event-driven first drain only means a lone edit is invalidated sooner, not billed more.
 
 - A path edited again in a **later** drain window is a fresh submission → billed again. "Distinct
   edited path" means distinct-per-window, summed across windows; a page saved in three separate
@@ -1459,7 +1493,10 @@ so the edge fires even when ISR is disabled — see *RENDERER_URL independence* 
 `SYSTEM#CDN_FAST_PENDING.paths`, `ADD`s 1 to the generation counter `SYSTEM#CDN_FAST_PENDING.rev`
 (both in one atomic UpdateItem), and bumps `CDN_LAST_CHANGE` (so the nightly backstop still runs
 after an ordinary-only day). It does **not** write `CDN_PENDING` — ordinary edits are never
-pending. The debounce Lambda drains that set every ~10s (§ *2*).
+pending. Since CACHE-9 the enqueue also **async-invokes the debounce Lambda** (`InvocationType:
+"Event"`) right after the marker write, so the drain runs in ~1s even when the scheduled flusher is
+idle; the debounce Lambda then holds ~10s cadence while work remains, and the EventBridge minute
+tick remains the sweeper/safety-net (§ *2*).
 
 - **Generation-safe drain (`rev`).** A String Set carries no write generation, so a re-edit of a
   path already in the set is invisible at the membership level — an unguarded `DELETE` at cleanup
@@ -1491,11 +1528,15 @@ pending. The debounce Lambda drains that set every ~10s (§ *2*).
 
 **File**: `backend/src/scheduled/debounce-flush.ts`
 
-Triggered by EventBridge every 1 minute. Internally loops 6 iterations, sleeping 10s BETWEEN them
-— **5 sleeps ≈ 50s** of polling (the last iteration does not sleep), plus per-iteration operation
-time. EventBridge re-invokes at the ~60s mark, so the gap between one invocation's last drain and
-the next invocation's first drain is also ~10s: the fast lane holds effective ~10-second
-resolution **across** invocations, not because a single invocation spans a full minute.
+Invoked two ways since CACHE-9: (a) **event-driven** — the edit's own enqueue path async-invokes
+this function (`InvocationType: "Event"`) right after the fast-lane marker write, so an edit made
+while the flusher is idle drains in **~1s**; and (b) the **EventBridge minute tick** — the
+sweeper/safety-net that catches a lost invoke and drives the bulk lane. Internally the handler
+loops up to 6 iterations, sleeping 10s BETWEEN them (up to **5 sleeps ≈ 50s**), BUT **idle-exits on
+the first iteration that finds no fast-lane work** (after that iteration's bulk check) — see
+*IDLE-EXIT* below. So while work remains the fast lane holds ~10s resolution within and across
+invocations; when idle the invocation returns in ~25ms and does no polling. The full ~50s window is
+run only when there is continuous fast-lane work, not on every invocation.
 
 ```
 EventBridge (every 1 min) ──> Debounce Lambda, each of 6 iterations (10s sleep BETWEEN, ≈50s total):
@@ -1514,34 +1555,44 @@ EventBridge (every 1 min) ──> Debounce Lambda, each of 6 iterations (10s sle
                                                               delete CDN_PENDING (cond. on updatedAt).
                                                               CDN_FAST_PENDING is NOT deleted here —
                                                               the next fast-lane drain covers it.
-                                                              The LOOP CONTINUES (does not return) —
-                                                              drainFastLane keeps firing every ~10s.
+                                                              The bulk branch does NOT return —
+                                                              drainFastLane keeps draining while
+                                                              fast-lane work remains; the loop
+                                                              idle-exits once neither lane has work.
 ```
 
-**Why it never returns early — neither on an absent `CDN_PENDING` nor after the bulk `/*` submit**
-(both DID pre-`cache-4a` / pre-review-3): the fast lane must keep draining for the whole ~50s
-polling window, or a path enqueued mid-window — including one enqueued the instant a bulk `/*`
-fires — would wait up to a full minute for the next EventBridge tick. The bulk branch is instead
-gated by a `bulkHandled` latch: it submits `/*` **at most once per invocation** (success, transient
-failure, or skip all latch it), then the loop keeps running `drainFastLane()` every ~10s. A failed
-bulk retries on the NEXT EventBridge invocation; the fast lane does not wait for it. Worst-case
-fast-lane time-to-live is therefore the ~10s inter-iteration gap (plus the ≤10s inter-invocation
-gap), not a minute. (Fixes CACHE-4A/review-3, where the bulk branch `return`ed and stranded a
-mid-invocation edit for ~1 min.)
+**Why the bulk branch never terminates the loop — and how idle-exit interacts.** The *bulk* branch
+must never `return` (it did pre-`cache-4a` / pre-review-3): a path enqueued the instant a bulk `/*`
+fires would wait a full EventBridge tick if the bulk submit killed the loop. So the bulk branch
+returns a **boolean** and is gated by a `bulkHandled` latch — it submits `/*` **at most once per
+invocation** (success, transient failure, or skip all latch it) while `drainFastLane()` keeps
+running. What DOES stop the loop is the **IDLE-EXIT** (ratified 2026-09-02): a pass where the fast
+lane found no work AND no bulk `/*` was just submitted returns immediately (~25ms) — there is
+nothing left that benefits from ~10s resolution, and holding the loop open would re-incur the
+sleep-loop cost (below). While fast-lane work exists — including retained-after-failure paths, and
+the one extra iteration forced after a bulk `/*` — the ~10s cadence continues, so worst-case
+fast-lane time-to-live *while the loop is running* is the ~10s inter-iteration gap. A **fresh** edit
+that arrives when the flusher is already idle no longer waits a tick: since CACHE-9 its enqueue
+async-invokes this function directly, so it drains in ~1s (the minute tick is only the backstop for
+a lost invoke). A failed bulk retries on the NEXT tick; the fast lane does not wait for it. (Closes
+CACHE-4A/review-3's bulk-branch `return` defect; the review-3 "never idle-exit" rule was later
+revised by the idle-exit fix + CACHE-9 — see *IDLE-EXIT* in the code header.)
 
 **Race condition safety**: `CDN_PENDING` delete uses `ConditionExpression: updatedAt = :original` (a mutation arriving between read and delete fails the condition; the marker survives, next cycle picks it up). `CDN_FAST_PENDING` cleanup is `DELETE #paths :drained` guarded by `ConditionExpression: #rev = :rev` — the generation counter snapshotted with the paths. A String Set carries no write generation, so a re-edit of an **already-queued** path is invisible at the membership level; an unguarded delete would erase that second edit. The `rev` guard closes it: any concurrent enqueue (same OR different path) increments `rev` in the same atomic UpdateItem that merges the set, so the condition fails and the **entire** marker is retained — nothing is deleted — for a redundant-but-correct re-invalidation next cycle. When the condition holds, no enqueue happened since the read, so the drained members are the whole set and removing them clears it. Cleanup runs **after** a successful CloudFront call, so a failed invalidation retries. (Two defects closed here: dropped-work-on-failure in CACHE-4A/review-0, and this same-path generation race in CACHE-4A/review-1.)
 
-**Cost**: ~43,200 invocations/month (1/min) at 256 MB (0.25 GB). Since `cache-4a` each
-invocation runs its full ~50s polling window (5×10s sleeps; ≈6 DDB reads + fast-lane drains) —
-whether idle OR after firing a bulk `/*` (the loop no longer returns early in either case,
-review-3) — instead of returning in ~5ms. That is 43,200 × 50 s × 0.25 GB ≈ **540,000 GB-s/month**.
-Against Lambda's 400,000 GB-s/month always-free tier that leaves ≈140,000 billable GB-s ≈
-**$2.33/month** compute if this function alone claims the free tier — and up to ≈$9/month
-worst case if the account-wide free tier is already consumed by other workloads (the tier is
-per-account, not per-function). Requests (43,200/month) stay inside the 1M-request free tier
-(≈$0). This is a real, non-trivial line item: `cache-4a` deliberately traded the idle-exit
-micro-optimization (a near-zero-cost warm poll) for seconds-to-live edge invalidation. Correcting
-the pre-`cache-4a` "well under a dollar" claim (CACHE-4A/review-4).
+**Cost**: ~43,200 invocations/month (1/min) at 256 MB (0.25 GB). The `cache-4a` design ran the
+full ~50s polling window on **every** invocation (idle or not) = 43,200 × 50 s × 0.25 GB ≈
+**540,000 GB-s/month** ≈ **$2.33/month** compute on one env (up to ≈$9/mo if the account-wide free
+tier is consumed elsewhere), ×2 envs ≈ **~$12/mo** — the *DebounceFlush sleep-loop cost incident*
+(see `docs/TECH-DEBT.md`). The **idle-exit fix** (ratified/deployed 2026-09-02) reclaims that: an
+idle invocation now returns in ~25ms, and the ~43,200 monthly invocations are overwhelmingly idle,
+so steady-state drops to ≈43,200 × 0.025 s × 0.25 GB ≈ **270 GB-s/month** — deep inside the
+400,000 GB-s free tier (≈**$0**). The full ~50s window is spent only during active editing bursts
+(a handful of invocations/day). Requests (43,200/month) stay inside the 1M-request free tier (≈$0).
+**CACHE-9 is what makes the idle-exit permanent**: without it, an idle-flusher edit would wait up
+to a tick for its first drain, and the only way to restore seconds-to-live would be to revert
+idle-exit (back to the $12/mo). The event-driven invoke restores the ~1s first drain, so idle-exit
+can stay. (Supersedes the pre-idle-exit ~$2.33-9/mo figure that stood here.)
 
 **Warm Lambda**: Invoked every minute, effectively stays warm (the 1/min schedule reduces cold-start likelihood; it does not guarantee retained execution environments).
 
@@ -2174,7 +2225,7 @@ IAM grants: `cloudfront:CreateInvalidation` + S3 read/delete on the asset bucket
 | SQS FIFO Revalidation Queue | Background page regeneration (OpenNext internal) |
 | Warmer Lambda | Scheduled every 5 min, prevents cold starts |
 | Image Optimization Lambda | On-demand image resizing, cached by CloudFront |
-| Debounce Flush Lambda | Every 1 min (10s internal). Drains BOTH classes: fast-lane TARGETED invalidations of ordinary edits' changed paths (`CDN_FAST_PENDING`, ~10s) + the bulk `/*` after the 15-min debounce (`CDN_PENDING`) |
+| Debounce Flush Lambda | Event-driven (CACHE-9 async-invoke on the edit's own enqueue → ~1s first drain) + EventBridge minute tick as sweeper; idle-exits in ~25ms. Drains BOTH classes: fast-lane TARGETED invalidations of ordinary edits' changed paths (`CDN_FAST_PENDING`, ~1s then ~10s while work remains) + the bulk `/*` after the 15-min debounce (`CDN_PENDING`) |
 | Nightly Cache Flush Lambda | 02:00 UTC daily, clears both cache layers |
 | Invalidation Status Lambda | GET /system/invalidation — admin UI polling |
 | Invalidation Flush Lambda | POST /system/invalidation — "GO LIVE NOW" |
@@ -2224,9 +2275,9 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 |------|-------|
 | Invocations | 43,200/month (1/min) |
 | Memory | 256 MB (0.25 GB) — `infra/lib/amodx-stack.ts` `DebounceFlushFunc` |
-| Duration | ~50s every invocation since `cache-4a` (6 iterations, 5×10s sleeps between them + operation time, so the fast lane stays at ~10s resolution across invocations) — no idle-exit; ≈12 DDB reads/invocation when nothing is pending |
-| GB-s/month | 43,200 × 50 s × 0.25 GB ≈ **540,000 GB-s** |
-| Estimated cost | ≈**$2.33/month** compute if this function alone claims Lambda's 400,000 GB-s always-free tier (140,000 billable GB-s × $0.0000166667); up to ≈$9/month if the account-wide free tier is consumed by other workloads. Requests are free (43,200 ≪ 1M/month). *Non-trivial: `cache-4a` traded near-zero idle-exit polling for seconds-to-live edge invalidation. Corrects the pre-`cache-4a` "< $0.10/month" figure (CACHE-4A/review-4).* |
+| Duration | **~25ms when idle** (idle-exit, ratified/deployed 2026-09-02); the full ~50s polling window (6 iterations, 5×10s sleeps) runs only while fast-lane work remains — active editing bursts. Since CACHE-9 a fresh idle-flusher edit is drained by an event-driven async-invoke in ~1s, not the tick. The pre-idle-exit `cache-4a` design ran ~50s on **every** invocation — the sleep-loop cost incident (see `docs/TECH-DEBT.md`). |
+| GB-s/month | **≈270 GB-s** steady-state (43,200 × ~0.025 s × 0.25 GB, idle-exit) + the rare active bursts. *(Pre-idle-exit: 43,200 × 50 s × 0.25 GB ≈ 540,000 GB-s — superseded.)* |
+| Estimated cost | **≈$0** — 270 GB-s is deep inside Lambda's 400,000 GB-s/month always-free tier; requests free (43,200 ≪ 1M/month). The idle-exit fix reclaimed the pre-idle-exit ~$2.33-9/mo-per-env (~$12/mo across both envs); **CACHE-9 keeps idle-exit permanent** by restoring the ~1s first drain, so seconds-to-live no longer requires reverting to the always-poll design. |
 
 ---
 
@@ -2244,7 +2295,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 5. **CloudFront IAM removed from mutation Lambdas**: The post-construction grant loop is deleted. Mutation Lambdas lose `RENDERER_DISTRIBUTION_ID` env var and `cloudfront:CreateInvalidation` IAM. Since the HOF no longer calls CloudFront (it writes DDB instead), this is safe.
 
-6. **First mutation after deploy**: an ORDINARY edit `ADD`s its changed paths to `SYSTEM#CDN_FAST_PENDING` (+ bumps `rev`); the fast-lane drain fires a TARGETED CloudFront invalidation within ~10s and the edge serves fresh in seconds — no banner. A BULK mutation instead writes `SYSTEM#CDN_PENDING`; the Debounce Lambda fires `/*` 15 minutes later and shows the "GO LIVE NOW" banner meanwhile. Existing cached pages remain unchanged until the relevant invalidation propagates (~30 seconds).
+6. **First mutation after deploy**: an ORDINARY edit `ADD`s its changed paths to `SYSTEM#CDN_FAST_PENDING` (+ bumps `rev`) and (since CACHE-9) async-invokes the debounce Lambda, which fires a TARGETED CloudFront invalidation within ~1s (~10s cadence thereafter while work remains; minute tick is the sweeper) and the edge serves fresh in seconds — no banner. A BULK mutation instead writes `SYSTEM#CDN_PENDING`; the Debounce Lambda fires `/*` 15 minutes later and shows the "GO LIVE NOW" banner meanwhile. Existing cached pages remain unchanged until the relevant invalidation propagates (~30 seconds).
 
 ### No Breaking Changes
 
@@ -2260,7 +2311,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 ### Key Metrics
 
 1. **CloudFront Cache Hit Ratio** — Target > 95%. It was structurally ~0% for HTML before `cache-1` (the origin sent `no-store`). After `cache-1` this metric becomes meaningful and is the primary signal that the serving layer is healthy: if it stays near 0%, the origin is still emitting `no-store` and something reintroduced a dynamic API into a cacheable route.
-2. **Debounce Lambda Duration** — CloudWatch Logs for `DebounceFlushFunc`. Since `cache-4a` EVERY invocation runs the full ~50s polling window (5×10s sleeps; the fast lane drains each ~10s iteration); a consistently sub-second duration means the loop is exiting early and the fast lane is not draining.
+2. **Debounce Lambda Duration** — CloudWatch Logs for `DebounceFlushFunc`. Since the idle-exit fix, a **sub-second (~25ms) duration is the NORMAL idle state** (the loop returns as soon as it finds no fast-lane work) — it is no longer a fault signal by itself. The health signal is instead whether edits actually go live in ~1s: an ORDINARY edit should produce an **event-driven invocation** (CACHE-9, `[CDN] Fast-lane drain triggered …` in the mutation log + a `[FastLane] Invalidated …` in the flusher log within ~1s). If edits lag to ~60s, check `DEBOUNCE_FLUSH_FUNCTION_NAME` is set on the mutation Lambdas and the invoke is not erroring (`[CDN] Fast-lane drain invoke failed …`); the minute tick still backstops within ~60s. A `~50s` duration is expected only during an active editing burst (continuous fast-lane work).
 3. **`SYSTEM#CDN_PENDING` marker age** — If the bulk marker persists beyond 20 minutes, the debounce Lambda may be failing its `/*` submit (it now retains the marker on a failed/skipped submit — see § *Debounce Flush Lambda*). Check CloudWatch Logs. A persistently non-empty `SYSTEM#CDN_FAST_PENDING.paths` set likewise means the fast-lane drain or its CloudFront call is failing.
 4. **Invalidation Count** — CloudFront console. Should be dramatically lower than before (single digits per day vs. hundreds).
 

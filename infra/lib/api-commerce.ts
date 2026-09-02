@@ -25,6 +25,10 @@ interface CommerceApiProps extends NestedStackProps {
     revalidationSecret: secretsmanager.ISecret;
     rendererUrl?: string;
     recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
+    // CACHE-9: physical name of the DebounceFlush function (plain string, not a construct ref —
+    // avoids a nested→parent stack cycle). categories update/delete async-invoke it after the
+    // fast-lane marker write so an edit's own edge drain runs in ~1s.
+    debounceFlushFunctionName: string;
 }
 
 export class CommerceApi extends NestedStack {
@@ -82,6 +86,21 @@ export class CommerceApi extends NestedStack {
 
         const apiArn = `arn:aws:execute-api:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:${httpApiId}`;
 
+        // CACHE-9 event-driven fast lane. categories update/delete reach `enqueueEdgeInvalidation()`
+        // (via `revalidateTenantPaths`), which async-invokes the DebounceFlush function so the edit's
+        // own drain runs in ~1s. Give exactly those handlers the env var + a least-privilege
+        // `lambda:InvokeFunction` on that one function ARN, built from the deterministic NAME (not a
+        // construct ref) so there is no cross-stack cycle.
+        const debounceFlushArn =
+            `arn:aws:lambda:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:function:${props.debounceFlushFunctionName}`;
+        const wireFastLaneTrigger = (fn: nodejs.NodejsFunction) => {
+            fn.addEnvironment('DEBOUNCE_FLUSH_FUNCTION_NAME', props.debounceFlushFunctionName);
+            fn.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['lambda:InvokeFunction'],
+                resources: [debounceFlushArn],
+            }));
+        };
+
         // Helper: create Lambda + integration + route + invoke permission
         const addRoute = (
             routeId: string,
@@ -138,6 +157,7 @@ export class CommerceApi extends NestedStack {
         });
         table.grantReadWriteData(updateCategoryFunc);
         props.revalidationSecret.grantRead(updateCategoryFunc);
+        wireFastLaneTrigger(updateCategoryFunc);  // CACHE-9: async-invoke the flusher
 
         const deleteCategoryFunc = new nodejs.NodejsFunction(this, 'DeleteCategoryFunc', {
             ...nodeProps,
@@ -146,6 +166,7 @@ export class CommerceApi extends NestedStack {
         });
         table.grantReadWriteData(deleteCategoryFunc);
         props.revalidationSecret.grantRead(deleteCategoryFunc);
+        wireFastLaneTrigger(deleteCategoryFunc);  // CACHE-9: async-invoke the flusher
 
         addRoute('CreateCategory', 'POST /categories', createCategoryFunc);
         addRoute('ListCategories', 'GET /categories', listCategoriesFunc);

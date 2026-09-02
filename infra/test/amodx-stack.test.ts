@@ -1179,3 +1179,92 @@ describe('credential-free isolation', () => {
         expect(process.env.TABLE_NAME).toBeUndefined();
     });
 });
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (cache9) Event-driven fast lane — the ordinary content-mutating handlers can async-invoke the
+//     DebounceFlush function so an edit's own edge drain runs in ~1s (CACHE-9, ratified
+//     2026-09-02, restoring "visible in seconds" after the idle-exit cost fix).
+//
+//     The wiring is deliberately CYCLE-FREE: DebounceFlushFunc lives in the PARENT stack and is
+//     created AFTER the CatalogApi/CommerceApi NESTED stacks (it needs the renderer distribution
+//     id), and the parent already references those nested stacks for its route integrations. A
+//     construct/token reference from the nested handlers back to DebounceFlushFunc would be a
+//     mutual stack dependency → CloudFormation rejects it. So the handlers are wired against the
+//     function's EXPLICIT physical NAME (a plain string), and the whole point of THIS test is that
+//     the name they invoke MATCHES the function's real name — a mismatch is otherwise an
+//     undetectable silent no-op (the invoke 404s, the minute sweeper quietly covers it, and the
+//     "~1s" promise is silently lost). Pins name-match, least-privilege scope, and exact caller set.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('CACHE-9 event-driven fast lane — mutation handlers invoke the flusher', () => {
+    // The ordinary handlers that reach enqueueEdgeInvalidation() via revalidateTenantPaths()
+    // (backend: content/create+update, products/update+delete, categories/update+delete). Matched
+    // by stable logical-id prefix across the whole stack tree. A SEVENTH entry, or a MISSING one,
+    // is a caller-set change: re-read docs/caching-architecture.md § "Invalidation model".
+    const ORDINARY_MUTATORS = [
+        'CreateContentFunc', 'UpdateContentFunc',   // CatalogApi nested stack
+        'UpdateProductFunc', 'DeleteProductFunc',   // CatalogApi nested stack
+        'UpdateCategoryFunc', 'DeleteCategoryFunc', // CommerceApi nested stack
+    ];
+
+    /** The parent's single DebounceFlush function name — the source of truth for the wiring. */
+    function debounceFlushName(): string {
+        const fns = Object.entries(template.findResources('AWS::Lambda::Function')).filter(([id]) =>
+            id.startsWith('DebounceFlushFunc'),
+        );
+        expect(fns).toHaveLength(1);
+        const name = (fns[0][1] as any).Properties.FunctionName;
+        // Explicit physical name (a literal), NOT a CDK token — that is what lets the nested
+        // handlers reference it without a cross-stack cycle.
+        expect(typeof name).toBe('string');
+        return name as string;
+    }
+
+    /** Locate exactly one function by logical-id prefix, anywhere in the stack tree. */
+    function findFn(prefix: string): { t: Template; props: any } {
+        for (const t of allTemplates) {
+            const hits = Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) =>
+                id.startsWith(prefix),
+            );
+            if (hits.length === 1) return { t, props: (hits[0][1] as any).Properties };
+            if (hits.length > 1) throw new Error(`expected 1 ${prefix}, found ${hits.length}`);
+        }
+        throw new Error(`${prefix} not found in any template`);
+    }
+
+    test('(cache9-name) DebounceFlushFunc has the explicit deterministic physical name', () => {
+        // stage 'test' → suffix '-test' → the single source of truth computed in amodx-stack.ts.
+        expect(debounceFlushName()).toBe('amodx-debounce-flush-test');
+    });
+
+    test('(cache9-env) each ordinary mutator carries DEBOUNCE_FLUSH_FUNCTION_NAME = the flusher name', () => {
+        const name = debounceFlushName();
+        for (const prefix of ORDINARY_MUTATORS) {
+            const vars = findFn(prefix).props.Environment?.Variables ?? {};
+            expect(vars.DEBOUNCE_FLUSH_FUNCTION_NAME).toBe(name);
+        }
+    });
+
+    test('(cache9-iam) each ordinary mutator role holds lambda:InvokeFunction on exactly the flusher ARN, nothing wider', () => {
+        const name = debounceFlushName();
+        for (const prefix of ORDINARY_MUTATORS) {
+            const { t, props } = findFn(prefix);
+            const roleId = props.Role['Fn::GetAtt'][0] as string;
+
+            const invokeResources: unknown[] = [];
+            for (const [, policy] of Object.entries(t.findResources('AWS::IAM::Policy'))) {
+                const p = policy as any;
+                const roles = (p.Properties.Roles ?? []).map((r: any) => r.Ref);
+                if (!roles.includes(roleId)) continue;
+                for (const s of p.Properties.PolicyDocument.Statement as any[]) {
+                    const actions = Array.isArray(s.Action) ? s.Action : [s.Action];
+                    if (actions.includes('lambda:InvokeFunction')) invokeResources.push(s.Resource);
+                }
+            }
+            // Exactly one InvokeFunction grant, scoped to the flusher's own ARN (least privilege —
+            // never a wildcard). A second grant, or a missing one, fails HERE by prefix name.
+            expect(invokeResources).toHaveLength(1);
+            expect(JSON.stringify(invokeResources[0])).toContain(`:function:${name}`);
+            expect(JSON.stringify(invokeResources[0])).not.toContain(':function:*');
+        }
+    });
+});

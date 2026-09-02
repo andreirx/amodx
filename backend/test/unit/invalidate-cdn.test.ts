@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 /**
  * cache-4a regression for the ENQUEUE half of the fast-lane generation protocol
@@ -15,12 +15,27 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * environment is read — runs under `npm run test:unit` (config `vitest.unit.config.ts`).
  */
 
-const { ddbSend } = vi.hoisted(() => ({ ddbSend: vi.fn() }));
+const { ddbSend, lambdaSend } = vi.hoisted(() => ({ ddbSend: vi.fn(), lambdaSend: vi.fn() }));
 
 // Mock the db singleton so no real DynamoDBDocumentClient / AWS client is constructed.
 vi.mock("../../src/lib/db.js", () => ({
     db: { send: ddbSend },
     TABLE_NAME: "test-table",
+}));
+
+// CACHE-9: mock the Lambda client so the async self-invoke is captured, never real. The command
+// class stashes its `input` for assertions (same style as the ddb stubs below).
+vi.mock("@aws-sdk/client-lambda", () => ({
+    LambdaClient: class {
+        send = lambdaSend;
+    },
+    InvokeCommand: class {
+        readonly __kind = "Invoke";
+        input: any;
+        constructor(input: any) {
+            this.input = input;
+        }
+    },
 }));
 
 // Stub the command classes to capture their input for assertions (same style as
@@ -49,6 +64,9 @@ async function loadEnqueue() {
 
 const updateCalls = () =>
     ddbSend.mock.calls.map(([c]) => c).filter((c) => c.__kind === "Update");
+
+const invokeCalls = () =>
+    lambdaSend.mock.calls.map(([c]) => c).filter((c) => c.__kind === "Invoke");
 
 describe("enqueueEdgeInvalidation — atomic paths + rev (writer invariant)", () => {
     beforeEach(() => {
@@ -88,5 +106,113 @@ describe("enqueueEdgeInvalidation — atomic paths + rev (writer invariant)", ()
         const enqueue = await loadEnqueue();
         await enqueue(["", "   "]);
         expect(updateCalls()).toHaveLength(0);
+    });
+});
+
+/**
+ * CACHE-9 (event-driven fast lane, ratified 2026-09-02). After a successful fast-lane marker
+ * write, `enqueueEdgeInvalidation()` async-invokes the DebounceFlush function so the drain runs in
+ * ~1s instead of waiting up to one EventBridge tick (~60s) while the idle-exit flusher sleeps.
+ *
+ * These pin the three contract points from the slice packet:
+ *   (a) a successful marker write triggers EXACTLY ONE Event-type invoke of the configured fn;
+ *   (b) an invoke FAILURE is swallowed — the mutation still resolves and the marker write happened;
+ *   (c) the env var UNSET → no invoke attempted, no throw (the sweeper contract still holds).
+ *
+ * The invoke is read from `process.env.DEBOUNCE_FLUSH_FUNCTION_NAME` per call, so each test sets it
+ * before importing and clears it after to prevent cross-test leakage.
+ */
+describe("enqueueEdgeInvalidation — CACHE-9 event-driven drain trigger", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        ddbSend.mockReset();
+        ddbSend.mockResolvedValue({}); // marker write succeeds
+        lambdaSend.mockReset();
+        lambdaSend.mockResolvedValue({ StatusCode: 202 });
+        delete process.env.DEBOUNCE_FLUSH_FUNCTION_NAME;
+    });
+
+    afterEach(() => {
+        delete process.env.DEBOUNCE_FLUSH_FUNCTION_NAME;
+    });
+
+    it("(a) triggers exactly ONE Event-type invoke of the configured function after a successful marker write", async () => {
+        process.env.DEBOUNCE_FLUSH_FUNCTION_NAME = "amodx-debounce-flush-staging";
+        const enqueue = await loadEnqueue();
+        await enqueue(["/about"]);
+
+        // The marker was written first...
+        expect(updateCalls()).toHaveLength(1);
+        // ...then exactly one async invoke of the flusher.
+        const invokes = invokeCalls();
+        expect(invokes).toHaveLength(1);
+        expect(invokes[0].input).toMatchObject({
+            FunctionName: "amodx-debounce-flush-staging",
+            InvocationType: "Event", // async — never "RequestResponse" (would block the edit on the flush)
+        });
+    });
+
+    it("(a2) high-water-mark PUT fails but marker UPDATE succeeds → still exactly one invoke (partial-write gap, review-0 pt1)", async () => {
+        process.env.DEBOUNCE_FLUSH_FUNCTION_NAME = "amodx-debounce-flush-staging";
+        // The load-bearing marker Update succeeds; only the independent CDN_LAST_CHANGE Put rejects.
+        // Before the review-0 fix these shared one Promise.all, so a Put rejection skipped the invoke.
+        ddbSend.mockImplementation((cmd: any) => {
+            if (cmd.__kind === "Put") return Promise.reject(new Error("high-water put failed"));
+            return Promise.resolve({});
+        });
+        const enqueue = await loadEnqueue();
+
+        // The put failure is swallowed — the mutation still resolves.
+        await expect(enqueue(["/about"])).resolves.toBeUndefined();
+
+        // Marker written, and the accelerator still fired exactly once despite the put failure.
+        expect(updateCalls()).toHaveLength(1);
+        expect(invokeCalls()).toHaveLength(1);
+    });
+
+    it("marker UPDATE fails → no invoke attempted (nothing durable to drain)", async () => {
+        process.env.DEBOUNCE_FLUSH_FUNCTION_NAME = "amodx-debounce-flush-staging";
+        // Only the load-bearing marker Update rejects; there is no durable marker, so no accelerator.
+        ddbSend.mockImplementation((cmd: any) => {
+            if (cmd.__kind === "Update") return Promise.reject(new Error("marker update failed"));
+            return Promise.resolve({});
+        });
+        const enqueue = await loadEnqueue();
+
+        await expect(enqueue(["/about"])).resolves.toBeUndefined();
+
+        expect(updateCalls()).toHaveLength(1); // attempted
+        expect(invokeCalls()).toHaveLength(0); // ...but never invoked without a durable marker
+    });
+
+    it("(b) an invoke failure is swallowed — the mutation resolves and the marker write still happened", async () => {
+        process.env.DEBOUNCE_FLUSH_FUNCTION_NAME = "amodx-debounce-flush-staging";
+        lambdaSend.mockRejectedValue(new Error("Lambda throttled")); // invoke fails
+        const enqueue = await loadEnqueue();
+
+        // Must NOT reject — the edit-save path can never fail because the accelerator failed.
+        await expect(enqueue(["/about"])).resolves.toBeUndefined();
+
+        // The durable marker write happened regardless (the sweeper will drain it).
+        expect(updateCalls()).toHaveLength(1);
+        expect(invokeCalls()).toHaveLength(1); // it was attempted
+    });
+
+    it("(c) env var unset → no invoke attempted, no throw (sweeper contract still holds)", async () => {
+        // DEBOUNCE_FLUSH_FUNCTION_NAME is deleted in beforeEach.
+        const enqueue = await loadEnqueue();
+        await expect(enqueue(["/about"])).resolves.toBeUndefined();
+
+        expect(updateCalls()).toHaveLength(1); // marker still written
+        expect(invokeCalls()).toHaveLength(0); // ...but no invoke without the wiring
+    });
+
+    it("does NOT invoke when there is nothing to enqueue (no marker write, no accelerator)", async () => {
+        process.env.DEBOUNCE_FLUSH_FUNCTION_NAME = "amodx-debounce-flush-staging";
+        const enqueue = await loadEnqueue();
+        await enqueue(["", "   "]);
+
+        expect(updateCalls()).toHaveLength(0);
+        expect(invokeCalls()).toHaveLength(0);
     });
 });

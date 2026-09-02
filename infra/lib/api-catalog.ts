@@ -29,6 +29,10 @@ interface CatalogApiProps extends NestedStackProps {
     uploadsCdnUrl: string;
     // Review bulk-import stages raw originals into the PRIVATE quarantine bucket
     privateBucket: s3.IBucket;
+    // CACHE-9: physical name of the DebounceFlush function (a plain string, NOT a construct ref —
+    // that is what keeps the grant/env wiring below free of a nested→parent stack cycle). The
+    // ordinary content/product mutation handlers async-invoke it after writing the fast-lane marker.
+    debounceFlushFunctionName: string;
 }
 
 /**
@@ -103,6 +107,21 @@ export class CatalogApi extends NestedStack {
             timeout: cdk.Duration.seconds(29),
         };
 
+        // CACHE-9 event-driven fast lane. The ordinary content/product mutation handlers reach
+        // `enqueueEdgeInvalidation()` (via `revalidateTenantPaths`), which async-invokes the
+        // DebounceFlush function so an edit's own drain runs in ~1s. Give exactly those handlers the
+        // env var + a least-privilege `lambda:InvokeFunction` on that one function ARN. The ARN is
+        // built from the deterministic NAME (not a construct ref) so there is no cross-stack cycle.
+        const debounceFlushArn =
+            `arn:aws:lambda:${this.region}:${this.account}:function:${props.debounceFlushFunctionName}`;
+        const wireFastLaneTrigger = (fn: nodejs.NodejsFunction) => {
+            fn.addEnvironment('DEBOUNCE_FLUSH_FUNCTION_NAME', props.debounceFlushFunctionName);
+            fn.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['lambda:InvokeFunction'],
+                resources: [debounceFlushArn],
+            }));
+        };
+
         // --- CONTENT API ---
         this.createContentFunc = new nodejs.NodejsFunction(this, 'CreateContentFunc', {
             ...nodeProps,
@@ -111,6 +130,7 @@ export class CatalogApi extends NestedStack {
         });
         table.grantReadWriteData(this.createContentFunc);
         props.revalidationSecret.grantRead(this.createContentFunc);  // cache-2: ISR purge on page create
+        wireFastLaneTrigger(this.createContentFunc);                 // CACHE-9: async-invoke the flusher
 
         this.listContentFunc = new nodejs.NodejsFunction(this, 'ListContentFunc', {
             ...nodeProps,
@@ -133,6 +153,7 @@ export class CatalogApi extends NestedStack {
         });
         table.grantReadWriteData(this.updateContentFunc);
         props.revalidationSecret.grantRead(this.updateContentFunc);  // Phase 4: Cache invalidation
+        wireFastLaneTrigger(this.updateContentFunc);                 // CACHE-9: async-invoke the flusher
 
         // History & Restore
         this.listHistoryFunc = new nodejs.NodejsFunction(this, 'ListHistoryFunc', {
@@ -178,6 +199,7 @@ export class CatalogApi extends NestedStack {
         });
         table.grantReadWriteData(this.updateProductFunc);
         props.revalidationSecret.grantRead(this.updateProductFunc);  // Cache invalidation
+        wireFastLaneTrigger(this.updateProductFunc);                 // CACHE-9: async-invoke the flusher
 
         this.deleteProductFunc = new nodejs.NodejsFunction(this, 'DeleteProductFunc', {
             ...nodeProps,
@@ -186,6 +208,7 @@ export class CatalogApi extends NestedStack {
         });
         table.grantReadWriteData(this.deleteProductFunc);
         props.revalidationSecret.grantRead(this.deleteProductFunc);  // Cache invalidation
+        wireFastLaneTrigger(this.deleteProductFunc);                 // CACHE-9: async-invoke the flusher
 
         // --- IMPORT ---
         this.importFunc = new nodejs.NodejsFunction(this, 'ImportFunc', {

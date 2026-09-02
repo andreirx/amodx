@@ -43,8 +43,30 @@ import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
  * while the flusher is idle waits up to one EventBridge tick (~60s) for its FIRST drain, then
  * ~10s resolution while work remains. A bulk marker inside its 15-min window likewise re-checks
  * at tick resolution (its lane tolerates ~1-min latency by design — see review-0 retry note).
- * The full "visible in seconds even from idle" promise returns with the queued event-driven
- * fast-lane slice (edit enqueue directly triggers a drain; see docs/TECH-DEBT.md 2026-09-02).
+ * The full "visible in seconds even from idle" promise is RESTORED by CACHE-9 (implemented
+ * 2026-09-02): the edit's own enqueue path (`lib/invalidate-cdn.ts#enqueueEdgeInvalidation`)
+ * async-invokes THIS function (`InvocationType: "Event"`) right after the fast-lane marker write,
+ * so an idle-flusher edit drains in ~1s instead of waiting a tick. The EventBridge minute tick
+ * REMAINS the sweeper/safety-net (lost invoke, bulk lane).
+ *
+ * CONCURRENCY (introduced by CACHE-9): an async invoke can now run THIS handler CONCURRENTLY with
+ * the scheduled tick (and multiple rapid edits fan out to multiple concurrent invocations — no
+ * reserved concurrency is set). Both lanes are safe under concurrent execution WITHOUT locks:
+ *   - FAST LANE: cleanup is `DELETE #paths :drained` guarded by `#rev = :rev`, and it never
+ *     mutates `rev`. Two invocations that both read generation R both invalidate the same members
+ *     (redundant, harmless) and both satisfy `#rev = R` at cleanup — deleting an already-absent
+ *     set member is a no-op. A cleanup only ever removes members it has itself invalidated, and
+ *     only while no enqueue has advanced `rev` since the read; concurrency cannot violate that
+ *     invariant, it can only cause a bounded redundant invalidation (≤ one per concurrent drain
+ *     that observed the same un-cleaned paths — the same bound § "Volume / coalescing math" in
+ *     docs/caching-architecture.md already prices for the `rev`-race retention case).
+ *   - BULK LANE: `CDN_PENDING` delete is conditional on `updatedAt = :original`. Two invocations
+ *     both past the 15-min window each submit `/*` (redundant; `/*` bills as 1 path) but only the
+ *     FIRST conditional delete succeeds — the second sees the marker gone and its condition fails
+ *     (caught, logged). At most one extra `/*` per concurrent pair. The `bulkHandled` latch is
+ *     per-invocation and intentionally does NOT coordinate across invocations; the cross-
+ *     invocation coordinator is the conditional delete, not the latch.
+ * No lossy interleaving exists in either lane, so CACHE-9 adds NO code change here — only this note.
  *
  * Race condition safety:
  *   - CDN_PENDING delete uses ConditionExpression updatedAt = :original — a mutation that

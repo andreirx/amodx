@@ -51,6 +51,16 @@ export class AmodxStack extends cdk.Stack {
     // Helper to suffix names: "AmodxBus" -> "AmodxBus-staging"
     const suffix = props.stage === 'prod' ? '' : `-${props.stage}`;
 
+    // CACHE-9 (event-driven fast lane): the DEBOUNCE flush function's name, computed ONCE here as
+    // the single source of truth. It is an EXPLICIT physical name (not a CDK token) precisely so
+    // the ordinary content-mutating Lambdas — which live in the CatalogApi / CommerceApi
+    // NESTED stacks created BEFORE this function — can be granted `lambda:InvokeFunction` on it and
+    // receive it as an env var WITHOUT a cross-stack reference to the `debounceFlushFunc` construct.
+    // A token reference would be a nested→parent edge, and the parent already references those
+    // nested stacks (for its route integrations) → a mutual stack dependency, which CloudFormation
+    // rejects. A deterministic string sidesteps the cycle entirely (packet-authorised fallback).
+    const debounceFlushFunctionName = `amodx-debounce-flush${suffix}`;
+
     const rootDomain = props.config.domains.root;
     const tenantDomains = props.config.domains.tenants || [];
     const globalCertArn = props.config.domains.globalCertArn;
@@ -217,6 +227,9 @@ export class AmodxStack extends cdk.Stack {
       uploadsBucket: uploads.bucket,
       uploadsCdnUrl: `https://${uploads.distribution.distributionDomainName}`,
       privateBucket: uploads.privateBucket,
+      // CACHE-9: name (not construct) so content/product mutation handlers can async-invoke the
+      // flusher without a nested→parent cycle. See `debounceFlushFunctionName` above.
+      debounceFlushFunctionName,
     });
 
     const api = new AmodxApi(this, 'Api', {
@@ -267,6 +280,8 @@ export class AmodxStack extends cdk.Stack {
       revalidationSecret: revalidationSecret,
       rendererUrl: rendererBaseUrl,
       recaptchaSecretKey, // Deployment-level reCAPTCHA
+      // CACHE-9: categories update/delete async-invoke the flusher. Deterministic name, no cycle.
+      debounceFlushFunctionName,
     });
 
     // rev-2a (REV2A-INFRA-SURFACE): the review moderation handler's `action: "approve-image"` path
@@ -327,18 +342,28 @@ export class AmodxStack extends cdk.Stack {
     // ============================================================
     // 4b. Debounced CloudFront Invalidation
     // ============================================================
-    // Mutation handlers write a DynamoDB marker (SYSTEM#CDN_PENDING)
-    // via the withInvalidation() HOF. No CloudFront IAM needed on
-    // mutation Lambdas — they only do DDB PutItem.
+    // Mutation handlers write a DynamoDB marker (SYSTEM#CDN_PENDING for the bulk lane,
+    // SYSTEM#CDN_FAST_PENDING for the ordinary fast lane). No CloudFront IAM on mutation Lambdas —
+    // they only write DDB. The debounce flush Lambda holds CloudFront:CreateInvalidation and drains
+    // both markers on a 1-minute EventBridge schedule (looping internally at ~10s resolution while
+    // fast-lane work exists; idle-exit otherwise).
     //
-    // The debounce flush Lambda polls every 10 seconds (inside a
-    // 1-minute EventBridge schedule) and fires CloudFront /*
-    // invalidation when 15 minutes have elapsed since the last mutation.
+    // CACHE-9: the ordinary content-mutating handlers ALSO hold `lambda:InvokeFunction` on THIS
+    // function (wired inside CatalogApi/CommerceApi against `debounceFlushFunctionName`) so an edit
+    // async-invokes its own drain (~1s), instead of waiting up to one EventBridge tick when the
+    // idle-exit flusher is asleep. That is `lambda:InvokeFunction`, NOT CloudFront IAM — the
+    // CreateInvalidation blast radius is unchanged (see infra/test § blast radius).
     const distId = renderer.distribution.distributionId;
     const distArn = `arn:aws:cloudfront::${this.account}:distribution/${distId}`;
 
     const debounceFlushFunc = new nodejs.NodejsFunction(this, 'DebounceFlushFunc', {
         runtime: lambda.Runtime.NODEJS_22_X,
+        // CACHE-9: EXPLICIT physical name = the deterministic identifier the nested-stack mutation
+        // handlers invoke, with no cross-stack construct reference (cycle-free — see the const's
+        // doc above). Trade-off: an explicit name forces a one-time REPLACEMENT of the existing
+        // auto-named function on first deploy (harmless — it is a scheduled/async-invoked worker,
+        // EventBridge keeps its target current, and the DDB markers it drains are idempotent).
+        functionName: debounceFlushFunctionName,
         entry: path.join(__dirname, '../../backend/src/scheduled/debounce-flush.ts'),
         handler: 'handler',
         memorySize: 256,

@@ -1142,9 +1142,21 @@ work; while paths exist (incl. retained-after-failure) the ~10s cadence holds. R
 an edit enqueued while idle waits ≤1 EventBridge tick (~60s) for its FIRST drain, then ~10s
 resolution. Bulk lane re-checks at tick resolution (tolerates ~1-min latency by design).
 
-**Queued (ratified same date): event-driven fast lane** — the edit enqueue path async-triggers a
-drain directly, restoring the "visible in seconds from idle" promise at ~zero cost, and the
-scheduled tick remains as sweeper. Needs: backend enqueue-path change + one IAM invoke grant
-(named infra gain: ~$12/mo + the free tier back). Run as a relay slice with staging probe before
-prod. **Process lesson for reviews:** always-on Lambda wall-clock is a cost dimension reviewers
-must price — "free tier" claims need the GB-s arithmetic, not just request counts.
+**Event-driven fast lane — IMPLEMENTED as CACHE-9 (2026-09-02, uncommitted; awaiting staging
+probe + review).** `lib/invalidate-cdn.ts#enqueueEdgeInvalidation()` now async-invokes the
+DebounceFlush function (`InvocationType: "Event"`) right after the fast-lane marker write, so an
+idle-flusher edit drains in ~1s instead of ≤1 tick. The scheduled minute tick remains the
+sweeper/safety-net; the bulk lane is deliberately untouched. Invoke failure is swallowed (marker
+durable → sweeper backstops), so the edit-save path never fails on it. Infra: the six ordinary
+content-mutating handlers (content create/update, products update/delete, categories
+update/delete — in the CatalogApi/CommerceApi nested stacks) get `lambda:InvokeFunction` on the
+flusher + its name as an env var, wired against the flusher's **explicit physical name** (not a
+construct token) to avoid a nested→parent CloudFormation cycle. NOT CloudFront IAM — the
+CreateInvalidation blast radius is unchanged. Coverage: `backend/test/unit/invalidate-cdn.test.ts`
+(enqueue triggers one Event invoke; failure swallowed; env-unset skips) + `infra/test/
+amodx-stack.test.ts` `(cache9-*)` (name-match, least-privilege, exact caller set). Named infra
+gain: keeps the idle-exit permanent (~$12/mo + the whole Lambda free tier) while beating original
+cache-4a latency (~1s vs ~10s). **Remaining before "done": operator staging deploy + the
+edit→CreateInvalidation probe (target ≤5s), then prod.** **Process lesson for reviews:** always-on
+Lambda wall-clock is a cost dimension reviewers must price — "free tier" claims need the GB-s
+arithmetic, not just request counts.
