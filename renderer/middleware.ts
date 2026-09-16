@@ -171,6 +171,25 @@ export async function middleware(request: NextRequest) {
         return notFoundResponse();
     }
 
+    // A2b. `/<siteId>/_dyn/<rest>` — the twin's rewrite-target shape, LEAKED as a visible
+    // URL. Preview pages hand the client router the REWRITTEN path (the RSC payload's
+    // canonical URL is `/<siteId>/_dyn/...`), so client-side navigation has always written
+    // this shape into address bars, and people bookmarked/shared those links. Until next
+    // 16.3.5 such direct requests accidentally matched the `%5Fdyn` twin directory — a
+    // second-segment gap in A2 that contradicted its own "never a public URL" contract
+    // (two URLs serving the same tenant content); 16.3.5's stricter escaped-segment
+    // matching turned them into 404s (prod regression, human-reported 2026-09-16).
+    // Self-heal: permanent-redirect to the canonical preview form. The `/_site/` branch's
+    // host gate (CloudFront/localhost/staging only) still applies AFTER the redirect, so
+    // this opens nothing on production tenant domains — and dotted first segments (tenant
+    // hosts as siteIds) never reach here (asset short-circuit above).
+    const segs = path.split('/'); // ['', seg1, seg2, ...]
+    if (segs.length >= 3 && segs[2] === DYN_SEGMENT) {
+        const url = request.nextUrl.clone();
+        url.pathname = `/_site/${segs[1]}` + (segs.length > 3 ? `/${segs.slice(3).join('/')}` : '');
+        return NextResponse.redirect(url, 308);
+    }
+
     // Requests that cannot be served from a cacheable render. Route Handlers are exempt:
     // they have no twin, and they are never in the full-route cache to begin with.
     const needsDynamicRender =

@@ -480,6 +480,33 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         );
     });
 
+    // ── ROW (m) ─────────────────────────────────────────────────────────────────────────
+    // middleware A2/A2b: `_dyn` is an internal rewrite target, NEVER a public URL — but the
+    // preview RSC payload hands the client router the REWRITTEN `/<siteId>/_dyn/...` path,
+    // so that shape leaks into address bars and gets bookmarked/shared. Pre-16.3.5 those
+    // direct requests accidentally matched the %5Fdyn twin dir (duplicate-URL serving);
+    // 16.3.5 turned them into 404s (prod regression, human-reported 2026-09-16). The
+    // contract now: first-segment `/_dyn/...` is refused (A2, 404 no-store); second-segment
+    // `/<siteId>/_dyn/<rest>` self-heals via 308 to the canonical `/_site/<siteId>/<rest>`.
+
+    test("(m1) /<siteId>/_dyn/<rest> permanent-redirects to the canonical /_site form", async () => {
+        const res = await request({ port: server.port, path: "/leaked-site/_dyn/category/some-page", host: FIXTURE_HOST });
+        assert.equal(res.status, 308, "leaked _dyn preview links must self-heal, not 404");
+        assert.equal(new URL(res.header("location"), "http://x").pathname, "/_site/leaked-site/category/some-page");
+    });
+
+    test("(m2) bare /<siteId>/_dyn (no rest) redirects to /_site/<siteId>", async () => {
+        const res = await request({ port: server.port, path: "/leaked-site/_dyn", host: FIXTURE_HOST });
+        assert.equal(res.status, 308);
+        assert.equal(new URL(res.header("location"), "http://x").pathname, "/_site/leaked-site");
+    });
+
+    test("(m3) first-segment /_dyn stays refused: 404 + no-store (A2 unchanged)", async () => {
+        const res = await request({ port: server.port, path: "/_dyn/whatever", host: FIXTURE_HOST });
+        assert.equal(res.status, 404);
+        assert.match(res.header("cache-control"), /no-store/);
+    });
+
     // ── ROW (h) ─────────────────────────────────────────────────────────────────────────
     // § "cache-8": mitigation d (a middleware scanner shield) is DEFERRED, not implemented —
     // NO path-shape shield exists. These rows pin WHY (the counterexample that defeats it) and
