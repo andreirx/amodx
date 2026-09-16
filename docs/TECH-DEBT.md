@@ -1160,3 +1160,21 @@ cache-4a latency (~1s vs ~10s). **Remaining before "done": operator staging depl
 edit→CreateInvalidation probe (target ≤5s), then prod.** **Process lesson for reviews:** always-on
 Lambda wall-clock is a cost dimension reviewers must price — "free tier" claims need the GB-s
 arithmetic, not just request counts.
+
+**2026-09-16 re-triage — next criticals; the pinned-acceptance era ends.** Sep-14 advisories:
+TWO CRITICALS in next (>=16.0.0 <16.3.3): unauthenticated RCE in the Image Optimization API via
+AVIF (our `/_next/image` is publicly routable; the image Lambda runs next's optimizer; its libvips
+decodes AVIF — NOT coverable by the semi-trusted-inputs argument) + unauthenticated RCE on
+Windows hosts (unreachable, Linux Lambda). The fix 16.3.3 was IN-RANGE (`^16.2.6`) — the exact
+revisit trigger recorded 2026-08-30. Human-ratified 2026-09-16: **next 16.2.12 → 16.3.5** +
+**deployed image-optimizer sharp 0.32.6 → 0.35.4** (also clears GHSA-rgj7-g3m4-5g8c, libheif).
+- Verified: serving-contract suite 30/30 on 16.3.5 through open-next 3.1.3 (pinned+patched,
+  unchanged); verify-opennext-patch PASS (swr=300 survives); artifact check caught the predicted
+  sharp cross-install failure — open-next 3.1.3 passes old-style `--arch/--platform` flags, npm
+  installed HOST (darwin) binaries; fix: `npm_config_os/cpu/libc` env in `renderer` `build:open`
+  (child npm inherits them; verified `@img/sharp-linux-x64` present in the built function).
+- Audit-gate ACCEPTED list RESET: the five next-pinned entries retired (regression to old next
+  must go red); one new entry — @tiptap/core GHSA-j95f-988m-3j2f is a version-range false
+  positive (installed 2.27.1; affected >=3.7.0).
+- Deferred, sub-gate: tiptap 2.x moderate (mergeAttributes `__proto__`, admin's own editor;
+  proper fix = tiptap 3 migration, its own decision), `qs` moderate ×2.

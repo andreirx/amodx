@@ -15,18 +15,16 @@
 import { spawnSync } from "node:child_process";
 
 const ACCEPTED = new Map([
-  // postcss <=8.5.22, nested copy pinned inside next 16.2.12 (build-time CSS of our
-  // own sources; the runtime copy is hoisted and already fixed). Revisit: opennext-1
-  // unpark / next upgrade, or next ships an in-range fix.
-  ["GHSA-qx2v-qp2m-jg93", "postcss-in-next: build-time only, pinned by next 16.2.12"],
-  ["GHSA-6g55-p6wh-862q", "postcss-in-next: build-time only, pinned by next 16.2.12"],
-  ["GHSA-fxqj-rqcc-2cmp", "postcss-in-next: build-time only, pinned by next 16.2.12"],
-  ["GHSA-r28c-9q8g-f849", "postcss-in-next: build-time only, pinned by next 16.2.12"],
-  // sharp <0.35.0 (libvips CVEs). next pins ^0.34.5; the DEPLOYED image optimizer
-  // bundles open-next's own sharp 0.32.6. Risk accepted by human 2026-08-30: image
-  // inputs are tenant-admin uploads + operator-run review imports, not anonymous.
-  // Revisit: opennext-1 unpark, or image sources become externally supplied.
-  ["GHSA-f88m-g3jw-g9cj", "sharp-via-next: accepted 2026-08-30, inputs are semi-trusted"],
+  // 2026-09-16 reset: the five next-16.2.12-pinned entries (postcss ×4, sharp libvips)
+  // RETIRED — the recorded revisit trigger fired (next shipped an in-range fix) and the
+  // next 16.3.5 bump cleared them all. If any reappears, that is a regression to an old
+  // next and MUST go red.
+  //
+  // @tiptap/core ReDoS (>=3.7.0 <3.30.5): a VERSION-RANGE false positive — installed
+  // @tiptap/core is 2.27.1, below the affected range; npm audit flags the package because
+  // its union range covers a separate sub-gate moderate. Revisit: any tiptap major
+  // migration (2.x -> 3.x), which is its own decision (editor behavior surface).
+  ["GHSA-j95f-988m-3j2f", "tiptap-ReDoS: installed 2.27.1, affected range starts 3.7.0"],
 ]);
 
 const res = spawnSync("npm", ["audit", "--omit=dev", "--json"], {
