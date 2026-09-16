@@ -135,6 +135,15 @@ PD-001 (tenant-local identity). Security finding 7.6.
 | `cmrc-5` | Post-cutover validation + forbidden-import CI guard | PLANNED |
 | `cmrc-6` | Purge old main-table copies (backup-ref + NDJSON gated, `purge-verify`) | PLANNED |
 
+**Commerce feature backlog (human, 2026-09-16 — "add these to the commerce track that will
+soon need to be done"):** two order-lifecycle features, to be spec'd/ratified when Track B
+resumes (both need the order model, so they slot AFTER the cmrc-* boundary slices):
+
+| Item | Scope notes | Status |
+|------|-------------|--------|
+| `cmrc-reviews-ask` | Ask the customer for a review AFTER an order is fulfilled. Builds on the shipped REV track (reviews-with-images); needs an order `fulfilled` lifecycle event + an outbound email to the customer — NOTE: sending branded/tenant email is exactly the recorded trigger for the deferred `email-2a` (see `docs/runbooks/enable-branded-email.md`), so email-2a's enablement likely rides with this slice. | BACKLOG (human-requested) |
+| `cmrc-withdrawal` | "Retract from contract" button for the customer — the 14-day right of withdrawal for distance contracts required by Romanian consumer law (baseline: OUG 34/2014 transposing EU Directive 2011/83; the human cites NEW Romanian rules — VERIFY the current legal text at spec time, incl. when the 14 days start (delivery vs order), the mandatory standard withdrawal form, and refund deadlines). Needs: order visibility for the customer (ties into Track C auth or an order-lookup path), a withdrawal request state on the order, admin-side handling of returns. Legal-compliance feature: spec gets a ratification pass against the actual statute, not from memory. | BACKLOG (human-requested) |
+
 ## Track C — Customer auth
 
 Source: `docs/plan-public-pool-customer-auth.md`. Invariants: PD-001/002/003.
