@@ -1178,3 +1178,13 @@ revisit trigger recorded 2026-08-30. Human-ratified 2026-09-16: **next 16.2.12 �
   positive (installed 2.27.1; affected >=3.7.0).
 - Deferred, sub-gate: tiptap 2.x moderate (mergeAttributes `__proto__`, admin's own editor;
   proper fix = tiptap 3 migration, its own decision), `qs` moderate ×2.
+
+**Image optimization: PARKED BY HUMAN RULING (2026-09-16).** The `/_next/image` optimizer endpoint
+is deployed but (a) referenced by ZERO markup (all tenant images ship as raw `<img>` from the
+assets CDN — deliberate, see renderer/src/lib/review-images.ts) and (b) broken at the
+upstream-fetch stage on BOTH old and new builds ("TypeError: x is not a function", pre-existing,
+not a 16.3.5 regression). Human 2026-09-16: "I did not want the image optimization yet, since
+nobody asked for it and we have fast sites right now" — do NOT fix it, do NOT build on it. The
+security exposure it carried is closed regardless (next 16.3.5 + sharp 0.35.4 now run in it).
+Revisit trigger: a tenant actually asks for optimized/responsive images — then the decision is
+fix-the-fetch-path vs remove-the-endpoint (dead surface is where this month's RCE lived).
