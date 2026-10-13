@@ -75,9 +75,16 @@ async function readsDuring(fn) {
  * function, so a silently-broken detector fails the suite instead of passing it.
  */
 async function storedIsrEntries() {
-    const root = path.join(RENDERER_DIR, ".next", "server", "app");
+    // Two on-disk layouts, both walked so the detector reads whichever the installed Next writes:
+    //  - legacy (<= 16.3.5): .next/server/app/<host>/<slug>.meta
+    //  - route-scoped (>= 16.3.8, `server/lib/route-cache-key.js`):
+    //      .next/server/route-cache/<kind>/<sha256(sourceRoute)>/$/<host>/<slug>.meta
+    //    The key is everything after the `$` segment — the same rewritten path as before, now
+    //    scoped under its owning route. A detector reading only the legacy root silently finds
+    //    nothing on the new layout (hit 2026-10-13 on the 16.3.5 -> 16.3.8 bump).
+    const server = path.join(RENDERER_DIR, ".next", "server");
     const out = [];
-    async function walk(dir) {
+    async function walk(dir, keyOf) {
         let entries;
         try {
             entries = await readdir(dir, { withFileTypes: true });
@@ -86,16 +93,23 @@ async function storedIsrEntries() {
         }
         for (const e of entries) {
             const full = path.join(dir, e.name);
-            if (e.isDirectory()) await walk(full);
+            if (e.isDirectory()) await walk(full, keyOf);
             else if (e.name.endsWith(".meta")) {
-                const key = path.relative(root, full).replace(/\.meta$/, "");
-                if (!key.startsWith(FIXTURE_HOST)) continue;
+                const key = keyOf(full);
+                if (!key || !key.startsWith(FIXTURE_HOST)) continue;
                 const meta = JSON.parse(await readFile(full, "utf8"));
                 out.push({ key, status: meta.status ?? 200, location: meta.headers?.location });
             }
         }
     }
-    await walk(root);
+    const legacyRoot = path.join(server, "app");
+    await walk(legacyRoot, (full) => path.relative(legacyRoot, full).replace(/\.meta$/, ""));
+    const routeRoot = path.join(server, "route-cache");
+    await walk(routeRoot, (full) => {
+        const segs = path.relative(routeRoot, full).split(path.sep); // [kind, hash, '$', host, ...]
+        const at = segs.indexOf("$");
+        return at === -1 ? null : segs.slice(at + 1).join("/").replace(/\.meta$/, "");
+    });
     return out;
 }
 

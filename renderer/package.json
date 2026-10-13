@@ -9,7 +9,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:serving": "node --test --test-concurrency=1 test/serving-contract/contract.test.mjs",
-    "build:open": "SHARP_VERSION=0.35.4 npm_config_os=linux npm_config_cpu=x64 npm_config_libc=glibc npx open-next build",
+    "build:open": "SHARP_VERSION=0.35.5 npm_config_os=linux npm_config_cpu=x64 npm_config_libc=glibc npx open-next build",
     "lint": "eslint"
   },
   "dependencies": {
@@ -18,7 +18,7 @@
     "@aws-sdk/client-dynamodb": "^3.946.0",
     "@aws-sdk/client-secrets-manager": "^3.946.0",
     "@aws-sdk/lib-dynamodb": "^3.946.0",
-    "next": "^16.2.6",
+    "next": "~16.3.8",
     "next-auth": "^4.24.13",
     "react": "19.2.0",
     "react-dom": "19.2.0",

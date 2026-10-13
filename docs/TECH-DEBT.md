@@ -1188,3 +1188,32 @@ nobody asked for it and we have fast sites right now" — do NOT fix it, do NOT 
 security exposure it carried is closed regardless (next 16.3.5 + sharp 0.35.4 now run in it).
 Revisit trigger: a tenant actually asks for optimized/responsive images — then the decision is
 fix-the-fetch-path vs remove-the-endpoint (dead surface is where this month's RCE lived).
+
+**2026-10-13 re-triage — 18 new highs/criticals since Sep 28 (Oct-5 and Oct-12 scheduled runs red).**
+All fixed in-range except the already-accepted tiptap entry. By reach:
+- **Deployed runtime (renderer):** next — GHSA-cjq9-62q9-8jv4 SSRF in Image Optimization (the
+  parked-but-deployed, publicly routable `/_next/image`; fixed in 16.3.8 only) + GHSA-vcvr-r3jv-pc5j
+  critical RCE in `next/og` ImageResponse (unused — zero imports — but cleared). sharp
+  GHSA-wq5f-xc86-pv6w (librsvg → SVG decode in the image optimizer): 0.35.5, `SHARP_VERSION` in
+  `renderer` `build:open` bumped 0.35.4 → 0.35.5 (artifact verified linux-x64).
+- **Admin editor:** prosemirror-view XSS on paste (tiptap/pm chain) → 1.42.6.
+- **Local tool only (`tools/mcp-server`, never deployed):** proxy-addr critical (via MCP SDK's
+  express), MCP SDK OAuth credential leak, axios ×7, fast-uri ×2, undici ×2 → all bumped.
+- **Dev/build:** source-map-js (next/postcss, vitest) → 1.2.2.
+
+**next pinned to the 16.3 patch line (`~16.3.8`, renderer + plugins):** a plain `npm update` took
+next to 16.4.0 — a minor the fix does not need, through a pinned open-next 3.1.3 on the
+live-tenant renderer. Minors become a deliberate decision; patches keep flowing. Process lesson:
+the first attempt (`npm update` + `dedupe`) churned 1,300+ lockfile lines and SPLIT React
+(react 19.3.0 vs react-dom 19.2.0 — a renderer unit test caught it); redone from the committed
+lockfile with targeted updates only: React layout byte-identical to HEAD, single next 16.3.8.
+
+**next 16.3.8 changed the ISR storage-key layout** (`server/lib/route-cache-key.js`): page keys
+are now scoped by owning route — `/route-cache/<kind>/<sha256(sourceRoute)>/$<path>` — and that is
+the key every storage handler receives, open-next's S3 handler included. Consequences checked:
+(1) the serving-contract detector read only the legacy `.next/server/app/` root and found nothing
+— updated to walk both layouts (33/33); (2) the backend never builds S3 keys itself (it calls the
+renderer's `/api/revalidate` → `revalidatePath`, tag-based) and the nightly flush deletes the whole
+`_cache/` prefix — both key-shape independent; (3) the first deploy leaves the old-shape S3 objects
+orphaned: one cold render per page (same as a nightly flush), the orphans are swept by the next
+nightly prefix delete. Staging verified end-to-end before prod (see commit).
