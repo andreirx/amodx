@@ -8,14 +8,19 @@ import { normalizeEdgePaths } from "./edge-invalidation.js";
  *
  *  - BULK / global mutations (theme, tenant settings, imports, popups, forms, bulk-price,
  *    create-of-a-new-entity) use `withInvalidation()` → `CDN_PENDING` → the debounce-flush
- *    Lambda fires a `/*` invalidation after 15 min of quiet. They also show the admin
+ *    Lambda fires a `/*` invalidation at the earlier of 15 min of quiet and (CACHE-10 max wait)
+ *    15 min after the first still-pending change. They also show the admin
  *    "GO LIVE NOW" banner.
  *  - ORDINARY edits (an existing page/product/category) instead reach `enqueueEdgeInvalidation()`
  *    via `revalidate.ts#revalidateTenantPaths`, which feeds it the *exact changed URI paths*
  *    computed by `revalidate-paths.ts#purgeTargets`. Those paths accumulate for an immediate
- *    (≈10s) targeted CloudFront invalidation drained by the SAME debounce-flush Lambda. They are
- *    NOT pending and show NO banner — they go live in seconds. See docs/caching-architecture.md
- *    § "Invalidation model".
+ *    (≈10s) targeted CloudFront invalidation drained by the SAME debounce-flush Lambda — the
+ *    edited page goes live in seconds. CACHE-10 (human ruling 2026-10-13): `revalidateTenantPaths`
+ *    ALSO calls `markCdnPending()` after the fast-lane enqueue, so listings that show the edited
+ *    content (blogroll, post grids, nav) — which the exact-path fast lane cannot name — refresh
+ *    at the edge by the bulk `/*` ≤ ~16 min later (max wait). Consequence: an ordinary edit now also shows the
+ *    "GO LIVE NOW" banner (it truthfully reports that listings are pending). See
+ *    docs/caching-architecture.md § "Invalidation model".
  *
  * The reason both classes are drained by debounce-flush rather than calling CloudFront
  * directly from the mutation Lambda: `cloudfront:CreateInvalidation` is confined to the two
@@ -101,7 +106,15 @@ async function triggerFastLaneDrain(): Promise<void> {
     }
 }
 
-async function markCdnPending(): Promise<void> {
+/**
+ * Bulk lane: write `CDN_PENDING` (+ the `CDN_LAST_CHANGE` high-water mark) so debounce-flush fires
+ * ONE `/*` CloudFront invalidation after 15 min of quiet OR (CACHE-10) at most 15 min after the
+ * first still-pending change, whichever is earlier (normally one `/*` per marker; a mutation landing
+ * mid-flush, or a concurrent flusher, adds one extra — see `edge-invalidation.ts#bulkFlushDueAt`). Callers: `withInvalidation()` (bulk
+ * handlers) and, since CACHE-10, `revalidate.ts#revalidateTenantPaths` (ordinary edits — listing
+ * freshness). Never throws: a write failure is logged and swallowed; the nightly flush backstops.
+ */
+export async function markCdnPending(): Promise<void> {
     if (!TABLE_NAME) {
         console.log("[CDN] Skipping marker — TABLE_NAME not set");
         return;
@@ -110,16 +123,18 @@ async function markCdnPending(): Promise<void> {
     const now = Date.now();
 
     try {
-        // CDN_PENDING: consumed by debounce-flush, deleted after CloudFront invalidation
+        // CDN_PENDING: consumed by debounce-flush, deleted after CloudFront invalidation.
+        //   `updatedAt` = last change (quiet window). `firstPendingAt` (CACHE-10) = first change since
+        //   the marker was created — set ONLY by `if_not_exists`, so later edits never push it back;
+        //   debounce-flush fires `/*` at most `DEBOUNCE_MAX_WAIT_MS` after it (`bulkFlushDueAt`).
+        //   One UpdateItem, so both attributes land atomically.
         // CDN_LAST_CHANGE: persistent high-water mark, read by nightly-cache-flush to skip quiet days
         await Promise.all([
-            db.send(new PutCommand({
+            db.send(new UpdateCommand({
                 TableName: TABLE_NAME,
-                Item: {
-                    PK: CDN_PENDING_PK,
-                    SK: CDN_PENDING_SK,
-                    updatedAt: now,
-                },
+                Key: { PK: CDN_PENDING_PK, SK: CDN_PENDING_SK },
+                UpdateExpression: "SET updatedAt = :now, firstPendingAt = if_not_exists(firstPendingAt, :now)",
+                ExpressionAttributeValues: { ":now": now },
             })),
             db.send(new PutCommand({
                 TableName: TABLE_NAME,
@@ -158,13 +173,16 @@ async function markCdnPending(): Promise<void> {
  *   2. CACHE-9 accelerator — `triggerFastLaneDrain()` async-invokes the flusher. Placed BEFORE the
  *      high-water put so a slow/failing put can never delay or cancel it.
  *   3. `CDN_LAST_CHANGE` — so the nightly S3 flush still runs after an ordinary-only day. This
- *      matters because ordinary handlers no longer go through `markCdnPending()` (which is what
- *      used to write this marker for them). Without it, a day of only-ordinary edits whose
+ *      function is the fast lane and is reached without the bulk WRAPPER (`withInvalidation()`),
+ *      so it writes this high-water mark itself rather than relying on the wrapper. (Since
+ *      CACHE-10 the ordinary revalidation path ALSO calls `markCdnPending()` afterwards — see
+ *      below — but this step must not depend on that.) Without it, a day of only-ordinary edits whose
  *      targeted invalidation somehow failed would let the nightly backstop skip. Independent
  *      best-effort: its failure is logged and swallowed and never blocks step 2.
  *
- * Deliberately does NOT write `CDN_PENDING`: an ordinary edit must not raise the "GO LIVE NOW"
- * banner — nothing is pending, it went live in seconds.
+ * Does NOT write `CDN_PENDING` itself: this function is the exact-path fast lane only. Since
+ * CACHE-10 the ordinary-edit entry point (`revalidate.ts#revalidateTenantPaths`) arms the bulk
+ * lane separately, by calling `markCdnPending()` after this returns, for listing freshness.
  *
  * Best-effort, like `markCdnPending()`: every write failure is logged and swallowed so it can
  * never fail the mutation. The nightly flush is the backstop.

@@ -1,7 +1,7 @@
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, DeleteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
+import { planEdgeInvalidation, bulkFlushDueAt } from "../lib/edge-invalidation.js";
 
 /**
  * CloudFront cache flush Lambda — drains BOTH invalidation classes (cache-4a).
@@ -22,7 +22,9 @@ import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
  *      concurrent enqueue (even of an already-queued path, invisible at set-membership level)
  *      bumps `rev`, fails the condition, and the whole marker is retained for a redundant
  *      re-invalidation next cycle instead of dropping the second edit (CACHE-4A/review-1).
- *   B. BULK DEBOUNCE: read SYSTEM#CDN_PENDING; if it is >= 15 min old, fire a `/*` invalidation.
+ *   B. BULK DEBOUNCE: read SYSTEM#CDN_PENDING; fire a `/*` invalidation when EITHER the quiet
+ *      window expired (`updatedAt` >= 15 min old) OR — CACHE-10 — the max wait expired
+ *      (`firstPendingAt` >= 15 min old; see `lib/edge-invalidation.ts#bulkFlushDueAt`).
  *      CDN_PENDING is deleted (race-safe) ONLY after CloudFront accepts the batch — a throw or a
  *      skipped submit retains it for the next invocation. This is the sledgehammer for
  *      bulk/global mutations. At most ONE `/*` submission is attempted per invocation (a
@@ -41,7 +43,7 @@ import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
  * invocations/day × 2 environments ≈ 1.1M GB-s/month, 2.7× the entire Lambda free tier and 93% of
  * the account's Lambda bill, for a function 99.9% asleep. The revised contract: an edit enqueued
  * while the flusher is idle waits up to one EventBridge tick (~60s) for its FIRST drain, then
- * ~10s resolution while work remains. A bulk marker inside its 15-min window likewise re-checks
+ * ~10s resolution while work remains. A bulk marker before its due time likewise re-checks
  * at tick resolution (its lane tolerates ~1-min latency by design — see review-0 retry note).
  * The full "visible in seconds even from idle" promise is RESTORED by CACHE-9 (implemented
  * 2026-09-02): the edit's own enqueue path (`lib/invalidate-cdn.ts#enqueueEdgeInvalidation`)
@@ -61,7 +63,7 @@ import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
  *     that observed the same un-cleaned paths — the same bound § "Volume / coalescing math" in
  *     docs/caching-architecture.md already prices for the `rev`-race retention case).
  *   - BULK LANE: `CDN_PENDING` delete is conditional on `updatedAt = :original`. Two invocations
- *     both past the 15-min window each submit `/*` (redundant; `/*` bills as 1 path) but only the
+ *     both past the bulk due time each submit `/*` (redundant; `/*` bills as 1 path) but only the
  *     FIRST conditional delete succeeds — the second sees the marker gone and its condition fails
  *     (caught, logged). At most one extra `/*` per concurrent pair. The `bulkHandled` latch is
  *     per-invocation and intentionally does NOT coordinate across invocations; the cross-
@@ -88,6 +90,8 @@ import { planEdgeInvalidation } from "../lib/edge-invalidation.js";
  *   TABLE_NAME — DynamoDB table with the markers
  *   RENDERER_DISTRIBUTION_ID — CloudFront distribution to invalidate
  *   DEBOUNCE_WINDOW_MS — debounce window in ms (default: 900000 = 15 min)
+ *   DEBOUNCE_MAX_WAIT_MS — optional, CACHE-10 max wait from the first pending change in ms
+ *                          (default: DEBOUNCE_WINDOW_MS)
  *
  * Requires IAM (already granted — see infra/lib/amodx-stack.ts, grantReadWriteData):
  *   dynamodb:GetItem + dynamodb:UpdateItem + dynamodb:DeleteItem on TABLE_NAME
@@ -102,6 +106,10 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 const TABLE_NAME = process.env.TABLE_NAME || "";
 const distributionId = process.env.RENDERER_DISTRIBUTION_ID;
 const DEBOUNCE_MS = parseInt(process.env.DEBOUNCE_WINDOW_MS || "900000", 10); // 15 min
+// CACHE-10: max wait from the FIRST still-pending mutation (`CDN_PENDING.firstPendingAt`). Default =
+// the quiet window, so `/*` fires at most ~15 min after the first pending change even while edits
+// keep arriving. Not set by infra today — the default applies.
+const MAX_WAIT_MS = parseInt(process.env.DEBOUNCE_MAX_WAIT_MS || String(DEBOUNCE_MS), 10);
 
 const CDN_PENDING_PK = "SYSTEM";
 const CDN_PENDING_SK = "CDN_PENDING";
@@ -222,8 +230,16 @@ async function drainFastLane(): Promise<boolean> {
 }
 
 /**
- * Bulk debounce branch. Reads SYSTEM#CDN_PENDING; if the 15-min quiet window has expired, fires
- * ONE `/*` invalidation and (on success) clears CDN_PENDING race-safely.
+ * Bulk debounce branch. Reads SYSTEM#CDN_PENDING; if the 15-min quiet window OR (CACHE-10) the
+ * 15-min max wait since `firstPendingAt` has expired, fires ONE `/*` invalidation and (on success)
+ * clears CDN_PENDING race-safely.
+ *
+ * CACHE-10 max wait and the conditional delete: the delete stays conditional on the `updatedAt`
+ * this call read. A mutation that lands between that read and the delete fails the condition, so
+ * the marker is RETAINED with its ORIGINAL `firstPendingAt` (`markCdnPending` never overwrites
+ * it). That `firstPendingAt` is already past the max wait, so the NEXT invocation (EventBridge tick
+ * ≤ ~1 min, or sooner via a CACHE-9 async invoke) fires one more `/*`, which covers that mutation.
+ * Cost: one extra `/*` per mid-flush mutation; no mutation is left uncovered.
  *
  * Returns TRUE iff a `/*` submission was ATTEMPTED this call — success, transient failure, OR
  * skip (no distribution). The caller latches on that and does not re-enter this branch for the
@@ -251,15 +267,22 @@ async function flushBulkIfDue(iteration: number): Promise<boolean> {
     }
 
     const updatedAt = marker.updatedAt as number;
-    const elapsed = Date.now() - updatedAt;
+    const now = Date.now();
+    const dueAt = bulkFlushDueAt(
+        { updatedAt, firstPendingAt: marker.firstPendingAt as number | undefined },
+        DEBOUNCE_MS,
+        MAX_WAIT_MS,
+    );
 
-    if (elapsed < DEBOUNCE_MS) {
-        const remaining = Math.round((DEBOUNCE_MS - elapsed) / 1000);
-        console.log(`[DebounceFlush] ${remaining}s remaining in bulk debounce window. (iteration ${iteration + 1}/${MAX_ITERATIONS})`);
-        return false; // window still open — keep checking next iteration
+    if (now < dueAt) {
+        const remaining = Math.round((dueAt - now) / 1000);
+        console.log(`[DebounceFlush] ${remaining}s until bulk /* is due. (iteration ${iteration + 1}/${MAX_ITERATIONS})`);
+        return false; // neither the quiet window nor the max wait has expired — keep checking
     }
 
-    console.log(`[DebounceFlush] Bulk window expired (${Math.round(elapsed / 1000)}s since last change). Invalidating /*.`);
+    const sinceLast = Math.round((now - updatedAt) / 1000);
+    const reason = now - updatedAt >= DEBOUNCE_MS ? "quiet window expired" : "max wait expired (edits still arriving)";
+    console.log(`[DebounceFlush] Bulk /* due — ${reason} (${sinceLast}s since last change). Invalidating /*.`);
 
     // 1. Fire the CloudFront /* invalidation. The pending markers are cleared ONLY after
     //    CloudFront has ACCEPTED the batch. A throw (transient CloudFront error) or a skipped
@@ -319,7 +342,8 @@ export const handler = async (): Promise<void> => {
         // A. Fast lane — ordinary edits' changed paths, targeted, every ~10s while work exists.
         const fastHadWork = await drainFastLane();
 
-        // B. Bulk debounce — CDN_PENDING → /* after the 15-min quiet window, at most once.
+        // B. Bulk debounce — CDN_PENDING → /* after the 15-min quiet window or the CACHE-10 15-min
+        //    max wait since the first pending change, at most once per invocation.
         const bulkHandledBefore = bulkHandled;
         if (!bulkHandled) {
             bulkHandled = await flushBulkIfDue(i);

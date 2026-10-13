@@ -12,7 +12,8 @@
  *
  * Concrete current users: `planEdgeInvalidation` — `scheduled/debounce-flush.ts#drainFastLane`;
  * `normalizeEdgePaths` — `lib/invalidate-cdn.ts#enqueueEdgeInvalidation` (enqueue side) and
- * `drainFastLane` (via `planEdgeInvalidation`); plus the two unit tests
+ * `drainFastLane` (via `planEdgeInvalidation`); `bulkFlushDueAt` (CACHE-10, bulk-lane due time) —
+ * `debounce-flush.ts#flushBulkIfDue` and `system/invalidation.ts#statusHandler`; plus the unit tests
  * (`test/unit/edge-invalidation.test.ts`, `test/unit/debounce-flush.test.ts`).
  * Axis of variation: none — the logic is fixed; the module exists for the TEST SEAM, exactly
  * as `revalidate-paths.ts` does. Rejected simpler alternative: inline the dedupe/threshold in
@@ -84,4 +85,36 @@ export function planEdgeInvalidation(paths: readonly string[]): string[] {
     if (normalized.length === 0) return [];
     if (normalized.length > FAST_LANE_WILDCARD_THRESHOLD) return ["/*"];
     return normalized;
+}
+
+/**
+ * CACHE-10 (operator decision CACHE10-DEBOUNCE-MAXWAIT, 2026-10-13): the epoch ms at which the
+ * bulk `/*` for a `SYSTEM#CDN_PENDING` marker is due — the EARLIER of
+ *   - the quiet window: `updatedAt + debounceMs` (15 min after the LAST mutation — unchanged), and
+ *   - the max wait:     `firstPendingAt + maxWaitMs` (15 min after the FIRST still-pending mutation).
+ *
+ * Why the max wait: since CACHE-10 every ordinary edit on any tenant writes `CDN_PENDING` (listing
+ * freshness) and the marker is one global row, so under continuous cross-tenant edits the quiet
+ * window alone never expires. The max wait bounds that: listings are at most ~`maxWaitMs`
+ * (+ tick + propagation) behind, and edits coalesce to normally one `/*` per `maxWaitMs`. Each
+ * mutation landing between a flush's read and its conditional delete, and each concurrent flusher
+ * invocation past the due time, can add one extra `/*` (see `debounce-flush.ts#flushBulkIfDue`).
+ *
+ * `firstPendingAt` is absent on a marker written before this change: fall back to `updatedAt`, so
+ * such a marker is never stuck (with the default `maxWaitMs = debounceMs` it behaves exactly as
+ * before).
+ *
+ * Concrete current users: `scheduled/debounce-flush.ts#flushBulkIfDue` (fire or wait) and
+ * `system/invalidation.ts#statusHandler` (the banner's `goLiveAt`) — one rule, so the countdown
+ * shown to the editor cannot drift from when the flush actually fires. Axis of variation: none;
+ * it is here for the pure test seam (same reason as the rest of this module). Rejected simpler
+ * alternative: inline the arithmetic in both callers — two copies of a contract that must agree.
+ */
+export function bulkFlushDueAt(
+    marker: { updatedAt: number; firstPendingAt?: number },
+    debounceMs: number,
+    maxWaitMs: number,
+): number {
+    const firstPendingAt = typeof marker.firstPendingAt === "number" ? marker.firstPendingAt : marker.updatedAt;
+    return Math.min(marker.updatedAt + debounceMs, firstPendingAt + maxWaitMs);
 }

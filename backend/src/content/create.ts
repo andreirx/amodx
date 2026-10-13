@@ -173,7 +173,8 @@ const _handler: AmodxHandler = async (event) => {
 };
 
 // cache-4a: ORDINARY class — no `withInvalidation()`. The edge (Layer 1) is invalidated by the
-// fast lane inside `revalidateTenantPaths()` (targeted, ~10s), so this edit is never "pending"
-// and raises no "GO LIVE NOW" banner. A brand-new slug can already hold a cacheable 307→?nf=1
+// fast lane inside `revalidateTenantPaths()` (targeted, ~10s). Since CACHE-10 that function also
+// arms the bulk `/*` lane (CDN_PENDING) so listings refresh ≤ ~16 min (max wait), which shows the
+// "GO LIVE NOW" banner. A brand-new slug can already hold a cacheable 307→?nf=1
 // (see the comment above the revalidate call), which the fast lane now clears in seconds.
 export const handler = _handler;

@@ -4,6 +4,7 @@ import { GetCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { bulkFlushDueAt } from "../lib/edge-invalidation.js";
 
 /**
  * System endpoints for cache invalidation status and manual flush ("GO LIVE NOW").
@@ -19,6 +20,8 @@ type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 const CDN_PENDING_PK = "SYSTEM";
 const CDN_PENDING_SK = "CDN_PENDING";
 const DEBOUNCE_MS = parseInt(process.env.DEBOUNCE_WINDOW_MS || "900000", 10); // 15 min
+// CACHE-10: same max wait as debounce-flush (same env, same default) so `goLiveAt` matches the flush.
+const MAX_WAIT_MS = parseInt(process.env.DEBOUNCE_MAX_WAIT_MS || String(DEBOUNCE_MS), 10);
 
 const cf = new CloudFrontClient({});
 const distributionId = process.env.RENDERER_DISTRIBUTION_ID;
@@ -55,7 +58,13 @@ export const statusHandler: Handler = async (event) => {
         }
 
         const updatedAt = result.Item.updatedAt as number;
-        const goLiveAt = updatedAt + DEBOUNCE_MS;
+        // CACHE-10: the earlier of quiet-window expiry and max-wait expiry — the SAME rule
+        // debounce-flush fires on, so the banner countdown cannot drift from the real flush.
+        const goLiveAt = bulkFlushDueAt(
+            { updatedAt, firstPendingAt: result.Item.firstPendingAt as number | undefined },
+            DEBOUNCE_MS,
+            MAX_WAIT_MS,
+        );
 
         return {
             statusCode: 200,

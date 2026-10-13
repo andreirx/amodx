@@ -17,11 +17,14 @@ src/
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
 │   ├── invalidate-cdn.ts  # Two invalidation classes (cache-4a): withInvalidation() HOF → bulk `/*`
 │   │                      #   debounce marker; enqueueEdgeInvalidation() → ordinary edits' targeted
-│   │                      #   fast-lane paths (String Set + `rev`) drained by the debounce Lambda
+│   │                      #   fast-lane paths (String Set + `rev`) drained by the debounce Lambda;
+│   │                      #   markCdnPending() exported since CACHE-10 (ordinary edits arm `/*` for listings)
 │   ├── edge-invalidation.ts # PURE: fast-lane coalescing — dedupe changed paths, /* over 30 distinct
-│   │                        #   (FAST_LANE_WILDCARD_THRESHOLD). Test seam, like revalidate-paths.ts
-│   ├── revalidate.ts      # Drives BOTH layers (cache-4a): revalidateTenantPaths() → edge fast lane +
-│   │                      #   ISR purge (Layer 2) via the /api/revalidate transport
+│   │                        #   (FAST_LANE_WILDCARD_THRESHOLD). Test seam, like revalidate-paths.ts.
+│   │                        #   CACHE-10: bulkFlushDueAt() — bulk `/*` due = min(quiet, max wait)
+│   ├── revalidate.ts      # Drives BOTH layers (cache-4a): revalidateTenantPaths() → ISR purge (Layer 2)
+│   │                      #   via the /api/revalidate transport FIRST, then the edge fast lane, then
+│   │                      #   markCdnPending() → debounced `/*` for listings (CACHE-10)
 │   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
 │   └── review-media.ts     # rev-2a staged-media SPINE (no image decode; D-REV-4 SUPERSEDED): declared
 │                           #   type-AND-size STAGE to the private quarantine + PROMOTION gate
@@ -268,5 +271,9 @@ test live here, both credential-free:
    fast-forward the drain Lambda's 6-iteration / 5×10s-sleep polling loop in microseconds: the
    handler no longer returns early (it must keep draining the fast lane the whole window — `cache-4a`
    review-3), so the sleeps have to be driven by fake timers rather than waited out.
+   `test/unit/debounce-maxwait.test.ts` (CACHE-10) runs the REAL `markCdnPending()` writer and the
+   REAL debounce-flush handler against one in-memory marker row under fake time (minute-by-minute
+   edit streams) to pin the max-wait rule; its fake refuses any `CDN_PENDING` UpdateExpression
+   other than the production one, so it cannot model semantics the real write lacks.
 
 Run: `cd backend && npm run test:unit`.

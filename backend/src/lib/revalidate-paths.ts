@@ -18,7 +18,12 @@ import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
  *
  *   production traffic   Host: shop.example.com  GET /about
  *                        → middleware rewrites to  /shop.example.com/about
- *                        → S3 key  _cache/<buildId>/shop.example.com/about.cache
+ *                        → ISR cache entry for     /shop.example.com/about
+ *
+ * The S3 OBJECT KEY of that entry depends on the Next version (next 16.3.8 nests it under
+ * `route-cache/<kind>/<ownerHash>/$/`). The backend never builds S3 keys: the one place that
+ * knows the layout is the renderer route `renderer/src/app/api/revalidate/route.ts` (CACHE-10),
+ * next to the dependency that defines it.
  *
  * So the purge must name `/<domain>/<path>`. Until this slice the backend named
  * `/<tenantId>/<path>`, which addresses no cache entry that can exist — a no-op.

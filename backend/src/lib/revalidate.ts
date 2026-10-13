@@ -2,7 +2,7 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { db, TABLE_NAME } from "./db.js";
 import { purgeTargets, type PurgeKind, type TenantRouting } from "./revalidate-paths.js";
-import { enqueueEdgeInvalidation } from "./invalidate-cdn.js";
+import { enqueueEdgeInvalidation, markCdnPending } from "./invalidate-cdn.js";
 
 /**
  * Phase 4: Backend revalidation helper.
@@ -88,12 +88,19 @@ export async function revalidatePath(tenantDomain: string, slug: string): Promis
                 'x-revalidation-token': secret,
             },
             body: JSON.stringify({ domain: tenantDomain, slug }),
+            // CACHE-10: `revalidateTenantPaths()` now runs this BEFORE the edge fast-lane enqueue,
+            // so an unbounded wait here would delay — or, past the 29s Lambda timeout, cancel —
+            // Layer 1. 10s covers a renderer cold start plus the S3 list+delete; an abort is
+            // caught below like any other transport error, and the enqueue then still runs.
+            signal: AbortSignal.timeout(10_000),
         });
 
         if (!res.ok) {
             console.warn(`[Revalidate] Path failed: ${res.status}`, await res.text());
         } else {
-            console.log(`[Revalidate] Path success: /${tenantDomain}${slug}`);
+            // The body carries `purged: <count>` (CACHE-10) — log it so CloudWatch shows how many
+            // S3 ISR objects the renderer deleted (`null` = renderer has no cache bucket configured).
+            console.log(`[Revalidate] Path success: /${tenantDomain}${slug}`, await res.text());
         }
     } catch (e) {
         console.error('[Revalidate] Path error:', e);
@@ -166,8 +173,12 @@ async function getTenantRouting(tenantId: string): Promise<TenantRouting> {
  *
  * This is the entry point every mutation handler should use. It resolves the tenant's
  * domain here — in the backend, which owns `TenantConfig` and is the authority for the
- * tenant→domain mapping — and leaves the renderer purging exactly the paths it is told
- * (ratified design D2 in the slice doc).
+ * tenant→domain mapping (ratified design D2 in the cache-2 slice doc). Since CACHE-10 the
+ * renderer's S3 purge clears the WHOLE tenant's ISR cache on every call (the `slug` still
+ * names the `revalidatePath` target); the S3 key layout is known only to the renderer route.
+ * Order (CACHE-10): S3 purge (awaited) → edge fast lane for the exact paths → bulk `/*` marker
+ * (`CDN_PENDING`; fires ≤15 min after the first pending change — CACHE-10 max wait) so dependent
+ * listings also refresh.
  *
  * Best-effort, like everything on this path: a lookup failure, a missing domain or a failed
  * HTTP call is logged and swallowed. Revalidation must never fail the mutation that
@@ -212,19 +223,36 @@ export async function revalidateTenantPaths(
         return;
     }
 
+    // CACHE-10 ORDERING: Layer 2 (S3) is purged BEFORE Layer 1 (edge) is enqueued. The edge
+    // refills from S3: if CloudFront is invalidated first (the CACHE-9 drain fires ~1s after the
+    // enqueue) and a request arrives before the renderer has deleted the S3 objects (a renderer
+    // cold start alone is 1-3s), the edge re-caches the STALE page with `s-maxage=31536000` —
+    // stale until the nightly flush. Purging S3 first closes that window. `revalidatePath()`
+    // never throws and its fetch is bounded (10s abort), so Layer 1 below always runs.
+
+    // Layer 2 (OpenNext ISR in S3): purge via the renderer. Gated on renderer config — if it
+    // is off, Layer 1 still fires below and the nightly S3 flush is the backstop (DoD 3).
+    if (!rendererUrl || !secretName) {
+        warnRevalidationDisabled(`${kind} ${requested.join(", ")} (tenant ${tenantId})`);
+    } else {
+        for (const target of targets) {
+            await revalidatePath(target.domain, target.slug);
+        }
+    }
+
     // Layer 1 (CloudFront edge): enqueue the exact changed URI paths for an immediate targeted
     // invalidation. Independent of RENDERER_URL — the debounce Lambda drains this against the
     // distribution directly. This is what makes an ordinary edit go live in seconds.
     await enqueueEdgeInvalidation(targets.map((t) => t.slug));
 
-    // Layer 2 (OpenNext ISR in S3): purge via the renderer. Gated on renderer config — if it
-    // is off, Layer 1 has still fired and the nightly S3 flush is the backstop (DoD 3).
-    if (!rendererUrl || !secretName) {
-        warnRevalidationDisabled(`${kind} ${requested.join(", ")} (tenant ${tenantId})`);
-        return;
-    }
-
-    for (const target of targets) {
-        await revalidatePath(target.domain, target.slug);
-    }
+    // Listings (CACHE-10, human ruling 2026-10-13: listings go live within ~15 min). A page that
+    // SHOWS the edited content (blogroll, post grid, nav) has its own URL, which the exact-path
+    // fast lane above cannot name; its S3 copy is already gone (the renderer purged the whole
+    // tenant), but its edge copy is not. Arm the bulk lane: debounce-flush fires ONE `/*` at the
+    // earlier of 15 min of quiet and 15 min after the first pending change (max wait, so steady
+    // cross-tenant edits cannot defer it); a burst of edits normally coalesces into that one `/*`
+    // (mid-flush/concurrent exceptions: `bulkFlushDueAt` docstring). `/*` is the only tenant-wide edge purge
+    // (CloudFront paths carry no host). Written LAST so a `/*` can never precede the S3 purge.
+    // `markCdnPending()` never throws (logs + swallows); the nightly flush backstops a failure.
+    await markCdnPending();
 }

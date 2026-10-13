@@ -1233,6 +1233,26 @@ pages appear only after the nightly flush. CACHE-9's "1.77s / 0.87s" measured th
 purge, not content visibility. Human 2026-10-13: short-term fix = backend deletes the edited
 page's exact S3 cache object on save (+ existing CF purge), with the edit-goes-live probe added
 to the staging suite; long-term = opennext-1 analysis (in progress).
+**CACHE-10 (built 2026-10-13, ratified design supersedes the line above):** the purge lives in
+the RENDERER route `/api/revalidate` (it already has the cache-bucket env + IAM; the key layout
+is a function of the renderer's Next version), and it deletes the WHOLE tenant's S3 ISR objects
+(both key layouts, every buildId and route-owner hash), returning `purged: <n>`; any S3 failure
+returns 500. The backend now purges S3 BEFORE enqueuing the CloudFront fast lane (fetch bounded
+at 10s). Listings (human ruling 2026-10-13, decision CACHE10-LISTING-EDGE: ~15 min): the same
+call then writes `CDN_PENDING`, so ONE debounced `/*` refreshes listing EDGE copies (bursts
+coalesce); side effect: the "GO LIVE NOW" banner now shows after ordinary edits.
+Resolved in CACHE-10 (decision CACHE10-DEBOUNCE-MAXWAIT): the global trailing debounce got a
+max wait — `CDN_PENDING.firstPendingAt` (`if_not_exists`), `/*` due at the earlier of 15 min quiet
+and 15 min after it (env `DEBOUNCE_MAX_WAIT_MS`, default = window) — so listings and bulk changes
+are ≤ ~16 min behind even under continuous edits; normally at most one `/*` per 15 min while edits continue; exceptions, each adding one extra `/*`: a mutation that lands between a flush's marker read and its conditional delete (the retained marker fires again at the next invocation, ≤ ~1 min), and concurrent flusher invocations that both read the marker past its due time.
+Still open: (i) `/*` hits every tenant on the shared distribution (their S3 stays warm — refill is
+an S3 read, not a render). Tags (opennext-1) can scope only the ISR/S3 layer; a cached viewer URI
+of a host-mapped tenant carries no host or tenant id, so no CloudFront invalidation can target one
+tenant on the shared distribution — that needs a per-tenant distribution (Workstream 3); (ii) an SSR
+that read DynamoDB before the save and writes S3 after the purge can re-store a stale entry
+(narrow window, nightly backstop); (iii) a rename calls the route twice, so the tenant is purged
+twice (harmless, second call deletes only re-rendered objects). Remove the S3 purge when
+opennext-1 makes `revalidatePath` effective for `APP_PAGE`.
 Side finding (open): CI "Backend Integration Tests" writes `TENANT#test-*` items into the PROD
 table (295 content items, timestamps match CI runs).
 Process: push only after staging is settled — the e2e workflow tests live staging, and pushing

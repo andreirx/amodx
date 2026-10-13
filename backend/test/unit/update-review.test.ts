@@ -41,6 +41,15 @@ process.env.UPLOADS_CDN_URL = "https://cdn.example.com";
 const s3mock = mockClient(S3Client);
 const ddbmock = mockClient(DynamoDBDocumentClient);
 
+/**
+ * The REVIEW writes the handler issued — every `UpdateCommand` except the `PK: SYSTEM` cache
+ * markers that `withInvalidation()` writes after a 2xx. Since CACHE-10 the `CDN_PENDING` marker is
+ * an UpdateItem (max-wait anchor `firstPendingAt`), so an unfiltered count would include it. Rule:
+ * entity-write assertions count entity keys only.
+ */
+const reviewUpdates = () =>
+    ddbmock.commandCalls(UpdateCommand).filter((c) => (c.args[0].input as any).Key?.PK !== "SYSTEM");
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let handler: any;
 beforeAll(async () => {
@@ -104,7 +113,7 @@ describe("PUT /reviews/{id} — DEFAULT action (field update) is unchanged", () 
         expect(ddbmock.commandCalls(GetCommand)).toHaveLength(0);
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
 
-        const updates = ddbmock.commandCalls(UpdateCommand);
+        const updates = reviewUpdates();
         expect(updates).toHaveLength(1);
         const input = updates[0].args[0].input as any;
         expect(input.Key.SK).toBe("REVIEW#p1#r1");
@@ -118,7 +127,7 @@ describe("PUT /reviews/{id} — DEFAULT action (field update) is unchanged", () 
         ddbmock.on(UpdateCommand).resolves({});
         const res = await handler(event({ status: "approved" }));
         expect(res.statusCode).toBe(200);
-        const updates = ddbmock.commandCalls(UpdateCommand);
+        const updates = reviewUpdates();
         expect(updates).toHaveLength(1);
         const input = updates[0].args[0].input as any;
         expect(input.Key.SK).toBe("SITEREVIEW#r1");
@@ -143,7 +152,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         // The entry update touches ONLY the targeted element's document paths — status → approved
         // and assetKey → the PUBLIC key (not the staging key, not a URL) — and NEVER writes a whole
         // `:images` array (the review-4 clobber fix).
-        const updates = ddbmock.commandCalls(UpdateCommand);
+        const updates = reviewUpdates();
         expect(updates).toHaveLength(1);
         const input = updates[0].args[0].input as any;
         expect(input.UpdateExpression).toContain("#images[0].#status = :approvedImageStatus");
@@ -181,7 +190,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
 
         // No copy and NO write — the image entry is left exactly as it was (still pending, staging).
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
-        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(reviewUpdates()).toHaveLength(0);
     });
 
     it("TWO-STEP SEQUENCE (review-1 fix): approve the review (default field update), THEN approve-image promotes — no unpromotable dead state", async () => {
@@ -206,7 +215,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         // The original was copied to public and the entry's assetKey became the PUBLIC key
         // (written on the element path, not as a full-array replacement).
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(1);
-        const input = ddbmock.commandCalls(UpdateCommand)[0].args[0].input as any;
+        const input = reviewUpdates()[0].args[0].input as any;
         expect(input.ExpressionAttributeValues[":images"]).toBeUndefined();
         expect(input.ExpressionAttributeValues[":approvedImageStatus"]).toBe("approved");
         expect(input.ExpressionAttributeValues[":newAssetKey"]).not.toBe(STAGING_KEY);
@@ -261,7 +270,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         expect(res0.statusCode).toBe(200);
         expect(res1.statusCode).toBe(200);
 
-        const updates = ddbmock.commandCalls(UpdateCommand);
+        const updates = reviewUpdates();
         expect(updates).toHaveLength(2);
 
         const byIndex = (i: number) =>
@@ -326,7 +335,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         expect(res.statusCode).toBe(200);
         expect(JSON.parse(res.body).promoted).toBe(false);
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
-        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(reviewUpdates()).toHaveLength(0);
     });
 
     it("REJECTS a non-pending (hidden) image → 409, no copy, no write (pending→approved only)", async () => {
@@ -338,7 +347,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         const res = await handler(event({ action: "approve-image", productId: "p1", imageIndex: 0 }));
         expect(res.statusCode).toBe(409);
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
-        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(reviewUpdates()).toHaveLength(0);
     });
 
     it("REJECTS re-approving an approved-but-unpromoted (staging-key) image → 409 (not a pending edge)", async () => {
@@ -348,7 +357,7 @@ describe("PUT /reviews/{id} — action: approve-image", () => {
         const res = await handler(event({ action: "approve-image", productId: "p1", imageIndex: 0 }));
         expect(res.statusCode).toBe(409);
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
-        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(reviewUpdates()).toHaveLength(0);
     });
 
     it("404s when the review row does not exist", async () => {
@@ -384,7 +393,7 @@ describe("PUT /reviews/{id} — action: hide-image", () => {
         expect(s3mock.commandCalls(CopyObjectCommand)).toHaveLength(0);
         expect(s3mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
 
-        const updates = ddbmock.commandCalls(UpdateCommand);
+        const updates = reviewUpdates();
         expect(updates).toHaveLength(1);
         const input = updates[0].args[0].input as any;
         // Writes ONLY the targeted element's status path; never a whole `:images` array; never assetKey.
@@ -408,7 +417,7 @@ describe("PUT /reviews/{id} — action: hide-image", () => {
         expect(JSON.parse(res.body).previousStatus).toBe("approved");
         expect(s3mock.commandCalls(DeleteObjectCommand)).toHaveLength(0);
 
-        const input = ddbmock.commandCalls(UpdateCommand)[0].args[0].input as any;
+        const input = reviewUpdates()[0].args[0].input as any;
         expect(input.ExpressionAttributeValues[":hiddenImageStatus"]).toBe("hidden");
         expect(input.ExpressionAttributeValues[":priorImageStatus"]).toBe("approved");
     });
@@ -420,7 +429,7 @@ describe("PUT /reviews/{id} — action: hide-image", () => {
         ddbmock.on(UpdateCommand).resolves({});
         const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
         expect(res.statusCode).toBe(200);
-        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(1);
+        expect(reviewUpdates()).toHaveLength(1);
     });
 
     it("IDEMPOTENT: an already-hidden image no-ops with no write", async () => {
@@ -428,7 +437,7 @@ describe("PUT /reviews/{id} — action: hide-image", () => {
         const res = await handler(event({ action: "hide-image", productId: "p1", imageIndex: 0 }));
         expect(res.statusCode).toBe(200);
         expect(JSON.parse(res.body).changed).toBe(false);
-        expect(ddbmock.commandCalls(UpdateCommand)).toHaveLength(0);
+        expect(reviewUpdates()).toHaveLength(0);
     });
 
     it("CONCURRENCY: a lost race (conditional failure) → 409, no S3 side effects", async () => {
@@ -450,7 +459,7 @@ describe("PUT /reviews/{id} — action: hide-image", () => {
         ddbmock.on(UpdateCommand).resolves({});
         const res = await handler(event({ action: "hide-image", imageIndex: 0 }));
         expect(res.statusCode).toBe(200);
-        const input = ddbmock.commandCalls(UpdateCommand)[0].args[0].input as any;
+        const input = reviewUpdates()[0].args[0].input as any;
         expect(input.Key.SK).toBe("SITEREVIEW#r1");
     });
 

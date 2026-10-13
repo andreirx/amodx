@@ -5,18 +5,21 @@ import { useAuth } from "@/context/AuthContext";
 /**
  * Persistent banner showing pending SITE-WIDE (bulk) CDN cache invalidation status.
  *
- * Since cache-4a, an ordinary edit (a single page/product/category) goes live in seconds via
- * the targeted fast-lane invalidation and is NEVER "pending" — it does not write the
- * SYSTEM#CDN_PENDING marker this banner reads, so it never appears here. Only BULK / site-wide
- * mutations (theme changes, tenant settings, imports, popups, forms, bulk price adjustment,
- * PRODUCT/CATEGORY creation) arm the debounced `/*` flush, and only those show this banner.
- * Note the asymmetry: PAGE creation (`content/create`) is ORDINARY, not bulk — its slug is a
+ * Since cache-4a, an ordinary edit (a single page/product/category) puts the EDITED page live in
+ * seconds via the targeted fast-lane invalidation. Since CACHE-10 (human ruling 2026-10-13) an
+ * ordinary edit ALSO writes the SYSTEM#CDN_PENDING marker this banner reads, because listings
+ * that show the edited content (blogroll, post grids, nav) can only be refreshed at the edge by
+ * the debounced `/*` — so this banner now appears after ordinary edits too, and "GO LIVE NOW"
+ * makes those listings live immediately. BULK / site-wide mutations (theme changes, tenant
+ * settings, imports, popups, forms, bulk price adjustment, PRODUCT/CATEGORY creation) arm the
+ * same `/*` flush, as before. Note the asymmetry: PAGE creation (`content/create`) is ORDINARY, not bulk — its slug is a
  * known path that may already hold a cached `307→?nf=1` (a pre-publish probe), so the fast lane
  * has a specific edge entry to clear; a brand-new product/category URL was never requested and
  * has no edge entry, so only `/*` can refresh the listings it now appears on. See
  * docs/caching-architecture.md § "Invalidation model".
  *
- * Polls GET /system/invalidation every 15 seconds. When a bulk change is pending, shows a
+ * Polls GET /system/invalidation every 15 seconds. When a `/*` is pending (bulk change, or since
+ * CACHE-10 an ordinary edit's listings), shows a
  * countdown to the automatic `/*` flush with a "GO LIVE NOW" button.
  *
  * The countdown ticks client-side every second (cosmetic, not authoritative). The server

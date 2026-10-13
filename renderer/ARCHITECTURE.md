@@ -243,7 +243,9 @@ What this means when editing the renderer:
 
 Other cache surfaces, unchanged by the slice:
 
-- **Manual purge:** POST `/api/revalidate` with `{domain, slug}` calls `revalidatePath()`.
+- **Purge endpoint:** POST `/api/revalidate` with `{domain, slug}` calls `revalidatePath()` (a
+  no-op for App Router pages on open-next 3.1.3) and (CACHE-10) deletes every S3 ISR object of `domain` — the S3 key layout is known only here. See
+  `docs/caching-architecture.md` § 5.
 - **SEO routes:** of the four `[siteId]` Route Handlers, only two set `Cache-Control` on the
   `Response` — `sitemap.xml` (`public, s-maxage=3600, stale-while-revalidate=59`) and
   `openai-feed` (`public, s-maxage=900`). `llms.txt` and `robots.txt` set **none** and are

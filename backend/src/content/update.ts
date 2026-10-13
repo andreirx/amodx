@@ -200,5 +200,8 @@ const _handler: AmodxHandler = async (event) => {
 };
 
 // cache-4a: ORDINARY class — edge invalidated via the fast lane in `revalidateTenantPaths()`
-// (targeted, ~10s). No `withInvalidation()`, so an ordinary page edit is never "pending".
+// (targeted, ~10s). No `withInvalidation()` wrapper.
+// CACHE-10: `revalidateTenantPaths()` also arms the bulk `/*` lane (CDN_PENDING) so listings
+// refresh ≤ ~16 min (bulk `/*` due ≤15 min after the first pending change — max wait) — the
+// "GO LIVE NOW" banner therefore shows after this edit too.
 export const handler = _handler;
