@@ -137,7 +137,23 @@ export class RendererHosting extends Construct {
             pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: false },
         });
 
-        // GSI for path-based lookups (which tags apply to a path)
+        // GSI for path-based lookups (which tags apply to a path; is any tag on this path stale?).
+        // The NAME is a contract with OpenNext, not ours to choose: open-next 3.1.3
+        // `dist/cache/tag/dynamodb.js` hard-codes `IndexName: "revalidate"` (PK path, SK
+        // revalidatedAt) in getByPath + getLastModified. This index was originally created as
+        // 'by-path' with identical keys — every OpenNext tag query failed ("The table does not
+        // have the specified index: revalidate", ~113k errors/day on prod), the write path
+        // aborted before storing any tag (table stayed at 0 items), and therefore EVERY
+        // revalidatePath was a silent no-op: edits stayed stale in the S3 ISR cache until the
+        // nightly flush. Found 2026-10-13 by an edit-goes-live probe on staging.
+        tagCacheTable.addGlobalSecondaryIndex({
+            indexName: 'revalidate',
+            partitionKey: { name: 'path', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'revalidatedAt', type: dynamodb.AttributeType.NUMBER },
+        });
+        // TEMPORARY — the misnamed original, unused by anything. Kept for exactly one deploy:
+        // DynamoDB/CloudFormation permit only one GSI create-or-delete per table update, so the
+        // rename is two deploys (add 'revalidate' now; delete this block in the next deploy).
         tagCacheTable.addGlobalSecondaryIndex({
             indexName: 'by-path',
             partitionKey: { name: 'path', type: dynamodb.AttributeType.STRING },

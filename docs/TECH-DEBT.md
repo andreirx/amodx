@@ -1217,3 +1217,24 @@ renderer's `/api/revalidate` → `revalidatePath`, tag-based) and the nightly fl
 `_cache/` prefix — both key-shape independent; (3) the first deploy leaves the old-shape S3 objects
 orphaned: one cold render per page (same as a nightly flush), the orphans are swept by the next
 nightly prefix delete. Staging verified end-to-end before prod (see commit).
+
+**2026-10-13 — revalidatePath has NEVER refreshed cached pages (supersedes the 2026-08-09
+"tag-cache GSI missing — non-fatal log noise" entry, whose "we don't use tag revalidation"
+premise was wrong: revalidatePath IS tag-based).** Found by an edit-goes-live probe on staging
+(checks the edited text in the served page, not the CloudFront purge). Two stacked causes:
+(a) CDK named the tag-cache GSI `by-path`; open-next 3.1.3 hard-codes `IndexName: "revalidate"`
+→ every tag query failed (~113k errors/day on prod), tag table at 0 items. FIXED in this commit
+(GSI `revalidate` added; `by-path` removed next deploy — one GSI change per CFN update).
+(b) open-next 3.1.3 `adapters/cache.js` `set()` derives tags only for kind `PAGE` (Pages Router);
+every App Router page (`APP_PAGE`) gets none, so revalidateTag/revalidatePath find nothing to
+mark stale, index or not. Reproduced identically on next 16.3.5 (current prod) and 16.3.8.
+Effect: brand-new pages appear immediately (never cached); edits to existing pages and listing
+pages appear only after the nightly flush. CACHE-9's "1.77s / 0.87s" measured the CloudFront
+purge, not content visibility. Human 2026-10-13: short-term fix = backend deletes the edited
+page's exact S3 cache object on save (+ existing CF purge), with the edit-goes-live probe added
+to the staging suite; long-term = opennext-1 analysis (in progress).
+Side finding (open): CI "Backend Integration Tests" writes `TENANT#test-*` items into the PROD
+table (295 content items, timestamps match CI runs).
+Process: push only after staging is settled — the e2e workflow tests live staging, and pushing
+before deploying staging raced it twice (2026-09-16, 2026-10-13: 404 spec red mid-deploy,
+green on settled staging).
