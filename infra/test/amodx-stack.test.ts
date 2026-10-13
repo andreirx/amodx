@@ -480,20 +480,19 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
         // the origin can be made to see by any viewer, so it needs the same justification the
         // seven originals have.
         //
-        // The last two, `x-prerender-revalidate` + `x-isr`, are `cache-7` — the SAME transport
-        // defect as `x-revalidation-token` above, a rung further along the ISR path. open-next's
-        // RevalidationFunction sends BOTH on its HEAD re-render (`revalidate.js:25-26` in the
-        // installed open-next@3.1.3); the credential authorises a blocking re-render and the
-        // `x-isr` marker forces the result to be written back to S3 rather than treated as a
-        // throwaway on-demand render (`patchedAsyncStorage.js:9-11`). Stripped, every page logged
-        // "Failed to revalidate" and stayed STALE until the nightly flush (OBSERVED, prod). They
-        // are TRANSPORT-only, in no cache key — see the `(h)` prose in `renderer-hosting.ts`.
+        // `x-prerender-revalidate` + `x-isr` (cache-7) were REMOVED 2026-10-13 (security fix,
+        // human-ratified): open-next@3.1.3 skips tenant middleware for any request carrying `x-isr`
+        // (`dist/core/routing/middleware.js:27`), so a forwarded viewer `x-isr: 1` on an edge MISS
+        // cached a 1-year `307 → /?nf=1` under a real page's key for every visitor (reproduced on
+        // staging). Their absence is pinned below — re-adding either is a regression; the cost
+        // (OpenNext background-ISR revalidation can no longer persist) is recorded in
+        // `renderer-hosting.ts`. This frees two of the ten ORP header slots.
         //
         // `Origin` is DELIBERATELY ABSENT (STATIC-EP / D-STATIC-EP-ORIGIN). The CYCLE-1 attempt to
         // add it as an eleventh header failed deploy on CloudFront's hard 10-header ORP cap (staging
         // caught it, rolled back; prod untouched), so the anonymous-write origin barrier moved to
         // the viewer-request CloudFront Function, which sees `Origin` regardless of that cap. This
-        // list is therefore the SAME ten headers that are currently deployed; the edge guard is
+        // list was ten headers when STATIC-EP shipped; it is eight since the 2026-10-13 x-isr removal; the edge guard is
         // pinned by `(i)` below, not here.
         const headers = onlyResource('AWS::CloudFront::OriginRequestPolicy').Properties
             .OriginRequestPolicyConfig.HeadersConfig;
@@ -507,9 +506,9 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
             'x-tenant-id',
             'x-automation-key',
             'x-revalidation-token',
-            'x-prerender-revalidate',
-            'x-isr',
         ]);
+        expect(headers.Headers).not.toContain('x-isr');
+        expect(headers.Headers).not.toContain('x-prerender-revalidate');
     });
 });
 
