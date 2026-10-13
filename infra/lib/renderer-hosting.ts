@@ -151,14 +151,6 @@ export class RendererHosting extends Construct {
             partitionKey: { name: 'path', type: dynamodb.AttributeType.STRING },
             sortKey: { name: 'revalidatedAt', type: dynamodb.AttributeType.NUMBER },
         });
-        // TEMPORARY — the misnamed original, unused by anything. Kept for exactly one deploy:
-        // DynamoDB/CloudFormation permit only one GSI create-or-delete per table update, so the
-        // rename is two deploys (add 'revalidate' now; delete this block in the next deploy).
-        tagCacheTable.addGlobalSecondaryIndex({
-            indexName: 'by-path',
-            partitionKey: { name: 'path', type: dynamodb.AttributeType.STRING },
-            sortKey: { name: 'revalidatedAt', type: dynamodb.AttributeType.NUMBER },
-        });
 
         // 4.2 SQS FIFO Queue for background revalidation
         this.revalidationQueue = new sqs.Queue(this, 'RevalidationQueue', {
