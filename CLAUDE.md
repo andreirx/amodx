@@ -59,7 +59,7 @@ cd renderer && npm run test:serving      # Serving-contract suite: next build + 
 
 When updating code, rebuild shared, backend, plugins, renderer.
 When installing new packages, audit vulnerabilities and explain the high priority ones.
-Check that the MCP server reflects the changes.
+Check that the MCP server reflects the changes: run `cd tools/mcp-server && npm test` (route coverage); after a backend route change refresh `routes.json`.
 Update the documentation.
 
 ## Critical Rules

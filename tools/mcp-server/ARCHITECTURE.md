@@ -2,7 +2,7 @@
 
 ## Role in the System
 
-A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop. Allows Claude to manage tenants, create/edit pages with blocks, manage products, moderate comments, apply themes, research prospects, and post to social media — all through natural language. Communicates with the backend via HTTP API using a master API key, and uses Playwright for local browser automation.
+A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop. Allows Claude to manage tenants, create/edit pages with blocks, manage products, forms, popups, leads and private files, read the audit log, moderate comments, apply themes, research prospects, and post to social media — all through natural language. Communicates with the backend via HTTP API using a master API key, and uses Playwright for local browser automation.
 
 **Depends on:** backend (HTTP API), Playwright (local browser)
 
@@ -10,7 +10,11 @@ A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop.
 
 ```
 src/
-└── index.ts          # MCP server: all 28 tools, block schemas, API helpers
+└── index.ts          # MCP server: all 73 tools, block schemas, API helpers
+
+scripts/
+└── route-coverage.ts # Drift oracle (npm test) — see "Drift oracle"
+routes.json           # Live API Gateway route table snapshot (operator-refreshed)
 
 .storage/             # Browser auth states per platform (gitignored)
 setup.ts              # Configures Claude Desktop to use this server
@@ -22,18 +26,22 @@ tsconfig.json
 ## Server Configuration
 
 - **Transport:** Stdio (communicates via stdin/stdout pipes with Claude Desktop)
-- **Server name:** `AMODX-Bridge` v2.1.0
-- **SDK:** `@modelcontextprotocol/sdk` v1.24.3
-- **Auth:** master API key in `x-api-key` header + `Authorization: Bearer robot`
+- **Server name:** `AMODX-Bridge` v3.0.0
+- **SDK:** `@modelcontextprotocol/sdk` `^1.29.0` (package.json range)
+- **Auth:** master API key in `x-api-key` header + `Authorization: Bearer robot` → the authorizer maps it to `GLOBAL_ADMIN`, tenant `ALL`
 - **Tenant scoping:** `x-tenant-id` header per request
+- **API URL:** `AMODX_API_URL` is normalised once at startup (trailing `/` stripped); every call is `${API_URL}/<path>`
+- **Startup check:** `GET /tenants`; on failure every API tool returns an error with the fix instruction, local tools still work
 
-## Tools (28 total)
+## Tools (73 total)
+
+Method column = the API route(s) the tool calls. Generated from the `server.tool(` registrations in `src/index.ts`, in source order.
 
 ### Site Management
 | Tool | Method | Purpose |
 |------|--------|---------|
-| `list_tenants` | GET /tenant | List all sites |
-| `create_tenant` | POST /tenant | Create new site |
+| `list_tenants` | GET /tenants | List all sites |
+| `create_tenant` | POST /tenants | Create new site |
 
 ### Strategy & Context
 | Tool | Method | Purpose |
@@ -41,42 +49,111 @@ tsconfig.json
 | `list_context` | GET /context | List strategy docs for tenant |
 | `create_context` | POST /context | Create strategy document |
 | `read_context` | GET /context/{id} | Read full context doc |
+| `update_context` | PUT /context/{id} | Update title / tags / blocks (sent keys replace stored ones) |
+| `delete_context` | DELETE /context/{id} | Delete a context doc |
 
 ### Content & Blocks
 | Tool | Method | Purpose |
 |------|--------|---------|
 | `list_content` | GET /content | List all pages |
 | `read_page` | GET /content/{id} | Read full page with blocks |
-| `create_page` | POST /content | Create blank draft page |
 | `update_page` | PUT /content/{id} | Full page update (blocks JSON replaces entire content) |
-| `add_block` | PUT /content/{id} | Append a single block to existing page |
-| `get_block_schemas` | (local) | Returns attribute schemas for all 17 block types |
+| `get_block_schemas` | (local) | Attribute schemas for the 20 block types |
+| `add_block` | GET + PUT /content/{id} | Append a single block to existing page |
+| `create_page` | POST /content | Create blank draft page |
+| `page_history` | GET /content/{id}/versions | List saved versions, newest first |
+| `restore_page_version` | POST /content/{id}/restore | Forward rollback to a saved version (new version number) |
 | `list_tags` | GET /content (extract) | List all tags used across pages |
 
-### Products
+### Products (catalog — admin CRUD lives in `CatalogApi`)
 | Tool | Method | Purpose |
 |------|--------|---------|
 | `list_products` | GET /products | List all products |
 | `create_product` | POST /products | Create new product |
+| `get_product` | GET /products/{id} | Read one product |
+| `update_product` | GET + PUT /products/{id} | Read-merge-write update (see Key Patterns) |
+| `delete_product` | DELETE /products/{id} | Delete product and its category links |
 
-### Assets
+### Commerce (commerce track — not changed by mcp-sync-1)
 | Tool | Method | Purpose |
 |------|--------|---------|
-| `list_assets` | GET /assets | List uploaded files (top 20) |
+| `list_categories` | GET /categories | List categories |
+| `create_category` | POST /categories | Create category |
+| `list_orders` | GET /orders | List orders (optional status filter) |
+| `get_order` | GET /orders/{id} | Read one order |
+| `update_order_status` | PUT /orders/{id}/status | Move order through the status workflow |
+| `list_customers` | GET /customers | List customers |
+| `get_customer` | GET /customers/{email} | Read one customer |
+| `list_coupons` | GET /coupons | List coupons |
+| `create_coupon` | POST /coupons | Create coupon |
+| `list_reviews` | GET /reviews | List reviews (optional product filter) |
+| `moderate_review` | PUT /reviews/{id} | Approve / reject a review |
+| `get_delivery_config` | GET /delivery | **Broken:** live route is `GET /delivery/config` (404). `knownBroken` in the oracle |
+| `update_delivery_config` | PUT /delivery | **Broken:** live route is `PUT /delivery/config` (404). `knownBroken` in the oracle |
+| `get_reports` | GET /reports/summary | Revenue KPIs and breakdowns |
+| `bulk_price_adjust` | POST /products/bulk-price | Preview / apply percentage price change |
+
+### Engagement: Forms & Popups
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `list_popups` | GET /popups | List popups |
+| `list_forms` | GET /forms | List forms |
+| `get_form_submissions` | GET /forms/{id}/submissions | Read submissions of a form |
+| `create_form` | POST /forms | Create form (slug unique per tenant) |
+| `get_form` | GET /forms/{id} | Read one form |
+| `update_form` | PUT /forms/{id} | Update form (sent keys only) |
+| `delete_form` | DELETE /forms/{id} | Delete form + slug (submissions kept) |
+| `create_popup` | POST /popups | Create popup (default `disabled`) |
+| `get_popup` | GET /popups/{id} | Read one popup |
+| `update_popup` | GET + PUT /popups/{id} | Read-merge-write update (see Key Patterns) |
+| `delete_popup` | DELETE /popups/{id} | Delete popup |
+
+### Assets & Private Resources
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `list_assets` | GET /assets | List uploaded media (top 20) |
+| `list_resources` | GET /resources/list | List private files (gated downloads) |
+| `resource_download_url` | GET /resources/{id}/download | Presigned GET URL (5 min) |
+| `resource_upload_url` | POST /resources/upload | Presigned PUT URL (5 min) + resource ID; the caller PUTs the bytes |
 
 ### Comments
 | Tool | Method | Purpose |
 |------|--------|---------|
 | `list_comments` | GET /comments | List comments for moderation |
-| `moderate_comment` | POST /comments/moderate | Approve/spam/hide/delete comment |
+| `moderate_comment` | PUT /comments | Approve/spam/hide/delete comment |
+
+### Themes
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `list_themes` | GET /themes | List available themes |
+| `create_theme` | POST /themes | Create custom theme |
+| `apply_theme` | GET /themes + GET/PUT /settings | Copy a theme's values into the site's light or dark slot |
+| `delete_theme` | DELETE /themes/{id} | Delete a shared theme (themes are global, not per tenant) |
 
 ### Signals & Research
 | Tool | Method | Purpose |
 |------|--------|---------|
-| `search_web` | GET /settings + Brave API | Web search via Brave (key from tenant settings) |
+| `search_web` | POST /research/search | Web search via Brave; the backend holds the tenant's key |
 | `scrape_url` | HTTP GET + cheerio | Extract text content from a URL |
 | `save_signal` | POST /signals | Save an analyzed outbound lead signal |
 | `list_signals` | GET /signals | List all signals for a tenant |
+| `update_signal` | PUT /signals/{id} | Update status / draftReply / analysis / painScore / walletSignal |
+
+### Leads
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `list_leads` | GET /leads | List captured leads |
+| `create_lead` | POST /leads | Add a lead (fails when reCAPTCHA is configured — see tool description) |
+| `delete_lead` | DELETE /leads/{email} | Delete a lead |
+
+### System, Audit & Email
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `get_invalidation_status` | GET /system/invalidation | Read the deployment-wide pending-invalidation marker; `goLiveAt` is a calculated flush-due time, not proof of a flush |
+| `request_invalidation` | POST /system/invalidation | "GO LIVE NOW": asks the backend for CloudFront `/*` (whole deployment) + marker delete; reports the raw response, which confirms neither effect |
+| `list_audit` | GET /audit | Audit log, newest first |
+| `audit_graph` | GET /audit/graph | Internal-link graph + orphan pages |
+| `email_dns_check` | POST /email/dns-check | Read-only public-DNS check against a mailbox-provider recipe |
 
 ### Social Media (Playwright)
 | Tool | Method | Purpose |
@@ -84,23 +161,39 @@ tsconfig.json
 | `social_login` | Playwright (local) | Opens browser for manual login, saves session cookies |
 | `post_social` | Playwright (local) | Posts content using saved session state |
 
-### Themes
-| Tool | Method | Purpose |
-|------|--------|---------|
-| `list_themes` | GET /themes | List available themes |
-| `create_theme` | POST /themes | Create custom theme |
-| `apply_theme` | PUT /tenant/settings | Apply theme to light or dark mode |
-
 ### Reference
 | Tool | Method | Purpose |
 |------|--------|---------|
 | `get_schema` | (local) | Full system documentation and workflow guide |
 
+## Deliberately not exposed
+
+| Route(s) | Why |
+|----------|-----|
+| `GET /settings/secrets` | Would put secret values into the model's context |
+| `POST /users`, `PUT /users/{username}`, `PUT /users/{username}/status`, `DELETE /users/{username}` | Admin-account mutation through a robot key — product decision not taken |
+| `GET /users`, `POST /import/wordpress`, `POST /import/media` | **Deferred:** the backend route reads across tenants (`users/list.ts` returns the whole user pool to a global key; the import handlers `GetObject` any `s3Key` without a tenant-prefix check). Admit after a backend slice scopes them (`docs/TECH-DEBT.md`, BACKEND-TENANT-SCOPE-1 candidate) |
+| `/public/*`, `POST /consent`, `POST /contact`, `POST /webhooks/paddle` | Visitor / webhook surfaces, not admin surfaces |
+| `POST /comments` | Deliberately unexposed: the visitor comment route (RENDERER role) |
+| `POST /assets` | Not in the ruled IN set; asset upload needs the presign flow |
+| Remaining commerce routes (categories/coupons/reviews/customers/orders by id, `/delivery/config`, `/import/woocommerce`, `/import/reviews`) | Commerce track |
+
+## Drift oracle
+
+`npm test` runs `scripts/route-coverage.ts` (tsx). It reads `src/index.ts` as text — no import, no `.env`, no network — and checks it against `routes.json`.
+
+- **routes.json** — the live route table: output of `aws apigatewayv2 get-routes --api-id <prod api id> --query "Items[].RouteKey"`, with `generatedAt`, `stage`, `apiId` and the command. **Refresh duty:** after every backend route change the operator re-runs the command, replaces `routes`, and runs `npm test`.
+- **Extraction:** every `axios.<method>(` call whose first argument is a `${API_URL}/…` template literal, or an identifier bound by a `const <id> = …;` holding such literals (the `const url = cond ? … : …` pattern). `${…}` segments become wildcards that match a `{param}` route segment by position; the query string is dropped.
+- **Fails (exit 1)** when: a call's method+path is not in `routes.json` and not in the `knownBroken` allowlist; a `knownBroken` entry is no longer called (stale entries would hide a regression); a `${API_URL}` occurrence is not attributable to a parsed call (the oracle would be blind to it — this includes comments); the `## Tools (N total)` heading above differs from the number of `server.tool(` registrations.
+- **Prints, never fails:** admin routes (not `/public/*`, not `/webhooks/*`) that no tool calls, grouped by first path segment. Coverage is a product choice.
+- **`knownBroken`** today: `GET /delivery`, `PUT /delivery` (commerce track). The commerce slice fixes the two tools and deletes both entries.
+- **Scope of the guarantee:** the oracle proves a called method+path EXISTS in the snapshot. It does not prove request bodies, response shapes, or roles; `routes.json` is only as fresh as its last refresh. `scripts/` is outside `tsconfig.json` (`rootDir: src`), so `npm run typecheck` does not cover the script.
+
 ## Block Types Supported
 
-The `add_block` tool supports 17 block types (15 custom plugins + 2 Tiptap builtins):
+The `add_block` tool supports 20 block types (18 custom plugins + 2 Tiptap builtins):
 
-**Custom Plugins:** hero, pricing, contact, image, video, leadMagnet, features, cta, testimonials, columns, table, html, faq, postGrid, carousel
+**Custom Plugins:** hero, pricing, contact, image, video, leadMagnet, features, cta, testimonials, columns, table, html, faq, postGrid, carousel, codeBlock, reviewsCarousel, categoryShowcase
 
 **Tiptap Builtins:** paragraph, heading
 
@@ -112,6 +205,7 @@ The `add_block` tool supports 17 block types (15 custom plugins + 2 Tiptap built
 cd tools/mcp-server
 npm run build          # Compile TypeScript
 npm run setup          # Inject into Claude Desktop config
+npm test               # Route-coverage drift oracle
 ```
 
 `setup.ts` locates the Claude Desktop config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS) and writes the server entry with environment variables.
@@ -120,5 +214,8 @@ npm run setup          # Inject into Claude Desktop config
 
 - **Full page replacement:** `update_page` sends the complete blocks array — Claude must read the page first, modify, then send back the full array
 - **Incremental editing:** `add_block` appends a single block without touching existing content
-- **Error handling:** all tools wrap API calls in try/catch, return `isError: true` with message on failure
+- **Read-merge-write for zod-validated partial updates:** `update_product` and `update_popup` GET the stored item, merge the sent keys over it and PUT the full object. Reason: the backend validates the body with `Schema.partial()`, and in zod 4 `.partial()` still fills every omitted field that has a `.default()` (e.g. product `status: "draft"`, `categoryIds: []`; popup `status: "disabled"`), so a bare partial body would overwrite stored values. Not atomic: a concurrent admin edit between the GET and the PUT is lost
+- **JSON-string inputs (tools added in mcp-sync-1):** every input that promises an array or object goes through `parseJsonInput()`; wrong syntax or wrong top-level shape returns `isError` naming the expected shape, and no request is sent. Older tools (`update_page`, `add_block`, `update_delivery_config`) still call `JSON.parse` directly
+- **Cache wording (tools added in mcp-sync-1):** a cache or publication effect is stated only as a best-effort backend attempt, never as an outcome. Tools whose handler is wrapped in backend `withInvalidation()` (`restore_page_version`, `delete_theme`, `create_form`, `update_form`, `delete_form`, `create_popup`, `update_popup`, `delete_popup`) end with `PENDING_MARKER_ATTEMPT`: `markCdnPending()` skips the write when `TABLE_NAME` is unset and logs-and-swallows a failed write, while the request still succeeds. `update_product` / `delete_product` (backend `revalidateTenantPaths()`, equally best-effort) end with `PAGE_REVALIDATION_ATTEMPT`. Scope: tools that existed before mcp-sync-1 and reach a wrapped handler (`create_tenant`, `create_product`, `create_theme`, `apply_theme`; commerce `create_category`, `bulk_price_adjust`) carry no cache wording and were not changed
+- **Error handling:** all tools wrap API calls in try/catch and return `isError: true`. Tools added in mcp-sync-1 (and `search_web`) use `apiError()`, which reports the HTTP status plus the backend's own reason (JSON `{error}` or plain-text body); older tools report only `error.message`
 - **Schema reference:** `get_block_schemas` and `get_schema` are local-only tools (no API call) that help Claude understand available block types and system workflows

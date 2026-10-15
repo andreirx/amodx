@@ -277,6 +277,21 @@ The asset upload flow (`backend/src/assets/create.ts`) uses presigned PUT URLs. 
 
 **Current risk level:** Low. The gap is only exploitable by deliberately forging the size field in the authenticated API call. All honest upload paths (admin UI, MCP server) use the real `File.size`. The MIME allowlist IS enforced because `ContentType` is signed into the presigned URL.
 
+### BACKEND-TENANT-SCOPE-1 candidate: import handlers and user list read across tenants
+**Found:** `mcp-sync-1` review-0 (2026-10-15), verified on the code by the operator. **Scope:** backend only;
+the MCP tools `list_users`, `import_wordpress`, `import_media` are deferred until this is fixed
+(`docs/slices/mcp-sync-1.md`).
+
+- `backend/src/import/media.ts:111-113` and `backend/src/import/wordpress.ts:89-91` call `GetObject` on
+  `UPLOADS_BUCKET` with the caller-supplied `s3Key` and no tenant-prefix check, so a caller can import another
+  tenant's uploaded file into its own tenant. **Fix:** refuse an `s3Key` outside the tenant's own upload prefix
+  (`<tenantId>/`).
+- `backend/src/users/list.ts:26-51` lists the whole Cognito pool (first page only — no `PaginationToken`) and filters
+  only for non-global callers, so a global key receives every tenant's users regardless of `x-tenant-id`.
+  **Fix:** scope server-side to the requested tenant and paginate.
+
+The exception path — ratifying cross-tenant reads for a global key — is a human decision, not a slice's.
+
 ### Tiptap version skew: plugins 2.x / admin 3.x
 `packages/plugins` depends on `@tiptap/core@^2` and `@tiptap/react@^2`. `admin` depends on `@tiptap/*@^3`. Both are installed separately (not deduped). The `InlineRichTextField` support component creates a standalone Tiptap 2.x ProseMirror instance that coexists with the admin's 3.x outer editor. This works because the two editors are fully isolated (no shared state, schema, or extensions), but it means:
 - Duplicate editor runtime in the admin bundle

@@ -14,7 +14,9 @@ const STORAGE_DIR = path.join(import.meta.dirname, "../.storage");
 dotenv.config();
 
 const API_KEY = process.env.AMODX_API_KEY;
-const API_URL = process.env.AMODX_API_URL;
+// Normalised once: the API Gateway URL that post-deploy writes into .env ends with "/", and
+// every call below appends "/<path>" to API_URL. Stripping the slash keeps one convention.
+const API_URL = (process.env.AMODX_API_URL ?? '').replace(/\/+$/, '');
 
 if (!API_URL || !API_KEY) {
     console.error("Error: AMODX_API_URL or AMODX_API_KEY is missing in .env");
@@ -28,7 +30,7 @@ let apiKeyValid = false;
 
 async function validateApiKey(): Promise<boolean> {
     try {
-        const res = await axios.get(`${API_URL}tenants`, {
+        const res = await axios.get(`${API_URL}/tenants`, {
             headers: { 'x-api-key': API_KEY, 'Authorization': 'Bearer robot' },
             timeout: 10000,
         });
@@ -62,6 +64,50 @@ const getHeaders = (tenantId?: string) => {
     };
     if (tenantId) h['x-tenant-id'] = tenantId;
     return h;
+};
+
+// HELPER: tool error result that keeps the backend's own reason. Handlers answer either a
+// JSON body {error} or a plain-text body; axios' error.message alone says only the status.
+const apiError = (error: any) => {
+    const body = error.response?.data;
+    const reason = typeof body === "string" ? body : body?.error;
+    const status = error.response?.status;
+    const text = status ? `HTTP ${status}${reason ? `: ${reason}` : ""}` : error.message;
+    return { content: [{ type: "text" as const, text: `Error: ${text}` }], isError: true };
+};
+
+// Cache wording rule for tools added in mcp-sync-1: a cache or publication effect is stated only
+// as a best-effort backend ATTEMPT, never as an outcome. Two backend paths exist:
+//  - `withInvalidation()` (backend/src/lib/invalidate-cdn.ts): on a 2xx it calls markCdnPending(),
+//    which skips the write when TABLE_NAME is unset and logs-and-swallows a failed write; the
+//    request still succeeds. The scheduled debounce-flush job acts on the marker later.
+//  - `revalidateTenantPaths()` (backend/src/lib/revalidate.ts): best-effort ISR purge + edge
+//    enqueue + marker; failures are logged and swallowed; skipped when the site has no domain.
+const PENDING_MARKER_ATTEMPT =
+    "On success the backend attempts a best-effort write of the deployment-wide pending-invalidation marker " +
+    "(a failed write is logged and ignored; the request still succeeds); a scheduled job later attempts the CDN flush when a marker is due. " +
+    "Nothing returned here confirms that a marker was written or that a flush ran.";
+const PAGE_REVALIDATION_ATTEMPT =
+    "On success the backend attempts a best-effort cache revalidation of the product URL and attempts to mark listings pending " +
+    "(failures are logged and ignored; skipped when the site has no domain). Until a refresh completes, the old page may still be served.";
+
+// HELPER: every JSON-string input of a tool that promises an array or an object goes through
+// this check BEFORE any request: wrong syntax or wrong top-level shape → isError naming the
+// expected shape, and nothing is sent.
+type JsonInput = { ok: true; value: any } | { ok: false; result: ReturnType<typeof apiError> };
+const parseJsonInput = (raw: string, shape: "array" | "object", name: string): JsonInput => {
+    let value: unknown;
+    try {
+        value = JSON.parse(raw);
+    } catch {
+        value = undefined;
+    }
+    const fits = shape === "array"
+        ? Array.isArray(value)
+        : typeof value === "object" && value !== null && !Array.isArray(value);
+    if (fits) return { ok: true, value };
+    const expected = shape === "array" ? "a JSON array ([...])" : "a JSON object ({...})";
+    return { ok: false, result: { content: [{ type: "text" as const, text: `Error: ${name} must be ${expected}; no request was sent.` }], isError: true } };
 };
 
 // --- COMPLETE BLOCK DEFINITIONS FOR AI ---
@@ -679,6 +725,49 @@ server.tool("read_context",
     }
 );
 
+server.tool("update_context",
+    "Update a context (strategy) document. Omitted fields keep their stored value. `blocks` REPLACES the whole block array — read_context first.",
+    {
+        tenant_id: z.string(),
+        id: z.string().describe("Context document ID (from list_context)"),
+        title: z.string().optional(),
+        tags: z.string().optional().describe("Comma separated tags. REPLACES the stored tags."),
+        blocks: z.string().optional().describe("Full JSON array of blocks. REPLACES the stored blocks. Plain text: [{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"...\"}]}]"),
+    },
+    async ({ tenant_id, id, title, tags, blocks }) => {
+        try {
+            const payload: any = {};
+            if (title) payload.title = title;
+            if (tags !== undefined) payload.tags = tags.split(',').map(t => t.trim()).filter(Boolean);
+            if (blocks) {
+                const parsed = parseJsonInput(blocks, "array", "blocks");
+                if (!parsed.ok) return parsed.result;
+                payload.blocks = parsed.value;
+            }
+            await axios.put(`${API_URL}/context/${id}`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Updated context doc ${id}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("delete_context",
+    "Permanently delete a context (strategy) document. No undo, no version history.",
+    {
+        tenant_id: z.string(),
+        id: z.string().describe("Context document ID (from list_context)"),
+    },
+    async ({ tenant_id, id }) => {
+        try {
+            await axios.delete(`${API_URL}/context/${id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Deleted context doc ${id}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
 // ==========================================
 // 3. CONTENT & BLOCKS
 // ==========================================
@@ -880,6 +969,44 @@ server.tool("create_page",
     }
 );
 
+server.tool("page_history",
+    "List the saved versions of a page, newest first. Use a version number with restore_page_version.",
+    {
+        tenant_id: z.string(),
+        page_id: z.string().describe("The Node ID of the page (from list_content)"),
+    },
+    async ({ tenant_id, page_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/content/${page_id}/versions`, { headers: getHeaders(tenant_id) });
+            // Sorted here, numerically: the handler orders by sort key, where "v10" sorts before "v9".
+            const versions = [...(response.data.versions || [])].sort((a: any, b: any) => Number(b.version) - Number(a.version));
+            const summary = versions.map((v: any) =>
+                `- v${v.version} [${v.status}] "${v.title}" — ${v.updatedAt || "?"} by ${v.updatedBy || "?"}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Versions of page ${page_id}:\n${summary || "No saved versions."}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("restore_page_version",
+    "Restore a page to a saved version. Forward rollback: the snapshot is copied into the live page under a NEW version number; history is kept. " + PENDING_MARKER_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        page_id: z.string().describe("The Node ID of the page (from list_content)"),
+        version: z.number().int().describe("Version number to restore (from page_history)"),
+    },
+    async ({ tenant_id, page_id, version }) => {
+        try {
+            const response = await axios.post(`${API_URL}/content/${page_id}/restore`, { version }, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Restored page ${page_id} from v${version}; it is now v${response.data.version}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
 // LIST PRODUCTS
 server.tool("list_products",
     { tenant_id: z.string() },
@@ -953,6 +1080,67 @@ server.tool("create_product",
             return { content: [{ type: "text", text: `✓ Created product "${title}" (ID: ${response.data.id})` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("get_product",
+    "Read one product with all its stored fields (JSON).",
+    {
+        tenant_id: z.string(),
+        product_id: z.string().describe("Product ID (from list_products)"),
+    },
+    async ({ tenant_id, product_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/products/${product_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("update_product",
+    "Update a product. Only the keys you send change. The tool reads the stored product, merges your keys over it and sends the full product, " +
+    "because the backend's partial validation fills every omitted field with its schema default (e.g. status 'draft', categoryIds []). " +
+    "Not atomic: an admin edit made between the read and the write is overwritten. " + PAGE_REVALIDATION_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        product_id: z.string().describe("Product ID (from list_products)"),
+        fields: z.string().describe(
+            "JSON object of ProductSchema fields to change (camelCase), validated by the backend. Common keys: title, slug, status ('active'|'archived'|'draft'), " +
+            "price (string), salePrice (string), currency, description (plain text, max 5000), longDescription (HTML), imageLink, additionalImageLinks (array), " +
+            "availability ('in_stock'|'out_of_stock'|'preorder'), inventoryQuantity (integer), availableFrom/availableUntil (ISO date), categoryIds (array), tags (array), sku, sortOrder. " +
+            "Use get_product to see the full shape (variants, volumePricing, personalizations, attributes)."
+        ),
+    },
+    async ({ tenant_id, product_id, fields }) => {
+        const parsed = parseJsonInput(fields, "object", "fields");
+        if (!parsed.ok) return parsed.result;
+        const patch = parsed.value;
+        try {
+            const headers = getHeaders(tenant_id);
+            const current = await axios.get(`${API_URL}/products/${product_id}`, { headers });
+            const response = await axios.put(`${API_URL}/products/${product_id}`, { ...current.data, ...patch }, { headers });
+            return { content: [{ type: "text", text: `✓ Updated product "${response.data.title}" (${Object.keys(patch).join(", ")})` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("delete_product",
+    "Permanently delete a product and its category links. No undo. " + PAGE_REVALIDATION_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        product_id: z.string().describe("Product ID (from list_products)"),
+    },
+    async ({ tenant_id, product_id }) => {
+        try {
+            await axios.delete(`${API_URL}/products/${product_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Deleted product ${product_id}` }] };
+        } catch (error: any) {
+            return apiError(error);
         }
     }
 );
@@ -1292,7 +1480,7 @@ server.tool("bulk_price_adjust",
 );
 
 // ==========================================
-// COMMERCE: POPUPS & FORMS
+// ENGAGEMENT: POPUPS & FORMS
 // ==========================================
 
 server.tool("list_popups",
@@ -1347,6 +1535,189 @@ server.tool("get_form_submissions",
     }
 );
 
+// Form fields shared by create_form and update_form (snake_case in, camelCase to the API).
+// The forms handlers do not validate these; the shapes below are FormDefinitionSchema's.
+const FormInput = z.object({
+    slug: z.string().optional().describe("URL slug, slugified by the backend; must be unique in the tenant (HTTP 409 otherwise). Default: from name."),
+    fields: z.string().optional().describe(
+        "JSON array of fields. Each: {id (string), label, type ('text'|'email'|'phone'|'textarea'|'select'|'checkbox'|'number'), required (boolean), placeholder?, options? (string array, for select)}"
+    ),
+    submit_button_text: z.string().optional(),
+    success_message: z.string().optional(),
+    notify_email: z.string().optional().describe("Email address notified on each submission"),
+    status: z.enum(["active", "disabled"]).optional(),
+});
+const formPayload = (a: z.infer<typeof FormInput> & { name?: string }): JsonInput => {
+    const p: Record<string, unknown> = {
+        name: a.name, slug: a.slug, submitButtonText: a.submit_button_text,
+        successMessage: a.success_message, notifyEmail: a.notify_email, status: a.status,
+    };
+    if (a.fields !== undefined) {
+        const parsed = parseJsonInput(a.fields, "array", "fields");
+        if (!parsed.ok) return parsed;
+        p.fields = parsed.value;
+    }
+    return { ok: true, value: Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) };
+};
+
+server.tool("create_form",
+    "Create a form. Visitors submit to the public route /public/forms/{slug}/submit; read submissions with get_form_submissions. " + PENDING_MARKER_ATTEMPT,
+    { tenant_id: z.string(), name: z.string(), ...FormInput.shape },
+    async ({ tenant_id, ...args }) => {
+        const payload = formPayload(args);
+        if (!payload.ok) return payload.result;
+        try {
+            const response = await axios.post(`${API_URL}/forms`, payload.value, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Created form "${response.data.name}" (ID: ${response.data.id}, Slug: ${response.data.slug})` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("get_form",
+    "Read one form definition (JSON).",
+    {
+        tenant_id: z.string(),
+        form_id: z.string().describe("Form ID (from list_forms)"),
+    },
+    async ({ tenant_id, form_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/forms/${form_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("update_form",
+    "Update a form. Only the keys you send change; `fields` REPLACES the whole field list. " + PENDING_MARKER_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        form_id: z.string().describe("Form ID (from list_forms)"),
+        name: z.string().optional(),
+        ...FormInput.shape,
+    },
+    async ({ tenant_id, form_id, ...args }) => {
+        const payload = formPayload(args);
+        if (!payload.ok) return payload.result;
+        try {
+            const response = await axios.put(`${API_URL}/forms/${form_id}`, payload.value, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Updated form "${response.data.name}" (Slug: ${response.data.slug})` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("delete_form",
+    "Permanently delete a form and its slug. Stored submissions are NOT deleted. No undo. " + PENDING_MARKER_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        form_id: z.string().describe("Form ID (from list_forms)"),
+    },
+    async ({ tenant_id, form_id }) => {
+        try {
+            await axios.delete(`${API_URL}/forms/${form_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Deleted form ${form_id}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+// Popup fields shared by create_popup and update_popup; values mirror PopupSchema.
+const PopupInput = z.object({
+    type: z.enum(["announcement", "newsletter", "promotion", "custom"]).optional(),
+    headline: z.string().optional(),
+    body: z.string().optional().describe("HTML content"),
+    image_link: z.string().optional(),
+    cta_text: z.string().optional(),
+    cta_link: z.string().optional(),
+    trigger: z.enum(["page_load", "exit_intent", "scroll", "time_delay"]).optional(),
+    trigger_value: z.string().optional().describe("Scroll percent for 'scroll', seconds for 'time_delay'"),
+    show_on_pages: z.string().optional().describe("Comma separated path prefixes (e.g. '/blog, /pricing'); a page matches when its path starts with one. Empty = all pages."),
+    show_once_per_session: z.boolean().optional(),
+    status: z.enum(["active", "disabled"]).optional().describe("New popups default to 'disabled'"),
+});
+const popupPayload = (a: z.infer<typeof PopupInput> & { name?: string }) => {
+    const p: Record<string, unknown> = {
+        name: a.name, type: a.type, headline: a.headline, body: a.body, imageLink: a.image_link,
+        ctaText: a.cta_text, ctaLink: a.cta_link, trigger: a.trigger, triggerValue: a.trigger_value,
+        showOnPages: a.show_on_pages?.split(",").map(s => s.trim()).filter(Boolean),
+        showOncePerSession: a.show_once_per_session, status: a.status,
+    };
+    return Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
+};
+
+server.tool("create_popup",
+    "Create a popup. It stays 'disabled' unless you send status 'active'. " + PENDING_MARKER_ATTEMPT,
+    { tenant_id: z.string(), name: z.string(), ...PopupInput.shape },
+    async ({ tenant_id, ...args }) => {
+        try {
+            const response = await axios.post(`${API_URL}/popups`, popupPayload(args), { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Created popup "${response.data.name}" [${response.data.status}] (ID: ${response.data.id})` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("get_popup",
+    "Read one popup (JSON).",
+    {
+        tenant_id: z.string(),
+        popup_id: z.string().describe("Popup ID (from list_popups)"),
+    },
+    async ({ tenant_id, popup_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/popups/${popup_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("update_popup",
+    "Update a popup. Only the keys you send change. The tool reads the stored popup, merges your keys over it and sends the full popup, " +
+    "because the backend's partial validation fills every omitted field with its schema default (e.g. status 'disabled', trigger 'page_load'). " +
+    "Not atomic: an admin edit made between the read and the write is overwritten. " + PENDING_MARKER_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        popup_id: z.string().describe("Popup ID (from list_popups)"),
+        name: z.string().optional(),
+        ...PopupInput.shape,
+    },
+    async ({ tenant_id, popup_id, ...args }) => {
+        try {
+            const headers = getHeaders(tenant_id);
+            const current = await axios.get(`${API_URL}/popups/${popup_id}`, { headers });
+            const response = await axios.put(`${API_URL}/popups/${popup_id}`, { ...current.data, ...popupPayload(args) }, { headers });
+            return { content: [{ type: "text", text: `✓ Updated popup "${response.data.name}" [${response.data.status}]` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("delete_popup",
+    "Permanently delete a popup. No undo. " + PENDING_MARKER_ATTEMPT,
+    {
+        tenant_id: z.string(),
+        popup_id: z.string().describe("Popup ID (from list_popups)"),
+    },
+    async ({ tenant_id, popup_id }) => {
+        try {
+            await axios.delete(`${API_URL}/popups/${popup_id}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Deleted popup ${popup_id}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
 // LIST ASSETS (Media)
 server.tool("list_assets",
     { tenant_id: z.string() },
@@ -1359,6 +1730,65 @@ server.tool("list_assets",
             return { content: [{ type: "text", text: `Recent Assets (Top 20) for ${tenant_id}:\n${summary}` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+// PRIVATE RESOURCES (gated downloads: leadMagnet blocks, digital products)
+server.tool("list_resources",
+    "List the tenant's private files (resources). Use a resource ID in a leadMagnet block or as a product's resource_id.",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/resources/list`, { headers: getHeaders(tenant_id) });
+            const summary = (response.data.items || []).map((r: any) =>
+                `- ${r.fileName} (ID: ${r.id}) uploaded ${r.createdAt}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Private resources for ${tenant_id}:\n${summary || "No resources found."}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("resource_download_url",
+    "Get a presigned download URL for a private resource. The URL expires after 5 minutes.",
+    {
+        tenant_id: z.string(),
+        resource_id: z.string().describe("Resource ID (from list_resources)"),
+    },
+    async ({ tenant_id, resource_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/resources/${resource_id}/download`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `Download URL (expires in 5 minutes):\n${response.data.downloadUrl}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("resource_upload_url",
+    "Step 1 of a private-file upload: get a presigned S3 PUT URL (expires after 5 minutes) and the new resource ID. " +
+    "Step 2 (outside this server): HTTP PUT the file bytes to that URL with the SAME Content-Type header. " +
+    "The resource record is created now, before the upload; if step 2 never happens the record points at a missing file.",
+    {
+        tenant_id: z.string(),
+        filename: z.string().describe("File name, e.g. 'seo-guide.pdf'"),
+        content_type: z.string().describe("MIME type, e.g. 'application/pdf'. The PUT must send exactly this Content-Type."),
+    },
+    async ({ tenant_id, filename, content_type }) => {
+        try {
+            const response = await axios.post(`${API_URL}/resources/upload`,
+                { filename, contentType: content_type },
+                { headers: getHeaders(tenant_id) });
+            return {
+                content: [{
+                    type: "text",
+                    text: `Resource ID: ${response.data.resourceId}\nPUT the file (Content-Type: ${content_type}) within 5 minutes to:\n${response.data.uploadUrl}`
+                }]
+            };
+        } catch (error: any) {
+            return apiError(error);
         }
     }
 );
@@ -1517,6 +1947,20 @@ server.tool("apply_theme",
     }
 );
 
+server.tool("delete_theme",
+    "Permanently delete a saved theme. Themes are SHARED by all tenants (not tenant-scoped). " +
+    "Sites that already applied it keep their colors: apply_theme copies the values into the site settings. " + PENDING_MARKER_ATTEMPT,
+    { theme_id: z.string().describe("ID from list_themes") },
+    async ({ theme_id }) => {
+        try {
+            await axios.delete(`${API_URL}/themes/${theme_id}`, { headers: getHeaders() });
+            return { content: [{ type: "text", text: `✓ Deleted theme ${theme_id}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
 // ==========================================
 // 6. SIGNALS (Outbound Lead Tracking)
 // ==========================================
@@ -1524,37 +1968,20 @@ server.tool("apply_theme",
 server.tool("search_web",
     {
         query: z.string().describe("Search query"),
-        tenant_id: z.string().describe("Tenant ID to fetch Brave API key from settings"),
+        tenant_id: z.string().describe("Tenant whose Brave API key (in its settings) the backend uses"),
     },
     async ({ query, tenant_id }) => {
         try {
-            // Step 1: Fetch tenant settings to get Brave API key
-            const settingsRes = await axios.get(`${API_URL}/settings`, {
-                headers: getHeaders(tenant_id),
-            });
-            const braveApiKey = settingsRes.data?.integrations?.braveApiKey;
+            // The backend reads the tenant's Brave key and calls Brave; the key never reaches this process.
+            const response = await axios.post(`${API_URL}/research/search`, { query }, { headers: getHeaders(tenant_id) });
 
-            if (!braveApiKey) {
-                return { content: [{ type: "text" as const, text: "Configure Brave API Key in Admin Settings." }], isError: true };
-            }
-
-            // Step 2: Call Brave Search API directly
-            const braveRes = await axios.get("https://api.search.brave.com/res/v1/web/search", {
-                params: { q: query },
-                headers: {
-                    "Accept": "application/json",
-                    "X-Subscription-Token": braveApiKey,
-                },
-            });
-
-            const results = (braveRes.data.web?.results || []).slice(0, 10).map((r: any, i: number) =>
+            const results = (response.data.results || []).map((r: any, i: number) =>
                 `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description || ""}`
             ).join("\n\n");
 
             return { content: [{ type: "text" as const, text: `Search results for "${query}":\n\n${results}` }] };
         } catch (error: any) {
-            const message = error.response?.data?.error || error.message;
-            return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
+            return apiError(error);
         }
     }
 );
@@ -1644,6 +2071,219 @@ server.tool("list_signals",
             return { content: [{ type: "text" as const, text: `Signals for ${tenant_id}:\n${summary}` }] };
         } catch (error: any) {
             return { content: [{ type: "text" as const, text: `Error: ${error.message}` }], isError: true };
+        }
+    }
+);
+
+server.tool("update_signal",
+    "Update a saved signal. Only the keys you send change; the backend accepts only these five fields.",
+    {
+        tenant_id: z.string(),
+        signal_id: z.string().describe("Signal ID (from list_signals)"),
+        status: z.enum(["New", "Drafted", "Replied", "Dismissed"]).optional(),
+        draft_reply: z.string().optional(),
+        analysis: z.string().optional(),
+        pain_score: z.number().min(1).max(10).optional(),
+        wallet_signal: z.boolean().optional(),
+    },
+    async ({ tenant_id, signal_id, status, draft_reply, analysis, pain_score, wallet_signal }) => {
+        try {
+            const payload: Record<string, unknown> = {};
+            if (status !== undefined) payload.status = status;
+            if (draft_reply !== undefined) payload.draftReply = draft_reply;
+            if (analysis !== undefined) payload.analysis = analysis;
+            if (pain_score !== undefined) payload.painScore = pain_score;
+            if (wallet_signal !== undefined) payload.walletSignal = wallet_signal;
+            await axios.put(`${API_URL}/signals/${signal_id}`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text" as const, text: `✓ Updated signal ${signal_id} (${Object.keys(payload).join(", ") || "no fields"})` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+// ==========================================
+// LEADS
+// ==========================================
+
+server.tool("list_leads",
+    "List captured leads (emails captured through the public lead route, e.g. leadMagnet blocks), newest first.",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/leads`, { headers: getHeaders(tenant_id) });
+            const items = response.data.items || [];
+            const summary = items.map((l: any) =>
+                `- ${l.email}${l.name ? ` (${l.name})` : ""} [${l.status}] source: ${l.source || "-"} — ${l.createdAt}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Leads for ${tenant_id} (${items.length}):\n${summary || "No leads found."}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("create_lead",
+    "Add a lead. The lead is stored under its email: an existing lead with the same email is REPLACED and its status reset to 'New'. " +
+    "This is the public capture route: when reCAPTCHA is configured (deployment or tenant keys) the backend requires a reCAPTCHA token, " +
+    "which this server cannot produce, so the call fails with HTTP 400 'CAPTCHA verification required'.",
+    {
+        tenant_id: z.string(),
+        email: z.string().describe("Lead email (valid email address)"),
+        name: z.string().optional(),
+        source: z.string().optional().describe("Where the lead came from, e.g. 'Footer Form', 'Webinar'"),
+        data: z.string().optional().describe("JSON object of custom fields"),
+    },
+    async ({ tenant_id, email, name, source, data }) => {
+        try {
+            const payload: Record<string, unknown> = { email };
+            if (name !== undefined) payload.name = name;
+            if (source !== undefined) payload.source = source;
+            if (data !== undefined) {
+                const parsed = parseJsonInput(data, "object", "data");
+                if (!parsed.ok) return parsed.result;
+                payload.data = parsed.value;
+            }
+            await axios.post(`${API_URL}/leads`, payload, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Saved lead ${email}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("delete_lead",
+    "Permanently delete a lead by email. No undo.",
+    {
+        tenant_id: z.string(),
+        email: z.string().describe("Lead email (from list_leads)"),
+    },
+    async ({ tenant_id, email }) => {
+        try {
+            await axios.delete(`${API_URL}/leads/${encodeURIComponent(email)}`, { headers: getHeaders(tenant_id) });
+            return { content: [{ type: "text", text: `✓ Deleted lead ${email}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+// ==========================================
+// SYSTEM, AUDIT & EMAIL
+// ==========================================
+
+server.tool("get_invalidation_status",
+    "Read the pending-invalidation marker: whether it exists, the last change time, and goLiveAt — the flush-due time the backend " +
+    "CALCULATES from the marker (not proof that a flush ran or that edits are published). " +
+    "The marker is DEPLOYMENT-WIDE (one for all sites), not per site; tenant_id only satisfies the access check.",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/system/invalidation`, { headers: getHeaders(tenant_id) });
+            const d = response.data;
+            const text = d.pending
+                ? `Pending invalidation marker present: last change ${d.lastChangeAt}; calculated flush-due time (goLiveAt) ${d.goLiveAt}. ` +
+                  "The due time is not proof that a flush ran or that edits are published."
+                : "No pending invalidation marker.";
+            return { content: [{ type: "text", text }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("request_invalidation",
+    "'GO LIVE NOW': asks the backend to invalidate the WHOLE renderer CDN ('/*', every site of this deployment, not only tenant_id) " +
+    "and to delete the pending marker. The backend sends the CloudFront invalidation only when its renderer distribution ID is configured, " +
+    "and ignores a failed marker delete; its response is the same in all these cases, so this tool cannot confirm either effect.",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.post(`${API_URL}/system/invalidation`, {}, { headers: getHeaders(tenant_id) });
+            return {
+                content: [{
+                    type: "text",
+                    text: `Backend returned HTTP ${response.status} ${JSON.stringify(response.data)}. ` +
+                        "This body does not say whether a CloudFront invalidation was sent (the backend sends it only when its " +
+                        "renderer distribution ID is configured) or whether the pending marker was deleted (a failed delete is " +
+                        "logged and ignored); the backend returns the same body in all these cases."
+                }]
+            };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("list_audit",
+    "Read the site's audit log, newest first (who did what). The backend returns one database page; the tool shows the newest `limit` entries.",
+    {
+        tenant_id: z.string(),
+        limit: z.number().int().min(1).optional().describe("Entries to show (default 50)"),
+    },
+    async ({ tenant_id, limit }) => {
+        try {
+            const response = await axios.get(`${API_URL}/audit`, { headers: getHeaders(tenant_id) });
+            const items = response.data.items || [];
+            const shown = items.slice(0, limit ?? 50);
+            const summary = shown.map((a: any) =>
+                `- ${a.createdAt} ${a.actorEmail} ${a.action} "${a.entityTitle ?? a.entityId ?? "-"}"${a.details ? ` ${JSON.stringify(a.details)}` : ""}`
+            ).join("\n");
+            return { content: [{ type: "text", text: `Audit log for ${tenant_id} (showing ${shown.length} of ${items.length}):\n${summary || "No entries."}` }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("audit_graph",
+    "Internal-link graph of the site's pages: which page links to which (text links, button/CTA links, postGrid listings), " +
+    "and orphan pages that nothing links to (navigation, footer, '/' and '/contact' count as links; the homepage is never an orphan).",
+    { tenant_id: z.string() },
+    async ({ tenant_id }) => {
+        try {
+            const response = await axios.get(`${API_URL}/audit/graph`, { headers: getHeaders(tenant_id) });
+            const { nodes = [], edges = [], orphans = [] } = response.data;
+            const slugOf = new Map(nodes.map((n: any) => [n.id, n.slug]));
+            const lines = [
+                `Link graph for ${tenant_id}: ${nodes.length} pages, ${edges.length} links.`,
+                ``,
+                `Orphans (${orphans.length}):`,
+                ...orphans.map((o: any) => `  - ${o.slug} "${o.title}" (ID: ${o.id})`),
+                ``,
+                `Links:`,
+                ...edges.map((e: any) => `  ${slugOf.get(e.source) ?? e.source} → ${slugOf.get(e.target) ?? e.target}`),
+            ];
+            return { content: [{ type: "text", text: lines.join("\n") }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+server.tool("email_dns_check",
+    "Read-only check of the site's email DNS records in PUBLIC DNS against a mailbox provider's recipe. The domain comes from the site settings, " +
+    "never from input. Writes nothing. A missing/errored record may only be unpropagated: re-check after its TTL.",
+    {
+        tenant_id: z.string(),
+        provider: z.string().describe("Provider recipe ID. Current IDs: 'google-workspace', 'microsoft-365', 'zoho-mail', 'keep-existing'. The backend list is authoritative."),
+    },
+    async ({ tenant_id, provider }) => {
+        try {
+            const response = await axios.post(`${API_URL}/email/dns-check`, { provider }, { headers: getHeaders(tenant_id) });
+            const d = response.data;
+            const lines = [
+                `Email DNS check — ${d.provider} for ${d.domain} at ${d.queriedAt}:`,
+                ...(d.records || []).map((r: any) =>
+                    `  [${r.status}] ${r.type} ${r.fqdn}: expected ${r.expected}${r.expectedPriority !== undefined ? ` (priority ${r.expectedPriority})` : ""}; ` +
+                    `observed ${r.observed?.length ? r.observed.join(" | ") : "none"}${r.detail ? ` — ${r.detail}` : ""}`
+                ),
+                ``,
+                d.ambiguityNote,
+            ];
+            return { content: [{ type: "text", text: lines.join("\n") }] };
+        } catch (error: any) {
+            return apiError(error);
         }
     }
 );
