@@ -76,7 +76,16 @@ Tenant mapping, three modes:
 
 1. **Production** — extracts hostname, rewrites `/about` → `/[domain]/about`
 2. **Test** — `/tenant/<id>/about` → `/<id>/about`
-3. **Preview** — `/_site/<id>/about` → `/<id>/about` (restricted to localhost/staging/CloudFront)
+3. **Preview** — `/_site/<id>/about` → `/<id>/about`
+
+Modes 2 and 3 address a tenant by id, so both are restricted to preview hosts
+(`isPreviewHost`: the `Host` contains `localhost`, `cloudfront.net` or `staging`); any other host
+gets `403`. Test mode had no such gate before slice `siteid-binding-1`.
+
+The `[siteId]` segment is bound **only** by these rewrites, never by the request path. Only the
+`/_next`, `/api` and `/static` prefixes pass through unrewritten; there is no "path contains a
+dot" pass-through (removed by `siteid-binding-1` — it let `/<other-tenant>/page.html` choose the
+tenant from the wire). A dotted path is an ordinary path on the request host's tenant.
 
 Local development note: mode 1 now 404s unless the request's `Host` matches a real tenant
 record (see the gate below), so `npm run dev` against a real table should be driven through

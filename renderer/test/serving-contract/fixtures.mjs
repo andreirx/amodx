@@ -32,11 +32,11 @@ export const D4_SLUG = "/d4-page";
  * cache-8 COUNTEREXAMPLE fixture. A SECOND tenant whose ID is a bare, scanner-shaped string
  * (`wk`), carrying a persisted route whose slug is a scanner-shaped `.php` path (`/index.php`).
  *
- * This is the exact shape that defeated the mitigation-d `.php` shield (review-1): a scanner
- * probe `/<SCANNER_TENANT_ID><SCANNER_SLUG>` = `/wk/index.php` is NOT a garbage path — it binds
- * the catch-all `[siteId]=wk`, `getTenantConfig("wk")` resolves this tenant via the
- * `SYSTEM / TENANT#wk` fallback, and `/index.php` resolves this route. So it renders a
+ * This is the shape that defeated the mitigation-d `.php` shield (review-1): `GET /index.php`
+ * on this tenant's own host (`SCANNER_TENANT_HOST`) resolves this route and renders a
  * legitimate 200, which a `.php` shield would have 404'd. Row `(h1)` pins that it renders.
+ * Rows `(h1b)` / `(h1c)` pin that the same page is NOT reachable from the fixture host by
+ * naming this tenant's id or host in the path (slice SITEID-BINDING-1).
  *
  * Tenant IDs are arbitrary strings (`backend/src/tenant/create.ts`, `@amodx/shared`) and
  * `content/update.ts` persists an unsanitised slug (only prepends `/`), so both halves of this
@@ -44,6 +44,8 @@ export const D4_SLUG = "/d4-page";
  * contrived one.
  */
 export const SCANNER_TENANT_ID = "wk";
+/** The `wk` tenant's own domain. Only row `(h1)` sends it as `Host`. */
+export const SCANNER_TENANT_HOST = "wk-tenant.serving-contract.test";
 export const SCANNER_SLUG = "/index.php";
 export const SCANNER_PAGE_TITLE = "WK Legit Index (scanner-shaped, real content)";
 
@@ -103,15 +105,15 @@ function routeItem(slug, nodeId) {
     };
 }
 
-// cache-8 counterexample tenant `wk` (see SCANNER_TENANT_ID above). Its ID is resolved only
-// via the `SYSTEM / TENANT#wk` PK fallback in getTenantConfig — its Domain is a distinct host
-// that no probe carries, so the domain GSI never claims the bare string `wk`.
+// cache-8 counterexample tenant `wk` (see SCANNER_TENANT_ID above). Row `(h1)` reaches it by
+// its Domain through the domain GSI (the host gate's COUNT query and getTenantConfig). The
+// bare string `wk` is never a Domain, so the GSI never claims it.
 const scannerTenant = {
     PK: "SYSTEM",
     SK: `TENANT#${SCANNER_TENANT_ID}`,
     id: SCANNER_TENANT_ID,
-    Domain: "wk-tenant.serving-contract.test",
-    domain: "wk-tenant.serving-contract.test",
+    Domain: SCANNER_TENANT_HOST,
+    domain: SCANNER_TENANT_HOST,
     name: "Scanner-Shaped Counterexample Tenant",
     description: "Tenant whose ID and route are scanner-shaped yet legitimate (cache-8 row h1).",
     status: "LIVE",

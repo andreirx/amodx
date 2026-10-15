@@ -123,3 +123,5 @@ Investigation findings source-cited; implemented mitigations each with tests
 harness's queue observation if reachable, else the response-disposition contract);
 serving+unit+typecheck green. Operator gate (NOT RUN): post-deploy, RevalidationFunction
 error rate collapses and a grid refresh completes within its window without manual purge.
+
+**Superseded (2026-10-15, SITEID-BINDING-1):** the `/wk/index.php`-on-any-host counterexample was the siteId-from-the-wire hole; the counterexample that still blocks a `.php` shield is the unsanitised slug on the tenant's own host (row `(h1)`).

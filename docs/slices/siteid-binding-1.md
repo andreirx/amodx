@@ -1,6 +1,6 @@
 # Slice SITEID-BINDING-1 — the `[siteId]` route segment is bound only by the middleware, never from the wire
 
-Status: RATIFIED 2026-10-15 (human: OPENNEXT1-REFLECTION = C; D1 = A, D2 = A, D3 = A). Parent: `docs/slices/opennext-1-upgrade.md` § Ratification.
+Status: IMPLEMENTED 2026-10-15 (code-complete, review approved at cycle 2; operator gates green; not yet deployed). Ratified 2026-10-15 (human: OPENNEXT1-REFLECTION = C; D1 = A, D2 = A, D3 = A). Parent: `docs/slices/opennext-1-upgrade.md` § Ratification.
 Builder: claude / claude-opus-5-5 (high). Reviewer: codex / gpt-6-sol. `--timeout 60`, `--max-iter 3`.
 Deliverable surface: `renderer/middleware.ts`, `renderer/test/serving-contract/*`, `tests/e2e/preview-site.spec.ts`,
 docs. **No CDK/infra change. No dependency change. No OpenNext change.** Runs on open-next 3.1.3 as deployed.
@@ -179,3 +179,19 @@ hero button renders as `href="/_site/preview-probe/contact"`. Therefore, replaci
   and the contact page body renders (200).
 The same page also carries one un-prefixed `href="/contact"` (not the hero): a preview link that would leave
 `/_site/` — a separate finding for the preview-link audit, NOT in this slice's scope; the test clicks the hero.
+
+
+## Correction 2 (operator, 2026-10-15, at closeout) — the un-prefixed `/contact` link is not a defect
+Correction 1 flagged an un-prefixed `href="/contact"` in the server HTML of a preview page. Verified in a headless
+browser (prod `/_site/povesti-pe-biscuite`: the category link landed on `/_site/povesti-pe-biscuite/category/1-8-martie`,
+200; staging `/_site/preview-probe`: the nav "Contact" link landed on `/_site/preview-probe/contact`, 200): the
+navigation (`renderer/src/components/Navbar.tsx`, `getUrl()`) rewrites those links client-side after hydration, so
+they stay inside the preview. Only the pre-hydration instant carries the bare form. No follow-up slice.
+
+## Closeout record (operator, 2026-10-15)
+- Review: cycle 1 `escalate` (documentation allocation; operator ruled A, append-only for the two committed records),
+  cycle 2 `approved` (reviewer gpt-6-sol; builder claude-opus-5-5). Reviewer could not execute the suite in its
+  read-only sandbox; the operator ran the gates on the unchanged candidate: `tsc --noEmit` 0; `npm run test:serving`
+  `# tests 39 # pass 39 # fail 0`; `git diff --check` 0 (operator scratchpad `siteid-binding-gates.log`).
+- Durable records touched append-only: `docs/slices/opennext-1-upgrade.md` (Ratification correction),
+  `docs/slices/cache-8-revalidation-flood.md` (Superseded note); 0 removed lines in either (verified).

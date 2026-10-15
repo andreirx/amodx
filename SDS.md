@@ -195,8 +195,8 @@ Default fallback is always English (`COUNTRY_PACKS.EN`). Available packs: EN, RO
 
 Middleware (`middleware.ts`) handles three modes:
 1. **Production**: `X-Forwarded-Host` → rewrite to `/{domain}/...`
-2. **Test mode**: `/tenant/{id}/...` → `/{id}/...`
-3. **Preview**: `/_site/{id}/...` → `/{id}/...` (restricted to admin domains)
+2. **Test mode**: `/tenant/{id}/...` → `/{id}/...` (preview hosts only — `Host` contains `localhost`, `cloudfront.net` or `staging`; else 403)
+3. **Preview**: `/_site/{id}/...` → `/{id}/...` (same preview-host gate)
 
 Commerce routes matched by `matchCommercePrefix()` against tenant's URL prefixes.
 

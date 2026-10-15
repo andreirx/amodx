@@ -18,8 +18,8 @@ Middleware (`src/middleware.ts`) rewrites requests based on hostname:
 | Mode | Input | Rewrite |
 |------|-------|---------|
 | Production | `client.com/about` | `/{domain}/about` (via `X-Forwarded-Host`) |
-| Test | `/tenant/{id}/about` | `/{id}/about` |
-| Preview | `/_site/{id}/about` | `/{id}/about` (admin domains only) |
+| Test | `/tenant/{id}/about` | `/{id}/about` (preview hosts only: `localhost`, `cloudfront.net`, `staging`; else 403) |
+| Preview | `/_site/{id}/about` | `/{id}/about` (preview hosts only: `localhost`, `cloudfront.net`, `staging`; else 403) |
 
 CloudFront Function preserves `X-Forwarded-Host` header for production routing.
 

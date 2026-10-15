@@ -93,6 +93,35 @@ props. The cacheable shells pass `false / "" / null / {} / true`.
 wire with `404` + `private, no-store`, so there is no second public URL serving the same
 tenant content uncached.
 
+### How the `[siteId]` segment is bound (slice `siteid-binding-1`)
+
+Every public page is served by `app/[siteId]/[[...slug]]`, and `siteId` decides which tenant
+renders. **Only the middleware rewrites bind it — never the request path.** Until
+`siteid-binding-1`, section A of `middleware.ts` passed any path containing a dot through
+unrewritten, so Next took `siteId` from the path's first segment: on tenant A's host,
+`/<tenant-B-host>/page` or `/<tenant-B-id>/page.html` rendered tenant B's published page, and
+the ISR route stored it for a year (staging findings C1/C2). A tenant's own dotted slug was
+unreachable on its own host (C3). Now only the `/_next`, `/api`, `/static` prefixes pass
+through; a dotted path is an ordinary path on the request host's tenant (unknown host → the
+`404` gate; wired host → the page or the `307` handoff).
+
+The two modes that address a tenant BY ID — `/_site/<id>/…` (preview) and `/tenant/<id>/…`
+(test mode) — answer `403` unless the `Host` contains `localhost`, `cloudfront.net` or
+`staging` (`isPreviewHost`). Test mode had no gate before this slice (C5). Both are always
+rendered on the dynamic twin. Preview URLs have no trailing slash: Next answers
+`/_site/<id>/` with `308 → /_site/<id>` before the middleware runs.
+
+Executable form: rows `(p1)`/`(p2)` (preview on a preview host: 200, `no-store`,
+`amodx_preview_base` cookie, nothing stored / on a tenant host: 403), `(t1)`/`(t2)` (test mode:
+403 / 200 + `no-store`), `(h1b)`/`(h1c)` (another tenant's id or host in the path does not
+select that tenant, and nothing is stored under the other tenant's ISR key), `(h1)` (a tenant's
+dotted slug renders on its own host) and `(c)` (a dotted path on an unknown host gets the
+`404` gate). An absent `Host` has no row: Node's HTTP server answers an HTTP/1.1 request
+without `Host` with `400` before any app code runs; an HTTP/1.0 request without `Host` reaches
+the middleware and gets the `403` (one-off probe, slice build report). Behind CloudFront every
+request has a `Host`. The staging safety net for previews is
+`tests/e2e/preview-site.spec.ts` (tenant `preview-probe`).
+
 ### How a 404 stays out of the cache
 
 Two paths, because they are answerable at different points (ratified 2026-07-26, `cache-1`
@@ -534,7 +563,8 @@ revalidation queue and the scanner-junk flood*; `(c1)` pins that an ISR page emi
 installed open-next source `open-next build` bundles — that the patch bounds `fixISRHeaders()`'s edge
 window to `stale-while-revalidate=300` (LAYER 1; the built-bundle proof is the pre-deploy script
 `scripts/verify-opennext-patch.mjs`, LAYER 2 — see § *The SWR revalidation queue* → GUARD); `(h1)` is
-the counterexample that deferred the shield, `(h2)` the unmitigated-flood state)
+the counterexample that deferred the shield, `(h2)` the unmitigated-flood state), and the
+`siteid-binding-1` rows `(p1)`–`(p2)`, `(t1)`–`(t2)`, `(h1b)`–`(h1c)` (§ *How the `[siteId]` segment is bound*)
 — plus four harness self-checks, each test named after the row it pins. The stub offers the same *fault injection* as the `cache-1` harness above — a read
 failure that spares tenant resolution — but as a plain method, `failContentReads(true)`, not
 over HTTP: the stub and the assertions share one process there, so the `/__ctl/…` plane has
@@ -1206,14 +1236,15 @@ response's own `Cache-Control` gates it — only the incremental-cache read stat
 enqueued exactly when it already has a **stored ISR entry that has been flipped to STALE**. It
 acquires one like this:
 
-1. A scanner requests `/wk/index.php` against a real tenant host. In `renderer/middleware.ts`
-   (pre-cache-8) the path carries a `.`, so the asset check returns `next()` **without
-   rewriting** — the request is *not* mapped to a tenant. Next then matches the top-level
-   catch-all `[siteId]/[[...slug]]` with `[siteId] = "wk"`.
-2. `getTenantConfig("wk")` returns `null` → `notFoundOrHandoff(cacheable=true, …)` →
+1. A scanner requests `/wk/index.php` against a real tenant host. `renderer/middleware.ts`
+   rewrites it like any other path to `/<host>/wk/index.php`, so Next matches the catch-all
+   `[siteId]/[[...slug]]` with `[siteId] = <host>` — the host's own tenant.
+2. That tenant has no `/wk/index.php` route → `notFoundOrHandoff(cacheable=true, …)` →
    `redirect(/wk/index.php?nf=1)`. On a route in full-route-cache mode a `redirect()` is
    **stored** as a `307` with `s-maxage=31536000` (§ *Which render outcomes are cacheable*,
-   row `redirect()`). The junk URL now owns a cacheable ISR entry.
+   row `redirect()`), under the key `<host>/wk/index.php`. The junk URL now owns a cacheable
+   ISR entry (row `(h2)`). Until `siteid-binding-1` the dotted path skipped the rewrite and
+   bound `[siteId] = "wk"` instead; the stored outcome was the same `307`.
 3. Any later on-demand `revalidatePath()` / `revalidateTag()` that flips this entry to STALE
    (e.g. a shared layout tag, or the broad publish-flow invalidations — *historical premise: on
    open-next 3.1.3 `revalidatePath` flips no `APP_PAGE` entry, see § Invalidation Mechanisms 5*) makes the *next* probe
@@ -1273,14 +1304,15 @@ junk fails/12h (~1.5/min) noise or starvation?* Answered against **prod CloudWat
    entirely: dotted scanner probes (`/.env`, `/admin.php`, `/.git/config`, `/.aws/credentials`,
    `/config.json`, …), WordPress/asset probes (`/blog.bijup.com/wp-admin/...`, `/…/assets/`), and a
    handful of **phantom slugs that look real but have no `ROUTE#`**.
-2. **No genuinely-published page fails.** The one real-looking slug in the failures,
+2. **No genuinely-published page failed in that window** (2026-08-16, before
+   `siteid-binding-1`; see item 4 for what changed). The one real-looking slug in the failures,
    `/blog.bijup.com/cloudflare-emdash-validates-amodx`, has **no `ROUTE#` in DynamoDB**
    (`AmodxTable`, `PK=TENANT#blog-bijup-com` — a renamed/never-published draft; the *published*
    article is `/cloudflare-just-validated-amodx-too`). That published article appears **0 times** in
    the failure set; the homepage does not appear either. Fetching each live: `/blogroll` → `200
    MISS s-maxage=31536000` (freshly rendered), `/` and `/cloudflare-just-validated-amodx-too` →
-   `200 STALE s-maxage=2, swr=2592000`. Real pages return **200**, so their HEAD revalidation can
-   return `200 + REVALIDATED` and succeed — which is why they are absent from the failures.
+   `200 STALE s-maxage=2, swr=2592000`. Real pages returned **200**, so their HEAD revalidation
+   could return `200 + REVALIDATED` and succeed — which is why they were absent from the failures.
 3. **The failure mechanism (why no-route paths fail forever).** The RevalidationFunction HEADs the
    enqueued `url`; a record is counted failed unless the response is `200` **and**
    `x-nextjs-cache: REVALIDATED` (`revalidate.js:35-37`). A no-route path renders the cacheable
@@ -1288,19 +1320,30 @@ junk fails/12h (~1.5/min) noise or starvation?* Answered against **prod CloudWat
    because the STALE 307 entry persists it re-enqueues indefinitely. `OBSERVED` live:
    `GET https://blog.bijup.com/cloudflare-emdash-validates-amodx` → `307 → /…?nf=1`,
    `x-nextjs-cache: STALE`, `s-maxage=2, stale-while-revalidate=2592000`.
-4. **The `_nextRewroteUrl` double-prefix (why some junk URLs carry a host segment).** For a
-   *non-dotted* path the middleware rewrites `host/foo` → `/host/foo`, and open-next stores that
-   **already-rewritten** `_nextRewroteUrl` as the revalidate URL (`util.js:296-303`). The
-   RevalidationFunction then HEADs `https://<host>/<host>/foo` (host + the rewritten path) — hence
-   log URLs like `host: 'bijup.com', url: '/bijup.com/login'`. This does **not** cause real-page
-   failures: the doubled path carries a `.` (the host), so the middleware `path.includes('.')`
-   early-return passes it through unrewritten and `[siteId]=<host>` still resolves the tenant
-   (VERIFIED in the serving harness: `GET /<host>/<published-slug>` → `200 HIT`, same ISR key). The
-   earlier "double-rewrite breaks legit revalidation" hypothesis was **tested and refuted**.
+4. **The `_nextRewroteUrl` double-prefix (why some junk URLs carry a host segment).** The
+   middleware rewrites `host/foo` → `/host/foo`, and open-next stores that **already-rewritten**
+   `_nextRewroteUrl` as the revalidate URL (`util.js:296-303`). The RevalidationFunction then HEADs
+   `https://<host>/<host>/foo` (host + the rewritten path) — hence log URLs like
+   `host: 'bijup.com', url: '/bijup.com/login'`. Since `siteid-binding-1` that doubled path is an
+   ordinary path on `<host>`'s tenant: the middleware rewrites it to `/<host>/<host>/foo`. In the
+   expected case the tenant has no route `/<host>/foo` — the usual case, not an invariant, because
+   `content/update.ts` can persist a slug of that shape — and the request answers the `307`
+   not-found handoff. MEASURED under `next start` (SITEID-BINDING-1 build, fresh key, HEAD first):
+   `HEAD /<host>/d4-page` on its own host → `307 → /<host>/d4-page?nf=1`, `s-maxage=31536000`,
+   `MISS`, and that first HEAD stored the ISR entry `<host>/<host>/d4-page`. `revalidate.js:35-37`
+   classifies a `307` response as failed. INFERRED, until the `opennext-1a` bundle harness or a
+   staging probe measures it: that deployed background revalidations of real pages get this `307`
+   and are therefore logged "Failed to revalidate" (slice `siteid-binding-1` § 2 C4 accepts the
+   handoff because listings are refreshed by the CACHE-10 purge). Before that slice the doubled
+   path carried a `.` (the host), the dotted pass-through left it unrewritten, and `[siteId]=<host>`
+   resolved the tenant (`GET /<host>/<published-slug>` → `200 HIT`, same ISR key — measured before
+   the slice, no longer true). Whether those HEADs were already counted failed after `6038706`
+   stopped forwarding `x-prerender-revalidate` (the header that makes Next answer `REVALIDATED`) is
+   also INFERRED, not measured.
 
-**Conclusion (confirms the operator's read).** The 1,104/12h are **noise** — a self-sustaining
-population of no-route `307`-handoff phantoms (scanner junk + renamed-draft slugs), none of which
-is a live published page. The human-visible "grids/pages frozen stale" symptom is a **separate**
+**Conclusion (2026-08-16 prod window, before `siteid-binding-1`; confirms the operator's read).**
+The 1,104/12h were **noise** — a self-sustaining population of no-route `307`-handoff phantoms
+(scanner junk + renamed-draft slugs), none of which was a live published page. The human-visible "grids/pages frozen stale" symptom is a **separate**
 effect: real pages that have been flipped to STALE serve `s-maxage=2, stale-while-revalidate=2592000`,
 and CloudFront honours that 30-day SWR window — re-pinning the stale **edge** copy
 (`OBSERVED age=194 on s-maxage=2`) even when the origin revalidation itself succeeds. **The fix for
@@ -1317,35 +1360,30 @@ never enqueue. Mitigation d was implemented that way for the `.php` shape and th
 the claim that a `.php` path is "provably never a tenant page" is **false** under AMODX's current
 contracts, and shipping it would `404` legitimate tenant content.
 
-**The counterexample (code-confirmed, two review rounds).** `/wk/index.php` is a *legitimate* page
-whenever a tenant `wk` has a `/index.php` route, and both halves are reachable through the real
-write paths:
+**The counterexample (code-confirmed, two review rounds; restated by `siteid-binding-1`).**
+`GET /index.php` on tenant `wk`'s own host is a *legitimate* page whenever `wk` has a
+`/index.php` route, and that route is reachable through the real write paths:
 
-- **Tenant IDs are arbitrary strings.** `backend/src/tenant/create.ts` and the `@amodx/shared`
-  tenant schema accept `wk` (or any string) as an ID, and `getTenantConfig()`
-  (`renderer/src/lib/dynamo.ts`) falls back from the `GSI_Domain` lookup to a bare
-  `SYSTEM / TENANT#<identifier>` `GetItem` — so `getTenantConfig("wk")` resolves the real tenant
-  `wk`, **not** null.
 - **Slugs are not sanitised on update.** `content/create.ts` `cleanSlug` strips `.`, but
   `content/update.ts` does **not** — it only prepends `/` — so a route `/index.php` is persistable
   as `ROUTE#/index.php`.
 
-So `/wk/index.php` binds the catch-all `[siteId]=wk`, resolves the tenant, resolves the
-`/index.php` `ROUTE#`, and renders a real **200**. (The earlier "any dotted path is diverted by
-section A's `path.includes('.')` early-return, so it can never resolve a `ROUTE#`" argument is
-wrong: `next()` without a rewrite still routes the raw `/wk/index.php` to the catch-all with the
-first segment as `[siteId]`, and that segment can be a real tenant.) The same reasoning generalises:
-while the first path segment can be **any** tenant ID and the remainder **any** persisted route,
-**no path shape at this layer is disjoint from legitimate content** — so no conservative shield
-exists. Mitigation d is therefore **DEFERRED, not implemented**; `renderer/middleware.ts` carries
+So the middleware rewrites `/index.php` to `/<wk's host>/index.php`, the render resolves the
+tenant and the `/index.php` `ROUTE#`, and serves a real **200**. The reasoning generalises: while
+a slug can be **any** persisted route, **no path shape at this layer is disjoint from legitimate
+content** — so no conservative shield exists. (History: the counterexample was first stated as
+`/wk/index.php` on any host, because section A's `path.includes('.')` pass-through let the wire
+choose `[siteId]=wk`. That was the siteId-binding hole, not a legitimate URL;
+`siteid-binding-1` removed the pass-through, and `/wk/index.php` on another host now takes that
+host's not-found handoff — row `(h1b)`.) Mitigation d is therefore **DEFERRED, not implemented**; `renderer/middleware.ts` carries
 **no** scanner shield.
 
 **Executable contract:** `renderer/test/serving-contract/contract.test.mjs` rows **(h1)–(h2)**:
-`(h1)` the counterexample — `/wk/index.php` (tenant `wk` + persisted `/index.php` route) renders
-`200` with the tenant's real page body and reaches the renderer read layer (`render > 0`), which a
+`(h1)` the counterexample — `GET /index.php` on `wk`'s own host (tenant `wk` + persisted
+`/index.php` route) renders `200` with the tenant's real page body and reaches the renderer read layer (`render > 0`), which a
 `.php` shield would have `404`'d; it goes red if any `.php`/scanner shield is re-added. `(h2)` the
-current **unmitigated** state — a scanner path with no matching route (`/wk/wp-login.php`) takes the
-ordinary cacheable `307 → ?nf=1` handoff, i.e. the junk still enters the pipeline exactly as
+current **unmitigated** state — a scanner path with no matching route (`/wk/wp-login.php`, on the
+request host's tenant) takes the ordinary cacheable `307 → /wk/wp-login.php?nf=1` handoff, i.e. the junk still enters the pipeline exactly as
 diagnosed; there is no door-level shield.
 
 ### Why the safe mitigations are all out of scope (source-cited)

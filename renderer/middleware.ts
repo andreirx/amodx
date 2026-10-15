@@ -88,18 +88,18 @@ function hasSessionCookie(request: NextRequest): boolean {
 // implemented for `.php` and then WITHDRAWN because the "`.php` is provably never a tenant page"
 // claim is FALSE under the current contracts (two review rounds, code-confirmed):
 //
-//   - tenant IDs are arbitrary strings — `backend/src/tenant/create.ts`, `@amodx/shared` accept
-//     `wk` (or anything), and `getTenantConfig()` falls back from the domain GSI to a bare
-//     `SYSTEM / TENANT#<identifier>` GetItem (`src/lib/dynamo.ts`), so `getTenantConfig("wk")`
-//     resolves the real tenant `wk`;
 //   - `content/update.ts` does NOT sanitise slugs (unlike `content/create.ts` `cleanSlug`): it
 //     only prepends `/`, so a route `/index.php` is persistable as `ROUTE#/index.php`.
 //
-// Therefore `/wk/index.php` binds the catch-all `[siteId]=wk`, resolves tenant `wk`, and renders
-// its `/index.php` route — a legitimate 200. A `.php` shield would 404 it. No path SHAPE is
-// disjoint from content while the first segment can be any tenant ID and the remainder any
-// persisted route, so no conservative shield exists at this layer. The counterexample is pinned
-// by serving-contract row `(h1)`; the deferred/unmitigated flood state by `(h2)`.
+// Therefore a tenant `wk` with such a route answers `GET <wk's host>/index.php` with its own
+// `/index.php` page — a legitimate 200. A `.php` shield would 404 it. No path SHAPE is disjoint
+// from content while a slug can be any persisted route, so no conservative shield exists at this
+// layer. The counterexample is pinned by serving-contract row `(h1)`; the deferred/unmitigated
+// flood state by `(h2)`.
+//
+// (Until SITEID-BINDING-1 the counterexample was stated as `/wk/index.php` on ANY host: a dotted
+// path skipped the rewrite below, so the wire chose `[siteId]=wk`. That was the siteId-from-the-
+// wire hole, not a legitimate URL; it now takes the request host's not-found handoff, row `(h1b)`.)
 //
 // The remaining fixes are out of this slice's scope (no fork, no CDK): controlling the enqueue
 // disposition needs an open-next fork (mitigation a); DLQ / reportBatchItemFailures / larger
@@ -113,9 +113,21 @@ function hasSessionCookie(request: NextRequest): boolean {
 // Route Handlers that live under [siteId]. They never enter the full-route cache whatever
 // the rendering mode, and each sets (or deliberately omits) its own Cache-Control on the
 // Response, so they need no twin — and they have none, so rewriting one to /_dyn lands on
-// the page catch-all and 404s. Single source of truth for both the "don't treat this as a
-// static asset" check and the twin exemption below.
+// the page catch-all and 404s. Single source of truth for the twin exemption below.
 const SITE_ROUTE_HANDLERS = ['/robots.txt', '/sitemap.xml', '/llms.txt', '/openai-feed'];
+
+/**
+ * Hosts allowed to address a tenant BY ID — `/_site/<id>/…` (preview) and `/tenant/<id>/…`
+ * (test mode). A production tenant domain is not one of them: there the tenant is chosen only
+ * by the host (production branch below). Substring match, unchanged from the original
+ * `/_site/` gate.
+ */
+function isPreviewHost(host: string): boolean {
+    return host.includes('localhost') || host.includes('cloudfront.net') || host.includes('staging');
+}
+
+/** Body of the 403 both by-id modes answer on a host that `isPreviewHost` refuses. */
+const PREVIEW_HOST_FORBIDDEN = 'Preview URLs are only accessible via CloudFront or localhost.';
 
 /** Internal rewrite target for per-request renders. */
 function dynamicPath(siteId: string, restOfPath: string) {
@@ -151,12 +163,18 @@ export async function middleware(request: NextRequest) {
     let rewriteUrl = null;
 
     // A. Skip Internals (Assets, API, Next.js hydration)
-    const isSiteRouteHandler = SITE_ROUTE_HANDLERS.some((p) => path.endsWith(p));
+    //
+    // Prefixes only. There is deliberately NO "path contains a dot" pass-through (removed by
+    // SITEID-BINDING-1): a request passed through unrewritten matches `[siteId]/[[...slug]]`
+    // with `siteId` = its own first path segment, so the WIRE chose the tenant — another
+    // tenant's host or id under this host, stored by CloudFront for a year. The `[siteId]`
+    // segment must be bound only by the rewrites below. Dotted paths now take the production
+    // branch like any other path; real static files never reach this function (CloudFront
+    // serves `_next/static/*`, `assets/*`, `favicon.ico` from S3 — infra/lib/renderer-hosting.ts).
     if (
         path.startsWith('/_next') ||
         path.startsWith('/api') ||
-        path.startsWith('/static') ||
-        (path.includes('.') && !isSiteRouteHandler)
+        path.startsWith('/static')
     ) {
         // Return next() immediately, but we might need to attach cookies?
         // Usually referrals land on pages, not assets.
@@ -180,9 +198,10 @@ export async function middleware(request: NextRequest) {
     // (two URLs serving the same tenant content); 16.3.5's stricter escaped-segment
     // matching turned them into 404s (prod regression, human-reported 2026-09-16).
     // Self-heal: permanent-redirect to the canonical preview form. The `/_site/` branch's
-    // host gate (CloudFront/localhost/staging only) still applies AFTER the redirect, so
-    // this opens nothing on production tenant domains — and dotted first segments (tenant
-    // hosts as siteIds) never reach here (asset short-circuit above).
+    // host gate (`isPreviewHost`) still applies AFTER the redirect, so this opens nothing on
+    // production tenant domains. Dotted first segments (`/<tenant-host>/_dyn/…`) reach here
+    // too since SITEID-BINDING-1 removed the dotted pass-through: they 308 like any other
+    // `<siteId>/_dyn` shape, and on a production host the `/_site/` gate then answers 403.
     const segs = path.split('/'); // ['', seg1, seg2, ...]
     if (segs.length >= 3 && segs[2] === DYN_SEGMENT) {
         const url = request.nextUrl.clone();
@@ -192,6 +211,7 @@ export async function middleware(request: NextRequest) {
 
     // Requests that cannot be served from a cacheable render. Route Handlers are exempt:
     // they have no twin, and they are never in the full-route cache to begin with.
+    const isSiteRouteHandler = SITE_ROUTE_HANDLERS.some((p) => path.endsWith(p));
     const needsDynamicRender =
         !isSiteRouteHandler &&
         (request.nextUrl.search !== '' || hasSessionCookie(request));
@@ -201,6 +221,12 @@ export async function middleware(request: NextRequest) {
         // TEST MODE: /tenant/[id]/...
         // Always dynamic: test-mode traffic must reflect live DynamoDB state, and it
         // shares a host with /_site/ previews, so its renders must never be cached.
+        // Same host gate as /_site/ (SITEID-BINDING-1 D1): by-id addressing is refused on
+        // production tenant domains.
+        if (!isPreviewHost(request.headers.get('host') || '')) {
+            return new NextResponse(PREVIEW_HOST_FORBIDDEN, { status: 403 });
+        }
+
         const parts = path.split('/');
         if (parts.length >= 3) {
             const tenantId = parts[2];
@@ -216,11 +242,8 @@ export async function middleware(request: NextRequest) {
         // PREVIEW MODE: /_site/[id]/...
         // Previews are accessible via CloudFront URL for sharing with clients
         // Security: Block requests from production tenant domains (prevents /_site/ path hijacking)
-        const host = request.headers.get('host') || '';
-        const isAllowedHost = host.includes('localhost') || host.includes('cloudfront.net') || host.includes('staging');
-
-        if (!isAllowedHost) {
-            return new NextResponse("Preview URLs are only accessible via CloudFront or localhost.", { status: 403 });
+        if (!isPreviewHost(request.headers.get('host') || '')) {
+            return new NextResponse(PREVIEW_HOST_FORBIDDEN, { status: 403 });
         }
 
         const parts = path.split('/');

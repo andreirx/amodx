@@ -27,7 +27,7 @@ import {
 import {
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
-    SCANNER_TENANT_ID, SCANNER_SLUG, SCANNER_PAGE_TITLE,
+    SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
 } from "./fixtures.mjs";
 
 /** The exact header a route in Next's full-route (ISR) cache mode emits. */
@@ -57,14 +57,17 @@ async function readsDuring(fn) {
 }
 
 /**
- * Every ISR entry `next start` has stored for the fixture tenant, with its stored status.
+ * Every ISR entry `next start` has stored whose key starts with `keyPrefix` (default: the
+ * fixture tenant's host), with its stored status.
  *
  * MEASURED LAYOUT (next 16.2.12): the filesystem incremental cache writes one
  * `<key>.meta` + `<key>.html` + `<key>.rsc` triple under `.next/server/app/`, keyed by the
  * middleware rewrite target — i.e. `<host>/<path>`. The `.meta` carries the stored status
- * (absent = 200) and the stored response headers. Filtering to keys under the fixture host
+ * (absent = 200) and the stored response headers. Filtering to keys under a prefix
  * excludes the build-time `_not-found` / `_global-error` artefacts, which are not
- * on-demand entries.
+ * on-demand entries. Other prefixes are for the rows that must prove nothing was stored
+ * under a key OTHER than the fixture host's: a tenant id (`(p1)`, preview) or another
+ * tenant's host (`(h1c)`, reflection).
  *
  * This is how "nothing was stored" is *measured* rather than argued — the committed form of
  * the cache-1 probe's ISR-directory grep (docs/caching-architecture.md § "Probe: the
@@ -74,7 +77,7 @@ async function readsDuring(fn) {
  * Every absence assertion below is paired with a positive control that uses this same
  * function, so a silently-broken detector fails the suite instead of passing it.
  */
-async function storedIsrEntries() {
+async function storedIsrEntries(keyPrefix = FIXTURE_HOST) {
     // Two on-disk layouts, both walked so the detector reads whichever the installed Next writes:
     //  - legacy (<= 16.3.5): .next/server/app/<host>/<slug>.meta
     //  - route-scoped (>= 16.3.8, `server/lib/route-cache-key.js`):
@@ -96,7 +99,7 @@ async function storedIsrEntries() {
             if (e.isDirectory()) await walk(full, keyOf);
             else if (e.name.endsWith(".meta")) {
                 const key = keyOf(full);
-                if (!key || !key.startsWith(FIXTURE_HOST)) continue;
+                if (!key || !key.startsWith(keyPrefix)) continue;
                 const meta = JSON.parse(await readFile(full, "utf8"));
                 out.push({ key, status: meta.status ?? 200, location: meta.headers?.location });
             }
@@ -455,6 +458,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // "no render" is the load-bearing word: only the host gate's COUNT query happens.
         assert.equal(stats.render, 0, "the render must never run for an unwired host");
         assert.equal(stats.hostGate, 1, "the host gate should have performed exactly one COUNT query");
+        // A dotted path gets the same gate (SITEID-BINDING-1: no dotted pass-through before it).
+        const dotted = await request({ port: server.port, path: "/x.php", host: UNKNOWN_HOST });
+        assert.equal(dotted.status, 404, "a dotted path on an unwired host must hit the unknown-host gate");
+        assert.match(dotted.header("cache-control"), /no-store/);
     });
 
     // ── ROW (d) ─────────────────────────────────────────────────────────────────────────
@@ -521,6 +528,64 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.match(res.header("cache-control"), /no-store/);
     });
 
+    // ── ROW (p) ─────────────────────────────────────────────────────────────────────────
+    // middleware B, PREVIEW MODE: `/_site/<tenantId>/…` is how a tenant with NO custom domain
+    // is viewed. It addresses the tenant by id, so it is allowed only on preview hosts
+    // (`isPreviewHost`: localhost / cloudfront.net / staging) and is always rendered on the
+    // force-dynamic twin. Slice SITEID-BINDING-1 step 1: the permanent safety net for these
+    // URLs, green on the middleware BEFORE that slice changed it. No trailing slash: Next
+    // answers `/_site/<id>/` with a 308 to `/_site/<id>` before the middleware runs (slice
+    // Correction 1, observed on staging).
+    //
+    // Gate input `Host`, evidence taxonomy: present + allowed → (p1), (t2); present + production
+    // host → (p2), (t1). ABSENT has no row: `harness.request()` puts `host` in the header object
+    // (`host: undefined` throws ERR_HTTP_INVALID_HEADER_VALUE in node:http), and Node's server
+    // answers an HTTP/1.1 request without Host with 400 before any app code runs. Only HTTP/1.0
+    // can omit it; a raw-socket probe outside the suite measured `403` for that (gate input `''`;
+    // Node 22.21.1, SITEID-BINDING-1 build report). Behind CloudFront every request has a Host.
+
+    const PREVIEW_HOST = "preview.cloudfront.net";
+
+    test("(p1) /_site/<id> on a preview host: 200, no-store, preview cookie, nothing stored", async () => {
+        const res = await request({ port: server.port, path: `/_site/${TENANT_ID}`, host: PREVIEW_HOST });
+        assert.equal(res.status, 200);
+        assert.match(res.header("cache-control"), /no-store/);
+        assert.ok(
+            [].concat(res.header("set-cookie") ?? []).some((c) => c.startsWith(`amodx_preview_base=%2F_site%2F${TENANT_ID}`)),
+            `preview cookie missing; got ${res.header("set-cookie")}`,
+        );
+        assert.match(res.body, /Fixture Home/, "the tenant's home page must render under its id");
+        // Positive control: the detector reads a live cache directory (earlier rows stored entries)…
+        assert.ok((await storedIsrEntries()).length > 0, "storedIsrEntries() found nothing at all — detector broken");
+        // …and the preview render stored nothing under the tenant-id key.
+        assert.deepEqual(await storedIsrEntries(TENANT_ID), [], "a preview render must never enter the ISR cache");
+    });
+
+    test("(p2) /_site/<id> on a production tenant host: 403", async () => {
+        const res = await get(`/_site/${TENANT_ID}`);
+        assert.equal(res.status, 403);
+        assert.doesNotMatch(res.body, /Fixture Home/);
+    });
+
+    // ── ROW (t) ─────────────────────────────────────────────────────────────────────────
+    // middleware B, TEST MODE: `/tenant/<tenantId>/…` also addresses a tenant by id, so since
+    // SITEID-BINDING-1 (D1 = A) it has the same `isPreviewHost` gate as `/_site/`. Before that it
+    // had none: any production domain showed any tenant (staging finding C5). No trailing slash,
+    // for the same reason as row (p).
+
+    test("(t1) /tenant/<id> on a production tenant host: 403", async () => {
+        const res = await get(`/tenant/${TENANT_ID}`);
+        assert.equal(res.status, 403, "test mode must not address a tenant by id on a production host");
+        assert.doesNotMatch(res.body, /Fixture Home/);
+    });
+
+    test("(t2) /tenant/<id> on a preview host: 200, no-store", async () => {
+        const res = await request({ port: server.port, path: `/tenant/${TENANT_ID}`, host: PREVIEW_HOST });
+        assert.equal(res.status, 200);
+        assert.match(res.header("cache-control"), /no-store/);
+        assert.match(res.body, /Fixture Home/);
+    });
+
     // ── ROW (h) ─────────────────────────────────────────────────────────────────────────
     // § "cache-8": mitigation d (a middleware scanner shield) is DEFERRED, not implemented —
     // NO path-shape shield exists. These rows pin WHY (the counterexample that defeats it) and
@@ -530,18 +595,57 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     //
     // IF A FUTURE CHANGE RE-ADDS A `.php`/scanner SHIELD, (h1) goes red — that is the point:
     // the shield may not be re-added until this counterexample is defeated (which, under the
-    // current arbitrary-tenant-ID + unsanitised-slug contracts, it cannot be at this layer).
+    // current unsanitised-slug contract, it cannot be at this layer).
+    //
+    // (h1b)/(h1c) pin SITEID-BINDING-1: the `[siteId]` segment is bound only by the middleware,
+    // never from the wire. A dotted path naming ANOTHER tenant (by id or by host) is just a
+    // path on the request host's tenant. ORDER MATTERS: (h1c) runs before (h1), because (h1)
+    // legitimately stores an entry under wk's host key, and (h1c) proves no request on the
+    // fixture host stored one there.
 
-    test("(h1) COUNTEREXAMPLE: /wk/index.php is LEGITIMATE content and renders 200, not a shield 404", async () => {
-        // A tenant whose ID is the bare string `wk` (arbitrary tenant IDs — tenant/create.ts,
-        // @amodx/shared) with a persisted `.php` route (`/index.php` — content/update.ts stores
-        // an unsanitised slug). The probe path `/wk/index.php` therefore binds the catch-all
-        // `[siteId]=wk`, resolves the tenant via the SYSTEM/TENANT#wk fallback in getTenantConfig,
-        // resolves the `/index.php` ROUTE#, and renders a real 200. A `.php` middleware shield —
-        // the withdrawn mitigation d — would answer this with `404 no-store`, blocking legitimate
-        // tenant content. This row is the executable proof that no `.php` shield is admissible.
+    test("(h1b) /wk/index.php on another host is NOT wk's page", async () => {
+        // Before SITEID-BINDING-1 this rendered wk's page on the fixture host (the old (h1)):
+        // a dotted path skipped the rewrite, so `[siteId]=wk` came from the wire. Now the path
+        // is `/wk/index.php` on the fixture tenant, which has no such route.
+        const res = await get(`/${SCANNER_TENANT_ID}${SCANNER_SLUG}`);
+        assert.equal(res.status, 307, "another tenant's id in the path must not select that tenant");
+        assert.equal(res.header("location"), `/${SCANNER_TENANT_ID}${SCANNER_SLUG}?nf=1`);
+        assert.ok(!res.body.includes(SCANNER_PAGE_TITLE), "wk's page body must not be served on the fixture host");
+    });
+
+    test("(h1c) /<wk's host>/index.php on another host is NOT wk's page, and mints nothing under wk's key", async () => {
+        // The host form of the same hole (staging finding C1): the copy served this way was
+        // stored under the OTHER tenant's ISR key. Precondition, so a reorder fails loudly
+        // instead of measuring (h1)'s legitimate entry:
+        assert.deepEqual(
+            await storedIsrEntries(SCANNER_TENANT_HOST),
+            [],
+            "an entry under wk's host already exists — (h1c) must run before (h1)",
+        );
+        const reqPath = `/${SCANNER_TENANT_HOST}${SCANNER_SLUG}`;
+        const res = await get(reqPath);
+        assert.equal(res.status, 307, "another tenant's host in the path must not select that tenant");
+        assert.equal(res.header("location"), `${reqPath}?nf=1`);
+        assert.ok(!res.body.includes(SCANNER_PAGE_TITLE), "wk's page body must not be served on the fixture host");
+        // Positive control: the handoff WAS stored, under the REQUEST host's key…
+        const own = (await storedIsrEntries()).find((e) => e.key === `${FIXTURE_HOST}${reqPath}`);
+        assert.ok(own, `expected the 307 stored under ${FIXTURE_HOST}${reqPath}`);
+        assert.equal(own.status, 307);
+        // …and nothing under wk's host key.
+        assert.deepEqual(await storedIsrEntries(SCANNER_TENANT_HOST), [], "the C1 copy was minted under wk's ISR key");
+    });
+
+    test("(h1) a tenant's dotted slug renders on ITS OWN host", async () => {
+        // COUNTEREXAMPLE to a `.php` shield. Tenant `wk` has a persisted `.php` route
+        // (`/index.php` — content/update.ts stores an unsanitised slug). On wk's own host the
+        // middleware rewrites to `/<wk's host>/index.php`, the render resolves wk by domain
+        // and its `/index.php` ROUTE#, and serves a real 200. A `.php` middleware shield —
+        // the withdrawn mitigation d — would answer this with `404 no-store`, blocking
+        // legitimate tenant content. This row is the executable proof that no `.php` shield is
+        // admissible. It also proves dotted paths now reach their own host's tenant: before
+        // SITEID-BINDING-1 this request passed through unrewritten (`[siteId]=index.php`).
         const { result: res, stats } = await readsDuring(() =>
-            get(`/${SCANNER_TENANT_ID}${SCANNER_SLUG}`),
+            request({ port: server.port, path: SCANNER_SLUG, host: SCANNER_TENANT_HOST }),
         );
         assert.equal(res.status, 200, "the scanner-shaped-but-legitimate page must render, not be shielded");
         assert.match(res.header("content-type"), /text\/html/);
@@ -559,16 +663,16 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // still mints a cacheable 307. Pinning it makes any future shield a DELIBERATE contract
         // change rather than a silent one, and documents that the flood is currently UNMITIGATED.
         //
-        // `/wk/<missing>.php` uses the real tenant `wk` but a `.php` slug it has no route for.
-        // The catch-all binds `[siteId]=wk`, `[[...slug]]=["wp-login.php"]`, so the render's
-        // slugPath is `/wp-login.php` and the not-found handoff redirects to that slug + `?nf=1`
+        // The handoff happens on the REQUEST host's tenant: the middleware rewrites
+        // `/wk/wp-login.php` to `/<fixture host>/wk/wp-login.php`, so the render's slugPath is
+        // `/wk/wp-login.php` and the not-found handoff redirects to that slug + `?nf=1`
         // (notFoundOrHandoff uses the slug path, not the siteId-prefixed URL) — the ordinary
         // cacheable 307 that, in production, is the flood's ISR entry.
         const res = await get(`/${SCANNER_TENANT_ID}/wp-login.php`);
         assert.equal(res.status, 307, "an unshielded scanner path must take the ordinary not-found handoff");
         assert.equal(
             res.header("location"),
-            "/wp-login.php?nf=1",
+            `/${SCANNER_TENANT_ID}/wp-login.php?nf=1`,
             "the junk still mints an ordinary cacheable 307 — the flood is unmitigated (mitigation d deferred)",
         );
         // The load-bearing discriminator: the 307 is a CACHEABLE ISR entry (s-maxage=31536000),

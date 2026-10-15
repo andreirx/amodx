@@ -2009,3 +2009,5 @@ every decision **as recommended after the review**, i.e. including the two cells
 **Findings surfaced during ratification, not part of OPENNEXT-1:** a MISS-rendered not-found 307 carries a
 doubled `Location` (`/x?nf=1,/x?nf=1`; staging 2026-10-15; origin-side; the local suite cannot see it) →
 TECH-DEBT + a characterize row in opennext-1a. 417 `e2e-render-*` leftover tenants on staging → cleanup item.
+
+**Correction (2026-10-15, SITEID-BINDING-1):** § 4 row `(h1)` identity is now 'a tenant's dotted slug renders on ITS OWN host'; rows `(h1b)(h1c)(p1)(p2)(t1)(t2)` exist; opennext-1a's harness inherits these expectations.

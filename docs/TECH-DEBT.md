@@ -1070,16 +1070,15 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   is `opennext-1` and/or a ratified queue-config change.
   - **Mitigation d (middleware scanner shield) WITHDRAWN (review-1).** A `.php` door-level shield
     was implemented, then removed: the claim that `.php` is "provably never a tenant page" is FALSE.
-    Counterexample (code-confirmed): tenant IDs are arbitrary strings (`tenant/create.ts`,
-    `@amodx/shared`) and `getTenantConfig()` resolves a bare `SYSTEM / TENANT#wk`; `content/update.ts`
-    persists an unsanitised slug (`/index.php` → `ROUTE#/index.php`). So `/wk/index.php` renders a
-    legitimate 200 that the shield would 404. While the first path segment can be any tenant ID and
-    the remainder any persisted route, NO path shape at the middleware layer is disjoint from
-    content — so no conservative shield exists. Pinned by serving-contract row `(h1)` (the
-    counterexample renders 200) + `(h2)` (a scanner path with no route still takes the ordinary
-    cacheable 307 — flood unmitigated). A shield may not be re-added until the counterexample is
-    defeated (e.g. by constraining tenant IDs AND sanitising update slugs — a boundary change out of
-    this slice's writable scope).
+    Counterexample (code-confirmed): `content/update.ts` persists an unsanitised slug (`/index.php` →
+    `ROUTE#/index.php`), so `GET /index.php` on tenant `wk`'s own host is `wk`'s legitimate page — a
+    200 that the shield would 404. The unsanitised slug is the remaining shield counterexample: while
+    a slug can be any persisted route, NO path shape at the middleware layer is disjoint from
+    content — so no conservative shield exists. Pinned by serving-contract row `(h1)` (a tenant's
+    dotted slug renders on its own host) + `(h2)` (a scanner path with no route still takes the
+    ordinary cacheable 307 — flood unmitigated). A shield may not be re-added until the
+    counterexample is defeated (e.g. by sanitising update slugs — a boundary change out of this
+    slice's writable scope).
     - History: review-0 first narrowed an extension-less denylist (`wp-admin`, `wp-json`, `xmlrpc`,
       …) to `.php`-only (those roots are creatable content slugs); review-1 then showed `.php` itself
       is not disjoint, forcing the full deferral above.
@@ -1090,12 +1089,14 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
     **no-route paths** — scanner probes (`/.env`, `/admin.php`, credential files), WP/asset probes,
     and phantom slugs with no `ROUTE#` (e.g. `/blog.bijup.com/cloudflare-emdash-validates-amodx`, a
     renamed draft; the *published* article `/cloudflare-just-validated-amodx-too` has **0** failures).
-    **No genuinely-published page fails.** Each no-route path renders the cacheable `307 ?nf=1`
-    handoff → never `x-nextjs-cache: REVALIDATED` → fails every attempt → re-enqueues forever. Real
-    pages return 200 (STALE or fresh) and revalidate fine. The human-visible "frozen stale" symptom
-    is the CloudFront 30-day SWR re-pin of real pages, NOT queue starvation of them. (Also: the
-    "double-rewrite breaks legit revalidation" hypothesis was TESTED and REFUTED — the host-prefixed
-    `_nextRewroteUrl` carries a `.`, so middleware passes it through and `[siteId]=<host>` resolves.)
+    **No genuinely-published page failed in that window.** Each no-route path renders the cacheable
+    `307 ?nf=1` handoff → never `x-nextjs-cache: REVALIDATED` → fails every attempt → re-enqueues
+    forever. In that window real pages returned 200 (STALE or fresh) and revalidated fine. The
+    human-visible "frozen stale" symptom was the CloudFront 30-day SWR re-pin of real pages, NOT
+    queue starvation of them. (Also, in that pre-SITEID-BINDING-1 state: the "double-rewrite breaks
+    legit revalidation" hypothesis was TESTED and REFUTED — the host-prefixed `_nextRewroteUrl`
+    carried a `.`, so the middleware passed it through and `[siteId]=<host>` resolved.
+    SITEID-BINDING-1 removed that pass-through; see its residuals below.)
     Full trace: `docs/caching-architecture.md` § cache-8 → "Root-cause Q3 (prod-log VERIFIED)".
   - **(c) IMPLEMENTED — drop the swr=2592000 edge window to 300 via a pinned open-next patch (REVISE 2,
     human-ratified option B, NOT a fork).** `patches/open-next+3.1.3.patch` (root `postinstall:
@@ -1258,3 +1259,42 @@ table (295 content items, timestamps match CI runs).
 Process: push only after staging is settled — the e2e workflow tests live staging, and pushing
 before deploying staging raced it twice (2026-09-16, 2026-10-13: 404 spec red mid-deploy,
 green on settled staging).
+
+## SITEID-BINDING-1 residuals (2026-10-15)
+
+Slice `docs/slices/siteid-binding-1.md` closed the `[siteId]`-from-the-wire hole (dotted-path
+pass-through) and gated `/tenant/` test mode like `/_site/`. Left open, by ruling or as findings:
+
+- **Doubled `Location` on a MISS-rendered `307` handoff (ruling SITEID-D3 = A: record, do not fix
+  here).** Live on staging: a fresh not-found handoff answers `location: /x?nf=1,/x?nf=1`; curl
+  follows the literal comma URL and still lands on the `404` (`nf` present). A STALE copy on prod
+  carries a single `location`. Effect: the first viewer of a missing path gets an ugly URL, then
+  the correct `404`. Origin-side, probably in OpenNext's response conversion (INFERRED); the
+  serving-contract suite cannot see it (`next start`, no OpenNext). Owner: a characterize row in
+  the `opennext-1a` bundle harness, then the upgrade.
+- **Staging has 417 leftover `e2e-render-*` tenants** (operator finding, 2026-10-15). Separate
+  cleanup item; not created by this slice.
+- **Preview link that leaves `/_site/`.** `preview-probe`'s home renders the hero button as
+  `/_site/preview-probe/contact` but also one un-prefixed `href="/contact"`. For the preview-link
+  audit (slice Correction 1).
+- **`isPreviewHost` is a substring match** (`localhost` / `cloudfront.net` / `staging` anywhere
+  in `Host`), unchanged from the original `/_site/` gate. A tenant custom domain that contains one
+  of these strings (e.g. `staging-shop.example`) can address any tenant by id (read from the
+  predicate's code, not probed). Not changed by this slice (the ruling was to reuse the existing
+  predicate).
+- **The `/_site/` / `/tenant/` `403` carries no `Cache-Control`** — CloudFront's error-caching
+  minimum TTL (10 s) applies. Harmless; note only.
+- **open-next 3.1.3 background revalidation HEAD and the doubled path** (slice C4, accepted): the
+  HEAD URL `https://<host>/<host>/<path>` is now an ordinary path on `<host>`'s tenant. In the
+  expected case — no route `/<host>/<path>` exists; usual, not an invariant, because
+  `content/update.ts` can persist such a slug — it answers the `307` not-found handoff instead of
+  re-rendering the stale page.
+  - MEASURED under `next start` (SITEID-BINDING-1 build, fresh key, HEAD first, no GET before it):
+    `HEAD /<host>/d4-page` on its own host → `307 → /<host>/d4-page?nf=1`, `s-maxage=31536000`,
+    `MISS`; the first HEAD stored the ISR entry `<host>/<host>/d4-page` (0 → 1 on disk; second
+    HEAD `HIT`).
+  - INFERRED, pending the `opennext-1a` harness (B-REFLECT) or a staging probe: that the deployed
+    bundle stores the same entry in the S3 ISR cache; that it sits under the tenant's `<host>/`
+    prefix, so the CACHE-10 purge deletes it; and that published pages therefore appear in the
+    "Failed to revalidate" log. `revalidate.js:35-37` establishes only that a `307` response is
+    classified failed, not that every background request receives one.
