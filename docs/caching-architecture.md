@@ -2348,10 +2348,10 @@ IAM grants: `cloudfront:CreateInvalidation` + S3 read/delete on the asset bucket
 | Resource | Purpose |
 |----------|---------|
 | CloudFront Distribution | Edge cache (Layer 1), TLS termination, domain routing |
-| S3 Asset Bucket (`_cache/` prefix) | ISR cache (Layer 2), static assets |
+| S3 Asset Bucket (`_cache/` prefix) | ISR cache (Layer 2), static assets. Lifecycle rule `ExpireIsrCache`: objects under `_cache/` expire 30 days after their last write (opennext-1d, 2026-10-15) — removes old-build prefixes; an expired object is a cache MISS (one re-render). Static assets and `BUILD_ID` are at the bucket root, outside the rule |
 | Tag Cache DynamoDB Table | Maps cache tags to page paths (for tag-based revalidation) |
 | SQS FIFO Revalidation Queue | Background page regeneration (OpenNext internal) |
-| Warmer Lambda | Scheduled every 5 min, prevents cold starts |
+| ~~Warmer Lambda~~ | Removed 2026-10-15 (opennext-1c). It never worked: the construct set `FUNCTION_NAME`/`CONCURRENCY`, open-next 3.1.3 reads `WARM_PARAMS`, so every 5-minute run failed. Revisit trigger: a measured cold-start latency problem |
 | Image Optimization Lambda | On-demand image resizing, cached by CloudFront |
 | Debounce Flush Lambda | Event-driven (CACHE-9 async-invoke on the edit's own enqueue → ~1s first drain) + EventBridge minute tick as sweeper; idle-exits in ~25ms. Drains BOTH classes: fast-lane TARGETED invalidations of ordinary edits' changed paths (`CDN_FAST_PENDING`, ~1s then ~10s while work remains) + the bulk `/*` at the earlier of 15 min quiet / 15 min after the first pending change (`CDN_PENDING`, CACHE-10 max wait) |
 | Nightly Cache Flush Lambda | 02:00 UTC daily, clears both cache layers |

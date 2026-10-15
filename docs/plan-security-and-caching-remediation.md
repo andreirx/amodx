@@ -606,6 +606,7 @@ See `docs/caching-architecture.md` for detailed implementation.
 3. ✅ DynamoDB tag cache table (`{stackName}-tag-cache`)
 4. ✅ Image optimization Lambda (`/_next/image*` route)
 5. ✅ Warmer Lambda (EventBridge every 5 minutes)
+   *2026-10-15: the warmer was removed by opennext-1c; the schedule count/cost line above predates that.*
 6. ✅ CloudFront caching with `X-Forwarded-Host` cache key for tenant isolation
 7. ✅ On-demand revalidation from `content/update.ts`
 

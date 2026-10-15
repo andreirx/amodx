@@ -63,9 +63,6 @@ Reference document for software architects done on 2026-03-07.
   │                              │
   │  DynamoDB Tag Cache          │
   │  (tag → path mapping)        │
-  │                              │
-  │  Warmer Lambda               │
-  │  (EventBridge 5min schedule) │
   └──────────────────────────────┘
 ```
 
@@ -75,11 +72,11 @@ Reference document for software architects done on 2026-03-07.
 |---------|-------|---------|
 | CloudFront Distributions | 3 | Renderer, Admin, Uploads |
 | S3 Buckets | 3 | Public assets, private resources, renderer cache+assets |
-| Lambda Functions | ~110 | 100+ API handlers, SSR server, image opt, revalidation, warmer, audit worker |
+| Lambda Functions | ~110 | 100+ API handlers, SSR server, image opt, revalidation, audit worker |
 | DynamoDB Tables | 2 | Main table (4 GSIs) + tag cache (1 GSI) |
 | API Gateway | 1 | HTTP v2 with Lambda authorizer |
 | Cognito User Pools | 2 | Admin (invite-only) + Public (self-signup, Google OAuth) |
-| EventBridge | 1 bus, 2 rules | Audit events + warmer schedule |
+| EventBridge | 1 bus, 3 rules | Audit events (pattern rule on the custom bus) + debounce flush minute tick (`rate(1 minute)`) + nightly cache flush (`cron(0 2 * * ? *)`). The renderer warmer and its 5-minute rule were removed 2026-10-15 (opennext-1c). |
 | SQS Queues | 2 | ISR revalidation (FIFO) + audit DLQ (standard) |
 | SES | 1 | Transactional email |
 | Secrets Manager | 4 | Master key, renderer key, revalidation secret, NextAuth secret |
@@ -806,10 +803,9 @@ AmodxStack (parent, ~390 resources)
 │   ├── Server Lambda + Function URL
 │   ├── Image Optimization Lambda + Function URL
 │   ├── Revalidation Lambda + SQS FIFO source
-│   ├── Warmer Lambda + EventBridge 5-min schedule
 │   ├── Tag Cache DynamoDB table + GSI
 │   ├── SQS FIFO Queue (revalidation)
-│   ├── S3 Bucket (assets + ISR cache)
+│   ├── S3 Bucket (assets + ISR cache; `_cache/` expires after 30 days — opennext-1d)
 │   └── CloudFront Distribution (multi-tenant cache policy)
 │
 ├── AdminHosting

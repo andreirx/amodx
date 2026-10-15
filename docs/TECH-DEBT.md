@@ -1298,3 +1298,27 @@ pass-through) and gated `/tenant/` test mode like `/_site/`. Left open, by rulin
     prefix, so the CACHE-10 purge deletes it; and that published pages therefore appear in the
     "Failed to revalidate" log. `revalidate.js:35-37` establishes only that a `307` response is
     classified failed, not that every background request receives one.
+
+## opennext-1c/1d (2026-10-15)
+
+Slice `docs/slices/opennext-1c-1d.md` removed the renderer warmer and added a 30-day lifecycle rule on
+the `_cache/` prefix of the `RendererAssets` bucket. Consequences carried forward:
+
+- **30-day re-render.** The rule expires any `_cache/` object 30 days after its last write. A live page
+  that has not revalidated for 30 days loses its ISR entry and cold-renders once on the next request
+  (the cache adapter returns `null` on `NoSuchKey`, Next renders fresh; no error line). So each live page
+  cold-renders at most once per 30 days of no revalidation. Pages that revalidate are rewritten and keep
+  their entry. The number is pinned by infra test `(o1)`; change it there and here together.
+- **Warmer revisit trigger.** The warmer was removed, not repaired (`OPENNEXT1-WARMER = B`). Revisit only on
+  a **measured** cold-start latency problem (`Init Duration` in RendererServer REPORT lines). A repaired
+  warmer would set `WARM_PARAMS` (open-next 3.1.3 contract; spec § 3.H row H1).
+- **Lifecycle action is asynchronous.** S3 applies expiry within about 48 h of an object becoming eligible.
+  The staging/prod object count under `_cache/` is not an immediate gate after deploy;
+  `aws s3api get-bucket-lifecycle-configuration` is.
+- **Prefix held in three places.** `_cache` appears in the lifecycle rule, the RendererServer env and the
+  nightly-flush Lambda env (`infra/lib/amodx-stack.ts`). Test `(o2)` ties the rule to the RendererServer
+  env only; the nightly-flush copy is not tied by a test.
+- **`(split1-5)` history is a recorded number, not a gate.** The pre-split parent count (501) is now a
+  comment, not an assertion (ruling OPENNEXT1CD-SPLIT1-5 = B; slice doc § 5.1). The test still gates both
+  templates `< 500`. Its count comments (377 + 50 + 13 = 440) go stale with every parent-resource change;
+  they are documentation, not assertions.

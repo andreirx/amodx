@@ -89,6 +89,8 @@ At single-account scale, with the 2-per-stack CloudFront approach and shared S3 
 | Cognito (2 pools, <50K MAU) | $0.00 |
 | **Total idle cost** | **~$2.62/mo** |
 
+2026-10-15: the warmer was removed by opennext-1c; the schedule count/cost line above ("Scheduled Lambdas (warmer 5min + …)") predates that.
+
 Note: CloudWatch Dashboard omitted for small tier (saves $3/mo). Can add for medium/large.
 
 ### 5.2 Variable Costs by Traffic Level

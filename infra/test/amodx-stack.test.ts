@@ -32,8 +32,8 @@
  *      the reason the suite takes a minute rather than a second. The alternative (stubbing
  *      `child_process.execSync` and fabricating a `.open-next` tree) was rejected: it would
  *      synthesize a DIFFERENT construct graph from the one that deploys — no image-optimization
- *      behavior, no warmer rule — which is the opposite of what a slice called "infra truth"
- *      should assert. The clean fix is to lift build orchestration out of the constructs, and
+ *      behavior, no revalidation function — which is the opposite of what a slice called
+ *      "infra truth" should assert. The clean fix is to lift build orchestration out of the constructs, and
  *      that is an `infra/lib` edit this slice is barred from making (docs/TECH-DEBT.md).
  *
  * ── CREDENTIAL-FREE, BY CONSTRUCTION ───────────────────────────────────────────────────────
@@ -54,8 +54,8 @@
  * on the distributions, the API custom domain, the Route53 records. VERIFIED 2026-07-28 by
  * diffing every property asserted below against the real staging template
  * (`infra/cdk.out/AmodxStack-staging.template.json`, synthesized WITH domains): the cache
- * policy, all six behaviors, the CloudFront Function, the four invalidation grants and both
- * EventBridge rules are byte-identical there.
+ * policy, all six behaviors, the CloudFront Function, the four invalidation grants and the two
+ * cache-flush EventBridge rules asserted at that time were byte-identical there.
  *
  * That diff predates `cache-6`, so it says nothing about the two properties `cache-6` added —
  * `ImageCachePolicy` and the eighth `RendererOriginPolicy` header — nor about the ninth and
@@ -730,6 +730,64 @@ describe('PrivateAssetsBucket — review-staging quarantine lifecycle', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
+// (o) RendererAssets — ISR cache expiry (old-build orphans)
+//     Ratified as OPENNEXT1-ORPHANS = C (docs/slices/opennext-1-upgrade.md § Ratification),
+//     built by `opennext-1d` (docs/slices/opennext-1c-1d.md). The renderer's ISR cache lives
+//     under `_cache/<buildId>/` in this bucket; every deploy starts a new build id and nothing
+//     else ever deletes the old prefix unless an edit triggers the nightly flush. This ONE rule
+//     expires `_cache/` objects 30 days after their last write. The static site assets and the
+//     `BUILD_ID` object live at the bucket ROOT and must never expire, which is why (o1) is
+//     bounded to exactly one rule on exactly that prefix, and why (o2) ties the prefix to the
+//     server function's CACHE_BUCKET_KEY_PREFIX — the string the cache adapter actually writes.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('RendererAssets — _cache/ ISR expiry (opennext-1d)', () => {
+    /** The one S3 bucket whose logical id contains `RendererAssets`. */
+    function rendererAssetsBucketProps(): any {
+        const found = Object.entries(template.findResources('AWS::S3::Bucket')).filter(([id]) =>
+            id.includes('RendererAssets'),
+        );
+        if (found.length !== 1) {
+            throw new Error(`expected 1 RendererAssets bucket, found ${found.length}`);
+        }
+        return (found[0][1] as any).Properties;
+    }
+
+    /** The one Lambda function whose logical id contains `RendererHostingRendererServer`. */
+    function rendererServerEnv(): Record<string, unknown> {
+        const found = Object.entries(template.findResources('AWS::Lambda::Function')).filter(
+            ([id]) => id.includes('RendererHostingRendererServer'),
+        );
+        if (found.length !== 1) {
+            throw new Error(`expected 1 RendererServer function, found ${found.length}`);
+        }
+        return (found[0][1] as any).Properties.Environment.Variables;
+    }
+
+    test('(o1) EXACTLY one 30-day expiry rule on the _cache/ prefix, enabled', () => {
+        // Bounded on purpose, as (rev2a) is: exactly one rule, on exactly the ISR prefix, so this
+        // cannot be read as a blanket expiry over the static assets at the bucket root.
+        const rules = rendererAssetsBucketProps().LifecycleConfiguration?.Rules as any[] | undefined;
+        expect(rules).toBeDefined();
+        expect(rules).toHaveLength(1);
+
+        const rule = rules![0];
+        expect(rule.Status).toBe('Enabled');
+        expect(rule.Prefix).toBe('_cache/');
+        expect(rule.ExpirationInDays).toBe(30);
+    });
+
+    test("(o2) the rule's prefix is the RendererServer CACHE_BUCKET_KEY_PREFIX + '/'", () => {
+        // The contract tie. open-next writes cache keys as `<CACHE_BUCKET_KEY_PREFIX>/<buildId>/...`;
+        // if either side drifts, the rule expires nothing (or something else) and this fails.
+        const rules = rendererAssetsBucketProps().LifecycleConfiguration?.Rules as any[] | undefined;
+        expect(rules).toHaveLength(1);
+        const envPrefix = rendererServerEnv().CACHE_BUCKET_KEY_PREFIX;
+        expect(typeof envPrefix).toBe('string');
+        expect(rules![0].Prefix).toBe(`${envPrefix}/`);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
 // (rev2a-iam) UpdateReviewFunc — least-privilege S3 for the promotion path + env wiring
 //     Ratified by `rev-2a` (REV2A-INFRA-SURFACE = option B) and review-2's blocking least-privilege
 //     finding. The review moderation handler's `action: "approve-image"` path promotes the
@@ -1019,39 +1077,36 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         // infra/cdk.out (2026-08-10): the real staging CatalogApi template is 57 = 42 core (14 Fn +
         // 14 Role + 14 Policy) + 14 managed log groups + 1 CDK::Metadata. The FIRST offset model here
         // added only the log groups (catalogFns) and so undercounted the deployed nested template by
-        // exactly this one AWS::CDK::Metadata — the bug that made the pre-split reconstruction read
-        // 500 instead of the documented 501. The parent's own CDK::Metadata is likewise omitted by
+        // exactly this one AWS::CDK::Metadata — the bug that made the (since removed, see below)
+        // pre-split reconstruction read 500 instead of the documented 501. The parent's own CDK::Metadata is likewise omitted by
         // the test synth but is folded into PARENT_STAGE_OVERHEAD below (which is calibrated whole).
         const NESTED_METADATA = 1;
         // Fixed per-stage overhead the domains:{} test synth omits but a real stage adds: the
         // Route53/ACM/DomainName/ApiMapping domain resources, the parent's own CDK::Metadata, and the
-        // domain custom-resource satellites (fn/role/policy/log-group). Calibrated whole so
-        // deployedParent equals the real staging synth (infra/cdk.out parent = 446). Not pure domain
+        // domain custom-resource satellites (fn/role/policy/log-group). Calibrated whole at the split
+        // commit, when deployedParent equalled the real staging synth (infra/cdk.out parent = 446);
+        // the overhead is fixed, the parent count is not (see the counts below). Not pure domain
         // — hence not named DOMAIN_OVERHEAD.
         const PARENT_STAGE_OVERHEAD = 13;
 
-        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 382 + 51 + 13 = 446 (== cdk.out)
+        // Counts in this synth (opennext-1c, 2026-10-15): 377 + 50 + 13 = 440 and 42 + 14 + 1 = 57.
+        // The cdk.out staging template still shows 446 until the opennext-1c deploy; expected 440
+        // after it — INFERRED until the operator's deploy synth confirms.
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 377 + 50 + 13 = 440
         const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 42 + 14 + 1 = 57 (== cdk.out)
 
-        // Reconstruct the pre-split parent count to show it was the 501 that email-2 hit against the
-        // hard 500-per-template ceiling. Of the 57 resources in the deployed CatalogApi template,
-        // exactly 56 MOVED out of the parent (14 handlers × {Function, Role, Policy, LogGroup}); the
-        // 57th — the nested template's own new AWS::CDK::Metadata — is synthesized fresh and did NOT
-        // come from the parent. The parent, in turn, GAINED exactly one resource that did not exist
-        // pre-split: the AWS::CloudFormation::Stack pointer to CatalogApi. So the before-count is the
-        // after-count minus that one new pointer, plus the 56 that moved out:
-        const catalogMoved = deployedCatalog - NESTED_METADATA;                 // 57 - 1 = 56
-        const impliedParentBefore = deployedParent - 1 /* new CFN::Stack */ + catalogMoved; // 446 - 1 + 56 = 501
+        // Pre-split parent (email-2, measured 2026-08-10 against the real staging synth) = 501 = 446
+        // (post-split deployed parent at the split commit) − 1 (the new CFN::Stack pointer) + 56
+        // (14 handlers × {Function, Role, Policy, LogGroup}). That derivation holds only at the split
+        // commit; the parent count changes with later slices — first: opennext-1c removed 6 (warmer
+        // Function, Role, Policy, LogGroup, Rule, Permission), 2026-10-15 — so it is recorded here, not
+        // re-derived from the current synth.
         console.log(
             `(split1-5) DEPLOYED parent ≈ ${deployedParent} (raw ${rawParent} + ${parentFns} managed log groups + ${PARENT_STAGE_OVERHEAD} stage overhead); ` +
-                `DEPLOYED CatalogApi ≈ ${deployedCatalog} (raw ${rawCatalog} + ${catalogFns} log groups + ${NESTED_METADATA} CDK::Metadata), of which ${catalogMoved} moved from the parent. Both < 500. ` +
-                `Pre-split parent was ≈ ${impliedParentBefore} (email-2's 501, at CFN's 500 ceiling — the blocker this slice clears).`,
+                `DEPLOYED CatalogApi ≈ ${deployedCatalog} (raw ${rawCatalog} + ${catalogFns} log groups + ${NESTED_METADATA} CDK::Metadata). Both < 500.`,
         );
         expect(deployedParent).toBeLessThan(500);
         expect(deployedCatalog).toBeLessThan(500);
-        // Pin the reconstruction to the documented email-2 count so the explanatory output can never
-        // silently drift from the authoritative before/after story again (review-6 finding).
-        expect(impliedParentBefore).toBe(501);
     });
 });
 
@@ -1092,6 +1147,49 @@ describe('Cache-flush schedules', () => {
         const rule = ruleTargeting('NightlyCacheFlushFunc');
         expect(rule.ScheduleExpression).toBe('cron(0 2 * * ? *)');
         expect(rule.State).toBe('ENABLED');
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (w) The renderer warmer is gone (opennext-1c)
+//     Ratified as OPENNEXT1-WARMER = B (docs/slices/opennext-1-upgrade.md § Ratification),
+//     built by `opennext-1c` (docs/slices/opennext-1c-1d.md). The warmer Lambda ran every
+//     5 minutes and failed on every invocation (open-next 3.1.3 reads WARM_PARAMS; the stack
+//     set FUNCTION_NAME/CONCURRENCY). The human ruled removal, not repair. Revisit trigger: a
+//     measured cold-start latency problem. (w3) pins the whole parent-template rule inventory
+//     so a new schedule cannot appear without a deliberate edit here.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('Renderer warmer removed (opennext-1c)', () => {
+    test('(w1) no Lambda function in the parent template has a logical id containing Warmer', () => {
+        const warmers = Object.keys(template.findResources('AWS::Lambda::Function')).filter((id) =>
+            id.includes('Warmer'),
+        );
+        expect(warmers).toEqual([]);
+    });
+
+    test('(w2) no EventBridge rule in the parent template runs at rate(5 minutes)', () => {
+        const fiveMinute = Object.entries(template.findResources('AWS::Events::Rule')).filter(
+            ([, r]) => (r as any).Properties.ScheduleExpression === 'rate(5 minutes)',
+        );
+        expect(fiveMinute.map(([id]) => id)).toEqual([]);
+    });
+
+    test('(w3) EXACTLY three EventBridge rules: audit pattern, 1-minute debounce, 02:00 nightly', () => {
+        const rules = Object.values(template.findResources('AWS::Events::Rule')).map(
+            (r) => (r as any).Properties,
+        );
+        expect(rules).toHaveLength(3);
+
+        const patternOnly = rules.filter(
+            (p) => p.EventPattern !== undefined && p.ScheduleExpression === undefined,
+        );
+        expect(patternOnly).toHaveLength(1);
+
+        const schedules = rules
+            .map((p) => p.ScheduleExpression)
+            .filter((e): e is string => e !== undefined)
+            .sort();
+        expect(schedules).toEqual(['cron(0 2 * * ? *)', 'rate(1 minute)']);
     });
 });
 

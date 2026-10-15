@@ -8,8 +8,6 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
-import * as events from 'aws-cdk-lib/aws-events';
-import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { Construct } from 'constructs';
@@ -121,6 +119,29 @@ export class RendererHosting extends Construct {
             autoDeleteObjects: false,
             removalPolicy: cdk.RemovalPolicy.RETAIN,
             publicReadAccess: false,
+
+            // OPENNEXT1-ORPHANS = C (slice opennext-1d, docs/slices/opennext-1c-1d.md): ISR cache
+            // expiry. The renderer writes its ISR cache under `_cache/<buildId>/`; every deploy
+            // starts a new build id and the old prefix is never read again, so without this rule
+            // old-build objects stay in the bucket for ever (41,631 objects / 792 MB measured in
+            // ONE old prefix, 2026-10-13). This ONE lifecycle rule expires `_cache/` objects 30 days
+            // after their last write. Scope is bounded to the prefix: the static site assets
+            // (`_next/...`) and the `BUILD_ID` object are written at the bucket ROOT by
+            // `DeployRendererAssets` below, both outside the prefix, so they are never expired.
+            // An expired object that a live page still needs is a cache MISS, not an error: the
+            // open-next cache adapter returns null on a failed get and Next renders the page
+            // fresh (one re-render). A page that revalidates is rewritten, which resets its age.
+            // The prefix is ONE contract with `CACHE_BUCKET_KEY_PREFIX: '_cache'` in the
+            // RendererServer env below (and in the nightly-flush Lambda env, amodx-stack.ts) —
+            // keep them in sync. Assertion (o2) in infra/test/amodx-stack.test.ts fails on drift.
+            lifecycleRules: [
+                {
+                    id: 'ExpireIsrCache',
+                    prefix: '_cache/',
+                    expiration: cdk.Duration.days(30),
+                    enabled: true,
+                },
+            ],
         });
 
         // ============================================================
@@ -251,33 +272,6 @@ export class RendererHosting extends Construct {
         this.assetBucket.grantReadWrite(this.serverFunction);
         this.revalidationQueue.grantSendMessages(this.serverFunction);  // Server can queue revalidation
         tagCacheTable.grantReadWriteData(this.serverFunction);     // Server reads/writes tag cache
-
-        // 4.5 Warmer Lambda (prevents cold starts)
-        const warmerFuncPath = path.join(openNextPath, 'warmer-function');
-
-        if (fs.existsSync(warmerFuncPath)) {
-            const warmerFunc = new lambda.Function(this, 'WarmerFunction', {
-                runtime: lambda.Runtime.NODEJS_22_X,
-                handler: 'index.handler',
-                code: lambda.Code.fromAsset(warmerFuncPath),
-                architecture: lambda.Architecture.ARM_64,
-                memorySize: 128,
-                timeout: cdk.Duration.seconds(15),
-                environment: {
-                    FUNCTION_NAME: this.serverFunction.functionName,
-                    CONCURRENCY: '1',
-                },
-            });
-            this.serverFunction.grantInvoke(warmerFunc);
-
-            // Schedule warmer every 5 minutes
-            new events.Rule(this, 'WarmerSchedule', {
-                schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
-                targets: [new targets.LambdaFunction(warmerFunc)],
-            });
-        } else {
-            console.warn("OpenNext warmer-function not found. Skipping warmer Lambda.");
-        }
 
         // 4. Lambda Function URL
         const fnUrl = this.serverFunction.addFunctionUrl({

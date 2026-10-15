@@ -8,7 +8,7 @@ Updated: 2026-03-23
 - Fixed jsdom ESM crash in Lambda (replaced isomorphic-dompurify with sanitize-html)
 - RENDERER key infrastructure deployed
 - Revalidation endpoint secured
-- **Full OpenNext caching infrastructure deployed** (tag cache, SQS queue, warmer, image opt)
+- **Full OpenNext caching infrastructure deployed** (tag cache, SQS queue, warmer, image opt; the warmer was removed 2026-10-15, opennext-1c)
 - CloudFront caching enabled with multi-tenant isolation
 
 **Phase 5 (operational security) COMPLETE** - CI audit, Dependabot, CloudWatch alarms deployed.
@@ -198,7 +198,7 @@ Updated: 2026-03-23
 | SQS FIFO revalidation queue | ✅ | `{stackName}-revalidation.fifo` with dedup |
 | Revalidation Lambda | ✅ | Polls SQS, sends HEAD requests to regenerate |
 | Image optimization Lambda | ✅ | `/_next/image*` route with 1536MB memory |
-| Warmer Lambda | ✅ | EventBridge rule every 5 minutes |
+| Warmer Lambda | removed 2026-10-15 (opennext-1c) | Was an EventBridge rule every 5 minutes; it failed on every run (wrong env names) and was removed, not repaired. See `docs/slices/opennext-1c-1d.md` |
 | Enable CloudFront caching | ✅ | Custom cache policy with X-Forwarded-Host for tenant isolation |
 | Backend revalidate helper | ✅ | `backend/src/lib/revalidate.ts` |
 | Backend content/update.ts | ✅ | Calls revalidatePath after content changes |
