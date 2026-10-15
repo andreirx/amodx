@@ -1,7 +1,7 @@
 # Slice OPENNEXT-1C + OPENNEXT-1D — remove the renderer warmer, expire the `_cache/` ISR prefix (one CDK change)
 
-Status: IMPLEMENTED 2026-10-15 (code complete; infra suite 58/58; staging deploy and live checks = operator,
-NOT RUN).
+Status: DEPLOYED-STAGING 2026-10-15 (534ab81; staging `cdk diff` as predicted, live checks green; prod awaits the
+human's word). Infra suite 58/58.
 Track: CACHE. Maturity target: unchanged (renderer hosting stays MATURE; this removes a broken part and adds a
 retention rule, it adds no new module).
 Depends: `docs/slices/opennext-1-upgrade.md` § Ratification (human, 2026-10-15): `OPENNEXT1-WARMER = B`,
@@ -178,6 +178,22 @@ The renderer stack has no failing scheduled component, and old-build ISR cache s
 - `infra/lib/uploads.ts` — the `review-staging/` lifecycle rule (shape precedent).
 - `docs/TECH-DEBT.md` § opennext-1c/1d.
 
-## Staging verification
-
-(operator — to be filled after the staging deploy)
+## Staging verification (operator, 2026-10-15, commit 534ab81)
+- Operator gates on the unchanged candidate (reviewer sandbox cannot synth): `infra` typecheck 0; `npm test` 58/58; `git diff --check` 0.
+- `cdk diff AmodxStack-staging`: `[-]` destroy `WarmerFunction`, its `ServiceRole`, `ServiceRoleDefaultPolicy`, `WarmerSchedule`,
+  the `AllowEventRule` permission; `[-]` orphan (retained) `WarmerFunction/LogGroup`; `[~]` `RendererAssets` with
+  `[+] LifecycleConfiguration {ExpirationInDays 30, Id ExpireIsrCache, Prefix _cache/, Status Enabled}` — an in-place update,
+  0 replacement markers in the diff (the INFERRED label in § 5.1 is now VERIFIED); plus the usual code-asset hashes.
+  Synthesized parent template = 440 resources (the INFERRED 440 in `(split1-5)`'s comment is now measured); rules exactly
+  `EventsAuditRule` (pattern), `DebounceFlushSchedule` `rate(1 minute)`, `NightlyCacheFlushSchedule` `cron(0 2 * * ? *)`.
+- Deploy exit 0, no rollback; CloudFormation events show `DELETE_COMPLETE` for Permission, Rule, Function, Policy, Role and
+  `UPDATE_COMPLETE` for the bucket.
+- Live: `aws lambda list-functions` → 0 `Warmer` functions in the staging stack (the only amodx 5-minute rule left is prod's);
+  `aws s3api get-bucket-lifecycle-configuration` on the staging asset bucket → one rule `ExpireIsrCache`, `Filter.Prefix _cache/`,
+  `Expiration.Days 30`, `Enabled`; `list-stack-resources` → 440.
+- Serving unchanged (no renderer source change in this slice; no invalidation needed): `/_site/preview-probe` 200 `no-store`;
+  `/ab-page` 200; `/robots.txt` 200; `/wp-login.php` 307 (D3 doubled `Location` still present, as recorded). Playwright
+  `preview-site` + `public-site` 2/2. `staging.amodx.net/` answers 404 `no-store`: no staging tenant carries that domain (checked
+  via the staging admin API, 427 tenants) — the unwired-host contract, not a change; the host is the preview/test-mode alias only.
+- Object-count effect of the lifecycle rule is asynchronous (S3 evaluates within ~48 h of eligibility): staging prefixes
+  `_cache/SueHtBXRQjiIWd3xCFKWE/` (orphan) and the current build's are the baseline to re-read after 2026-10-17.
