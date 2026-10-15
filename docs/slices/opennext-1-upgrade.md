@@ -1973,3 +1973,39 @@ DECISION_REQUIRED:
   CACHE-10); `docs/slices/cache-8-revalidation-flood.md`; `docs/slices/cache-4b-tag-revalidation.md`;
   `docs/runbooks/deploy-track-cache.md`; upstream issues #1209, #1242, #1250, #1255, #1260, #1270,
   #1285, #1307 and PR #1302.
+
+
+## Ratification (human, 2026-10-15) — governs where the body differs
+
+Decision review: reviewer gpt-6-sol challenged all 11 blocks, builder claude-opus-5-5 answered one round;
+packet `.agent-manager/slices/OPENNEXT-1-SPEC/ratification-packet.md` (local trail). The human ratified
+every decision **as recommended after the review**, i.e. including the two cells the builder conceded:
+
+| ID | Ruling | Where the body must be read as amended |
+|---|---|---|
+| OPENNEXT1-PIN | **B — exact pin `@opennextjs/aws` 4.1.9** (the version every build and code read used). 4.1.10 is a later reviewed adapter bump under § 2.3 rule 3: packed and diffed against 4.1.9, `cmp` on `core/routing/util.js` + `adapters/cache.js`, green harness incl. B-XISR/B-ISO. | § 0.3 target row; § 2.1–2.2 (swap recommended/fallback); § 6.2 devDependency `"4.1.9"`; § 6.4 patch file `patches/@opennextjs+aws+4.1.9.patch`; § 9.4a PIN row; harness B-VERSION asserts 4.1.9 |
+| OPENNEXT1-TAGMODE | A (original `dynamodb` mode). Added risk line: tag-write failures are logged, not thrown (4.1.9 `overrides/tagCache/dynamodb.js:189-212`), so a 200 from `/api/revalidate` never proves freshness; E2 step 5 / § 8.3 prove it with the served token. | § 11 TAGMODE option A RISK |
+| OPENNEXT1-CACHE10-PURGE | A (keep the purge). | — |
+| OPENNEXT1-XISR | A (keep both headers removed). | — |
+| OPENNEXT1-1250 | A (backport the read side of PR #1302 as a patch hunk). **Fallback rule (human 2026-10-15):** if the staging check (B-STALE, E1/E17) fails, opennext-1b ships WITHOUT the hunk and accepts the flood; the hunk never holds the upgrade. | § 9.4 go/no-go; § 10 opennext-1b |
+| OPENNEXT1-WARMER | **B — remove `WarmerFunction`, `WarmerSchedule` and their permission/role** (independent slice opennext-1c, may ship before 1b; gate: synthesized template has no `WarmerFunction`). Revisit trigger (§ 12): a measured cold-start latency problem. | § 3.H H1 effect; § 6.6 warmer rows; § 7.3 warmer cost row (−864 invocations/day, ≈ −0.7 MB logs/day); § 9.5 drop "warmer Errors"; § 10 opennext-1c scope |
+| OPENNEXT1-IMAGE | A (stay parked; record the `_assets` prefix and missing `remotePatterns` defects). | — |
+| OPENNEXT1-ORPHANS | C (S3 lifecycle rule on the exact `_cache/` prefix, infra assertion, independent slice opennext-1d). **Human 2026-10-15: 1c and 1d ship as ONE CDK deploy.** | § 10 |
+| OPENNEXT1-HARNESS | A (harness first, opennext-1a on 3.1.3). Reverses cache-8 REVISE 3. | — |
+| OPENNEXT1-SWR-PATCH | A (keep the re-cut hunks), with the builder's accepted wording: the hunks cover every 30-day site a Next-emitted `Cache-Control` can reach (`util.js:346, 355`); the third site (`fixSWRCacheHeader`, `util.js:260`) fires only on a hand-written bare `stale-while-revalidate`, none exists today, and the guard counts it as the known residual. **Plus (human 2026-10-15): the guard script also forbids a bare `stale-while-revalidate` in `renderer/src`** (one grep line). | § 5.7; § 11 option A REWARD ("complete protection" wording withdrawn); § 6.5 guard |
+| OPENNEXT1-REFLECTION | C (fix first, own slice on 3.1.3) → slice **SITEID-BINDING-1**, `docs/slices/siteid-binding-1.md`. E13 confirmed it on staging 2026-10-14 (C1) and 2026-10-15 (C2–C5). | § 7.4; § 12 |
+
+**Additional human rulings (2026-10-15), bound to the slices:**
+1. Preview URLs of tenants without a custom domain (`/_site/<id>/…`, placeholder domain `<id>.localhost`)
+   get a permanent safety net BEFORE any middleware change: two serving-contract rows (200/no-store/cookie
+   from an allowed host; 403 from a tenant host) and one Playwright test on staging (open the preview,
+   body marker, one client-side navigation stays under `/_site/<id>/`). Lands in SITEID-BINDING-1 as its
+   first proof; opennext-1a's B-PREVIEW and E19 inherit the expectations.
+2. Order of work: SITEID-BINDING-1 → opennext-1c+1d (one CDK deploy) → opennext-1a → opennext-1b.
+3. Reframing recorded for prioritisation: with CACHE-10 live, the upgrade does not change what editors
+   or visitors see on an edit; its product reward is the two routing-bypass fixes (#810, #1199), a
+   maintained adapter for future Next security patches, and the #1250 cost/consistency fix.
+
+**Findings surfaced during ratification, not part of OPENNEXT-1:** a MISS-rendered not-found 307 carries a
+doubled `Location` (`/x?nf=1,/x?nf=1`; staging 2026-10-15; origin-side; the local suite cannot see it) →
+TECH-DEBT + a characterize row in opennext-1a. 417 `e2e-render-*` leftover tenants on staging → cleanup item.
