@@ -1,6 +1,6 @@
 # Slice SITEID-BINDING-1 — the `[siteId]` route segment is bound only by the middleware, never from the wire
 
-Status: DEPLOYED-STAGING 2026-10-15 (eb39f58; staging probes + Playwright green; prod awaits the human's word). Ratified 2026-10-15 (human: OPENNEXT1-REFLECTION = C; D1 = A, D2 = A, D3 = A). Parent: `docs/slices/opennext-1-upgrade.md` § Ratification.
+Status: SHIPPED 2026-10-15 (eb39f58 on prod; prod probes green; see § Prod deployment). Ratified 2026-10-15 (human: OPENNEXT1-REFLECTION = C; D1 = A, D2 = A, D3 = A). Parent: `docs/slices/opennext-1-upgrade.md` § Ratification.
 Builder: claude / claude-opus-5-5 (high). Reviewer: codex / gpt-6-sol. `--timeout 60`, `--max-iter 3`.
 Deliverable surface: `renderer/middleware.ts`, `renderer/test/serving-contract/*`, `tests/e2e/preview-site.spec.ts`,
 docs. **No CDK/infra change. No dependency change. No OpenNext change.** Runs on open-next 3.1.3 as deployed.
@@ -202,3 +202,21 @@ On `D` (cache-probe tenant host): `/c9-probe-1788350202.localhost/c9-probe` → 
 (C3: a dotted path now reaches the host's tenant); `/tenant/c9-probe-1788350202/c9-probe` → 200 no-store on `D` and on
 `staging.amodx.net` (preview hosts keep test mode); `/_site/preview-probe` → 200 no-store + cookie; `/ab-page` → 200 (unchanged);
 `/robots.txt` → 200. Playwright `preview-site` + `public-site` → 2/2 passed. D3 (doubled `Location`) still present, as recorded.
+
+## Prod deployment (operator, 2026-10-15, on the human's word "Deploy to prod with diff first")
+- `cdk diff AmodxStack -c stage=prod`: three Lambda code assets (RendererServer, Revalidation, ImageOpt), the static-assets
+  zip, the admin `config.json` rewrite (timestamp physical id, same content) and three nested-stack description strings
+  (mangled em-dash in the deployed template); no resource added, removed or replaced. Deploy exit 0, 208 s, no rollback.
+- CloudFront `/*` invalidation `I7TNKL4XJMVR38LPPJD8MR9SCQ` on E3UU78UY1MM95M, completed.
+- Pre-deploy markers (the hole, live on prod): `bijup.com/blog.bijup.com` → 200 "Home | Andrei Roman - The Foundry";
+  `bijup.com/povesti-pe-biscuite.localhost` → 200 "Home | Povesti-Pe-Biscuite" with `s-maxage=31536000` (a no-domain
+  tenant's site, public under another tenant's domain, cacheable one year — the reason the invalidation was mandatory).
+- Post-deploy, after the invalidation: `bijup.com/blog.bijup.com` → 307 `?nf=1` title "Bijup.com" (C1 closed);
+  `bijup.com/povesti-pe-biscuite.localhost` → 307 (C2 closed); `bijup.com/wp-login.php` → 307 on bijup's own tenant (C3);
+  `bijup.com/` and `blog.bijup.com/` → 200, own titles; `d111wtnnjzzsb1.cloudfront.net/_site/povesti-pe-biscuite` → 200
+  `no-store`; `bijup.com/_site/povesti-pe-biscuite` → 403 (preview host gate, as on staging); `robots.txt` → 200.
+  Home pages answer `s-maxage=31536000` because the new build id starts with an empty `_cache/` prefix (cold render);
+  before the deploy they answered `s-maxage=2, stale-while-revalidate=300` (STALE entries of the old build) — the known
+  cold/stale contract, not a change. D3 (doubled `Location` on MISS 307s) is present on prod exactly as on staging.
+- Health, 20 min after deploy: renderer Invocations 21 / Errors 0; CloudFront 5xx rate 0.0.
+- Rollback, if ever needed: redeploy the previous bundle (646838f^ tree = 71dde6b bundle); no data or infra state changed.
