@@ -24,6 +24,15 @@
 // The child announces readiness by printing one line `LAMBDA_HOST_READY <json>` on stdout,
 // carrying its ephemeral port and `globalThis.openNextVersion` — the version string the bundle's
 // own banner set while loading (open-next `build/helper.js` writes it into every function).
+//
+// INCREMENT 1A-2 ADDITIONS (each used by named B-rows; docs/slices/opennext-1a.md § Increment 1A-2):
+//   - the child preloads `outbound-shim.cjs` (`--require`): every outbound HTTP(S)/fetch call
+//     the bundle makes is journaled (`outbound()`, row B-CASE) and refused locally;
+//   - every viewer request the HTTP port receives is journaled BEFORE the edge filter
+//     (`requests()`, row B-REVAL: proves the revalidation HEAD carried `x-prerender-revalidate`);
+//   - `forwardViewerHeaders(names)`: the edge forwards these extra viewer headers until reset —
+//     row B-XISR only, which tests the ORIGIN side of a header the real edge strips;
+//   - `runRevalidationFunction(...)`: runs the built revalidation function on an SQS event (B-REVAL).
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -31,6 +40,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SELF = fileURLToPath(import.meta.url);
+/** The outbound-call interceptor preloaded into both Lambda children (see its header). */
+const OUTBOUND_SHIM = fileURLToPath(new URL("./outbound-shim.cjs", import.meta.url));
+/** Where the Lambda host child's outbound calls are redirected: nothing listens on port 1, so an
+ *  outbound call is refused on this host instead of leaving it. */
+const REFUSE_OUTBOUND = "http://127.0.0.1:1";
 
 /** `Host` of a Lambda Function URL. CloudFront dials the origin by this name, so it is the Host
  *  the function sees (the viewer's host travels in `x-forwarded-host`). Fake but well-formed. */
@@ -93,14 +107,15 @@ const SESSION_COOKIE_BASES = ["next-auth.session-token", "__secure-next-auth.ses
  * `x-forwarded-for`, `x-forwarded-proto`, `x-amzn-trace-id`) — spec § 8.1 item 3 lists none.
  *
  * @param {Record<string,string|string[]|undefined>} viewer  incoming headers (node:http, lowercased)
- * @param {{ originVerifySecret: string }} edge
+ * @param {{ originVerifySecret: string, extraForwarded?: string[] }} edge
  * @returns {{ headers: Record<string,string>, cookies: string[] }}
  */
-function edgeRequestHeaders(viewer, { originVerifySecret }) {
+function edgeRequestHeaders(viewer, { originVerifySecret, extraForwarded = [] }) {
     const cookieHeader = [].concat(viewer.cookie ?? []).join("; ");
     const cookies = cookieHeader ? cookieHeader.split("; ") : [];
     const headers = {};
-    for (const name of EDGE_FORWARDED_HEADERS) {
+    // `extraForwarded`: NOT production behaviour — row B-XISR's switch (`forwardViewerHeaders`).
+    for (const name of [...EDGE_FORWARDED_HEADERS, ...extraForwarded]) {
         const v = viewer[name];
         if (v !== undefined) headers[name] = [].concat(v).join(",");
     }
@@ -192,17 +207,29 @@ export async function startLambdaHost({ functionDir, env, originVerifySecret, on
     let log = "";
     let ready;
     const pending = new Map();
+    /** Outbound calls the bundle attempted (outbound-shim.cjs), across restarts. */
+    const outbound = [];
+    /** Viewer requests the HTTP port received, as sent (before the edge filter), across restarts. */
+    const requests = [];
 
     async function spawnChild() {
         log = "";
-        child = spawn(process.execPath, [SELF, "--child"], {
+        // `--require` on argv, not NODE_OPTIONS: the child forks nothing, and NODE_OPTIONS is part
+        // of the constructed environment `(iso1)` pins.
+        child = spawn(process.execPath, ["--require", OUTBOUND_SHIM, SELF, "--child"], {
             cwd: functionDir,
-            env: { ...env, LAMBDA_HOST_ORIGIN_VERIFY: originVerifySecret },
+            env: {
+                ...env,
+                LAMBDA_HOST_ORIGIN_VERIFY: originVerifySecret,
+                SERVING_BUNDLE_OUTBOUND_REDIRECT: REFUSE_OUTBOUND,
+            },
             stdio: ["ignore", "pipe", "pipe", "ipc"],
         });
         child.stderr.on("data", (d) => (log += d));
         child.on("message", (m) => {
             if (m.type === "response") onResponse?.(m.entry);
+            if (m.type === "outbound") outbound.push(m.entry);
+            if (m.type === "request") requests.push(m.entry);
             if (m.type === "result" || m.type === "error") {
                 const p = pending.get(m.id);
                 pending.delete(m.id);
@@ -237,6 +264,15 @@ export async function startLambdaHost({ functionDir, env, originVerifySecret, on
         });
     }
 
+    /** One IPC round trip to the child; resolves with its `result`. */
+    function ipc(message) {
+        return new Promise((resolve, reject) => {
+            const id = randomUUID();
+            pending.set(id, { resolve, reject });
+            child.send({ ...message, id });
+        });
+    }
+
     await spawnChild();
 
     return {
@@ -255,12 +291,24 @@ export async function startLambdaHost({ functionDir, env, originVerifySecret, on
         /** stdout + stderr of the current child, for failure messages. */
         log: () => log,
         /** Raw invocation over IPC, no edge: resolves with the handler's own return value. */
-        invoke: (event) =>
-            new Promise((resolve, reject) => {
-                const id = randomUUID();
-                pending.set(id, { resolve, reject });
-                child.send({ type: "invoke", id, event });
-            }),
+        invoke: (event) => ipc({ type: "invoke", event }),
+        /**
+         * Row B-XISR's switch: the emulated edge ALSO forwards these viewer headers (lowercase)
+         * until called again with `[]`. Not production behaviour — the real edge strips them; the
+         * row tests what the origin does if one ever arrived. Reset by `restart()` (a new child).
+         */
+        forwardViewerHeaders: (names) => ipc({ type: "forward", names }),
+        /** Outbound calls journaled by outbound-shim.cjs: `[{ api, method, url, headers }]`. */
+        outbound: () => outbound.map((e) => ({ ...e })),
+        /** Viewer requests as received, before the edge filter: `[{ method, url, viewerHeaders,
+         *  forwardedHeaders }]` (`forwardedHeaders`: the header names the handler's event got). */
+        requests: () => requests.map((e) => ({ ...e })),
+        /**
+         * Resolves after every message the child sent before this call has been received. The
+         * journals above (and `onResponse`) travel over IPC, which can lag the HTTP response it
+         * describes; a row calls `await sync()` before reading them. IPC preserves order.
+         */
+        sync: () => ipc({ type: "sync" }),
         /** Cold container: kill the child, spawn a new one on a new port. */
         restart: async () => {
             await stopChild();
@@ -268,6 +316,60 @@ export async function startLambdaHost({ functionDir, env, originVerifySecret, on
         },
         close: stopChild,
     };
+}
+
+/**
+ * Runs the built REVALIDATION function (`.open-next/revalidation-function`, the RevalidationFunction
+ * Lambda CDK deploys — infra/lib/renderer-hosting.ts) once, on one SQS event, in its own child
+ * process with cwd = the function directory (it reads `prerender-manifest.json` from cwd, open-next
+ * 3.1.3 `adapters/revalidate.js` `loadPrerenderManifest`). Row B-REVAL.
+ *
+ * The child preloads `outbound-shim.cjs`. With `redirectTo` (the Lambda host's
+ * `http://127.0.0.1:<port>`), the function's `HEAD https://<host><url>` is delivered to the Lambda
+ * host's HTTP port with `Host: <host>` — i.e. through the emulated edge, as production sends it
+ * through CloudFront. Without it (negative control (c)), the call goes where it says.
+ *
+ * Environment: empty except the shim's variable — the function has no environment in infra
+ * (spec § 3.L L3) and needs no AWS access (it only makes the HEAD).
+ *
+ * @param {{ functionDir: string, event: object, redirectTo?: string }} options
+ * @returns {Promise<{ result: object, outbound: object[], log: string, exitCode: number }>}
+ *          `result`: the handler's return value (`{ type, batchItemFailures }` after the SQS
+ *          converter); `outbound`: the shim's journal; `log`: stdout + stderr.
+ */
+export function runRevalidationFunction({ functionDir, event, redirectTo }) {
+    const entry = pathToFileURL(path.join(functionDir, "index.mjs")).href;
+    const script =
+        `const { handler } = await import(${JSON.stringify(entry)});` +
+        `process.on("message", async (event) => {` +
+        `  const result = await handler(event);` +
+        `  process.send({ type: "result", result }, () => process.exit(0));` +
+        `});` +
+        `process.send({ type: "ready" });`;
+    return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, ["--require", OUTBOUND_SHIM, "--input-type=module", "-e", script], {
+            cwd: functionDir,
+            env: redirectTo ? { SERVING_BUNDLE_OUTBOUND_REDIRECT: redirectTo } : {},
+            stdio: ["ignore", "pipe", "pipe", "ipc"],
+        });
+        let log = "";
+        let result;
+        const outbound = [];
+        const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
+        child.stdout.on("data", (d) => (log += d));
+        child.stderr.on("data", (d) => (log += d));
+        child.on("message", (m) => {
+            if (m.type === "ready") child.send(event);
+            if (m.type === "outbound") outbound.push(m.entry);
+            if (m.type === "result") result = m.result;
+        });
+        child.on("error", reject);
+        child.on("exit", (exitCode) => {
+            clearTimeout(timer);
+            if (result === undefined) reject(new Error(`revalidation function exited ${exitCode} without a result\n${log}`));
+            else resolve({ result, outbound, log, exitCode });
+        });
+    });
 }
 
 // ── Child side ──────────────────────────────────────────────────────────────────────────
@@ -306,7 +408,19 @@ async function runChild() {
         return result;
     }
 
+    /** Extra viewer headers the edge forwards (row B-XISR only); see `forwardViewerHeaders`. */
+    let extraForwarded = [];
+
     process.on("message", async (m) => {
+        if (m.type === "forward") {
+            extraForwarded = [...m.names];
+            process.send({ type: "result", id: m.id, result: extraForwarded });
+            return;
+        }
+        if (m.type === "sync") {
+            process.send({ type: "result", id: m.id, result: true });
+            return;
+        }
         if (m.type !== "invoke") return;
         try {
             process.send({ type: "result", id: m.id, result: await callHandler(m.event, "invoke") });
@@ -319,7 +433,11 @@ async function runChild() {
         const chunks = [];
         req.on("data", (c) => chunks.push(c));
         req.on("end", async () => {
-            const { headers, cookies } = edgeRequestHeaders(req.headers, { originVerifySecret });
+            const { headers, cookies } = edgeRequestHeaders(req.headers, { originVerifySecret, extraForwarded });
+            process.send({
+                type: "request",
+                entry: { method: req.method, url: req.url, viewerHeaders: { ...req.headers }, forwardedHeaders: Object.keys(headers) },
+            });
             const event = toFunctionUrlEvent({ method: req.method, url: req.url, headers, cookies, body: Buffer.concat(chunks) });
             let out;
             try {

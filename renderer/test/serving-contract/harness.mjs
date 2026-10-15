@@ -286,6 +286,31 @@ export async function startStubs() {
 }
 
 /**
+ * Bundle target: which operations the adapter + renderer actually emitted, counted per stub —
+ * printed after each describe as evidence (the slice build reports; the 4.x diff baseline).
+ * Users: contract.test.mjs (the contract rows' stubs) and serving-bundle/bundle.test.mjs (the
+ * B-rows' own stubs). Moved here from contract.test.mjs in opennext-1a increment 2 when the
+ * second caller appeared.
+ *
+ * @param stubs  the handle `startStubs()` returned (bundle target: all three stubs present)
+ * @param label  which describe's stubs these are
+ */
+export function operationInventory(stubs, label) {
+    const count = (entries, keyOf) => {
+        const out = {};
+        for (const e of entries) out[keyOf(e)] = (out[keyOf(e)] ?? 0) + 1;
+        return out;
+    };
+    return [
+        `stub operation inventory (bundle target, ${label}):`,
+        `  dynamodb ${JSON.stringify(count(stubs.ddb.journal(), (e) => `${e.table}:${e.op}${e.index ? `@${e.index}` : ""}`))}`,
+        `  s3       ${JSON.stringify(count(stubs.s3.journal(), (e) => `${e.op}[${e.addressing}]→${e.status}`))}`,
+        `  sqs      ${JSON.stringify(count(stubs.sqs.journal(), (e) => e.op))}`,
+        `  tag rows written ${stubs.ddb.tagItems().length}`,
+    ].join("\n");
+}
+
+/**
  * `next build` / `next start`, as a plain Node child with `.env*` hidden from it.
  *
  * No `--require` on argv: the preload travels in `NODE_OPTIONS` (see `rendererEnv`) so that
@@ -485,11 +510,20 @@ export function probeEnvLoading(stubUrl, { dir = RENDERER_DIR, viaGrandchild = f
  * `node:http` rather than `fetch`: undici treats `Host` as a forbidden header, and the
  * whole production-mode branch of middleware.ts keys off `Host`/`x-forwarded-host`.
  * Redirects are never followed — the 307→404 handoff is itself a contract row.
+ *
+ * `body` (a string, sent with its `content-length`) and `rawHeaders` (the header lines exactly as
+ * received, `[name, value, name, value, …]` — node:http keeps only the FIRST of a repeated
+ * `Location` in `headers`, so a row that must count header lines reads these) were added by slice
+ * opennext-1a increment 2 (the POSTs to `/api/revalidate`; row D3-LOCATION), and `timeoutMs`:
+ * when set, a response not complete by then rejects with `code: "REQUEST_TIMEOUT"` and the
+ * socket is destroyed (row B-CASE: open-next 3.1.3 `proxyRequest` never answers when its
+ * outbound call fails — it attaches no `error` listener).
  */
-export function request({ port, path: reqPath, host, headers = {}, method = "GET" }) {
+export function request({ port, path: reqPath, host, headers = {}, method = "GET", body, timeoutMs }) {
     return new Promise((resolve, reject) => {
+        const sent = body === undefined ? headers : { ...headers, "content-length": Buffer.byteLength(body) };
         const req = http.request(
-            { host: "127.0.0.1", port, path: reqPath, method, headers: { host, ...headers } },
+            { host: "127.0.0.1", port, path: reqPath, method, headers: { host, ...sent } },
             (res) => {
                 const chunks = [];
                 res.on("data", (c) => chunks.push(c));
@@ -497,6 +531,7 @@ export function request({ port, path: reqPath, host, headers = {}, method = "GET
                     resolve({
                         status: res.statusCode,
                         headers: res.headers,
+                        rawHeaders: res.rawHeaders,
                         body: Buffer.concat(chunks).toString("utf8"),
                         header: (n) => res.headers[n.toLowerCase()],
                     }),
@@ -504,6 +539,11 @@ export function request({ port, path: reqPath, host, headers = {}, method = "GET
             },
         );
         req.on("error", reject);
-        req.end();
+        if (timeoutMs) {
+            req.setTimeout(timeoutMs, () =>
+                req.destroy(Object.assign(new Error(`no response within ${timeoutMs} ms`), { code: "REQUEST_TIMEOUT" })),
+            );
+        }
+        req.end(body);
     });
 }

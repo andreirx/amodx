@@ -2019,3 +2019,15 @@ so the live-handler SWR window is proven by **B-STALE** (increment 2), not by B-
 `(g4)` rows characterize the renderer BEHIND the edge (the host strips `Origin`/`Sec-Fetch-Site` as the ORP does, so
 `origin-guard.ts` is inert and an empty-body cross-site POST answers 500 — pinned, and recorded as a finding: 400 belongs
 there); the edge 403 remains proven by infra test `(i)`. Full CloudFront-Function emulation stays phase 2 (not triggered).
+
+**Correction (2026-10-15, OPENNEXT-1A-2, operator rulings at review):** § 8.1 row **B-REVAL** says "feed the SQS journal
+message" — on the 4.x seed branch (`OPENNEXT1-1250 = A`) B-STALE's guarantee is exactly zero messages, so B-REVAL takes the
+journaled message where one exists (3.1.3, `4-noseed`) and otherwise a fixture message in the shape the 3.1.3 journal recorded
+(`REVALIDATION_MESSAGE_3_1_3`), naming its source; on that branch it proves the function's contract, not the queue emission.
+Row **B-ROUTEERR** has two test-only means: (1) an invalid `x-forwarded-host` (the packet's first choice; on 3.1.3 a
+plain-text 500, nothing stored; on 4.x CHARACTERIZED — the 4.1.9 catch rebuilds `new URL` on the same host and throws again,
+INFERRED until opennext-1b runs the bundle) and (2) a raw invocation with a line feed in `accept-language` (valid host; on 3.1.3
+the B2 defect — the unrewritten path renders and a cacheable 307 is stored under the non-host key; on 4.x the `/500`
+contract of the row). The spec's `/500` expectation is carried by means (2). Observed on 3.1.3 and pinned by the row:
+**D3-LOCATION** — the doubled `Location` is ONE wire header whose value holds the path twice, produced at the origin
+(OpenNext response conversion), not by CloudFront.

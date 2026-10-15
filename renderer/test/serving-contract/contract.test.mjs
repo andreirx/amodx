@@ -29,7 +29,7 @@ import { createRequire } from "node:module";
 import {
     buildRenderer, startRenderer, startStubs, request, rendererEnv, probeEnvLoading,
     readAudit, resetAudit, AUDIT_PATH, NO_DOTENV_PRELOAD, RENDERER_DIR,
-    BUNDLE, versionedExpectation,
+    BUNDLE, versionedExpectation, operationInventory,
 } from "./harness.mjs";
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
 import {
@@ -244,23 +244,6 @@ function storedS3Entries(keyPrefix) {
 const s3PutsFor = (cacheKey) =>
     stubs.s3.journal().filter((e) => e.op === "PutObject" && e.key.endsWith(`/${cacheKey}.cache`));
 
-/** Bundle target: which operations the adapter + renderer actually emitted, counted per stub —
- *  printed after the run as evidence (slice opennext-1a build report; the 4.x diff baseline). */
-function operationInventory() {
-    const count = (entries, keyOf) => {
-        const out = {};
-        for (const e of entries) out[keyOf(e)] = (out[keyOf(e)] ?? 0) + 1;
-        return out;
-    };
-    return [
-        "stub operation inventory (bundle target):",
-        `  dynamodb ${JSON.stringify(count(stubs.ddb.journal(), (e) => `${e.table}:${e.op}${e.index ? `@${e.index}` : ""}`))}`,
-        `  s3       ${JSON.stringify(count(stubs.s3.journal(), (e) => `${e.op}[${e.addressing}]→${e.status}`))}`,
-        `  sqs      ${JSON.stringify(count(stubs.sqs.journal(), (e) => e.op))}`,
-        `  tag rows written ${stubs.ddb.tagItems().length}`,
-    ].join("\n");
-}
-
 /**
  * The `environment` block of the RendererServer Lambda (infra/lib/renderer-hosting.ts,
  * `this.serverFunction = new lambda.Function(this, 'RendererServer', …)`), minus the optional
@@ -334,7 +317,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
     after(async () => {
         const unhandled = stubs.unhandled();
-        if (BUNDLE) console.log(`\n${operationInventory()}`);
+        if (BUNDLE) console.log(`\n${operationInventory(stubs, "contract rows")}`);
         await server?.close();
         await stubs?.close();
         await rm(AUDIT_PATH, { force: true });

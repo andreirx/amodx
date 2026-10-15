@@ -152,6 +152,48 @@ function scannerContentItem(nodeId, slug, title) {
     };
 }
 
+// ── Two isolation tenants (slice opennext-1a increment 2; bundle rows only) ─────────────────
+// Rows B-ISO (two tenants, same slug, different text — spec § 8.1), B-REFLECT (host A, path naming
+// host B), B-TAG (edit A's `/about`) and B-LISTING (A's home lists A's posts through a `postGrid`
+// block; edit one post's title). Same item shapes as the fixture tenant above. No `next`-target
+// row requests these hosts.
+export const ISO_HOST_A = "a.serving-contract.test";
+export const ISO_HOST_B = "b.serving-contract.test";
+export const ISO_TENANT_A = "iso-a";
+export const ISO_TENANT_B = "iso-b";
+export const ABOUT_SLUG = "/about";
+export const ISO_ABOUT_TITLE_A = "Isolation Tenant A About Page";
+export const ISO_ABOUT_TITLE_B = "Isolation Tenant B About Page";
+/** Post P of spec § 8.1 B-LISTING: a page of tenant A that A's home lists by title. */
+export const LISTED_POST_SLUG = "/listed-post";
+export const LISTED_POST_TITLE = "Listed Post Original Title";
+
+function siteTenant(id, host, name) {
+    return { ...tenant, SK: `TENANT#${id}`, id, Domain: host, domain: host, name, description: `${name} (opennext-1a).` };
+}
+
+function siteRouteItem(tenantId, slug, nodeId) {
+    return { PK: `TENANT#${tenantId}`, SK: `ROUTE#${slug}`, TargetNode: `NODE#${nodeId}` };
+}
+
+/** `blocks`: `[]` keeps the render off plugin paths; A's home carries one `postGrid` (no
+ *  filterTag → `getPosts` emits the PK + `begins_with(SK)` query with `status = :pub`, a shape
+ *  ddb-stub.mjs implements). `createdAt` orders `getPosts` output (newest first). */
+function siteContentItem(tenantId, nodeId, slug, title, { blocks = [], createdAt = "2026-01-01T00:00:00.000Z" } = {}) {
+    return {
+        PK: `TENANT#${tenantId}`,
+        SK: `CONTENT#${nodeId}#LATEST`,
+        id: nodeId,
+        slug,
+        title,
+        status: "Published",
+        accessPolicy: { type: "Public", currency: "USD" },
+        commentsMode: "Hidden",
+        blocks,
+        createdAt,
+    };
+}
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -165,4 +207,29 @@ export const ITEMS = [
     scannerTenant,
     scannerRouteItem(SCANNER_SLUG, "wk-index"),
     scannerContentItem("wk-index", SCANNER_SLUG, SCANNER_PAGE_TITLE),
+    // opennext-1a increment 2: isolation tenants A and B.
+    siteTenant(ISO_TENANT_A, ISO_HOST_A, "Isolation Tenant A"),
+    siteRouteItem(ISO_TENANT_A, "/", "a-home"),
+    siteContentItem(ISO_TENANT_A, "a-home", "/", "Isolation Tenant A Home", { blocks: [{ type: "postGrid", attrs: {} }] }),
+    siteRouteItem(ISO_TENANT_A, ABOUT_SLUG, "a-about"),
+    siteContentItem(ISO_TENANT_A, "a-about", ABOUT_SLUG, ISO_ABOUT_TITLE_A),
+    siteRouteItem(ISO_TENANT_A, LISTED_POST_SLUG, "a-post"),
+    siteContentItem(ISO_TENANT_A, "a-post", LISTED_POST_SLUG, LISTED_POST_TITLE, { createdAt: "2026-02-01T00:00:00.000Z" }),
+    siteTenant(ISO_TENANT_B, ISO_HOST_B, "Isolation Tenant B"),
+    siteRouteItem(ISO_TENANT_B, ABOUT_SLUG, "b-about"),
+    siteContentItem(ISO_TENANT_B, "b-about", ABOUT_SLUG, ISO_ABOUT_TITLE_B),
 ];
+
+/**
+ * Ruling OPENNEXT1A-SEED-REVAL (operator, 2026-10-15): B-REVAL's FALLBACK message source. Used
+ * only when B-STALE's expectation for the built adapter is "0 SQS messages" (the 4.x `4-seed`
+ * entry), so B-REVAL still drives the revalidation function on that branch. The body is copied
+ * VERBATIM from the SendMessage the SQS stub journaled on open-next 3.1.3 (B-STALE, gate-2 run
+ * 2026-10-15); `host` / `url` point at the fixture tenant's published page (the rewritten path
+ * 3.1.3 queues). `groupId` as journaled; the deduplication id is per-message and not reproduced
+ * (the SQS converter reads only `body` and `messageId`, 3.1.3 `converters/sqs-revalidate.js`).
+ */
+export const REVALIDATION_MESSAGE_3_1_3 = {
+    body: '{"host":"fixture.serving-contract.test","url":"/fixture.serving-contract.test/published"}',
+    groupId: "revalidate-0",
+};

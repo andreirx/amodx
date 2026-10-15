@@ -57,16 +57,20 @@ asserts that list is empty: a stub that invented absence would be the very defec
 `docs/caching-architecture.md` § *Measured serving behaviour*, committed.
 
 - **`fixtures.mjs`** — the DynamoDB items, in the shapes `lib/dynamo.ts` reads back. Hosts
-  use the `.test` TLD (RFC 6761 §6.2: permanently non-resolvable).
+  use the `.test` TLD (RFC 6761 §6.2: permanently non-resolvable). Two isolation tenants
+  (`a.serving-contract.test`, `b.serving-contract.test`) serve only the bundle B-rows
+  (`opennext-1a` increment 2); no `next`-target row requests them.
 - **`ddb-stub.mjs`** — DynamoDB JSON-1.0 responder. Not an emulator: it implements exactly
   the read shapes the renderer emits and answers anything else with a loud error. Control is
-  by plain methods on the returned handle — `stats()`, `reset()`, `failContentReads(bool)` —
+  by plain methods on the returned handle — `stats()`, `reset()`, `failContentReads(bool)`,
+  `putItem(item)` (an admin edit on that stub's own copy of the fixtures; bundle B-rows) —
   because the stub and the assertions share one process. (The `cache-1` probe harness used an
   HTTP `/__ctl/…` plane only because its probes were separate shell scripts.) On the
   `bundle` target it also serves the OpenNext tag-cache table (`startDdbStub({ tagTable })`),
   counted in `tagCache`, never in `render`; fault injection stays on the renderer's table.
-- **`harness.mjs`** — build/serve/HTTP helpers, the constructed child environment, and the
-  `SERVING_TARGET` switch.
+- **`harness.mjs`** — build/serve/HTTP helpers, the constructed child environment, the
+  `SERVING_TARGET` switch, and `operationInventory` (bundle target). `request()` takes an
+  optional `body` and `timeoutMs` and returns `rawHeaders` too.
 - **`no-dotenv.cjs`** — the preload that hides `renderer/.env*` from the children, plus the
   journal the isolation assertions read back.
 - **`contract.test.mjs`** — the assertions.

@@ -1287,6 +1287,10 @@ pass-through) and gated `/tenant/` test mode like `/_site/`. Left open, by rulin
   the correct `404`. Origin-side, probably in OpenNext's response conversion (INFERRED); the
   serving-contract suite cannot see it (`next start`, no OpenNext). Owner: a characterize row in
   the `opennext-1a` bundle harness, then the upgrade.
+  Harness result (OPENNEXT-1A-2 row `D3-LOCATION`, EXECUTED 2026-10-15, open-next 3.1.3): the
+  handler's own result already holds ONE `location` string with the value twice, comma-joined; one
+  `Location` line on the wire; the HIT holds it once — so the doubling is inside the adapter/Next
+  response path, NOT in the Function URL or CloudFront layer.
 - **Staging has 417 leftover `e2e-render-*` tenants** (operator finding, 2026-10-15). Separate
   cleanup item; not created by this slice.
 - **Preview link that leaves `/_site/`.** `preview-probe`'s home renders the hero button as

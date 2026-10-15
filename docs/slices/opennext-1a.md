@@ -1,7 +1,6 @@
 # Slice OPENNEXT-1A — built-bundle serving harness (baseline on open-next 3.1.3)
 
-Status: BUILT increment 1 of 2 (OPENNEXT-1A-1, 2026-10-15; review cycle 1 escalate → operator rulings OPENNEXT1A-G4 / OPENNEXT1A-NO30D, cycle 2 approved; operator gates on the unchanged candidate: next 39/39, bundle 45/45, diff --check 0). Increment 2 (the B-rows) next.
-increment 2 (OPENNEXT-1A-2) not started (§ Increment 1A-2). ROADMAP shows `BUILT (increment 1 of 2)`.
+Status: BUILT (increments 1+2) — baseline on 3.1.3 complete. Increment 1 (OPENNEXT-1A-1, 2026-10-15; review cycle 1 escalate → operator rulings OPENNEXT1A-G4 / OPENNEXT1A-NO30D, cycle 2 approved; operator gates on the unchanged candidate: next 39/39, bundle 45/45, diff --check 0). Increment 2 (OPENNEXT-1A-2, 2026-10-15, builder gates: next 39/39, bundle 58/58; review pending) — § Increment 1A-2. ROADMAP shows `BUILT 2026-10-15 (increments 1+2; 58 rows on the bundle)`.
 Track: CACHE (test infrastructure for the `opennext-1` upgrade). Maturity target: the harness enters as
 PROTOTYPE (increment 1) and reaches MATURE when increment 2's B-rows run green and `opennext-1b` has used it to
 produce its expectation diff.
@@ -151,9 +150,9 @@ Both targets EXECUTED 2026-10-15 (final runs in the build report). `SAME` = the 
 | B-ORIGINVERIFY | — | `"3,4"` | pass — wrong and missing `x-origin-verify` → 403 `Direct access forbidden`; right one → 200 |
 | B-VERSION | — | `"3"` open-next, `"4"` @opennextjs/aws | pass — bundle 3.1.3, declared `^3.1.3`, locked 3.1.3 |
 | B-SHARP | — | `"3,4"` sharp 0.35.5 + `@img/sharp-linux-arm64` | pass — sharp 0.35.5; `@img`: colour, sharp-libvips-linux-arm64, sharp-linux-arm64, sharp-wasm32 |
-| B-NO30D | — | `"3,4"`; claim "no cache-directive header of any suite response carries 2592000; Set-Cookie excluded" | pass — 46 handler results (42 edge HTTP + 4 raw invocations: the warmer and B-ORIGINVERIFY's three direct calls), none carries 2592000 outside Set-Cookie (1 carries it in Set-Cookie: `amodx_ref`, excluded, D2). Coverage rule (review-0): `lambda-host.mjs` `callHandler` is the handler's only call site and records every result. **Limit:** no STALE response in increment 1, so the live SWR patch window is not yet proven here (B-STALE, 1A-2; see § 5 probe) |
+| B-NO30D | — | `"3,4"`; claim "no cache-directive header of any suite response carries 2592000; Set-Cookie excluded" | pass — 46 handler results (42 edge HTTP + 4 raw invocations: the warmer and B-ORIGINVERIFY's three direct calls), none carries 2592000 outside Set-Cookie (1 carries it in Set-Cookie: `amodx_ref`, excluded, D2). Coverage rule (review-0): `lambda-host.mjs` `callHandler` is the handler's only call site and records every result. **Limit (increment 1):** no STALE response in increment 1 — closed by increment 1A-2: the SWR patch window is now proven by B-STALE's response passing through B-NO30D (§ Increment 1A-2) |
 
-Totals: `next` 39/39; `bundle` 45/45 (39 + `(journals)` + 5 B-rows).
+Totals (increment 1): `next` 39/39; `bundle` 45/45 (39 + `(journals)` + 5 B-rows). Increment 1A-2: `bundle` 58/58 (§ Increment 1A-2).
 
 **Reduced guarantee (ruling OPENNEXT1A-G4):** the bundle suite proves the renderer behind the edge; the edge
 security rule is proven by infra (i). **Inventory scope:** the increment-1 operation inventory contains NO SQS
@@ -266,10 +265,170 @@ B-rows green or characterized, then `opennext-1b` uses the harness for the 4.x d
 
 ## Increment 1A-2
 
-Next increment (not started). Remaining B-rows, from spec § 8.1: **B-ISO, B-TAG, B-LISTING, B-STALE, B-XISR,
-B-LEAK, B-RSC, B-PREVIEW, B-ROUTEERR, B-CASE, B-REFLECT, B-REVAL, D3-LOCATION** — next increment. Known stub
-work: S3 `ListObjectsV2` with `delimiter` (`CommonPrefixes`) and `DeleteObjects` for the CACHE-10 purge
-(`renderer/src/app/api/revalidate/route.ts`); B-REVAL needs the revalidation function driven from the SQS journal.
+Status: **BUILT 2026-10-15** (OPENNEXT-1A-2; cycle 2 applies the operator rulings on review-0, § 1A-2.7; review cycle 2 escalated on OPENNEXT1A-ROUTEERR-MEANS → operator ruling applied by the operator (means (2) carries `/500`; means (1) characterized on 4.x, INFERRED until 1B) and gates re-run by the operator: next 39/39, bundle 58/58, diff --check 0).
+Builder gates EXECUTED on the cycle-2 candidate: `npm run test:serving` 39/39 (next target unchanged),
+`npm run test:serving-bundle` 58/58 (39 + `(journals)` + 18 B-rows), negative controls (a)–(f) below,
+`git diff --check` 0. Review pending. Maturity: the harness stays PROTOTYPE until
+`opennext-1b` has used it for its expectation diff (§ header); its row set is now complete.
+
+### 1A-2.1 What was added (support code; one line per abstraction)
+
+- *outbound-call interceptor* (`renderer/test/serving-bundle/outbound-shim.cjs`, a `--require` preload) —
+  users: the Lambda host child (B-CASE; every row: refuses any outbound call) and the revalidation-function
+  child (B-REVAL: routes the HEAD to the host); axis: none — it is a test seam (spec § 8.1 B-CASE/B-REVAL
+  require observing and redirecting calls made inside the built code, unobtainable from outside the
+  process); rejected: an HTTP-mocking package (a new dependency) and a DNS shim (cannot see the HTTPS call
+  or its headers, and `.test` resolution depends on the operator's resolver).
+- *host controls* (`lambda-host.mjs`: `outbound()`, `requests()`, `forwardViewerHeaders(names)`, `sync()`)
+  and *stub controls* (`s3-stub.mjs` `listReturnsNothing(bool)`, `ddb-stub.mjs` `putItem(item)`) — methods
+  on existing handles, each named by the rows that use it (README tables); rejected: header-borne control
+  signals on the wire (a surface the bundle could see).
+- `runRevalidationFunction` (`lambda-host.mjs`) — users: B-REVAL and negative control (c); the binding
+  design of spec § 8.1 B-REVAL; placed beside the Lambda host because it shares the child/IPC/shim
+  conventions; rejected: an inline spawn in the row.
+- `operationInventory(stubs, label)` moved from `contract.test.mjs` to `harness.mjs` — two concrete callers
+  now (contract describe, B-rows describe); rejected: a copy.
+- `harness.mjs` `request()`: optional `body` (POSTs to `/api/revalidate`), `timeoutMs` (B-CASE), and
+  `rawHeaders` in the result (D3-LOCATION: node:http keeps only the first of repeated `Location` lines).
+- Fixtures: two isolation tenants `a.serving-contract.test` (`/`, with a `postGrid` block; `/about`; post
+  P `/listed-post`) and `b.serving-contract.test` (`/about`). No `next`-target row requests them.
+
+**Outbound-interceptor design.** Patches `https.request`, `https.get`, `http.request`/`http.get` to a
+non-loopback host and `globalThis.fetch` to a non-loopback host before the bundle loads, then calls
+`syncBuiltinESMExports()` (open-next's `proxyRequest` reads `import("node:https").then((m) => m.request)`,
+the ESM facade). Each call is journaled to the parent over IPC (`{ api, method, url, headers }`) and
+redirected to `SERVING_BUNDLE_OUTBOUND_REDIRECT` (deleted from the environment before the bundle loads):
+`http://127.0.0.1:1` in the Lambda host child (refused locally), the host's port in the revalidation
+child, unset only for control (c). Loopback HTTP (the stubs) is untouched. Not seen: raw `net`/`tls`
+sockets and HTTP/2 — the two built `index.mjs` files use neither (VERIFIED by grep: server
+`import("node:https").then(c=>c.request)`, revalidation `import F from"node:https"` + `F.request`).
+
+### 1A-2.2 Rows — observed 3.1.3 values and the 4.x entries (EXECUTED, gate-2 run, 2026-10-15)
+
+| Row | 3.1.3 observed (asserted under `"3"`) | 4.x entry |
+|---|---|---|
+| B-ISO | A and B `/about`: 200 MISS, own titles, no cross text; S3 keys `_cache/<buildId>/route-cache/APP_PAGE/<sha256>/$/{a,b}.serving-contract.test/about.cache` (one each); `x-next-cache-tags` NOT sent to the client — from the stored `meta.headers`: `_N_T_/layout,…,_N_T_/a.serving-contract.test/about` | `"3,4"` same (no-go if not, spec) |
+| B-REFLECT | XFH A, `/b.serving-contract.test/about` → 307 `Location /b.serving-contract.test/about?nf=1,…` (doubled), no B text; stored only `a.serving-contract.test/b.serving-contract.test/about` (307); nothing new under B | `"3,4"` same |
+| B-TAG | **characterized** — purge neutralized: POST 200 `purged:0`; tag-table ops from the POST to the next GET: `Query`, `Query` (by tag; two per POST, one of them after the POST answered), `Query@revalidate`; 0 writes; 0 `_N_T_/a.serving-contract.test/about` rows; next GET `HIT`, old title. Control (a): purge active → `purged:2`, `MISS`, edited title | tag row present, `MISS`, edited title |
+| B-LISTING | v2 neutralized: 200 `HIT`, body contains the ORIGINAL title, not the edit (E3 executable); v1 purge active (`purged:2`): 200 `MISS`, new title, original gone. Edited titles do not contain the original | `"3,4"` same |
+| B-XISR | **characterized** (origin side; prod edge strips both headers). Without headers (sent first): `/published` 200 `HIT` `s-maxage=31536000`; `/_site/fixture-tenant` 403, body "Preview URLs are only accessible via CloudFront or localhost.". With them: `/published` → 307 `MISS` `s-maxage=31536000` `Location /?nf=1,/?nf=1`, stored under key `published` (307); `/_site/fixture-tenant` → 307 `MISS` `s-maxage=31536000` `Location /fixture-tenant?nf=1,…`, stored under `_site/fixture-tenant` | status, `cache-control`, `x-nextjs-cache` and body marker (`<title>`, else body) identical to the no-header request, both paths; nothing stored outside the tenant key |
+| B-RSC | navigation (`RSC: 1` + router state tree + Next-computed `_rsc`) → 200 `text/x-component` `HIT`, `Vary: rsc, next-router-state-tree, …`; `?_rsc=x` without header → HTML `HIT`; bare `RSC: 1` → 307 `Location /fixture.serving-contract.test/published?_rsc` (F8) | navigation same; bare: record |
+| B-PREVIEW | `/_site/fixture-tenant` from `d111wtnnjzzsb1.cloudfront.net` → 200, `private, no-cache, no-store, max-age=0, must-revalidate`, `Set-Cookie amodx_preview_base=%2F_site%2Ffixture-tenant…`; flight canonical (RSC payload in the HTML, `"c":[…]`) = `["","fixture-tenant","_dyn"]`; `x-middleware-rewrite: https://d111wtnnjzzsb1.cloudfront.net/fixture-tenant/_dyn` | record (`_dyn` presence not pinned) |
+| B-ROUTEERR | both means make routing throw (child log asserted). (1) XFH `fixture serving-contract.test` → `Routing failed. TypeError: Invalid URL`, then Next `⨯ TypeError: Invalid URL` → 500 `text/plain` body `Internal Server Error`, no `Cache-Control`, nothing stored. (2) (D13) raw invocation, `accept-language` with a line feed → `Routing failed. TypeError: Headers.append…` → the unrewritten path renders as `[siteId]=routeerr-probe` → 307 `MISS` `s-maxage=31536000` `Location /?nf=1,/?nf=1`, stored under the non-host key `routeerr-probe` (the B2 defect) | both: Next's `/500` page — status 500, `Cache-Control` contains `no-store`, `<title>` = the title of this build's prerendered global-error page (`.open-next/cache/<buildId>/_global-error.cache`; today "500: This page couldn’t load"), nothing stored. For (1) this is INFERRED to fail on 4.1.9 — DECISION OPENNEXT1A-ROUTEERR-MEANS |
+| B-CASE | packet request (`Fixture.Serving-Contract.TEST` `/tenant/fixture-tenant`) → 403, 0 outbound. Reach variant (`MixedCase.staging.serving-contract.test` `/tenant/fixture-tenant`) → **characterized**: one `https.request GET https://mixedcase.staging.serving-contract.test/fixture-tenant/_dyn`; no answer within 3 s (refused; 3.1.3 `proxyRequest` has no `error` listener) | no outbound |
+| D3-LOCATION | MISS 307: handler result `location` = ONE string `/no-such-page?nf=1,/no-such-page?nf=1`; 1 `Location` line on the wire; HIT `/no-such-page?nf=1` | record |
+| B-STALE | warm `HIT` (control (b)); after `restart()`: `STALE`, `s-maxage=2, stale-while-revalidate=300`, 1 `SendMessage` body `{"host":"fixture.serving-contract.test","url":"/fixture.serving-contract.test/published"}`, group `revalidate-0` | `4-noseed`: STALE, no Cache-Control, 1; `4-seed`: HIT, `s-maxage=31536000`, 0 — opennext-1b selects |
+| B-REVAL | message source: B-STALE's journal (ruling OPENNEXT1A-SEED-REVAL). Function HEAD `https://fixture.serving-contract.test/fixture.serving-contract.test/published`, viewer headers `x-prerender-revalidate` = the build's previewModeId, `x-isr: 1`; the edge forwarded neither; host answered 307 `MISS` `s-maxage=31536000`, doubled Location. Asserted: the 3.1.3 rule (success iff 200 + `REVALIDATED`) applied to that answer → `batchItemFailures: [serving-bundle-reval-1]`; pinned 307 / `MISS` / 1 failure | asserted rule (spec E6, § 3.G G4): success iff status ∈ {200, 307, 308, 404} AND `REVALIDATED`, else exactly one batch-item failure. Source: B-STALE's journal on `4-noseed`; fixture `REVALIDATION_MESSAGE_3_1_3` on `4-seed` (proves the function's contract, not the queue emission) |
+| B-LEAK | **characterized** over 76 responses: `x-middleware-rewrite` ×47 (every rewritten response), `x-middleware-set-cookie` ×2 (preview); no `x-middleware-next` | none |
+| B-NO30D | now complete: 76 handler results (72 edge, 4 invoke), none carries 2592000 outside Set-Cookie (1 in Set-Cookie, excluded); a STALE response is in the record — **proven by B-STALE's response passing through B-NO30D** | `"3,4"` same |
+
+**Operation inventory, B-rows' stubs (EXECUTED, gate-2 run)** — extends § 2.3 with SQS and HEAD traffic:
+DynamoDB `renderer:Query@GSI_Domain` 62, `renderer:GetItem` 53, `tag:Query@revalidate` 22, `tag:Query` 8,
+`renderer:Query` 2; S3 `GetObject→404` 11, `PutObject` 11, `GetObject→200` 11, `ListObjectsV2` 16,
+`DeleteObjects` 2; SQS `SendMessage` 1; tag rows written 0; Lambda-host outbound `https.request GET` 1
+(B-CASE); viewer requests GET 26, POST 4, HEAD 1 (the revalidation HEAD). The revalidation function made
+one outbound `HEAD` (journaled in its own child). Contract-rows inventory unchanged from increment 1.
+
+### 1A-2.3 Negative controls
+
+- (a) B-TAG with the purge ACTIVE → `MISS` + edited title. **Built into B-TAG** (every run).
+- (b) B-STALE without `restart()` → `HIT`. **Built into B-STALE** (the warm GET before the restart).
+- (c) B-REVAL with the redirect off (shim journals only) — EXECUTED once (2026-10-15, local probe; not in
+  every run because it makes a real DNS lookup of a `.test` name): the function logged `Error revalidating
+  page`, returned `batchItemFailures: [negc-1]`; the Lambda host received 0 HEADs. The redirect is what
+  routes the HEAD.
+- The interceptor's own positive control is B-CASE's reach variant (it must journal exactly one call).
+- Cycle 2 (class rule), EXECUTED once by temporary edits on a copy-restored file (checksum verified),
+  `.agent-manager/slices/OPENNEXT-1A-2/negctl-def.log`: (d) B-XISR evaluated with its 4.x logic on 3.1.3 →
+  FAILS "/published: differs from the no-header request"; (e) B-LISTING variant 2 with the purge ACTIVE →
+  FAILS "variant 2: the listing does not show the original title"; (f) B-ROUTEERR evaluated with its 4.x
+  `/500` logic on 3.1.3 → FAILS "(1) Cache-Control". Exactly those three rows failed (55/58).
+- (c) re-run on the cycle-2 candidate: same result (0 HEADs at the host, record failed).
+
+### 1A-2.4 Deviations from the packet (recorded)
+
+- **D6 — B-CASE reach variant added.** The packet's request answers 403 at the SITEID-BINDING-1 by-id host
+  gate before any rewrite (the spec row predates that gate), so on its own it cannot show the E20 defect.
+  The row keeps it (asserted as observed: 403, no outbound) and adds one request on a mixed-case host that
+  passes the gate. `.test` TLD; the call is refused locally.
+- **D7 — B-ISO asserts the observed key layout and tag source** (route-scoped keys; tag from stored
+  `meta.headers`, the client gets no `x-next-cache-tags`), as the packet allowed.
+- **D8 — B-XISR uses `/_site/<id>` without a trailing slash**: with it, Next's trailing-slash 308 answers
+  before the middleware, header or not (OBSERVED), so the row would not test the bypass.
+- **D9 — controls (a) and (b) are permanent parts of their rows**; (c) was executed once (DNS).
+- **D10 — the Lambda host child now refuses outbound calls** (before: they would have gone to the network).
+  The contract rows' results and their inventory are unchanged (39 + `(journals)` green; same counts).
+- **D11 — B-RSC's request is a client-navigation request** (router state tree + `_rsc` from Next's own
+  `computeCacheBustingSearchParam`); a bare `RSC: 1` is recorded separately (F8).
+- **D13 — B-ROUTEERR has a second means (cycle 2).** The packet fixed means (1) (invalid XFH host), which
+  works (routing throws) but cannot show the row's stated guarantee on either version: on 3.1.3 Next fails
+  on the same host, so the "unrewritten render" never happens; on 4.1.9 the `/500` event is built with
+  `new URL` on that host and throws again (INFERRED from the 4.1.9 source). Means (2) — a raw invocation
+  whose `accept-language` value contains a line feed (not sendable through any HTTP server, so not through
+  CloudFront) — keeps the host valid: OBSERVED on 3.1.3 it reproduces B2 exactly. Means (1) stays in the
+  row, asserted as observed. Decision OPENNEXT1A-ROUTEERR-MEANS below.
+- **D12 — B-PREVIEW on 3.1.3 asserts `_dyn` IS in the flight canonical.** The packet's 3.1.3 cell says
+  "(expect no `_dyn`)"; spec § 3.B B5 places "no `_dyn`" on 4.x, and the bundle shows `_dyn` on 3.1.3.
+  Asserted as observed; contradiction recorded here.
+
+### 1A-2.5 Findings (no product change in this slice)
+
+- **F7 — B-XISR quantifies the origin-side hole (spec § 3.C C1 / § 5.4).** If `x-isr` ever reached the
+  function (an ORP change, or a rollback that keeps a 4.x ORP), any value would skip the whole middleware:
+  a cacheable 307 stored under a non-host key (`published`), and `/_site/<id>` past the preview gate. Prod
+  is protected only by the ORP (infra test (h)). Matches the spec prediction.
+- **F8 — bare `RSC: 1` → 307 to the rewritten internal path** (`/<host>/published?_rsc`, no
+  Cache-Control). Not predicted by spec § 8.1 B-RSC. Mechanism INFERRED: 3.1.3 hands Next the rewritten URL
+  (spec § 3.B B4), and Next 16's `_rsc` hash check redirects to that URL. A real client navigation (router
+  headers + hash) is served correctly. Exact cause of the bare-shape mismatch (the query reset on a
+  middleware rewrite, `core/routing/middleware.js:123-130`, is a candidate) not traced.
+- **F9 — B-ROUTEERR: with an invalid-host trigger, Next fails too**, so B2's "renders the unrewritten path"
+  is not reachable by this means; the observable is 500 with no Cache-Control (not stored). Note: a routing
+  exception on 3.1.3 skips the whole middleware, including the `ORIGIN_VERIFY_SECRET` check (INFERRED from
+  `core/requestHandler.js:24-29`; not separately probed).
+- **F10 — 3.1.3 `proxyRequest` never answers when its outbound call fails** (no `error` listener,
+  `core/routing/util.js:188-223`): a Lambda would run to its timeout. Reached only through the
+  case-sensitive `isExternal` (B-CASE). In production the proxy target is CloudFront, so the call normally
+  succeeds — as a second invocation (E20).
+- **F11 — doubled `Location` is produced inside the adapter/Next** (D3-LOCATION: the handler result already
+  holds the doubled string). Appended to the `docs/TECH-DEBT.md` entry.
+- **F13 — 3.1.3 B2 reproduced (B-ROUTEERR means (2)):** a routing exception on 3.1.3 renders the
+  UNREWRITTEN path with `[siteId]` = its first segment and stores a cacheable 307 under that non-host key —
+  the defect spec § 3.B B2 describes (OBSERVED; reached here only through an invalid header value).
+- **F12 — B-REVAL confirms on the bundle** what TECH-DEBT "background revalidation HEAD and the doubled
+  path" measured under `next start`: the HEAD for `/<host>/published` gets the host's own 307 `MISS`
+  `s-maxage=31536000`, and the record fails. Whether that 307 is stored in S3 was NOT asserted by the row.
+
+### 1A-2.6 Definition of Done (increment 2)
+
+- [x] `npm run test:serving` 39/39 (EXECUTED).
+- [x] `npm run test:serving-bundle` 58/58 with the 3.1.3 entries (EXECUTED).
+- [x] Negative controls (a)–(f) (EXECUTED).
+- [x] Docs: this section, `renderer/test/serving-bundle/README.md`, `renderer/test/serving-contract/README.md`,
+  `docs/testing-strategy.md`, `docs/TECH-DEBT.md` (one appended line), `docs/ROADMAP.md`,
+  `docs/runbooks/deploy-track-cache.md` (the B-NO30D sentence; allocated by the cycle-2 ruling).
+- [ ] Reviewer approval; operator re-run; commit.
+
+### 1A-2.7 Cycle 2 — operator rulings on review-0 (2026-10-15) and how they were applied
+
+- **OPENNEXT1A-SEED-REVAL:** B-REVAL takes B-STALE's journaled message where B-STALE's expectation queues
+  one (3.x, `4-noseed`), else the fixture `REVALIDATION_MESSAGE_3_1_3` (`fixtures.mjs`, the 3.1.3 body
+  copied verbatim). The branch is chosen from B-STALE's EXPECTATION, not from whether a message exists, so
+  a missing 3.x message fails the row instead of falling back silently. The row logs its source. On 4.x
+  B-REVAL therefore needs B-STALE's 4.x entry selected (it fails "no expectation for version 4" until then,
+  like B-STALE itself).
+- **Class rule — rule stated once:** *every version entry asserts the observable that carries the row's
+  stated guarantee; a log line is never the only check of a guaranteed property.* Applied to B-LISTING
+  (original title present in a 200 listing), B-XISR (4.x: four fields identical, both paths), B-ROUTEERR
+  (4.x: `/500` page marker), B-REVAL (both: the version's success rule asserted against the actual
+  answer), B-STALE (warm status added). The 4.x entries that stay `"record"` — B-RSC bare shape, B-PREVIEW
+  canonical, D3-LOCATION — are the ones the packet itself marks "record" for 4.x; each still asserts its
+  version-independent guarantee (status / no-store / cookie; 307 + MISS + single-valued HIT).
+- **Allocation:** `docs/runbooks/deploy-track-cache.md` B-NO30D sentence updated.
+
+DECISION OPENNEXT1A-ROUTEERR-MEANS (open; does not block the 3.1.3 baseline): see the build report of
+cycle 2. Question: should B-ROUTEERR keep means (1) under its 4.x `/500` assertion, given the 4.1.9 source
+predicts a handler crash (502) for it?
 
 ## References
 

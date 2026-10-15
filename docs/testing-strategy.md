@@ -98,25 +98,33 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    *Counts reconciled 2026-10-15 (`opennext-1a`): the "26 + 4 = 30 tests" above is the `test-2`
    snapshot; later slices added rows. Today (EXECUTED 2026-10-15) the `next` target runs **39
    tests** (35 contract rows plus the 4 `iso` self-checks); the
-   `bundle` target runs **45** (the same 39, row `(journals)`, and 5 B-rows). "Origin-side
+   `bundle` target runs **58** (the same 39, row `(journals)`, and 18 B-rows — 5 from increment 1,
+   13 from increment 1A-2). "Origin-side
    only" still describes the `next` target exactly. The `bundle` target adds a partial edge:
    CloudFront's transport (only the forwarded headers reach the Lambda) and the viewer-request
    Function's jobs (a)–(c); NOT the edge cache and NOT job (d), the STATIC-EP origin guard.*
-   *Status: `opennext-1a` increment 1 (2026-10-15) added the **built-bundle layer** — the same
+   *Status: `opennext-1a` increments 1 and 2 (2026-10-15) added the **built-bundle layer** — the same
    rows with `SERVING_TARGET=bundle` (`npm run test:serving-bundle`; harness
    `renderer/test/serving-bundle/`). What it proves that the `next start` target cannot: the
    rows hold through the OpenNext adapter that actually serves production — Function URL event
    conversion, OpenNext routing and middleware execution, the S3 incremental cache, the DynamoDB
-   tag cache, `fixISRHeaders` on MISS/HIT — with `ORIGIN_VERIFY_SECRET` armed and only the
+   tag cache, the SQS queue, `fixISRHeaders` on MISS/HIT/STALE — with `ORIGIN_VERIFY_SECRET` armed and only the
    headers CloudFront forwards. Stubs journal every S3/SQS/DynamoDB call and fail loudly on any
    call they do not model (row `(journals)`), because the adapter swallows those errors. Rows
    carry version-explicit expectations keyed by the open-next major, so the 4.x upgrade is a
-   reviewed list of expectation changes. Limits of increment 1, stated: the recorded operation
-   inventory contains **no SQS call and no STALE row** — the SQS queue and `fixISRHeaders` STALE
-   behaviour (the live cache-8 `swr=300` window) are increment 1A-2's (B-STALE); and for the
-   `(g4)` rows **the bundle suite proves the renderer behind the edge; the edge security rule is
-   proven by infra (i)**. Cost: a full `open-next build` (13.1 s with no `.next`, 5.9–6.8 s with
-   a warm `.next/cache`, operator Mac) + ≈1 s of rows. Placement: the deploy gate
+   reviewed list of expectation changes. Increment 1A-2 (2026-10-15) completed the scope: the
+   SQS queue (B-STALE: a cold container's STALE response, `s-maxage=2, stale-while-revalidate=300`,
+   one `SendMessage`), the revalidation function driven from that message (B-REVAL), the tag path
+   and the CACHE-10 purge (B-TAG, B-LISTING; S3 stub `listReturnsNothing` neutralizes the purge),
+   tenant isolation with two tenants (B-ISO, B-REFLECT), and outbound calls (B-CASE; every
+   outbound HTTP(S)/fetch call of the Lambda code is journaled and refused locally by
+   `renderer/test/serving-bundle/outbound-shim.cjs`). Rows that characterize a 3.1.3 defect
+   (B-TAG, B-XISR, B-LEAK, B-CASE) assert the 3.1.3 observable and carry the 4.x expectation.
+   Stated limit: for the `(g4)` rows **the bundle suite proves the renderer behind the edge; the
+   edge security rule is proven by infra (i)**; and B-XISR tests the origin side only (the edge
+   strips `x-isr` / `x-prerender-revalidate`). Cost: a full `open-next build` (13.1 s with no `.next`, 5.9–6.8 s with
+   a warm `.next/cache`, operator Mac) + ≈1 s of contract rows + ≈4.7 s of B-rows (3 s of it is
+   B-CASE's bounded wait; whole run 11.5 s, EXECUTED 2026-10-15). Placement: the deploy gate
    (`docs/runbooks/deploy-track-cache.md`), not PR CI, which keeps the ≈10 s `next` target.*
 3. **Backend integration/API** — repoint the 8 suites at DynamoDB-local (container);
    unattended-safe, parallel-safe. The staging-hitting mode remains as an explicit

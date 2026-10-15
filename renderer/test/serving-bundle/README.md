@@ -20,7 +20,7 @@ deploy, so a test build is never what ships.
 
 Measured (2026-10-15, operator Mac, Node 22.21.1): build 13.1 s with no `.next` at all,
 5.9–6.8 s with `.next/cache` warm from an earlier build; ≈1 s for the 40 contract rows,
-< 1 s for the B-rows. (The spec estimated 60–90 s; the `npm install sharp` step was served
+≈4.7 s for the 18 B-rows (3 s of it is B-CASE's bounded wait); whole run 11.5 s. (The spec estimated 60–90 s; the `npm install sharp` step was served
 from the local npm cache in these runs — a cold npm cache adds a registry download.) Placement: **deploy gate** (`docs/runbooks/
 deploy-track-cache.md` § Preconditions), next to `scripts/verify-opennext-patch.mjs`. PR CI keeps
 the `next` target only.
@@ -64,6 +64,43 @@ Two ways in:
    works against it unchanged.
 2. **`invoke(event)` over IPC** — a raw invocation with no edge: the warmer event (B-WARM)
    and direct Function URL calls (B-ORIGINVERIFY).
+
+Increment 1A-2 additions on the handle (each used by named rows):
+
+| Member | What | Rows |
+|---|---|---|
+| `outbound()` | outbound calls journaled by `outbound-shim.cjs` (below) | B-CASE |
+| `requests()` | every viewer request the HTTP port received, headers as SENT (before the edge filter), plus the header names the handler's event got | B-REVAL |
+| `forwardViewerHeaders(names)` | the edge ALSO forwards these viewer headers until called with `[]` (a new child resets it). **Not production behaviour** — the real edge strips them | B-XISR only (`x-isr`, `x-prerender-revalidate`) |
+| `sync()` | resolves after every IPC message the child sent earlier has arrived; the journals (and `bundleResponses`) travel over IPC and can lag the HTTP response they describe | rows that read a journal |
+
+`runRevalidationFunction({ functionDir, event, redirectTo })` runs the built
+**revalidation function** (`.open-next/revalidation-function`, cwd = that directory; it reads
+`prerender-manifest.json` from cwd) once on an SQS event, in its own child with an empty
+environment (the function has none in infra) and the outbound shim preloaded. With
+`redirectTo` = the Lambda host's `http://127.0.0.1:<port>`, the function's `HEAD
+https://<host><url>` is delivered to the host's HTTP port with `Host: <host>` — through the
+emulated edge, as production sends it through CloudFront. Returns the handler result
+(`{ type, batchItemFailures }`), the shim's journal and the log. Row B-REVAL.
+
+### Outbound-call interceptor (`outbound-shim.cjs`)
+
+A `--require` preload in both Lambda children. It patches `https.request`, `https.get`,
+`http.request` / `http.get` to a non-loopback host, and `globalThis.fetch` to a non-loopback
+host, before the bundle loads (and refreshes the builtin ESM facades, because open-next's
+`proxyRequest` uses `import("node:https").then((m) => m.request)`). Each call is journaled
+(`{ api, method, url, headers }`, to the parent over IPC) and redirected to
+`SERVING_BUNDLE_OUTBOUND_REDIRECT`:
+
+- Lambda host child → `http://127.0.0.1:1`: an outbound call is **refused on this host**
+  (hermetic and deterministic; a `.test` DNS answer depends on the operator's resolver, and a
+  real `*.cloudfront.net` name would leave the machine);
+- revalidation child → the Lambda host's port (B-REVAL);
+- unset → journal only (negative control (c)).
+
+Loopback HTTP (the SDK talking to the stubs) is neither journaled nor redirected; HTTPS always
+is (no stub speaks TLS). The variable is deleted before the bundle loads. Not seen: direct
+`net`/`tls` sockets and HTTP/2 — neither built `index.mjs` uses them (VERIFIED by grep).
 
 Both paths call the bundle's `handler` through ONE function in the child, `callHandler` — the
 handler's only call site — which reports every result's headers (with `cookies[]` as
@@ -115,16 +152,16 @@ control (a) in the build report shows exactly that.
 
 | Stub | Answers | Journal |
 |---|---|---|
-| `s3-stub.mjs` | `PutObject`, `GetObject` (404 `NoSuchKey` when absent), `HeadObject`, `DeleteObject`, `ListObjectsV2` (prefix only), on the one bucket `CACHE_BUCKET_NAME`. Path-style and virtual-host style both decoded; `aws-chunked` bodies decoded | `{ op, bucket, key, addressing, status, storedStatus? }` per request; `objects()` = current state |
+| `s3-stub.mjs` | `PutObject`, `GetObject` (404 `NoSuchKey` when absent), `HeadObject`, `DeleteObject`, `ListObjectsV2` (prefix, and `delimiter` → `CommonPrefixes`), `DeleteObjects` (the CACHE-10 purge), on the one bucket `CACHE_BUCKET_NAME`. Path-style and virtual-host style both decoded; `aws-chunked` bodies decoded. **Purge switch** `listReturnsNothing(bool)`: every ListObjectsV2 answers no keys — only the purge lists (the adapter never does), so this neutralizes the purge and nothing else (B-TAG, B-LISTING) | `{ op, bucket, key, addressing, status, storedStatus? }` per request (+ `prefix`, `delimiter`, `emptied` on lists, `deleted` on DeleteObjects); `objects()` = current state |
 | `sqs-stub.mjs` | `AmazonSQS.SendMessage` (JSON protocol), real `MD5OfMessageBody` | `{ op, queue, body, deduplicationId, groupId }` |
-| `../serving-contract/ddb-stub.mjs` | the renderer table (unchanged) **and** the tag table: `Query` by `path` on index `revalidate` (plain, and `AND revalidatedAt > :lm`), `Query` by `tag`, `BatchWriteItem` puts; dispatch on `TableName` | `{ table, op, index }` per request; `tagItems()`; tag calls counted in `tagCache`, not `render` |
+| `../serving-contract/ddb-stub.mjs` | the renderer table (a per-stub copy of the fixtures; `putItem(item)` = an admin edit, B-TAG / B-LISTING) **and** the tag table: `Query` by `path` on index `revalidate` (plain, and `AND revalidatedAt > :lm`), `Query` by `tag`, `BatchWriteItem` puts; dispatch on `TableName` | `{ table, op, index }` per request; `tagItems()`; tag calls counted in `tagCache`, not `render` |
 
 **S3 addressing: path-style, VERIFIED on every run** — the endpoint is `http://127.0.0.1:<port>`
 and the SDK falls back to path-style for an IP host; row `(journals)` asserts every S3 request
 was path-style. No `*.localhost` DNS shim is needed.
 
-Increment 1A-2 needs, for the CACHE-10 purge (`src/app/api/revalidate/route.ts`):
-`ListObjectsV2` with `delimiter` (`CommonPrefixes`) and `DeleteObjects` — both unhandled today.
+Increment 1A-2 added what the CACHE-10 purge (`src/app/api/revalidate/route.ts`) emits:
+`ListObjectsV2` with `delimiter` (`CommonPrefixes`) and `DeleteObjects`.
 
 ## Environment (`harness.mjs` `bundleEnv`)
 
@@ -163,14 +200,34 @@ Each row resolves its expectation for the bundle's open-next MAJOR from a table
 (`BUNDLE_EXPECTATIONS` in `contract.test.mjs`, `EXPECTATIONS` in `bundle.test.mjs`). Keys are
 `"3"`, `"4"` or `"3,4"` (identical on both). No key for the built major → the row fails with
 `(<row>) no expectation for version N`. `opennext-1b` adds the `"4"` keys that are missing
-today (`c2`, `d1`, `h1b`, `h1c`, `h2`).
+today (`c2`, `d1`, `h1b`, `h1c`, `h2`), and selects B-STALE's 4.x entry (`4-noseed` or
+`4-seed`, decision OPENNEXT1-1250) by renaming its key to `"4"`.
 
 ## Rows
 
 - The 39 contract rows run unchanged where their entry is `SAME`; the restatements are
   documented at each row and in `docs/slices/opennext-1a.md` § Row inventory.
 - `(journals)` — contract file, bundle only: no unhandled stub operation; S3 path-style.
-- `bundle.test.mjs`: `B-WARM`, `B-ORIGINVERIFY`, `B-VERSION`, `B-SHARP`, `B-NO30D`.
+- `bundle.test.mjs`, increment 1: `B-WARM`, `B-ORIGINVERIFY`, `B-VERSION`, `B-SHARP`, `B-NO30D`.
+- `bundle.test.mjs`, increment 1A-2 (one Lambda host, file order; dependencies stated at each
+  row; fixtures: two isolation tenants `a.serving-contract.test` / `b.serving-contract.test` in
+  `../serving-contract/fixtures.mjs`). 3.1.3 results (EXECUTED 2026-10-15):
+
+| Row | What | 3.1.3 (`"3"`) | 4.x |
+|---|---|---|---|
+| B-ISO | A and B both publish `/about` | own body per host; one S3 key each, `…/$/<host>/about.cache`; tag `_N_T_/<host>/about` (from the stored `meta.headers` — not sent to the client) | same |
+| B-REFLECT | host A, path `/<host B>/about` | 307 `?nf=1` (A's handoff), no B text, nothing new under B's key | same |
+| B-TAG | edit A's `/about`, POST `/api/revalidate`, purge neutralized | **characterized**: no tag row, next GET `HIT` with the old text; control (a) purge active → `MISS`, new text | tag row, `MISS`, new text |
+| B-LISTING | edit post P, revalidate P, GET A's home (postGrid) | neutralized: 200, ORIGINAL title shown, edit absent; purge active: 200, new title, original gone | same |
+| B-XISR | `x-isr` + junk `x-prerender-revalidate` forwarded **for this row only**; no-header requests sent first | **characterized**: `/published` → 307 `MISS` `s-maxage=31536000` stored under key `published`; `/_site/<id>` → same shape (403 skipped) stored under `_site/<id>` | status, cache-control, x-nextjs-cache, body marker identical to the no-header request (`/_site` → 403) |
+| B-RSC | navigation request (router state tree + Next-computed `_rsc`) | `text/x-component`, `Vary` has `rsc`; `?_rsc=x` without header → HTML `HIT`; bare `RSC: 1` → 307 to `/<host>/published?_rsc` (observed, finding) | navigation as 3; bare: record |
+| B-PREVIEW | `/_site/<id>` from `d111wtnnjzzsb1.cloudfront.net` | 200, no-store, `amodx_preview_base`; flight canonical `["","<id>","_dyn"]` | record |
+| B-ROUTEERR | routing throws: (1) XFH with a space; (2) raw invocation with a line feed in `accept-language` | (1) 500 text/plain "Internal Server Error", no `Cache-Control`, nothing stored (Next also fails on that host); (2) the unrewritten path renders: 307 `MISS` cacheable, stored under `routeerr-probe` (spec B2) | Next's `/500` page: 500, no-store, `<title>` of this build's global-error page (read from `.open-next/cache/<buildId>/_global-error.cache`) |
+| B-CASE | mixed-case XFH | packet request (`/tenant/<id>`) → 403, no outbound; reach variant (mixed-case preview host) → **characterized**: one `https.request` to the lowercased host (`isExternal` is case-sensitive), no answer | no outbound |
+| D3-LOCATION | MISS-rendered not-found | the handler result already holds `/x?nf=1,/x?nf=1` as ONE string; one line on the wire; HIT single | record |
+| B-STALE | cold container (`restart()`) | `STALE`, `s-maxage=2, stale-while-revalidate=300`, 1 SQS message; control (b): warm → `HIT` | `4-noseed` / `4-seed` (opennext-1b selects) |
+| B-REVAL | B-STALE's message (fixture `REVALIDATION_MESSAGE_3_1_3` when B-STALE's entry queues none) → revalidation function | HEAD `/<host>/published` with `x-prerender-revalidate` = previewModeId; edge strips it; 307 `MISS`; rule "200 + REVALIDATED" asserted → one batch-item failure | rule "200/307/308/404 + REVALIDATED" asserted against the actual answer |
+| B-LEAK | middleware headers in any response | **characterized**: `x-middleware-rewrite` (every rewritten response), `x-middleware-set-cookie` (preview) | none |
 
 **Reduced guarantee for `(g4)` (ruling OPENNEXT1A-G4): the bundle suite proves the renderer
 behind the edge; the edge security rule is proven by infra (i).** `Origin` / `Sec-Fetch-Site`
@@ -184,9 +241,11 @@ suite response carries `2592000`; `Set-Cookie` excluded (the referral cookie's
 `Max-Age=2592000`, `src/app/api/ref/route.ts:88`, is a product value, not a cache lifetime).
 "Any suite response" = every handler result of the run, edge HTTP and raw IPC invocations
 alike (measured: 46 = 42 edge + 4 invoke); the row asserts both kinds are present.
-Increment 1A-1 exercises no STALE response, so the live-handler SWR patch window is NOT yet
-proven by this row; B-STALE (1A-2) proves it. The builder's `restart()` probe already observed
-`s-maxage=2, stale-while-revalidate=300` on a cold container (slice doc § 5).
+Since increment 1A-2 the record includes B-STALE's STALE response, so the live handler's patched
+SWR window is proven here; the row asserts a STALE response is in the record (where B-STALE's
+expectation is STALE), so it cannot pass on MISS/HIT alone.
 
-**Operation inventory scope:** the increment-1 run makes NO SQS call and has no STALE row; SQS
-and `fixISRHeaders` STALE behaviour are increment 1A-2's.
+**Operation inventory:** printed after each describe (`harness.mjs` `operationInventory`): the
+contract rows' stubs and the B-rows' stubs, plus the B-rows host's outbound calls and viewer
+requests by method. The B-rows' inventory contains the SQS `SendMessage` (B-STALE), the purge's
+`ListObjectsV2` / `DeleteObjects`, and the revalidation HEAD.

@@ -43,8 +43,8 @@ Both are `infra/lib/renderer-hosting.ts` only. See
   plus the bundle B-rows against the real RendererServer Lambda artefact (stubbed S3 / SQS /
   DynamoDB, emulated CloudFront edge; no AWS, no credentials). Scope: the bundle suite proves the
   renderer behind the edge; the edge security rule (the STATIC-EP origin guard) is proven by infra
-  test (i). `B-NO30D` overlaps the script above on the live handler but, until increment 1A-2's
-  B-STALE, covers no STALE response — keep both. **Do not deploy the renderer if it fails** — a red row is a
+  test (i). `B-NO30D` overlaps the script above on the live handler, including the STALE path
+  (proven by B-STALE's response passing through B-NO30D, increment 1A-2) — keep both. **Do not deploy the renderer if it fails** — a red row is a
   serving-contract change through the adapter that actually serves production
   (`renderer/test/serving-bundle/README.md`). CDK rebuilds `.open-next` on deploy, so this
   suite's test build is never what ships.

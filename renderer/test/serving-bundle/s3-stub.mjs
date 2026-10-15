@@ -1,8 +1,9 @@
 // In-process S3 stub for the built-bundle serving harness (slice opennext-1a).
 //
-// WHAT IT IS: an HTTP server that speaks enough of the S3 REST-XML protocol to answer the five
+// WHAT IT IS: an HTTP server that speaks enough of the S3 REST-XML protocol to answer the six
 // operations the OpenNext server bundle and the renderer's own CACHE-10 purge can emit against
-// the ISR cache bucket: PutObject, GetObject, HeadObject, DeleteObject, ListObjectsV2. The
+// the ISR cache bucket: PutObject, GetObject, HeadObject, DeleteObject, ListObjectsV2 (with and
+// without `delimiter`) and DeleteObjects (the purge, `src/app/api/revalidate/route.ts`). The
 // bundle reaches it because the AWS SDK v3 honours `AWS_ENDPOINT_URL_S3` (lambda-host.mjs sets
 // it; the operator verified the smithy env-endpoint config is inlined into the bundle).
 //
@@ -23,7 +24,15 @@
 //
 // JOURNAL. Every request appends `{ op, bucket, key, addressing, status }`; PutObject entries
 // also carry the stored body's parsed `meta.status` (the ISR entry's HTTP status) so a row can
-// prove what was written without re-reading state. `objects()` is the current bucket state.
+// prove what was written without re-reading state. ListObjectsV2 entries carry `prefix`,
+// `delimiter` and `emptied` (see below); DeleteObjects entries carry `deleted` (the keys).
+// `objects()` is the current bucket state.
+//
+// PURGE SWITCH (increment 1A-2, rows B-TAG / B-LISTING). `listReturnsNothing(true)` makes every
+// ListObjectsV2 answer an empty listing (journaled `emptied: true`) until switched off. The
+// OpenNext adapter never lists (3.1.3 operation inventory, slice doc § 2.3); only the CACHE-10
+// purge does — so the switch neutralizes the purge and nothing else, and a row can observe what
+// the adapter's own tag path does on its own.
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 
@@ -36,6 +45,7 @@ export async function startS3Stub({ bucket }) {
     const store = new Map();
     const journal = [];
     const unhandled = [];
+    let listEmpty = false;
 
     const server = createServer((req, res) => {
         const chunks = [];
@@ -86,7 +96,21 @@ export async function startS3Stub({ bucket }) {
                 return reply(204, {}, "");
             }
             if (op === "ListObjectsV2") {
-                return reply(200, { "content-type": "application/xml" }, listXml(url.searchParams.get("prefix") ?? ""));
+                entry.prefix = url.searchParams.get("prefix") ?? "";
+                entry.delimiter = url.searchParams.get("delimiter") ?? undefined;
+                entry.emptied = listEmpty;
+                return reply(200, { "content-type": "application/xml" }, listXml(entry.prefix, entry.delimiter, listEmpty));
+            }
+            if (op === "DeleteObjects") {
+                const xml = decodeBody(req.headers, Buffer.concat(chunks)).toString("utf8");
+                const keys = [...xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)].map((m) => unescapeXml(m[1]));
+                const quiet = /<Quiet>\s*true\s*<\/Quiet>/i.test(xml);
+                for (const k of keys) store.delete(k);
+                entry.deleted = keys;
+                // S3 reports a key that did not exist as deleted too; no per-key errors here.
+                const deleted = quiet ? "" : keys.map((k) => `<Deleted><Key>${escapeXml(k)}</Key></Deleted>`).join("");
+                return reply(200, { "content-type": "application/xml" },
+                    `<?xml version="1.0" encoding="UTF-8"?><DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">${deleted}</DeleteResult>`);
             }
 
             unhandled.push(`unsupported operation ${req.method} ${req.url}`);
@@ -94,8 +118,22 @@ export async function startS3Stub({ bucket }) {
         });
     });
 
-    function listXml(prefix) {
-        const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
+    /**
+     * One ListObjectsV2 page (never truncated: the suite stores far fewer than 1000 keys). With a
+     * `delimiter`, a key whose remainder after `prefix` contains it is rolled up into the
+     * `CommonPrefixes` entry `prefix + remainder-up-to-and-including-the-delimiter` (S3 semantics);
+     * the others are listed as `Contents`. `empty`: the purge switch.
+     */
+    function listXml(prefix, delimiter, empty) {
+        const matching = empty ? [] : [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
+        const common = new Set();
+        const keys = [];
+        for (const k of matching) {
+            const at = delimiter ? k.indexOf(delimiter, prefix.length) : -1;
+            if (at === -1) keys.push(k);
+            else common.add(k.slice(0, at + delimiter.length));
+        }
+        const prefixes = [...common].map((p) => `<CommonPrefixes><Prefix>${escapeXml(p)}</Prefix></CommonPrefixes>`).join("");
         const contents = keys
             .map((k) => {
                 const o = store.get(k);
@@ -105,8 +143,9 @@ export async function startS3Stub({ bucket }) {
             .join("");
         return `<?xml version="1.0" encoding="UTF-8"?>` +
             `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>${escapeXml(bucket)}</Name>` +
-            `<Prefix>${escapeXml(prefix)}</Prefix><KeyCount>${keys.length}</KeyCount><MaxKeys>1000</MaxKeys>` +
-            `<IsTruncated>false</IsTruncated>${contents}</ListBucketResult>`;
+            `<Prefix>${escapeXml(prefix)}</Prefix>${delimiter ? `<Delimiter>${escapeXml(delimiter)}</Delimiter>` : ""}` +
+            `<KeyCount>${keys.length + common.size}</KeyCount><MaxKeys>1000</MaxKeys>` +
+            `<IsTruncated>false</IsTruncated>${contents}${prefixes}</ListBucketResult>`;
     }
 
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -118,6 +157,10 @@ export async function startS3Stub({ bucket }) {
         /** Current bucket state: `[{ key, body: string, lastModified: Date }]`. */
         objects: () =>
             [...store.entries()].map(([key, o]) => ({ key, body: o.body.toString("utf8"), lastModified: o.lastModified })),
+        /** The purge switch (file header): `true` → every ListObjectsV2 answers no keys. */
+        listReturnsNothing: (on) => {
+            listEmpty = Boolean(on);
+        },
         close: () => new Promise((resolve) => server.close(resolve)),
     };
 }
@@ -138,8 +181,9 @@ function decodeAddress(hostHeader, pathname) {
 /** The S3 operation a request is. Unknown shapes return a descriptive non-operation name. */
 function operationOf(method, key, params) {
     if (method === "GET" && !key && params.get("list-type") === "2") return "ListObjectsV2";
+    if (method === "POST" && !key && params.has("delete")) return "DeleteObjects";
     if (!key) return `${method} (bucket-level, unsupported)`;
-    // Sub-resource queries (?acl, ?tagging, ?uploads, …) are other operations, not these five.
+    // Sub-resource queries (?acl, ?tagging, ?uploads, …) are other operations, not the four object ones.
     const sub = [...params.keys()].filter((k) => k !== "x-id");
     if (sub.length > 0) return `${method} ?${sub.join("&")} (unsupported)`;
     if (method === "PUT") return "PutObject";
@@ -198,6 +242,10 @@ function xmlError(status, code, message, key) {
     const body = `<?xml version="1.0" encoding="UTF-8"?><Error><Code>${code}</Code>` +
         `<Message>${escapeXml(message)}</Message>${key ? `<Key>${escapeXml(key)}</Key>` : ""}</Error>`;
     return [status, { "content-type": "application/xml", "content-length": Buffer.byteLength(body) }, body];
+}
+
+function unescapeXml(s) {
+    return String(s).replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
 function escapeXml(s) {

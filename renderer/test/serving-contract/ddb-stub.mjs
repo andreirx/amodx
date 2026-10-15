@@ -14,13 +14,16 @@
 // defect this suite exists to catch.
 //
 // CONTROL SURFACE: plain methods on the returned handle — `stats()`, `reset()`,
-// `failContentReads(bool)`. The cache-1 probe harness exposed the equivalent over HTTP
+// `failContentReads(bool)`, `putItem(item)`. The cache-1 probe harness exposed the equivalent over HTTP
 // (`/__ctl/fail-content-on`) because its probes were separate shell scripts; here the stub
 // and the assertions share one process, so an HTTP control plane would be a second
 // mechanism for data already in scope — and a surface the renderer could theoretically
 // reach. `failContentReads(true)` is the CACHE-1-D4 case: tenant resolution keeps working,
 // every *later* read fails (docs/caching-architecture.md § "Probe: a read that fails AFTER
-// tenant resolution").
+// tenant resolution"). `putItem(item)` (opennext-1a increment 2, rows B-TAG / B-LISTING) is an
+// admin edit: it replaces the item with the same PK+SK (or adds it) in THIS stub's copy of the
+// fixture dataset — the shared `ITEMS` array is never mutated, so another stub instance (the
+// contract describe's) is unaffected.
 //
 // TAG TABLE (slice opennext-1a, bundle target only). The OpenNext server bundle has a second
 // DynamoDB client: the tag cache (open-next 3.1.3 `cache/tag/dynamodb.js`), on the table named by
@@ -132,7 +135,7 @@ function passesFilter(item, expr, names, values) {
  *        (`CACHE_DYNAMO_TABLE`) to serve as well. Omitted on the `next` target, where no
  *        adapter runs — a call naming it there would be unhandled, as any unknown table is.
  * @returns {Promise<{url:string, stats:Function, journal:Function, tagItems:Function,
- *          reset:Function, failContentReads:Function, close:Function}>}
+ *          reset:Function, failContentReads:Function, putItem:Function, close:Function}>}
  */
 export async function startDdbStub({ tagTable } = {}) {
     // `tagCache` stays 0 on the `next` target (no tag table is served there).
@@ -143,6 +146,8 @@ export async function startDdbStub({ tagTable } = {}) {
     /** Tag-table rows written by `BatchWriteItem`, unmarshalled: `{ path, tag, revalidatedAt }`. */
     const tagItems = [];
     let failContent = false;
+    /** This stub's copy of the fixture dataset; `putItem` edits it. */
+    const items = ITEMS.map((i) => structuredClone(i));
 
     const server = createServer((req, res) => {
         const chunks = [];
@@ -215,7 +220,7 @@ export async function startDdbStub({ tagTable } = {}) {
 
     function getItem(res, parsed) {
         const key = unmarshallItem(parsed.Key);
-        const item = ITEMS.find((i) => i.PK === key.PK && i.SK === key.SK);
+        const item = items.find((i) => i.PK === key.PK && i.SK === key.SK);
         return json(res, item ? { Item: marshallItem(item) } : {});
     }
 
@@ -230,19 +235,19 @@ export async function startDdbStub({ tagTable } = {}) {
             throw new Error(`unsupported index ${parsed.IndexName}`);
         }
 
-        let items = ITEMS.filter((i) => i[cond.hashAttr] === values[cond.hashVal]);
+        let found = items.filter((i) => i[cond.hashAttr] === values[cond.hashVal]);
         if (cond.rangeAttr) {
-            items = items.filter((i) => String(i[cond.rangeAttr] ?? "").startsWith(values[cond.rangePrefix]));
+            found = found.filter((i) => String(i[cond.rangeAttr] ?? "").startsWith(values[cond.rangePrefix]));
         }
-        items = items.filter((i) => passesFilter(i, parsed.FilterExpression, names, values));
-        if (parsed.Limit) items = items.slice(0, parsed.Limit);
+        found = found.filter((i) => passesFilter(i, parsed.FilterExpression, names, values));
+        if (parsed.Limit) found = found.slice(0, parsed.Limit);
 
         // `Select: COUNT` must not return Items — lib/tenant-directory.ts reads `res.Count`
         // precisely so no tenant data crosses into the edge layer.
-        if (parsed.Select === "COUNT") return json(res, { Count: items.length, ScannedCount: items.length });
+        if (parsed.Select === "COUNT") return json(res, { Count: found.length, ScannedCount: found.length });
         // ProjectionExpression is deliberately ignored: returning extra attributes cannot
         // change any assertion here, and honouring it would add a parser with no caller.
-        return json(res, { Items: items.map(marshallItem), Count: items.length, ScannedCount: items.length });
+        return json(res, { Items: found.map(marshallItem), Count: found.length, ScannedCount: found.length });
     }
 
     /** The three tag-cache Query shapes (file header). Anything else throws → unhandled. */
@@ -295,6 +300,12 @@ export async function startDdbStub({ tagTable } = {}) {
         /** CACHE-1-D4 fault injection. See the file header. */
         failContentReads: (on) => {
             failContent = on;
+        },
+        /** An admin edit (file header): replace-or-add by PK+SK in this stub's dataset. */
+        putItem: (item) => {
+            const at = items.findIndex((i) => i.PK === item.PK && i.SK === item.SK);
+            if (at >= 0) items.splice(at, 1);
+            items.push(structuredClone(item));
         },
         close: () => new Promise((resolve) => server.close(resolve)),
     };
