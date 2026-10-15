@@ -1,6 +1,6 @@
 # Slice SITEID-BINDING-1 — the `[siteId]` route segment is bound only by the middleware, never from the wire
 
-Status: IMPLEMENTED 2026-10-15 (code-complete, review approved at cycle 2; operator gates green; not yet deployed). Ratified 2026-10-15 (human: OPENNEXT1-REFLECTION = C; D1 = A, D2 = A, D3 = A). Parent: `docs/slices/opennext-1-upgrade.md` § Ratification.
+Status: DEPLOYED-STAGING 2026-10-15 (eb39f58; staging probes + Playwright green; prod awaits the human's word). Ratified 2026-10-15 (human: OPENNEXT1-REFLECTION = C; D1 = A, D2 = A, D3 = A). Parent: `docs/slices/opennext-1-upgrade.md` § Ratification.
 Builder: claude / claude-opus-5-5 (high). Reviewer: codex / gpt-6-sol. `--timeout 60`, `--max-iter 3`.
 Deliverable surface: `renderer/middleware.ts`, `renderer/test/serving-contract/*`, `tests/e2e/preview-site.spec.ts`,
 docs. **No CDK/infra change. No dependency change. No OpenNext change.** Runs on open-next 3.1.3 as deployed.
@@ -195,3 +195,10 @@ they stay inside the preview. Only the pre-hydration instant carries the bare fo
   `# tests 39 # pass 39 # fail 0`; `git diff --check` 0 (operator scratchpad `siteid-binding-gates.log`).
 - Durable records touched append-only: `docs/slices/opennext-1-upgrade.md` (Ratification correction),
   `docs/slices/cache-8-revalidation-flood.md` (Superseded note); 0 removed lines in either (verified).
+
+## Staging verification (operator, 2026-10-15, after deploy of eb39f58 + CloudFront `/*` invalidation)
+On `D` (cache-probe tenant host): `/c9-probe-1788350202.localhost/c9-probe` → 307 `…?nf=1`, title "Cache Probe" (C1 closed);
+`/c9-probe-1788350202/c9-probe.html` → 307 (C2 closed); `/ab-page.html`, `/wp-login.php` → 307 on the host's own tenant
+(C3: a dotted path now reaches the host's tenant); `/tenant/c9-probe-1788350202/c9-probe` → 200 no-store on `D` and on
+`staging.amodx.net` (preview hosts keep test mode); `/_site/preview-probe` → 200 no-store + cookie; `/ab-page` → 200 (unchanged);
+`/robots.txt` → 200. Playwright `preview-site` + `public-site` → 2/2 passed. D3 (doubled `Location`) still present, as recorded.
