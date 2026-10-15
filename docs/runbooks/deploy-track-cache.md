@@ -35,6 +35,19 @@ Both are `infra/lib/renderer-hosting.ts` only. See
   Rationale for a deploy-gate rather than a CI step: `open-next build` is multi-minute and CI does
   not already run it. See `docs/caching-architecture.md` § "The SWR revalidation queue and the
   scanner-junk flood (cache-8)" → GUARD.
+- **Built-bundle serving suite green (MANDATORY GATE, slice `opennext-1a`).** Run:
+
+      cd renderer && npm run test:serving-bundle
+
+  It must exit `0`. It rebuilds `.open-next` the way CDK does and runs the serving-contract rows
+  plus the bundle B-rows against the real RendererServer Lambda artefact (stubbed S3 / SQS /
+  DynamoDB, emulated CloudFront edge; no AWS, no credentials). Scope: the bundle suite proves the
+  renderer behind the edge; the edge security rule (the STATIC-EP origin guard) is proven by infra
+  test (i). `B-NO30D` overlaps the script above on the live handler but, until increment 1A-2's
+  B-STALE, covers no STALE response — keep both. **Do not deploy the renderer if it fails** — a red row is a
+  serving-contract change through the adapter that actually serves production
+  (`renderer/test/serving-bundle/README.md`). CDK rebuilds `.open-next` on deploy, so this
+  suite's test build is never what ships.
 - Staging is ~630 resources behind the repo (measured 2026-07-26) — the staging deploy
   absorbs that drift BY DESIGN (ratified staged-reconcile). Skim `cdk diff` for staging
   only for surprises in stateful resources (DynamoDB tables, S3 buckets, Cognito pools —

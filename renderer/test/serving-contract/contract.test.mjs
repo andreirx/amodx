@@ -13,17 +13,25 @@
 //
 // Runner: node:test (Node 22, the pinned runtime). No test framework is installed for this
 // suite — see README.md § "Why node:test".
-import { describe, test, before, after } from "node:test";
+//
+// TWO SERVING TARGETS (slice opennext-1a). `SERVING_TARGET=next` (default, `npm run
+// test:serving`) serves with `next start`; `SERVING_TARGET=bundle` (`npm run test:serving-bundle`)
+// serves the built OpenNext Lambda artefact behind an emulated CloudFront edge, with S3 / SQS /
+// DynamoDB stubs. Same rows, same helpers (harness.mjs § SERVING TARGET). Under `bundle` every
+// row first resolves its VERSION-EXPLICIT expectation (§ below) and fails if the built open-next
+// major has none.
+import { describe, test as nodeTest, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { startDdbStub } from "./ddb-stub.mjs";
 import {
-    buildRenderer, startRenderer, request, rendererEnv, probeEnvLoading,
+    buildRenderer, startRenderer, startStubs, request, rendererEnv, probeEnvLoading,
     readAudit, resetAudit, AUDIT_PATH, NO_DOTENV_PRELOAD, RENDERER_DIR,
+    BUNDLE, versionedExpectation,
 } from "./harness.mjs";
+import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
 import {
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
@@ -33,9 +41,89 @@ import {
 /** The exact header a route in Next's full-route (ISR) cache mode emits. */
 const S_MAXAGE = "s-maxage=31536000";
 
+// ── VERSION-EXPLICIT EXPECTATIONS (bundle target) ─────────────────────────────────────────
+// One entry per row, keyed by the open-next MAJOR versions it covers ("3", "4", or "3,4" when
+// both majors share it). The built major comes from the running bundle itself
+// (`globalThis.openNextVersion`, reported by the Lambda host). A row whose entry has no key for
+// the built major FAILS with "no expectation for version N": an adapter upgrade cannot pass a
+// row on the old adapter's expectation by silence — every row must be re-stated for it.
+//
+// `SAME` = the row's assertions exactly as written, identical to the `next` target. Any other
+// value names a bundle restatement the row branches on; each is documented at its row and in
+// docs/slices/opennext-1a.md § Row inventory. 4.x entries follow spec
+// docs/slices/opennext-1-upgrade.md § 4.1 ("same" there → "3,4" here); rows that § 4.1 changes
+// or that have no 4.x expectation yet carry a "3" key only and get their "4" key in opennext-1b.
+// Under the `next` target this table is not consulted (every row is SAME).
+const SAME = "same";
+/** The MISS-rendered not-found 307 carries its `Location` twice, comma-joined
+ *  (`/x?nf=1,/x?nf=1`). Ratification finding 2026-10-15 (staging), reproduced here; the stored
+ *  entry holds ONE location (row d3). Characterized on 3.x; 4.x decided in opennext-1b. */
+const DOUBLED_LOCATION = "doubled-location";
+const BUNDLE_EXPECTATIONS = {
+    iso1: { "3,4": "bundle-env" },
+    iso2: { "3,4": SAME },
+    iso3: { "3,4": "bundle-build-tree" },
+    iso4: { "3,4": SAME },
+    a1: { "3,4": SAME },
+    a2: { "3,4": SAME },
+    c1: { "3,4": SAME },
+    // § 4.1: BREAKS on 4.x (`open-next/…` no longer resolves); re-pointed in opennext-1b.
+    c2: { "3": SAME },
+    a3: { "3,4": SAME },
+    b1: { "3,4": SAME },
+    b2: { "3,4": SAME },
+    b3: { "3,4": SAME },
+    c: { "3,4": SAME },
+    d1: { "3": DOUBLED_LOCATION },
+    d2: { "3,4": SAME },
+    d3: { "3,4": "s3-journal" },
+    m1: { "3,4": SAME },
+    m2: { "3,4": SAME },
+    m3: { "3,4": SAME },
+    p1: { "3,4": SAME },
+    p2: { "3,4": SAME },
+    t1: { "3,4": SAME },
+    t2: { "3,4": SAME },
+    h1b: { "3": DOUBLED_LOCATION },
+    h1c: { "3": DOUBLED_LOCATION },
+    h1: { "3,4": SAME },
+    h2: { "3": DOUBLED_LOCATION },
+    e1: { "3,4": "absent-or-no-store" },
+    e2: { "3,4": SAME },
+    f: { "3,4": SAME },
+    g1: { "3,4": SAME },
+    g2: { "3,4": SAME },
+    g3: { "3,4": SAME },
+    // Ruling OPENNEXT1A-G4 (operator, 2026-10-15): behind the edge the renderer answers on its own;
+    // the status it returns to the test's POST (no body) is PINNED. Characterized defect: an
+    // empty/invalid-body POST answers 500 where 400 belongs — finding, not this slice
+    // (docs/slices/opennext-1a.md § 6, F6). Same status on both majors.
+    g4: { "3,4": { behindEdgeStatus: 500 } },
+    journals: { "3,4": SAME },
+};
+
+/** The expectation a row asserts on the current target (see above). */
+function expectation(row) {
+    return BUNDLE ? versionedExpectation(BUNDLE_EXPECTATIONS, row, server.openNextVersion) : SAME;
+}
+
+/**
+ * `node:test`'s `test`, resolving the row's expectation first. The row id is the parenthesised
+ * prefix of the title (`(a1) …` → `a1`); the body receives the expectation as its argument.
+ */
+function test(title, fn) {
+    const row = title.match(/^\(([\w-]+)\)/)?.[1];
+    return nodeTest(title, () => fn(expectation(row)));
+}
+
+/** The `Location` a not-found handoff for `target` carries on this target/version. */
+const handoffLocation = (exp, target) => (exp === DOUBLED_LOCATION ? `${target},${target}` : target);
+
+let stubs;
 let stub;
 let server;
 let startedAt;
+let builtAt;
 /** `next build`'s own stdout+stderr and PID — both read by `(iso3)`. */
 let build;
 /**
@@ -57,8 +145,13 @@ async function readsDuring(fn) {
 }
 
 /**
- * Every ISR entry `next start` has stored whose key starts with `keyPrefix` (default: the
+ * Every ISR entry the serving target has stored whose key starts with `keyPrefix` (default: the
  * fixture tenant's host), with its stored status.
+ *
+ * Abstraction: *stored-entries reader* — users: rows d3, e1, h1c, p1 (every row that proves what
+ * was or was not stored); axis: where the adapter persists ISR entries (`next start`: the
+ * filesystem; the Lambda bundle: S3); rejected alternative: duplicating those rows per target.
+ * `next` reads the directory below; `bundle` reads the S3 stub (`storedS3Entries`).
  *
  * MEASURED LAYOUT (next 16.2.12): the filesystem incremental cache writes one
  * `<key>.meta` + `<key>.html` + `<key>.rsc` triple under `.next/server/app/`, keyed by the
@@ -78,6 +171,7 @@ async function readsDuring(fn) {
  * function, so a silently-broken detector fails the suite instead of passing it.
  */
 async function storedIsrEntries(keyPrefix = FIXTURE_HOST) {
+    if (BUNDLE) return storedS3Entries(keyPrefix);
     // Two on-disk layouts, both walked so the detector reads whichever the installed Next writes:
     //  - legacy (<= 16.3.5): .next/server/app/<host>/<slug>.meta
     //  - route-scoped (>= 16.3.8, `server/lib/route-cache-key.js`):
@@ -116,25 +210,142 @@ async function storedIsrEntries(keyPrefix = FIXTURE_HOST) {
     return out;
 }
 
+/**
+ * Bundle target: the ISR entries currently in the S3 stub, by cache key.
+ *
+ * MEASURED LAYOUT (open-next 3.1.3 `cache/incremental/s3.js` `buildS3Key` + next 16.3.8):
+ *   `_cache/<buildId>/route-cache/<kind>/<sha256>/$/<host>/<path>.cache`
+ * — the same route-scoped key the filesystem walker above reads, under the `_cache/<buildId>/`
+ * prefix (`CACHE_BUCKET_KEY_PREFIX`, `NEXT_BUILD_ID`). The pre-16.3.8 form
+ * `_cache/<buildId>/<host>/<path>.cache` is read too. `__fetch/` (the data cache) is skipped.
+ * Status and Location come from the stored object (`meta.status`, `meta.headers.location`).
+ */
+function storedS3Entries(keyPrefix) {
+    const out = [];
+    for (const { key: s3Key, body } of stubs.s3.objects()) {
+        const m = s3Key.match(/^_cache\/(?!__fetch\/)[^/]+\/(.+)\.cache$/);
+        if (!m) continue;
+        const segs = m[1].split("/");
+        const at = segs[0] === "route-cache" ? segs.indexOf("$") : -1;
+        const key = segs[0] === "route-cache" ? (at === -1 ? null : segs.slice(at + 1).join("/")) : m[1];
+        if (!key || !key.startsWith(keyPrefix)) continue;
+        let value;
+        try {
+            value = JSON.parse(body);
+        } catch {
+            value = {};
+        }
+        out.push({ key, s3Key, status: storedStatusOf(Buffer.from(body)), location: value.meta?.headers?.location });
+    }
+    return out;
+}
+
+/** Bundle target: every PutObject the S3 stub journaled for an ISR key ending in `/<cacheKey>.cache`. */
+const s3PutsFor = (cacheKey) =>
+    stubs.s3.journal().filter((e) => e.op === "PutObject" && e.key.endsWith(`/${cacheKey}.cache`));
+
+/** Bundle target: which operations the adapter + renderer actually emitted, counted per stub —
+ *  printed after the run as evidence (slice opennext-1a build report; the 4.x diff baseline). */
+function operationInventory() {
+    const count = (entries, keyOf) => {
+        const out = {};
+        for (const e of entries) out[keyOf(e)] = (out[keyOf(e)] ?? 0) + 1;
+        return out;
+    };
+    return [
+        "stub operation inventory (bundle target):",
+        `  dynamodb ${JSON.stringify(count(stubs.ddb.journal(), (e) => `${e.table}:${e.op}${e.index ? `@${e.index}` : ""}`))}`,
+        `  s3       ${JSON.stringify(count(stubs.s3.journal(), (e) => `${e.op}[${e.addressing}]→${e.status}`))}`,
+        `  sqs      ${JSON.stringify(count(stubs.sqs.journal(), (e) => e.op))}`,
+        `  tag rows written ${stubs.ddb.tagItems().length}`,
+    ].join("\n");
+}
+
+/**
+ * The `environment` block of the RendererServer Lambda (infra/lib/renderer-hosting.ts,
+ * `this.serverFunction = new lambda.Function(this, 'RendererServer', …)`), minus the optional
+ * `RECAPTCHA_SITE_KEY`. `(iso1)` asserts the bundle target sets every one.
+ */
+const RENDERER_SERVER_ENV = [
+    "NODE_ENV", "TABLE_NAME", "API_URL", "CACHE_BUCKET_NAME", "CACHE_BUCKET_KEY_PREFIX",
+    "CACHE_BUCKET_REGION", "AMODX_API_KEY_SECRET", "REVALIDATION_SECRET", "NEXTAUTH_SECRET",
+    "NEXTAUTH_URL", "REVALIDATION_QUEUE_URL", "REVALIDATION_QUEUE_REGION", "CACHE_DYNAMO_TABLE",
+    "ORIGIN_VERIFY_SECRET",
+];
+/** Not in infra: the variables that keep the bundle's SDK calls on this host (harness.mjs `bundleEnv`). */
+const BUNDLE_HERMETIC_ENV = [
+    "AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL_SQS", "AWS_ENDPOINT_URL", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE",
+];
+
+/**
+ * `(iso3)` on the bundle target: the `open-next build` tree and the Lambda host child.
+ *
+ * The build root is `npm run build:open`; its tree is `npm` → `npx` → `open-next build` → `npm run
+ * build` → `next build` → workers (+ `npm install sharp`). OBSERVED 2026-10-15: the `sh -c` hops
+ * exec their single command, so each node process is the direct child of the previous one — but
+ * that is a shell detail, so the `open-next` and `next` build processes are found by the script
+ * they run (`argv1`, recorded by no-dotenv.cjs: the `.bin/` link or the package path), not by
+ * walking parent PIDs. What must hold, each read from the journal:
+ *   - the npm root, the `open-next build` process and the `next build` process loaded the hook;
+ *   - at least one process spawned by `next build` loaded it (the worker hop, as on `next`);
+ *   - the Lambda host child serving every row loaded it;
+ *   - `.env*` accesses were intercepted, and only under the four @next/env candidate names;
+ *   - `next build` itself reported loading no env file (first-party, preload-independent).
+ */
+function iso3BundleTree() {
+    assert.doesNotMatch(build.log, /- Environments:/, "`next build` (inside open-next build) reported loading env files");
+    const loads = bootAudit.filter((r) => r.ev === "load");
+    const blocks = bootAudit.filter((r) => r.ev === "block");
+    const pids = new Set(loads.map((r) => r.pid));
+    const runs = (re) => loads.filter((r) => re.test(String(r.argv1 ?? "")) && r.argv2 === "build");
+    assert.ok(pids.has(build.pid), `the npm root (pid ${build.pid}) did not load the hook`);
+    const openNext = runs(/[\\/](?:\.bin[\\/]open-next|open-next[\\/]dist[\\/]index\.js)$/);
+    assert.ok(openNext.length > 0, "no `open-next build` process loaded the hook");
+    const nextBuild = runs(/[\\/](?:\.bin[\\/]next|next[\\/]dist[\\/]bin[\\/]next)$/);
+    assert.ok(nextBuild.length > 0, "no `next build` process loaded the hook");
+    assert.ok(
+        loads.some((r) => nextBuild.some((n) => r.ppid === n.pid) && !nextBuild.some((n) => n.pid === r.pid)),
+        "no process spawned by `next build` loaded the hook",
+    );
+    assert.ok(pids.has(server.pid), `the Lambda host child (pid ${server.pid}) did not load the hook`);
+    assert.ok(blocks.length > 0, "no .env* access was intercepted — is the hook still wired?");
+    assert.deepEqual(
+        [...new Set(blocks.map((r) => r.file))].sort(),
+        [".env", ".env.local", ".env.production", ".env.production.local"],
+        "@next/env's candidate list changed; re-derive this row against the new one",
+    );
+    console.log(
+        `  (iso3/bundle) ${pids.size} process(es) covered (npm root, open-next build pid ${openNext[0].pid}, ` +
+            `next build pid ${nextBuild[0].pid}, lambda host pid ${server.pid}), ${blocks.length} .env* accesses blocked`,
+    );
+}
+
 describe("renderer serving contract (docs/caching-architecture.md)", { concurrency: 1 }, () => {
     before(async () => {
         startedAt = Date.now();
         await resetAudit();
-        stub = await startDdbStub();
+        stubs = await startStubs();
+        stub = stubs.ddb;
         build = await buildRenderer(stub.url);
-        server = await startRenderer(stub.url);
+        builtAt = Date.now();
+        server = await startRenderer(stubs);
         bootAudit = await readAudit();
     });
 
     after(async () => {
-        const { unhandled } = stub.stats();
+        const unhandled = stubs.unhandled();
+        if (BUNDLE) console.log(`\n${operationInventory()}`);
         await server?.close();
-        await stub?.close();
+        await stubs?.close();
         await rm(AUDIT_PATH, { force: true });
-        console.log(`\nserving-contract suite wall time: ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+        console.log(
+            `\nserving-contract suite (${BUNDLE ? "bundle" : "next"} target) wall time: ` +
+                `${((Date.now() - startedAt) / 1000).toFixed(1)}s ` +
+                `(build ${((builtAt - startedAt) / 1000).toFixed(1)}s, rows ${((Date.now() - builtAt) / 1000).toFixed(1)}s)`,
+        );
         // A stub that invented absence would let this suite pass while the renderer read
         // nothing. Every read it could not answer is reported here.
-        assert.deepEqual(unhandled, [], `ddb-stub could not answer some reads: ${unhandled.join("; ")}`);
+        assert.deepEqual(unhandled, [], `a stub could not answer some calls: ${unhandled.join("; ")}`);
     });
 
     // ── HARNESS SELF-CHECK (iso) ────────────────────────────────────────────────────────
@@ -150,8 +361,9 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     //   iso3  the REAL build/start trees loaded nothing         (it worked where it matters)
     //   iso4  and it survives the hop that drops an argv flag   (why iso3 will keep holding)
 
-    test("(iso1) the renderer child environment is constructed, never inherited", () => {
-        const env = rendererEnv(stub.url);
+    test("(iso1) the renderer child environment is constructed, never inherited", (exp) => {
+        // Bundle target: the environment the Lambda host child was ACTUALLY spawned with.
+        const env = exp === "bundle-env" ? server.env : rendererEnv(stub.url);
         // Whitelist = the four OS passthroughs + the variables harness.mjs pins itself.
         const allowed = new Set([
             "PATH", "HOME", "TMPDIR", "CI",
@@ -160,7 +372,21 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             "TABLE_NAME", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
             "AWS_ENDPOINT_URL_DYNAMODB", "ORIGIN_VERIFY_SECRET", "NEXT_PUBLIC_API_URL",
             "NEXTAUTH_SECRET", "RECAPTCHA_SITE_KEY",
+            ...(exp === "bundle-env" ? [...RENDERER_SERVER_ENV, ...BUNDLE_HERMETIC_ENV] : []),
         ]);
+        if (exp === "bundle-env") {
+            // Every variable of the RendererServer Lambda is set (constructed, not blank where
+            // infra sets a value)…
+            for (const name of RENDERER_SERVER_ENV) {
+                assert.ok(env[name], `RendererServer variable ${name} is missing or empty`);
+            }
+            // …the origin guard is ARMED (the next target blanks it), and every AWS endpoint —
+            // the three stubs and the catch-all — is on this host.
+            assert.notEqual(env.ORIGIN_VERIFY_SECRET, "", "the bundle target must exercise ORIGIN_VERIFY_SECRET");
+            for (const name of ["AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL_SQS", "AWS_ENDPOINT_URL"]) {
+                assert.match(env[name], /^http:\/\/127\.0\.0\.1:\d+$/, `${name} must stay on this host`);
+            }
+        }
         assert.deepEqual(
             Object.keys(env).filter((k) => !allowed.has(k)),
             [],
@@ -185,7 +411,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.deepEqual(gainedKeys, [], `.env* injected ${gainedKeys.join(", ")}`);
     });
 
-    test("(iso3) the REAL next build / next start process trees read no .env* file", async () => {
+    test("(iso3) the REAL next build / next start process trees read no .env* file", async (exp) => {
+        if (exp === "bundle-build-tree") return iso3BundleTree();
         // iso2 proves the mechanism works in a process the harness controls end to end. This
         // one is about the processes that actually ran: `next build` (and everything it
         // spawned) and the live `next start` serving every row below.
@@ -356,7 +583,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // function that only runs inside the deployed open-next bundle. This harness serves the site
     // with `next start` (harness.mjs), NOT the open-next bundle (README.md § "next start, not the
     // OpenNext Lambda bundle"), so `fixISRHeaders()` never executes here and no request through this
-    // server can carry its header. The function also cannot be imported and called in isolation: its
+    // server can carry its header. (That holds for the `next` target. On the `bundle` target —
+    // slice opennext-1a — `fixISRHeaders()` does run, and B-NO30D checks the headers it emitted;
+    // this row stays the same installed-source check on both targets.)
+    // The function also cannot be imported and called in isolation: its
     // transitive `adapters/config` → `adapters/logger` imports are extension-less and resolve only
     // inside open-next's own bundler (MEASURED — a bare `import` throws MODULE_NOT_FOUND). So the
     // faithful, low-fragility guard reads the EXACT `dist/core/routing/util.js` file that
@@ -468,10 +698,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // § "How a 404 stays out of the cache", row 2, and § H2 after-table row 1:
     // 307 → `?nf=1` (cacheable) → 404 + private, no-store (not cacheable).
 
-    test("(d1) known tenant, missing page: cacheable 307 to ?nf=1", async () => {
+    test("(d1) known tenant, missing page: cacheable 307 to ?nf=1", async (exp) => {
         const res = await get(MISSING_SLUG);
         assert.equal(res.status, 307);
-        assert.equal(res.header("location"), `${MISSING_SLUG}?nf=1`);
+        // Bundle 3.x: DOUBLED_LOCATION (see its definition) — this is the MISS render.
+        assert.equal(res.header("location"), handoffLocation(exp, `${MISSING_SLUG}?nf=1`));
         // The redirect itself IS stored — that is the accepted cost of never pinning a 404.
         assert.match(res.header("cache-control"), new RegExp(S_MAXAGE));
     });
@@ -485,7 +716,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.equal(res.header("x-nextjs-cache"), undefined);
     });
 
-    test("(d3) what got stored is the 307, and no 404 was stored at all", async () => {
+    test("(d3) what got stored is the 307, and no 404 was stored at all", async (exp) => {
         const entries = await storedIsrEntries();
         const redirect = entries.find((e) => e.key === `${FIXTURE_HOST}${MISSING_SLUG}`);
         // Positive control: the redirect IS the cacheable artefact. This also proves the
@@ -499,6 +730,16 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             [],
             "a 404 in the ISR cache is the H2 regression",
         );
+        if (exp === "s3-journal") {
+            // Bundle: the S3 JOURNAL, not only the current state — a 404 written and later
+            // overwritten would be gone from state but was still served from S3 meanwhile.
+            assert.ok(s3PutsFor(`${FIXTURE_HOST}${MISSING_SLUG}`).some((e) => e.storedStatus === 307), "no PUT of the 307");
+            assert.deepEqual(
+                stubs.s3.journal().filter((e) => e.op === "PutObject" && e.storedStatus === 404).map((e) => e.key),
+                [],
+                "a 404 was PUT to the ISR bucket",
+            );
+        }
     });
 
     // ── ROW (m) ─────────────────────────────────────────────────────────────────────────
@@ -603,17 +844,17 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // legitimately stores an entry under wk's host key, and (h1c) proves no request on the
     // fixture host stored one there.
 
-    test("(h1b) /wk/index.php on another host is NOT wk's page", async () => {
+    test("(h1b) /wk/index.php on another host is NOT wk's page", async (exp) => {
         // Before SITEID-BINDING-1 this rendered wk's page on the fixture host (the old (h1)):
         // a dotted path skipped the rewrite, so `[siteId]=wk` came from the wire. Now the path
         // is `/wk/index.php` on the fixture tenant, which has no such route.
         const res = await get(`/${SCANNER_TENANT_ID}${SCANNER_SLUG}`);
         assert.equal(res.status, 307, "another tenant's id in the path must not select that tenant");
-        assert.equal(res.header("location"), `/${SCANNER_TENANT_ID}${SCANNER_SLUG}?nf=1`);
+        assert.equal(res.header("location"), handoffLocation(exp, `/${SCANNER_TENANT_ID}${SCANNER_SLUG}?nf=1`));
         assert.ok(!res.body.includes(SCANNER_PAGE_TITLE), "wk's page body must not be served on the fixture host");
     });
 
-    test("(h1c) /<wk's host>/index.php on another host is NOT wk's page, and mints nothing under wk's key", async () => {
+    test("(h1c) /<wk's host>/index.php on another host is NOT wk's page, and mints nothing under wk's key", async (exp) => {
         // The host form of the same hole (staging finding C1): the copy served this way was
         // stored under the OTHER tenant's ISR key. Precondition, so a reorder fails loudly
         // instead of measuring (h1)'s legitimate entry:
@@ -625,7 +866,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const reqPath = `/${SCANNER_TENANT_HOST}${SCANNER_SLUG}`;
         const res = await get(reqPath);
         assert.equal(res.status, 307, "another tenant's host in the path must not select that tenant");
-        assert.equal(res.header("location"), `${reqPath}?nf=1`);
+        assert.equal(res.header("location"), handoffLocation(exp, `${reqPath}?nf=1`));
         assert.ok(!res.body.includes(SCANNER_PAGE_TITLE), "wk's page body must not be served on the fixture host");
         // Positive control: the handoff WAS stored, under the REQUEST host's key…
         const own = (await storedIsrEntries()).find((e) => e.key === `${FIXTURE_HOST}${reqPath}`);
@@ -655,7 +896,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.ok(stats.render > 0, "a legitimate `.php` route must reach the renderer read layer");
     });
 
-    test("(h2) DEFERRED STATE: a scanner path with no route takes the ordinary not-found handoff (NOT shielded)", async () => {
+    test("(h2) DEFERRED STATE: a scanner path with no route takes the ordinary not-found handoff (NOT shielded)", async (exp) => {
         // With mitigation d deferred there is no special-casing: a scanner-shaped path that does
         // NOT resolve to a route is handled exactly like any other unknown slug — the cacheable
         // `307 → ?nf=1` handoff (docs/caching-architecture.md § "How a 404 stays out of the
@@ -672,7 +913,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.equal(res.status, 307, "an unshielded scanner path must take the ordinary not-found handoff");
         assert.equal(
             res.header("location"),
-            `/${SCANNER_TENANT_ID}/wp-login.php?nf=1`,
+            handoffLocation(exp, `/${SCANNER_TENANT_ID}/wp-login.php?nf=1`),
             "the junk still mints an ordinary cacheable 307 — the flood is unmitigated (mitigation d deferred)",
         );
         // The load-bearing discriminator: the 307 is a CACHEABLE ISR entry (s-maxage=31536000),
@@ -689,7 +930,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // This is human decision CACHE-1-D4 — the row whose regression pins durable wrong
     // content at the edge for a year.
 
-    test("(e1) read failing after tenant resolution: 500 with NO Cache-Control, nothing stored", async () => {
+    // Bundle restatement ("absent-or-no-store", spec § 4.1 / § 8.1): the safety property is
+    // "never stored", which the bundle proves on S3; the header itself may be absent or a
+    // `no-store` value (open-next rewrites error responses, § 4.1 row e1).
+    test("(e1) read failing after tenant resolution: 500 with NO Cache-Control, nothing stored", async (exp) => {
         // `D4_SLUG` is a page that genuinely EXISTS. That is the whole point: pre-D4 a
         // failed read on an existing page was indistinguishable from "missing" and produced
         // a stored 307. The tenant lookup stays healthy; only the reads after it fail.
@@ -698,11 +942,20 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         try {
             const res = await get(D4_SLUG);
             assert.equal(res.status, 500);
-            assert.equal(
-                res.header("cache-control"),
-                undefined,
-                "a failed read must emit NO Cache-Control — any value here is storable",
-            );
+            if (exp === "absent-or-no-store") {
+                const cc = res.header("cache-control");
+                assert.ok(
+                    cc === undefined || /\bno-store\b/.test(cc),
+                    `a failed read must emit no Cache-Control or a no-store one; got "${cc}"`,
+                );
+                assert.deepEqual(s3PutsFor(key).map((e) => e.key), [], "a thrown render was PUT to the ISR bucket");
+            } else {
+                assert.equal(
+                    res.header("cache-control"),
+                    undefined,
+                    "a failed read must emit NO Cache-Control — any value here is storable",
+                );
+            }
             const stored = await storedIsrEntries();
             // Positive control: the detector sees the entries that DO exist…
             assert.ok(stored.length > 0, "storedIsrEntries() found nothing at all — detector broken");
@@ -810,8 +1063,20 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     const HARDENED_WRITE_PROXIES = ["/api/consent", "/api/contact", "/api/leads"];
     const REJECTION_BODY = "Cross-origin write rejected";
 
+    // BUNDLE RESTATEMENT (ruling OPENNEXT1A-G4). The bundle target puts the emulated CloudFront
+    // edge in front, and `Origin` / `Sec-Fetch-Site` are not on the RendererOriginPolicy
+    // allowlist, so they never reach the Lambda — exactly production. With both absent the
+    // renderer guard takes its allow branch (origin-guard.ts § "PRODUCTION STATUS — … INERT"),
+    // and the route answers on its own: both rows pin that status (`behindEdgeStatus`, OBSERVED
+    // 500 `Unexpected end of JSON input` — the test sends no body). REDUCED GUARANTEE, stated
+    // plainly: the bundle suite proves the renderer behind the edge; the edge security rule (job
+    // (d) of the viewer-request CloudFront Function, which the host does not emulate — spec § 8.1
+    // item 5, phase 2) is proven by infra test (i), not here.
     for (const route of HARDENED_WRITE_PROXIES) {
-        test(`(g4) ${route} REJECTS a null/cross-origin POST at the barrier (403)`, async () => {
+        const rejectTitle = BUNDLE
+            ? `(g4) ${route}: behind the edge the renderer guard is inert (Origin stripped); the edge 403 is proven by infra test (i), not here`
+            : `(g4) ${route} REJECTS a null/cross-origin POST at the barrier (403)`;
+        test(rejectTitle, async (exp) => {
             const res = await request({
                 port: server.port,
                 path: route,
@@ -824,11 +1089,16 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     "sec-fetch-site": "cross-site",
                 },
             });
+            if (exp !== SAME) {
+                assert.equal(res.status, exp.behindEdgeStatus, `${route}: pinned status behind the edge`);
+                assert.doesNotMatch(res.body, new RegExp(REJECTION_BODY), `${route}: the renderer guard is inert behind the edge`);
+                return;
+            }
             assert.equal(res.status, 403, `${route} must reject the opaque-origin write`);
             assert.match(res.body, new RegExp(REJECTION_BODY));
         });
 
-        test(`(g4) ${route} ACCEPTS a same-origin POST past the barrier (not 403)`, async () => {
+        test(`(g4) ${route} ACCEPTS a same-origin POST past the barrier (not 403)`, async (exp) => {
             const res = await request({
                 port: server.port,
                 path: route,
@@ -842,6 +1112,27 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             });
             assert.notEqual(res.status, 403, `${route} must let the first-party write past the guard`);
             assert.doesNotMatch(res.body, new RegExp(REJECTION_BODY));
+            if (exp !== SAME) assert.equal(res.status, exp.behindEdgeStatus, `${route}: pinned status behind the edge`);
+        });
+    }
+
+    // ── ROW (journals) — bundle target only ─────────────────────────────────────────────
+    // The adapter swallows S3, SQS and tag-table errors (a failed get is a MISS, a failed put a
+    // log line), so a stub that could not answer would leave every row above green while the
+    // cache was never exercised. This row turns any unmodelled call into a red row, and verifies
+    // the S3 addressing assumption (path-style for the IP endpoint) on every run. Last on
+    // purpose: it covers every call the rows above caused. On the `next` target the DynamoDB
+    // half of this check stays in `after()`, where it has always been.
+    if (BUNDLE) {
+        test("(journals) every AWS call the bundle made was modelled by a stub, and S3 was addressed path-style", () => {
+            assert.deepEqual(stubs.unhandled(), [], "unhandled stub operations");
+            const s3 = stubs.s3.journal();
+            assert.ok(s3.some((e) => e.op === "PutObject"), "no S3 PutObject at all — is the S3 cache wired?");
+            assert.deepEqual(
+                [...new Set(s3.map((e) => e.addressing))],
+                ["path"],
+                "the SDK addressed the S3 stub virtual-host style — implement the *.localhost shim (spec § 8.1 item 4)",
+            );
         });
     }
 });

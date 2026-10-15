@@ -4,7 +4,11 @@
 // docs/caching-architecture.md § "Measured serving behaviour": `next build` + `next start`
 // with `AWS_ENDPOINT_URL_DYNAMODB` pointed at a local stub.
 //
-// ── HERMETIC BY CONSTRUCTION (revision 1) ───────────────────────────────────────────────
+// Since slice opennext-1a the same helpers also drive the BUILT LAMBDA BUNDLE
+// (`SERVING_TARGET=bundle`, see § SERVING TARGET below and test/serving-bundle/README.md). Every
+// rule in this header applies to both targets; `bundleEnv()` lists what the bundle adds.
+//
+// ── HERMETIC BY CONSTRUCTION (revision 1)───────────────────────────────────────────────
 // The child processes get a CONSTRUCTED environment, not an inherited one. `rendererEnv()`
 // below is the complete list of variables `next build` / `next start` will see; nothing
 // leaks in from the operator's shell, and nothing is read from a `.env*` file.
@@ -44,11 +48,84 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { TABLE_NAME } from "./fixtures.mjs";
+import { startDdbStub } from "./ddb-stub.mjs";
+import { startS3Stub } from "../serving-bundle/s3-stub.mjs";
+import { startSqsStub } from "../serving-bundle/sqs-stub.mjs";
+import { startLambdaHost } from "../serving-bundle/lambda-host.mjs";
 
 const require = createRequire(import.meta.url);
 
+// ── SERVING TARGET (slice opennext-1a) ──────────────────────────────────────────────────
+// Abstraction: *serving target* — users: the 39 contract rows and the bundle B-rows; axis of
+// variation: the serving adapter (`next start` vs the OpenNext Lambda bundle — a demonstrated
+// volatile mechanism, spec docs/slices/opennext-1-upgrade.md § 3 lists changes in every area);
+// dispatch: two concrete targets behind the same helpers (`startStubs`, `buildRenderer`,
+// `startRenderer`; `request()` is unchanged); rejected alternative: a grep of the bundle (proves
+// a string exists, not that a state emits it).
+//
+//   next    `next build` + `next start` (the PR-CI suite, ~9 s). Default.
+//   bundle  `open-next build`, then the built RendererServer Lambda artefact in a Lambda host
+//           behind an emulated CloudFront edge, with S3 / SQS / DynamoDB stubs (deploy gate).
+export const SERVING_TARGET = process.env.SERVING_TARGET ?? "next";
+if (SERVING_TARGET !== "next" && SERVING_TARGET !== "bundle") {
+    throw new Error(`SERVING_TARGET must be "next" or "bundle", got "${SERVING_TARGET}"`);
+}
+export const BUNDLE = SERVING_TARGET === "bundle";
+
+/**
+ * The expectation a row asserts on the bundle target, by open-next version.
+ *
+ * `table[row]` maps comma-separated open-next MAJORS ("3", "4", "3,4") to the row's expectation.
+ * No key for the built major → throws `no expectation for version N`, so an adapter upgrade
+ * cannot pass a row on the previous adapter's expectation by silence. Users: contract.test.mjs
+ * (the 39 rows) and test/serving-bundle/bundle.test.mjs (the B-rows).
+ *
+ * @param {Record<string, Record<string, unknown>>} table
+ * @param {string} row       row id, e.g. "e1" or "B-WARM"
+ * @param {string} version   the bundle's `globalThis.openNextVersion`, e.g. "3.1.3"
+ */
+export function versionedExpectation(table, row, version) {
+    const major = String(version ?? "").split(".")[0];
+    const entries = table[row];
+    if (!entries) throw new Error(`(${row}) has no entry in the expectation table`);
+    for (const [majors, value] of Object.entries(entries)) {
+        if (majors.split(",").includes(major)) return value;
+    }
+    throw new Error(`(${row}) no expectation for version ${major} (bundle open-next ${version})`);
+}
+
+/**
+ * Constructed values for the RendererServer environment (bundle target). Names are the
+ * `environment` block of `this.serverFunction = new lambda.Function(this, 'RendererServer', …)`
+ * in infra/lib/renderer-hosting.ts; values are local and fake. Listed with their source lines in
+ * test/serving-bundle/README.md § Environment.
+ */
+export const BUNDLE_FIXTURE = {
+    cacheBucket: "serving-bundle-cache",
+    tagTable: "serving-bundle-tag-cache",
+    queueName: "serving-bundle-revalidation.fifo",
+    originVerifySecret: "serving-bundle-origin-verify",
+    revalidationSecret: "serving-bundle-revalidation-secret",
+};
+
+/** An address no request can reach and that never leaves this host (nothing listens on port 1):
+ *  `API_URL` and the catch-all `AWS_ENDPOINT_URL`. A row that reaches either fails locally. */
+const UNREACHABLE = "http://127.0.0.1:1";
+
+/**
+ * Every handler result any Lambda host of THIS process produced, in order: `{ via, method, url,
+ * host, status, headers }` — `via: "edge"` for HTTP requests through the emulated edge,
+ * `"invoke"` for raw IPC invocations (lambda-host.mjs `callHandler`, the handler's only call
+ * site). `npm run test:serving-bundle` runs the contract rows and the B-rows in one process
+ * (test/serving-bundle/README.md § "Why one entry file"), so B-NO30D reads the whole run's
+ * responses from here.
+ */
+export const bundleResponses = [];
+
 export const RENDERER_DIR = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 export const NO_DOTENV_PRELOAD = fileURLToPath(new URL("./no-dotenv.cjs", import.meta.url));
+/** `.open-next/server-functions/default` — the directory CDK uploads as the RendererServer code. */
+export const BUNDLE_FUNCTION_DIR = path.join(RENDERER_DIR, ".open-next", "server-functions", "default");
 
 /** The `next` CLI entry point. `bin: { next: "./dist/bin/next" }` in next/package.json. */
 const NEXT_BIN = require.resolve("next/dist/bin/next");
@@ -137,6 +214,78 @@ export function rendererEnv(stubUrl) {
 }
 
 /**
+ * The complete environment of the Lambda host child (bundle target): `rendererEnv()` plus the
+ * RendererServer `environment` block, every value constructed. iso1 asserts its shape.
+ *
+ * Hermetic additions beyond the infra list, each closing a path by which a call could leave the
+ * host:
+ *   AWS_ENDPOINT_URL_S3 / _SQS   the two stubs (DynamoDB is already in `rendererEnv`).
+ *   AWS_ENDPOINT_URL             catch-all for every AWS service WITHOUT a stub (Secrets Manager
+ *                                is reachable through lib/api-client.ts): fails locally.
+ *   AWS_CONFIG_FILE / AWS_SHARED_CREDENTIALS_FILE
+ *                                point at a file that does not exist. `HOME` is passed through,
+ *                                and the operator's ~/.aws/config could otherwise set
+ *                                `ignore_configured_endpoint_urls`, which makes the SDK ignore
+ *                                every `AWS_ENDPOINT_URL_*` above. A Lambda has no such file.
+ */
+export function bundleEnv({ ddb, s3, sqs }) {
+    const noAwsFile = path.join(os.tmpdir(), "amodx-serving-bundle-no-such-aws-file");
+    return {
+        ...rendererEnv(ddb.url),
+        // ── RendererServer `environment` (infra/lib/renderer-hosting.ts) ──
+        NODE_ENV: "production",
+        // TABLE_NAME: from rendererEnv (the fixture table).
+        API_URL: UNREACHABLE,
+        CACHE_BUCKET_NAME: BUNDLE_FIXTURE.cacheBucket,
+        CACHE_BUCKET_KEY_PREFIX: "_cache",
+        CACHE_BUCKET_REGION: "eu-central-1",
+        AMODX_API_KEY_SECRET: "serving-bundle-unreached-secret",
+        REVALIDATION_SECRET: BUNDLE_FIXTURE.revalidationSecret,
+        // NEXTAUTH_SECRET: from rendererEnv.
+        // The infra fallback when the stack has no domain names: `https://${… 'localhost'}`.
+        NEXTAUTH_URL: "https://localhost",
+        REVALIDATION_QUEUE_URL: sqs.queueUrl,
+        REVALIDATION_QUEUE_REGION: "eu-central-1",
+        CACHE_DYNAMO_TABLE: BUNDLE_FIXTURE.tagTable,
+        // Non-empty: exercised. The emulated edge sends it; a direct call without it gets 403.
+        ORIGIN_VERIFY_SECRET: BUNDLE_FIXTURE.originVerifySecret,
+        // RECAPTCHA_SITE_KEY: from rendererEnv ("" = not configured, as when infra omits it).
+        // ── hermetic additions (see above) ──
+        AWS_ENDPOINT_URL_S3: s3.url,
+        AWS_ENDPOINT_URL_SQS: sqs.url,
+        AWS_ENDPOINT_URL: UNREACHABLE,
+        AWS_CONFIG_FILE: noAwsFile,
+        AWS_SHARED_CREDENTIALS_FILE: noAwsFile,
+    };
+}
+
+/**
+ * The stubs a target needs: DynamoDB always; under `bundle` also S3 and SQS, and the DynamoDB
+ * stub serves the tag-cache table too. `close()` stops all of them.
+ */
+export async function startStubs() {
+    const ddb = await startDdbStub(BUNDLE ? { tagTable: BUNDLE_FIXTURE.tagTable } : {});
+    const s3 = BUNDLE ? await startS3Stub({ bucket: BUNDLE_FIXTURE.cacheBucket }) : null;
+    const sqs = BUNDLE ? await startSqsStub({ queueName: BUNDLE_FIXTURE.queueName }) : null;
+    return {
+        ddb,
+        s3,
+        sqs,
+        /** Every operation a stub could not answer, prefixed by stub. Empty = all modelled. */
+        unhandled: () => [
+            ...ddb.stats().unhandled.map((u) => `dynamodb: ${u}`),
+            ...(s3?.unhandled() ?? []).map((u) => `s3: ${u}`),
+            ...(sqs?.unhandled() ?? []).map((u) => `sqs: ${u}`),
+        ],
+        close: async () => {
+            await ddb.close();
+            await s3?.close();
+            await sqs?.close();
+        },
+    };
+}
+
+/**
  * `next build` / `next start`, as a plain Node child with `.env*` hidden from it.
  *
  * No `--require` on argv: the preload travels in `NODE_OPTIONS` (see `rendererEnv`) so that
@@ -166,6 +315,7 @@ function spawnNext(args, stubUrl) {
  * processes the build spawned by their parent.
  */
 export async function buildRenderer(stubUrl) {
+    if (BUNDLE) return buildBundle(stubUrl);
     // maxRetries: fs.rm can throw ENOTEMPTY on the deep symlinked trees open-next
     // build emits into .next/standalone (hit 2026-08-16 when verify-opennext-patch
     // ran before this suite); Node's documented remedy is built-in retry.
@@ -181,6 +331,36 @@ export async function buildRenderer(stubUrl) {
     });
 }
 
+/**
+ * Bundle target: `rm -rf .open-next && npm run build:open` — the exact build CDK runs
+ * (infra/lib/renderer-hosting.ts: `rm -rf "${openNextPath}"`, then `execSync('npm run build:open')`)
+ * — but under the constructed `rendererEnv()`, so the `.env*` journal covers the `open-next build`
+ * tree too (spec § 8.1 item 1, extending `(iso3)`). `npm` is resolved from the passed-through PATH.
+ *
+ * Network note: `open-next build` runs `npm install … sharp@$SHARP_VERSION` for the image
+ * function (open-next 3.1.3 `build.js:292-301`), served from the npm cache under HOME or the
+ * registry. That is the deploy build itself, not a renderer call; no AWS credential is in scope.
+ *
+ * Returns the build log and the PID of the `npm` process at the root of the tree.
+ */
+async function buildBundle(stubUrl) {
+    await rm(path.join(RENDERER_DIR, ".open-next"), { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    return new Promise((resolve, reject) => {
+        const child = spawn("npm", ["run", "build:open"], {
+            cwd: RENDERER_DIR,
+            env: rendererEnv(stubUrl),
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        let out = "";
+        child.stdout.on("data", (d) => (out += d));
+        child.stderr.on("data", (d) => (out += d));
+        child.on("error", reject);
+        child.on("close", (code) =>
+            code === 0 ? resolve({ log: out, pid: child.pid }) : reject(new Error(`npm run build:open exited ${code}\n${out}`)),
+        );
+    });
+}
+
 /** Reserves an ephemeral port and releases it. `next start` has no `--port 0` mode. */
 async function freePort() {
     const s = createServer();
@@ -190,8 +370,25 @@ async function freePort() {
     return port;
 }
 
-/** Starts `next start` on an ephemeral port and waits until it answers. */
-export async function startRenderer(stubUrl) {
+/**
+ * Starts the serving target and waits until it answers.
+ *
+ *   next    `next start` on an ephemeral port → `{ port, pid, close }`.
+ *   bundle  the Lambda host (test/serving-bundle/lambda-host.mjs) on the built function →
+ *           the same fields plus `invoke`, `restart`, `openNextVersion`, `env`, `log`.
+ *
+ * @param stubs  the handle `startStubs()` returned
+ */
+export async function startRenderer(stubs) {
+    if (BUNDLE) {
+        return startLambdaHost({
+            functionDir: BUNDLE_FUNCTION_DIR,
+            env: bundleEnv(stubs),
+            originVerifySecret: BUNDLE_FIXTURE.originVerifySecret,
+            onResponse: (entry) => bundleResponses.push(entry),
+        });
+    }
+    const stubUrl = stubs.ddb.url;
     const port = await freePort();
     const child = spawnNext(["start", "-p", String(port)], stubUrl);
     let log = "";

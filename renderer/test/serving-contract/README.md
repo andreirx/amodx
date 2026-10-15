@@ -12,6 +12,19 @@ cd renderer && npm run test:serving
 Requires only a built `packages/shared`, `packages/effects` and `packages/plugins` (the
 renderer imports their `dist/`). It builds the renderer itself.
 
+**Two serving targets (slice `opennext-1a`).** `SERVING_TARGET=next` (the default, `npm run
+test:serving`, PR CI) serves with `next start`. `SERVING_TARGET=bundle` (`npm run
+test:serving-bundle`, deploy gate) runs the same rows against the built OpenNext Lambda
+artefact behind an emulated CloudFront edge, with S3 / SQS / DynamoDB stubs — see
+`../serving-bundle/README.md`. The helpers keep their names on both targets (`startStubs`,
+`buildRenderer`, `startRenderer`, `request`); `storedIsrEntries()` reads the filesystem on
+`next` and the S3 stub on `bundle`. Under `bundle` every row first resolves a version-explicit
+expectation (`BUNDLE_EXPECTATIONS`, keyed by open-next major) and a few rows are restated for
+the bundle (`d1`/`h1b`/`h1c`/`h2` doubled MISS `Location`, `d3` S3 journal, `e1` header
+absent-or-`no-store`, `g4` pinned to the renderer's own status because `Origin` is stripped
+at the edge — the bundle suite proves the renderer behind the edge; the edge security rule is
+proven by infra (i)); one extra row, `(journals)`, runs there. On `next` nothing changed: 39 rows.
+
 ## What it asserts
 
 Each test is named `(row)` after the contract row it pins and cites the document section in
@@ -49,8 +62,11 @@ asserts that list is empty: a stub that invented absence would be the very defec
   the read shapes the renderer emits and answers anything else with a loud error. Control is
   by plain methods on the returned handle — `stats()`, `reset()`, `failContentReads(bool)` —
   because the stub and the assertions share one process. (The `cache-1` probe harness used an
-  HTTP `/__ctl/…` plane only because its probes were separate shell scripts.)
-- **`harness.mjs`** — build/serve/HTTP helpers, and the constructed child environment.
+  HTTP `/__ctl/…` plane only because its probes were separate shell scripts.) On the
+  `bundle` target it also serves the OpenNext tag-cache table (`startDdbStub({ tagTable })`),
+  counted in `tagCache`, never in `render`; fault injection stays on the renderer's table.
+- **`harness.mjs`** — build/serve/HTTP helpers, the constructed child environment, and the
+  `SERVING_TARGET` switch.
 - **`no-dotenv.cjs`** — the preload that hides `renderer/.env*` from the children, plus the
   journal the isolation assertions read back.
 - **`contract.test.mjs`** — the assertions.
@@ -186,9 +202,10 @@ to prevent.
   of `H1` (`RSC` header) and `H3` (`x-has-session`) lives in
   `infra/lib/renderer-hosting.ts` and belongs to `cdk synth` assertions (slice `test-4`) and
   to the operator's post-deploy runbook.
-- **`next start`, not the OpenNext Lambda bundle.** `cache-1` re-measured every row through
-  the built bundle and found them identical; a committed OpenNext harness is a separate
-  slice (slice doc § Non-scope).
+- **`next start`, not the OpenNext Lambda bundle** — on the `next` target. `cache-1`
+  re-measured every row through the built bundle and found them identical; the committed
+  OpenNext harness is the `bundle` target (slice `opennext-1a`, `../serving-bundle/`), run at
+  the deploy gate rather than in PR CI.
 - **`ProjectionExpression` is ignored by the stub.** Returning extra attributes cannot change
   an assertion here, and honouring it would add a parser with no caller.
 - **POSIX only.** `OS_PASSTHROUGH` carries no `SystemRoot`/`ComSpec`, so a Windows host would

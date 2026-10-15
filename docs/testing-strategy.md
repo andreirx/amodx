@@ -95,6 +95,29 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
    vitest; rationale in that directory's `README.md` § "Why node:test". Origin-side only by
    design: the CloudFront half of the contract (cache-key allowlists, the `x-has-session`
    viewer function) is a `cdk synth` assertion and belongs to `test-4`.*
+   *Counts reconciled 2026-10-15 (`opennext-1a`): the "26 + 4 = 30 tests" above is the `test-2`
+   snapshot; later slices added rows. Today (EXECUTED 2026-10-15) the `next` target runs **39
+   tests** (35 contract rows plus the 4 `iso` self-checks); the
+   `bundle` target runs **45** (the same 39, row `(journals)`, and 5 B-rows). "Origin-side
+   only" still describes the `next` target exactly. The `bundle` target adds a partial edge:
+   CloudFront's transport (only the forwarded headers reach the Lambda) and the viewer-request
+   Function's jobs (a)–(c); NOT the edge cache and NOT job (d), the STATIC-EP origin guard.*
+   *Status: `opennext-1a` increment 1 (2026-10-15) added the **built-bundle layer** — the same
+   rows with `SERVING_TARGET=bundle` (`npm run test:serving-bundle`; harness
+   `renderer/test/serving-bundle/`). What it proves that the `next start` target cannot: the
+   rows hold through the OpenNext adapter that actually serves production — Function URL event
+   conversion, OpenNext routing and middleware execution, the S3 incremental cache, the DynamoDB
+   tag cache, `fixISRHeaders` on MISS/HIT — with `ORIGIN_VERIFY_SECRET` armed and only the
+   headers CloudFront forwards. Stubs journal every S3/SQS/DynamoDB call and fail loudly on any
+   call they do not model (row `(journals)`), because the adapter swallows those errors. Rows
+   carry version-explicit expectations keyed by the open-next major, so the 4.x upgrade is a
+   reviewed list of expectation changes. Limits of increment 1, stated: the recorded operation
+   inventory contains **no SQS call and no STALE row** — the SQS queue and `fixISRHeaders` STALE
+   behaviour (the live cache-8 `swr=300` window) are increment 1A-2's (B-STALE); and for the
+   `(g4)` rows **the bundle suite proves the renderer behind the edge; the edge security rule is
+   proven by infra (i)**. Cost: a full `open-next build` (13.1 s with no `.next`, 5.9–6.8 s with
+   a warm `.next/cache`, operator Mac) + ≈1 s of rows. Placement: the deploy gate
+   (`docs/runbooks/deploy-track-cache.md`), not PR CI, which keeps the ≈10 s `next` target.*
 3. **Backend integration/API** — repoint the 8 suites at DynamoDB-local (container);
    unattended-safe, parallel-safe. The staging-hitting mode remains as an explicit
    operator-run pre-deploy check only.

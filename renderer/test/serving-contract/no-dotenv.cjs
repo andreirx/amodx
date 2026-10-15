@@ -148,4 +148,8 @@ fs.readFileSync = function readFileSync(p) {
 // Last: announce this process as covered. Written after the patches are installed so a record
 // in the journal means "this process was protected from here on", not merely "this file began
 // executing".
-audit({ ev: "load", argv2: process.argv[2] });
+// `argv1` (slice opennext-1a): the script this process runs. Under the bundle target the build
+// root is `npm`, and `open-next build` / `next build` sit several hops below it with `sh -c`
+// between them; `(iso3)` finds those two processes by what they run rather than by walking
+// parent PIDs through shells (contract.test.mjs `iso3BundleTree`).
+audit({ ev: "load", argv1: process.argv[1], argv2: process.argv[2] });

@@ -9,6 +9,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:serving": "node --test --test-concurrency=1 test/serving-contract/contract.test.mjs",
+    "test:serving-bundle": "SERVING_TARGET=bundle node --test --test-concurrency=1 test/serving-bundle/bundle.test.mjs",
     "build:open": "SHARP_VERSION=0.35.5 npm_config_os=linux npm_config_cpu=arm64 npm_config_libc=glibc npx open-next build",
     "lint": "eslint"
   },

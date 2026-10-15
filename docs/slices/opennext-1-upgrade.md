@@ -2011,3 +2011,11 @@ doubled `Location` (`/x?nf=1,/x?nf=1`; staging 2026-10-15; origin-side; the loca
 TECH-DEBT + a characterize row in opennext-1a. 417 `e2e-render-*` leftover tenants on staging → cleanup item.
 
 **Correction (2026-10-15, SITEID-BINDING-1):** § 4 row `(h1)` identity is now 'a tenant's dotted slug renders on ITS OWN host'; rows `(h1b)(h1c)(p1)(p2)(t1)(t2)` exist; opennext-1a's harness inherits these expectations.
+
+**Correction (2026-10-15, OPENNEXT-1A-1, operator rulings at review):** § 8.1 row **B-NO30D** reads "no response carries
+`2592000`"; its scope is cache-directive headers — `Set-Cookie` is excluded, because the referral cookie's `Max-Age=2592000`
+(`renderer/src/app/api/ref/route.ts:88`) is a product lifetime, not a cache lifetime. Increment 1 exercises no STALE response,
+so the live-handler SWR window is proven by **B-STALE** (increment 2), not by B-NO30D alone. Under the bundle target the six
+`(g4)` rows characterize the renderer BEHIND the edge (the host strips `Origin`/`Sec-Fetch-Site` as the ORP does, so
+`origin-guard.ts` is inert and an empty-body cross-site POST answers 500 — pinned, and recorded as a finding: 400 belongs
+there); the edge 403 remains proven by infra test `(i)`. Full CloudFront-Function emulation stays phase 2 (not triggered).

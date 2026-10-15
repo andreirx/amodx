@@ -21,10 +21,25 @@
 // reach. `failContentReads(true)` is the CACHE-1-D4 case: tenant resolution keeps working,
 // every *later* read fails (docs/caching-architecture.md § "Probe: a read that fails AFTER
 // tenant resolution").
+//
+// TAG TABLE (slice opennext-1a, bundle target only). The OpenNext server bundle has a second
+// DynamoDB client: the tag cache (open-next 3.1.3 `cache/tag/dynamodb.js`), on the table named by
+// `CACHE_DYNAMO_TABLE`. When `startDdbStub({ tagTable })` names it, this one stub serves both
+// tables and dispatches on `TableName`. Tag-table shapes, exactly as that file emits them:
+//   Query  IndexName "revalidate", `path = :key`                        (getByPath)
+//   Query  IndexName "revalidate", `path = :key AND revalidatedAt > :lm` (getLastModified)
+//   Query  no index,               `tag = :tag`                          (getByTag)
+//   BatchWriteItem  PutRequest items `{ path, tag, revalidatedAt }`      (writeTags)
+// Tag-table calls are counted in `tagCache`, NOT in `render`: `render` means "the renderer's own
+// read layer ran", which is what rows (a1)/(a2)/(h1) measure, and the adapter consults the tag
+// table on every cache read, HIT included. Fault injection stays on the renderer's table only —
+// CACHE-1-D4 is about the renderer's content reads, not the adapter's tag bookkeeping.
 import { createServer } from "node:http";
 import { ITEMS, TABLE_NAME } from "./fixtures.mjs";
 
 const DOMAIN_INDEX = "GSI_Domain";
+/** The tag table's only GSI, as open-next 3.1.3 queries it (`cache/tag/dynamodb.js`). */
+const TAG_PATH_INDEX = "revalidate";
 
 // ── AttributeValue codec ────────────────────────────────────────────────────────────────
 // Hand-rolled rather than imported from `@aws-sdk/util-dynamodb`: that package is a
@@ -72,18 +87,19 @@ function resolveNames(expr, names) {
 }
 
 /**
- * Parses the two KeyConditionExpression shapes the renderer emits:
- *   `#d = :d`                              (GSI_Domain lookups)
+ * Parses the KeyConditionExpression shapes the renderer and the OpenNext tag cache emit:
+ *   `#d = :d`                              (GSI_Domain lookups; tag-cache getByPath/getByTag)
  *   `PK = :pk AND begins_with(SK, :sk)`    (main-table adjacency reads)
+ *   `path = :key AND revalidatedAt > :lm`  (tag-cache getLastModified, bundle target only)
  * Returns null for anything else so the caller can fail loudly.
  */
 function parseKeyCondition(expr, names) {
     const resolved = resolveNames(expr, names).trim();
     const m = resolved.match(
-        /^(\w+)\s*=\s*(:\w+)(?:\s+AND\s+begins_with\(\s*(\w+)\s*,\s*(:\w+)\s*\))?$/i,
+        /^(\w+)\s*=\s*(:\w+)(?:\s+AND\s+(?:begins_with\(\s*(\w+)\s*,\s*(:\w+)\s*\)|(\w+)\s*>\s*(:\w+)))?$/i,
     );
     if (!m) return null;
-    return { hashAttr: m[1], hashVal: m[2], rangeAttr: m[3], rangePrefix: m[4] };
+    return { hashAttr: m[1], hashVal: m[2], rangeAttr: m[3], rangePrefix: m[4], gtAttr: m[5], gtVal: m[6] };
 }
 
 /**
@@ -112,11 +128,20 @@ function passesFilter(item, expr, names, values) {
 
 /**
  * Starts the stub on an ephemeral port.
- * @returns {Promise<{url:string, stats:Function, reset:Function, failContentReads:Function, close:Function}>}
+ * @param {{ tagTable?: string }} [options]  `tagTable`: the OpenNext tag-cache table name
+ *        (`CACHE_DYNAMO_TABLE`) to serve as well. Omitted on the `next` target, where no
+ *        adapter runs — a call naming it there would be unhandled, as any unknown table is.
+ * @returns {Promise<{url:string, stats:Function, journal:Function, tagItems:Function,
+ *          reset:Function, failContentReads:Function, close:Function}>}
  */
-export async function startDdbStub() {
-    const counters = { total: 0, hostGate: 0, render: 0 };
+export async function startDdbStub({ tagTable } = {}) {
+    // `tagCache` stays 0 on the `next` target (no tag table is served there).
+    const counters = { total: 0, hostGate: 0, render: 0, tagCache: 0 };
     const unhandled = [];
+    /** Every request, in order: `{ table: "renderer"|"tag"|<name>, op, index }`. */
+    const journal = [];
+    /** Tag-table rows written by `BatchWriteItem`, unmarshalled: `{ path, tag, revalidatedAt }`. */
+    const tagItems = [];
     let failContent = false;
 
     const server = createServer((req, res) => {
@@ -133,6 +158,24 @@ export async function startDdbStub() {
             }
 
             counters.total += 1;
+            // BatchWriteItem names its table(s) as the keys of `RequestItems`, not in `TableName`.
+            const tableName =
+                parsed.TableName ?? (parsed.RequestItems ? Object.keys(parsed.RequestItems).join(",") : undefined);
+            const table = tableName === TABLE_NAME ? "renderer" : tagTable && tableName === tagTable ? "tag" : tableName;
+            journal.push({ table, op: target, index: parsed.IndexName });
+
+            if (table === "tag") {
+                counters.tagCache += 1;
+                try {
+                    if (target === "Query") return queryTags(res, parsed);
+                    if (target === "BatchWriteItem") return writeTags(res, parsed);
+                } catch (e) {
+                    unhandled.push(`tag table ${target}: ${e.message}`);
+                    return amzError(res, 400, "ValidationException", e.message);
+                }
+                unhandled.push(`unsupported tag-table operation ${target}`);
+                return amzError(res, 400, "ValidationException", `ddb-stub does not implement ${target} on the tag table`);
+            }
 
             // The middleware host gate is the one read that uses `Select: COUNT`
             // (lib/tenant-directory.ts). Counting it separately is what lets the
@@ -141,9 +184,9 @@ export async function startDdbStub() {
             if (isHostGate) counters.hostGate += 1;
             else counters.render += 1;
 
-            if (parsed.TableName !== TABLE_NAME) {
-                unhandled.push(`TableName=${parsed.TableName}`);
-                return amzError(res, 400, "ResourceNotFoundException", `no such table ${parsed.TableName}`);
+            if (table !== "renderer") {
+                unhandled.push(`TableName=${tableName}`);
+                return amzError(res, 400, "ResourceNotFoundException", `no such table ${tableName}`);
             }
 
             // CACHE-1-D4 fault injection: the tenant lookup stays healthy, everything
@@ -182,7 +225,7 @@ export async function startDdbStub() {
             Object.entries(parsed.ExpressionAttributeValues || {}).map(([k, v]) => [k, unmarshall(v)]),
         );
         const cond = parseKeyCondition(parsed.KeyConditionExpression, names);
-        if (!cond) throw new Error(`unsupported KeyConditionExpression "${parsed.KeyConditionExpression}"`);
+        if (!cond || cond.gtAttr) throw new Error(`unsupported KeyConditionExpression "${parsed.KeyConditionExpression}"`);
         if (parsed.IndexName && parsed.IndexName !== DOMAIN_INDEX) {
             throw new Error(`unsupported index ${parsed.IndexName}`);
         }
@@ -202,13 +245,52 @@ export async function startDdbStub() {
         return json(res, { Items: items.map(marshallItem), Count: items.length, ScannedCount: items.length });
     }
 
+    /** The three tag-cache Query shapes (file header). Anything else throws → unhandled. */
+    function queryTags(res, parsed) {
+        const names = parsed.ExpressionAttributeNames;
+        const values = Object.fromEntries(
+            Object.entries(parsed.ExpressionAttributeValues || {}).map(([k, v]) => [k, unmarshall(v)]),
+        );
+        const cond = parseKeyCondition(parsed.KeyConditionExpression, names);
+        const byPath = parsed.IndexName === TAG_PATH_INDEX && cond?.hashAttr === "path" && !cond.rangeAttr;
+        const byTag = parsed.IndexName === undefined && cond?.hashAttr === "tag" && !cond.rangeAttr && !cond.gtAttr;
+        if (!byPath && !byTag) {
+            throw new Error(`unsupported shape index=${parsed.IndexName} "${parsed.KeyConditionExpression}"`);
+        }
+        if (cond.gtAttr && cond.gtAttr !== "revalidatedAt") throw new Error(`unsupported range attribute ${cond.gtAttr}`);
+        if (parsed.FilterExpression) throw new Error(`unsupported FilterExpression "${parsed.FilterExpression}"`);
+        let items = tagItems.filter((i) => i[cond.hashAttr] === values[cond.hashVal]);
+        if (cond.gtAttr) items = items.filter((i) => i.revalidatedAt > values[cond.gtVal]);
+        return json(res, { Items: items.map(marshallItem), Count: items.length, ScannedCount: items.length });
+    }
+
+    /** BatchWriteItem of PutRequests on the tag table. A put replaces the row with the same key
+     *  (`tag` + `path`, the table's hash + range key in infra/lib/renderer-hosting.ts). */
+    function writeTags(res, parsed) {
+        const requests = parsed.RequestItems[tagTable];
+        if (Object.keys(parsed.RequestItems).length !== 1 || !Array.isArray(requests)) {
+            throw new Error(`BatchWriteItem must target only ${tagTable}`);
+        }
+        for (const r of requests) {
+            if (!r.PutRequest) throw new Error(`unsupported write request ${Object.keys(r).join(",")}`);
+            const item = unmarshallItem(r.PutRequest.Item);
+            const at = tagItems.findIndex((i) => i.tag === item.tag && i.path === item.path);
+            if (at >= 0) tagItems.splice(at, 1);
+            tagItems.push(item);
+        }
+        return json(res, { UnprocessedItems: {} });
+    }
+
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
     return {
         url: `http://127.0.0.1:${server.address().port}`,
         stats: () => ({ ...counters, unhandled: [...unhandled] }),
+        /** Every request since start (not cleared by `reset()`): the operation inventory. */
+        journal: () => journal.map((e) => ({ ...e })),
+        tagItems: () => tagItems.map((i) => ({ ...i })),
         reset: () => {
-            counters.total = counters.hostGate = counters.render = 0;
+            counters.total = counters.hostGate = counters.render = counters.tagCache = 0;
         },
         /** CACHE-1-D4 fault injection. See the file header. */
         failContentReads: (on) => {
