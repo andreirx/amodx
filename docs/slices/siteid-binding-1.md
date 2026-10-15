@@ -166,3 +166,16 @@ behaviour. Log: operator scratchpad `siteid-guard-suite.log`. The edit was rever
 D3 doubled `Location` (record); the `/_site/` 403 carries no `cache-control` (CloudFront's error-caching
 minimum TTL applies, 10 s — harmless, note only); staging `e2e-render-*` tenant cleanup; the OPENNEXT-1
 harness rows B-REFLECT/B-PREVIEW (they inherit these expectations).
+
+
+## Correction 1 (operator, 2026-10-15, before launch) — preview URLs have no trailing slash
+Live check on staging after creating `preview-probe`: `/_site/preview-probe/` answers **308 → `/_site/preview-probe`**
+(Next's trailing-slash normalisation; same for `/_site/c9-probe-1788350202/`). `/_site/preview-probe` answers 200,
+`no-store`, `Set-Cookie amodx_preview_base=%2F_site%2Fpreview-probe`, body contains `PREVIEW-PROBE-HOME`, and the
+hero button renders as `href="/_site/preview-probe/contact"`. Therefore, replacing the forms written in § 4:
+- row `(p1)` requests `/_site/<TENANT_ID>` (no trailing slash); `(p2)` likewise;
+- `tests/e2e/preview-site.spec.ts`: `page.goto('/_site/preview-probe')` → 200; body contains `PREVIEW-PROBE-HOME`;
+  click the hero button `a[href="/_site/preview-probe/contact"]`; `expect(page).toHaveURL(/\/_site\/preview-probe\/contact$/)`
+  and the contact page body renders (200).
+The same page also carries one un-prefixed `href="/contact"` (not the hero): a preview link that would leave
+`/_site/` — a separate finding for the preview-link audit, NOT in this slice's scope; the test clicks the hero.
