@@ -1,7 +1,6 @@
 # Slice OPENNEXT-1C + OPENNEXT-1D — remove the renderer warmer, expire the `_cache/` ISR prefix (one CDK change)
 
-Status: DEPLOYED-STAGING 2026-10-15 (534ab81; staging `cdk diff` as predicted, live checks green; prod awaits the
-human's word). Infra suite 58/58.
+Status: SHIPPED 2026-10-15 (534ab81 on staging and prod; see § Prod deployment). Infra suite 58/58.
 Track: CACHE. Maturity target: unchanged (renderer hosting stays MATURE; this removes a broken part and adds a
 retention rule, it adds no new module).
 Depends: `docs/slices/opennext-1-upgrade.md` § Ratification (human, 2026-10-15): `OPENNEXT1-WARMER = B`,
@@ -197,3 +196,24 @@ The renderer stack has no failing scheduled component, and old-build ISR cache s
   via the staging admin API, 427 tenants) — the unwired-host contract, not a change; the host is the preview/test-mode alias only.
 - Object-count effect of the lifecycle rule is asynchronous (S3 evaluates within ~48 h of eligibility): staging prefixes
   `_cache/SueHtBXRQjiIWd3xCFKWE/` (orphan) and the current build's are the baseline to re-read after 2026-10-17.
+
+## Prod deployment (operator, 2026-10-15, on the human's word)
+- `cdk diff AmodxStack -c stage=prod`: identical shape to staging — `[-]` destroy `WarmerFunction`, `ServiceRole`,
+  `ServiceRoleDefaultPolicy`, `WarmerSchedule`, the `AllowEventRule` permission; `[-]` orphan (retained) `LogGroup`; `[~]`
+  `RendererAssets` `[+] LifecycleConfiguration` (in place, 0 replacement markers); code-asset hashes. Deployed from a tree
+  whose only uncommitted edits were MCP-SYNC-1's under `tools/mcp-server/` (outside the synth; checked before the diff).
+- Deploy exit 0, no rollback; `DELETE_COMPLETE` for the rule and the function, `UPDATE_COMPLETE` for the bucket.
+- Live: 0 `Warmer` functions in the prod stack; 0 amodx `rate(5 minutes)` rules remain in the account; prod asset bucket
+  lifecycle = one rule `ExpireIsrCache`, `Filter.Prefix _cache/`, `Expiration.Days 30`, `Enabled`; stack resources 440.
+- Serving: `bijup.com/`, `blog.bijup.com/`, the preview `/_site/povesti-pe-biscuite`, `robots.txt` → 200. Health, 15 min
+  window around the deploy: renderer Invocations 57.0 / Errors 0.0; CloudFront 5xx rate 0.0.
+- Edit-to-live, proven on staging after this change (cache-probe tenant, cached page `/ab-page`): PUT → public page shows
+  the new headline after **3.2 s** (CloudFront MISS, fresh render). Neither change touches the edit path: the warmer only
+  invoked the server Lambda; the lifecycle rule only removes objects ≥ 30 days old.
+- Finding, not this slice: `PUT /content/{id}` answers 500 (not 400) when `StrictUpdateSchema.parse` rejects a body, and it
+  rejects the `null` SEO fields its own GET returns (`backend/src/content/update.ts:21-24, 49, 196-198`). A client that
+  round-trips the GET body (the probe did) fails; the admin UI and the MCP `update_page` send sparse payloads and do not.
+- Baselines to re-read after 2026-10-17 (S3 applies expiry asynchronously): prod `_cache/` prefixes `EkLlOnwbwMpu2RD1Snm8R`,
+  `oqH9IYXlbGT8j1jbx58zD`, `t8bhm_x9jMj3wJqw4-v8k` (orphans) beside the current build's; the warmer's `Errors` series ends today.
+- ROADMAP rows `opennext-1c`/`opennext-1d` → SHIPPED are recorded with the MCP-SYNC-1 closeout commit (that slice holds
+  `docs/ROADMAP.md` in its worktree at the time of this deploy).
