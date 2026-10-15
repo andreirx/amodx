@@ -341,8 +341,8 @@ Tenant isolation is re-proven, not changed.
       58/58 on the `"4"` entries; `node scripts/verify-opennext-patch.mjs` → `guard: OK`; `npm audit` explained;
       `git diff --check` 0; `git status` clean after `build:open` (allocation only).
 - [x] Docs (§ 11).
-- [ ] Review; operator re-run; commit (one revertable commit).
-- [ ] Staging run plan, 24 h hold, prod (operator/human).
+- [x] Review; operator re-run; commit (one revertable commit: `cdae9ab`, 2026-10-15).
+- [ ] Staging run plan (DONE 2026-10-16, § 18), 24 h hold (to 2026-10-16T20:30:21Z), prod (human's word).
 
 ## 16. Evidence required before the slice closes
 
@@ -361,3 +361,44 @@ row by row on its real artefact; later adapter bumps follow spec § 2.3 rule 3 (
 `docs/slices/opennext-1-upgrade.md` (§ Ratification, § 2.3, § 5.6, § 5.7, § 6, § 7.5, § 8.1, § 9); `docs/slices/opennext-1a.md`;
 `renderer/test/serving-bundle/README.md`; `renderer/test/serving-contract/README.md`; `docs/runbooks/deploy-track-cache.md`;
 `docs/TECH-DEBT.md` § opennext-1b; upstream opennextjs-aws issues #1250, #810, #1199, #1307 and PR #1302.
+
+## 18. Staging verification (operator, 2026-10-15/16 — appended after the staging run; spec § 8.2, § 9.1 step 3, § 9.4)
+
+**Deploy.** Staging (`E33YGY7DDDHREH`), commit `cdae9ab`, `cdk deploy` exit 0, t0 = 2026-10-15T20:30:21Z, build
+`V1PmLiPCQi3AYxS9GQGnv`; the 3.1.3 before-half ran on build `9xdxt2MsiCV5RdxpEIrjY` (E7 setup, E1/E11, E15, E22 captures, § 8.3: all PASS).
+Seed branch (`OPENNEXT1-1250` = A). Evidence: `/private/tmp/OPENNEXT-1-AFTER-20261015T203256Z/` (+ `/private/tmp/OPENNEXT-1-E*/` for the
+before half); the operator's full run record is the agent-manager scratchpad `opn1/staging-run-before.md`.
+
+**After-half results on 4.1.9 (G6–G22).**
+
+| Gate | Result |
+|---|---|
+| E1/E11 cold container from seeded S3 | PASS — cold fleet VERIFIED (memory 1024→1025, `Init Duration` on the first REPORT); first request `x-nextjs-cache: HIT`, `s-maxage=31536000`; S3 object `LastModified` unchanged across the cold serve; SQS sent 0 vs baseline 0 |
+| E2/E3 tag rows | PASS — seeded row (`revalidatedAt=1`) on first render; after the edit `revalidatedAt`+`expire` set, page fresh at +2 s; layout tag 0 rows (TAGMODE = A) |
+| E6 junk URL on a cold container | PASS — 307 `?nf=1` served HIT from the seeded cache, no revalidation log line, SQS 0 |
+| E5 no `2592000` header | PASS — 0 of the captured responses; the bundle's single `=2592000` is the `fixSWRCacheHeader` replace target the guard accounts for (step 4) |
+| E8 tag row before `/api/revalidate` answers | PASS — row `revalidatedAt` 20:48:55.845Z precedes the backend's `Path success` log 20:48:55.866Z |
+| § 8.3 edit-to-live (two runs) | PASS — page 2.9 s / 2.7 s (bound 120 s); listing 908 s / 908 s (bulk lane; bound 960 s) |
+| E12/E13 two tenants, shared slug | PASS — `cache-probe-2026` (`d3kezt5niqwtgx.cloudfront.net`) and `opn1-iso-b` (`staging.amodx.net`): distinct bodies, B token under A host = 0, two S3 keys each carrying its host, page tags host-scoped; path-form probe → 307 not-found |
+| E14 (§ 8.5 `x-isr`) | PASS |
+| E15 `If-None-Match` | PASS — 304, no body |
+| E16 missing slug | 307 `?nf=1` (`s-maxage=31536000`) then 404 no-store — as on 3.1.3, minus the doubled `Location` |
+| E17 ten pages, `/*` invalidation, cold fleet | PASS — all ten `HIT` from cold containers (memory 1025 VERIFIED on each), SQS 0 vs 0 — the #1250 storm does not occur |
+| E19 preview canonical URL | PASS — headless click from `/_site/cache-probe-2026/<slug>` lands on `/_site/cache-probe-2026`, no `_dyn` (probe reran twice for probe defects: `networkidle` never settles; the first regex required a trailing `/` the preview home never has) |
+| E20 mixed-case `Host` (the B-CASE / spec N17 live gate) | PASS — fresh slug, `Host: D3KEZT5niqwtgx.CloudFront.net`, edge miss, origin 200 with the page token, ONE server invocation (the in-run probe was an edge hit and proved nothing; rerun recorded) |
+| E22 surface header diff vs 3.1.3 | only the `x-middleware-rewrite` and `x-middleware-set-cookie` leaks are gone (B-LEAK live) and the doubled `Location` on the missing-slug 307; every other header byte-equal after volatile ones. `Set-Cookie amodx_preview_base` present on both versions |
+| E18 sign-in, E21 edge 500 | NOT RUN — spec § 8.2 reasons (no staging tenant with sign-in + gated page; no staging-safe render-throw trigger) |
+
+**E7 read-out.** Server `Invocations` 591, `Errors` 0, `Throttles` 0, `Duration` p50 6 ms / p99 1218 ms in [t0, t0+30 min]; 858 invocations, 0
+errors over the whole run. New prefix `_cache/V1Pm…/` objects observed during the run (E11, E12); it is empty after cleanup because the
+CACHE-10 purge (`renderer/src/app/api/revalidate/route.ts:98`, `purgeTenantIsrCache`) deletes a tenant's objects under every build root
+on each edit and every experiment page was archived. The older prefix `_cache/SueHtBXRQjiIWd3xCFKWE/` (209 host-less crawler keys, last
+write 13:37:06Z < t0) is untouched; the nightly flush skipped 2026-10-15 ("No changes"); the 1D lifecycle rule bounds it at 30 days.
+
+**§ 9.4 reading.** B-ISO (bundle) + E12 pass; § 8.3 within bounds; § 8.5 pass; no `2592000` header; tag rows appear; S3 keys carry the
+host; seed gate (B-STALE with-seed) passed at build and E1/E6/E17 confirm it live with the cold premise VERIFIED. Pending before prod:
+"no new 5xx class in staging logs for 24 h" (hold ends 2026-10-16T20:30:21Z), then — on the human's explicit word — E12-PROD step 0
+markers, `cdk diff` prod, deploy, E12-PROD, E14-PROD-CONFIG, § 8.3 on one prod page, § 8.4 seven-day comparison.
+
+**Cleanup.** Every experiment page archived (the renderer serves only `Published`); fleet memory 1024; leftover edge paths invalidated
+(`ICT4OVVUHXCNC7AWPPVMTKCGGY`).
