@@ -10,12 +10,18 @@ const REVALIDATION_SECRET = process.env.REVALIDATION_SECRET;
  *
  * WHY revalidatePath IS NOT ENOUGH
  * `revalidatePath` is tag-based (implicit `_N_T_` tags). Under open-next@3.1.3,
- * `adapters/cache.js#set()` writes tag rows only for `kind === "PAGE"` (Pages Router). Every page
- * here is App Router (`APP_PAGE`), so no tag row exists, `getByTag` finds nothing, and the S3
- * entry stays "fresh" (`revalidate = false` ⇒ `s-maxage=31536000`). The CloudFront fast lane
- * then re-fetches that unchanged S3 copy. Root-caused on staging 2026-10-13 (docs/TECH-DEBT.md).
- * We still call `revalidatePath` (harmless, and correct again once opennext-1 lands), and then
- * delete the tenant's S3 cache objects directly so the next request re-renders from DynamoDB.
+ * `adapters/cache.js#set()` wrote tag rows only for `kind === "PAGE"` (Pages Router). Every page
+ * here is App Router (`APP_PAGE`), so no tag row existed, `getByTag` found nothing, and the S3
+ * entry stayed "fresh" (`revalidate = false` ⇒ `s-maxage=31536000`). The CloudFront fast lane
+ * then re-fetched that unchanged S3 copy. Root-caused on staging 2026-10-13 (docs/TECH-DEBT.md).
+ * Since slice opennext-1b (@opennextjs/aws 4.1.9) the tag rows ARE written for `APP_PAGE` and
+ * `revalidatePath('/<domain>/<slug>')` makes that page a MISS (bundle row B-TAG, with this purge
+ * neutralized). It still does NOT refresh LISTING pages that show the edited content: no tag links
+ * a listing to the edited page, and `revalidatePath('/<domain>', 'layout')` reaches no stored
+ * listing (bundle row B-LISTING variant 2: the listing stays a HIT with the old title; ruling
+ * OPENNEXT1-CACHE10-PURGE = A keeps this purge).
+ * So we call `revalidatePath`, and then delete the tenant's S3 cache objects directly so the next
+ * request for any of its pages re-renders from DynamoDB.
  *
  * WHAT IS DELETED — the whole tenant
  * The route has always asked for `revalidatePath('/<domain>', 'layout')`: "the tenant's whole
@@ -23,7 +29,9 @@ const REVALIDATION_SECRET = process.env.REVALIDATION_SECRET;
  * pages (post grids, nav) that show the edited content.
  *
  * THE KEY LAYOUT (a function of the Next version this renderer runs — that is why it lives here)
- * open-next `cache/incremental/s3.js#buildS3Key` = `<CACHE_BUCKET_KEY_PREFIX>/<buildId>/<key>.cache`.
+ * The adapter's `buildS3Key` = `<CACHE_BUCKET_KEY_PREFIX>/<buildId>/<key>.cache` (@opennextjs/aws
+ * 4.1.9 `overrides/incrementalCache/s3.js:14-16`; open-next 3.1.3 `cache/incremental/s3.js`, same
+ * layout — OBSERVED on both by bundle row B-ISO).
  * next 16.3.8 passes `key` = `route-cache/<kind>/<sha256(sourceRoute)>/$/<path>`, so a tenant
  * entry is (VERIFIED on staging 2026-10-13):
  *   _cache/<buildId>/route-cache/APP_PAGE/<ownerHash>/$/<domain>.cache          (tenant home)

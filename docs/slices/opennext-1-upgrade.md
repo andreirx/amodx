@@ -2031,3 +2031,18 @@ the B2 defect — the unrewritten path renders and a cacheable 307 is stored und
 contract of the row). The spec's `/500` expectation is carried by means (2). Observed on 3.1.3 and pinned by the row:
 **D3-LOCATION** — the doubled `Location` is ONE wire header whose value holds the path twice, produced at the origin
 (OpenNext response conversion), not by CloudFront.
+
+**Correction (2026-10-15, OPENNEXT-1B, operator rulings at review; the 4.1.9 bundle is the oracle):**
+- `OPENNEXT1-1250 = A` seed hunk: **works** — B-STALE with the seed: cold container `HIT`, `s-maxage=31536000`, 0 SQS (the
+  fallback rule did not apply). Negative control without the seed reproduces the "without" prediction (cold STALE, no
+  `Cache-Control`, 1 SQS). Consequence: the seed branch has no STALE response, so no 4.1.9 emission of the 300-second
+  window was observed; the SWR patch is proven by `(c2)` (installed source) and the guard (bundle literals), not by a served header.
+- § 3.B / § 8.1 B-ROUTEERR on 4.x: a routing throw answers a plain-text 500 with `no-store` (means 2) or a 502 with no
+  `Cache-Control` (means 1 — the catch rebuilds `new URL` on the invalid host and throws again), never Next's `/500` page as
+  inferred. Neither writes an ISR entry (B2 closed). The 502's edge handling (CloudFront error caching) is not modelled by
+  the harness — an explicit staging/edge uncertainty (ruling OPENNEXT1B-ROUTEERR-CACHE-SCOPE).
+- § 8.1 B-CASE 4.x expectation "no outbound call" was wrong; § 7.1 **N17** predicted the call and it survives 4.1.9 for a
+  mixed-case host that passes the preview-host gate (one `https.request` proxy call, then a timeout). Accepted with the
+  residual in TECH-DEBT; E20 on staging is the live gate (ruling OPENNEXT1B-CASE-N17).
+- `OPENNEXT1-PIN = B`: `util.js` and `adapters/cache.js` are byte-identical between 4.1.9 and 4.1.10 (`cmp`); registry latest
+  is 4.1.11 at this date — later bumps follow § 2.3 rule 3.

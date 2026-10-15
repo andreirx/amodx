@@ -253,7 +253,9 @@ What this means when editing the renderer:
 Other cache surfaces, unchanged by the slice:
 
 - **Purge endpoint:** POST `/api/revalidate` with `{domain, slug}` calls `revalidatePath()` (a
-  no-op for App Router pages on open-next 3.1.3) and (CACHE-10) deletes every S3 ISR object of `domain` — the S3 key layout is known only here. See
+  no-op for App Router pages on open-next 3.1.3; since `opennext-1b` on `@opennextjs/aws` 4.1.9 it
+  writes the tag rows and makes the edited page a MISS, but refreshes no listing) and (CACHE-10)
+  deletes every S3 ISR object of `domain` — the S3 key layout is known only here. See
   `docs/caching-architecture.md` § 5.
 - **SEO routes:** of the four `[siteId]` Route Handlers, only two set `Cache-Control` on the
   `Response` — `sitemap.xml` (`public, s-maxage=3600, stale-while-revalidate=59`) and
@@ -440,6 +442,9 @@ Tiptap marks (bold, italic, link) and auto-rewrites internal links for preview m
 
 - Dev: `npm run dev` (next dev)
 - Build: `npm run build` (next build)
-- AWS build: `npm run build:open` (next build + open-next build for Lambda)
+- AWS build: `npm run build:open` (next build + `open-next build` for Lambda; the adapter is
+  `@opennextjs/aws` 4.1.9, exact pin, configured in `open-next.config.ts`, patched by
+  `patches/@opennextjs+aws+4.1.9.patch` — SWR window 300 s and the #1250 seed; guarded by
+  `scripts/verify-opennext-patch.mjs` and the bundle suite `npm run test:serving-bundle`)
 - Lint: `npm run lint` (ESLint with next config)
 - Tailwind v4 via `@tailwindcss/postcss`

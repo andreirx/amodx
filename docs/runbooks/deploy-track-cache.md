@@ -19,18 +19,24 @@ Both are `infra/lib/renderer-hosting.ts` only. See
 - Working tree clean on `main`; root `npm run build` green.
 - **SEC-1 committed** (`docs/shipped/slices/sec-1-audit-remediation-2026-07.md`): the deploy
   must carry the patched `next` (middleware-bypass fix) / `next-auth` / `sharp`.
-- **cache-8 open-next SWR patch present in the SHIPPED bundle (MANDATORY GATE).** Run, from the
-  repo root:
+- **cache-8 adapter SWR patch (and the #1250 seed) present in the SHIPPED bundle (MANDATORY GATE).**
+  Run, from the repo root:
 
       node scripts/verify-opennext-patch.mjs
 
   It must print `... guard: OK` and exit `0`. This builds (if needed) the exact `.open-next`
-  server bundle CDK uploads and asserts open-next's `fixISRHeaders()` edge window is the patched
-  `stale-while-revalidate=300`, not the 30-day `2592000` default. **Do not deploy the renderer if
-  this fails** — a fresh clone whose `postinstall` (`patch-package`) was skipped, or an open-next
-  upgrade past 3.1.3, ships the 30-day edge window and re-pins stale copies at CloudFront for a
-  month (cache-8 mitigation c). Fix: re-run `npx patch-package` (unapplied) or re-cut
-  `patches/open-next+3.1.3.patch` against the new `fixISRHeaders` (upgrade). This is LAYER 2 of the
+  server bundle CDK uploads and asserts the adapter's (`@opennextjs/aws` 4.1.9) `fixISRHeaders()`
+  edge window is the patched `stale-while-revalidate=300`, not the 30-day `2592000` default. Since
+  `opennext-1b` it also asserts that the #1250 seed hunk (backport of upstream PR #1302, same patch
+  file) is in the shipped cache adapter `server-functions/default/renderer/cache.cjs` (it prints
+  "seed not shipped … skipped" when the patch carries no such hunk — the ratified fallback), and
+  that `renderer/src` has no BARE `stale-while-revalidate` (a directive without `=<n>`, the one input
+  that reaches the unpatched `fixSWRCacheHeader` 30-day site). **Do not deploy the renderer if
+  this fails** — a fresh clone whose `postinstall` (`patch-package`) was skipped, or an
+  `@opennextjs/aws` upgrade past 4.1.9, ships the 30-day edge window and re-pins stale copies at
+  CloudFront for a month (cache-8 mitigation c). Fix: re-run `npx patch-package` (unapplied) or
+  re-cut `patches/@opennextjs+aws+4.1.9.patch` against the new release (upgrade; spec
+  `docs/slices/opennext-1-upgrade.md` § 2.3 rule 3). This is LAYER 2 of the
   guard; LAYER 1 (serving row `(c2)`, installed-source check) runs in CI with `npm run test:serving`.
   Rationale for a deploy-gate rather than a CI step: `open-next build` is multi-minute and CI does
   not already run it. See `docs/caching-architecture.md` § "The SWR revalidation queue and the
@@ -71,12 +77,12 @@ Let `$H` = a staging tenant host with a published page `/p`, all curls through C
 | 5 | `curl -sI https://unknown-host.example.com/` (Host pointed at the distribution) | `404` + `no-store` (no soft-200, nothing cached) |
 | 6 | `curl -sI https://$H/does-not-exist` | `307 → ?nf=1` then `404` + `no-store`; repeating never loops (nf stays in the cache key) |
 | 7 | ISR purge-on-edit: edit `/p` in admin, then `curl -s https://$H/p` after a fresh CloudFront miss (or GO LIVE NOW) | fresh content — the domain-keyed purge worked. **Needs cache-2 AND cache-6**: cache-2 fixes the path, cache-6 stops the endpoint 401'ing. If it fails, check CloudWatch for `/api/revalidate` 401 before suspecting the path |
-| 7b | `POST https://$H/api/revalidate` with a correct `x-revalidation-token`, then list the asset bucket | **200** (not 401 — that is cache-6 D1), AND the matching `_cache/<buildId>/$H/<path>.cache` object is gone. The 200 alone only proves the header survived transport |
+| 7b | `POST https://$H/api/revalidate` with a correct `x-revalidation-token`, then list the asset bucket | **200** (not 401 — that is cache-6 D1), AND the matching `_cache/<buildId>/route-cache/APP_PAGE/<sha256>/$/$H/<path>.cache` object is gone (next ≥ 16.3.8 route-scoped key, the same on open-next 3.1.3 and `@opennextjs/aws` 4.1.9 — bundle row B-ISO; builds before next 16.3.8 used `_cache/<buildId>/$H/<path>.cache`). The 200 alone only proves the header survived transport |
 | 8 | create a page at a previously-404'd slug, request it | page renders (stored 307 was purged by content/create) |
 | 9 | visit `https://$H/p?ref=test` in a browser | `amodx_ref` cookie set via `/api/ref`; a following anonymous `curl -sI https://$H/p` carries NO `Set-Cookie` |
 | 10 | CloudWatch: renderer Lambda invocations | drop sharply for repeated page views vs pre-deploy |
-| 11 | `curl -sI 'https://$H/_next/image?url=<asset>&w=256&q=75'` | **200 + `content-type: image/*`**. Pre-cache-6 this returns **500 `"url" parameter is required"`** — CloudFront was deleting the query string (D2). Also confirms patched sharp/libvips serving normally |
-| 11b | repeat probe 11 with `w=1080` | **different bytes/length** from `w=256`. This is the one that proves `w` is in the cache key rather than merely forwarded; without it a single 200 would look like success while every width served the first-requested variant |
+| 11 | `curl -sI 'https://$H/_next/image?url=<asset>&w=256&q=75'` | **PARKED — not a gate** (ruling OPENNEXT1-IMAGE = A, `docs/slices/opennext-1-upgrade.md`): the image optimizer fails against next 16 (500, `docs/TECH-DEBT.md` § `opennext-1`); `opennext-1b` does not change that (the image function is rebuilt on `@opennextjs/aws` 4.1.9 but its `_assets` prefix and missing `remotePatterns` defects are unchanged — INFERRED, not run on staging). The original expectation, for the image slice: **200 + `content-type: image/*`**. Pre-cache-6 this returns **500 `"url" parameter is required"`** — CloudFront was deleting the query string (D2). Also confirms patched sharp/libvips serving normally |
+| 11b | repeat probe 11 with `w=1080` | **PARKED with probe 11.** For the image slice: **different bytes/length** from `w=256`. This is the one that proves `w` is in the cache key rather than merely forwarded; without it a single 200 would look like success while every width served the first-requested variant |
 
 ## Step 3 — production
 

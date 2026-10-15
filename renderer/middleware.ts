@@ -74,11 +74,17 @@ function hasSessionCookie(request: NextRequest): boolean {
 //
 // The flood is real and fully traced in docs/caching-architecture.md § "The SWR revalidation
 // queue and the scanner-junk flood (cache-8)": a scanner path mints a cacheable `307` not-found
-// handoff, that entry later flips to STALE, and open-next's `revalidateIfRequired()`
-// (`open-next/dist/core/routing/util.js:281-282`, verified against the installed 3.1.3 source)
-// enqueues it on the ONE condition `x-nextjs-cache: STALE` — not on any header the render
-// controls. The junk HEAD then re-renders the same `307`, never `REVALIDATED`, so it fails on
-// every attempt (`dist/adapters/revalidate.js:35-37`). Saturation of the 10 FIFO groups is a
+// handoff, that entry later flips to STALE, and the adapter's `revalidateIfRequired()`
+// (`@opennextjs/aws/dist/core/routing/util.js:282-283` in the pinned 4.1.9; open-next 3.1.3
+// `util.js:281-282` before slice opennext-1b) enqueues it on the ONE condition
+// `x-nextjs-cache: STALE` — not on any header the render controls. The junk HEAD then re-renders
+// the same `307`, never `REVALIDATED`, so it fails on every attempt (3.1.3
+// `dist/adapters/revalidate.js:35-37`: success = 200 + REVALIDATED; 4.1.9
+// `dist/adapters/revalidate.js:8, 37-38`: status in {200, 307, 308, 404} AND REVALIDATED, and the
+// HEAD never gets REVALIDATED because the edge forwards no revalidation header). Since
+// opennext-1b the cold-container STALE that fed this queue (upstream #1250) is closed by the
+// #1302 seed hunk in the same patch file, so a stored entry no longer turns STALE on a cold
+// container. Saturation of the 10 FIFO groups is a
 // THEORETICAL failure mode of this queue at higher rates, not the observed cause: at the OBSERVED
 // 1,104 failures/12h (~1.5/min) the prod-log investigation found NO published page in the failure
 // set, so real grid refreshes were not starved. The human-visible stale symptom is the CloudFront
@@ -104,9 +110,10 @@ function hasSessionCookie(request: NextRequest): boolean {
 // The remaining fixes are out of this slice's scope (no fork, no CDK): controlling the enqueue
 // disposition needs an open-next fork (mitigation a); DLQ / reportBatchItemFailures / larger
 // concurrency is a CDK queue change (b). Bounding the 2592000 edge SWR window (mitigation c) IS
-// now shipped, and NOT at this layer: `patches/open-next+3.1.3.patch` rewrites open-next's
-// `fixISRHeaders()` edge window to `stale-while-revalidate=300` (applied by root `postinstall:
-// patch-package`, guarded by serving row `(c2)`). That bounds edge staleness to 5 min but does
+// now shipped, and NOT at this layer: `patches/@opennextjs+aws+4.1.9.patch` (before opennext-1b:
+// `patches/open-next+3.1.3.patch`) rewrites the adapter's `fixISRHeaders()` edge window to
+// `stale-while-revalidate=300` (applied by root `postinstall: patch-package`, guarded by serving
+// row `(c2)` and `scripts/verify-opennext-patch.mjs`). That bounds edge staleness to 5 min but does
 // NOT stop the junk flood — a scanner shield here is still deferred (the `(h1)` counterexample).
 // See docs/TECH-DEBT.md § cache-8 for the ledger and the `opennext-1` / queue-config follow-ups.
 

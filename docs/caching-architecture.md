@@ -43,6 +43,14 @@ not in terms of the Next.js documentation.
 > on the middleware 404s, no `Cache-Control` header at all on a thrown render, and
 > `RSC: 1` still flipping the body to `text/x-component`. The version bump introduced no
 > contract drift.
+>
+> **Through the deployed Lambda bundle the rows run too** (`npm run test:serving-bundle`, slice
+> `opennext-1a`; since `opennext-1b` the bundle is `@opennextjs/aws` 4.1.9). One header differs by
+> layer, by design: a thrown render answers 500 with NO `Cache-Control` under `next start`, and
+> with `private, no-cache, no-store, max-age=0, must-revalidate` through the 4.1.9 bundle (row
+> `e1`, EXECUTED 2026-10-15; open-next 3.1.3 sent none). The contract is "a thrown render is
+> never stored" — both forms satisfy it. The 3.1.3 → 4.1.9 row diff is in
+> `docs/slices/opennext-1b.md` § Row table.
 
 > **A route serves cacheable HTML if and only if BOTH hold:**
 > 1. it exports `generateStaticParams()` (returning `[]` is enough — it opts the route into
@@ -1052,6 +1060,19 @@ different bytes rather than the 640 variant.
 
 ### D3 — `x-prerender-revalidate` + `x-isr` stripped, so background ISR regeneration is a no-op (`cache-7`, was: high)
 
+> **Status (2026-10-15, `opennext-1b`) — read first.** The fix below was REVERSED on 2026-10-13
+> (security: open-next 3.1.3 skipped tenant middleware for any request carrying `x-isr`), and the
+> ruling OPENNEXT1-XISR = A keeps BOTH headers un-forwarded on `@opennextjs/aws` 4.1.9 (4.1.9 skips
+> middleware only when `x-prerender-revalidate` also equals the build's previewModeId,
+> `dist/core/routing/middleware.js:28-31`; bundle row B-XISR shows the viewer headers change
+> nothing at the origin on 4.1.9). So background ISR regeneration through the RevalidationFunction
+> still persists nothing (bundle row B-REVAL: the HEAD gets `307 MISS`, one failed record). Two
+> claims below are wrong in both versions: `revalidatePath` does not "flip entries to STALE" (3.1.3
+> wrote no tag rows; 4.1.9 writes them and the next read is a MISS, row B-TAG), and the STALE that
+> fed the queue was upstream #1250 (cold container), not revalidation — closed on 4.1.9 by the seed
+> hunk (row B-STALE). Edits are made fresh by the CACHE-10 purge (§ 5). The text below is the
+> `cache-7` record.
+
 **State before the fix.** `RendererOriginPolicy` named eight headers; neither
 `x-prerender-revalidate` nor `x-isr` was among them. open-next's RevalidationFunction — the
 SQS consumer in `.open-next/revalidation-function`, wired at
@@ -1155,6 +1176,15 @@ flush.
 
 ### `open-next@3.1.3` vs Next 16 — VERIFIED (2026-07-26)
 
+> **Historical (open-next 3.1.3).** Since `opennext-1b` (2026-10-15) the adapter is
+> `@opennextjs/aws` 4.1.9, and the executable form of this section is the built-bundle suite
+> (`renderer/test/serving-bundle/`, run at the deploy gate), which DOES exercise the SQS queue
+> (B-STALE, B-REVAL), the DynamoDB tag cache (B-TAG, B-LISTING) and the S3 cache (B-ISO, `d3`,
+> `e1`) against stubs. Two statements below changed since: the HIT window is
+> `stale-while-revalidate=300`, not `2592000` (cache-8 patch, re-cut for 4.1.9), and the S3 key
+> since next 16.3.8 is route-scoped, `_cache/<buildId>/route-cache/<kind>/<sha256>/$/<host>/<path>.cache`
+> (host still included — row B-ISO, both adapters).
+
 > Corrects a false claim in the first version of this section: it stated `open-next` was
 > "not installed in `node_modules`" and that its behaviour "could not be exercised". Both
 > were wrong. `open-next@3.1.3` is installed (hoisted to the workspace root
@@ -1206,6 +1236,21 @@ unexercised until tag-based revalidation is adopted (Known Gap 5, `cache-4`).
 ---
 
 ## The SWR revalidation queue and the scanner-junk flood (cache-8)
+
+> **Status (2026-10-15, `opennext-1b`) — read first.** This section is the source-cited trace on
+> open-next 3.1.3 (line numbers are 3.1.3's). On `@opennextjs/aws` 4.1.9: (1) the enqueue site is
+> `revalidateIfRequired()` at `dist/core/routing/util.js:282-283`, still on the one condition
+> `x-nextjs-cache: STALE`; (2) the STALE that fed the flood was upstream #1250 — a cold container
+> treated every stored `revalidate = false` entry as 1 s old — and the #1302 seed hunk in
+> `patches/@opennextjs+aws+4.1.9.patch` closes it: a cold read is now `HIT`, `s-maxage=31536000`,
+> 0 SQS messages (bundle row B-STALE, EXECUTED; without the hunk the 4.x cold STALE carries NO
+> `Cache-Control` and still enqueues — negative control, EXECUTED); (3) mitigation (c), the
+> `swr=300` window, is re-cut for 4.1.9 (`util.js:346, :355`) and the guard also forbids a bare
+> `stale-while-revalidate` in `renderer/src`; (4) the revalidation success rule is status in
+> {200, 307, 308, 404} AND `REVALIDATED` (`dist/adapters/revalidate.js:8, 37-38`), and a junk HEAD
+> still never gets `REVALIDATED` (B-REVAL). Staging/prod confirmation of (2) — E1/E17 and the § 8.4
+> SQS measurement in `docs/slices/opennext-1-upgrade.md` — is the operator's run. Mitigation d stays
+> deferred (the `(h1)` counterexample is unchanged).
 
 Live-diagnosed 2026-08-16 (`docs/TECH-DEBT.md` § "Two publish-flow bugs"): the
 RevalidationFunction logged **1,104 "Failed to revalidate" / 12h**, dominated by bot-scanner
@@ -1427,8 +1472,10 @@ parked `opennext-1` upgrade and/or a ratified queue-config change.
   flow into open-next's post-processing — so the window can only be bounded inside open-next itself.
 
   **The fix (REVISE 2, human-ratified option B): a pinned-dependency PATCH, not a fork.**
-  `patches/open-next+3.1.3.patch` (applied by root `postinstall: patch-package`) rewrites the two
-  `fixISRHeaders()` constants — `util.js:386` (HIT-recompute) and `util.js:396` (STALE-serve) —
+  `patches/open-next+3.1.3.patch` (applied by root `postinstall: patch-package`; re-cut in
+  `opennext-1b` as `patches/@opennextjs+aws+4.1.9.patch`, sites `util.js:346` / `:355` — see the
+  Status note at the top of this section) rewrites the two
+  `fixISRHeaders()` constants — 3.1.3 `util.js:386` (HIT-recompute) and `util.js:396` (STALE-serve) —
   from `stale-while-revalidate=2592000` to `=300`. This self-limits edge + ISR staleness to
   **5 minutes**: even when a background revalidation never completes, CloudFront treats the stored
   copy as expired after 300 s and re-fetches from origin, instead of free-riding the stale bytes for
@@ -1743,6 +1790,13 @@ Calls the renderer's `/api/revalidate` endpoint with a secret token. The request
 > tag-based, and open-next 3.1.3 `adapters/cache.js#set()` writes tag rows only for `kind ===
 > "PAGE"` (Pages Router). Our pages are `APP_PAGE`, so the call is a silent no-op. `CACHE-10`
 > is the short-term fix; the long-term fix is the OpenNext upgrade (`opennext-1`).
+>
+> **Since `opennext-1b` (`@opennextjs/aws` 4.1.9):** the tag rows ARE written (key
+> `<OPEN_NEXT_BUILD_ID>/<tag>`) and `revalidatePath("/<domain>/<slug>")` makes the edited page's
+> next read a MISS with the new content even with the S3 purge neutralized (bundle row B-TAG).
+> `revalidatePath("/<domain>", "layout")` still refreshes no listing (row B-LISTING variant 2), so
+> the CACHE-10 purge stays (ruling OPENNEXT1-CACHE10-PURGE = A). 4.1.9 logs a failed tag write
+> and does not throw, so a 200 here never proves freshness; the edit-goes-live probe does.
 
 **The S3 purge (`CACHE-10`, `renderer/src/app/api/revalidate/route.ts`).** The S3 key layout
 depends on the Next version the renderer runs, so only that route knows it. On next 16.3.8 a
@@ -2461,7 +2515,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 ## Known Gaps and Tech Debt
 
-1. **ISR cache staleness for non-content mutations**: Reviews, coupons, popups, themes, delivery config, settings — these mutations trigger CloudFront invalidation (Layer 1) via the debounce system, but NOT the S3 ISR cache (Layer 2). The nightly flush covers this. Fix: call `revalidateTenantPaths()` from these handlers (since `CACHE-10` it purges the tenant's S3 ISR objects). Adding bare `revalidatePath()` / `revalidateTag()` calls would NOT work on open-next 3.1.3 — they are no-ops for App Router pages (§ Invalidation Mechanisms 5).
+1. **ISR cache staleness for non-content mutations**: Reviews, coupons, popups, themes, delivery config, settings — these mutations trigger CloudFront invalidation (Layer 1) via the debounce system, but NOT the S3 ISR cache (Layer 2). The nightly flush covers this. Fix: call `revalidateTenantPaths()` from these handlers (since `CACHE-10` it purges the tenant's S3 ISR objects). Adding bare `revalidatePath()` / `revalidateTag()` calls would NOT have worked on open-next 3.1.3 — they were no-ops for App Router pages; on `@opennextjs/aws` 4.1.9 (`opennext-1b`) they refresh the named page but no listing (§ Invalidation Mechanisms 5), so the tenant purge is still the right call.
 
 2. **Custom URL prefix ISR revalidation — CLOSED in `cache-2`** for products and categories. The purge now reads the tenant's `urlPrefixes` from the same `GetItem` that resolves the domain and builds `/<domain>/<tenant prefix>/<slug>`. *Historical (before `CACHE-10`):* nothing purged the `shop`, `cart`, `checkout`, `account` or `search` landing pages, and a product change did not purge the category/shop listings that display it. *Current:* any revalidating edit purges the whole tenant's S3 ISR objects (renderer `/api/revalidate`) and arms the debounced edge `/*` (max wait 15 min), so those pages refresh within ~16 min. The only remaining limitation is TARGETING: the edge purge is all-tenant `/*`, not path- or tenant-specific. Tag-based targeting (`opennext-1`) is the long-term fix for the ISR layer only; it does not scope the edge `/*` to a tenant — see the remedy boundary in gap 3.*
 
@@ -2469,13 +2523,13 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 4. **`content/create.ts` missing ISR revalidation — CLOSED in `cache-2` (code + IAM); takes effect when the track deploys.** Background: the old reasoning ("no stale S3 entry can exist for a URL that didn't exist before") became false with `cache-1` — any request for a not-yet-existing URL stores a **307 → `<path>?nf=1`** in the S3 ISR cache (measured; a redirect is a cacheable outcome — see § *Which render outcomes are cacheable*). So a URL probed before publication *does* leave an entry behind, created by the miss itself. `content/create.ts` now calls `revalidateTenantPaths(tenantId, "page", [slug])` to drop that tail, and `CreateContentFunc` is granted the `revalidationSecret.grantRead` it previously lacked (it was the one revalidating handler without it). That grant lived in `infra/lib/api.ts` until INFRA-SPLIT-1 v2 moved `CreateContentFunc` and its grant to `infra/lib/api-catalog.ts` (the CatalogApi nested stack); the `POST /content` route stays in `api.ts`. Both halves are required — code without the grant logs `[Revalidate] No secret available` and purges nothing — so they must ship in the same deploy. Nothing in Track CACHE is deployed yet: the whole track is gated on `cache-3` (H1). Until it deploys, the exposure is the pre-`cache-2` one and is mild: the stored 307 points at the same path and the `?nf=1` twin re-reads, so the visitor still gets the freshly published page (at `…?nf=1`, uncached) until the debounced CloudFront invalidation and the nightly S3 flush clear the redirect.
 
-5. **Tag-based revalidation underutilized**: The infrastructure exists (tag cache DynamoDB table, `/api/revalidate` supports tags, `revalidateTag()` helper exists) but very few handlers use it. This would enable surgical **ISR** invalidation (e.g., invalidate the S3 entries of all pages showing a specific product); it would not by itself remove the edge `/*` (see the remedy boundary in gap 3). *Blocked on open-next 3.1.3: it writes no tag rows for App Router (`APP_PAGE`) entries, so `revalidateTag` / `revalidatePath` find nothing to invalidate (root-caused 2026-10-13); needs `opennext-1`.*
+5. **Tag-based revalidation underutilized**: The infrastructure exists (tag cache DynamoDB table, `/api/revalidate` supports tags, `revalidateTag()` helper exists) but very few handlers use it. This would enable surgical **ISR** invalidation (e.g., invalidate the S3 entries of all pages showing a specific product); it would not by itself remove the edge `/*` (see the remedy boundary in gap 3). *Was blocked on open-next 3.1.3: it wrote no tag rows for App Router (`APP_PAGE`) entries (root-caused 2026-10-13). Unblocked by `opennext-1b` (`@opennextjs/aws` 4.1.9, tag rows written — bundle row B-TAG); adopting tags in handlers is a new decision (cache-4b stays WITHDRAWN until reopened).*
 
 6. **Debounce is global, not per-tenant**: The `SYSTEM#CDN_PENDING` marker is a single row. All tenants share the same debounce timer, and since `CACHE-10` every ORDINARY edit also writes it (listing freshness), so the quiet timer resets often. The `CACHE-10` max wait (`firstPendingAt`, decision `CACHE10-DEBOUNCE-MAXWAIT`, resolved) bounds this: a mutation by Tenant A can delay Tenant B's pending `/*` only up to 15 min after the FIRST pending change, never indefinitely. Still open: one tenant's edit can make another tenant's pending `/*` fire earlier (harmless), and every `/*` hits all tenants (gap 3). Acceptable for shared distribution. Would need per-tenant markers for per-tenant distributions (Workstream 3).
 
 7. **The invalidation machinery became reachable with `cache-1`.** Before it, every mechanism above — debounce, nightly flush, `revalidatePath()`, the admin banner — invalidated caches that held no HTML. It now has real cache entries to clear, which means its known gaps start to have observable consequences. `cache-2` closed gaps 2 and 4 and fixed the ISR purge *key* (domain, not tenant id). Gaps 1, 3, 5 and 6 — non-content mutations, `/*` blast radius, tag-based revalidation, global debounce — remain open and are `cache-4`'s scope.
 
-8. **`renderer/open-next.config.ts` is a defaults-relying stub.** It sets only `default.architecture: 'arm64'` and `buildCommand: 'npm run build'`. The incremental cache, tag cache, and revalidation queue implementations are whatever the installed OpenNext version defaults to — they are not pinned here. (The earlier claim that `open-next` is "not present in `node_modules`" was wrong: it is installed at `node_modules/open-next@3.1.3` and pinned by `package-lock.json`. What is unpinned is the *configuration*, not the version. Defaults observed in the 2026-07-26 build: `incrementalCache: s3`, `tagCache: dynamodb`, `queue: sqs`.)
+8. **`renderer/open-next.config.ts` is a defaults-relying stub — CLOSED in `opennext-1b`.** The config is now typed (`satisfies OpenNextConfig`) and writes out every override the serving contract depends on (`wrapper: aws-lambda`, `converter: aws-apigw-v2`, `incrementalCache: s3`, `tagCache: dynamodb`, `queue: sqs`) plus the image function's sharp install (`sharp@0.35.5`, linux / glibc / `--cpu=arm64`), so an upstream default change is a reviewed diff. *Historical text:* It sets only `default.architecture: 'arm64'` and `buildCommand: 'npm run build'`. The incremental cache, tag cache, and revalidation queue implementations are whatever the installed OpenNext version defaults to — they are not pinned here. (The earlier claim that `open-next` is "not present in `node_modules`" was wrong: it is installed at `node_modules/open-next@3.1.3` and pinned by `package-lock.json`. What is unpinned is the *configuration*, not the version. Defaults observed in the 2026-07-26 build: `incrementalCache: s3`, `tagCache: dynamodb`, `queue: sqs`.)
 
 9. **Content has no delete path at all** (open question, found 2026-07-26). `backend/src/content/` contains `create, get, history, list, restore, update` — there is no `delete.ts`, and `infra/lib/api.ts` registers no `DELETE /content/{id}` route. The earlier note that "`content/delete.ts` is not wrapped by `withInvalidation`" was based on a file that does not exist. Whether content deletion is intentionally absent (soft-delete via status, retention policy) or a genuine gap needs an owner decision; if a delete handler is added later it must be wrapped.
 
@@ -2483,7 +2537,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 11. **`new Date().getFullYear()` in the footer is frozen into cached HTML** (`renderer/src/app/[siteId]/layout.tsx`). Not a dynamic API, so it does not break caching — but with `revalidate = false` the copyright year in a cached page only updates on the next invalidation. Harmless in practice (the nightly flush runs on any change), noted so it is not mistaken for a bug later.
 
-12. **Next 16.2.9 emits a duplicated `Location` header for any redirect rendered on an ISR-mode route** (observed 2026-07-26). Both values are identical, and clients and the OpenNext Lambda handle it correctly (`curl -L` follows it; the APIGW response carries `"/x,/x"`). It is not specific to `cache-1`'s `?nf=1` handoff — the pre-existing content-redirect path (`permanentRedirect()` on an `IsRedirect` route) produces the same doubling. Noted so it is not mis-diagnosed as a handoff bug; a strict intermediary that rejects duplicate `Location` would affect both paths equally.
+12. **Next 16.2.9 emits a duplicated `Location` header for any redirect rendered on an ISR-mode route** (observed 2026-07-26). *Update 2026-10-15 (`opennext-1b`, EXECUTED in the bundle harness): on `@opennextjs/aws` 4.1.9 the MISS-rendered 307 carries ONE `Location` value at the handler and on the wire (row D3-LOCATION); on open-next 3.1.3 the handler result held the value twice. Staging confirmation pending (operator).* Both values are identical, and clients and the OpenNext Lambda handle it correctly (`curl -L` follows it; the APIGW response carries `"/x,/x"`). It is not specific to `cache-1`'s `?nf=1` handoff — the pre-existing content-redirect path (`permanentRedirect()` on an `IsRedirect` route) produces the same doubling. Noted so it is not mis-diagnosed as a handoff bug; a strict intermediary that rejects duplicate `Location` would affect both paths equally.
 
 13. **404 traffic is no longer absorbed at the edge** (`cache-1` D3 consequence, ratified). Every not-found costs a cached 307 plus a dynamic render on the twin, so scanner and dead-link traffic now reaches the SSR path and DynamoDB on every request instead of being served a cached 404. This is the deliberate price of never pinning a 404 for a URL that is published later. If 404 volume becomes a cost problem, the fix is a CloudFront-level answer for known-bad paths, not re-caching the 404.
 

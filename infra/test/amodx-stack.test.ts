@@ -481,8 +481,10 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
         // seven originals have.
         //
         // `x-prerender-revalidate` + `x-isr` (cache-7) were REMOVED 2026-10-13 (security fix,
-        // human-ratified): open-next@3.1.3 skips tenant middleware for any request carrying `x-isr`
-        // (`dist/core/routing/middleware.js:27`), so a forwarded viewer `x-isr: 1` on an edge MISS
+        // human-ratified): open-next@3.1.3 skipped tenant middleware for any request carrying `x-isr`
+        // (3.1.3 `dist/core/routing/middleware.js:27`; @opennextjs/aws 4.1.9 also requires the
+        // preview-mode secret in `x-prerender-revalidate`, `dist/core/routing/middleware.js:28-31`,
+        // and both stay un-forwarded on 4.x — OPENNEXT1-XISR = A), so a forwarded viewer `x-isr: 1` on an edge MISS
         // cached a 1-year `307 → /?nf=1` under a real page's key for every visitor (reproduced on
         // staging). Their absence is pinned below — re-adding either is a regression; the cost
         // (OpenNext background-ISR revalidation can no longer persist) is recorded in

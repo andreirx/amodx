@@ -11,10 +11,12 @@
 // earlier in this host; B-REVAL takes B-STALE's queued message; B-LEAK and B-NO30D read every
 // response of the run, so they are last.
 //
-// CHARACTERIZED ROWS. Where 3.1.3 has a known defect the row asserts the 3.1.3 OBSERVABLE (and
+// CHARACTERIZED ROWS. Where 3.1.3 had a known defect the row asserts the 3.1.3 OBSERVABLE (and
 // is therefore green) under the `"3"` key, and carries the expected 4.x behaviour under `"4"`.
 // Where an observable differed from the spec's prediction, the row asserts what was OBSERVED
-// and its comment says so — the bundle is the oracle, not the spec.
+// and its comment says so — the bundle is the oracle, not the spec. Since slice opennext-1b the
+// bundle is @opennextjs/aws 4.1.9: every row runs its `"4"` entry; the `"3"` entries stay as the
+// 3.1.3 baseline record (docs/slices/opennext-1b.md § Row table: 3.1.3 → 4.1.9 side by side).
 //
 // HOW IT RUNS — THIS FILE IS THE ENTRY OF `npm run test:serving-bundle`. Only under
 // `SERVING_TARGET=bundle`. Its first import is the contract suite, so ONE process runs, in this
@@ -59,8 +61,8 @@ const EXPECTATIONS = {
     "B-NO30D": { "3,4": "same" },
     "B-WARM": { "3,4": "same" },
     "B-ORIGINVERIFY": { "3,4": "same" },
-    // ── increment 1A-2 (spec § 8.1 rows table; "record" = the row logs the value and asserts only
-    //    what both majors share — opennext-1b turns it into a pinned value from its own run) ──
+    // ── increment 1A-2 (spec § 8.1 rows table). The 1A-2 "record" 4.x entries were pinned by
+    //    opennext-1b from its 4.1.9 run; each says "OBSERVED 4.1.9 (… spec: <prediction>)" ──
     "B-ISO": { "3,4": "same" },
     "B-REFLECT": { "3,4": "same" },
     // Characterized on 3.1.3 (spec § 3.D D4): no tag row is ever written for APP_PAGE.
@@ -84,35 +86,54 @@ const EXPECTATIONS = {
     // the spec): 307 to the rewritten internal path (finding F8 in the slice doc).
     "B-RSC": {
         "3": { bare: { status: 307, location: `/${FIXTURE_HOST}${PUBLISHED_SLUG}?_rsc` } },
-        "4": { bare: "record" },
+        // OBSERVED 4.1.9 (opennext-1b; spec: record): still a 307, but to the PUBLIC path, not the
+        // rewritten internal one (spec § 3.B B4: 4.x hands Next the original URL).
+        "4": { bare: { status: 307, location: `${PUBLISHED_SLUG}?_rsc` } },
     },
-    "B-PREVIEW": { "3": { dynCanonical: true }, "4": { dynCanonical: "record" } },
+    // 4.x: OBSERVED 4.1.9 (opennext-1b) canonical ["","_site","<id>"], no `_dyn` — the spec § 3.B B5
+    // prediction and the packet's "(expect no `_dyn`)" (a no-go class row: a `_dyn` here is a STOP).
+    "B-PREVIEW": { "3": { dynCanonical: true }, "4": { dynCanonical: false } },
     // Two means (row comment): `invalidHost` = the packet's means (1); `headerValue` = a raw
     // invocation whose header value Headers.append rejects (deviation D13). 3.x: the observables
-    // recorded on 3.1.3. 4.x (class rule): Next's built `/500` page — status 500, no-store, and
-    // the `<title>` of the prerendered global-error page read from the artefact under test.
+    // recorded on 3.1.3. 4.x: ruling OPENNEXT1B-ROUTEERR-500 (operator, 2026-10-15) — the row's
+    // guarantee on 4.x is "neither means writes an ISR entry; means (2) answers `no-store`; means (1) answers 502 with no `Cache-Control` — its edge handling (CloudFront error caching, default TTL 10 s) is NOT modelled by this harness and stays an explicit staging/edge uncertainty" (the 3.1.3 B2
+    // defect closed); Next's `/500` page body was the spec's inferred presentation, not the contract.
     "B-ROUTEERR": {
         "3": {
             invalidHost: { status: 500, cacheControl: null, contentType: "text/plain", body: "Internal Server Error", stored: [] },
             headerValue: { status: 307, cacheControl: "s-maxage=31536000", cache: "MISS", location: "/?nf=1,/?nf=1", stored: ["routeerr-probe"] },
         },
-        // Operator ruling OPENNEXT1A-ROUTEERR-MEANS (2026-10-15, review cycle 2): the spec's `/500`
-        // contract is carried by means (2) (a valid host, so the 4.x catch can build the `/500`
-        // event). Means (1) is CHARACTERIZED on 4.x: the 4.1.9 source (read, not run) rebuilds
-        // `new URL` on the same invalid host inside its catch and throws again — a handler failure
-        // (Function URL 502), not `/500`. INFERRED until opennext-1b runs the 4.x bundle, which
-        // pins the observed value here; until then the row asserts only that routing threw and
-        // that nothing was stored for (1).
-        "4": { invalidHost: "characterize", headerValue: "500-page" },
+        // OBSERVED 4.1.9 (opennext-1b; spec predicted Next's `/500` page), pinned as ruled:
+        //   (1) 502 — the handler failed (`Error in routingHandler TypeError: Invalid URL`; the 4.1.9
+        //       catch rebuilds `new URL` on the same invalid host), nothing stored.
+        //   (2) plain-text 500, Cache-Control containing `no-store`, nothing stored.
+        "4": {
+            invalidHost: { status: 502, cacheControl: null, contentType: "text/plain", body: "Internal Server Error", stored: [] },
+            headerValue: {
+                status: 500, cacheControl: /\bno-store\b/, cache: undefined,
+                location: undefined, contentType: "text/plain", body: "Internal Server Error", stored: [],
+            },
+        },
     },
-    "B-CASE": { "3": { reachOutbound: true }, "4": { reachOutbound: false } },
-    "D3-LOCATION": { "3": { location: `${MISSING_SLUG}?nf=1,${MISSING_SLUG}?nf=1` }, "4": "record" },
-    // 4.x has two candidate entries; opennext-1b selects one by renaming its key to "4"
-    // (decision OPENNEXT1-1250). Until then a 4.x bundle fails this row: "no expectation for version 4".
+    // 4.x: OBSERVED 4.1.9 (opennext-1b; spec § 8.1 predicted no outbound call; spec § 7.1 N17
+    // predicted this) — ruling OPENNEXT1B-CASE-N17 (operator, 2026-10-15): accepted, residual
+    // explicit in docs/TECH-DEBT.md, live gate E20. Both reach-variant observables are pinned:
+    // ONE outbound HTTPS proxy call AND no answer within the row's bound (`REQUEST_TIMEOUT`), so a
+    // changed response later fails this row. 4.1.9 `isExternal` compares `new URL(url).host`
+    // (lower-cased) with the raw mixed-case host (`core/routing/util.js:16-33`); the proxy
+    // (`overrides/proxyExternalRequest/node.js`) has no request `error` listener, so a refused call
+    // never answers (F10 persists). The 3.1.3 entry pins the call only (3.x cannot be re-run).
+    "B-CASE": { "3": { reachOutbound: true }, "4": { reachOutbound: true, reachOutcome: "REQUEST_TIMEOUT" } },
+    // 4.x: OBSERVED 4.1.9 (opennext-1b; spec: record) — ONE Location value: the doubling is gone.
+    "D3-LOCATION": { "3": { location: `${MISSING_SLUG}?nf=1,${MISSING_SLUG}?nf=1` }, "4": { location: `${MISSING_SLUG}?nf=1` } },
+    // 4.x: opennext-1b selected the with-seed entry (OPENNEXT1-1250 = A; the #1302 read-side hunk is
+    // in patches/@opennextjs+aws+4.1.9.patch) by naming it "4"; OBSERVED 4.1.9 it passes. The
+    // `4-noseed` entry is inert (no major is named "4-noseed"); under the ratified fallback (ship
+    // without the hunk) it becomes "4" and this one is removed.
     "B-STALE": {
         "3": { cache: "STALE", cacheControl: "s-maxage=2, stale-while-revalidate=300", sqsMessages: 1 },
         "4-noseed": { cache: "STALE", cacheControl: null, sqsMessages: 1 },
-        "4-seed": { cache: "HIT", cacheControl: "s-maxage=31536000", sqsMessages: 0 },
+        "4": { cache: "HIT", cacheControl: "s-maxage=31536000", sqsMessages: 0 },
     },
     // `successStatuses`: the statuses the function counts as revalidated WHEN the host answers
     // `x-nextjs-cache: REVALIDATED` (3.1.3 `adapters/revalidate.js:35-37`: 200 only; 4.x spec § 3.G
@@ -120,7 +141,11 @@ const EXPECTATIONS = {
     // the host's actual answer, and asserts it (ruling: assert, not log). `pinned`: the 3.1.3 answer.
     "B-REVAL": {
         "3": { successStatuses: [200], pinned: { hostStatus: 307, cache: "MISS", failedRecords: 1 } },
-        "4": { successStatuses: [200, 307, 308, 404], pinned: null },
+        // `pinned` 4.x: OBSERVED 4.1.9 (opennext-1b; spec: record). Source = the fixture (seed branch).
+        // The HEAD still targets the doubled `/<host>/published` path (F12) and the edge forwards
+        // neither revalidation header (OPENNEXT1-XISR = A), so the host answers 307 MISS, not
+        // REVALIDATED → one batch-item failure under the 4.x rule.
+        "4": { successStatuses: [200, 307, 308, 404], pinned: { hostStatus: 307, cache: "MISS", failedRecords: 1 } },
     },
     // Characterized on 3.1.3 (spec § 3.C C3): middleware response headers reach the client.
     "B-LEAK": { "3": { leaked: ["x-middleware-rewrite", "x-middleware-set-cookie"] }, "4": { leaked: [] } },
@@ -183,21 +208,13 @@ async function settle(count, atLeast, ms = 2000) {
 /** Message B-STALE observed on the queue; B-REVAL feeds it to the revalidation function. */
 let staleMessage;
 
-/**
- * The `<title>` of Next's prerendered global-error page (`/500`) in THIS build, read from the
- * object CDK uploads to the ISR bucket (`.open-next/cache/<buildId>/_global-error.cache`, an
- * `{ html, … }` JSON). B-ROUTEERR's 4.x marker; read, not hard-coded, so a Next change to the
- * page cannot desynchronize the row.
- */
-async function globalErrorTitle() {
-    const cacheDir = path.join(OPEN_NEXT_DIR, "cache");
-    for (const buildId of await readdir(cacheDir)) {
-        const file = path.join(cacheDir, buildId, "_global-error.cache");
-        const entry = await readFile(file, "utf8").then(JSON.parse).catch(() => null);
-        const title = entry && titleOf(String(entry.html ?? ""));
-        if (title) return title;
-    }
-    throw new Error("no prerendered _global-error page with a <title> under .open-next/cache");
+/** The build id this artefact keys its S3 cache and tag rows with: the one directory under
+ *  `.open-next/cache/` (the bundle's `OPEN_NEXT_BUILD_ID`). Fails if there is not exactly one.
+ *  Used by B-TAG (tag rows are keyed `<OPEN_NEXT_BUILD_ID>/<tag>`). */
+async function cacheBuildId() {
+    const ids = await readdir(path.join(OPEN_NEXT_DIR, "cache"));
+    assert.equal(ids.length, 1, `expected one build id under .open-next/cache, found ${JSON.stringify(ids)}`);
+    return ids[0];
 }
 
 /** Lengths of the three stub journals — a call made between two snapshots changes one. */
@@ -236,7 +253,8 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // ── B-WARM ──────────────────────────────────────────────────────────────────────────
     // The warmer event never reaches Next: the `aws-lambda` wrapper (the one the bundle uses —
     // `open-next.output.json` `origins.default.wrapper: "aws-lambda"`) answers any event that has
-    // a `type` field itself, at node_modules/open-next/dist/wrappers/aws-lambda.js:11-13, with
+    // a `type` field itself, at node_modules/@opennextjs/aws/dist/overrides/wrappers/aws-lambda.js:11-13
+    // (4.1.9; open-next 3.1.3 had the same code at dist/wrappers/aws-lambda.js), with
     // `formatWarmerResponse` (:2-8): `resolve({ serverId, type: "warmer" })` at :5. `serverId` is
     // the per-container id `createMainHandler` sets. The warmer FUNCTION was removed from infra
     // in opennext-1c; this row pins what the server handler still does with the event.
@@ -273,8 +291,9 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // Spec § 6.3: "assert openNextVersion in server-functions/default/renderer/index.mjs equals
     // the pinned version (catches a stale .open-next)". Read from the RUNNING bundle
     // (`globalThis.openNextVersion`, set by the banner open-next `build/helper.js` writes into the
-    // function), compared with BOTH the version renderer/package.json declares (its base: today
-    // `^3.1.3`, a caret range — the exact pin is the lockfile) and the lockfile's resolved version.
+    // function), compared with BOTH the version renderer/package.json declares (on 3.1.3 it was
+    // `^3.1.3`, a caret range; since opennext-1b it is the exact `4.1.9`) and the lockfile's
+    // resolved version.
     test("(B-VERSION) the bundle's open-next version equals the declared and the locked adapter version", async () => {
         const { adapterPackage } = expect("B-VERSION");
         const pkg = JSON.parse(await readFile(path.join(RENDERER_DIR, "package.json"), "utf8"));
@@ -291,7 +310,9 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // Spec § 6.3 artefact checks. On 3.1.3 the build pins sharp through `SHARP_VERSION=0.35.5
     // npm_config_os=linux npm_config_cpu=arm64` in renderer/package.json `build:open`; open-next
     // runs `npm install … sharp@$SHARP_VERSION` into the image function (build.js:287-301). The
-    // same two checks hold for the 4.x config `install` block (§ 6.3), so one entry covers both.
+    // same two checks hold for the 4.x config `install` block (§ 6.3), so one entry covers both
+    // (OBSERVED 4.1.9, opennext-1b: sharp 0.35.5 + @img/sharp-linux-arm64, from
+    // `imageOptimization.install` in renderer/open-next.config.ts via 4.1.9 build/installDeps.js).
     test("(B-SHARP) the image function packages sharp 0.35.5 with the linux-arm64 binary", async () => {
         const { sharp, binary } = expect("B-SHARP");
         const modules = path.join(OPEN_NEXT_DIR, "image-optimization-function", "node_modules");
@@ -385,7 +406,11 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
             // (OBSERVED: two tag-table Queries per POST, one of them after the response).
             const delta = stubs.ddb.journal().slice(ddbBefore);
             writes = delta.filter((e) => e.table === "tag" && e.op === "BatchWriteItem");
-            tagRows = stubs.ddb.tagItems().filter((i) => i.tag === tag);
+            // The tag cache keys every row as `<OPEN_NEXT_BUILD_ID>/<tag>` (4.1.9
+            // `overrides/tagCache/dynamodb.js:15-23` `buildDynamoKey`; the id is this build's
+            // `.open-next/cache/<buildId>`). Matched exactly, prefix included.
+            const tagKey = `${await cacheBuildId()}/${tag}`;
+            tagRows = stubs.ddb.tagItems().filter((i) => i.tag === tagKey);
             console.log(
                 `  (B-TAG) neutralized: revalidate ${rv.status} purged=${rv.json.purged}; tag-table ops from the POST to the next GET: ` +
                     `${delta.filter((e) => e.table === "tag").map((e) => `${e.op}${e.index ? `@${e.index}` : ""}`).join(", ") || "none"}; ` +
@@ -529,7 +554,7 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // OBSERVED, not predicted by the spec (finding F8): a BARE `RSC: 1` (no router headers, any or
     // no `_rsc`) gets a 307 whose Location is the REWRITTEN internal path `/<host>/published?_rsc`
     // — 3.1.3 hands Next the rewritten URL (spec § 3.B B4) and drops the query on a middleware
-    // rewrite. 4.x: recorded by opennext-1b.
+    // rewrite. 4.x: OBSERVED 4.1.9 (opennext-1b) a 307 to the PUBLIC path `/published?_rsc`.
     test("(B-RSC) RSC navigation → text/x-component + Vary rsc; ?_rsc without RSC header → HTML HIT", async () => {
         const exp = expect("B-RSC");
         const nextRequire = createRequire(path.join(RENDERER_DIR, "package.json"));
@@ -606,10 +631,9 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     //     stored under the non-host key `routeerr-probe` — exactly the B2 defect. With a valid
     //     host the 4.x catch can build the `/500` event.
     //
-    // `/500` marker (4.x, class rule): status 500, Cache-Control containing `no-store`, and a
-    // `<title>` equal to the one in the prerendered global-error page of THIS build
-    // (`.open-next/cache/<buildId>/_global-error.cache`, the object CDK uploads; today
-    // "500: This page couldn’t load"). No tenant page and no plain-text 500 carries that title.
+    // 4.x (ruling OPENNEXT1B-ROUTEERR-500): the guarantee is "neither means writes an ISR entry; means (2) answers `no-store`; means (1) answers 502 with no `Cache-Control` — its edge handling (CloudFront error caching, default TTL 10 s) is NOT modelled by this harness and stays an explicit staging/edge uncertainty". OBSERVED 4.1.9: (1) 502, (2) a plain-text 500 with no-store — not
+    // Next's `/500` page, which the spec had inferred from source (the earlier `/500`-title branch
+    // of this row was removed with that ruling).
     test("(B-ROUTEERR) routing throws: (1) invalid XFH host, (2) invalid header value — answer per version, what is stored", async () => {
         const exp = expect("B-ROUTEERR");
         // (1) through the edge
@@ -643,36 +667,27 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
             `  (B-ROUTEERR) (1) XFH "${badHost}": ${r1.status} ${r1.headers["content-type"]} cache-control ${r1.headers["cache-control"] ?? "(absent)"}, ` +
                 `body "${r1.body.slice(0, 40)}"; stored ${JSON.stringify(stored1)}; log: ${routingFailed(log1)}\n` +
                 `  (B-ROUTEERR) (2) raw, LF in accept-language: ${r2.status} cache-control ${r2.headers["cache-control"] ?? "(absent)"} ` +
-                `${r2.headers["x-nextjs-cache"] ?? "-"} Location ${r2.headers.location ?? "-"} title "${titleOf(r2.body)}"; stored ${JSON.stringify(stored2)}; log: ${routingFailed(log2)}`,
+                `${r2.headers["x-nextjs-cache"] ?? "-"} Location ${r2.headers.location ?? "-"} title "${titleOf(r2.body)}" content-type ${r2.headers["content-type"] ?? "-"} ` +
+                `body[0..120] ${JSON.stringify(r2.body.slice(0, 120))}; stored ${JSON.stringify(stored2)}; log: ${routingFailed(log2)}`,
         );
         // Both means must make ROUTING throw — else the row measures something else.
         assert.match(log1, /Routing failed|Error in routingHandler/, "(1) did not make routing throw");
         assert.match(log2, /Routing failed|Error in routingHandler/, "(2) did not make routing throw");
-        if (exp.headerValue === "500-page") {
-            // 4.x. (2) carries the `/500` contract; (1) is characterized (ruling OPENNEXT1A-ROUTEERR-MEANS):
-            // its status is logged above and NOT asserted until opennext-1b pins the observed value —
-            // only "routing threw" (asserted for both above) and "nothing stored" hold for (1).
-            const marker = await globalErrorTitle();
-            assert.equal(r2.status, 500, "(2) status");
-            assert.match(String(r2.headers["cache-control"]), /no-store/, "(2) Cache-Control");
-            assert.equal(titleOf(r2.body), marker, "(2) is not Next's /500 page");
-            assert.deepEqual(stored2, [], "(2) stored something");
-            assert.deepEqual(stored1, [], "(1) stored something");
-            if (exp.invalidHost !== "characterize") assert.fail(`unexpected 4.x entry for (1): ${exp.invalidHost}`);
-        } else {
-            const e1 = exp.invalidHost;
-            assert.equal(r1.status, e1.status);
-            assert.equal(r1.headers["cache-control"] ?? null, e1.cacheControl);
-            assert.match(String(r1.headers["content-type"]), new RegExp(`^${e1.contentType}`));
-            assert.equal(r1.body, e1.body);
-            assert.deepEqual(stored1, e1.stored, "(1) stored something");
-            const e2 = exp.headerValue;
-            assert.equal(r2.status, e2.status);
-            assert.equal(r2.headers["cache-control"] ?? null, e2.cacheControl);
-            assert.equal(r2.headers["x-nextjs-cache"], e2.cache);
-            assert.equal(r2.headers.location, e2.location);
-            assert.deepEqual(stored2, e2.stored, "(2) the unrewritten render was not stored under the non-host key");
-        }
+        const e1 = exp.invalidHost;
+        assert.equal(r1.status, e1.status);
+        assert.equal(r1.headers["cache-control"] ?? null, e1.cacheControl);
+        assert.match(String(r1.headers["content-type"]), new RegExp(`^${e1.contentType}`));
+        assert.equal(r1.body, e1.body);
+        assert.deepEqual(stored1, e1.stored, "(1) stored something");
+        const e2 = exp.headerValue;
+        assert.equal(r2.status, e2.status);
+        if (e2.cacheControl instanceof RegExp) assert.match(String(r2.headers["cache-control"]), e2.cacheControl, "(2) Cache-Control");
+        else assert.equal(r2.headers["cache-control"] ?? null, e2.cacheControl);
+        assert.equal(r2.headers["x-nextjs-cache"], e2.cache);
+        assert.equal(r2.headers.location, e2.location);
+        if (e2.contentType !== undefined) assert.match(String(r2.headers["content-type"]), new RegExp(`^${e2.contentType}`));
+        if (e2.body !== undefined) assert.equal(r2.body, e2.body);
+        assert.deepEqual(stored2, e2.stored, "(2) stored entries");
     });
 
     // ── B-CASE ──────────────────────────────────────────────────────────────────────────
@@ -690,7 +705,9 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // `proxyRequest` → an outbound HTTPS request (in production: back through CloudFront, a
     // second invocation). Here it is refused; 3.1.3 `proxyRequest` attaches no `error` listener
     // (`util.js:188-223`), so the handler never answers — the row bounds the wait (3 s) and
-    // asserts the journaled call. 4.x entry: no outbound call.
+    // asserts the journaled call. 4.x: OBSERVED 4.1.9 (opennext-1b) the same one call and no answer
+    // within the bound — both pinned (ruling OPENNEXT1B-CASE-N17; the spec's "no outbound"
+    // prediction did not hold, spec § 7.1 N17 predicted it).
     test("(B-CASE) mixed-case XFH: the packet request makes no outbound call; the reach variant per version", async () => {
         const exp = expect("B-CASE");
         await server.sync();
@@ -719,6 +736,7 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
                 [`https.request https://mixedcase.staging.serving-contract.test/${TENANT_ID}/_dyn`],
                 "the case-sensitive isExternal did not proxy",
             );
+            if (exp.reachOutcome !== undefined) assert.equal(reach, exp.reachOutcome, "reach variant outcome");
         } else {
             assert.deepEqual(reachCalls, [], "an outbound call was attempted");
         }
@@ -755,12 +773,13 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
 
     // ── B-STALE ─────────────────────────────────────────────────────────────────────────
     // Spec § 8.1 / § 5.6 (#1250). A page rendered by a warm container, read by a COLD one
-    // (`restart()`), is served STALE: 3.1.3 writes the patched window `s-maxage=2,
-    // stale-while-revalidate=300` (cache-8 patch, `fixISRHeaders`) and enqueues ONE SQS message.
-    // NEGATIVE CONTROL (b), part of every run: the same GET BEFORE the restart is a HIT — so the
+    // (`restart()`), was served STALE on 3.1.3: it wrote the patched window `s-maxage=2,
+    // stale-while-revalidate=300` (cache-8 patch, `fixISRHeaders`) and enqueued ONE SQS message.
+    // NEGATIVE CONTROL (b), part of every run: the same GET BEFORE the restart is a HIT — so a
     // STALE comes from the cold container, not from the entry. `/published` was rendered earlier
     // in this host (B-ORIGINVERIFY, B-XISR, B-RSC). The message is kept for B-REVAL.
-    // 4.x: two entries (`4-noseed` / `4-seed`), opennext-1b selects (decision OPENNEXT1-1250).
+    // 4.x: opennext-1b selected the with-seed entry (OPENNEXT1-1250 = A): cold HIT,
+    // `s-maxage=31536000`, 0 SQS messages — the #1302 seed resolved from the bundled cache.cjs.
     test("(B-STALE) cold container on a page rendered before restart: cache state, Cache-Control, SQS messages", async () => {
         const exp = expect("B-STALE");
         const warm = await get(FIXTURE_HOST, PUBLISHED_SLUG);
@@ -795,7 +814,8 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // reports the record as failed (`batchItemFailures`). Every version entry ASSERTS its success
     // rule against the host's actual answer (3.1.3: 200 + `REVALIDATED`; 4.x, spec E6 / § 3.G G4:
     // 200/307/308/404 + `REVALIDATED` — a junk 307 counts as success only with `REVALIDATED`);
-    // the 3.x entry also pins the observed answer. Message source: ruling OPENNEXT1A-SEED-REVAL
+    // both entries also pin the observed answer (4.x pinned by opennext-1b: 307 MISS, one failed
+    // record). Message source: ruling OPENNEXT1A-SEED-REVAL
     // (in the row).
     // NEGATIVE CONTROL (c) (not part of every run — it would make a real DNS query): with the
     // redirect off, the HEAD fails to connect (EXECUTED once; slice doc § Increment 1A-2).
@@ -901,11 +921,12 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
     // overlaps it on purpose. The cache-8 patch makes `fixISRHeaders` emit
     // `stale-while-revalidate=300`; a lost patch would emit 2592000 on the STALE path.
     //
-    // THE STALE PATH IS COVERED (increment 1A-2). `fixISRHeaders` writes the SWR window only on a
-    // STALE response; B-STALE produces one (a cold container, `restart()`), and its result is in
-    // the record this row scans — so the live handler's patched window is proven here, not only
-    // grepped. Positive control below: the record must hold a STALE response; without it (B-STALE
-    // removed or reordered after this row) this row fails instead of passing on MISS/HIT alone.
+    // THE STALE PATH (increment 1A-2). `fixISRHeaders` writes the SWR window only on a STALE
+    // response. On 3.1.3 and on the 4.x `4-noseed` branch B-STALE produces one (a cold container,
+    // `restart()`), its result is in the record this row scans, and the positive control below
+    // requires it (B-STALE removed or reordered → this row fails instead of passing on MISS/HIT
+    // alone). The 4.x seed branch (opennext-1b) has no STALE response; no 4.1.9 STALE emission of the 300-second window was observed (the `4-noseed` negative control's STALE response carries no `Cache-Control` at all, so it cannot prove the window); what is proven: `(c2)` checks the installed source and the guard checks the bundle literals
+    // (docs/slices/opennext-1b.md § 7).
     test("(B-NO30D) no cache-directive header of any suite response carries 2592000; Set-Cookie excluded", async () => {
         expect("B-NO30D");
         const responses = bundleResponses;

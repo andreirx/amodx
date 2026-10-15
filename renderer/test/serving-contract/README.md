@@ -20,7 +20,8 @@ artefact behind an emulated CloudFront edge, with S3 / SQS / DynamoDB stubs — 
 `buildRenderer`, `startRenderer`, `request`); `storedIsrEntries()` reads the filesystem on
 `next` and the S3 stub on `bundle`. Under `bundle` every row first resolves a version-explicit
 expectation (`BUNDLE_EXPECTATIONS`, keyed by open-next major) and a few rows are restated for
-the bundle (`d1`/`h1b`/`h1c`/`h2` doubled MISS `Location`, `d3` S3 journal, `e1` header
+the bundle (`d1`/`h1b`/`h1c`/`h2` doubled MISS `Location` on open-next 3.1.3 only — `SAME` on
+`@opennextjs/aws` 4.1.9, which emits one `Location` (`opennext-1b`); `d3` S3 journal; `e1` header
 absent-or-`no-store`, `g4` pinned to the renderer's own status because `Origin` is stripped
 at the edge — the bundle suite proves the renderer behind the edge; the edge security rule is
 proven by infra (i)); one extra row, `(journals)`, runs there. On `next` nothing changed: 39 rows.
@@ -36,7 +37,7 @@ a comment. Failing test = **contract change**, not a flaky test.
 | `b1` `b2` `b3` | query string **or** any ratified session-cookie shape → the `force-dynamic` twin (`no-store`); non-session cookies stay on the cacheable route (prefix match, not substring) |
 | `c` | unknown host → middleware `404` + `private, no-store`, **no render**; a dotted path (`/x.php`) gets the same gate |
 | `d1` `d2` `d3` | missing page → cacheable `307` → `?nf=1` → non-cacheable `404`; the `?nf=1` request never loops; the stored artefact is the 307 and **no 404 is ever stored** |
-| `c1` `c2` `h1` `h2` | **cache-8**: an ISR page emits `s-maxage` but **no** `stale-while-revalidate` (`expireTime` is inert — `c1`); open-next's `fixISRHeaders()` edge SWR window is the patched `300`, not `2592000`, in the bundled artefact (`c2`); a tenant's dotted slug renders on its own host (`GET /index.php` on `wk`'s host → `200`), so no path-shape scanner shield is admissible (`h1`); an unshielded scanner path still takes the ordinary cacheable `307` handoff (`h2`) |
+| `c1` `c2` `h1` `h2` | **cache-8**: an ISR page emits `s-maxage` but **no** `stale-while-revalidate` (`expireTime` is inert — `c1`); the adapter's `fixISRHeaders()` edge SWR window is the patched `300`, not `2592000`, in the INSTALLED source the build bundles (`c2`; since `opennext-1b` it resolves `@opennextjs/aws/core/routing/util.js`, patch `patches/@opennextjs+aws+4.1.9.patch` — the bundled artefact itself is checked by `scripts/verify-opennext-patch.mjs`); a tenant's dotted slug renders on its own host (`GET /index.php` on `wk`'s host → `200`), so no path-shape scanner shield is admissible (`h1`); an unshielded scanner path still takes the ordinary cacheable `307` handoff (`h2`) |
 | `p1` `p2` `t1` `t2` | **siteid-binding-1**, by-id addressing: `/_site/<id>` on a preview host → `200`, `no-store`, `amodx_preview_base` cookie, nothing stored (`p1`); on a tenant host → `403` (`p2`); `/tenant/<id>` on a tenant host → `403` (`t1`); on a preview host → `200` + `no-store` (`t2`) |
 | `h1b` `h1c` | **siteid-binding-1**, `[siteId]` is bound only by the middleware: another tenant's id (`/wk/index.php`, `h1b`) or host (`/<wk's host>/index.php`, `h1c`) in the path does not select that tenant — the request host's `307` handoff instead — and nothing is stored under the other tenant's ISR key (`h1c`, which must run before `h1`) |
 | `e1` `e2` | read failing *after* tenant resolution → `500` with **no** `Cache-Control` and no ISR entry; the same path caches normally once reads recover (human decision `CACHE-1-D4`) |

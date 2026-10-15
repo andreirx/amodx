@@ -125,3 +125,13 @@ serving+unit+typecheck green. Operator gate (NOT RUN): post-deploy, Revalidation
 error rate collapses and a grid refresh completes within its window without manual purge.
 
 **Superseded (2026-10-15, SITEID-BINDING-1):** the `/wk/index.php`-on-any-host counterexample was the siteId-from-the-wire hole; the counterexample that still blocks a `.php` shield is the unsanitised slug on the tenant's own host (row `(h1)`).
+
+**Note (2026-10-15, `opennext-1b` — appended; the record above is unchanged):** the adapter is now `@opennextjs/aws`
+4.1.9. Mitigation (c) was re-cut as `patches/@opennextjs+aws+4.1.9.patch` (`dist/core/routing/util.js:346, :355`;
+`patches/open-next+3.1.3.patch` deleted), still guarded by row `(c2)` (re-pointed to `@opennextjs/aws/core/routing/util.js`)
+and `scripts/verify-opennext-patch.mjs`, which now also forbids a bare `stale-while-revalidate` in `renderer/src`.
+The flood's feed — STALE reads on cold containers, upstream #1250 — is closed in the same patch file by the read side of
+upstream PR #1302: bundle row B-STALE answers cold `HIT`, `s-maxage=31536000`, 0 SQS messages (EXECUTED); without that
+hunk the 4.x cold STALE carries no `Cache-Control` and still enqueues (negative control, EXECUTED). Production effect
+(SQS volume, CloudFront miss ratio) is the operator's § 8.4 measurement — NOT RUN at build time. Mitigation d stays
+deferred (`(h1)`). Details: `docs/slices/opennext-1b.md`.

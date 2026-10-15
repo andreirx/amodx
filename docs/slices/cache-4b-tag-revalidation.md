@@ -53,3 +53,11 @@ infra change is needed, STOP and surface).
 Tag vocabulary table (OBSERVED render paths); unit tests for tag derivation; serving
 suite green incl. new assertions; mutation check (untag a path → assertion fails);
 operator staging probe: edit a product → category page fresh within seconds.
+
+**Note (2026-10-15, `opennext-1b` — appended; the record above is unchanged):** the block reason is gone on
+`@opennextjs/aws` 4.1.9. The adapter now writes tag rows for `APP_PAGE` entries (key `<OPEN_NEXT_BUILD_ID>/<tag>`),
+and `revalidatePath` on a page makes its next read a MISS with the new content, with the CACHE-10 purge
+neutralized (bundle row B-TAG, EXECUTED in `renderer/test/serving-bundle/`). Listings are still not linked to the
+content they show (row B-LISTING variant 2). Status stays **WITHDRAWN**: re-opening tag precision is a new decision,
+not implied by the upgrade. If re-opened, its expectations start from the B-TAG / B-LISTING rows and spec
+`docs/slices/opennext-1-upgrade.md` § 5.1–5.3 (tag mode `dynamodb` original, OPENNEXT1-TAGMODE = A).

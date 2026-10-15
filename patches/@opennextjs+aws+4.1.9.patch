@@ -1,0 +1,53 @@
+diff --git a/node_modules/@opennextjs/aws/dist/adapters/cache.js b/node_modules/@opennextjs/aws/dist/adapters/cache.js
+index 0aac0e7..006f992 100644
+--- a/node_modules/@opennextjs/aws/dist/adapters/cache.js
++++ b/node_modules/@opennextjs/aws/dist/adapters/cache.js
+@@ -81,6 +81,26 @@ export default class Cache {
+                 return null;
+             }
+             const cacheData = cachedEntry.value;
++            // opennext-1: backport of opennextjs-aws PR #1302 (read side only), fixes #1250.
++            // Seeds Next's per-process cache-control map from the stored `revalidate`, so a cold
++            // container does not treat a `revalidate = false` page as 1 s old. Remove when the
++            // pinned release contains #1302.
++            // The PR runs this only when `useRouteCacheKeys(globalThis.nextVersion)` is true; on the
++            // pinned next 16.3.8 that guard is constant-true (>= 16.3.8), so it is omitted here.
++            // `key` is the route cache key Next also uses for that map (next 16.3.8
++            // server/lib/incremental-cache/index.js: handler key :363/:366, map read :439, map write :557).
++            if (cacheData.revalidate !== undefined) {
++                try {
++                    const cc = require("next/dist/server/lib/incremental-cache/shared-cache-controls.external.js")
++                        .SharedCacheControls.cacheControls;
++                    if (!cc.has(key)) cc.set(key, { revalidate: cacheData.revalidate, expire: undefined });
++                } catch (e) {
++                    // The marker string is in a literal, not only in the comment above: the cache
++                    // adapter ships minified (`cache.cjs`), which drops comments, and
++                    // scripts/verify-opennext-patch.mjs looks for this string in the bundle.
++                    debug("opennext-1: backport of opennextjs-aws PR #1302: failed to seed cache control", key, e);
++                }
++            }
+             const meta = cacheData.meta;
+             const tags = getTagsFromValue(cacheData);
+             let _lastModified = cachedEntry.lastModified ?? Date.now();
+diff --git a/node_modules/@opennextjs/aws/dist/core/routing/util.js b/node_modules/@opennextjs/aws/dist/core/routing/util.js
+index 9e63477..49db92c 100644
+--- a/node_modules/@opennextjs/aws/dist/core/routing/util.js
++++ b/node_modules/@opennextjs/aws/dist/core/routing/util.js
+@@ -343,7 +343,7 @@ export function fixISRHeaders(headers) {
+             const age = Math.round((Date.now() - _lastModified) / 1000);
+             const remainingTtl = Math.max(sMaxAge - age, 1);
+             headers[CACHE_CONTROL_HEADER] =
+-                `s-maxage=${remainingTtl}, stale-while-revalidate=2592000`;
++                `s-maxage=${remainingTtl}, stale-while-revalidate=300`;
+         }
+     }
+     if (headers[NEXTJS_CACHE_HEADER] !== "STALE")
+@@ -352,7 +352,7 @@ export function fixISRHeaders(headers) {
+     // In order for CloudFront SWR to work, we set the stale-while-revalidate value to 2 seconds
+     // This will cause CloudFront to cache the stale data for a short period of time while we revalidate in the background
+     // Once the revalidation is complete, CloudFront will serve the fresh data
+-    headers[CACHE_CONTROL_HEADER] = "s-maxage=2, stale-while-revalidate=2592000";
++    headers[CACHE_CONTROL_HEADER] = "s-maxage=2, stale-while-revalidate=300";
+ }
+ /**
+  *

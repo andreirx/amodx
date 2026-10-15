@@ -147,9 +147,12 @@ that shipped to production precisely because no assertion covered the list:
 - `(g)` — `_next/image*` is keyed by a dedicated `ImageCachePolicy` on exactly `url,w,q`, the
   optimizer's required query-string inputs, and the behavior must actually reference that
   policy. Distinct from `(a2)`, which pins the *default* behavior's seven-parameter allowlist.
-- `(h)` — `RendererOriginPolicy` forwards exactly ten headers: `x-revalidation-token`
-  (`cache-6`) plus `x-prerender-revalidate` + `x-isr` (`cache-7`, the open-next background-ISR
-  revalidation protocol) included. Distinct from `(a1)`, which pins the six headers in the cache
+- `(h)` — `RendererOriginPolicy` forwards exactly eight headers: `x-revalidation-token`
+  (`cache-6`) included; `x-prerender-revalidate` + `x-isr` (`cache-7`, the OpenNext background-ISR
+  revalidation protocol) were removed 2026-10-13 (security fix; open-next 3.1.3 skipped tenant
+  middleware on any `x-isr`) and stay removed on `@opennextjs/aws` 4.1.9 (ruling OPENNEXT1-XISR = A,
+  `opennext-1b`); their absence is pinned. (The test title still says "ten" — finding F2 in
+  `docs/slices/opennext-1a.md`, a rename for the next infra slice.) Distinct from `(a1)`, which pins the six headers in the cache
   *key*: `(a1)` governs which stored response a viewer gets, `(h)` governs what the origin is
   allowed to see at all, on hits and misses alike. `cache-7` extended the list `(h)` pins without
   adding a new assertion. (`STATIC-EP` did NOT extend it: its CYCLE-1 `Origin` addition hit

@@ -29,6 +29,11 @@ Items tracked here are known issues that don't block production but should be ad
   ≥0.33 changed binary packaging; open-next's old-style install flags may not cross-install).
   **Revisit triggers:** opennext-1 unparks (next upgrade clears all of these), or image sources
   become externally supplied (e.g. tenant-visitor uploads).
+  *2026-10-15 note (opennext-1b):* the `SHARP_VERSION` / `npm_config_*` prefix of `build:open` is
+  gone; `renderer/open-next.config.ts` `imageOptimization.install` pins `sharp@0.35.5` for
+  linux / glibc / `--cpu=arm64` (the 4.x default would be 0.35.4), and bundle row B-SHARP asserts
+  the artefact (`sharp` 0.35.5 + `@img/sharp-linux-arm64`, EXECUTED). The optimizer itself stays
+  parked (OPENNEXT1-IMAGE = A).
 - **CI gate repaired:** `security-audit.yml` root + renderer jobs now run `scripts/audit-gate.mjs`
   (fails on any unaccepted high/critical, prints suppressed hits loudly); backend job gained the
   `--omit=dev` the root job always had. The workflow had been red since 2026-07-27 on accepted or
@@ -961,6 +966,20 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
   patch against the new `fixISRHeaders`, or drop it if the upstream default changed — and re-run
   both guards.
 - Status: PARKED (not OPEN debt - a deliberate deferral with a named revisit trigger)
+- **2026-10-15 closing note (`opennext-1b`, BUILT; staging run and prod deploy are operator steps,
+  pending).** The parking was lifted by the ratified spec `docs/slices/opennext-1-upgrade.md`
+  (trigger: maintained adapter for Next security patches + routing-bypass fixes #810/#1199). The
+  adapter is now `@opennextjs/aws` 4.1.9 (exact pin). The un-parking dependency above is DONE: the
+  cache-8 patch was re-cut as `patches/@opennextjs+aws+4.1.9.patch` (`util.js:346, :355`), plus a
+  third hunk (the #1250 seed, PR #1302 read side); `(c2)` re-pointed; the guard script asserts both.
+  cache-4b stays WITHDRAWN (its block reason — no tag rows for `APP_PAGE` — is gone; reopening it is
+  a new decision). **Still parked (ruling OPENNEXT1-IMAGE = A):** `_next/image` optimization. Two
+  defects recorded for the image slice, neither fixed by the upgrade: (1) the image function's
+  `BUCKET_KEY_PREFIX` is `_assets` (`infra/lib/renderer-hosting.ts`, image function env) while the
+  assets are uploaded to the bucket ROOT, so the 4.x S3 loader (`overrides/imageLoader/s3.js`,
+  reads `${BUCKET_KEY_PREFIX}/${key}`) looks in the wrong place; (2) `renderer/next.config.ts` has
+  no `images.remotePatterns`. The standing rule (raw asset URLs, never next/image) holds.
+  Details: `docs/slices/opennext-1b.md`.
 
 ## Review-image EXIF/privacy residual (2026-08-08, D-REV-4 superseded)
 
@@ -1140,6 +1159,15 @@ unchanged. Deliberately NOT in scope (each is ratified-deferred, not an oversigh
     every scanner hit and fail each attempt; making that structurally harmless is (b), still parked.
     Operator gate (NOT RUN, belongs to the follow-up flood fix): post-deploy error-rate collapse + a
     grid refresh completing without a manual purge.
+  - **2026-10-15 (`opennext-1b`):** mitigation (c) re-cut for `@opennextjs/aws` 4.1.9 as
+    `patches/@opennextjs+aws+4.1.9.patch` (`dist/core/routing/util.js:346` HIT recompute, `:355` STALE
+    branch; `fixSWRCacheHeader` `:260` left as the known residual). New in the guard: `renderer/src`
+    may hold no bare `stale-while-revalidate` (ruling OPENNEXT1-SWR-PATCH). The flood's FEED is closed
+    differently on 4.x: the #1250 seed hunk (same patch file) stops a stored `revalidate = false`
+    entry from turning STALE on a cold container, so the enqueue condition `x-nextjs-cache: STALE` is no
+    longer met by those reads (bundle row B-STALE: cold `HIT`, 0 SQS messages, EXECUTED). Without the
+    hunk the 4.x cold STALE carries NO `Cache-Control` and still enqueues (negative control, EXECUTED) —
+    the reason the hunk ships. Confirmation on staging/prod (E1/E17, § 8.4) is the operator's run.
 
 ## DebounceFlush sleep-loop cost incident (2026-09-02, human-reported via AWS bill)
 
@@ -1274,6 +1302,15 @@ table (295 content items, timestamps match CI runs).
 Process: push only after staging is settled — the e2e workflow tests live staging, and pushing
 before deploying staging raced it twice (2026-09-16, 2026-10-13: 404 spec red mid-deploy,
 green on settled staging).
+**2026-10-15 note (`opennext-1b`):** on `@opennextjs/aws` 4.1.9 `revalidatePath` DOES write tag
+rows for `APP_PAGE` (key `<OPEN_NEXT_BUILD_ID>/<tag>`) and the edited page's next read is a MISS
+with the new content, with the CACHE-10 purge neutralized (bundle row B-TAG, EXECUTED). The removal
+condition stated above ("remove the S3 purge when opennext-1 makes `revalidatePath` effective for
+`APP_PAGE`") is met for the PAGE only: listings are still not refreshed by `revalidatePath` (bundle
+row B-LISTING variant 2, EXECUTED), so the purge STAYS (ruling OPENNEXT1-CACHE10-PURGE = A). Risk
+line (ruling OPENNEXT1-TAGMODE): 4.1.9 logs tag-write failures and does not throw
+(`overrides/tagCache/dynamodb.js:189-212`), so a 200 from `/api/revalidate` never proves freshness —
+the edit-goes-live probe (served token) does.
 
 ## SITEID-BINDING-1 residuals (2026-10-15)
 
@@ -1291,6 +1328,10 @@ pass-through) and gated `/tenant/` test mode like `/_site/`. Left open, by rulin
   handler's own result already holds ONE `location` string with the value twice, comma-joined; one
   `Location` line on the wire; the HIT holds it once — so the doubling is inside the adapter/Next
   response path, NOT in the Function URL or CloudFront layer.
+  *2026-10-15 (`opennext-1b`, EXECUTED on the built `@opennextjs/aws` 4.1.9 bundle):* row
+  D3-LOCATION shows ONE `Location` value at the handler and on the wire; rows `d1 h1b h1c h2` pass
+  with a single location. The doubling is gone on 4.1.9 in the harness; staging confirmation is the
+  operator's E16/E22 run.
 - **Staging has 417 leftover `e2e-render-*` tenants** (operator finding, 2026-10-15). Separate
   cleanup item; not created by this slice.
 - **Preview link that leaves `/_site/`.** `preview-probe`'s home renders the hero button as
@@ -1317,6 +1358,11 @@ pass-through) and gated `/tenant/` test mode like `/_site/`. Left open, by rulin
     prefix, so the CACHE-10 purge deletes it; and that published pages therefore appear in the
     "Failed to revalidate" log. `revalidate.js:35-37` establishes only that a `307` response is
     classified failed, not that every background request receives one.
+  - *2026-10-15 (`opennext-1b`, EXECUTED, bundle row B-REVAL on 4.1.9):* the revalidation function's
+    HEAD still targets `https://<host>/<host>/<path>`; the edge forwards neither revalidation header
+    (OPENNEXT1-XISR = A), so the host answers `307 MISS` (not `REVALIDATED`) and the record fails under
+    the 4.x rule (status in {200, 307, 308, 404} AND `REVALIDATED`). With the #1250 seed shipped, such
+    messages should no longer be produced by cold reads (B-STALE: 0 messages).
 
 ## opennext-1c/1d (2026-10-15)
 
@@ -1341,3 +1387,31 @@ the `_cache/` prefix of the `RendererAssets` bucket. Consequences carried forwar
   comment, not an assertion (ruling OPENNEXT1CD-SPLIT1-5 = B; slice doc § 5.1). The test still gates both
   templates `< 500`. Its count comments (377 + 50 + 13 = 440) go stale with every parent-resource change;
   they are documentation, not assertions.
+
+## opennext-1b (2026-10-15)
+
+Slice `docs/slices/opennext-1b.md` (BUILT; staging and prod are operator steps) upgraded the
+renderer adapter to `@opennextjs/aws` 4.1.9. Findings and residuals carried forward:
+
+- **Mixed-case host → outbound proxy call survives the 4.1.9 upgrade (the spec's § 8.1 B-CASE expectation of no call was wrong; § 7.1 N17 predicted the call).** Ruling OPENNEXT1B-CASE-N17 (operator, 2026-10-15): accepted for this slice; the operator owns
+  the risk; the human may override at the checkpoint report. Reach condition: a Host that passes the
+  preview-host gate and reaches the middleware with upper-case letters. Live gate: E20 (staging, spec
+  § 8.2). If E20 shows a second invocation, the fix is a lowercase of the host at the viewer-request
+  CloudFront Function or in `middleware.ts` — a separate slice. Evidence (bundle row B-CASE, EXECUTED):
+  one outbound `https.request` to the lower-cased host, and no answer within the row's 3 s bound — both
+  pinned. Mechanism: 4.1.9 `isExternal` compares `new URL(url).host` (lower-cased) with the raw
+  `x-forwarded-host` (`core/routing/util.js:16-33`); the proxy (`overrides/proxyExternalRequest/node.js`)
+  has no request `error` listener, so a failed call never answers.
+- **A routing exception answers a plain-text 500, not Next's `/500` page (bundle row B-ROUTEERR,
+  EXECUTED; accepted by ruling OPENNEXT1B-ROUTEERR-500 — the 4.x contract is "neither means writes an ISR entry; means (2) answers `no-store`; means (1) answers 502 with no `Cache-Control` — its edge handling (CloudFront error caching, default TTL 10 s) is NOT modelled by this harness and stays an explicit staging/edge uncertainty", the `/500` body was the spec's inferred presentation).** Means (2) (a header value `Headers.append` rejects): 500, `text/plain` "Internal Server
+  Error", `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`, nothing stored —
+  safe (the 3.1.3 B2 defect, an unrewritten render stored under a non-host key, is gone). Means (1)
+  (an invalid host): the handler throws → 502. Neither is reachable through CloudFront (INFERRED: the
+  edge sends a valid host and cannot carry a line feed in a header value).
+- **New dev-only audit HIGH:** `glob` GHSA-5j98-mcp5-4vw2 (glob CLI `-c/--cmd` command injection) via
+  `@opennextjs/aws → @node-minify/core@9.0.2 → glob@10.3.3` (npm counts 3 HIGH nodes). Build-time only:
+  none of these packages is in any `.open-next` Lambda artefact (checked), and the build never runs the
+  glob CLI. `scripts/audit-gate.mjs` (prod deps) stays green. Revisit: an `@opennextjs/aws` release
+  that moves `@node-minify/core` off glob 10.3.3.
+- **B-NO30D record and the seed:** the seed branch has no STALE response; no 4.1.9 STALE emission of the 300-second window was observed (the `4-noseed` negative control's STALE response carries no `Cache-Control` at all, so it cannot prove the window); what is proven: `(c2)` checks the installed source and the guard checks the bundle literals. B-NO30D's STALE-path positive control applies
+  only on the `4-noseed` branch.

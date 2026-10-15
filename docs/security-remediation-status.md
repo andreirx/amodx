@@ -384,7 +384,13 @@ Resolved 5 of 8 vulnerabilities (including the only CRITICAL and both HIGHs) via
 | picomatch | 2.3.1 / 4.0.3 | 2.3.2 / 4.0.4 | **HIGH** → fixed | Method injection + ReDoS. Transitive of jest, vite, vitest, tinyglobby. |
 | brace-expansion | 1.1.12 / 2.0.2 | 1.1.13 / 2.0.3 | moderate → fixed | Zero-step sequence hang. Transitive of eslint, minimatch, @node-minify. |
 | aws-cdk-lib | 2.241.0 | **frozen** | moderate (yaml + brace) | Pinned to exact version. Upgrade blocked on infra guardrails. |
-| esbuild (open-next) | 0.19.2 | **frozen** | moderate | Dev server vuln. Build-time only, not exploitable. Blocked on upstream. |
+| esbuild (open-next) | 0.19.2 | **removed 2026-10-15** | moderate → gone | Dev server vuln. Build-time only, not exploitable. Was blocked on upstream; `opennext-1b` replaced `open-next` 3.1.3 by `@opennextjs/aws` 4.1.9 (its own esbuild is 0.28.2), so this copy is no longer installed. |
+
+**2026-10-15 update (`opennext-1b`):** the upgrade adds one dev/build-only HIGH advisory, `glob`
+GHSA-5j98-mcp5-4vw2 (glob CLI `-c/--cmd` command injection), via `@opennextjs/aws → @node-minify/core@9.0.2 →
+glob@10.3.3` (npm counts it on 3 nodes). None of these packages is in a deployed Lambda artefact and the build
+never runs the glob CLI; `scripts/audit-gate.mjs` (production deps) stays green. Explanation and revisit trigger:
+`docs/slices/opennext-1b.md` § Audit.
 
 **aws-cdk-lib pinned**: Changed `infra/package.json` from `"^2.241.0"` to `"2.241.0"` to prevent accidental upgrades before infra tests exist.
 

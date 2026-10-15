@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:serving": "node --test --test-concurrency=1 test/serving-contract/contract.test.mjs",
     "test:serving-bundle": "SERVING_TARGET=bundle node --test --test-concurrency=1 test/serving-bundle/bundle.test.mjs",
-    "build:open": "SHARP_VERSION=0.35.5 npm_config_os=linux npm_config_cpu=arm64 npm_config_libc=glibc npx open-next build",
+    "build:open": "open-next build",
     "lint": "eslint"
   },
   "dependencies": {
@@ -27,6 +27,7 @@
     "sanitize-html": "^2.17.4"
   },
   "devDependencies": {
+    "@opennextjs/aws": "4.1.9",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -34,7 +35,6 @@
     "@types/sanitize-html": "^2.13.0",
     "eslint": "^9",
     "eslint-config-next": "^16.1.1",
-    "open-next": "^3.1.3",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.8"

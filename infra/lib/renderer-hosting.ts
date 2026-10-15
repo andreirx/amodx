@@ -159,9 +159,10 @@ export class RendererHosting extends Construct {
         });
 
         // GSI for path-based lookups (which tags apply to a path; is any tag on this path stale?).
-        // The NAME is a contract with OpenNext, not ours to choose: open-next 3.1.3
-        // `dist/cache/tag/dynamodb.js` hard-codes `IndexName: "revalidate"` (PK path, SK
-        // revalidatedAt) in getByPath + getLastModified. This index was originally created as
+        // The NAME is a contract with OpenNext, not ours to choose: @opennextjs/aws 4.1.9
+        // `dist/overrides/tagCache/dynamodb.js:44, :110, :167` hard-codes `IndexName: "revalidate"`
+        // (PK path, SK revalidatedAt) in getByPath, getLastModified and hasBeenRevalidated, as
+        // open-next 3.1.3 `dist/cache/tag/dynamodb.js` did before it. This index was originally created as
         // 'by-path' with identical keys — every OpenNext tag query failed ("The table does not
         // have the specified index: revalidate", ~113k errors/day on prod), the write path
         // aborted before storing any tag (table stayed at 0 items), and therefore EVERY
@@ -437,8 +438,10 @@ function handler(event) {
                 'x-revalidation-token',
                 // `x-prerender-revalidate` + `x-isr` (slice cache-7) are DELIBERATELY NOT
                 // forwarded (removed 2026-10-13, human-ratified security fix). open-next@3.1.3
-                // skips tenant middleware for ANY request carrying `x-isr`
-                // (`dist/core/routing/middleware.js:27`). Forwarded from viewers, one anonymous
+                // skipped tenant middleware for ANY request carrying `x-isr`
+                // (3.1.3 `dist/core/routing/middleware.js:27`); @opennextjs/aws 4.1.9 skips it only
+                // when `x-prerender-revalidate` also equals the build's previewModeId
+                // (4.1.9 `dist/core/routing/middleware.js:28-31`). Forwarded from viewers, one anonymous
                 // request with `x-isr: 1` on an edge MISS rendered the un-rewritten path → a
                 // cacheable 1-year `307 → /?nf=1`, which CloudFront then served to every visitor
                 // (REPRODUCED on staging 2026-10-13: attacker MISS 307, next visitor HIT 307).
@@ -448,8 +451,10 @@ function handler(event) {
                 // fallback), ~91% of its messages were failing scanner junk and it drove ~32% of
                 // renderer invocations; edits are made fresh by CACHE-10's S3 purge instead.
                 // The two headers were "both, or neither" (one without the other silences nothing
-                // and persists nothing), so both go. Revisit with the OpenNext 4.x upgrade, which
-                // authenticates the internal request with the preview-mode secret instead.
+                // and persists nothing), so both go. Revisited for the 4.x upgrade (which authenticates
+                // the internal request with the preview-mode secret): ruling OPENNEXT1-XISR = A
+                // (docs/slices/opennext-1-upgrade.md § Ratification) keeps both removed on 4.1.9;
+                // a rollback to 3.1.3 must keep them removed too (spec § 9.3).
             ),
             queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
             cookieBehavior: cloudfront.OriginRequestCookieBehavior.all(),

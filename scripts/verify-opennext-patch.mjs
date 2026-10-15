@@ -4,22 +4,33 @@
 // Ratified by REVISE 3 (`cache8-c2-guard-mechanism`, operator, 2026-08-16).
 //
 // WHAT PROBLEM THIS GUARDS. Mitigation (c) ships as a pinned-dependency patch
-// (`patches/open-next+3.1.3.patch`, applied by root `postinstall: patch-package`) that rewrites
-// open-next's `fixISRHeaders()` edge stale-while-revalidate window from the 30-day default
-// (`2592000`) to `300`. If that patch is silently lost — a fresh clone whose `postinstall` was
-// skipped, an `npm ci` in an environment that ignores lifecycle scripts, or an open-next upgrade
-// past 3.1.3 that no longer matches the patch — the deploy would ship the 30-day window again and
-// re-pin stale copies at the CloudFront edge for a month. The intent of REVISE 2's (c2) criterion
-// is: fail LOUDLY, before deploy, if what SHIPS loses the patch.
+// (`patches/@opennextjs+aws+4.1.9.patch`, applied by root `postinstall: patch-package`; it replaced
+// `patches/open-next+3.1.3.patch` in slice opennext-1b) that rewrites the adapter's `fixISRHeaders()`
+// edge stale-while-revalidate window from the 30-day default (`2592000`) to `300`. If that patch is
+// silently lost — a fresh clone whose `postinstall` was skipped, an `npm ci` in an environment that
+// ignores lifecycle scripts, or an `@opennextjs/aws` upgrade past 4.1.9 that no longer matches the
+// patch — the deploy would ship the 30-day window again and re-pin stale copies at the CloudFront
+// edge for a month. The intent of REVISE 2's (c2) criterion is: fail LOUDLY, before deploy, if what
+// SHIPS loses the patch.
+//
+// THE SAME PATCH FILE CARRIES A SECOND, UNRELATED HUNK (slice opennext-1b, OPENNEXT1-1250 = A): the
+// read side of upstream PR #1302 in `dist/adapters/cache.js` (the #1250 cold-container fix). This
+// script also asserts that hunk's marker string is in the shipped cache adapter (step 5) — a patch
+// property, so it belongs here (spec docs/slices/opennext-1-upgrade.md § 6.5). If the patch file has
+// no such hunk (the ratified fallback: ship without it), step 5 says so and is skipped.
+//
+// AND ONE SOURCE RULE (ratified OPENNEXT1-SWR-PATCH, human 2026-10-15): `renderer/src` must not
+// contain a BARE `stale-while-revalidate` (a directive without `=<n>`). A bare directive is the one
+// input that would reach the unpatched third 30-day site (`fixSWRCacheHeader`, below). Step 6.
 //
 // TWO-LAYER GUARD (REVISE 3). This intent is satisfied by two artefacts, not one:
 //   LAYER 1 (fast, every unit run): serving-contract row (c2) in
-//     `renderer/test/serving-contract/contract.test.mjs` reads the INSTALLED open-next source
-//     (`node_modules/open-next/dist/core/routing/util.js`) and asserts the patched constant is
+//     `renderer/test/serving-contract/contract.test.mjs` reads the INSTALLED adapter source
+//     (`node_modules/@opennextjs/aws/dist/core/routing/util.js`) and asserts the patched constant is
 //     present / the 2592000 window gone. Catches an unapplied patch in ~ms with no build.
 //   LAYER 2 (this script): asserts the patched constant survives THROUGH `open-next build` into
 //     the actual SERVER Lambda bundle (`.open-next/server-functions/default/`) — the exact
-//     artefact the CDK deploy uploads (`infra/lib/renderer-hosting.ts:211`). This is the property
+//     artefact the CDK deploy uploads (`infra/lib/renderer-hosting.ts:240`). This is the property
 //     LAYER 1 cannot prove: that bundling did not drop/rewrite the string. A full Lambda-invoke
 //     harness (reviewer option B) is deliberately NOT built — grep of the shipped bundle proves
 //     the same emitted-header property with far less machinery (REVISE 3).
@@ -37,17 +48,20 @@
 //       serving row) already runs in CI-affordable time and catches the common "patch unapplied"
 //       case; LAYER 2 runs at the deploy boundary where an `open-next build` happens anyway.
 //
-// A THIRD 30-DAY SITE EXISTS BY DESIGN (documented, not a miss). open-next's `util.js` has a
-// SECOND stale-while-revalidate=2592000 site, `fixSWRCacheHeader()` (util.js:254-264), which the
+// A THIRD 30-DAY SITE EXISTS BY DESIGN (documented, not a miss). The adapter's `util.js` has a
+// stale-while-revalidate=2592000 site outside `fixISRHeaders()`, `fixSWRCacheHeader()` (4.1.9
+// `dist/core/routing/util.js:250-264`, the replace at :260), which the
 // patch deliberately does NOT touch. It only fires when Next emits a BARE `stale-while-revalidate`
 // (no `=value`); all renderer ISR pages are `revalidate=false`, so Next emits no bare SWR directive
-// (serving row (c1)) and this site is a no-op for THIS deployment. Its residual therefore survives
+// (serving row (c1)) and none is hand-written in `renderer/src` (step 6), so this site is a no-op for
+// THIS deployment. Its residual therefore survives
 // in the bundle as the exact replace-target string `,"stale-while-revalidate=2592000"` (comma-QUOTE,
 // distinct from fixISRHeaders' comma-SPACE form). This script accounts for it explicitly so the
 // deploy gate does not false-fail, and reports it so a future move to time-based ISR re-evaluates
 // it (tracked under `opennext-1` / docs/TECH-DEBT.md § cache-8).
 //
-// EXIT CODES: 0 = patch present in the built bundle; 1 = patch missing / unexpected 30-day window.
+// EXIT CODES: 0 = patch present in the built bundle; 1 = patch missing / unexpected 30-day window /
+// seed hunk in the patch but not in the bundle / a bare stale-while-revalidate in renderer/src.
 
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -60,13 +74,13 @@ const log = (...a) => console.log(TAG, ...a);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const rendererPath = join(repoRoot, "renderer");
 const openNextPath = join(rendererPath, ".open-next");
-// The exact asset CDK uploads as the ISR-serving Lambda (infra/lib/renderer-hosting.ts:211).
+// The exact asset CDK uploads as the ISR-serving Lambda (infra/lib/renderer-hosting.ts:240).
 // fixISRHeaders() runs in this server request path; the revalidation-function only issues HEAD
 // requests and carries none of these strings (verified 2026-08-16).
 const serverBundleDir = join(openNextPath, "server-functions", "default");
 
 // ── The strings that distinguish a patched from an unpatched fixISRHeaders in the bundle. ──
-// PATCHED_STALE is the plain string literal from the STALE-serving branch (util.js:396) — the exact
+// PATCHED_STALE is the plain string literal from the STALE-serving branch (util.js:355) — the exact
 // header behind the prod symptom `s-maxage=2, ... age=194`. esbuild preserves string-literal
 // contents verbatim, so it is the strongest, least-fragile anchor.
 const PATCHED_STALE = "s-maxage=2, stale-while-revalidate=300";
@@ -109,7 +123,7 @@ const count = (s) => src.split(s).length - 1;
 // 3. Assertions on the SHIPPED bundle.
 const errors = [];
 if (!src.includes(PATCHED_STALE)) {
-    errors.push(`patched STALE window "${PATCHED_STALE}" is MISSING from the server bundle — the cache-8 patch did not survive open-next build (postinstall skipped, or open-next upgraded past 3.1.3).`);
+    errors.push(`patched STALE window "${PATCHED_STALE}" is MISSING from the server bundle — the cache-8 patch did not survive open-next build (postinstall skipped, or @opennextjs/aws upgraded past 4.1.9).`);
 }
 if (src.includes(UNPATCHED_STALE)) {
     errors.push(`unpatched 30-day STALE window "${UNPATCHED_STALE}" is PRESENT — the cache-8 patch is not in effect.`);
@@ -129,6 +143,46 @@ if (unaccounted > 0) {
     errors.push(`${unaccounted} unaccounted "2592000" occurrence(s) in the server bundle beyond the fixSWRCacheHeader residual — inspect the bundle before deploying.`);
 }
 
+// 5. The #1250 seed hunk (PR #1302 read side). The patch file decides whether it is meant to ship:
+//    the hunk carries SEED_MARKER in a string literal (the cache adapter is minified, so a comment
+//    would not survive). Present in the patch → it must be in the shipped cache adapter, the file
+//    the server's Next loads as its cache handler. Absent from the patch → the ratified fallback
+//    (ship without the hunk) applies; say so and skip.
+const SEED_MARKER = "opennext-1: backport of opennextjs-aws PR #1302";
+const patchFile = join(repoRoot, "patches", "@opennextjs+aws+4.1.9.patch");
+const cacheAdapter = join(serverBundleDir, "renderer", "cache.cjs");
+const seedInPatch = existsSync(patchFile) && readFileSync(patchFile, "utf8").includes(SEED_MARKER);
+let seedLine;
+if (!seedInPatch) {
+    seedLine = `seed not shipped: ${patchFile} has no "${SEED_MARKER}" hunk (OPENNEXT1-1250 fallback) — seed check skipped`;
+    log(seedLine);
+} else if (!existsSync(cacheAdapter)) {
+    errors.push(`the shipped cache adapter ${cacheAdapter} is missing — the server bundle layout changed; re-verify the seed check.`);
+} else if (!readFileSync(cacheAdapter, "utf8").includes(SEED_MARKER)) {
+    errors.push(`the patch carries the #1302 seed hunk but "${SEED_MARKER}" is NOT in ${cacheAdapter} — the seed did not survive open-next build (patch unapplied in node_modules?).`);
+} else {
+    seedLine = `#1250 seed hunk present in the shipped cache adapter (renderer/cache.cjs)`;
+}
+
+// 6. Ratified source rule: no BARE stale-while-revalidate in renderer/src (same pattern as the
+//    fixSWRCacheHeader trigger, `/\bstale-while-revalidate(?!=)/`, 4.1.9 util.js:260).
+const BARE_SWR = /\bstale-while-revalidate(?!=)/;
+function bareSwrHits(dir) {
+    const hits = [];
+    for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) hits.push(...bareSwrHits(p));
+        else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name)) {
+            readFileSync(p, "utf8").split("\n").forEach((line, i) => { if (BARE_SWR.test(line)) hits.push(`${p}:${i + 1}`); });
+        }
+    }
+    return hits;
+}
+const bare = bareSwrHits(join(rendererPath, "src"));
+for (const hit of bare) {
+    errors.push(`bare "stale-while-revalidate" (no =<n>) at ${hit} — it would reach fixSWRCacheHeader's unpatched 30-day window; write an explicit value.`);
+}
+
 if (errors.length) {
     for (const e of errors) log("FAIL:", e);
     log("cache-8 mitigation (c) built-bundle guard: FAILED");
@@ -136,4 +190,6 @@ if (errors.length) {
 }
 
 log(`PASS: server bundle carries the patched edge window "${PATCHED_STALE}"; no unpatched fixISRHeaders 30-day window present; the sole 2592000 residual is the expected fixSWRCacheHeader no-op.`);
+log(`PASS: ${seedLine}.`);
+log(`PASS: no bare stale-while-revalidate in renderer/src.`);
 log("cache-8 mitigation (c) built-bundle guard: OK");

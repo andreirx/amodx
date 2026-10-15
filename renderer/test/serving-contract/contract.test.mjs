@@ -52,12 +52,13 @@ const S_MAXAGE = "s-maxage=31536000";
 // value names a bundle restatement the row branches on; each is documented at its row and in
 // docs/slices/opennext-1a.md § Row inventory. 4.x entries follow spec
 // docs/slices/opennext-1-upgrade.md § 4.1 ("same" there → "3,4" here); rows that § 4.1 changes
-// or that have no 4.x expectation yet carry a "3" key only and get their "4" key in opennext-1b.
+// or that had no 4.x expectation carried a "3" key only and got their "4" key in opennext-1b
+// from its 4.1.9 run (docs/slices/opennext-1b.md § Row table).
 // Under the `next` target this table is not consulted (every row is SAME).
 const SAME = "same";
 /** The MISS-rendered not-found 307 carries its `Location` twice, comma-joined
  *  (`/x?nf=1,/x?nf=1`). Ratification finding 2026-10-15 (staging), reproduced here; the stored
- *  entry holds ONE location (row d3). Characterized on 3.x; 4.x decided in opennext-1b. */
+ *  entry holds ONE location (row d3). Characterized on 3.x. OBSERVED 4.1.9 (opennext-1b): ONE location — the rows use SAME on "4". */
 const DOUBLED_LOCATION = "doubled-location";
 const BUNDLE_EXPECTATIONS = {
     iso1: { "3,4": "bundle-env" },
@@ -67,14 +68,16 @@ const BUNDLE_EXPECTATIONS = {
     a1: { "3,4": SAME },
     a2: { "3,4": SAME },
     c1: { "3,4": SAME },
-    // § 4.1: BREAKS on 4.x (`open-next/…` no longer resolves); re-pointed in opennext-1b.
-    c2: { "3": SAME },
+    // § 4.1: BROKE on 4.x (`open-next/…` no longer resolves); re-pointed in opennext-1b to
+    // `@opennextjs/aws/…`. "4" only: the row's code now resolves the 4.x package, so a "3" claim
+    // would be false.
+    c2: { "4": SAME },
     a3: { "3,4": SAME },
     b1: { "3,4": SAME },
     b2: { "3,4": SAME },
     b3: { "3,4": SAME },
     c: { "3,4": SAME },
-    d1: { "3": DOUBLED_LOCATION },
+    d1: { "3": DOUBLED_LOCATION, "4": SAME },
     d2: { "3,4": SAME },
     d3: { "3,4": "s3-journal" },
     m1: { "3,4": SAME },
@@ -84,10 +87,10 @@ const BUNDLE_EXPECTATIONS = {
     p2: { "3,4": SAME },
     t1: { "3,4": SAME },
     t2: { "3,4": SAME },
-    h1b: { "3": DOUBLED_LOCATION },
-    h1c: { "3": DOUBLED_LOCATION },
+    h1b: { "3": DOUBLED_LOCATION, "4": SAME },
+    h1c: { "3": DOUBLED_LOCATION, "4": SAME },
     h1: { "3,4": SAME },
-    h2: { "3": DOUBLED_LOCATION },
+    h2: { "3": DOUBLED_LOCATION, "4": SAME },
     e1: { "3,4": "absent-or-no-store" },
     e2: { "3,4": SAME },
     f: { "3,4": SAME },
@@ -213,7 +216,8 @@ async function storedIsrEntries(keyPrefix = FIXTURE_HOST) {
 /**
  * Bundle target: the ISR entries currently in the S3 stub, by cache key.
  *
- * MEASURED LAYOUT (open-next 3.1.3 `cache/incremental/s3.js` `buildS3Key` + next 16.3.8):
+ * MEASURED LAYOUT (open-next 3.1.3 `cache/incremental/s3.js` `buildS3Key` + next 16.3.8; the
+ * same key OBSERVED on @opennextjs/aws 4.1.9, opennext-1b row B-ISO):
  *   `_cache/<buildId>/route-cache/<kind>/<sha256>/$/<host>/<path>.cache`
  * — the same route-scoped key the filesystem walker above reads, under the `_cache/<buildId>/`
  * prefix (`CACHE_BUCKET_KEY_PREFIX`, `NEXT_BUILD_ID`). The pre-16.3.8 form
@@ -263,8 +267,10 @@ const BUNDLE_HERMETIC_ENV = [
 /**
  * `(iso3)` on the bundle target: the `open-next build` tree and the Lambda host child.
  *
- * The build root is `npm run build:open`; its tree is `npm` → `npx` → `open-next build` → `npm run
- * build` → `next build` → workers (+ `npm install sharp`). OBSERVED 2026-10-15: the `sh -c` hops
+ * The build root is `npm run build:open`; its tree is `npm` → `open-next build` (the `.bin/open-next`
+ * link of `@opennextjs/aws` since opennext-1b; `npx` sat in between on 3.1.3) → `npm run build` →
+ * `next build` → workers (+ the image function's `npm install … sharp@0.35.5`). OBSERVED 2026-10-15
+ * (3.1.3 and 4.1.9): the `sh -c` hops
  * exec their single command, so each node process is the direct child of the previous one — but
  * that is a shell detail, so the `open-next` and `next` build processes are found by the script
  * they run (`argv1`, recorded by no-dotenv.cjs: the `.bin/` link or the package path), not by
@@ -530,7 +536,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // `revalidate` is a NUMBER < expire (next getCacheControlHeader, cache-control.js:13). So the
     // page carries s-maxage but NO `stale-while-revalidate` at all — there is no SWR directive for
     // expireTime to size. The `stale-while-revalidate=2592000` seen at the CloudFront edge is an
-    // open-next runtime constant (fixISRHeaders, util.js:388-396), NOT a Next-emitted value, so a
+    // adapter runtime constant (fixISRHeaders, 4.1.9 util.js:346, :355), NOT a Next-emitted value, so a
     // Next config cannot bound it.
     //
     // IF THIS GOES RED because a `stale-while-revalidate` now appears here, someone added
@@ -551,11 +557,13 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // ── ROW (c2) ────────────────────────────────────────────────────────────────────────
     // § "The SWR revalidation queue and the scanner-junk flood (cache-8)" → mitigation (c),
     // as ratified by REVISE 2 (`cache8-mitigation-c-resolution = B`): a PINNED-DEPENDENCY PATCH
-    // (`patches/open-next+3.1.3.patch`, applied by root `postinstall: patch-package`) rewrites the
-    // hardcoded 30-day edge SWR window in open-next's `fixISRHeaders()` from `2592000` to `300`.
+    // (`patches/@opennextjs+aws+4.1.9.patch` since slice opennext-1b; before it
+    // `patches/open-next+3.1.3.patch`; applied by root `postinstall: patch-package`) rewrites the
+    // hardcoded 30-day edge SWR window in the adapter's `fixISRHeaders()` from `2592000` to `300`
+    // (4.1.9 `dist/core/routing/util.js:346` HIT recompute, `:355` STALE branch).
     //
     // THIS ROW IS LAYER 1 OF A TWO-LAYER GUARD (REVISE 3, operator `cache8-c2-guard-mechanism`).
-    // LAYER 1 (here) reads the INSTALLED open-next source every unit run — fast, CI-affordable,
+    // LAYER 1 (here) reads the INSTALLED adapter source every unit run — fast, CI-affordable,
     // catches a skipped `postinstall` in ms. LAYER 2 is `scripts/verify-opennext-patch.mjs`, a
     // pre-deploy gate that asserts the patched constant survives `open-next build` INTO the shipped
     // server bundle (the property this row cannot prove). See docs/caching-architecture.md § "The SWR
@@ -572,21 +580,23 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
     // The function also cannot be imported and called in isolation: its
     // transitive `adapters/config` → `adapters/logger` imports are extension-less and resolve only
     // inside open-next's own bundler (MEASURED — a bare `import` throws MODULE_NOT_FOUND). So the
-    // faithful, low-fragility guard reads the EXACT `dist/core/routing/util.js` file that
+    // faithful, low-fragility guard reads the EXACT `@opennextjs/aws/dist/core/routing/util.js` file
+    // (resolved through the package `exports` `"./*" → "./dist/*"`) that
     // `open-next build` bundles into the RevalidationFunction/server Lambda and asserts the patched
     // constant is present in `fixISRHeaders()` and the 2592000 window is gone from it.
     //
     // IF THIS GOES RED: either the patch did not apply (a fresh clone whose `postinstall` was skipped
-    // — run `npx patch-package`) or open-next was upgraded past 3.1.3 and the patch no longer matches
-    // (re-cut the patch against the new `fixISRHeaders`, or drop it if the upstream default changed).
-    // Both are exactly the "silently-unapplied patch / upgrade" cases REVISE 2 requires to fail loud.
-    // Un-parking `opennext-1` (docs/TECH-DEBT.md) must re-evaluate this patch.
+    // — run `npx patch-package`) or `@opennextjs/aws` was upgraded past 4.1.9 and the patch no longer
+    // matches (re-cut the patch against the new `fixISRHeaders`, or drop it if the upstream default
+    // changed). Both are exactly the "silently-unapplied patch / upgrade" cases REVISE 2 requires to
+    // fail loud. The row name says "open-next" for the adapter's CLI/product name; it still asserts
+    // the patched window, so it keeps its name (spec docs/slices/opennext-1-upgrade.md § 6.5).
     test("(c2) open-next fixISRHeaders emits the patched stale-while-revalidate=300 edge window, not 2592000 (cache-8 mitigation c)", async () => {
         const require = createRequire(import.meta.url);
-        const utilPath = require.resolve("open-next/core/routing/util.js");
+        const utilPath = require.resolve("@opennextjs/aws/core/routing/util.js");
         const source = await readFile(utilPath, "utf8");
         const start = source.indexOf("export function fixISRHeaders");
-        assert.ok(start >= 0, "fixISRHeaders not found — open-next layout changed; re-verify the patch target");
+        assert.ok(start >= 0, "fixISRHeaders not found — @opennextjs/aws layout changed; re-verify the patch target");
         const rest = source.slice(start);
         const nextExport = rest.indexOf("export function", "export function".length);
         const body = nextExport > 0 ? rest.slice(0, nextExport) : rest;
@@ -594,7 +604,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.match(
             body,
             /s-maxage=2, stale-while-revalidate=300\b/,
-            "the patched 300s STALE-path edge window is missing — patch unapplied or open-next upgraded",
+            "the patched 300s STALE-path edge window is missing — patch unapplied or @opennextjs/aws upgraded",
         );
         // No 30-day window survives anywhere in fixISRHeaders (covers both the STALE and HIT branches).
         assert.doesNotMatch(
@@ -927,6 +937,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.equal(res.status, 500);
             if (exp === "absent-or-no-store") {
                 const cc = res.header("cache-control");
+                console.log(`  (e1/bundle) 500 Cache-Control: ${cc === undefined ? "(absent)" : `"${cc}"`}`);
                 assert.ok(
                     cc === undefined || /\bno-store\b/.test(cc),
                     `a failed read must emit no Cache-Control or a no-store one; got "${cc}"`,

@@ -73,5 +73,5 @@ Auto-generated per tenant:
 ```bash
 npm run dev          # Next.js dev server (port 3000)
 npm run build        # Next.js build
-npm run build:open   # OpenNext build → .open-next/
+npm run build:open   # OpenNext build (@opennextjs/aws 4.1.9) → .open-next/
 ```
