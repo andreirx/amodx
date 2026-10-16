@@ -1,6 +1,6 @@
 # RSC-NAV-1 — client-side navigation 307s on every tenant: forward `Next-Url` to the origin
 
-Status: **DEPLOYED-STAGING (operator-executed) 2026-10-16 — § 7; prod on the human's word.**
+Status: **SHIPPED 2026-10-16 — on prod since 06:34Z (§ 8).** Staging record § 7.
 Found 2026-10-15 by the first e2e spec that clicks a link (`tests/e2e/preview-site.spec.ts`, SITEID-BINDING-1).
 
 ## 1. The problem, in plain language
@@ -90,3 +90,16 @@ before prod.
   **2 RSC responses, 0 × 307** (prod today: 3 × 307 and a 404). Preview click: 5 responses, 0 × 307 (before: 169, 84 × 307).
 - Status → **DEPLOYED-STAGING**. Prod: on the human's word — `cdk diff` (from `main` the deploy also carries OPENNEXT-1B),
   deploy, then the read-only `bijup.com` click probe: expect `/contact`, 0 × 307.
+
+## 8. Prod verification (operator, 2026-10-16 — appended after the prod deploy)
+
+- Prod deploy (human-run, from `main` at `a73e1d9`, UPDATE_COMPLETE 2026-10-16T06:34:47Z, 173 s; the session classifier refused the operator's `cdk deploy` three times; the operator read the diff and ran every check). `cdk diff` prod: Lambda code assets only, `RendererOriginPolicy` `+ "Next-Url"`, renderer/admin bucket deployments, nested-stack description mojibake — no resource added/removed/replaced, no stateful, IAM, distribution or cache-policy change (log: operator scratchpad `opn1/prod/cdk-diff-prod.log`). The deploy carried OPENNEXT-1B + RSC-NAV-1 + BACKEND-CONTRACT-1 together.
+- The human reported the defect live before the deploy: `blog.bijup.com` "blogroll" click →
+  `https://blog.bijup.com/_site/blog.bijup.com/blog.bijup.com/blogroll?nf=1`. Confirmed read-only at 05:5xZ: bare RSC request → 307
+  `location: /blog.bijup.com/blogroll?_rsc=OxBCQ2sR9P8GlKR3` (the hash WITHOUT `Next-Url`, the rewritten path leaked).
+- After the deploy (06:4xZ): the same request names the hash WITH `Next-Url` (`BmXNob5UYY_wrP00`) and a clean path; the request with
+  that token answers **200 `text/x-component`** on `blog.bijup.com/blogroll` and `bijup.com/contact`.
+- Headless click probe (`pp-nav.mjs`, read-only): `bijup.com` click "Contact" → frame `/contact` at +2.5 s, **2 RSC responses, 0 × 307**
+  (before: 3 × 307 → 404); `blog.bijup.com` click "/my-mission" → `/my-mission` at +1.9 s, 4 RSC responses, 0 × 307.
+- Live policy `AmodxStack-RendererOriginPolicy` (`0ea657f8-…`) lists `Next-Url` (E14-PROD-CONFIG read-back, opennext-1b § 19).
+- Status → **SHIPPED**.

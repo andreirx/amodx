@@ -1,6 +1,6 @@
 # Slice OPENNEXT-1B — the upgrade: open-next 3.1.3 → `@opennextjs/aws` 4.1.9 (exact)
 
-Status: IMPLEMENTED 2026-10-15 (ROADMAP: BUILT) — code complete, builder gates green; review-0 rulings applied
+Status: **SHIPPED 2026-10-16 — prod on 4.1.9 (§ 19; the 24 h hold of § 9.4 was dropped by the human: "I didn't ask for a prod hold").** Build-time status line kept below: IMPLEMENTED 2026-10-15 (ROADMAP: BUILT) — code complete, builder gates green; review-0 rulings applied
 (cycle 2, § 6a); the staging run plan, the 24 h hold and the prod deploy are operator/human steps, NOT RUN.
 Track: CACHE (serving adapter). Maturity target: the renderer serving adapter stays PRODUCTION-bound (it serves live
 tenants); the bundle harness (`renderer/test/serving-bundle/`) reaches MATURE with this slice — it produced the
@@ -402,3 +402,22 @@ markers, `cdk diff` prod, deploy, E12-PROD, E14-PROD-CONFIG, § 8.3 on one prod 
 
 **Cleanup.** Every experiment page archived (the renderer serves only `Published`); fleet memory 1024; leftover edge paths invalidated
 (`ICT4OVVUHXCNC7AWPPVMTKCGGY`).
+
+## 19. Prod deploy and verification (operator, 2026-10-16 — appended after the prod deploy; spec § 9.1 step 5, § 8.6)
+
+- Prod deploy (human-run, from `main` at `a73e1d9`, UPDATE_COMPLETE 2026-10-16T06:34:47Z, 173 s; the session classifier refused the operator's `cdk deploy` three times; the operator read the diff and ran every check). `cdk diff` prod: Lambda code assets only, `RendererOriginPolicy` `+ "Next-Url"`, renderer/admin bucket deployments, nested-stack description mojibake — no resource added/removed/replaced, no stateful, IAM, distribution or cache-policy change (log: operator scratchpad `opn1/prod/cdk-diff-prod.log`). The deploy carried OPENNEXT-1B + RSC-NAV-1 + BACKEND-CONTRACT-1 together.
+- **The 24 h "no new 5xx class" hold (§ 9.4) did not run to its end:** the human ruled it was the operator's invention and not wanted;
+  prod went at 06:34Z, 14 h before the hold's end. Staging had 858 invocations / 0 errors over the run (§ 18 E7).
+- **E12-PROD** (spec § 8.6): step 0 markers recorded 05:57Z before the deploy — `amodx.net` "AMODX Serverless CMS | AmodX", `bijup.com`
+  "Home | Bijup.com". Deploy invalidation `I68QFSY8013W7JRQ02SVU6BSGQ` Completed 06:36:07Z. Steps 3–5: both homes `Miss` then `Hit`;
+  every A body carries M-A (2) and not M-B (0), and the reverse. Step 6: `BUILD_ID` = `vUWp2UXmaZZNGfjxumlLe`; keys
+  `_cache/vUWp2UXmaZZNGfjxumlLe/route-cache/APP_PAGE/<hash>/$/amodx.net.cache` and `…/$/bijup.com.cache` both exist. **PASS.**
+  (Also seen under the same build: `…/$/bijup.com/.env.cache` — a scanner's `/.env` request cached as a not-found page; harmless, noted.)
+- **E14-PROD-CONFIG:** policy `0ea657f8-ba7c-470b-85e1-02aad06ae5a8` headers = x-revalidation-token, x-automation-key, Accept, x-tenant-id,
+  X-Forwarded-Host, Accept-Language, Next-Url, x-origin-verify, Content-Type — no `x-isr`, no `x-prerender-revalidate`. **PASS.**
+- **3.1.3 `Location` leak gone on prod:** a bare RSC request to `blog.bijup.com/blogroll` now answers `location: /blogroll?_rsc=…`
+  (before the deploy: `/blog.bijup.com/blogroll?_rsc=…`).
+- **Renderer Lambda** `…RendererServer8EE0291F-lJmoiajKH8ck`, 06:30Z→06:45Z: 11 invocations, 0 errors.
+- **§ 8.3 on prod:** NOT RUN — it needs a title edit on a page of the human's; staging numbers (§ 18) stand. **§ 8.4 seven-day window**
+  opens 2026-10-16T06:35Z (watch list § 9.5).
+- Status → **SHIPPED**.

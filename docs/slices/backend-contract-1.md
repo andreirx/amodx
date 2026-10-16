@@ -1,6 +1,6 @@
 # BACKEND-CONTRACT-1 — content API: validation answers 400, SEO fields round-trip, one slug normaliser, import keys stay inside the tenant
 
-Status: **DEPLOYED-STAGING 2026-10-16** (§ 11; review approved at run-2 cycle 3; prod on the human's word). Build-time status line kept below: **IMPLEMENTED 2026-10-16** — code complete in two build cycles (cycle 2 = the operator rulings that followed
+Status: **SHIPPED 2026-10-16 — on prod since 06:34Z (§ 12).** Staging record § 11 (review approved at run-2 cycle 3). Build-time status line kept below: **IMPLEMENTED 2026-10-16** — code complete in two build cycles (cycle 2 = the operator rulings that followed
 the escalation review) plus revision 1 (after the claims review: names and claims narrowed to what is checked; one
 message corrected) and revision 2 (after the provenance review: review labels corrected, documentation only). Review
 history and record locations: § 7. All oracles exit 0. Validation pending: review, then the operator's deploy and the
@@ -214,3 +214,13 @@ import routes); CLAUDE.md Critical Rules 3 and 4.
   every `TransactionCanceledException` on update maps to 409 (as `create.ts`); WordPress import still stores raw slugs
   (follow-up).
 - Prod: on the human's word. From `main` the prod deploy carries OPENNEXT-1B, RSC-NAV-1 and this slice together.
+
+## 12. Prod deploy (operator, 2026-10-16 — appended after the prod deploy)
+
+- Prod deploy (human-run, from `main` at `a73e1d9`, UPDATE_COMPLETE 2026-10-16T06:34:47Z, 173 s; the session classifier refused the operator's `cdk deploy` three times; the operator read the diff and ran every check). `cdk diff` prod: Lambda code assets only, `RendererOriginPolicy` `+ "Next-Url"`, renderer/admin bucket deployments, nested-stack description mojibake — no resource added/removed/replaced, no stateful, IAM, distribution or cache-policy change (log: operator scratchpad `opn1/prod/cdk-diff-prod.log`). The deploy carried OPENNEXT-1B + RSC-NAV-1 + BACKEND-CONTRACT-1 together.
+- The content/import handlers on prod are the reviewed bytes of `a73e1d9` (CatalogApi nested stack: CreateContent, UpdateContent, Import,
+  MediaImport code assets updated — `cdk diff`). The live probe (§ 11) was NOT repeated on prod: it creates and archives a page on a
+  tenant, which needs the human's word for a prod tenant. The cross-tenant import hole (§ 1 problem 4 + BC1-WP-AUTH) is closed on prod.
+- Follow-up already ruled and packeted the same day: IMPORT-POLICY-1 (EDITOR may import inside its own tenant; imported slugs stay raw and
+  are marked in red for review; `normalizeSlug` moves to `packages/shared`).
+- Status → **SHIPPED**.
