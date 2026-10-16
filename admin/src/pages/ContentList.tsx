@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import type { ContentItem } from "@amodx/shared";
+import { needsSlugReview } from "@amodx/shared";
 import { useNavigate } from "react-router-dom";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -262,6 +263,7 @@ export default function ContentList() {
                                         </div>
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground ml-6">
                                             <span className="font-mono bg-muted/50 px-1 rounded">{item.slug}</span>
+                                            {item.slug !== undefined && needsSlugReview(item.slug) && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 rounded border border-red-200" title="This URL does not follow the site's slug rules (for example an underscore or encoded characters) and is served exactly as stored. Open the page to review it.">REVIEW SLUG</span>}
                                             {item.tags && item.tags.length > 0 && (
                                                 <div className="flex gap-1">
                                                     {item.tags.map(tag => (

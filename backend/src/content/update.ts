@@ -8,7 +8,7 @@ import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
-import { normalizeSlug } from "../lib/slug.js";
+import { normalizeSlug } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 

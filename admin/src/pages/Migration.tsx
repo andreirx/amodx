@@ -301,6 +301,9 @@ export default function MigrationPage() {
                             <p className="text-xs text-muted-foreground">
                                 Upload WordPress pages export XML. Content and comments will be imported.
                             </p>
+                            <p className="text-xs text-red-600">
+                                Imported pages get the URL /&lt;WordPress post name&gt;, stored exactly as WordPress had it; the permalink's folder structure (for example /2024/05/) is not kept. Pages whose URL does not follow this site's slug rules are marked REVIEW SLUG in Content — check them after the import.
+                            </p>
                         </div>
                     </div>
 

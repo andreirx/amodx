@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeSlug } from "../../src/lib/slug.js";
+import { normalizeSlug, needsSlugReview } from "../src/index.js";
 
 /** BACKEND-CONTRACT-1 D3 — the one content-slug normaliser (create + update). */
 describe("normalizeSlug", () => {
@@ -21,5 +21,28 @@ describe("normalizeSlug", () => {
 
     it("keeps repeated leading slashes ('//a' → //a) — characterises unchanged, ratified behaviour", () => {
         expect(normalizeSlug("//a")).toBe("//a");
+    });
+});
+
+/** IMPORT-POLICY-1 D3 — the admin REVIEW SLUG predicate: slug !== normalizeSlug(slug). */
+describe("needsSlugReview", () => {
+    it("underscore (raw WordPress post_name) → true: '/foo_bar'", () => {
+        expect(needsSlugReview("/foo_bar")).toBe(true);
+    });
+
+    it("percent-encoded characters → true: '/%d0%b1'", () => {
+        expect(needsSlugReview("/%d0%b1")).toBe(true);
+    });
+
+    it("already-normal slug → false: '/foo-bar'", () => {
+        expect(needsSlugReview("/foo-bar")).toBe(false);
+    });
+
+    it("home slug → false: '/'", () => {
+        expect(needsSlugReview("/")).toBe(false);
+    });
+
+    it("already-normal nested slug → false: '/already/ok'", () => {
+        expect(needsSlugReview("/already/ok")).toBe(false);
     });
 });

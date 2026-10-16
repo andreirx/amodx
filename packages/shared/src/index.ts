@@ -4,6 +4,10 @@ import { z } from "zod";
 // Every consumer that builds an email-keyed identity MUST derive it through this.
 export { normalizeEmail } from "./normalizeEmail.js";
 
+// Re-export the content-slug normaliser and its review predicate (BACKEND-CONTRACT-1 D3,
+// moved here by IMPORT-POLICY-1 D2): one rule for the backend content API and the admin warnings.
+export { normalizeSlug, needsSlugReview } from "./slug.js";
+
 // Re-export the STATIC-1 iframe sandbox contract (D-STATIC-1). Framework-agnostic
 // constant consumed by static-4's renderer shell; guarded by packages/shared/test/sandbox.test.ts.
 export {

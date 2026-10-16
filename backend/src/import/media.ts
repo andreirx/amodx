@@ -92,7 +92,7 @@ const _handler: Handler = async (event) => {
         const auth = event.requestContext.authorizer.lambda;
 
         try {
-            requireRole(auth, ["TENANT_ADMIN"], tenantId);
+            requireRole(auth, ["TENANT_ADMIN", "EDITOR"], tenantId);
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }

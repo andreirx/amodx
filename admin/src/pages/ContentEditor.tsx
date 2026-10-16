@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { MediaPicker } from "@/components/MediaPicker";
 import { TagInput } from "@/components/ui/tag-input";
 
-import { THEME_PRESETS } from "@amodx/shared";
+import { THEME_PRESETS, normalizeSlug, needsSlugReview } from "@amodx/shared";
 import { extractText, findImage } from "@/lib/seoExtract";
 
 // IMPROVED COLOR COMPONENT
@@ -141,6 +141,13 @@ export default function ContentEditor() {
         if (!serverState) return false;
         return JSON.stringify(serverState) !== JSON.stringify(form);
     }, [serverState, form]);
+
+    // IMPORT-POLICY-1: the URL field hides the slug's leading "/" and, once edited, stores the value
+    // without it. Only the decision to SHOW the red review line uses the slug with the slash, so a
+    // normal edit ("about-us") is not flagged. Every claim in the line is computed from form.slug,
+    // the exact value save() sends: content/update.ts keeps the stored slug only when the sent value
+    // equals it, and otherwise stores normalizeSlug(sent value).
+    const slugWithLeadingSlash = "/" + form.slug.replace(/^\//, "");
 
     // 1. Browser Navigation Protection (Close Tab / Refresh)
     useEffect(() => {
@@ -660,6 +667,13 @@ export default function ContentEditor() {
                                     className="font-mono h-auto py-0.5 px-1 w-auto min-w-[200px] border-transparent hover:border-input focus:border-input bg-transparent shadow-none"
                                 />
                             </div>
+                            {needsSlugReview(slugWithLeadingSlash) && (
+                                <p className="text-xs text-red-600">
+                                    {form.slug === serverState?.slug
+                                        ? `This URL does not follow the site's slug rules and is served exactly as shown. If you change it, it is saved as ${normalizeSlug(form.slug)} and the old URL redirects to the new one.`
+                                        : `Will be saved as ${normalizeSlug(form.slug)}.`}
+                                </p>
+                            )}
                         </div>
 
                         {/* Editor */}

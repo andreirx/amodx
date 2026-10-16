@@ -82,13 +82,14 @@ const _handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> 
         }
 
         // BACKEND-CONTRACT-1 D4 (BC1-WP-AUTH): the API authorizer does not tie `x-tenant-id` to the
-        // caller; requireRole authorises the caller for the target tenant — a TENANT_ADMIN whose token
-        // tenant equals the header, or a GLOBAL_ADMIN (passed with no tenant check). Same rule and 403
-        // shape as the sibling import/media.ts. It runs before any S3 read and any DynamoDB write, so
-        // it guards the inline `wxrContent` path too.
+        // caller; requireRole authorises the caller for the target tenant — a TENANT_ADMIN or an EDITOR
+        // (IMPORT-POLICY-1 D1; a token with no role counts as EDITOR, policy.ts) whose token tenant
+        // equals the header, or a GLOBAL_ADMIN (passed with no tenant check). Same rule and 403 shape as
+        // the sibling import/media.ts. It runs before any S3 read and any DynamoDB write, so it guards
+        // the inline `wxrContent` path too.
         const auth = event.requestContext.authorizer.lambda;
         try {
-            requireRole(auth, ["TENANT_ADMIN"], tenantId);
+            requireRole(auth, ["TENANT_ADMIN", "EDITOR"], tenantId);
         } catch (e: any) {
             return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
         }

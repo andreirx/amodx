@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
  * BACKEND-CONTRACT-1 D4 — key ownership = the caller is authorised for the target tenant
- * (`requireRole(auth, ["TENANT_ADMIN"], x-tenant-id)`: a TENANT_ADMIN whose token tenant equals the
- * header, or a GLOBAL_ADMIN — which requireRole passes WITHOUT any tenant check) AND the key is
- * inside the tenant prefix `${tenantId}/`.
+ * (`requireRole(auth, ["TENANT_ADMIN", "EDITOR"], x-tenant-id)`: a TENANT_ADMIN or EDITOR whose token
+ * tenant equals the header — IMPORT-POLICY-1 D1 added EDITOR — or a GLOBAL_ADMIN, which requireRole
+ * passes WITHOUT any tenant check) AND the key is inside the tenant prefix `${tenantId}/`.
  *
  * Uploads are keyed `${tenantId}/${assetId}-${filename}` (backend/src/assets/create.ts). The prefix
  * check alone is not enough: a caller who forges the header would also choose a matching key.
@@ -86,9 +86,18 @@ describe.each(HANDLERS)("BACKEND-CONTRACT-1 D4 — %s s3Key ownership", (_name, 
         expect(ddbSend).not.toHaveBeenCalled();
     });
 
-    it("EDITOR of its own tenant → 403, no S3 call, no DynamoDB call", async () => {
+    // IMPORT-POLICY-1 D1: an EDITOR may import, bound to the tenant of its token like a TENANT_ADMIN.
+    it("EDITOR of its own tenant → authorised: GetObject called with the key; status is not 403", async () => {
         const res = (await handler(event(`${TENANT}/x.xml`, { role: "EDITOR" }), {} as any, () => {})) as any;
+        expect(res.statusCode).not.toBe(403);
+        expect(s3Send).toHaveBeenCalledTimes(1);
+        expect(s3Send.mock.calls[0][0].input).toEqual({ Bucket: "uploads-test", Key: `${TENANT}/x.xml` });
+    });
+
+    it("EDITOR of tenant t1 with header t2 and s3Key 't2/x.xml' → 403, no S3 call, no DynamoDB call", async () => {
+        const res = (await handler(event("t2/x.xml", { header: "t2", tokenTenant: TENANT, role: "EDITOR" }), {} as any, () => {})) as any;
         expect(res.statusCode).toBe(403);
+        expect(JSON.parse(res.body).error).toMatch(/Access Denied/);
         expect(s3Send).not.toHaveBeenCalled();
         expect(ddbSend).not.toHaveBeenCalled();
     });

@@ -12,6 +12,7 @@ This is the single source of truth for all domain types and validation schemas. 
 src/
 ├── index.ts            # All Zod schemas, types, enums, constants; re-exports the modules below
 ├── normalizeEmail.ts   # normalizeEmail() — the canonical email identity primitive (PD-001, slice fnd-1)
+├── slug.ts             # normalizeSlug(), needsSlugReview() — the content-slug rule (backend-contract-1 D3; moved here by import-policy-1)
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
 └── country-packs/      # Per-country locale/currency/address packs
 ```
@@ -79,6 +80,8 @@ shape** — a function with its own contract and its own test file.
 | Function | Contract | Used by |
 |----------|----------|---------|
 | `normalizeEmail(raw)` | `NFKC → trim → lowercase`. Pure, deterministic, idempotent, no locale/env/IO. Its output IS the `CUSTOMER#<email>` sort key and the pre-image of the Cognito username hash (PD-001) | **Nothing yet** — slice `fnd-1` added the primitive and migrated zero call sites by design; `fnd-2` migrates the 14 inline sites (inventory in `docs/slices/fnd-1-normalize-email.md`) |
+| `normalizeSlug(raw)` | Pure. lowercase + trim → `[\s_]+`→`-` → strip `[^a-z0-9-/]` → collapse `-+` → strip trailing `-` → ensure leading `/`. Applied to a slug supplied to create and to a changed slug on update; NOT applied by the WordPress importer, which stores `/<wp:post_name>` raw by human decision (slice `import-policy-1`). Full contract in the module header | `backend/src/content/create.ts`, `backend/src/content/update.ts`, `admin/src/pages/ContentEditor.tsx` ("saved as" text) |
+| `needsSlugReview(slug)` | Pure. `slug !== normalizeSlug(slug)` — a text rule only: it says the slug breaks the slug rules, it knows nothing of where the slug came from | `admin/src/pages/ContentList.tsx` (REVIEW SLUG badge), `admin/src/pages/ContentEditor.tsx` (red URL line) |
 | `deriveEmailDnsValue(kind, domain)` | Pure. Computes a recipe value that depends on the tenant domain. Only variant today: `"m365-mx"` → `<domain dots→dashes>.mail.protection.outlook.com`. Exhaustive `switch` with an `assertNever` default — a new `EmailDnsDerivation` variant breaks the compile until handled. Consumed on BOTH sides of the admin↔backend boundary (slice `email-2`) | `backend/src/email/dns-check.ts` (server-authoritative `expected` for the M365 MX check) and `admin/src/pages/Email.tsx` (mirrors the same target for display/copy) |
 
 ### Email guided-DNS catalogue (`EMAIL_PROVIDER_RECIPES`, slice `email-2`)
