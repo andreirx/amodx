@@ -1,6 +1,6 @@
 # RSC-NAV-1 — client-side navigation 307s on every tenant: forward `Next-Url` to the origin
 
-Status: **BUILT (operator-executed) 2026-10-16 — staging deploy pending; prod on the human's word.**
+Status: **DEPLOYED-STAGING (operator-executed) 2026-10-16 — § 7; prod on the human's word.**
 Found 2026-10-15 by the first e2e spec that clicks a link (`tests/e2e/preview-site.spec.ts`, SITEID-BINDING-1).
 
 ## 1. The problem, in plain language
@@ -77,3 +77,16 @@ before prod.
 - `tests/e2e/preview-site.spec.ts` stays the regression gate for this class (it is the only spec that clicks).
 - A spec that clicks on a *production-shaped* host on staging (a tenant with a domain) would have caught the
   3.1.3 `Location` leak as a 404 one deploy earlier; candidate for the e2e workstream.
+
+## 7. Staging verification (operator, 2026-10-16 — appended after the deploy)
+
+- `cdk deploy -c stage=staging AmodxStack-staging` exit 0 (215 s; log `rscnav-deploy-staging.log`); live policy
+  `AmodxStack-staging-RendererOriginPolicy` now lists `Next-Url` (read back by `get-origin-request-policy`).
+- `npx playwright test tests/e2e/preview-site.spec.ts`: **3 passed** (chromium, firefox, webkit; 8.1 s) — the spec that
+  failed on every push since 19:42Z.
+- Hash proof inverted as predicted: `_rsc=<hash WITH Next-Url>` → **200** `text/x-component`; `_rsc=<hash WITHOUT>` →
+  307 to the with-hash URL (the origin now sees the header and computes the client's value).
+- One click on a tenant host (`staging.amodx.net`, disposable tenant `opn1-iso-b`): frame → `/contact` at +2.0 s,
+  **2 RSC responses, 0 × 307** (prod today: 3 × 307 and a 404). Preview click: 5 responses, 0 × 307 (before: 169, 84 × 307).
+- Status → **DEPLOYED-STAGING**. Prod: on the human's word — `cdk diff` (from `main` the deploy also carries OPENNEXT-1B),
+  deploy, then the read-only `bijup.com` click probe: expect `/contact`, 0 × 307.
