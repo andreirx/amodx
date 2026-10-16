@@ -231,6 +231,26 @@ describe("ContentItemSchema — safe-by-default page state", () => {
         const { title, ...noTitle } = MINIMAL_ITEM;
         expect(ContentItemSchema.safeParse(noTitle).success).toBe(false);
     });
+
+    /**
+     * BACKEND-CONTRACT-1 D2. Why: the content API stores and returns `null` for a cleared SEO field,
+     * and the slice intends a GET→PUT round-trip to validate. What this test checks: the shared
+     * schema only — it calls no handler, no GET, no PUT.
+     */
+    it("ContentItemSchema accepts null for seoTitle, seoDescription, seoKeywords, featuredImage, schemaType; still rejects a non-enum schemaType and a numeric seoTitle", () => {
+        const cleared = {
+            ...MINIMAL_ITEM,
+            seoTitle: null, seoDescription: null, seoKeywords: null, featuredImage: null, schemaType: null,
+        };
+        const item = ContentItemSchema.parse(cleared);
+        expect(item.seoTitle).toBeNull();
+        expect(item.seoDescription).toBeNull();
+        expect(item.seoKeywords).toBeNull();
+        expect(item.featuredImage).toBeNull();
+        expect(item.schemaType).toBeNull();
+        expect(ContentItemSchema.safeParse({ ...MINIMAL_ITEM, schemaType: "NotAType" }).success).toBe(false);
+        expect(ContentItemSchema.safeParse({ ...MINIMAL_ITEM, seoTitle: 42 }).success).toBe(false);
+    });
 });
 
 // ---------------------------------------------------------------------------------------

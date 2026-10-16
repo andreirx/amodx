@@ -1,4 +1,4 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { PutCommand, QueryCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
@@ -7,6 +7,8 @@ import { HTMLToTiptapConverter } from "./html-to-tiptap.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { AuthorizerContext } from "../auth/context.js";
+import { requireRole } from "../auth/policy.js";
 
 /** Find existing content by slug using ROUTE# lookup */
 async function findContentBySlug(tenantId: string, slug: string): Promise<{ nodeId: string; contentId: string; createdAt: string } | null> {
@@ -69,7 +71,7 @@ interface ImportResponse {
     errors?: string[];
 }
 
-const _handler: APIGatewayProxyHandlerV2 = async (event) => {
+const _handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) {
@@ -79,12 +81,29 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             };
         }
 
+        // BACKEND-CONTRACT-1 D4 (BC1-WP-AUTH): the API authorizer does not tie `x-tenant-id` to the
+        // caller; requireRole authorises the caller for the target tenant — a TENANT_ADMIN whose token
+        // tenant equals the header, or a GLOBAL_ADMIN (passed with no tenant check). Same rule and 403
+        // shape as the sibling import/media.ts. It runs before any S3 read and any DynamoDB write, so
+        // it guards the inline `wxrContent` path too.
+        const auth = event.requestContext.authorizer.lambda;
+        try {
+            requireRole(auth, ["TENANT_ADMIN"], tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
+
         const body: ImportRequest = JSON.parse(event.body || "{}");
         const { wxrContent, s3Key, batchStart = 0, batchSize = 100 } = body;
 
         // Get content from either direct string or S3
         let content: string;
         if (s3Key && UPLOADS_BUCKET) {
+            // BACKEND-CONTRACT-1 D4: uploads are keyed `${tenantId}/…` (assets/create.ts). Second half
+            // of key ownership, after the authorisation above: the key must be inside the tenant prefix.
+            if (!s3Key.startsWith(`${tenantId}/`)) {
+                return { statusCode: 403, body: JSON.stringify({ error: "s3Key is not owned by this tenant" }) };
+            }
             console.log(`Reading WXR from S3: ${s3Key}`);
             const s3Obj = await s3.send(new GetObjectCommand({
                 Bucket: UPLOADS_BUCKET,

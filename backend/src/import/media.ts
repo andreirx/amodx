@@ -105,6 +105,11 @@ const _handler: Handler = async (event) => {
         if (!s3Key) {
             return { statusCode: 400, body: JSON.stringify({ error: "s3Key is required" }) };
         }
+        // BACKEND-CONTRACT-1 D4: uploads are keyed `${tenantId}/…` (assets/create.ts). Without this
+        // check a tenant admin could make the importer read another tenant's upload by naming its key.
+        if (!s3Key.startsWith(`${tenantId}/`)) {
+            return { statusCode: 403, body: JSON.stringify({ error: "s3Key is not owned by this tenant" }) };
+        }
 
         // Read XML from S3
         console.log(`Reading media XML from S3: ${s3Key}`);

@@ -236,10 +236,12 @@ export const ContentItemSchema = z.object({
     slug: z.string().optional(),
 
     // SEO
-    seoTitle: z.string().optional(),
-    seoDescription: z.string().optional(),
-    seoKeywords: z.string().optional(),
-    featuredImage: z.string().optional(),
+    // BACKEND-CONTRACT-1 D2: nullable — the content API stores and returns `null` for a cleared
+    // field, so what GET returns must validate on create/update. `null` = cleared, absent = unset.
+    seoTitle: z.string().nullable().optional(),
+    seoDescription: z.string().nullable().optional(),
+    seoKeywords: z.string().nullable().optional(),
+    featuredImage: z.string().nullable().optional(),
 
     // CATEGORIZATION
     tags: z.array(z.string()).default([]),
@@ -248,7 +250,8 @@ export const ContentItemSchema = z.object({
     commentsMode: CommentsMode.default("Hidden"),
 
     // Page-level Override
-    schemaType: SchemaType.optional(), // e.g., Homepage might be SoftwareApplication, Blog might be Article
+    // D2: nullable for the same round-trip reason; the enum is kept (null is "no override").
+    schemaType: SchemaType.nullable().optional(), // e.g., Homepage might be SoftwareApplication, Blog might be Article
 
     // PAGE OVERRIDES
     themeOverride: ThemeSchema.partial().optional(), // Allow partial overrides

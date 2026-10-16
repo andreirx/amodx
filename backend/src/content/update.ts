@@ -8,27 +8,31 @@ import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
+import { normalizeSlug } from "../lib/slug.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 // STRICT SCHEMA - No Defaults!
+// BACKEND-CONTRACT-1 D2: the five SEO/schema fields accept `null` because GET returns `null` for
+// them (the merge below stores `null` when nothing is set) — a GET→PUT round-trip must validate.
+// Field semantics in the merge: absent = keep the current value, `null` = clear, string = set.
 const StrictUpdateSchema = z.object({
     title: z.string().optional(),
     slug: z.string().optional(),
     status: z.string().optional(),
     commentsMode: z.string().optional(),
     blocks: z.array(z.any()).optional(),
-    seoTitle: z.string().optional(),
-    seoDescription: z.string().optional(),
-    seoKeywords: z.string().optional(),
-    featuredImage: z.string().optional(),
+    seoTitle: z.string().nullable().optional(),
+    seoDescription: z.string().nullable().optional(),
+    seoKeywords: z.string().nullable().optional(),
+    featuredImage: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     accessPolicy: AccessPolicySchema.optional(),
     themeOverride: z.any().optional(),
     hideNav: z.boolean().optional(),
     hideFooter: z.boolean().optional(),
     hideSharing: z.boolean().optional(),
-    schemaType: z.string().optional(),
+    schemaType: z.string().nullable().optional(),
 });
 
 const _handler: AmodxHandler = async (event) => {
@@ -38,15 +42,31 @@ const _handler: AmodxHandler = async (event) => {
         const nodeId = event.pathParameters?.id;
 
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id" }) };
-        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+        // BACKEND-CONTRACT-1 D1: a forbidden caller is a 403, not a 500 (same shape as create.ts).
+        try {
+            requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+        } catch (e: any) {
+            return { statusCode: 403, body: JSON.stringify({ error: e.message }) };
+        }
 
         if (!nodeId || !event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing ID or Body" }) };
 
-        const body = JSON.parse(event.body);
+        // BACKEND-CONTRACT-1 D1: a malformed body or a schema mismatch is the CLIENT's error → 400.
+        // Before D1 both threw inside this `try` and the catch below answered 500.
+        let body: unknown;
+        try {
+            body = JSON.parse(event.body);
+        } catch {
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
+        }
 
         // 1. Parse using the strict local schema
         // This guarantees 'blocks' is undefined if not sent, never []
-        const input = StrictUpdateSchema.parse(body);
+        const parsed = StrictUpdateSchema.safeParse(body);
+        if (!parsed.success) {
+            return { statusCode: 400, body: JSON.stringify({ error: "Validation failed", issues: parsed.error.issues }) };
+        }
+        const input = parsed.data;
 
         // 1. Fetch Current State (to snapshot it)
         const currentRes = await db.send(new GetCommand({
@@ -66,8 +86,12 @@ const _handler: AmodxHandler = async (event) => {
 
         // 3. Prepare Update Logic
         const oldSlug = current.slug;
-        const rawNewSlug = input.slug ?? oldSlug;
-        const newSlug = rawNewSlug.startsWith("/") ? rawNewSlug : "/" + rawNewSlug;
+        // BACKEND-CONTRACT-1 D3: a slug that DIFFERS from the stored one is normalised (same
+        // normaliser as create), so a rename is stored in the form the renderer matches.
+        // Absent, or resent unchanged, = keep the stored slug as it is: the admin resends `slug` on
+        // every save, and a legacy non-normal slug (e.g. a raw WordPress import) must not be renamed
+        // — and its live URL moved — by an unrelated edit.
+        const newSlug = input.slug === undefined || input.slug === oldSlug ? oldSlug : normalizeSlug(input.slug);
         const slugChanged = newSlug !== oldSlug;
 
         // Check slug doesn't conflict with commerce URL prefixes
@@ -83,22 +107,25 @@ const _handler: AmodxHandler = async (event) => {
 
         // 2. Merge Logic using strict undefined checks
         // If input.blocks is undefined, use current.blocks.
+        // D2: the five nullable fields use `keepOrSet` — `??` would read a `null` (clear) as "keep".
+        const keepOrSet = (sent: string | null | undefined, stored: unknown) =>
+            sent === undefined ? (stored ?? null) : sent;
         const updateValues = {
             ":t": input.title ?? current.title,
             ":b": input.blocks ?? current.blocks,
             ":s": input.status ?? current.status,
             ":cm": input.commentsMode ?? current.commentsMode ?? "Hidden",
             ":ap": input.accessPolicy ?? current.accessPolicy ?? { type: 'Public' },
-            ":st": input.seoTitle ?? current.seoTitle ?? null,
-            ":sd": input.seoDescription ?? current.seoDescription ?? null,
-            ":sk": input.seoKeywords ?? current.seoKeywords ?? null,
-            ":fi": input.featuredImage ?? current.featuredImage ?? null,
+            ":st": keepOrSet(input.seoTitle, current.seoTitle),
+            ":sd": keepOrSet(input.seoDescription, current.seoDescription),
+            ":sk": keepOrSet(input.seoKeywords, current.seoKeywords),
+            ":fi": keepOrSet(input.featuredImage, current.featuredImage),
             ":tags": input.tags ?? current.tags ?? [],
             ":to": input.themeOverride ?? current.themeOverride ?? {},
             ":hn": input.hideNav ?? current.hideNav ?? false,
             ":hf": input.hideFooter ?? current.hideFooter ?? false,
             ":hs": input.hideSharing ?? current.hideSharing ?? false,
-            ":sch": input.schemaType ?? current.schemaType ?? null,
+            ":sch": keepOrSet(input.schemaType, current.schemaType),
             ":u": timestamp,
             ":ub": userId,
             ":v": currentVersion + 1 // INCREMENT VERSION
@@ -195,6 +222,14 @@ const _handler: AmodxHandler = async (event) => {
         return { statusCode: 200, body: JSON.stringify({ message: "Updated", version: currentVersion + 1, slug: newSlug }) };
     } catch (error: any) {
         console.error(error);
+        // BACKEND-CONTRACT-1 D1: mapped as create.ts does — every TransactionCanceledException → 409.
+        // The case this mapping is for: the conditional `ROUTE#<newSlug>` Put finds the slug taken
+        // (reason ConditionalCheckFailed). The SDK documents other reasons that land here too
+        // (TransactionConflict, ProvisionedThroughputExceeded, ThrottlingError, ValidationError,
+        // ItemCollectionSizeLimitExceeded); they also answer 409, exactly as in create.ts.
+        if (error.name === "TransactionCanceledException") {
+            return { statusCode: 409, body: JSON.stringify({ error: "Update cancelled by the database transaction (for example, the new slug is already taken)" }) };
+        }
         return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
     }
 };

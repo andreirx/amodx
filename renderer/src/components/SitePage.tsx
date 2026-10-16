@@ -180,7 +180,9 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
         metadataBase: new URL(`https://${config.domain}`),
         openGraph: {
             title: content.seoTitle || content.title,
-            description: content.seoDescription,
+            // BACKEND-CONTRACT-1: a cleared description is stored as `null`; Next's openGraph type is
+            // `string | undefined`, so `null` means "omit the tag".
+            description: content.seoDescription ?? undefined,
             url: canonicalUrl,
             type: 'website',
             images: content.featuredImage

@@ -9,18 +9,9 @@ import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
+import { normalizeSlug } from "../lib/slug.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
-
-// Helper: Ensure slug format (lowercase, hyphens, leading slash)
-const cleanSlug = (str: string) => {
-    const cleaned = str.toLowerCase().trim()
-        .replace(/[\s_]+/g, '-')       // spaces & underscores → dashes FIRST
-        .replace(/[^a-z0-9-\/]/g, '')  // then strip invalid chars
-        .replace(/-+/g, '-')           // collapse multiple dashes
-        .replace(/-+$/g, '');          // strip trailing dash
-    return cleaned.startsWith('/') ? cleaned : '/' + cleaned;
-};
 
 const _handler: AmodxHandler = async (event) => {
     try {
@@ -39,13 +30,24 @@ const _handler: AmodxHandler = async (event) => {
         }
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
-        const body = JSON.parse(event.body);
+        // BACKEND-CONTRACT-1 D1: a malformed body or a schema mismatch is the CLIENT's error → 400.
+        // Before D1 both threw inside this `try` and the catch below answered 500.
+        let body: unknown;
+        try {
+            body = JSON.parse(event.body);
+        } catch {
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
+        }
 
         // 1. Validation
         // We use the shared schema to validate types, but we will construct the Item manually below
-        const input = ContentItemSchema.omit({
+        const parsed = ContentItemSchema.omit({
             id: true, createdAt: true, author: true, nodeId: true, version: true
-        }).parse(body);
+        }).safeParse(body);
+        if (!parsed.success) {
+            return { statusCode: 400, body: JSON.stringify({ error: "Validation failed", issues: parsed.error.issues }) };
+        }
+        const input = parsed.data;
 
         const nodeId = crypto.randomUUID();
         const contentId = crypto.randomUUID();
@@ -54,7 +56,7 @@ const _handler: AmodxHandler = async (event) => {
         // 2. Slug Logic
         // Prefer provided slug, otherwise derive from title
         const rawSlug = input.slug && input.slug.trim() ? input.slug : input.title;
-        const slug = cleanSlug(rawSlug);
+        const slug = normalizeSlug(rawSlug);
 
         // 2b. Check slug doesn't conflict with commerce URL prefixes
         const conflict = await checkSlugCommerceConflict(tenantId, slug);
