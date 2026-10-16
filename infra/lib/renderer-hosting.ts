@@ -436,6 +436,23 @@ function handler(event) {
                 // either cache key — a credential must never become a cache-key partition, and
                 // `api/*` is CACHING_DISABLED anyway.
                 'x-revalidation-token',
+                // `Next-Url` (fix RSC-NAV-1, 2026-10-16). Next 16's `validateRSCRequestHeaders`
+                // (on by default; `next/dist/server/base-server.js`, the `computeCacheBustingSearchParam`
+                // check) recomputes the client's `_rsc` cache-busting hash from FOUR request headers —
+                // `Next-Router-Prefetch`, `Next-Router-Segment-Prefetch`, `Next-Router-State-Tree` and
+                // `Next-Url` — and answers `307` to the URL carrying its own hash whenever they differ.
+                // The first three reach the origin through the cache-policy key below; `Next-Url` did
+                // not, so EVERY client-side navigation (the Next router sends `Next-Url` on each) hashed
+                // differently at the origin and got a 307. On open-next 3.1.3 that 307's `Location`
+                // leaked the internal rewritten path (`/<host>/<slug>?_rsc=…`), which after
+                // SITEID-BINDING-1 closed the dotted pass-through ends on a 404 — REPRODUCED on prod
+                // 2026-10-15 (click "Contact" on bijup.com → `/_site/bijup.com/bijup.com/contact?nf=1`);
+                // on 4.1.9 the `Location` is right but the router chases ~40 307/200 pairs (~5 s) per
+                // click. Proven with Next's own hash function through staging CloudFront: the hash WITH
+                // `Next-Url` → 307, the hash WITHOUT → 200. Forwarded only (transport), NOT a cache-key
+                // dimension: the renderer has no interception routes, so no response depends on it and
+                // the origin's own `Vary` does not list it.
+                'Next-Url',
                 // `x-prerender-revalidate` + `x-isr` (slice cache-7) are DELIBERATELY NOT
                 // forwarded (removed 2026-10-13, human-ratified security fix). open-next@3.1.3
                 // skipped tenant middleware for ANY request carrying `x-isr`

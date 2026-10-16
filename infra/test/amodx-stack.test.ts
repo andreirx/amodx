@@ -496,6 +496,13 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
         // the viewer-request CloudFront Function, which sees `Origin` regardless of that cap. This
         // list was ten headers when STATIC-EP shipped; it is eight since the 2026-10-13 x-isr removal; the edge guard is
         // pinned by `(i)` below, not here.
+        //
+        // `Next-Url` (RSC-NAV-1, 2026-10-16) is the ninth: Next 16's `validateRSCRequestHeaders`
+        // hashes it into the client's `_rsc` param and 307s every RSC navigation whose hash the
+        // origin cannot reproduce — with the header stripped at the edge that was every client-side
+        // navigation on every tenant (prod: click → 404 under the leaked rewritten path). Transport
+        // only; it is pinned ABSENT from the cache key in (a) — no interception routes, so no
+        // response varies on it. One ORP slot stays free.
         const headers = onlyResource('AWS::CloudFront::OriginRequestPolicy').Properties
             .OriginRequestPolicyConfig.HeadersConfig;
         expect(headers.HeaderBehavior).toBe('whitelist');
@@ -508,7 +515,9 @@ describe('RendererOriginPolicy — what reaches the origin', () => {
             'x-tenant-id',
             'x-automation-key',
             'x-revalidation-token',
+            'Next-Url',
         ]);
+        expect(headers.Headers.length).toBeLessThanOrEqual(10); // CloudFront's hard ORP cap
         expect(headers.Headers).not.toContain('x-isr');
         expect(headers.Headers).not.toContain('x-prerender-revalidate');
     });
