@@ -84,6 +84,16 @@ operator's report): fix everything at the cause, accept nothing new.
   tenant's `/contact` nav link, which does not exist there: `Location: …?nf=1`, the E16 path; the
   same sequence on prod 16.3.8 as control: all 200); renderer Lambda 25 invocations, 0 errors over
   the window. Probe pages archived, edge paths invalidated.
+- **Prod (human-run deploy from `444abfa`, 19:04Z 2026-10-26; carries IMPORT-POLICY-1 too):** build
+  `RC2toYYx759TKqir7Zo6C` (was `vUWp2UXmaZZNGfjxumlLe`); deploy invalidation Completed 19:14:52Z.
+  E12-PROD PASS — `amodx.net` "AMODX Serverless CMS | AmodX", `bijup.com` "Home | Bijup.com", Miss then
+  Hit, `s-maxage=31536000`, no cross-marker, keys `…/APP_PAGE/<sha>/$/amodx.net.cache` and
+  `…/$/bijup.com.cache` under the new build. E14-PROD-CONFIG PASS — policy headers
+  x-revalidation-token, x-automation-key, Accept, x-tenant-id, X-Forwarded-Host, Accept-Language,
+  Next-Url, x-origin-verify, Content-Type (no `x-isr`, no `x-prerender-revalidate`). Client
+  navigation on `blog.bijup.com` (`/blogroll` → `/`) and `bijup.com` (`/` → `/contact`): every `_rsc`
+  200, landed. Renderer 19:03Z → 19:25Z: 160 invocations, 0 errors, 0 throttles, p99 993 ms. The old
+  build prefix stays as orphans until the nightly flush / 30-day rule (same as every deploy).
 - **Not done, recorded:** `@opennextjs/aws` 4.1.10–4.1.12 (middleware header filtering by
   `x-middleware-override-headers`, fetch-cache `waitUntil` patch rewrite, `fallback: false` retry,
   sharp default 0.35.5). Nothing in the security fix needs them; 4.1.11+ requires next ≥ 16.4.1, which

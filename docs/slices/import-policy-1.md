@@ -1,6 +1,6 @@
 # IMPORT-POLICY-1 — editors import inside their own tenant; imported WordPress slugs are kept and marked in red for human review
 
-Status: **DEPLOYED-STAGING 2026-10-16** (§ 12; review approved at run-3 cycle 2 on `gpt-6.1-sol`; live probe 14/14; prod on the human's word). Build-time status line kept below: **IMPLEMENTED 2026-10-16** — code complete in two build cycles (cycle 2 = the operator rulings after review-0,
+Status: **SHIPPED 2026-10-26** (prod from main `444abfa`, human-run deploy 19:04Z, § 13). Previous: **DEPLOYED-STAGING 2026-10-16** (§ 12; review approved at run-3 cycle 2 on `gpt-6.1-sol`; live probe 14/14; prod on the human's word). Build-time status line kept below: **IMPLEMENTED 2026-10-16** — code complete in two build cycles (cycle 2 = the operator rulings after review-0,
 § 3a) plus revision 1 (documentation only: the ruling on `IP1-EDITOR-CLAIM-SOURCE` recorded, § 3a); all oracles
 exit 0 (§ 8). Validation pending: review, then the operator's staging run (§ 7) and deploy. Not deployed.
 Track: backend correctness (follow-up of `backend-contract-1`, named there in `docs/ROADMAP.md`).
@@ -196,3 +196,15 @@ URL does not follow the site's slug rules (whatever its origin) and what a renam
   predicate exists for. Cleanup: both pages archived (200), the editor user deleted (pool filter count 0).
 - Prod: on the human's word (`cdk diff` prod expected: CatalogApi import/content Lambda assets + the admin bucket deployment; no infra
   resource change). Follow-ups unchanged (§ 9).
+
+## 13. Prod deploy and verification (operator, 2026-10-26 — appended after the human's prod deploy)
+
+- **Deploy.** Human-run `cdk deploy -c stage=prod AmodxStack` from main `444abfa` (this slice + the 2026-10-26 dependency
+  re-triage, `docs/TECH-DEBT.md`); Lambda `LastModified` 19:04:04Z (`ImportFunc`), 19:04:05Z (`MediaImportFunc`),
+  19:04:04Z (`ReviewImportFunc`); admin bundle `index-D2suczwZ.js` served from `admin.amodx.net`.
+- **Read-only checks (no EDITOR account exists on prod; D1 was proven on staging with a real EDITOR login, § 12):** the served
+  admin bundle carries the three surfaces — `REVIEW SLUG` ×2 (list badge + title), the editor's "does not follow the site" line,
+  the Migration Step 3 note ("stored exactly as WordPress had it"); `config.json` keys unchanged, `VITE_API_URL=https://api.amodx.net/`.
+- **Does not prove:** the 403 for a foreign-tenant EDITOR on prod itself (would need a prod EDITOR account). The policy line is the
+  same `requireRole(auth, ["TENANT_ADMIN", "EDITOR"], tenantId)` in both handlers, exercised by `import-key-ownership.test.ts`.
+
