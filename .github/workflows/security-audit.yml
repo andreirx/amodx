@@ -29,7 +29,7 @@ jobs:
       - name: Security audit (high severity, production deps only)
         # audit-gate wraps `npm audit --omit=dev --json`: fails on any unaccepted
         # high/critical advisory, suppresses (loudly) only the exact GHSA ids we
-        # accepted — currently postcss+sharp pinned inside next 16.2.12. --omit=dev
+        # accepted (list + conditions in the script itself). --omit=dev
         # semantics kept: dev deps like aws-cdk-lib have known build-time-only
         # vulnerabilities. See docs/TECH-DEBT.md § Dependency Audit Remediation.
         run: node scripts/audit-gate.mjs
@@ -91,8 +91,8 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Security audit (renderer)
-        # Same gate as the root job: the renderer's residual highs are the same
-        # next-16.2.12-pinned postcss/sharp advisories accepted in TECH-DEBT.
+        # Same gate as the root job: the renderer's accepted advisories are the
+        # same list (see the script and TECH-DEBT § Dependency Audit Remediation).
         working-directory: renderer
         run: node ../scripts/audit-gate.mjs
         continue-on-error: false

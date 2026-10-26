@@ -39,6 +39,56 @@ Items tracked here are known issues that don't block production but should be ad
   `--omit=dev` the root job always had. The workflow had been red since 2026-07-27 on accepted or
   dev-only findings, which buries new real ones.
 
+**2026-10-26 re-triage — weekly audit red on advisories published 2026-10-22.** No code change
+caused it (the same commit `cae563e` passed on 2026-10-19). Human ruling 2026-10-26 (option 1 of the
+operator's report): fix everything at the cause, accept nothing new.
+- **Bumped in-range (lockfile-only):** `body-parser` 2.3.0 → 2.4.0, `follow-redirects` 1.16.0 →
+  1.16.2, `undici` 7.30.0 → 7.30.1 (all three via `tools/mcp-server`, a local tool, never deployed),
+  `markdown-it` 14.2.0 → 14.3.3 (admin editor in the browser, via tiptap → prosemirror-markdown).
+- **Bumped pin:** `zod` 4.1.13 → 4.6.7 in `backend`, `packages/shared`, `packages/plugins`
+  (GHSA-mrhx-c7xc-m3w5, memory exhaustion; reachable in the backend Lambdas, bounded by the API
+  Gateway body limit). Behaviour change measured by the reviewer: zod 4.6 `.url()` removes embedded
+  TAB/CR/LF from the value (`http://exa\nmple.com` → `http://example.com`); no validation path found
+  that depends on the old behaviour.
+- **`next ~16.3.8 → ~16.4.3`** (`renderer`, `packages/plugins`; `@opennextjs/aws` stays 4.1.9 with
+  its patch) for GHSA-2464-fhr4-w9xw (critical, SVG image-optimizer RCE), GHSA-673q-mjm6-r5xr
+  (critical, `use cache` RCE) and GHSA-p3m5-59mp-jv5r (high, Server Actions DoS); first fix 16.4.1,
+  no 16.3.x fix exists. Root causes read from the packages: the SVG one is `sharp` — next 16.4.1's
+  whole change for it is `optionalDependencies.sharp ^0.35.4 → ^0.35.5`, and the deployed optimizer
+  has run sharp 0.35.5 since 2026-10-13 (`renderer/open-next.config.ts`, bundle row B-SHARP); the two
+  others are in the vendored React Flight reply decoder (`dist/compiled/react-server-dom-*`,
+  `dist/compiled/next-server/app-page*.runtime`), reached from Server Action requests and from
+  `use cache` entry generation (`dist/server/use-cache/use-cache-wrapper.js`) — the renderer
+  registers no Server Action (`server-reference-manifest.json`: 0 entries), has no `"use server"` /
+  `"use cache"`, and Cache Components are off. Upgraded anyway: Vercel says so for `use cache`.
+  **Why the 16.3 pin cost nothing to lift:** `dist/server/lib/route-cache-key.js` and
+  `shared-cache-controls.external.js` are byte-identical 16.3.8 ↔ 16.4.3, the patch's seed key
+  semantics are unchanged (`incremental-cache/index.js` handler key / `cacheControls.set`), and the
+  one new 16.4.3 branch there (prefer a handler-returned `cacheControl`) is inert because the open-next
+  adapter returns `{lastModified, value}` only. Trial in an isolated worktree before the tree was
+  touched: bundle harness 58/58, patch verifier PASS, vitest 79/79, `next start` contract 38/39 — the
+  one row, `e1`, restated: next 16.4 answers the failed-read 500 with an explicit
+  `private, no-cache, no-store, …` where 16.3 sent no header; the `next` target now applies the
+  bundle target's rule (absent or `no-store`). React layout unchanged (root 19.2.3 / renderer-nested
+  19.2.0, pre-existing).
+- **Gate defect fixed (pre-existing, found by the review):** an `npm audit --json` error reply
+  (registry unreachable) or a malformed report parsed as "no vulnerabilities" and passed; the gate
+  now exits 2 on either.
+- **Staging verification (operator, 2026-10-26, `cdk deploy` exit 0, build `uxgIuf1vwL9T0hITnh0zL`,
+  diff: Lambda code + bucket deployments only, no resource added/removed/replaced):** E12 two
+  tenants / shared slug — distinct bodies, two ISR keys each carrying its host, `s-maxage=31536000`,
+  edge Miss→Hit→Hit; E14 `x-isr` attack — four 200s, no `Location`, victims get their page; E15
+  `If-None-Match` → 304 no body; E16 missing slug → cacheable 307 `?nf=1` then 404 `no-store`;
+  client navigation through the app router on a tenant host (page → `/` and `/` → page) — every
+  `_rsc` request with the client's `Next-Url` answered 200, no hash 307 (the only 307s were the
+  tenant's `/contact` nav link, which does not exist there: `Location: …?nf=1`, the E16 path; the
+  same sequence on prod 16.3.8 as control: all 200); renderer Lambda 25 invocations, 0 errors over
+  the window. Probe pages archived, edge paths invalidated.
+- **Not done, recorded:** `@opennextjs/aws` 4.1.10–4.1.12 (middleware header filtering by
+  `x-middleware-override-headers`, fetch-cache `waitUntil` patch rewrite, `fallback: false` retry,
+  sharp default 0.35.5). Nothing in the security fix needs them; 4.1.11+ requires next ≥ 16.4.1, which
+  this bump now satisfies. Its own slice when there is a named gain.
+
 **Cleared — no longer debt:**
 - **Backend criticals** (2026-06-01): `vitest 4.0.16 → 4.1.8`, removed the direct `@vitest/ui` devDep —
   both **GHSA-5xrq-8626-4rwp** (Vitest UI server file read/exec; dev-only, never in the Lambda runtime).

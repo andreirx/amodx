@@ -27,6 +27,7 @@ const ACCEPTED = new Map([
   ["GHSA-j95f-988m-3j2f", "tiptap-ReDoS: installed 2.27.1, affected range starts 3.7.0"],
 ]);
 
+
 const res = spawnSync("npm", ["audit", "--omit=dev", "--json"], {
   encoding: "utf8",
   maxBuffer: 64 * 1024 * 1024,
@@ -41,10 +42,22 @@ try {
   console.error(res.stderr?.slice(0, 2000) ?? "");
   process.exit(2);
 }
+// A parseable ERROR reply (e.g. registry unreachable: {"error":{...}}) is not an audit result.
+// Without this check it read as "no vulnerabilities" and the gate passed without an audit.
+const v = report.vulnerabilities;
+// Every `via` entry is a chain link (string) or an advisory with a severity (object).
+const SEVERITIES = new Set(["info", "low", "moderate", "high", "critical"]);
+const viaOk = (x) => typeof x === "string" || (x !== null && typeof x === "object" && SEVERITIES.has(x.severity));
+const wellFormed = v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((e) => Array.isArray(e?.via) && e.via.every(viaOk));
+if (report.error || !wellFormed) {
+  console.error("audit-gate: `npm audit --json` returned no audit result");
+  console.error(JSON.stringify(report.error ?? report).slice(0, 2000));
+  process.exit(2);
+}
 
 const failing = [];
 const suppressed = [];
-for (const [pkg, vuln] of Object.entries(report.vulnerabilities ?? {})) {
+for (const [pkg, vuln] of Object.entries(report.vulnerabilities)) {
   for (const via of vuln.via ?? []) {
     if (typeof via !== "object") continue; // string vias are chain links, not advisories
     if (via.severity !== "high" && via.severity !== "critical") continue;

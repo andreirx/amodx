@@ -944,10 +944,13 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 );
                 assert.deepEqual(s3PutsFor(key).map((e) => e.key), [], "a thrown render was PUT to the ISR bucket");
             } else {
-                assert.equal(
-                    res.header("cache-control"),
-                    undefined,
-                    "a failed read must emit NO Cache-Control — any value here is storable",
+                // next 16.4 answers this 500 with an explicit `private, no-cache, no-store, ...`
+                // where 16.3 sent no header (OBSERVED 2026-10-26, next 16.4.3). Same rule as the
+                // bundle branch above: absent or no-store, nothing storable.
+                const cc = res.header("cache-control");
+                assert.ok(
+                    cc === undefined || /\bno-store\b/.test(cc),
+                    `a failed read must emit no Cache-Control or a no-store one; got "${cc}"`,
                 );
             }
             const stored = await storedIsrEntries();
