@@ -1,7 +1,7 @@
 # CAT-MODE-1 — catalog-mode rendering: no price surface anywhere, indexable (IMPL slice)
 
-Status: **PROPOSED**, blocked on `CATALOG-MODE-1` ratification (D-1 binds the data shape; §3.2
-of the spec is this slice's oracle table). Track: Glam catalog.
+Status: **PROPOSED**, blocked on `CATALOG-MODE-1` ratification (§3.2 of the spec is this slice's
+oracle table). D-1 = (b) and D-6 = (A) ratified 2026-10-27. Track: Glam catalog.
 
 ## 1. Purpose / risk retired
 
@@ -25,7 +25,15 @@ tenant's products/categories ARE in the sitemap. Every other tenant renders byte
 4. Admin product editor: under a catalogMode tenant the price/availability/Paddle fields are not
    shown; validation accepts absence (D-1 b).
 5. MCP tools: `product_get`/`list` responses for catalog tenants omit price fields (no `null`
-   price leaking as a value).
+   price leaking as a value). Note `tools/mcp-server/src/index.ts:1017` prints
+   `(${p.price} ${p.currency})` — it must not print "undefined".
+6. **Order guard (CM-D6 = A, the ONE named exception to the commerce-track freeze):**
+   `backend/src/orders/create.ts` refuses with 403 and a business-language message unless the
+   tenant config's `commerceEnabled` is true; the check runs right after the tenant config read
+   (:69-74), before reCAPTCHA and before any product read. Before the change the operator lists
+   every live tenant (staging and prod) with `commerceEnabled` and with any `ORDER#` record, and
+   states that no selling tenant has the flag unset. No other CommerceApi file changes;
+   `products/bulk-price.ts` is read for priceless items and the finding recorded.
 
 ## 3. Non-scope
 
@@ -47,10 +55,13 @@ change is additive; the byte-identity oracle (below) is the live-tenant guarante
 - A catalog-tenant product page snapshot contains none of: a currency code, `offers`, the Buy
   strings, `availability` (negative grep over the rendered file, exact terminators).
 - Direct GET of `/cart` and `/checkout` on a catalog tenant → 404.
+- Order guard: unit rows — `commerceEnabled` true → unchanged path; false/absent → 403, no
+  product read, no write (db-mock asserts zero calls after the config read).
 - Sitemap for a catalog tenant lists its products; the OpenAI feed per the ratified rule.
 - Staging: the glam tenant's `/shop`, a category and a product page screenshots (390 + 1366);
   Google Rich Results test of one product page shows a Product with no offer (operator-run).
-- Typecheck + unit suites bare-green; no CDK change (state it).
+- Typecheck + unit suites bare-green; no CDK change (state it). Backend: `npm run test:unit`
+  only — never `cd backend && npm test` (it writes live staging tables).
 
 ## 6. References
 

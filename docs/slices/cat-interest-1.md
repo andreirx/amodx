@@ -19,14 +19,18 @@ This replaces the cart as the catalog tenant's conversion path — it is deliber
 2. **The list page** (`/<interest prefix>`, a new `urlPrefixes.interest`, default `/lista-mea`):
    items (image, title, collection, remove), then the form: name, phone, email (required per
    D-5 a — `Lead.email`), message; "Trimite lista". Copy in business language; no internals.
-3. **Public submit route** `POST /public/interest` (renderer-proxied? NO — there is no customer
-   identity here; the same posture as `forms` submissions: a public backend route with the tenant
-   derived from the host by the renderer and forwarded with the RENDERER key, PD-002's two-hop
-   shape even without a session). Abuse posture copied from forms: rate limit per IP + tenant,
-   honeypot field, size caps (≤ 50 items, message ≤ 2000 chars), item ids validated against the
-   tenant's products (unknown ids dropped and reported, never a 500).
-4. **The record**: `Lead{ source: "Listă interes", email, name, data: { phone, message, items:
-   [{productId, title, slug}] } }`; status `New`. The existing lead-created notification email to
+3. **Public submit route** `POST /public/interest` — the same shape as forms (corrected
+   2026-10-27): the browser calls it directly (as `DynamicForm.tsx:56` does for
+   `/public/forms/{slug}/submit`), the route is `noAuth` in EngagementApi beside
+   `PublicSubmitForm` (`infra/lib/api-engagement.ts:210`), and the handler checks `x-tenant-id`
+   against the origin (`verifyTenantFromOrigin`) and reCAPTCHA exactly as
+   `forms/public-submit.ts:14-51` does. Added here: size caps (≤ 50 items, message ≤ 2000 chars),
+   item ids validated against the tenant's products (unknown ids dropped and reported, never a
+   500), and the handler refuses a tenant that is not `catalogMode`. Forms have no per-IP rate
+   limit and no honeypot today; adding either is new work, not a copy — only if the spec says so.
+4. **The record**: per the ratified CM-D5. NOT `data.items[]` on `LEAD#<email>` as first drafted —
+   that record is one per person and three handlers overwrite it with an unconditional `Put`
+   (see the spec's CM-D5 evidence); a second list from the same visitor would erase the first. The existing lead-created notification email to
    the tenant (whatever path the forms/leads use today — cite it; if none exists, the email is
    a named follow-up, NOT built here).
 5. **Admin leads view**: a lead with items renders them as a list with links to the admin product

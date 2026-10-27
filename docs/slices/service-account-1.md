@@ -22,14 +22,32 @@ so glamCRM can operate on the related site."
    lastUsedAt, revokedAt|null }`. Stored under the tenant (`TENANT#<id>` partition, `SVCKEY#<id>`
    sort — raw DTO, no framework object). The secret format carries a prefix (`amx_sk_…`) so a leak
    is recognizable in logs/scanners.
-2. **Scopes** (fixed enum, deny-by-default): `catalog:write` (products/categories/import),
-   `catalog:read`, `leads:read`, `leads:write` (status updates), `content:read`. No scope grants
-   tenant settings, users, keys, or anything outside the tenant. The enum is in `packages/shared`.
+2. **Scopes** (fixed enum, deny-by-default; trimmed 2026-10-27 to scopes with a named consumer):
+   `catalog:read` (`GET /products` — the staging proof's route), `leads:read` (`GET /leads` —
+   glamCRM's pull), `catalog:write` (declared by CAT-IMPORT-1 on `/import/glam-pricelist`, the
+   push). `leads:write` and `content:read` dropped: no consumer is named. No scope grants tenant
+   settings, users, keys, or anything outside the tenant. The enum is in `packages/shared`.
+   No CommerceApi route (categories CRUD, public product reads) is given a scope.
 3. **Authorizer**: a third branch — a key with the service prefix is looked up by hash → context
    `{ sub: "service:<keyId>", role: "SERVICE", tenantId, scopes }`. Revoked or unknown → 401.
-   Constant-time compare; the lookup is one point read (hash as key), no scan.
+   The lookup is one point read (hash as key), no scan; no secret comparison happens in code.
+   **Call shape (added 2026-10-27):** the HTTP API authorizer's `identitySource` is BOTH
+   `$request.header.Authorization` and `$request.header.x-api-key` (`infra/lib/api.ts:106`); a
+   request missing either is refused by API Gateway with 401 before the authorizer runs. A service
+   caller therefore sends `x-api-key: amx_sk_…` AND a placeholder `Authorization: Bearer service`;
+   the branch must resolve on the key before the token branch reads `Authorization`. The packet's
+   integration rows and the glamCRM contract (§ 6) state this shape. `resultsCacheTtl` is 0
+   (:105), so a revocation is effective on the next request.
+   Context encoding: pass `scopes` as one comma-joined string in the authorizer context (simple
+   responses carry primitive values) and parse it in `policy.ts`.
 4. **Policy** (`backend/src/auth/policy.ts`): the existing role checks gain the SERVICE role; a
-   route accepts SERVICE only when it declares a required scope and the key holds it. Routes
+   route accepts SERVICE only when it declares a required scope and the key holds it. Note
+   `policy.ts:15` defaults a missing role to `EDITOR` — the SERVICE context must always carry its
+   role. A SERVICE call must always pass the target tenant (the third `requireRole` argument is
+   optional today); a scoped route that omits it is a defect. **Precondition:** `GET /leads`
+   (`backend/src/leads/list.ts`) calls no `requireRole` at all today and serves any `x-tenant-id`
+   to any authenticated caller (operator probe on staging 2026-10-27). It must be tenant-bound
+   before a `leads:read` key can exist — see TENANT-BIND-1. Routes
    without a declared scope REFUSE service callers (deny by default — an undeclared route cannot
    be reached by a key by accident). The tenant binding is the key's tenant, never a header: a
    service call carrying a different `x-tenant-id` is refused (403), the same discipline

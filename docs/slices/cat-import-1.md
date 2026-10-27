@@ -23,8 +23,11 @@ price**.
    Columns 2/3/4/5 are read for nothing — the handler does not bind them to variables (the
    reviewer's oracle: no identifier in the handler references those indices).
 3. **Categories**: parent category per producer (`brand`), child per collection; slugs via
-   `backend/src/lib/slug.ts` `normalizeSlug` (BACKEND-CONTRACT-1's single normalizer); existing
-   categories matched by slug, never duplicated.
+   `normalizeSlug` from `@amodx/shared` (`packages/shared/src/slug.ts`; moved there by
+   IMPORT-POLICY-1, `cae563e` — `backend/src/lib/slug.ts` no longer exists); existing categories
+   matched by slug, never duplicated. Categories are written as `CATEGORY#<slug>` items directly,
+   as `import/woocommerce.ts:329` does — the category CRUD Lambdas live in CommerceApi and this
+   slice does not call or change them.
 4. **Idempotency**: upsert by `externalRef.key`; unchanged rows are no-ops (hash of the mapped
    fields); rows present in the store but absent from THIS file → **untouched** (a file is one
    producer sheet, never the whole catalog; archiving is an explicit admin action, not an import
@@ -36,7 +39,7 @@ price**.
    report and asks for confirmation before the real run.
 6. **Tenant binding**: `x-tenant-id` bound to the caller exactly as `import-policy-1` made
    `/import/wordpress` do (EDITOR imports inside own tenant; the service key — SERVICE-ACCOUNT-1
-   — carries its own tenant). Refuse `catalogMode=false` tenants? NO — the importer is
+   — carries its own tenant; this route is the first one to declare the `catalog:write` scope). Refuse `catalogMode=false` tenants? NO — the importer is
    mode-agnostic; D-1's write-boundary refinement is what refuses a priceless product on a
    commerce tenant (test it).
 7. **Admin entry**: Products → Import → "Listă de prețuri (glam)" beside the WooCommerce import;

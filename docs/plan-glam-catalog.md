@@ -95,11 +95,28 @@ and specs), author the content pages, point the domain.
    2026-08-10 with staging/prod deploys at the human gate. CAT-IMPORT-1, CAT-INTEREST-1 and
    SERVICE-ACCOUNT-1 each add API routes/resources. State the synth count for staging AND prod
    before the first launch; if the split never deployed, it (or its successor) comes first.
+   **VERIFIED 2026-10-27 (amodx operator, read-only CloudFormation):** the split is deployed on
+   both environments. Prod: parent `AmodxStack` 440/500, CatalogApi 57, CommerceApi 258,
+   EngagementApi 94; staging parent also 440. Track F adds about 4–5 routes (8–15 resources
+   depending on the stack that hosts each). Each slice still states its synth delta; Track B's
+   `cmrc-1` routes draw on the same parent budget later.
 2. **Live tenants.** Every renderer change is production-impacting (standing rule). Catalog mode
    must be strictly additive and gated by the tenant flag — a non-catalog tenant's bytes are
    byte-identical before and after (the spec names this oracle).
 3. **Relay models** per the human's 2026-10-16 ruling: builder `claude-opus-5-5`, reviewer
    `gpt-6.1-sol`; staging first; prod on the human's word.
+
+## Rulings and corrections (amodx operator session, 2026-10-27)
+
+- Track F runs independently of Track B (commerce-private). Two cross-touches, both ruled by the
+  human 2026-10-27: CM-D6-ORDER-GUARD = A (the order handler refuses non-selling tenants — the one
+  named exception to the commerce freeze, inside CAT-MODE-1) and CM-D1 = (b) price optional, safe
+  because of that guard.
+- CM-D5 re-cast: `LEAD#<email>` is one record per person, overwritten by three writers; an interest
+  list stored on it would be lost on the next touch (see the spec).
+- Live security finding outside this track's scope but blocking SERVICE-ACCOUNT-1: `GET /leads`,
+  `DELETE /leads/{email}`, `GET /audit`, `GET /signals`, `GET /assets` never call `requireRole`;
+  an EDITOR of one tenant reads another tenant's records (staging probe). Fix packet: TENANT-BIND-1.
 
 ## Non-goals
 

@@ -199,6 +199,13 @@ store has no orders and no customers.
 
 **Precondition (verify before the first launch):** the CFN 500-resource ceiling — `infra-split-1`'s
 deploy state on staging and prod, and the synth count after the new routes.
+**2026-10-27 (amodx operator):** precondition VERIFIED — split deployed on both environments,
+prod parent 440/500 (CatalogApi 57, CommerceApi 258, EngagementApi 94). Human rulings: CM-D1 = (b)
+price optional; CM-D6-ORDER-GUARD = A (the order handler refuses non-selling tenants — the one named
+exception to the commerce freeze, inside `cat-mode-1`). CM-D5 re-cast (`LEAD#<email>` is overwritten
+by three writers). `service-account-1` waits on `tenant-bind-1`: `GET /leads`, `DELETE /leads/{email}`,
+`GET /audit`, `GET /signals`, `GET /assets` never call `requireRole` — cross-tenant read proven on
+staging.
 
 ## Track E — Admin AI (deferred)
 

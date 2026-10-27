@@ -2,7 +2,10 @@
 
 Status: **PROPOSED** (packet written 2026-10-27 by the glamCRM operator session; see
 `docs/plan-glam-catalog.md` for the why and the integration plan). SPEC ONLY — no code changes
-with this document; the gate proves it.
+with this document; the gate proves it. **Amended 2026-10-27 by the amodx operator** after a
+code check: CM-D1 ratified (b); new block CM-D6-ORDER-GUARD ratified (A); CM-D5 re-cast on the
+lead-key evidence; § 3.5 abuse posture corrected to what forms actually do. Open for ratification:
+CM-D2, CM-D3, CM-D4, CM-D5.
 
 ## 1. Human direction (2026-10-27), quoted
 
@@ -32,6 +35,14 @@ happen, by construction.
    badges; JSON-LD `offers` block; the OpenAI feed's `price`/`sale_price`/availability; cart/
    checkout prefixes and `CartWidget`/`CommerceBar` (already off without `commerceEnabled`);
    category/shop card prices; search result prices; the `/products/[id]` legacy page; Paddle links.
+   **Backend rows (added 2026-10-27, operator code check):** the public order route
+   (`backend/src/orders/create.ts`, CommerceApi) accepts an order for ANY tenant — no backend
+   handler reads `commerceEnabled` (only `tenant/list.ts` does), so the renderer's 404 on
+   `/cart`/`/checkout` does not stop a direct POST (→ CM-D6). Price readers in CommerceApi code:
+   `orders/create.ts:120` (`unitPrice = product.salePrice || product.price`),
+   `products/bulk-price.ts`, `products/public-list.ts:49-50` (projection). They read untyped
+   DynamoDB items, so the compiler does NOT flag them when `price` becomes optional — the table
+   lists each with its catalog-mode behaviour.
 3. **The sitemap/feed inclusion rule**: catalog tenants are INDEXABLE — products and categories
    appear in the sitemap; the OpenAI feed either omits price fields or is withheld (decide).
 4. **The import contract** for the glam canonical 12-column layout (`docs/plan-glam-catalog.md`
@@ -41,8 +52,13 @@ happen, by construction.
    schema-level guarantee for CAT-IMPORT-1 (the importer has no code path that writes those).
 5. **The interest-list contract**: client-side shortlist persistence; submission payload
    (contact fields + `items[]` of product ids + titles at submission time); the backend record
-   (Lead vs FormSubmission — D-5); notification; abuse posture (public route: rate limit, honeypot,
-   size caps — the same posture as forms submissions).
+   (D-5); notification; abuse posture. **Corrected 2026-10-27:** the forms posture is what
+   `backend/src/forms/public-submit.ts` does — the browser calls the public route directly
+   (`renderer/src/components/DynamicForm.tsx:56`, no renderer hop), the handler checks
+   `x-tenant-id` against the request origin (`verifyTenantFromOrigin`, :18) and reCAPTCHA
+   (deployment-level mandatory, :24-51). Forms have NO per-IP rate limit and NO honeypot today.
+   The interest route mirrors that posture and adds size caps and item-id validation; a rate
+   limit or honeypot is new work and is named as such if the spec wants it.
 6. **The renderer byte-identity oracle for non-catalog tenants**: a named check that a tenant
    without the flag renders byte-identical HTML before/after CAT-MODE-1 (the live-tenants rule).
 
@@ -66,6 +82,10 @@ DECISION_REQUIRED:
   RECOMMENDED: (b). The human's ruling is "without prices", not "with hidden prices"; the
     standing honest-absence law applies to data as much as to UI. The write-boundary refinement
     keeps commerce tenants exactly as strict as today.
+  RATIFIED 2026-10-27 (human, accepting the operator's recommendation): **(b), together with
+    CM-D6 = A.** With the order guard, no catalog-tenant request reaches the CommerceApi code that
+    reads `price` (`orders/create.ts:120`); `products/bulk-price.ts` is checked for priceless
+    items (read, no change expected) and the result is recorded in the surface table.
   BLOCKING_REASON: fixes the shared product contract that CAT-IMPORT-1, CAT-MODE-1 and the MCP
     tools all build against; reversing it after products exist is a data migration.
 
@@ -125,16 +145,48 @@ DECISION_REQUIRED:
 
 DECISION_REQUIRED:
 - ID: CM-D5-INTEREST-RECORD
-  QUESTION: An interest-list submission becomes a Lead or a FormSubmission?
+  EVIDENCE (operator code check 2026-10-27): a Lead is ONE record per person per tenant —
+    `SK: LEAD#<email>`, written by an unconditional `Put` from three handlers
+    (`leads/create.ts:62-66`, `contact/send.ts:99`, `comments/create.ts:68`); `DELETE
+    /leads/{email}` addresses it by email. A second interest list from the same visitor, or a
+    later contact-form message or blog comment, OVERWRITES the first list. A FormSubmission is
+    one record per submission (`SK: FORMSUB#<formId>#<submissionId>`, `forms/public-submit.ts:122`)
+    and the handler already sends the tenant a notification email (:143).
+  QUESTION: Where does an interest-list submission live so that no submission is lost?
   OPTIONS:
-  - (a) LEAD with `source: "Listă interes"` and `data.items[]`. RISK: `Lead.email` is required —
-    a phone-only submission needs a rule (email required on the form, or the schema relaxes).
-    REWARD: the CRM status workflow (New→Contacted→Converted) is exactly a sales lead's life;
-    admin leads view + MCP tools + glamCRM pull (GC-SITE-SYNC-1) already have the shape.
-  - (b) FORM SUBMISSION. RISK: no status workflow; items are opaque custom fields. REWARD: the
-    forms abuse posture is already attached.
-  RECOMMENDED: (a), borrowing (b)'s abuse posture for the public route.
+  - (a) LEAD AS TODAY (`data.items[]` on `LEAD#<email>`). RISK: silent loss — the next touch
+    from the same email replaces the items; glamCRM reads only the last one. REWARD: the existing
+    leads view and status workflow. Not acceptable without (a2).
+  - (a2) LEAD + MERGE: the interest handler updates `LEAD#<email>` with a conditional append to
+    `data.interestLists[]` (one entry per submission, capped). RISK: the other three writers still
+    `Put` and would erase the appended history unless they change too — that widens the slice into
+    contact/comments/leads handlers. REWARD: one person record carrying every list.
+  - (b) FORM SUBMISSION on a system form "Listă interes" per catalog tenant. RISK: no status
+    workflow (New→Contacted) — the client tracks follow-up elsewhere; items are a structured field
+    on a generic record; glamCRM reads form submissions (a `forms`-scoped read, not `leads:read`).
+    REWARD: one record per submission by construction, the abuse posture and the notification
+    email already exist, no change to other writers.
+  - (c) NEW RECORD `INTEREST#<submissionId>` with its own status field, plus the usual person-Lead
+    upsert for the contact. RISK: a new record type, a list route and an admin view (the largest
+    option). REWARD: per-submission history AND a status workflow, nothing overwritten.
+  RECOMMENDED: none yet — the decision-review pass challenges (b) vs (c) against what the client
+    will actually do with a list (follow-up tracking needed or not); the human ratifies.
   BLOCKING_REASON: the record glamCRM will read; the admin surface the client works from.
+
+DECISION_REQUIRED:
+- ID: CM-D6-ORDER-GUARD
+  QUESTION: "No possibility of ordering" — enforced in the renderer only, or at the order API?
+  OPTIONS:
+  - (A) GUARD IN THE ORDER HANDLER: `backend/src/orders/create.ts` (CommerceApi) refuses with 403
+    unless the tenant's `commerceEnabled` is true. About 3 lines; Lambda code only, no infra.
+    RISK: a named exception to the "do not touch commerce" rule; a selling tenant with the flag
+    unset would stop receiving orders (the implementing slice reads every live tenant's flag first
+    and states the result). REWARD: the promise holds at the API for every non-selling tenant, not
+    only the catalog one.
+  - (B) RENDERER ONLY. RISK: a direct POST writes a real order on a catalog tenant ("0" or NaN
+    totals). REWARD: no commerce code touched.
+  RATIFIED 2026-10-27 (human): **(A)**, implemented inside CAT-MODE-1 as its one named exception to
+    the commerce-track freeze.
 
 ## 5. Non-scope
 
