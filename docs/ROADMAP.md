@@ -181,6 +181,25 @@ Source: `docs/plan-appointments-private-table-extension.md`. Invariants: PD-001/
 | `appt-6` | Notifications & audit | PLANNED |
 | `appt-7` | Validation (isolation, concurrency, disabled-state) | PLANNED |
 
+## Track F — Glam catalog (presentation store fed from glamCRM) — PROPOSED 2026-10-27
+
+Source: `docs/plan-glam-catalog.md` (the why, what exists, the glamCRM integration plan, the
+preconditions — read it first). Written by the glamCRM operator session for this session; the
+human will ratify the spec. Track B (commerce-private) is NOT a prerequisite: a presentation
+store has no orders and no customers.
+
+| Slice | Scope | Status |
+|-------|-------|--------|
+| `catalog-mode-1` | SPEC: the catalog-only tenant mode — every price/ordering surface enumerated and suppressed by construction, indexable; the glam import contract; the interest-list contract; five `DECISION_REQUIRED` blocks (price absence in the schema, image hotlink-vs-ingest, the glam internal codification as identity key, explode-vs-group, lead-vs-form). `docs/slices/catalog-mode-1.md` | PROPOSED |
+| `cat-import-1` | `POST /import/glam-pricelist`: the glam canonical 12-column layout → products + categories, idempotent on the external key, dry-run report, admin entry, MCP parity; NO code path can store a producer code or a price. `docs/slices/cat-import-1.md` | PROPOSED (after the spec) |
+| `cat-mode-1` | Renderer/admin/feeds/MCP under `catalogMode`: no price surface emitted anywhere, cart/checkout 404, sitemap includes products; byte-identity oracle for every non-catalog tenant. `docs/slices/cat-mode-1.md` | PROPOSED (after the spec) |
+| `cat-interest-1` | "Mă interesează" shortlist → `/lista-mea` → public submit → `Lead{source:"Listă interes", data.items[]}`; forms-grade abuse posture. `docs/slices/cat-interest-1.md` | PROPOSED (after cat-mode-1) |
+| `cat-images-1` | Conditional on D-2 = ingest: producer images copied into tenant media at import, per-row failure report, honest absence. `docs/slices/cat-images-1.md` | PROPOSED (conditional) |
+| `service-account-1` | Tenant-scoped machine credentials: hashed `amx_sk_…` keys with a fixed scope enum, authorizer third branch (`role: SERVICE`, key's tenant only), deny-by-default route scopes, admin "Chei de integrare", audit. Consumer: glamCRM `GC-SITE-SYNC-1`. `docs/slices/service-account-1.md` | PROPOSED (parallel) |
+
+**Precondition (verify before the first launch):** the CFN 500-resource ceiling — `infra-split-1`'s
+deploy state on staging and prod, and the synth count after the new routes.
+
 ## Track E — Admin AI (deferred)
 
 Source: `docs/plan-ai-admin.md`. **DEFERRED** — LLM provider undecided; even the
