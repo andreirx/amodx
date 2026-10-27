@@ -2,6 +2,7 @@ import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
+import { requireRole } from "../auth/policy.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -9,6 +10,14 @@ export const handler: Handler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
         if (!tenantId) return { statusCode: 400, body: "Missing Tenant" };
+
+        const auth = event.requestContext.authorizer.lambda;
+        try {
+            requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : "Forbidden";
+            return { statusCode: 403, body: JSON.stringify({ error: message }) };
+        }
 
         const result = await db.send(new QueryCommand({
             TableName: TABLE_NAME,

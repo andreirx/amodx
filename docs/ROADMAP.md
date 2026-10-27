@@ -195,6 +195,7 @@ store has no orders and no customers.
 | `cat-mode-1` | Renderer/admin/feeds/MCP under `catalogMode`: no price surface emitted anywhere, cart/checkout 404, sitemap includes products; byte-identity oracle for every non-catalog tenant. `docs/slices/cat-mode-1.md` | PROPOSED (after the spec) |
 | `cat-interest-1` | "Mă interesează" shortlist → `/lista-mea` → public submit → `Lead{source:"Listă interes", data.items[]}`; forms-grade abuse posture. `docs/slices/cat-interest-1.md` | PROPOSED (after cat-mode-1) |
 | `cat-images-1` | Conditional on D-2 = ingest: producer images copied into tenant media at import, per-row failure report, honest absence. `docs/slices/cat-images-1.md` | PROPOSED (conditional) |
+| `tenant-bind-1` | Security prerequisite of `service-account-1`: `GET /leads`, `DELETE /leads/{email}`, `GET /audit`, `GET /signals`, `GET /assets` bound to the caller's tenant with `requireRole` (roles unchanged). `docs/slices/tenant-bind-1.md` | STAGING VERIFIED 2026-10-27 (prod on the human's word) |
 | `service-account-1` | Tenant-scoped machine credentials: hashed `amx_sk_…` keys with a fixed scope enum, authorizer third branch (`role: SERVICE`, key's tenant only), deny-by-default route scopes, admin "Chei de integrare", audit. Consumer: glamCRM `GC-SITE-SYNC-1`. `docs/slices/service-account-1.md` | PROPOSED (parallel) |
 
 **Precondition (verify before the first launch):** the CFN 500-resource ceiling — `infra-split-1`'s
