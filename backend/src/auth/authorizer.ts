@@ -5,6 +5,14 @@ import {
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { AuthorizerContext } from "./context.js";
+import {
+    SERVICE_KEY_PREFIX,
+    hashServiceKeySecret,
+    findServiceKeyByHash,
+    touchServiceKey,
+} from "../lib/service-keys.js";
+import { publishAudit } from "../lib/events.js";
+import { SERVICE_ROUTE_SCOPES } from "./policy.js";
 
 const userPoolId = process.env.USER_POOL_ID!;
 const clientId = process.env.USER_POOL_CLIENT_ID!;
@@ -137,6 +145,78 @@ export const handler = async (
         return {
             isAuthorized: true,
             context: { sub: "renderer", role: "RENDERER", tenantId: "ALL" }
+        };
+    }
+
+    // 1b. Service key (SERVICE-ACCOUNT-1): a tenant-bound `amx_sk_` key. One point read by sha256(secret);
+    // absent = unknown or revoked → deny. Never falls through to the anonymous public routes or the
+    // token branch: a presented service key either authenticates as itself or the request is refused.
+    if (apiKey?.startsWith(SERVICE_KEY_PREFIX)) {
+        const keyHash = hashServiceKeySecret(apiKey);
+        let record;
+        try {
+            record = await findServiceKeyByHash(keyHash);
+        } catch (e) {
+            // Fail closed: a lookup that cannot complete is a deny, not an unhandled authorizer error.
+            console.error("Auth: service key lookup failed", {
+                route: event.routeKey,
+                error: e instanceof Error ? e.message : String(e),
+            });
+            return response;
+        }
+        if (!record) {
+            console.warn("Auth: service key unknown or revoked", { route: event.routeKey });
+            return response;
+        }
+
+        // Route allowlist (ruling D-SA-E): a key reaches ONLY the routes in SERVICE_ROUTE_SCOPES, holding that
+        // route's scope, for its own tenant. Decided here because the authorizer sees every request; handlers
+        // that never call requireRole cannot be reached by a key. A denied request runs no Lambda and is not metered.
+        const neededScope = SERVICE_ROUTE_SCOPES[event.routeKey];
+        if (!neededScope) {
+            console.warn("Auth: service key on a route not open to service keys", { route: event.routeKey, keyId: record.keyId });
+            return response;
+        }
+        if (!record.scopes.includes(neededScope)) {
+            console.warn("Auth: service key lacks scope", { route: event.routeKey, keyId: record.keyId, needed: neededScope });
+            return response;
+        }
+        const headerTenantId = headers['x-tenant-id'] || headers['X-Tenant-Id'];
+        if (!headerTenantId || headerTenantId !== record.tenantId) {
+            console.warn("Auth: service key bound to another tenant", { route: event.routeKey, keyId: record.keyId });
+            return response;
+        }
+
+        // Once-a-day use mark + audit entry. A metering failure must not take the integration down.
+        const today = new Date().toISOString().slice(0, 10); // UTC YYYY-MM-DD
+        if (record.lastUsedDay !== today) {
+            try {
+                await touchServiceKey(record.tenantId, record.keyId, keyHash, today);
+                await publishAudit({
+                    tenantId: record.tenantId,
+                    actor: { id: `service:${record.keyId}` },
+                    action: "SERVICE_KEY_USED",
+                    target: { id: record.keyId, title: record.name },
+                });
+            } catch (e) {
+                console.error("Auth: service key use mark failed (request still authorised)", {
+                    keyId: record.keyId,
+                    error: e instanceof Error ? e.message : String(e),
+                });
+            }
+        }
+
+        console.log("Auth Success: Service Key", { keyId: record.keyId, tenantId: record.tenantId });
+        // HARD GUARD: role is a string literal; tenantId and scopes come from the stored record, never a header.
+        return {
+            isAuthorized: true,
+            context: {
+                sub: `service:${record.keyId}`,
+                role: "SERVICE",
+                tenantId: record.tenantId,
+                scopes: record.scopes.join(","),
+                keyId: record.keyId,
+            },
         };
     }
 

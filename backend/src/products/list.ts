@@ -13,7 +13,12 @@ export const handler: Handler = async (event) => {
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing x-tenant-id header" }) };
 
         const auth = event.requestContext.authorizer.lambda;
-        requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+        try {
+            requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId, "catalog:read");
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : "Forbidden";
+            return { statusCode: 403, body: JSON.stringify({ error: message }) };
+        }
 
         const statusFilter = event.queryStringParameters?.status;
         const categoryFilter = event.queryStringParameters?.category;

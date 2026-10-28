@@ -399,6 +399,28 @@ export type LegalLinks = z.infer<typeof LegalLinksSchema>;
 export const TenantStatus = z.enum(["LIVE", "SUSPENDED", "OFF"]);
 export const UserRole = z.enum(["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"]);
 
+// SERVICE-ACCOUNT-1: tenant-bound machine credentials (`amx_sk_…` keys). Fixed scope set. A key reaches a
+// route only when the authorizer's allowlist SERVICE_ROUTE_SCOPES maps the route to a scope the key holds, and
+// the key also holds the scope the route's handler declares to `requireRole` (backend/src/auth/policy.ts).
+// The two declarations are kept equal by tests, not compared at runtime. A scope is added in the same change
+// as the route that honours it.
+//   catalog:read → GET /products     leads:read → GET /leads
+export const ServiceKeyScope = z.enum(["catalog:read", "leads:read"]);
+export type ServiceKeyScope = z.infer<typeof ServiceKeyScope>;
+
+// What the API returns and the admin renders for one key. Never carries the hash or the secret.
+export const ServiceKeyView = z.object({
+    id: z.string(),
+    tenantId: z.string(),
+    name: z.string(),
+    scopes: z.array(ServiceKeyScope),
+    createdBy: z.string(),
+    createdAt: z.string(),
+    lastUsedAt: z.string().nullable(),
+    revokedAt: z.string().nullable(),
+});
+export type ServiceKeyView = z.infer<typeof ServiceKeyView>;
+
 // Expanded Integrations
 export const IntegrationsSchema = z.object({
     contactEmail: z.string().email().optional(),

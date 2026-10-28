@@ -33,7 +33,7 @@ tsconfig.json
 - **API URL:** `AMODX_API_URL` is normalised once at startup (trailing `/` stripped); every call is `${API_URL}/<path>`
 - **Startup check:** `GET /tenants`; on failure every API tool returns an error with the fix instruction, local tools still work
 
-## Tools (73 total)
+## Tools (76 total)
 
 Method column = the API route(s) the tool calls. Generated from the `server.tool(` registrations in `src/index.ts`, in source order.
 
@@ -145,6 +145,13 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | `list_leads` | GET /leads | List captured leads |
 | `create_lead` | POST /leads | Add a lead (fails when reCAPTCHA is configured — see tool description) |
 | `delete_lead` | DELETE /leads/{email} | Delete a lead |
+
+### Integration (service) keys
+| Tool | Method | Purpose |
+|------|--------|---------|
+| `service_key_list` | GET /service-keys | List a site's tenant-bound `amx_sk_` keys (no secret) |
+| `service_key_create` | POST /service-keys | Create a key with fixed scopes; the result carries the secret once |
+| `service_key_revoke` | POST /service-keys/{id}/revoke | Revoke a key (record kept, secret refused from the next request) |
 
 ### System, Audit & Email
 | Tool | Method | Purpose |

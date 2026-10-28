@@ -13,7 +13,7 @@ export const handler: Handler = async (event) => {
 
         const auth = event.requestContext.authorizer.lambda;
         try {
-            requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId);
+            requireRole(auth, ["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"], tenantId, "leads:read");
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : "Forbidden";
             return { statusCode: 403, body: JSON.stringify({ error: message }) };

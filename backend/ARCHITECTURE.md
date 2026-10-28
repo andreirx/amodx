@@ -31,9 +31,9 @@ src/
 │                           #   (both-approvals → copy the staged ORIGINAL to public, Asset record) +
 │                           #   rollback. Human moderation, not a byte-screen, is the content control.
 ├── auth/
-│   ├── authorizer.ts      # Lambda authorizer (Cognito JWT + API key)
+│   ├── authorizer.ts      # Lambda authorizer (API keys incl. service keys, Cognito JWT)
 │   ├── context.ts         # AuthorizerContext type definition
-│   └── policy.ts          # requireRole(auth, roles[], tenantId?) access control
+│   └── policy.ts          # requireRole(auth, roles[], tenantId?, serviceScope?) + SERVICE_ROUTE_SCOPES
 ├── email/                 # slice email-2 — guided DNS read-only checker (NO DNS writes, NO SES)
 │   ├── dns-check.ts       # POST /email/dns-check {provider} — the I/O EDGE. Derives the domain
 │   │                      #   from the tenant record (GetCommand only; never the body — §4.3
@@ -166,13 +166,29 @@ test/
 
 ## Authentication
 
-Three modes, checked in order by `auth/authorizer.ts`:
+Checked in this order by `auth/authorizer.ts`:
 
-1. **Master API Key** — `x-api-key` header matched against AWS Secrets Manager. Returns `{sub: "system-robot", role: "GLOBAL_ADMIN", tenantId: "ALL"}`
-2. **Cognito JWT** — `Authorization: Bearer <idToken>`. Extracts `custom:role` and `custom:tenantId` from token claims
-3. **Public routes** — `POST /leads`, `POST /contact`, `POST /consent` bypass auth entirely
+1. **Master API Key** — `x-api-key` matched against Secrets Manager → `{sub: "system-robot", role: "GLOBAL_ADMIN", tenantId: "ALL"}`
+2. **Renderer API Key** — `x-api-key` matched against its own secret → `{sub: "renderer", role: "RENDERER", tenantId: "ALL"}`
+3. **Service key** (SERVICE-ACCOUNT-1) — `x-api-key` starting `amx_sk_`. One consistent `GetItem` on the lookup item
+   keyed by `sha256(secret)` (`lib/service-keys.ts`); absent (unknown or revoked) → deny. Then the route allowlist
+   `SERVICE_ROUTE_SCOPES` (`policy.ts`: `GET /products` → `catalog:read`, `GET /leads` → `leads:read`): a route not in
+   the table, a missing scope, or an `x-tenant-id` other than the key's tenant → deny, before any Lambda runs.
+   Otherwise → `{sub: "service:<keyId>", role: "SERVICE", tenantId, scopes: "a,b", keyId}`; the first use per UTC
+   day updates `lastUsedAt` and publishes `SERVICE_KEY_USED` (best effort). A service key never falls through to 4–5.
+4. **Public routes** — `POST /leads`, `POST /contact`, `POST /consent` allow anonymous when no valid key was presented
+5. **Cognito JWT** — `Authorization: Bearer <idToken>`: admin pool (`custom:role`, `custom:tenantId`), then public pool (role `CUSTOMER`)
 
-Access control via `requireRole(auth, allowedRoles[], targetTenantId?)` in `auth/policy.ts`. GLOBAL_ADMIN always passes. Others must match both role and tenant scope.
+Access control via `requireRole(auth, allowedRoles[], targetTenantId?, serviceScope?)` in `auth/policy.ts`.
+GLOBAL_ADMIN always passes. SERVICE passes only when the handler declares `serviceScope`, the target tenant equals
+the key's tenant, and the key holds the scope (`"SERVICE"` in `allowedRoles` admits nothing). Others must match both
+role and tenant scope.
+
+**Service-key storage** (`lib/service-keys.ts`, the only module that knows it): key item `TENANT#<t>` /
+`SVCKEY#<keyId>` (listed by `GET /service-keys`, kept after revoke) and lookup item `SVCKEYHASH#<hash>` (both keys;
+`tenantId, keyId, name, scopes, lastUsedDay`), written in one transaction. Revoke sets `revokedAt` and deletes the
+lookup item in one transaction. The secret is never stored. Routes: `GET /service-keys`, `POST /service-keys`,
+`POST /service-keys/{id}/revoke` (`service-keys/`, TENANT_ADMIN / GLOBAL_ADMIN).
 
 ### reCAPTCHA v3 (Bot Protection on Public Routes)
 

@@ -25,6 +25,7 @@ import { Plus, Trash2, Upload, ShoppingBag } from "lucide-react";
 import { ShieldCheck, Sparkles } from "lucide-react";
 import { EffectControls } from "@amodx/plugins/common/EffectControls";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
+import { ServiceKeys } from "@/components/ServiceKeys";
 import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack } from "@amodx/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -1536,6 +1537,9 @@ export default function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>}
+
+                    {/* INTEGRATION KEYS — admin only (SERVICE-ACCOUNT-1: tenant-bound service keys) */}
+                    {isAdmin && <ServiceKeys />}
 
 
                     {/* GPU VISUAL EFFECTS */}

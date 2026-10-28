@@ -196,7 +196,7 @@ store has no orders and no customers.
 | `cat-interest-1` | "Mă interesează" shortlist → `/lista-mea` → public submit → `Lead{source:"Listă interes", data.items[]}`; forms-grade abuse posture. `docs/slices/cat-interest-1.md` | PROPOSED (after cat-mode-1) |
 | `cat-images-1` | Conditional on D-2 = ingest: producer images copied into tenant media at import, per-row failure report, honest absence. `docs/slices/cat-images-1.md` | PROPOSED (conditional) |
 | `tenant-bind-1` | Security prerequisite of `service-account-1`: `GET /leads`, `DELETE /leads/{email}`, `GET /audit`, `GET /signals`, `GET /assets` bound to the caller's tenant with `requireRole` (roles unchanged). `docs/slices/tenant-bind-1.md` | SHIPPED `fc8c52c` — staging verified 2026-10-27, prod 2026-10-28 (§ 13) |
-| `service-account-1` | Tenant-scoped machine credentials: hashed `amx_sk_…` keys with a fixed scope enum, authorizer third branch (`role: SERVICE`, key's tenant only), deny-by-default route scopes, admin "Chei de integrare", audit. Consumer: glamCRM `GC-SITE-SYNC-1`. `docs/slices/service-account-1.md` | PROPOSED (parallel) |
+| `service-account-1` | Tenant-scoped machine credentials: hashed `amx_sk_…` keys with a fixed scope enum, authorizer third branch (`role: SERVICE`, key's tenant only), deny-by-default route scopes, admin "Chei de integrare", audit. Consumer: glamCRM `GC-SITE-SYNC-1`. `docs/slices/service-account-1.md` | STAGING VERIFIED 2026-10-28 (§ 9; scopes `catalog:read`, `leads:read`; `catalog:write` arrives with `cat-import-1`; prod on the human's word) |
 
 **Precondition (verify before the first launch):** the CFN 500-resource ceiling — `infra-split-1`'s
 deploy state on staging and prod, and the synth count after the new routes.

@@ -1,6 +1,6 @@
 # Authentication Architecture
 
-AMODX has **five authentication mechanisms** serving different audiences. Two Cognito pools are provisioned per deployment (not per tenant), plus NextAuth.js for customer accounts, a master API key for system-to-system calls, and a restricted renderer API key for renderer proxy routes.
+AMODX has **six authentication mechanisms** serving different audiences. Two Cognito pools are provisioned per deployment (not per tenant), plus NextAuth.js for customer accounts, a master API key for system-to-system calls, a restricted renderer API key for renderer proxy routes, and tenant-bound service keys for external integrations.
 
 ## Overview
 
@@ -11,6 +11,7 @@ AMODX has **five authentication mechanisms** serving different audiences. Two Co
 | NextAuth + Google OAuth | Per-tenant Google credentials | **Active** | Site customers | Google sign-in |
 | Master API Key | Secrets Manager | **Active** | MCP tools, system robots | N/A |
 | Renderer API Key | Secrets Manager | **Active** | Renderer Lambda proxy routes | N/A |
+| Service keys (`amx_sk_…`) | DynamoDB (hash only) | **Built, not deployed** (SERVICE-ACCOUNT-1) | External systems for ONE tenant (glamCRM) | Created by a TENANT_ADMIN in Settings → Integration keys |
 
 ## 1. Admin Pool (Active)
 
@@ -36,7 +37,7 @@ AMODX has **five authentication mechanisms** serving different audiences. Two Co
 
 3. **Backend user management** (`backend/src/users/*.ts`): Invite, list, update, toggle-status -- all operate against this pool via Cognito admin SDK.
 
-**All authenticated API routes use this pool.** Public routes (`/public/*`, `/leads`, `/contact`, `/consent`) allow anonymous access, but the authorizer checks API keys first -- if the renderer key is present, the request is authenticated as `RENDERER` role before the anonymous fallback runs. See section 4b.
+**This pool is the staff JWT mechanism** (agency owners and editors; `custom:role` + `custom:tenantId`). It is not the only identity source on authenticated routes: the authorizer also resolves the master key, the renderer key and service keys (sections 4, 4b, 4c) and public-pool JWTs (section 2). Anonymous access exists in two forms. (1) Routes configured `authorizationType: NONE` (`noAuth: true` in the CommerceApi / EngagementApi `addRoute` helper — the 11 staging route keys of the public catalog (products, categories), review, order, coupon, delivery-date, popup and form-submit routes under `/public/`) run no authorizer at all. The `/public/` prefix alone does not mean anonymous: `POST /public/customers/profile` runs the authorizer, and its handler admits RENDERER (the renderer proxy) or GLOBAL_ADMIN (`requireRole(auth, ["GLOBAL_ADMIN", "RENDERER"])`, `backend/src/customers/public-update.ts:38`); a service key is refused there by the authorizer allowlist (section 4c). (2) `POST /leads`, `POST /contact`, `POST /consent` run the authorizer, which checks API keys first -- if the renderer key is present, the request is authenticated as `RENDERER` role before the anonymous fallback runs. See section 4b.
 
 ## 2. Public Pool (Wired, No Consumer Routes Yet)
 
@@ -128,9 +129,9 @@ google: z.object({
 - `POST /contact`, `POST /leads`, `POST /consent` -- public form proxies (tenant derived from host)
 
 **Authorizer order:**
-1. API key checks run first (master key, then renderer key)
+1. API key checks run first (master key, then renderer key, then service key — section 4c)
 2. If a valid key is found, the request is authenticated with the corresponding role
-3. Only if no valid key is present do public routes fall through to anonymous bypass
+3. Only if no valid key is present do public routes fall through to anonymous bypass (a presented service key never does)
 
 This means renderer proxy calls to `POST /contact`, `POST /leads`, and `POST /consent` authenticate as `RENDERER` rather than `anonymous`. The backend distinguishes trusted proxy calls from direct browser calls.
 
@@ -144,12 +145,46 @@ This means renderer proxy calls to `POST /contact`, `POST /leads`, and `POST /co
 
 The renderer proxies derive the tenant ID server-side from the host header via `getTenantConfig(host)`, not from client-supplied `x-tenant-id`.
 
+## 4c. Service keys (SERVICE-ACCOUNT-1 — built, not deployed)
+
+A tenant-bound credential for an external server (first consumer: glamCRM). A TENANT_ADMIN creates it in
+Settings → Integration keys (or the MCP tool `service_key_create`); the secret `amx_sk_` + 43 base64url chars is
+shown once and only `sha256(secret)` is stored (`backend/src/lib/service-keys.ts`).
+
+**Call shape (all three headers required):** `x-api-key: amx_sk_…`, `Authorization: Bearer service` (a placeholder
+— the API's `identitySource` needs both headers; the branch never reads it), `x-tenant-id: <the key's tenant>`.
+
+**Authorizer branch** (after the renderer key, before the anonymous bypass):
+1. One strongly consistent `GetItem` on `SVCKEYHASH#<sha256(secret)>`. Absent = unknown or revoked → deny (API
+   Gateway answers 403). No secret comparison exists: the hash is the read key.
+2. Route allowlist `SERVICE_ROUTE_SCOPES` in `backend/src/auth/policy.ts` — `GET /products` → `catalog:read`,
+   `GET /leads` → `leads:read`. Route not in the table, scope not held, or `x-tenant-id` absent or ≠ the key's
+   tenant → deny. This holds for every route behind the API's Lambda authorizer, whether or not its handler
+   calls `requireRole`. Only routes configured `authorizationType: NONE` (`noAuth: true` in the nested stacks'
+   `addRoute`) skip the authorizer; a key there is not evaluated and confers nothing over anonymous. The `/public/`
+   prefix is not the rule: `POST /public/customers/profile` runs the authorizer, so a key is refused there.
+3. Context `{ sub: "service:<keyId>", role: "SERVICE", tenantId, scopes: "a,b", keyId }` (role is a literal;
+   tenant and scopes come from the stored record).
+4. First use per UTC day: `lastUsedAt` + audit `SERVICE_KEY_USED` (best effort; a failure still authorises).
+
+**Handler side (defence in depth):** the two handlers also declare the scope — `requireRole(auth, roles, tenantId,
+"catalog:read" | "leads:read")`. Each layer checks only its own declaration: a route absent from the table is
+denied by the authorizer; a handler with no declaration is denied by `requireRole`. Nothing compares the two
+declarations at runtime — keeping them equal is a maintenance requirement, pinned by the unit tests
+(`service-key-policy.test.ts` pins the table; `service-key-routes.test.ts` shows each handler admits a key holding
+only its table scope).
+
+**Revocation:** `POST /service-keys/{id}/revoke` deletes the lookup item; with `resultsCacheTtl` 0 the next request
+is refused. The key record stays, listed as revoked.
+
 ## Architecture Diagram
 
 ```
                         API Gateway
                     (Lambda Authorizer)
    Check order: API keys -> anonymous bypass -> Admin JWT -> Public JWT
+   (API keys = master, renderer, then service key; a service key reaches only
+    the SERVICE_ROUTE_SCOPES routes of its own tenant — section 4c)
 
        |              |              |                    |
   Master Key     Renderer Key   Anonymous bypass     Cognito JWT
@@ -239,7 +274,7 @@ reCAPTCHA v3 is orthogonal to authentication -- it protects **unauthenticated pu
 - **Pools are per-deployment, not per-tenant.** One admin pool serves all tenants. Tenant isolation is via `custom:tenantId` attribute + backend authorization checks.
 - **The public pool is wired but has no consumer routes.** The authorizer verifies public pool JWTs as a fallback after admin pool, returning `role: "CUSTOMER"`. No existing route accepts CUSTOMER. Commerce customer accounts still use NextAuth + email-based DynamoDB identity.
 - **Google OAuth credentials are per-tenant.** Each tenant can have its own Google OAuth app, allowing customers to sign in with Google on each tenant site independently.
-- **Four credential stores:** Cognito (admin users), DynamoDB (customer records), Secrets Manager (master key, renderer key, NextAuth secret, revalidation secret).
+- **Four credential stores:** Cognito (admin users), DynamoDB (customer records; service-key hashes), Secrets Manager (master key, renderer key, NextAuth secret, revalidation secret).
 - **reCAPTCHA is per-deployment by default.** Deployment keys in SSM provide mandatory bot protection. Tenants can override with own keys but cannot disable. See `docs/INTEGRATION_MANUAL.md`.
 - **Tenant secrets are redacted for EDITOR role.** `GET /settings` strips `recaptcha.secretKey`, `integrations.google.clientSecret`, and `integrations.braveApiKey`. Admin users fetch these via `GET /settings/secrets`.
 

@@ -88,6 +88,9 @@ export class AmodxApi extends Construct {
                 USER_POOL_CLIENT_ID: props.userPoolClientId,
                 MASTER_KEY_SECRET_NAME: props.masterKeySecret.secretName,
                 RENDERER_KEY_SECRET_NAME: props.rendererKeySecret.secretName, // Phase 2.1
+                // SERVICE-ACCOUNT-1: service-key lookup by hash, once-a-day use mark, SERVICE_KEY_USED audit.
+                TABLE_NAME: props.table.tableName,
+                EVENT_BUS_NAME: props.eventBus.eventBusName,
                 // Public Cognito pool for customer auth — both must be set or neither.
                 // Authorizer validates pairing at cold start and fails closed on mismatch.
                 ...(props.publicPoolId && props.publicPoolClientId ? {
@@ -99,6 +102,9 @@ export class AmodxApi extends Construct {
         });
         props.masterKeySecret.grantRead(authorizerFunc);
         props.rendererKeySecret.grantRead(authorizerFunc); // Phase 2.1
+        // SERVICE-ACCOUNT-1: GetItem on the key's lookup item + UpdateItem of lastUsedAt/lastUsedDay.
+        // PutEvents for the audit entry comes from the stack-wide grant at the end of this constructor.
+        props.table.grantReadWriteData(authorizerFunc);
 
         const authorizer = new HttpLambdaAuthorizer('AmodxAuthorizer', authorizerFunc, {
             responseTypes: [HttpLambdaResponseType.SIMPLE],
@@ -714,6 +720,45 @@ export class AmodxApi extends Construct {
             path: '/users/{username}/status',
             methods: [apigw.HttpMethod.PUT],
             integration: new integrations.HttpLambdaIntegration('ToggleUserStatusInt', toggleUserStatusFunc),
+        });
+
+        // --- SERVICE KEYS (SERVICE-ACCOUNT-1) — tenant-bound `amx_sk_` keys; TENANT_ADMIN / GLOBAL_ADMIN only ---
+        // PutEvents (audit) comes from the stack-wide grant at the end of this constructor.
+        const listServiceKeysFunc = new nodejs.NodejsFunction(this, 'ListServiceKeysFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/service-keys/list.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadData(listServiceKeysFunc);
+
+        const createServiceKeyFunc = new nodejs.NodejsFunction(this, 'CreateServiceKeyFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/service-keys/create.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(createServiceKeyFunc);
+
+        const revokeServiceKeyFunc = new nodejs.NodejsFunction(this, 'RevokeServiceKeyFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/service-keys/revoke.ts'),
+            handler: 'handler',
+        });
+        props.table.grantReadWriteData(revokeServiceKeyFunc);
+
+        this.httpApi.addRoutes({
+            path: '/service-keys',
+            methods: [apigw.HttpMethod.GET],
+            integration: new integrations.HttpLambdaIntegration('ListServiceKeysInt', listServiceKeysFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/service-keys',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('CreateServiceKeyInt', createServiceKeyFunc),
+        });
+        this.httpApi.addRoutes({
+            path: '/service-keys/{id}/revoke',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('RevokeServiceKeyInt', revokeServiceKeyFunc),
         });
 
         // --- WEBHOOKS ---
