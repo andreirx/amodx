@@ -281,3 +281,13 @@ DefaultPolicy, 0 resources); it already had `events:PutEvents` from the stack-wi
   human's word. Not on prod.
 - glamCRM call shape (fixed by this slice): `x-api-key: amx_sk_…`, `Authorization: Bearer service`,
   `x-tenant-id: <the key's tenant>` — all three required; `GET /products`, `GET /leads`.
+
+## 10. Prod record (operator, 2026-10-28) — SHIPPED
+
+Prod deploy by the human (from the clean `amodx-hotfix` worktree at `7d0b522`, carrying this slice, SETTINGS-KEYS-1 and 1B).
+Read-only checks (`sa1-prod-check.sh`, 30/30 PASS): authorizer `LastModified` 2026-10-28T14:00:11Z, the three
+service-key functions 14:00:22–23Z; bundle literals `SVCKEYHASH#`, `SERVICE_KEY_USED`, `amx_sk_`, `SERVICE_KEY_CREATED`,
+`SVCKEY#`, `SERVICE_KEY_REVOKED` present; CloudWatch Errors 0 (30 min) on all four; `tools/mcp-server/routes.json`
+equals the live prod route table (108 = 108); GLOBAL_ADMIN `GET /tenants`, `/service-keys`, `/products`, `/leads` → 200
+on two tenants; unknown `amx_sk_` secret → 403; no `Authorization` → 401; bogus credentials → 403. No key was created
+on prod. Not proven on prod: the full create/use/revoke cycle (proven on staging, § 9).

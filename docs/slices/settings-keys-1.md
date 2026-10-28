@@ -414,3 +414,15 @@ Worktree `amodx-hotfix`, branch `settings-keys-1`, base `a1fbacf`. Uncommitted.
   `SERVER_OWNED_FIELDS` and `startsWith("PRODUCT#")`, CloudWatch errors, GLOBAL_ADMIN `GET /settings` 200. The
   prod table was NOT scanned for already-stored index attributes (production reads are denied to the operator's
   session); the readers' partition check makes such a record unreachable through the public routes regardless.
+
+## 13. Prod record (operator, 2026-10-28) — SHIPPED (SETTINGS-KEYS-1 + 1B)
+
+Prod deploy by the human (worktree `amodx-hotfix` at `7d0b522`). Read-only checks (`sk1-prod-check.sh`): `GetSettingsFunc`
+and `UpdateSettingsFunc` `LastModified` 2026-10-28T13:59:48Z, `PublicGetProductFunc`/`PublicGetCategoryFunc` 14:00:32Z;
+bundle literals present in both settings bundles — the strip list (`"TenantSlug"`, `"ScheduledFor"`, `"createdBy"`),
+the key order `PK:"SYSTEM"` after the spread, `rejectedFields`, the 409 hostname message — and `startsWith("PRODUCT#")`
+/ `startsWith("CATEGORY#")` in the two readers; CloudWatch Errors 0 on all four; GLOBAL_ADMIN `GET /settings` → 200.
+Two of the script's original tokens (an identifier and a spaced literal) do not survive minification and were replaced
+by string literals before this record — a grep that prints nothing is a failed check, not evidence. Prod poison scan
+(the human, projection of attribute names on the `SYSTEM` partition): 4 tenant records, none carrying `TenantSlug`,
+`Type` or `Status`. Nothing to clean.
