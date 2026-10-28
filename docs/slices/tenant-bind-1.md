@@ -1,6 +1,6 @@
 # TENANT-BIND-1 — five authenticated routes served any tenant to any caller; they are now bound to the caller's tenant
 
-Status: **IMPLEMENTED 2026-10-27; review approved; STAGING VERIFIED 2026-10-27 (§ 12)** — code complete, unit
+Status: **SHIPPED — prod 2026-10-28 (§ 13); IMPLEMENTED 2026-10-27; review approved; STAGING VERIFIED 2026-10-27 (§ 12)** — code complete, unit
 oracles exit 0 (§ 8); staging deploy and live re-probe done (§ 12). Prod on the human's word; not on prod.
 Track: F (security prerequisite of `service-account-1`; `docs/ROADMAP.md` Track F, entry of 2026-10-27).
 Depends: none. `requireRole` (`backend/src/auth/policy.ts`) is used as it is.
@@ -180,3 +180,21 @@ tenant of the key.
   five routes for both tenants. The DELETE rows used a non-existent email, so nothing could be lost.
 - Prod: on the human's word. Expected prod `cdk diff`: the same five Lambda functions plus the per-deploy renderer/admin
   assets; no infra resource change.
+
+## 13. Prod deployment record (operator, 2026-10-28 — appended after the human's prod deploy)
+
+- Deployed by the human from `fc8c52c` (`cdk deploy -c stage=prod AmodxStack`). The five prod functions
+  (`AmodxStack-ApiListLeadsFunc…`, `…DeleteLeadFunc…`, `…ListAuditFunc…`, `…ListSignalFunc…`, `…ListAssetFunc…`) report
+  `LastModified 2026-10-28T06:16:49Z`; they are the five newest functions of the prod API stack.
+- Deployed bytes (read-only `aws lambda get-function` download of each of the five bundles): each bundle contains the
+  policy module's denial text `You do not have access to this tenant` (its only source in the tree is
+  `backend/src/auth/policy.ts`; before this slice none of the five handlers imported it) and one `statusCode: 403`
+  response. The bundles are minified, so the identifier `requireRole` itself is not greppable.
+- Live regression check (operator, GET-only, master key as the MCP server uses it — GLOBAL_ADMIN path): `GET /leads`,
+  `/audit`, `/signals`, `/assets` → 200 with items for two live tenants; bogus credentials → 403 from the authorizer.
+  Log: operator scratchpad `glam/tb1-prod-global-probe.log` (statuses and counts only).
+- CloudWatch over 06:16–06:40Z: `Errors` 0 on all five functions (`Invocations` 0 — no traffic in the window before the
+  probe).
+- **Not proven on prod:** the cross-tenant 403 for an EDITOR/TENANT_ADMIN token. No prod EDITOR account exists for the
+  operator and prod Cognito reads are not permitted, so that path is proven on staging only (§ 12) with identical
+  handler code (`fc8c52c` on both stages) and by the 30 unit rows.
