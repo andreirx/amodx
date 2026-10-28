@@ -9,6 +9,17 @@ import { withInvalidation } from "../lib/invalidate-cdn.js";
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
 /**
+ * SETTINGS-KEYS-1 — fields of the tenant record that only the server sets (see `tenant/create.ts`).
+ * PUT /settings removes them from the request body before the merge. Before this rule, `{ ...current, ...body }`
+ * let a body `PK`/`SK` choose WHICH item of the single table was written (another tenant's record, or any item
+ * such as `TENANT#<t>`/`PRODUCT#<p>`), and a body `id` relabelled the record (the renderer's `mapTenant` copies
+ * `item.id` as the tenant id). `Domain` is derived from `domain`; `createdAt`/`createdBy` come from the stored record.
+ * The handler, not the body, names the item: the written Item sets PK, SK and id after the spread.
+ * See docs/slices/settings-keys-1.md.
+ */
+const SERVER_OWNED_FIELDS = ["PK", "SK", "id", "Domain", "createdAt", "createdBy"] as const;
+
+/**
  * Strips secret fields from tenant config before returning to any caller.
  * Secrets are served exclusively via GET /settings/secrets (TENANT_ADMIN/GLOBAL_ADMIN only).
  *
@@ -88,6 +99,8 @@ const _updateHandler: AmodxHandler = async (event) => {
 
         if (!event.body) return { statusCode: 400, body: "Missing body" };
         const body = JSON.parse(event.body);
+        const rejectedFields = SERVER_OWNED_FIELDS.filter((field) => Object.hasOwn(body, field));
+        for (const field of rejectedFields) delete body[field];
 
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
@@ -129,9 +142,10 @@ const _updateHandler: AmodxHandler = async (event) => {
         await db.send(new PutCommand({
             TableName: TABLE_NAME,
             Item: {
+                ...merged,
                 PK: "SYSTEM",
                 SK: `TENANT#${tenantId}`,
-                ...merged,
+                id: tenantId,
             }
         }));
 
@@ -141,7 +155,10 @@ const _updateHandler: AmodxHandler = async (event) => {
             actor: { id: auth.sub, email: auth.email },
             action: "UPDATE_SETTINGS",
             target: { title: current.name || "Settings" },
-            details: { updatedFields: Object.keys(body) },
+            details: {
+                updatedFields: Object.keys(body),
+                ...(rejectedFields.length > 0 ? { rejectedFields } : {}),
+            },
             ip: event.requestContext.http.sourceIp
         });
 
