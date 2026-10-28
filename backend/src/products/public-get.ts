@@ -23,11 +23,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }));
 
-        if (!result.Items || result.Items.length === 0) {
+        // SETTINGS-KEYS-1B — accept only this tenant's product item. Index key attributes are data, not proof of
+        // ownership: an item from another partition (e.g. a tenant record that carried TenantSlug/Type) is not found.
+        const product = result.Items?.find(
+            (item) => item.PK === `TENANT#${tenantId}` && item.SK?.startsWith("PRODUCT#")
+        );
+        if (!product) {
             return { statusCode: 404, body: JSON.stringify({ error: "Product not found" }) };
         }
-
-        const product = result.Items[0];
 
         // Don't expose draft or unavailable products publicly
         if (product.status !== "active" || !isProductAvailable(product)) {

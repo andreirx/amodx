@@ -24,11 +24,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }));
 
-        if (!catResult.Items || catResult.Items.length === 0) {
+        // SETTINGS-KEYS-1B — accept only this tenant's category item. Index key attributes are data, not proof of
+        // ownership: an item from another partition (e.g. a tenant record that carried TenantSlug/Type) is not found.
+        const category = catResult.Items?.find(
+            (item) => item.PK === `TENANT#${tenantId}` && item.SK?.startsWith("CATEGORY#")
+        );
+        if (!category) {
             return { statusCode: 404, body: JSON.stringify({ error: "Category not found" }) };
         }
-
-        const category = catResult.Items[0];
 
         // Fetch products via CATPROD# adjacency items, filter by availability dates
         const allProducts = (await queryCatProducts(tenantId, category.id))

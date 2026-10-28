@@ -1,6 +1,6 @@
 # SETTINGS-KEYS-1 — `PUT /settings` let the request body choose the item it wrote; the handler now names the item
 
-Status: **STAGING VERIFIED 2026-10-28 (§ 11)** — review approved (cycle 1), D-SK-1 ratified A (§ 7), operator gates green, staging deploy 11:32:55Z, live before/after witnesses recorded (§ 11); **prod on the human's word, not on prod.** Previous line: "Status: **IMPLEMENTED 2026-10-28** — code complete, unit oracles exit 0 (§ 5). Review, staging deploy and the live after-witness (§ 3.2) are pending. Not on prod. Track: F (security fix-first slice, found during the `catalog-mode-1` review; `docs/ROADMAP.md` Track F — the operator adds the row). Depends: none. `requireRole` (`backend/src/auth/policy.ts`) and the secret deep-merge are used as they are. Source plan: none — the operator's builder packet of 2026-10-28 is the plan. Maturity target: the handler keeps its current maturity. The slice removes a defect and changes no feature."
+Status: **STAGING VERIFIED 2026-10-28 — SETTINGS-KEYS-1 (§ 11) + SETTINGS-KEYS-1B (§ 12.9)**; both reviewed and approved, operator gates green, staging deploys 11:32:55Z and 12:13:50Z, live before/after witnesses for the key, index-key and hostname vectors; **prod on the human's word, not on prod.** Previous line: "Status: **STAGING VERIFIED 2026-10-28 (§ 11)** — review approved (cycle 1), D-SK-1 ratified A (§ 7), operator gates green, staging deploy 11:32:55Z, live before/after witnesses recorded (§ 11); **prod on the human's word, not on prod.** Previous line: 'Status: **IMPLEMENTED 2026-10-28** — code complete, unit oracles exit 0 (§ 5). Review, staging deploy and the live after-witness (§ 3.2) are pending. Not on prod. Track: F (security fix-first slice, found during the `catalog-mode-1` review; `docs/ROADMAP.md` Track F — the operator adds the row). Depends: none. `requireRole` (`backend/src/auth/policy.ts`) and the secret deep-merge are used as they are. Source plan: none — the operator's builder packet of 2026-10-28 is the plan. Maturity target: the handler keeps its current maturity. The slice removes a defect and changes no feature.'"
 
 ## 1. The defect
 
@@ -232,3 +232,185 @@ becomes "no mismatch field". C stays rejected: other clients could still echo.
 - **Not proven on prod** (prod on the human's word): the same read-only checks are run after the prod deploy
   (`LastModified` of the two functions, bundle grep for `SERVER_OWNED_FIELDS`, CloudWatch errors, one GLOBAL_ADMIN
   `GET /settings`).
+
+## 12. SETTINGS-KEYS-1B — index keys and hostnames
+
+Builder packet (operator, 2026-10-28). Same rule as §§ 1–2, two more vectors. The two public readers are on the
+CommerceApi (`infra/lib/api-commerce.ts:187,201`): this is the third named exception to the commerce freeze (security,
+ruled by the human 2026-10-28).
+
+### 12.1 The defects
+
+- **Vector 1 — index-key impersonation.** §§ 1–2 removed `PK, SK, id, Domain, createdAt, createdBy` from the body, but
+  the table has four GSIs (`infra/lib/database.ts:27-51`) whose key attributes stayed writable through `PUT /settings`:
+  `GSI_Domain` (`Domain`/`PK`), `GSI_Type` (`Type`/`CreatedAt`), `GSI_Status` (`Status`/`ScheduledFor`), `GSI_Slug`
+  (`TenantSlug`, projection ALL). `GET /public/products/{slug}` and `GET /public/categories/{slug}` query `GSI_Slug` by
+  `<tenantId>#<slug>`, filter on `Type`, and took `Items[0]` without a check that the hit is in that tenant's partition
+  or is a product/category item. Witness (reviewer `gpt-6.1-sol`, real handlers, I/O mocked): a tenant-A admin saved
+  `{ TenantSlug: "<B>#probe", Type: "Product", status: "active", price: "999" }`; A's settings record — secrets
+  included — became the public answer for tenant B's slug `probe`. The category variant likewise. The builder
+  reproduced it: the new rows (f)/(h-f) run against the HEAD handlers return **200 with the tenant record** (§ 12.6).
+  Staging holds no poisoned record (operator: 482 tenant records, none with `TenantSlug`/`Type`/`Status`); prod is
+  unchecked.
+- **Vector 2 — hostname claim.** `domain` is a legitimate settings field, but nothing checked that the hostname is free
+  (`tenant/create.ts` checks only the tenant id). Three functions read `GSI_Domain` by host; two of them resolve a
+  tenant identity and take the first hit, one only tests existence:
+  - `renderer/src/lib/dynamo.ts:98-106` `getTenantConfig` — identity resolver: `FilterExpression begins_with(SK,
+    "TENANT#")`, then `mapTenant(Items[0])`.
+  - `backend/src/lib/tenant-verify.ts:38` `getTenantByDomain` (origin verification for public forms) — identity
+    resolver: no `TENANT#` filter, `ProjectionExpression: "id"`, then `Items[0].id`.
+  - `renderer/src/lib/tenant-directory.ts:95` `isWiredTenantHost` — existence check, not a resolver: same key and
+    filter as `getTenantConfig`, but `Select: "COUNT"`; it returns `Count > 0` and never chooses a tenant. A duplicate
+    hostname does not change its answer.
+
+  Witness (operator, staging, two throwaway tenants, deleted after): `PUT /settings` for X with `{ domain: "<Y's
+  hostname>" }` → 200; the `getTenantConfig` query for Y's hostname then returned **2** tenant records. The index sort
+  key is `PK` (= `SYSTEM` for both), so which record the two identity resolvers take first is undefined.
+
+### 12.2 The rule
+
+**No request field may name a key of the table or of any GSI.** `SERVER_OWNED_FIELDS` (`backend/src/tenant/settings.ts:26-29`)
+now holds eleven names: the six of § 2 plus `Type`, `CreatedAt`, `Status`, `ScheduledFor`, `TenantSlug`. They are
+removed from the body before the merge and listed in the audit `rejectedFields`, as in § 2. Lower-case `status`,
+`price` etc. are not key names and still pass through as config (§ 8 (c), no config validation).
+
+### 12.3 The readers' check
+
+`backend/src/products/public-get.ts:28-30` and `backend/src/categories/public-get.ts:29-31` accept an index hit only if
+`hit.PK === "TENANT#<tenantId>"` and `hit.SK` starts with `PRODUCT#` / `CATEGORY#` (`Items.find(...)`, the shape of
+`renderer/src/lib/dynamo.ts:241,258` and `import/woocommerce.ts:19`). Otherwise the answer is the existing 404 ("Product
+not found" / "Category not found"). The `Type` filter stays. The response shape is unchanged. Basis: `products/create.ts:55-57`
+and `categories/create.ts:52-54` write these items with exactly `PK: TENANT#<tenantId>`, `SK: PRODUCT#<id>` /
+`CATEGORY#<id>`, `TenantSlug: <tenantId>#<slug>`. The reader check is defence in depth: it also neutralises a record
+poisoned before this fix (prod is unchecked), which the write rule alone cannot do.
+
+### 12.4 The hostname rule and its named windows
+
+**Guarantee scope: best-effort.** The rule rejects a hostname claim when another tenant's record is *visible in
+`GSI_Domain` at the time of the check*. It does not guarantee that a hostname belongs to at most one tenant. § 12.7 (a)
+is the item that would give that guarantee.
+
+`backend/src/tenant/settings.ts:142-164`: when the merged `domain` is non-empty and differs from `current.domain`, the
+handler queries `GSI_Domain` with `Domain = <new>` and `FilterExpression begins_with(SK, "TENANT#")` (the query of
+`getTenantConfig`). If any hit has `SK !== "TENANT#<tenantId>"`, it answers **409** `{ error: "The domain \"<host>\"
+is already used by another site." }` and returns before the Put, the audit and the CDN markers (`withInvalidation`
+runs only after a 2xx). The admin Settings page shows the message: `apiRequest` throws `API Error (409): <error>` and
+`save()` puts it in `setError` (`admin/src/lib/api.ts:37-53`, `admin/src/pages/Settings.tsx:126-140`; OBSERVED in code,
+not exercised in a browser).
+
+- An unchanged `domain` sends no query (row (e)). A tenant that already shares a hostname (possible before this fix)
+  can still save its other settings; the duplicate is not resolved here.
+- IAM: `UpdateSettingsFunc` has `grantReadWriteData` (`infra/lib/api.ts:270`); CDK adds `<table>/index/*` to table
+  grants when the table has GSIs (OBSERVED in `node_modules/aws-cdk-lib/aws-dynamodb/lib/table.js`). No infra change.
+- One Query page (≤ 1 MB) is read, as the three `GSI_Domain` readers do. The `localhost` partition also holds `ROUTE#` items
+  (`content/create.ts:121` writes `Domain: "localhost"`), but the index sorts by `PK` and `SYSTEM` sorts before `TENANT#`
+  (byte order `S` < `T`), so the tenant records are on the first page (INFERRED from DynamoDB sort-key ordering).
+- **Named windows (not excluded).** Two tenants can both store the same new hostname in two ways:
+  1. *Overlapping requests (check-then-write).* Both requests run their Query before either Put lands. Each sees no
+     other holder and writes.
+  2. *Index propagation lag — also for sequential requests.* `GSI_Domain` is a global secondary index, and GSIs support
+     only eventually consistent reads (`@aws-sdk/client-dynamodb` `QueryCommand.d.ts:75-80`, OBSERVED). After the
+     first tenant's Put has completed and returned 200, the item can still be absent from the index for a short time.
+     A second request that starts after the first has finished, but inside this lag, also sees no holder and writes.
+     Reviewer-EXECUTED (review-0, real handlers, stale index simulated): two sequential, non-overlapping requests both
+     returned 200 and both stored `Domain: "new.example"`. The length of the lag in production is not determined here.
+
+  Follow-up 12.7 (a) closes both windows; it is not built here.
+
+### 12.5 Test rows — `backend/test/unit/settings-keys-1b.test.ts`
+
+Same style as § 3.1: real handlers, real `requireRole`, `withInvalidation`, `catprod.ts`, `availability.ts`; only
+`db.js` `send` and `events.js` `publishAudit` mocked.
+
+| Row | Input | Expected |
+|-----|-------|----------|
+| (a) | body `{ TenantSlug: "t2#probe", Type: "Product", status: "active", price: "999" }` | 200; the Put has none of the five index names; audit `rejectedFields: ["Type","TenantSlug"]` |
+| (a′) | body naming all five index names + `name` | 200; none written; `rejectedFields` lists all five |
+| (b) | `{ domain: "taken.example" }`, `GSI_Domain` hit `SK: TENANT#t2` | 409 with `error`; the Query has the `getTenantConfig` shape; no write, no audit |
+| (c) | same, only hit `SK: TENANT#t1` (own record) | 200; `Domain` written |
+| (d) | `{ domain: "free.example" }`, no hit | 200; `Domain` written |
+| (e) | unchanged `domain` | 200; no `GSI_Domain` query |
+| (f) | products: only `GSI_Slug` hit `{ PK: "SYSTEM", SK: "TENANT#t1", Type: "Product", status: "active", price: "999", recaptcha: { secretKey: "S" } }` | 404 "Product not found"; body without `secretKey` |
+| (g) | products: poisoned hit, then a real `TENANT#t2`/`PRODUCT#p1` hit | 200 with the product |
+| (h-f) / (h-g) | categories: mirror of (f) / (g) | 404 "Category not found" / 200 with `category` |
+
+Row (a′) is one row beyond the packet: with the packet body, `CreatedAt`/`Status`/`ScheduledFor` are absent from the
+Put trivially; (a′) proves all five are stripped.
+
+### 12.6 Implementation record (builder `claude-opus-5-5`, 2026-10-28)
+
+Worktree `amodx-hotfix`, branch `settings-keys-1`, base `a1fbacf`. Uncommitted.
+
+- `cd backend && npm run test:unit` → EXECUTED, exit 0: `Test Files  32 passed (32)`, `Tests  409 passed (409)` (the
+  ten § 12.5 rows and the six § 3.1 rows among them).
+- Negative control → EXECUTED: the new test file run against the HEAD source (temporary worktree
+  `/tmp/SETTINGS-KEYS-1B-baseline`, removed): `Tests  9 failed | 1 passed (10)`. (f) and (h-f) fail with `expected 200
+  to be 404` — the vector reproduced. (e) passes on HEAD by design: it guards against a query on every save.
+- Root `npm run typecheck` → EXECUTED, exit 0, no `error TS`.
+- `git diff --check` → EXECUTED, exit 0. Porcelain: the three source files, this doc, the new test file.
+- NOT RUN: staging deploy and live witnesses (operator's job, as § 11), MCP `npm test` (no route changed).
+- **Revision 1 (review-0, `revise`, documentation accuracy only).** (1) The hostname rule is restated as a best-effort
+  check of GSI-visible holders, with both windows (overlapping requests; GSI propagation lag, also for sequential
+  requests) in § 12.4 and in the `settings.ts` comment. (2) § 12.1 separates the two identity resolvers from the
+  `isWiredTenantHost` existence check; § 12.7 (f) is qualified as a literal-reference search; § 12.7 (g) added. No
+  behaviour change; the gates were re-run on the revised tree (results in the build report).
+- **Revision 2 (review-1, `revise`, one evidence statement).** § 12.7 (f) reported "no reference" from a search run
+  before this slice's own comment added two matches; it now quotes the final-tree output. Every `file:line` citation
+  in § 12 was re-checked against the final tree. No behaviour change.
+
+### 12.7 Follow-ups (recorded, not done here)
+
+- (a) **Hostname uniqueness item.** A `DOMAIN#<host>` item written in the same `TransactWriteCommand` as the settings
+  Put with `attribute_not_exists` (and released on change) closes both windows of § 12.4: the condition is evaluated
+  on the base table, which is strongly consistent and serialised per item. It also needs `tenant/create.ts`
+  to claim the item and a backfill for existing records.
+- (b) **Prod check for poisoned records.** Read-only: query the `SYSTEM` partition with a projection of
+  `TenantSlug, Type, Status, CreatedAt, ScheduledFor`, as the operator did on staging. A stored record that already
+  carries these keys keeps them after each save (`{ ...current, ...body }` copies them from `current`); the reader check
+  of § 12.3 hides it from the two public routes, but the record stays in the index.
+- (c) **Existing duplicate hostnames.** § 12.4 does not resolve hostnames already shared; a read-only pass over the
+  `SYSTEM` tenant records (staging and prod) grouped by `Domain` would list them.
+- (d) **Hostname normalisation.** The check compares the exact string. `Taken.Example` and `taken.example` are
+  different index keys; whether a resolver can reach a differently-cased record depends on the host header the
+  resolver receives. Not determined here.
+- (e) **Renderer slug readers check `SK` only** (`renderer/src/lib/dynamo.ts:241,258`), not `PK`. They are not
+  exploitable by the vector of § 12.1 (a tenant record's `SK` is `TENANT#…`), and the renderer is out of scope.
+- (f) `GSI_Type` and `GSI_Status`: a literal search (`grep -rn "GSI_Type\|GSI_Status"` over `backend/src`,
+  `renderer/src`, `tools/mcp-server/src`) returns only two comment lines, `backend/src/tenant/settings.ts:20-21` (the
+  `SERVER_OWNED_FIELDS` comment of this slice); no executable index-reader reference was found (EXECUTED on the final
+  tree). This is a literal-reference
+  result only: it does not exclude a reader that builds the index name at runtime, or one outside these three trees.
+  Their keys are stripped by the same rule either way.
+- (g) **`tenant-verify.ts` `getTenantByDomain` has no `TENANT#` filter** (§ 12.1). It takes `Items[0].id` of any item
+  in the hostname's partition. For `localhost`, `ROUTE#` items share the partition; `SYSTEM` sorts first, so a tenant
+  record is taken when one exists (INFERRED, § 12.4). Out of scope here; recorded.
+
+### 12.9 Operator record for SETTINGS-KEYS-1B (2026-10-28) — review, gates, staging deploy, live witnesses
+
+- **Review:** `gpt-6.1-sol`, three cycles: `revise` (state the full hostname race; correct the resolver description),
+  `revise` (one literal-search statement), `approved`. No decision-review (no decision surfaced). Builder
+  `claude-opus-5-5`. Relay trail under `.agent-manager/slices/SETTINGS-KEYS-1B/` (local).
+- **Operator gates on the approved tree** (log `sk1b-gates.log`): `npm run test:unit` exit 0 — 32 files, 409 tests
+  (ten new rows); root `npm run typecheck` exit 0; `git diff --check` exit 0; oracle 4: the constant names the five
+  index keys, both readers carry `item.PK === \`TENANT#${tenantId}\` && item.SK?.startsWith("PRODUCT#"|"CATEGORY#")`;
+  porcelain exactly the five paths; MCP `npm test` exit 0.
+- **Staging `cdk diff`** (`AmodxStack-staging`): code change on `Api/GetSettingsFunc`, `Api/UpdateSettingsFunc`,
+  `CommerceApi/PublicGetProductFunc`, `CommerceApi/PublicGetCategoryFunc`; renderer/admin bundle hashes (fresh-build
+  noise) and the nested-stack description mojibake as in § 11. 0 added, 0 removed.
+- **Staging deploy:** exit 0; `UpdateSettingsFunc` `LastModified` 2026-10-28T12:13:50Z, both public readers
+  12:14:04Z.
+- **Live witnesses on staging** (`AmodxTable-staging`; log `sk1b-witness-after.log`):
+  - Vector 1: `PUT /settings` for `cache-probe-2026` with `{ TenantSlug: "opn1-iso-b#sk1b-probe", Type: "Product",
+    status: "active", price: "999" }` → 200; `GET /public/products/sk1b-probe` with `x-tenant-id: opn1-iso-b` → **404**
+    `{"error":"Product not found"}` (no settings record, no secrets); the stored record carries no `TenantSlug`,
+    `Type` or `Status` (projection read). The body's `price` and `status` landed as ordinary content — follow-up (c)
+    of § 8 shown live — and were removed by the operator afterwards (`price` removed; `status` restored to `LIVE`
+    under a condition on the witness value). Lesson recorded: a witness body must not carry real config field names.
+  - Vector 2 (two throwaway tenants `sk1b-dom-x`/`sk1b-dom-y`, deleted after): X claims Y's hostname → **409**
+    `The domain "sk1b-y.invalid" is already used by another site.`; X claims a free hostname → 200; Y re-saves its own
+    hostname → 200; `GSI_Domain` count for Y's hostname = 1 (before the fix, § 12.1 witness: 2). After deletion all
+    three hostnames count 0.
+- **Not proven on prod** (prod on the human's word): `LastModified` of the four functions, bundle grep for
+  `SERVER_OWNED_FIELDS` and `startsWith("PRODUCT#")`, CloudWatch errors, GLOBAL_ADMIN `GET /settings` 200. The
+  prod table was NOT scanned for already-stored index attributes (production reads are denied to the operator's
+  session); the readers' partition check makes such a record unreachable through the public routes regardless.
