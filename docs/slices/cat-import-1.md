@@ -110,3 +110,21 @@ delta against the current synth (parent 461/500 after SERVICE-ACCOUNT-1).
 glamCRM `docs/PRICELISTS.md`, `pl-tools/README.md`, `docs/slices/pl-tools-2.md`; `backend/src/import/woocommerce.ts`;
 `backend/src/lib/catprod.ts`; `backend/src/lib/service-keys.ts` (the conditional-write pattern);
 `docs/slices/import-policy-1.md`; `docs/slices/catalog-mode-1.md` §§ 3.4, 8.5, 8.13–8.17.
+
+## 7. Launch amendment CI1-A1 (human ruling, 2026-10-29)
+
+- **Ruling.** The human launches `cat-import-1` before glamCRM PL-TOOLS-2 and keeps two versions of the enriched
+  pricelists: the current files and, later, the storefront-grain files PL-TOOLS-2 would produce. PL-TOOLS-2 is
+  deferred (recorded in glamCRM `docs/slices/pl-tools-2.md`).
+- **What changes in § 5.** The acceptance fixture is BOEN `PL.csv` only (BOEN needs no PL-TOOLS-2 change, § 1). It is
+  committed as `backend/test/unit/fixtures/glam/boen-PL.csv`: the 2026-08-02 enriched file with columns 2–5 (producer
+  codes, purchase price, list price, replacement code) blanked on data rows, so no price or code enters this repo; the
+  operator's measured counts are identical before and after blanking. Expected counts:
+  `backend/test/unit/fixtures/glam/cat-import-1-expected-counts.json` — BOEN 478 rows → 437 styles, 455 options,
+  23 deduped rows, 53 empty labels, 0 suffixed, 157 imageless styles, 27 collections, 0 skipped. ITC and ALPOD counts
+  in that file are informational (pre-PL-TOOLS-2) and are NOT acceptance values. The NO-CODES / NO-PRICES law is
+  proven by unit rows over synthetic rows that carry codes and prices, not by the blanked fixture.
+- **What does not change.** The importer is producer-agnostic (§ 2); it imports any enriched CSV of the frozen
+  layout, current or storefront-grain. Importing today's ITC/ALPOD files gives the grain § 5 already describes
+  (ITC one colour per product, ALPOD type-level styles) — no data lost; the choice of which version to import is the
+  human's, at import time.
