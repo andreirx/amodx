@@ -7,6 +7,7 @@ import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { publishAudit } from "../lib/events.js";
 import { loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { readTenantMode } from "../lib/catalog-product.js";
 
 /** Look up existing product by slug using GSI_Slug */
 async function findProductBySlug(tenantId: string, slug: string): Promise<any | null> {
@@ -225,6 +226,18 @@ const _handler: Handler = async (event) => {
 
         if (!csvContent) {
             return { statusCode: 400, body: JSON.stringify({ error: "csvContent is required" }) };
+        }
+
+        // CATALOG-MODE-1 (CM-D8 guard 1; second named exception to the commerce freeze): this importer writes prices
+        // (`price: regularPrice || '0'`) straight to DynamoDB, so a catalog site is refused before the first write.
+        // The mode is fixed at creation (CM-D11), so this start-of-job check is the whole guarantee.
+        const mode = await readTenantMode(tenantId);
+        if (!mode) return { statusCode: 404, body: JSON.stringify({ error: "Site not found" }) };
+        if (mode.catalogMode) {
+            return {
+                statusCode: 403,
+                body: JSON.stringify({ error: "This is a catalog site: it shows products without prices, so a WooCommerce import (which brings prices) is not available." }),
+            };
         }
 
         const { rows, weightInGrams } = parseCSV(csvContent);

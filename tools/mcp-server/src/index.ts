@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import { chromium } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
+import { createTenantBody, createProductBody, productListLine } from "./tool-shapes.js";
 
 // Storage directory for browser auth states
 const STORAGE_DIR = path.join(import.meta.dirname, "../.storage");
@@ -651,10 +652,11 @@ server.tool("create_tenant",
     {
         name: z.string().describe("Name of the new website/client"),
         domain: z.string().optional().describe("Custom domain (optional)"),
+        catalog_mode: z.boolean().optional().describe("Create a catalog site: products are shown without prices, stock or ordering. Fixed at creation — it cannot be changed later."),
     },
-    async ({ name, domain }) => {
+    async ({ name, domain, catalog_mode }) => {
         try {
-            const response = await axios.post(`${API_URL}/tenants`, { name, domain }, { headers: getHeaders() });
+            const response = await axios.post(`${API_URL}/tenants`, createTenantBody({ name, domain, catalog_mode }), { headers: getHeaders() });
             return { content: [{ type: "text", text: `Success! Created site "${name}" (ID: ${response.data.id})` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
@@ -1013,9 +1015,7 @@ server.tool("list_products",
     async ({ tenant_id }) => {
         try {
             const response = await axios.get(`${API_URL}/products`, { headers: getHeaders(tenant_id) });
-            const summary = response.data.items.map((p: any) =>
-                `- ${p.title} (${p.price} ${p.currency}) [${p.status}] ID: ${p.id}`
-            ).join("\n");
+            const summary = response.data.items.map(productListLine).join("\n");
             return { content: [{ type: "text", text: `Products for ${tenant_id}:\n${summary}` }] };
         } catch (error: any) {
             return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
@@ -1047,10 +1047,10 @@ server.tool("create_product",
     {
         tenant_id: z.string(),
         title: z.string(),
-        price: z.string(),
+        price: z.string().optional().describe("Price. Required on a shop site; refused on a catalog site (catalog sites store no price)."),
         slug: z.string().optional().describe("URL-friendly slug (auto-generated if omitted)"),
         description: z.string().describe("Plain text description"),
-        image_link: z.string().describe("URL of main image"),
+        image_link: z.string().optional().describe("URL of main image. Required on a shop site; optional on a catalog site."),
         currency: z.string().optional().describe("Currency code (e.g., 'RON', 'EUR'). Defaults to tenant currency."),
         category_ids: z.string().optional().describe("Comma-separated category IDs to assign product to"),
         sale_price: z.string().optional().describe("Discounted price (shown with strikethrough on original)"),
@@ -1060,22 +1060,7 @@ server.tool("create_product",
     },
     async ({ tenant_id, title, price, slug, description, image_link, currency, category_ids, sale_price, sku, tags, resource_id }) => {
         try {
-            const payload: any = {
-                title,
-                price,
-                description,
-                imageLink: image_link,
-                resourceId: resource_id,
-                status: "draft",
-                availability: "in_stock",
-                condition: "new"
-            };
-            if (slug) payload.slug = slug;
-            if (currency) payload.currency = currency;
-            if (sale_price) payload.salePrice = sale_price;
-            if (sku) payload.sku = sku;
-            if (category_ids) payload.categoryIds = category_ids.split(',').map(s => s.trim());
-            if (tags) payload.tags = tags.split(',').map(s => s.trim());
+            const payload = createProductBody({ title, price, slug, description, image_link, currency, category_ids, sale_price, sku, tags, resource_id });
             const response = await axios.post(`${API_URL}/products`, payload, { headers: getHeaders(tenant_id) });
             return { content: [{ type: "text", text: `✓ Created product "${title}" (ID: ${response.data.id})` }] };
         } catch (error: any) {
@@ -1109,7 +1094,7 @@ server.tool("update_product",
         product_id: z.string().describe("Product ID (from list_products)"),
         fields: z.string().describe(
             "JSON object of ProductSchema fields to change (camelCase), validated by the backend. Common keys: title, slug, status ('active'|'archived'|'draft'), " +
-            "price (string), salePrice (string), currency, description (plain text, max 5000), longDescription (HTML), imageLink, additionalImageLinks (array), " +
+            "price (string; required on shop sites, refused on catalog sites), salePrice (string; refused on catalog sites), currency, description (plain text, max 5000), longDescription (HTML), imageLink (null removes the stored image), additionalImageLinks (array), " +
             "availability ('in_stock'|'out_of_stock'|'preorder'), inventoryQuantity (integer), availableFrom/availableUntil (ISO date), categoryIds (array), tags (array), sku, sortOrder. " +
             "Use get_product to see the full shape (variants, volumePricing, personalizations, attributes)."
         ),

@@ -6,7 +6,7 @@ interface Product {
     id: string;
     title: string;
     slug: string;
-    price: string;
+    price: string;               // absent on a catalog site's products — the card never reads it there (catalogMode)
     salePrice?: string;
     currency: string;
     imageLink?: string;
@@ -14,8 +14,13 @@ interface Product {
     volumePricing?: { minQuantity: number; price: string }[];
 }
 
-function ProductCard({ product, showPrice, productPrefix, getUrl }: { product: Product; showPrice: boolean; productPrefix: string; getUrl: (s: string) => string }) {
-    const outOfStock = product.availability === "out_of_stock";
+/**
+ * `catalogMode` (CATALOG-MODE-1, spec § 3.2.6): a catalog site shows no price line, no currency and no stock overlay,
+ * whatever the product data holds and wherever it came from (server prefetch, stale authored attrs, or the browser
+ * fallback fetch below) — not emitted, not hidden by CSS. It overrides the block's own `showPrice`.
+ */
+function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl }: { product: Product; showPrice: boolean; catalogMode: boolean; productPrefix: string; getUrl: (s: string) => string }) {
+    const outOfStock = !catalogMode && product.availability === "out_of_stock";
     const hasSale = product.salePrice && product.salePrice !== product.price;
     const hasVolume = product.volumePricing && product.volumePricing.length > 0;
 
@@ -50,7 +55,7 @@ function ProductCard({ product, showPrice, productPrefix, getUrl }: { product: P
                 )}
             </div>
             <h3 className="text-sm font-medium text-center leading-tight mb-1 group-hover:text-primary transition-colors">{product.title}</h3>
-            {showPrice && (
+            {showPrice && !catalogMode && (
                 <p className="text-sm text-center text-primary font-medium">
                     {hasSale && <span className="line-through text-muted-foreground mr-2">{product.price} {product.currency}</span>}
                     {priceDisplay}
@@ -61,7 +66,9 @@ function ProductCard({ product, showPrice, productPrefix, getUrl }: { product: P
 }
 
 export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenantId?: string }) {
-    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, prefetchedProducts, _getUrl, _productPrefix, _categoryPrefix } = attrs;
+    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, prefetchedProducts, _getUrl, _productPrefix, _categoryPrefix, _catalogMode } = attrs;
+    // Injected by the renderer (`SitePage.tsx`) only for a catalog tenant, on every block of this type; absent otherwise.
+    const catalogMode = _catalogMode === true;
 
     // Client-fetch state — only used when server prefetch is absent (editor preview).
     // When prefetchedProducts exists, these are ignored in favor of the prop directly.
@@ -128,6 +135,7 @@ export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenant
                             key={product.id}
                             product={product}
                             showPrice={showPrice}
+                            catalogMode={catalogMode}
                             productPrefix={productPrefix}
                             getUrl={getUrl}
                         />

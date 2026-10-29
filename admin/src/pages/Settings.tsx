@@ -26,7 +26,7 @@ import { ShieldCheck, Sparkles } from "lucide-react";
 import { EffectControls } from "@amodx/plugins/common/EffectControls";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
 import { ServiceKeys } from "@/components/ServiceKeys";
-import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack } from "@amodx/shared";
+import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack, isCatalogMode } from "@amodx/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
@@ -645,6 +645,13 @@ export default function SettingsPage() {
                             <CardDescription>Enable the full e-commerce flow: cart, checkout, orders, delivery, and coupons. Products, categories, and Paddle purchases work without this.</CardDescription>
                         </CardHeader>
                         <CardContent>
+                            {/* CATALOG-MODE-1 (CM-D11): the mode is fixed at creation; a catalog site never sells. */}
+                            {isCatalogMode(config) ? (
+                                <div>
+                                    <span className="font-medium text-sm">Catalog site</span>
+                                    <p className="text-xs text-muted-foreground">Products are shown without prices, stock or ordering. This mode was chosen when the site was created and cannot be changed here.</p>
+                                </div>
+                            ) : (
                             <label className="flex items-center gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -657,6 +664,7 @@ export default function SettingsPage() {
                                     <p className="text-xs text-muted-foreground">Shows cart in navbar, enables checkout flow, orders management, delivery settings, and coupons.</p>
                                 </div>
                             </label>
+                            )}
                         </CardContent>
                     </Card>
 

@@ -17,13 +17,16 @@ interface SearchBarProps {
         searchSearching?: string;
         viewAllResults?: string;
     };
+    /** CATALOG-MODE-1: false on a catalog site — the dropdown prints no price. Passed only when false, so a
+     *  non-catalog page's RSC payload is unchanged. */
+    showPrices?: boolean;
 }
 
 interface SearchResult {
     id: string;
     title: string;
     slug: string;
-    price: string;
+    price?: string;       // CATALOG-MODE-1: absent on a catalog site's products
     currency: string;
     salePrice?: string;
     imageLink?: string;
@@ -37,6 +40,7 @@ export function SearchBar({
     apiUrl = "",
     contentMaxWidth = "max-w-7xl",
     labels,
+    showPrices = true,
 }: SearchBarProps) {
     const router = useRouter();
     const { getUrl } = useTenantUrl();
@@ -193,13 +197,13 @@ export function SearchBar({
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-medium truncate">{product.title}</p>
-                                                <p className="text-xs text-primary font-medium">
+                                                {showPrices && <p className="text-xs text-primary font-medium">
                                                     {product.salePrice ? (
                                                         <><span className="text-red-600">{product.salePrice} {product.currency}</span> <span className="line-through text-muted-foreground">{product.price}</span></>
                                                     ) : (
                                                         <>{product.price} {product.currency}</>
                                                     )}
-                                                </p>
+                                                </p>}
                                             </div>
                                         </button>
                                     ))}

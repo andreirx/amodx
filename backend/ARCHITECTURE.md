@@ -13,6 +13,12 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 src/
 ├── lib/                   # (selected modules; 18 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
+│   ├── catalog-product.ts # CATALOG-MODE-1 product write boundary: readTenantMode() (ConsistentRead tenant mode,
+│   │                      #   null = missing → caller answers 404), checkProductWrite() (PURE: catalog tenant →
+│   │                      #   refuse price/salePrice/volumePricing/priceOverride/personalizations; other tenants →
+│   │                      #   price + imageLink required; importSource products → one variant group, unique
+│   │                      #   labels, derived imageLink/additionalImageLinks). Users: products/create, update,
+│   │                      #   import/woocommerce (mode read only)
 │   ├── events.ts          # EventBridge publishAudit() helper
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
 │   ├── invalidate-cdn.ts  # Two invalidation classes (cache-4a): withInvalidation() HOF → bulk `/*`
@@ -110,9 +116,11 @@ src/
 │   ├── update.ts          # PUT /context/{id}
 │   └── delete.ts          # DELETE /context/{id}
 ├── tenant/
-│   ├── create.ts          # POST /tenant (Global Admin only)
-│   ├── list.ts            # GET /tenant
-│   └── settings.ts        # GET/PUT /tenant/settings
+│   ├── create.ts          # POST /tenant (Global Admin only); CATALOG-MODE-1: the ONLY place `catalogMode` is set
+│   ├── list.ts            # GET /tenant (projects commerceEnabled + catalogMode for the admin)
+│   └── settings.ts        # GET/PUT /tenant/settings; PUT: ConsistentRead, 404 on a missing tenant record, and
+│                          #   a narrow parse of { commerceEnabled, catalogMode } on the merged item (mode change
+│                          #   → 400; commerce on a catalog site → 400) — never a full TenantConfigSchema parse
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/
@@ -136,7 +144,8 @@ src/
     ├── wordpress.ts       # WordPress XML import handler
     ├── wxr-parser.ts      # WXR XML parser utility
     ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
-    ├── woocommerce.ts     # POST /import/woocommerce — product CSV import
+    ├── woocommerce.ts     # POST /import/woocommerce — product CSV import; refuses a catalog tenant (403) and
+    │                      #   a missing tenant (404) before the first write (CATALOG-MODE-1, CM-D8 guard 1)
     ├── media.ts           # POST /import/media — bulk media import
     ├── reviews.ts         # POST /import/reviews (rev-2b) — attestation-gated bulk review import.
     │                      #   Import-family instance #3 (own NodejsFunction). ORDER (all validation
@@ -236,6 +245,17 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 - **Presigned S3 URLs:** Assets get 5-min upload URLs. Resources get 15-min download URLs. Paddle fulfillment gets 24-hour URLs.
 - **Lead upsert:** Leads keyed by email — PUT overwrites, so re-submissions update rather than duplicate
 - **Pagination:** Manual loop with `LastEvaluatedKey`, safety cap at 20 iterations
+- **Tenant mode (CATALOG-MODE-1):** `catalogMode` is fixed at `POST /tenants` (CM-D11) and read through
+  `isCatalogMode()` (`@amodx/shared`). A catalog tenant stores no monetary field on any product (refused, 400, at
+  `products/create.ts` / `update.ts` via `lib/catalog-product.ts`; WooCommerce import refused, 403); a non-catalog
+  tenant must send `price` and `imageLink`. `POST /public/orders` refuses (403) every tenant whose `commerceEnabled`
+  is not `true`, before reCAPTCHA and any product read. Four mode-enforcing reads are `ConsistentRead` and answer
+  404 on a missing tenant record, with nothing written: `tenant/settings.ts` (PUT), `products/create.ts`,
+  `products/update.ts`, `import/woocommerce.ts`. Exception, by design (spec `catalog-mode-1.md` § 3.1): the order
+  handler `orders/create.ts` keeps its eventually consistent read; a missing record maps to `{}`, which the CM-D6
+  guard refuses with 403 (fail closed). `products/update.ts` writes with `attribute_exists(PK)` (a product deleted meanwhile →
+  404, no `CATPROD#` rebuild), reads `imageLink: null` as "remove the image", and both product routes strip
+  `importSource` (importer-owned) and answer an invalid body with 400 (was 500)
 
 ## Response Format
 
@@ -291,5 +311,9 @@ test live here, both credential-free:
    REAL debounce-flush handler against one in-memory marker row under fake time (minute-by-minute
    edit streams) to pin the max-wait rule; its fake refuses any `CDN_PENDING` UpdateExpression
    other than the production one, so it cannot model semantics the real write lacks.
+
+`test/unit/catalog-mode.test.ts` (CATALOG-MODE-1) is shape 2: the real tenant, settings, product, WooCommerce and
+order handlers with `lib/db.ts`, `publishAudit`, the cache-revalidation call and the order handler's origin and
+reCAPTCHA helpers mocked; each row inspects the commands that would reach DynamoDB.
 
 Run: `cd backend && npm run test:unit`.

@@ -7,6 +7,7 @@ import { publishAudit } from "../lib/events.js";
 import {requireRole} from "../auth/policy.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
+import { readTenantMode, checkProductWrite } from "../lib/catalog-product.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -27,6 +28,10 @@ const _handler: Handler = async (event) => {
 
         const body = JSON.parse(event.body);
 
+        // CATALOG-MODE-1: the tenant's mode, read authoritatively (404 when the tenant record is missing).
+        const mode = await readTenantMode(tenantId);
+        if (!mode) return { statusCode: 404, body: JSON.stringify({ error: "Site not found" }) };
+
         // Fetch existing
         const existing = await db.send(new GetCommand({
             TableName: TABLE_NAME,
@@ -35,22 +40,47 @@ const _handler: Handler = async (event) => {
 
         if (!existing.Item) return { statusCode: 404, body: "Product not found" };
 
-        // Partial validation
-        const input = ProductSchema.omit({
-            id: true, tenantId: true, createdAt: true, updatedAt: true
-        }).partial().parse(body);
+        // CM-D7: `imageLink: null` is the removal instruction (storage never holds null or ""); the schema refuses
+        // null, so it is taken out of the body before the parse and applied to the merged item below.
+        const removeImage = body.imageLink === null;
+        if (removeImage) delete body.imageLink;
 
-        const merged: Record<string, any> = { ...existing.Item, ...input, updatedAt: new Date().toISOString() };
+        // Partial validation. `importSource` is importer-owned: omitted, so the body cannot set, change or remove it.
+        const parsed = ProductSchema.omit({
+            id: true, tenantId: true, createdAt: true, updatedAt: true, importSource: true
+        }).partial().safeParse(body);
+        if (!parsed.success) {
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid product", details: parsed.error.issues }) };
+        }
+        const input = parsed.data;
+
+        const draft: Record<string, any> = { ...existing.Item, ...input, updatedAt: new Date().toISOString() };
+        if (removeImage) delete draft.imageLink;
+
+        // CATALOG-MODE-1 write boundary, on the merged item (what will be stored).
+        const check = checkProductWrite(draft, mode.catalogMode);
+        if (check.kind === "refused") return { statusCode: 400, body: JSON.stringify({ error: check.error }) };
+        const merged = check.item;
 
         // Update GSI attribute if slug changed
         if (input.slug && input.slug !== existing.Item.slug) {
             merged.TenantSlug = `${tenantId}#${input.slug}`;
         }
 
-        await db.send(new PutCommand({
-            TableName: TABLE_NAME,
-            Item: merged
-        }));
+        // C10-1: the write never re-creates a product deleted since the read above. A cancelled write answers 404
+        // and the CATPROD# rebuild below does not run.
+        try {
+            await db.send(new PutCommand({
+                TableName: TABLE_NAME,
+                Item: merged,
+                ConditionExpression: "attribute_exists(PK)",
+            }));
+        } catch (e: any) {
+            if (e?.name === "ConditionalCheckFailedException") {
+                return { statusCode: 404, body: "Product not found" };
+            }
+            throw e;
+        }
 
         // Rebuild CATPROD# adjacency items (delete old, write new)
         const oldCategoryIds: string[] = existing.Item.categoryIds || [];

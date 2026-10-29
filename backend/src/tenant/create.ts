@@ -43,6 +43,9 @@ const _handler: AmodxHandler = async (event) => {
                 fontBody: "Inter"
             },
             integrations: {},
+            // CATALOG-MODE-1 (CM-D11): the mode is chosen here and only here. commerceEnabled is never taken
+            // from the body (always false at creation), so the two flags cannot both be true.
+            catalogMode: body.catalogMode === true,
             createdAt: now,
             ownerId: userId,
             createdBy: userId

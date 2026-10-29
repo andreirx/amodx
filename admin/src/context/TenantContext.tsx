@@ -7,6 +7,7 @@ interface Tenant {
     name: string;
     domain: string;
     commerceEnabled?: boolean;
+    catalogMode?: boolean;   // CATALOG-MODE-1: fixed at creation (GET /tenants projects it)
     currency?: string;
     locale?: string;
     countryCode?: string;

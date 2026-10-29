@@ -176,7 +176,9 @@ export class CatalogApi extends NestedStack {
             entry: path.join(__dirname, '../../backend/src/products/create.ts'),
             handler: 'handler',
         });
-        table.grantWriteData(this.createProductFunc);
+        // CATALOG-MODE-1: read-write, not write-only — create.ts reads the tenant record (ConsistentRead) to enforce
+        // the catalog mode before it writes (CM-D1 note; the slug-guard regression class: grants must match reads).
+        table.grantReadWriteData(this.createProductFunc);
 
         this.listProductsFunc = new nodejs.NodejsFunction(this, 'ListProductsFunc', {
             ...nodeProps,

@@ -73,6 +73,13 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         }));
         const tenantConfig = tenantResult.Item || {};
 
+        // CATALOG-MODE-1 (CM-D6 = A; first named exception to the commerce freeze): only a site that sells takes
+        // orders. A missing record maps to {} above and is refused here too (fail closed). Placed before reCAPTCHA and
+        // before any product read, so a refused request causes no further call.
+        if (tenantConfig.commerceEnabled !== true) {
+            return { statusCode: 403, body: JSON.stringify({ error: "This site does not take online orders." }) };
+        }
+
         // --- reCAPTCHA verification (deployment-level mandatory, tenant can override keys/threshold) ---
         const recaptchaConfig = resolveRecaptchaConfig(tenantConfig.recaptcha);
         if (recaptchaConfig) {

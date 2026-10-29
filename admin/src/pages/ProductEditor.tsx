@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TagInput } from "@/components/ui/tag-input";
 import { Loader2, ArrowLeft, Save, Upload, Trash2, Plus, X } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
+import { isCatalogMode } from "@amodx/shared";
 
 const TABS = ["Basic", "Pricing", "Variants", "Personalization", "Details", "Categories", "Media", "SEO"] as const;
 type Tab = typeof TABS[number];
@@ -18,6 +19,37 @@ type Tab = typeof TABS[number];
 interface CategoryOption {
     id: string;
     name: string;
+}
+
+/** The editor form's variant groups (a subset of `ProductVariantSchema`, as the form holds them). */
+type FormVariantGroup = { id: string; name: string; options: { value: string; priceOverride?: string; imageLink?: string; availability?: string }[] };
+
+/**
+ * The save request body, from the form (pure; exported as the test seam of `ProductEditor.test.ts`).
+ * Commerce sites: the form as before, except CM-D7 image absence — never `imageLink: ""`; `null` removes a stored
+ * image (the update merges over the stored item, so an omitted key would keep it). Catalog sites additionally: no
+ * empty `price`/`salePrice` keys, no option `priceOverride`/`availability` keys (the write boundary refuses a present
+ * monetary key even when it is ""), and no empty option images (absence is the omitted key).
+ */
+export function buildProductPayload(
+    form: Record<string, any> & { imageLink?: string; variants?: FormVariantGroup[] },
+    { isNew, storedImageLink, catalog }: { isNew: boolean; storedImageLink: string; catalog: boolean },
+): Record<string, any> {
+    const payload: Record<string, any> = { ...form, productType: "physical" };
+    if (!form.imageLink) {
+        if (!isNew && storedImageLink) payload.imageLink = null;
+        else delete payload.imageLink;
+    }
+    if (catalog) {
+        if (payload.price === "") delete payload.price;
+        if (payload.salePrice === "") delete payload.salePrice;
+        payload.variants = (form.variants || []).map(group => ({
+            ...group,
+            options: group.options.map(({ priceOverride: _price, availability: _availability, ...option }) =>
+                option.imageLink ? option : { value: option.value }),
+        }));
+    }
+    return payload;
 }
 
 export default function ProductEditor() {
@@ -30,6 +62,13 @@ export default function ProductEditor() {
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<Tab>("Basic");
     const [allCategories, setAllCategories] = useState<CategoryOption[]>([]);
+    // CATALOG-MODE-1: a catalog site stores no monetary field (the backend refuses a present key, even "").
+    const catalog = isCatalogMode(currentTenant);
+    // CM-D7: the image stored when the product was loaded — clearing it must send `imageLink: null` (removal),
+    // because the update merges the request over the stored item and an omitted key would keep the old image.
+    const [storedImageLink, setStoredImageLink] = useState("");
+    // Set by the catalog importer; such a product's main image and gallery are derived from its variant images.
+    const [importSource, setImportSource] = useState<string | undefined>(undefined);
 
     const [form, setForm] = useState({
         title: "",
@@ -86,6 +125,8 @@ export default function ProductEditor() {
         try {
             const data = await apiRequest(`/products/${id}`);
             setForm(prev => ({ ...prev, ...data }));
+            setStoredImageLink(data.imageLink || "");
+            setImportSource(data.importSource);
         } catch (e) {
             alert("Failed to load product");
             navigate("/products");
@@ -107,14 +148,14 @@ export default function ProductEditor() {
     }
 
     async function handleSave() {
-        if (!form.title || !form.price) {
-            alert("Title and Price are required.");
+        if (!form.title || (!catalog && !form.price)) {
+            alert(catalog ? "Title is required." : "Title and Price are required.");
             return;
         }
 
         setSaving(true);
         try {
-            const payload = { ...form, productType: "physical" };
+            const payload = buildProductPayload(form, { isNew, storedImageLink, catalog });
             if (isNew) {
                 await apiRequest("/products", { method: "POST", body: JSON.stringify(payload) });
             } else {
@@ -174,7 +215,7 @@ export default function ProductEditor() {
             {/* Tabs */}
             <div className="flex-none border-b bg-card px-6">
                 <div className="flex gap-1 overflow-x-auto">
-                    {TABS.map(tab => (
+                    {TABS.filter(tab => !(catalog && tab === "Personalization")).map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -194,12 +235,12 @@ export default function ProductEditor() {
             <main className="flex-1 overflow-y-auto p-8">
                 <div className="max-w-4xl mx-auto pb-20">
                     {activeTab === "Basic" && <BasicTab form={form} setForm={setForm} onTitleChange={handleTitleChange} />}
-                    {activeTab === "Pricing" && <PricingTab form={form} setForm={setForm} />}
-                    {activeTab === "Variants" && <VariantsTab form={form} setForm={setForm} />}
+                    {activeTab === "Pricing" && <PricingTab form={form} setForm={setForm} catalog={catalog} />}
+                    {activeTab === "Variants" && <VariantsTab form={form} setForm={setForm} catalog={catalog} />}
                     {activeTab === "Personalization" && <PersonalizationTab form={form} setForm={setForm} />}
                     {activeTab === "Details" && <DetailsTab form={form} setForm={setForm} />}
                     {activeTab === "Categories" && <CategoriesTab form={form} setForm={setForm} allCategories={allCategories} />}
-                    {activeTab === "Media" && <MediaTab form={form} setForm={setForm} onImageUpload={handleImageUpload} />}
+                    {activeTab === "Media" && <MediaTab form={form} setForm={setForm} onImageUpload={handleImageUpload} derived={catalog && !!importSource} />}
                     {activeTab === "SEO" && <SEOTab form={form} setForm={setForm} />}
                 </div>
             </main>
@@ -284,7 +325,8 @@ function BasicTab({ form, setForm, onTitleChange }: any) {
     );
 }
 
-function PricingTab({ form, setForm }: any) {
+/** `catalog`: price, sale price, volume tiers and availability are not shown (CATALOG-MODE-1 § 3.2.2). */
+function PricingTab({ form, setForm, catalog }: any) {
     const addVolumeTier = () => {
         setForm({ ...form, volumePricing: [...form.volumePricing, { minQuantity: 1, price: "" }] });
     };
@@ -299,7 +341,7 @@ function PricingTab({ form, setForm }: any) {
 
     return (
         <div className="space-y-6">
-            <Card>
+            {!catalog && <Card>
                 <CardHeader><CardTitle>Pricing</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-3 gap-4">
@@ -317,9 +359,9 @@ function PricingTab({ form, setForm }: any) {
                         </div>
                     </div>
                 </CardContent>
-            </Card>
+            </Card>}
 
-            <Card>
+            {!catalog && <Card>
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <CardTitle>Volume Pricing</CardTitle>
@@ -348,13 +390,13 @@ function PricingTab({ form, setForm }: any) {
                         </div>
                     ))}
                 </CardContent>
-            </Card>
+            </Card>}
 
             <Card>
                 <CardHeader><CardTitle>Inventory & Availability</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
+                        {!catalog && <div className="space-y-2">
                             <Label>Availability</Label>
                             <Select value={form.availability} onValueChange={v => setForm({ ...form, availability: v })}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -364,7 +406,7 @@ function PricingTab({ form, setForm }: any) {
                                     <SelectItem value="preorder">Pre-order</SelectItem>
                                 </SelectContent>
                             </Select>
-                        </div>
+                        </div>}
                         <div className="space-y-2">
                             <Label>Quantity</Label>
                             <Input type="number" value={form.inventoryQuantity || 0} onChange={e => setForm({ ...form, inventoryQuantity: parseInt(e.target.value) })} />
@@ -386,7 +428,8 @@ function PricingTab({ form, setForm }: any) {
     );
 }
 
-function VariantsTab({ form, setForm }: any) {
+/** `catalog`: options are a label and an image only — price override and availability are not shown or sent. */
+function VariantsTab({ form, setForm, catalog }: any) {
     const variants = form.variants || [];
 
     const addVariantGroup = () => {
@@ -466,20 +509,20 @@ function VariantsTab({ form, setForm }: any) {
 
                             <div className="space-y-2">
                                 {(group.options || []).map((opt: any, oi: number) => (
-                                    <div key={oi} className="grid grid-cols-5 gap-2 items-end">
+                                    <div key={oi} className={`grid ${catalog ? "grid-cols-3" : "grid-cols-5"} gap-2 items-end`}>
                                         <div className="space-y-1">
                                             <Label className="text-xs">Value</Label>
                                             <Input value={opt.value} onChange={e => updateOption(gi, oi, 'value', e.target.value)} placeholder="250g" />
                                         </div>
-                                        <div className="space-y-1">
+                                        {!catalog && <div className="space-y-1">
                                             <Label className="text-xs">Price Override</Label>
                                             <Input value={opt.priceOverride || ""} onChange={e => updateOption(gi, oi, 'priceOverride', e.target.value)} placeholder="25.00" />
-                                        </div>
+                                        </div>}
                                         <div className="space-y-1">
                                             <Label className="text-xs">Image URL</Label>
                                             <Input value={opt.imageLink || ""} onChange={e => updateOption(gi, oi, 'imageLink', e.target.value)} placeholder="https://..." />
                                         </div>
-                                        <div className="space-y-1">
+                                        {!catalog && <div className="space-y-1">
                                             <Label className="text-xs">Availability</Label>
                                             <Select value={opt.availability || "in_stock"} onValueChange={v => updateOption(gi, oi, 'availability', v)}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -489,7 +532,7 @@ function VariantsTab({ form, setForm }: any) {
                                                     <SelectItem value="preorder">Pre-order</SelectItem>
                                                 </SelectContent>
                                             </Select>
-                                        </div>
+                                        </div>}
                                         <Button variant="ghost" size="icon" className="text-red-500" onClick={() => removeOption(gi, oi)}>
                                             <Trash2 className="h-4 w-4" />
                                         </Button>
@@ -752,9 +795,15 @@ function CategoriesTab({ form, setForm, allCategories }: any) {
     );
 }
 
-function MediaTab({ form, setForm, onImageUpload }: any) {
+/** `derived`: an imported catalog product — main image and gallery are recomputed from the variant images on save. */
+function MediaTab({ form, setForm, onImageUpload, derived }: any) {
     return (
         <div className="space-y-6">
+            {derived && (
+                <p className="text-sm text-muted-foreground border rounded-md p-3">
+                    Main image and gallery are derived from the variant images (Variants tab). A direct edit here is overwritten when you save.
+                </p>
+            )}
             <Card>
                 <CardHeader><CardTitle>Main Image</CardTitle></CardHeader>
                 <CardContent>

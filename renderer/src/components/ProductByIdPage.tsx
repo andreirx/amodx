@@ -10,6 +10,7 @@ import { getTenantConfig, getProductById } from "@/lib/dynamo";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import Script from "next/script";
 import { Metadata } from "next";
+import { isCatalogMode } from "@amodx/shared";
 
 export type ProductByIdInput = {
     siteId: string;
@@ -33,7 +34,8 @@ export async function buildProductByIdMetadata({ siteId, productId }: Pick<Produ
         openGraph: {
             title: product.title,
             description: product.description.substring(0, 160),
-            images: [product.imageLink]
+            // CM-D7: an absent image (catalog product) gives no og:image.
+            images: product.imageLink !== undefined ? [product.imageLink] : []
         }
     };
 }
@@ -57,26 +59,35 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
         return notFoundHere();
     }
 
+    // CATALOG-MODE-1: a catalog site shows no price, no availability and no buy control (spec § 3.2.1).
+    const catalog = isCatalogMode(config);
+    // CM-D7: an absent main image (the key is absent; a catalog product may have none) is left out of every reader.
+    const images = product.imageLink !== undefined
+        ? [product.imageLink, ...(product.additionalImageLinks || [])]
+        : (product.additionalImageLinks || []);
+
     // 3. SCHEMA.ORG JSON-LD
     const jsonLd = {
         "@context": "https://schema.org/",
         "@type": "Product",
         "name": product.title,
-        "image": [product.imageLink, ...(product.additionalImageLinks || [])],
+        ...(images.length > 0 ? { "image": images } : {}),
         "description": product.description,
         "sku": product.id,
         "brand": {
             "@type": "Brand",
             "name": product.brand || config.name
         },
-        "offers": {
-            "@type": "Offer",
-            "url": `https://${config.domain}/products/${product.id}`,
-            "priceCurrency": product.currency,
-            "price": product.price,
-            "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-            "itemCondition": product.condition === 'new' ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition"
-        }
+        ...(catalog ? {} : {
+            "offers": {
+                "@type": "Offer",
+                "url": `https://${config.domain}/products/${product.id}`,
+                "priceCurrency": product.currency,
+                "price": product.price,
+                "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+                "itemCondition": product.condition === 'new' ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition"
+            }
+        })
     };
 
     return (
@@ -95,7 +106,7 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
 
             <div className="grid md:grid-cols-2 gap-12">
                 <div className="space-y-4">
-                    <img src={product.imageLink} alt={product.title} className="rounded-xl shadow-lg w-full" />
+                    {product.imageLink !== undefined && <img src={product.imageLink} alt={product.title} className="rounded-xl shadow-lg w-full" />}
                     <div className="grid grid-cols-4 gap-2">
                         {product.additionalImageLinks?.map((img: string, i: number) => (
                             <img key={i} src={img} className="rounded-lg shadow-sm border" />
@@ -105,7 +116,7 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
 
                 <div>
                     <h1 className="text-4xl font-bold mb-4">{product.title}</h1>
-                    <div className="text-2xl font-medium text-primary mb-6 flex items-center gap-3">
+                    {!catalog && <div className="text-2xl font-medium text-primary mb-6 flex items-center gap-3">
                         {product.salePrice ? (
                             <>
                                 <span className="line-through text-muted-foreground text-lg">{product.price}</span>
@@ -114,13 +125,13 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
                         ) : (
                             <span>{product.price} {product.currency}</span>
                         )}
-                    </div>
+                    </div>}
 
                     <div className="prose prose-zinc dark:prose-invert mb-8">
                         <p className="whitespace-pre-wrap">{product.description}</p>
                     </div>
 
-                    {product.availability === 'in_stock' ? (
+                    {!catalog && (product.availability === 'in_stock' ? (
                         product.paymentLinkId && (
                             <a
                                 href="#"
@@ -134,7 +145,7 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
                         <button disabled className="w-full bg-muted text-muted-foreground px-8 py-4 rounded-lg font-bold cursor-not-allowed">
                             {product.availability === 'preorder' ? "Pre-order" : "Out of Stock"}
                         </button>
-                    )}
+                    ))}
                 </div>
             </div>
         </div>

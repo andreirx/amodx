@@ -1,5 +1,6 @@
 import { getTenantConfig, getProductsForFeed } from "@/lib/dynamo";
 import { NextResponse } from "next/server";
+import { isCatalogMode } from "@amodx/shared";
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,10 @@ export async function GET(
     const config = await getTenantConfig(siteId);
 
     if (!config) return new NextResponse("Site not found", { status: 404 });
+
+    // CATALOG-MODE-1 (§ 3.3, S3 ruling: withhold): the feed format requires price and availability, which a catalog
+    // site does not have; an entry without them is malformed or invites a consumer to fill a fabricated price.
+    if (isCatalogMode(config)) return new NextResponse("Not found", { status: 404 });
 
     // Phase 2.4: Direct DynamoDB reads instead of API calls with master key
     const items = await getProductsForFeed(config.id);

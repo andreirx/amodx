@@ -194,6 +194,183 @@ function siteContentItem(tenantId, nodeId, slug, title, { blocks = [], createdAt
     };
 }
 
+// ── CM1-BYTE-IDENTITY fixtures (slice cat-mode-1; spec docs/slices/catalog-mode-1.md § 3.6) ─────────────
+// Three tenants, in the item shapes the backend writes (`products/create.ts`, `categories`, `lib/catprod.ts`).
+//  - commerce (`commerceEnabled: true`, NO `catalogMode` key): products covering every branch of the § 3.2 surface
+//    table — sale price + volume tiers, variants with priceOverride/availability + personalizations + preorder,
+//    out_of_stock, a Paddle `paymentLinkId` — a `categoryShowcase` block on its home page and the search bar on.
+//  - content (`commerceEnabled: false`, NO `catalogMode` key): one product, one category.
+//  - catalog (`catalogMode: true`): products as the catalog write boundary stores them (no monetary key; the
+//    schema defaults `currency`/`availability` are stored — F-6), one imported product with a 3-option variant
+//    group and attributes, one imageless product whose stored availability is `out_of_stock`, and one LEGACY product
+//    that holds price, salePrice, volume tiers, a Paddle `paymentLinkId` and `preorder` (data written before the
+//    write boundary existed) — suppression must hold whatever the data says (cycle 2, CM1-COVERAGE).
+//  - `/stale-showcase` on the commerce and catalog tenants: a `categoryShowcase` whose category slug the stub does
+//    not know (the server lookup misses) and whose authored `prefetchedProducts` holds a priced, out-of-stock item
+//    (cycle 2, CM1-SHOWCASE-CLOSURE). Commerce = the positive control (price and "Out of Stock" render).
+// The commerce and content tenants are the byte-identity subjects (rows `cm1-*` in contract.test.mjs); their
+// baseline captures are committed under `cm1-byte-identity/baseline/`.
+export const CM1 = {
+    commerce: { id: "cm1-commerce", host: "cm1-commerce.serving-contract.test" },
+    content: { id: "cm1-content", host: "cm1-content.serving-contract.test" },
+    catalog: { id: "cm1-catalog", host: "cm1-catalog.serving-contract.test" },
+};
+const CM1_AT = "2026-10-01T00:00:00.000Z";
+const IMG = (name) => `https://img.serving-contract.test/${name}.jpg`;
+
+function cm1Tenant({ id, host }, name, flags) {
+    return {
+        ...tenant, SK: `TENANT#${id}`, id, Domain: host, domain: host, name,
+        description: `${name} (CM1-BYTE-IDENTITY fixture).`,
+        ...flags,
+    };
+}
+
+function cm1Product(tenantId, product) {
+    return {
+        PK: `TENANT#${tenantId}`, SK: `PRODUCT#${product.id}`, TenantSlug: `${tenantId}#${product.slug}`, Type: "Product",
+        tenantId, status: "active", description: `${product.title} description.`, currency: "USD",
+        availability: "in_stock", condition: "new", tags: [], categoryIds: [], attributes: [], personalizations: [],
+        variants: [], volumePricing: [], nutritionalValues: [], additionalImageLinks: [], productType: "physical",
+        sortOrder: 0, createdAt: CM1_AT, updatedAt: CM1_AT,
+        ...product,
+    };
+}
+
+function cm1Category(tenantId, id, slug, name) {
+    return {
+        PK: `TENANT#${tenantId}`, SK: `CATEGORY#${id}`, TenantSlug: `${tenantId}#${slug}`, Type: "Category",
+        id, tenantId, slug, name, status: "active", sortOrder: 0, productCount: 0, createdAt: CM1_AT, updatedAt: CM1_AT,
+    };
+}
+
+/** The CATPROD# projection `lib/catprod.ts` writes for one product in one category. */
+function cm1CatProd(tenantId, categoryId, p) {
+    const item = {
+        PK: `TENANT#${tenantId}`, SK: `CATPROD#${categoryId}#${p.id}`, id: p.id, title: p.title, slug: p.slug,
+        currency: p.currency, imageLink: p.imageLink, availability: p.availability, status: p.status,
+        sortOrder: p.sortOrder, tags: p.tags, volumePricing: p.volumePricing, categoryIds: p.categoryIds,
+    };
+    if (p.price !== undefined) item.price = p.price;
+    if (p.salePrice !== undefined) item.salePrice = p.salePrice;
+    if (p.imageLink === undefined) delete item.imageLink;
+    return item;
+}
+
+function cm1Pages(tenantId, homeBlocks, { staleShowcase = false } = {}) {
+    const pages = [
+        siteRouteItem(tenantId, "/", `${tenantId}-home`),
+        siteContentItem(tenantId, `${tenantId}-home`, "/", `${tenantId} home`, { blocks: homeBlocks, createdAt: CM1_AT }),
+        siteRouteItem(tenantId, ABOUT_SLUG, `${tenantId}-about`),
+        siteContentItem(tenantId, `${tenantId}-about`, ABOUT_SLUG, `${tenantId} about`, { createdAt: CM1_AT }),
+    ];
+    if (staleShowcase) {
+        pages.push(
+            siteRouteItem(tenantId, CM1_STALE_SLUG, `${tenantId}-stale`),
+            siteContentItem(tenantId, `${tenantId}-stale`, CM1_STALE_SLUG, `${tenantId} stale showcase`, { blocks: [staleShowcaseBlock], createdAt: CM1_AT }),
+        );
+    }
+    return pages;
+}
+
+/** The stale-showcase page (file header): a lookup miss with stale authored data (the renderer keeps it for a
+ *  non-catalog tenant and reduces it to display fields for a catalog tenant). */
+export const CM1_STALE_SLUG = "/stale-showcase";
+const staleShowcaseBlock = {
+    type: "categoryShowcase",
+    attrs: {
+        categorySlug: "cm1-no-such-category", categoryName: "Stale", limit: 4, columns: "4", showPrice: true, ctaText: "",
+        prefetchedProducts: [{
+            id: "stale-1", title: "Stale Item", slug: "stale-item", price: "12.00", currency: "USD",
+            availability: "out_of_stock", imageLink: IMG("stale"), volumePricing: [],
+        }],
+    },
+};
+
+const showcase = (slug) => ({ type: "categoryShowcase", attrs: { categorySlug: slug, categoryName: "Featured", limit: 4, columns: "4", showPrice: true, ctaText: "See all" } });
+const searchBar = { enabled: true, placeholder: "Search products..." };
+
+const cm1CommerceProducts = [
+    cm1Product(CM1.commerce.id, {
+        id: "c0000000-0000-4000-8000-000000000001", title: "Sale Rug", slug: "sale-rug", sku: "SR-1",
+        price: "100.00", salePrice: "80.00", volumePricing: [{ minQuantity: 5, price: "75.00" }],
+        imageLink: IMG("sale"), additionalImageLinks: [IMG("sale-2")], categoryIds: ["rugs"], tags: ["wool"],
+        attributes: [{ key: "Material", value: "Wool" }], longDescription: "<p>Long text.</p>",
+    }),
+    cm1Product(CM1.commerce.id, {
+        id: "c0000000-0000-4000-8000-000000000002", title: "Variant Rug", slug: "variant-rug", price: "50.00",
+        availability: "preorder", imageLink: IMG("variant"), categoryIds: ["rugs"],
+        variants: [{ id: "size", name: "Size", options: [
+            { value: "S", priceOverride: "45.00", imageLink: IMG("variant-s"), availability: "in_stock" },
+            { value: "M" },
+            { value: "L", availability: "out_of_stock" },
+        ] }],
+        personalizations: [{ id: "engr", label: "Engraving", type: "text", required: false, addedCost: "5" }],
+    }),
+    cm1Product(CM1.commerce.id, {
+        id: "c0000000-0000-4000-8000-000000000003", title: "Sold Out Rug", slug: "sold-out-rug", price: "30.00",
+        availability: "out_of_stock", imageLink: IMG("sold-out"), categoryIds: ["rugs"],
+    }),
+    cm1Product(CM1.commerce.id, {
+        id: "c0000000-0000-4000-8000-000000000004", title: "Rug Care Guide", slug: "rug-care-guide", price: "20.00",
+        imageLink: IMG("guide"), paymentLinkId: "pri_cm1", productType: "digital",
+    }),
+];
+const cm1ContentProducts = [
+    cm1Product(CM1.content.id, {
+        id: "d0000000-0000-4000-8000-000000000001", title: "Plain Rug", slug: "plain-rug", price: "10.00",
+        imageLink: IMG("plain"), categoryIds: ["mats"],
+    }),
+];
+const cm1CatalogProducts = [
+    cm1Product(CM1.catalog.id, {
+        id: "e0000000-0000-4000-8000-000000000001", title: "Oak Plank", slug: "oak-plank", importSource: "glam:boen/pl",
+        imageLink: IMG("oak-1"), additionalImageLinks: [IMG("oak-2"), IMG("oak-3")], categoryIds: ["floors"],
+        variants: [{ id: "format", name: "Format", options: [
+            { value: "120x20", imageLink: IMG("oak-1") },
+            { value: "140x20", imageLink: IMG("oak-2") },
+            { value: "180x20", imageLink: IMG("oak-3") },
+        ] }],
+        attributes: [
+            { key: "unitate", value: "mp" },
+            { key: "împachetare", value: "2,2 mp/cutie" },
+            { key: "comandă minimă", value: "10 mp" },
+        ],
+    }),
+    cm1Product(CM1.catalog.id, {
+        id: "e0000000-0000-4000-8000-000000000002", title: "Ash Plank", slug: "ash-plank",
+        availability: "out_of_stock", categoryIds: ["floors"],
+    }),
+    // Legacy data (file header): every monetary field the write boundary now refuses, plus a Paddle link.
+    cm1Product(CM1.catalog.id, {
+        id: "e0000000-0000-4000-8000-000000000003", title: "Legacy Plank", slug: "legacy-plank",
+        price: "99.00", salePrice: "79.00", volumePricing: [{ minQuantity: 10, price: "69.00" }],
+        paymentLinkId: "pri_cm1_legacy", availability: "preorder", imageLink: IMG("legacy"), categoryIds: ["floors"],
+    }),
+];
+// The catalog products carry no `imageLink` key when they have none (CM-D7): drop the helper's absent value.
+for (const p of cm1CatalogProducts) if (p.imageLink === undefined) delete p.imageLink;
+
+const CM1_ITEMS = [
+    cm1Tenant(CM1.commerce, "CM1 Commerce", { commerceEnabled: true, searchBar }),
+    ...cm1Pages(CM1.commerce.id, [showcase("rugs")], { staleShowcase: true }),
+    cm1Category(CM1.commerce.id, "rugs", "rugs", "Rugs"),
+    ...cm1CommerceProducts,
+    ...cm1CommerceProducts.filter((p) => p.categoryIds.includes("rugs")).map((p) => cm1CatProd(CM1.commerce.id, "rugs", p)),
+
+    cm1Tenant(CM1.content, "CM1 Content", { commerceEnabled: false }),
+    ...cm1Pages(CM1.content.id, []),
+    cm1Category(CM1.content.id, "mats", "mats", "Mats"),
+    ...cm1ContentProducts,
+    ...cm1ContentProducts.map((p) => cm1CatProd(CM1.content.id, "mats", p)),
+
+    cm1Tenant(CM1.catalog, "CM1 Catalog", { commerceEnabled: false, catalogMode: true, searchBar }),
+    ...cm1Pages(CM1.catalog.id, [showcase("floors")], { staleShowcase: true }),
+    cm1Category(CM1.catalog.id, "floors", "floors", "Floors"),
+    ...cm1CatalogProducts,
+    ...cm1CatalogProducts.map((p) => cm1CatProd(CM1.catalog.id, "floors", p)),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -218,6 +395,8 @@ export const ITEMS = [
     siteTenant(ISO_TENANT_B, ISO_HOST_B, "Isolation Tenant B"),
     siteRouteItem(ISO_TENANT_B, ABOUT_SLUG, "b-about"),
     siteContentItem(ISO_TENANT_B, "b-about", ABOUT_SLUG, ISO_ABOUT_TITLE_B),
+    // cat-mode-1: CM1-BYTE-IDENTITY tenants (above).
+    ...CM1_ITEMS,
 ];
 
 /**

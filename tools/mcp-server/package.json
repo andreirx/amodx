@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/route-coverage.ts",
+    "test": "tsx scripts/route-coverage.ts && node --import tsx --test test/tool-shapes.test.ts",
     "start": "node dist/index.js",
     "setup": "tsx setup.ts"
   },

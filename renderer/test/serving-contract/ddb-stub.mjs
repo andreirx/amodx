@@ -6,8 +6,8 @@
 // renderer reaches it because the AWS SDK v3 honours `AWS_ENDPOINT_URL_DYNAMODB`
 // (docs/caching-architecture.md § "Measured serving behaviour" documents this recipe).
 //
-// WHAT IT IS NOT: a DynamoDB emulator. It supports one index (`GSI_Domain`), exact-key
-// GetItem, and the two KeyConditionExpression shapes the renderer emits. Anything else is
+// WHAT IT IS NOT: a DynamoDB emulator. It supports two indexes (`GSI_Domain`; `GSI_Slug`, added by cat-mode-1
+// for the commerce slug reads), exact-key GetItem, and the two KeyConditionExpression shapes the renderer emits. Anything else is
 // answered with a *loud error* and recorded in `unhandled()` — never with an empty result.
 // That is deliberate and mirrors human decision CACHE-1-D4: a stub that invented absence
 // would let the suite pass while the renderer read nothing, which is exactly the class of
@@ -41,6 +41,8 @@ import { createServer } from "node:http";
 import { ITEMS, TABLE_NAME } from "./fixtures.mjs";
 
 const DOMAIN_INDEX = "GSI_Domain";
+/** cat-mode-1: the slug index (`TenantSlug = :ts`) — `getProductBySlug` / `getCategoryBySlug` (lib/dynamo.ts). */
+const SLUG_INDEX = "GSI_Slug";
 /** The tag table's only GSI, as open-next 3.1.3 queries it (`cache/tag/dynamodb.js`). */
 const TAG_PATH_INDEX = "revalidate";
 
@@ -231,8 +233,11 @@ export async function startDdbStub({ tagTable } = {}) {
         );
         const cond = parseKeyCondition(parsed.KeyConditionExpression, names);
         if (!cond || cond.gtAttr) throw new Error(`unsupported KeyConditionExpression "${parsed.KeyConditionExpression}"`);
-        if (parsed.IndexName && parsed.IndexName !== DOMAIN_INDEX) {
+        if (parsed.IndexName && parsed.IndexName !== DOMAIN_INDEX && parsed.IndexName !== SLUG_INDEX) {
             throw new Error(`unsupported index ${parsed.IndexName}`);
+        }
+        if (parsed.IndexName === SLUG_INDEX && cond.hashAttr !== "TenantSlug") {
+            throw new Error(`unsupported ${SLUG_INDEX} key ${cond.hashAttr}`);
         }
 
         let found = items.filter((i) => i[cond.hashAttr] === values[cond.hashVal]);

@@ -863,6 +863,9 @@ confirmation.
 5. Pass = every masked body is byte-identical (`cmp`) and every status/`Content-Type` is equal. Any other
    difference fails the gate — including JSON-LD, visible text, attribute order and whitespace.
 
+> *Amended 2026-10-29 (CM1-A1, § 8.19, human ruling): step 4's mask list is replaced by four named canonicalisations;
+> step 5's pass rule compares the HTML unsorted and the flight rows as a sorted set. Steps 1–3 unchanged.*
+
 **Layer 2 — staging (operator, after deploy to staging, before prod).**
 
 *Unresolved prerequisite:* the operator supplies the two staging tenant ids — one `commerceEnabled` tenant with
@@ -2205,3 +2208,112 @@ Oracles: 1, 2, 4 unchanged in kind; 3 = **11**.
   `DECISION_REQUIRED:` count 11; `git diff --check` exit 0.
 - Prerequisites recorded outside this repo: glamCRM `docs/slices/pl-tools-2.md` (per-vendor `produs`/`format`
   mapping for ITC and ALPOD; local commit `2f8b488`).
+
+### 8.19 Amendment CM1-A1 — the Layer 1 comparison contract (operator, 2026-10-29, human ruling B)
+
+**What was wrong.** § 3.6 step 4 enumerated three masks (asset paths, build id, `I[` client-reference rows) and
+step 5 said "any other difference fails". The CAT-MODE-1 builder executed the oracle (build-0, 2026-10-29) and
+measured that two builds of ONE unchanged tree differ in 5 of 46 bodies: the RSC flight payload is streamed, so
+(a) where it is cut into `self.__next_f.push` chunks, (b) the order its rows are emitted and (c) the ids assigned to
+client-component references all vary with async resolution timing. The ratified gate therefore could not pass with
+zero code change — a defect in this spec (the operator never ran two builds of the same tree before ratifying;
+operator practice "a byte-identity oracle first enumerates the derived lines the change legitimately moves").
+The builder's first repair (build-0) replaced every client reference with one placeholder; review-0 (CM1-ORACLE)
+demonstrated that this hides a rewired component (`AddToCartButton` → `SearchBar` compared identical).
+
+**Ruling (human, 2026-10-29, option B of three: A = keep the masks and make the capture deterministic — no known
+control over Next's scheduling; C = B without the year mask, rebuilding the baseline every run — two builds and a
+worktree per run).** Step 4 is replaced by exactly these four canonicalisations, applied to both sides, each with
+its count reported **per compared URL**:
+
+1. **Flight chunks joined.** The `self.__next_f.push` script chunks are removed from the HTML, decoded and joined
+   into one payload text; the chunk count is reported. Cutting is transport, not content.
+2. **Flight rows as a sorted set.** The joined payload is split into rows and compared sorted. Rows reference each
+   other by id; emission order carries nothing a visitor or crawler reads. The HTML outside the payload is compared
+   unsorted, byte for byte.
+3. **Client-reference identity kept.** Each `<id>:I[<module id>,[<chunks>],<export>]` row is removed from the row
+   set (its module id and chunk list change with any build — the ratified mask), and every use `"$L<id>"` is
+   replaced by `"$L<module path>#<export>"` resolved from that row — never by a uniform placeholder. Swapping which
+   component is mounted therefore changes the compared bytes. A mutation check is bound: rewiring one client
+   reference in a captured commerce body must turn the comparison red.
+4. **Footer year.** The literal `© <four digits>` written from the clock (`app/[siteId]/layout.tsx`), in the HTML and
+   in the decoded row, because the baseline capture is stored and committed as evidence, not rebuilt per run.
+
+Plus the two unchanged masks: `/_next/static/…` asset paths and the Next build id. **Nothing else is masked.**
+Step 5's pass rule stands with that list: every canonicalised body byte-identical, every status and `Content-Type`
+equal; any other difference — JSON-LD, visible text, attribute order, whitespace, a component's identity — fails.
+
+**What this weakens, stated.** The order of rows inside the hydration payload is no longer compared, and four
+digits of visible footer text are masked. Both are named here so a later reader does not mistake the gate for the
+original wording. Layer 2 (staging) applies the same canonicalisations.
+
+**Note CM1-A1-N1 (operator, 2026-10-29, after CAT-MODE-1 cycle 3).** Rule 3's "resolved from that row" has one
+case the amendment did not spell out: the RSC payload sometimes outlines a client component's export name into a
+separate string row (`21:"ProductImageGallery"`) and the `I[` row carries a pointer (`"$21"`) whose id is assigned
+in async order. The gate (cycle 3, first run) caught cycle 2 comparing the pointer literally — the content tenant's
+`/product/plain-rug` went red with no code change. The comparison now dereferences the pointer, keeps the export
+NAME in the compared identity, and drops the outlined row only after proving no other row references `"$<id>"`
+(otherwise it throws). Counted as `clientRefExportRows` (87 pointers across 39 pages per capture set). This is an
+application of rule 3, not a fifth canonicalisation; Layer 2 uses the same code path (`maskBody`).
+
+### 8.20 Amendment CM1-A2 — Layer 2 in the real environment (operator, 2026-10-29, human ruling A)
+
+**What was wrong.** § 3.6 Layer 2 said "same masks, same pass rule as Layer 1" on the live staging site. Measured on
+an UNCHANGED deployed build (two captures, 51 URLs): about half the pages differ under CM1-A1. Two causes, both
+intrinsic to Next's streaming on Lambda, neither code: (1) every RSC row id is assigned in async resolution order
+(CM1-A1 neutralises only the client-reference rows); (2) each Suspense boundary (the metadata, page-level blocks) is
+either inlined at the shell flush or sent later as a hidden segment plus a completion script, depending on fetch
+timing. Layer 1's instant stub never shows this.
+
+**Ruling (human, option A of three: B = narrowed Layer 2 + follow-up; C = drop the byte rule).** Layer 2 compares
+the form a visitor or crawler ends up with, produced by a canonicaliser that the operator proved on unchanged
+builds before any before/after comparison:
+
+- HTML 1. React/Next streaming runtime scripts removed (`$RC`/`$RS`/`$RX`/`$RB` definitions and `$RC("B:n","S:n")`
+  calls, React's `$RT` timing helper, Next's body-icon hoister). 2. Every hidden segment `<div hidden id="S:n">` is
+  put into its placeholder `<!--$?--><template id="B:n">…<!--/$-->` as `<!--$-->…<!--/$-->` (the inlined form),
+  repeated until none remains; the empty resolved metadata container after `<body>` is dropped. 3. `<title>`,
+  `<meta>`, `<link>` found in the body (React hoistables, which the client moves into the head) join the head;
+  the head's top-level elements are compared as a sorted set (verified tokenisation; unparsed bytes throw).
+- Payload 4. Rows parsed (length-prefixed `T` rows, id-less `:HL[…]` hints, bare-tag rows such as `X`); `I[` rows
+  → `<module path>#<export>` from the build's client-module map (CM1-A1 rule 3, outlined names included); every
+  `"$<id>"`, `"$@<id>"` and lazy `"$L<id>"` reference replaced by the referenced row's value, recursively, cycles
+  refused; roots (rows nothing references) printed id-free, sorted, as canonical JSON. No row id reaches the
+  comparison.
+- Masks 5. CM1-A1's (asset paths, build id, footer year) plus the Layer 2 transport value `id=cm1-<run>`, which
+  the app router echoes into row 0.
+- Pass rule unchanged: every canonical body byte-identical, every status and Content-Type equal.
+
+**Proof (2026-10-29, build `3QztJKqqtTf830fXdAQXo`):** three pairs of captures of the same build — browser UA ×2
+pairs, HTML-limited-bot UA ×1 — 51/51 identical each. Sensitivity: the old build (`7CzmS1VSi45sXlqQOquYd`) against
+the new one differed exactly where a build input differs (`apiUrl`, below) and on the catalog surfaces, with the
+content tenant 14/14 identical across builds.
+
+**Layer 2 result for CAT-MODE-1:** baseline = the `de4ad52` code deployed to staging (build `ammVgpXPPaSBtsPXyUVVz`),
+candidate = the slice (build `WuwJT9fNQpx36aGoaJ1He`), both built with the same explicit staging public values:
+commerce **18/18**, content **14/14** identical; catalog 6/19 — the 13 differing URLs are the slice's surfaces
+(`/stale-showcase`, `/shop`, `/shop?availability=in_stock`, `/category/floors`, three `/product/*`, three
+`/products/<id>`, `/search?q=plank`, `/sitemap.xml`, `/openai-feed` 200 → 404); `/`, `/about`, the 404s of
+`/cart`/`/checkout`, `/robots.txt`, `/llms.txt` identical. Witness: `legacy-plank` rendered `79.00 USD` /
+`99.00 USD` before, nothing after.
+
+**Transport facts for Layer 2 on staging (recorded for reuse).** Subjects are the Layer 1 fixture items put into
+`AmodxTable-staging` as throwaway tenants `cm1-commerce`, `cm1-content`, `cm1-catalog`, addressed by id
+(`/tenant/<id>/…`, always dynamic on a preview host; `middleware.ts`). `x-cache` `Miss from cloudfront` or
+`Error from cloudfront` (CloudFront's label for any 4xx/5xx origin answer) both mean the origin was reached.
+Each build's client-module map comes from the deploy's own `infra/cdk.out/asset.<hash>/renderer/.next` (found by
+`BUILD_ID` = the served `"b"` value).
+
+**Build-input finding (prod-impacting, human ruled 2026-10-29: fixed by this slice's prod deploy).** The renderer
+inlines `NEXT_PUBLIC_API_URL` and the two public pool ids at `next build` from the gitignored `renderer/.env.local`,
+which `scripts/post-deploy*.ts` write AFTER a deploy (last 2026-04-02, prod values). The `amodx-hotfix` worktree had no
+such file, so the SETTINGS-KEYS deploys (staging and prod, 2026-10-28) inlined an empty API URL — checkout
+(`CheckoutPageView.tsx:323` → `/public/orders`) and coupon validation (`CartPageView.tsx:44`) post to the site's own
+origin and get 404; the renderer's `/api/*` proxies are unaffected (server-side `API_URL`). Any staging deploy from
+`main` inlined prod's values into staging. Mechanism that exists today: the three values on the deploy command line
+(`renderer-hosting.ts:107-110` passes `process.env` to the build; process env overrides the file). Every deploy from
+now on passes them explicitly; follow-up `BUILD-ENV-1` makes the stage's values a build input of the stack.
+
+**Tooling.** The canonicaliser and capture/compare scripts are operator tooling this day (local copies under
+`.agent-manager/slices/CAT-MODE-1/layer2/`); follow-up `LAYER2-CANON-1` brings them into
+`renderer/test/serving-contract/` under review, with the same-build proof as its gate.

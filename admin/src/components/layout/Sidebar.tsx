@@ -36,6 +36,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [newName, setNewName] = useState("");
     const [newDomain, setNewDomain] = useState("");
+    const [newCatalogMode, setNewCatalogMode] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
 
     const isCommerce = currentTenant?.commerceEnabled ?? false;
@@ -111,12 +112,13 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
         try {
             await apiRequest("/tenants", {
                 method: "POST",
-                body: JSON.stringify({ name: newName, domain: newDomain })
+                body: JSON.stringify({ name: newName, domain: newDomain, catalogMode: newCatalogMode })
             });
             await refreshTenants();
             setIsCreateOpen(false);
             setNewName("");
             setNewDomain("");
+            setNewCatalogMode(false);
         } catch (e: any) {
             alert("Failed to create site: " + e.message);
         } finally {
@@ -168,6 +170,19 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                                         <Label>Domain (Optional)</Label>
                                         <Input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="client.com" />
                                     </div>
+                                    {/* CATALOG-MODE-1 (CM-D11): the mode is chosen here and cannot be changed later. */}
+                                    <label className="flex items-start gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={newCatalogMode}
+                                            onChange={e => setNewCatalogMode(e.target.checked)}
+                                            className="rounded border-input h-4 w-4 mt-0.5"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-medium">Catalog site — no prices, no ordering</span>
+                                            <p className="text-xs text-muted-foreground">Products are shown without prices, stock or a cart. This cannot be changed after the site is created.</p>
+                                        </div>
+                                    </label>
                                     <Button onClick={handleCreateSite} disabled={isCreating} className="w-full">
                                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                         {isCreating ? "Creating..." : "Launch Site"}

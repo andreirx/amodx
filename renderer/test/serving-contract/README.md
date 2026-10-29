@@ -24,7 +24,8 @@ the bundle (`d1`/`h1b`/`h1c`/`h2` doubled MISS `Location` on open-next 3.1.3 onl
 `@opennextjs/aws` 4.1.9, which emits one `Location` (`opennext-1b`); `d3` S3 journal; `e1` header
 absent-or-`no-store`, `g4` pinned to the renderer's own status because `Origin` is stripped
 at the edge — the bundle suite proves the renderer behind the edge; the edge security rule is
-proven by infra (i)); one extra row, `(journals)`, runs there. On `next` nothing changed: 39 rows.
+proven by infra (i)); one extra row, `(journals)`, runs there. On `next`: 39 rows, plus the eleven `cm1-*` rows
+(`next` only, slice `cat-mode-1`) = 50.
 
 ## What it asserts
 
@@ -43,6 +44,8 @@ a comment. Failing test = **contract change**, not a flaky test.
 | `e1` `e2` | read failing *after* tenant resolution → `500` with **no** `Cache-Control` and no ISR entry; the same path caches normally once reads recover (human decision `CACHE-1-D4`) |
 | `f` | `?preview=true` → renders, `no-store` |
 | `g1` `g2` `g3` | `/api/*` never advertises a storable lifetime; `/api/posts` answers `400`/`500` rather than an empty `200`; the referral `Set-Cookie` lives on an uncacheable `/api` response |
+| `cm1-identity-commerce` `cm1-identity-content` `cm1-rewire` `cm1-control` | **cat-mode-1, CM1-BYTE-IDENTITY Layer 1** (`docs/slices/catalog-mode-1.md` § 3.6, comparison contract § 8.19 "CM1-A1"): a tenant without `catalogMode` (commerce; content-only) answers every § 3.6 URL with the status, Content-Type and canonical body the renderer of `de4ad52` gave — baseline and candidate capture sets committed in `cm1-byte-identity/` (how they were made, the canonicalisations, what is NOT compared, what to do on failure: `cm1-byte-identity/README.md`); counts printed per URL. `cm1-rewire` is the bound mutation (an element rewired to another client component, or a client row to another module, MUST change the canonical body); `cm1-control` is the detector's positive control (the catalog tenant's product page and feed MUST differ) |
+| `cm1-catalog-product` `cm1-catalog-listings` `cm1-catalog-showcase-stale` `cm1-catalog-showcase-dom` `cm1-catalog-cart` `cm1-catalog-sitemap` `cm1-catalog-feed` | **cat-mode-1, the catalog surface rows** (spec § 3.2, § 3.3): on a `catalogMode` tenant no price, currency, availability or Buy text and no `offers` on the product page, shop, category, search, legacy pages and `categoryShowcase` — also for a product that still holds legacy price, tier and Paddle data; the variant presenter renders the 3-option fixture group and the attributes (none under commerce); a showcase whose lookup misses and whose authored prefetch is stale emits no price or overlay and its payload carries display fields only (commerce = positive control); the imageless product's legacy by-ID page has no main `<img>`, JSON-LD `image` or `og:image`; the showcase's browser fallback, rendered into jsdom in a child process (`cm1-showcase-dom.mjs`, a committed test; `jsdom` is a declared renderer devDependency), emits none under `_catalogMode` and both without it; `/cart` and `/checkout` take the not-found handoff to `404`; the sitemap lists the catalog products and category; the OpenAI feed is `404` |
 | `iso1`…`iso4` | **not contract rows** — the suite's own isolation, which every row above depends on for its meaning. See *Credential-free* below |
 
 Every *absence* assertion (`no 404 stored`, `no entry for the failed render`) is paired with

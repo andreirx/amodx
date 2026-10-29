@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
+import { isCatalogMode } from "@amodx/shared";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -191,6 +192,8 @@ export default function Products() {
     }
 
     if (!currentTenant) return <div className="p-8">Select a site.</div>;
+    // CATALOG-MODE-1 (§ 3.2.2): a catalog site has no prices and no stock — no bulk-price tool, no price or inventory column.
+    const catalog = isCatalogMode(currentTenant);
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
     return (
@@ -201,7 +204,7 @@ export default function Products() {
                     <p className="text-muted-foreground">Manage physical products for your store.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Dialog open={bulkOpen} onOpenChange={(open) => { setBulkOpen(open); if (!open) { setBulkPreview(null); setBulkResult(null); } }}>
+                    {!catalog && <Dialog open={bulkOpen} onOpenChange={(open) => { setBulkOpen(open); if (!open) { setBulkPreview(null); setBulkResult(null); } }}>
                         <DialogTrigger asChild>
                             <Button variant="outline">
                                 <Percent className="mr-2 h-4 w-4" /> Adjust Prices
@@ -317,7 +320,7 @@ export default function Products() {
                                 )}
                             </div>
                         </DialogContent>
-                    </Dialog>
+                    </Dialog>}
                     <Button variant="outline" onClick={() => setShowImport(!showImport)}>
                         <Upload className="mr-2 h-4 w-4" /> Import CSV
                     </Button>
@@ -386,9 +389,9 @@ export default function Products() {
                             <TableRow>
                                 <TableHead>Image</TableHead>
                                 <TableHead>Product</TableHead>
-                                <TableHead>Price</TableHead>
+                                {!catalog && <TableHead>Price</TableHead>}
                                 <TableHead>Status</TableHead>
-                                <TableHead>Inventory</TableHead>
+                                {!catalog && <TableHead>Inventory</TableHead>}
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -423,7 +426,7 @@ export default function Products() {
                                             </div>
                                         </div>
                                     </TableCell>
-                                    <TableCell>
+                                    {!catalog && <TableCell>
                                         {p.salePrice ? (
                                             <div className="flex flex-col text-sm">
                                                 <span className="text-red-600 font-bold">{p.salePrice} {p.currency}</span>
@@ -432,7 +435,7 @@ export default function Products() {
                                         ) : (
                                             <span>{p.price} {p.currency}</span>
                                         )}
-                                    </TableCell>
+                                    </TableCell>}
                                     <TableCell>
                                         <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
                                             p.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-700'
@@ -440,13 +443,13 @@ export default function Products() {
                                             {p.status}
                                         </span>
                                     </TableCell>
-                                    <TableCell className="text-sm">
+                                    {!catalog && <TableCell className="text-sm">
                                         {p.availability === 'in_stock' ? (
                                             <span className="text-green-600">In Stock ({p.inventoryQuantity || '-'})</span>
                                         ) : (
                                             <span className="text-amber-600 capitalize">{p.availability.replace('_', ' ')}</span>
                                         )}
-                                    </TableCell>
+                                    </TableCell>}
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">
                                             <Button
@@ -477,7 +480,7 @@ export default function Products() {
                             ))}
                             {products.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={catalog ? 4 : 6} className="h-24 text-center text-muted-foreground">
                                         No products found. Create your first one!
                                     </TableCell>
                                 </TableRow>

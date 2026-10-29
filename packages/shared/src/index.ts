@@ -784,6 +784,11 @@ export const TenantConfigSchema = z.object({
     // Commerce toggle — enables cart, checkout, orders flow. Products/categories/Paddle still work without it.
     commerceEnabled: z.boolean().default(false),
 
+    // CATALOG-MODE-1 (CM-D11): a catalog site shows products without any price, availability or ordering
+    // control. Chosen ONLY at POST /tenants and never changed online (PUT /settings refuses a change);
+    // mutually exclusive with commerceEnabled. Read it through isCatalogMode(), never directly.
+    catalogMode: z.boolean().default(false),
+
     // Customer profile settings
     askBirthdayOnAccount: z.boolean().default(true),  // Show birthday field on account page
     askBirthdayOnCheckout: z.boolean().default(true), // Show birthday field on checkout
@@ -1009,7 +1014,9 @@ export const ProductSchema = z.object({
     link: z.string().url().optional(),
 
     // Pricing
-    price: z.string(),
+    // CATALOG-MODE-1 (CM-D1 b): optional in the schema; the product write boundary (backend
+    // lib/catalog-product.ts) requires it on every non-catalog tenant and refuses it on a catalog tenant.
+    price: z.string().optional(),
     currency: z.string().default("USD"),
     salePrice: z.string().optional(),
     volumePricing: z.array(VolumePricingTierSchema).default([]),
@@ -1046,7 +1053,10 @@ export const ProductSchema = z.object({
     nutritionalValues: z.array(NutritionalValueSchema).default([]),
 
     // Media
-    imageLink: z.string().url(),
+    // CATALOG-MODE-1 (CM-D7 a): absence is the omitted key — never "" (refused by .url()) and never null in
+    // storage. Required on non-catalog tenants by the write boundary; PUT /products/{id} reads
+    // `imageLink: null` as "remove the stored image".
+    imageLink: z.string().url().optional(),
     additionalImageLinks: z.array(z.string().url()).default([]),
 
     // Product Type
@@ -1064,11 +1074,24 @@ export const ProductSchema = z.object({
     sortOrder: z.number().default(0),
     weight: z.number().optional(), // grams, for shipping calc
 
+    // CATALOG-MODE-1: written only by the catalog importer (CAT-IMPORT-1), e.g. "glam:<producer>/<sheet>".
+    // The authoring routes omit it from their parsed input, so they can never set, change or remove it.
+    importSource: z.string().optional(),
+
     createdAt: z.string(),
     updatedAt: z.string(),
 });
 
 export type Product = z.infer<typeof ProductSchema>;
+
+/**
+ * CATALOG-MODE-1 — the ONE predicate for "this tenant is a catalog site" (no price, no availability, no
+ * ordering). Every surface that behaves differently for a catalog tenant asks this; none re-derives it.
+ * An absent flag (every tenant created before the flag existed) is not catalog.
+ */
+export function isCatalogMode(config: { catalogMode?: unknown } | null | undefined): boolean {
+    return config?.catalogMode === true;
+}
 
 // --- CATEGORIES ---
 

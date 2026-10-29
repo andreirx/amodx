@@ -152,6 +152,8 @@ function mapTenant(item: any): TenantConfig {
         footerLinks: item.footerLinks || [],
 
         commerceEnabled: item.commerceEnabled ?? false,
+        // CATALOG-MODE-1: mapTenant is a whitelist, not a pass-through — without this line no render site sees the mode.
+        catalogMode: item.catalogMode ?? false,
         commerceBar: item.commerceBar || undefined,
         searchBar: item.searchBar || undefined,
         commerceStrings: item.commerceStrings || undefined,

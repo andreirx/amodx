@@ -1,4 +1,5 @@
 import { getTenantConfig, getPublishedContent, getAllCategories, getActiveProducts } from "@/lib/dynamo";
+import { isCatalogMode } from "@amodx/shared";
 import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic'; // Ensure fresh data
@@ -14,8 +15,9 @@ export async function GET(
     // Phase 2.4: Direct DynamoDB reads instead of API calls with master key
     const [items, categories, productsResult] = await Promise.all([
         getPublishedContent(config.id),
-        config.commerceEnabled ? getAllCategories(config.id) : Promise.resolve([]),
-        config.commerceEnabled ? getActiveProducts(config.id, 1, 1000) : Promise.resolve({ items: [] })
+        // CATALOG-MODE-1 (§ 3.3): a catalog site is indexable — its products and categories are listed.
+        (config.commerceEnabled || isCatalogMode(config)) ? getAllCategories(config.id) : Promise.resolve([]),
+        (config.commerceEnabled || isCatalogMode(config)) ? getActiveProducts(config.id, 1, 1000) : Promise.resolve({ items: [] })
     ]);
 
     // Ensure no trailing slash on domain

@@ -13,7 +13,7 @@ interface ProductCardProjection {
     title: string;
     slug: string;
     sku?: string;
-    price: string;
+    price?: string;              // CATALOG-MODE-1: absent on every catalog-tenant product (never "", never "0")
     currency: string;
     salePrice?: string;
     imageLink?: string;

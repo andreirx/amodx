@@ -7,6 +7,7 @@ import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { writeCatProductItems } from "../lib/catprod.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { readTenantMode, checkProductWrite } from "../lib/catalog-product.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -36,10 +37,22 @@ const _handler: Handler = async (event) => {
 
         const body = JSON.parse(event.body);
 
-        // Validate
-        const input = ProductSchema.omit({
-            id: true, tenantId: true, createdAt: true, updatedAt: true
-        }).parse(body);
+        // CATALOG-MODE-1: the tenant's mode, read authoritatively (404 when the tenant record is missing).
+        const mode = await readTenantMode(tenantId);
+        if (!mode) return { statusCode: 404, body: JSON.stringify({ error: "Site not found" }) };
+
+        // Validate. `importSource` is importer-owned: omitted here, so the body cannot set it (stripped, not refused).
+        const parsed = ProductSchema.omit({
+            id: true, tenantId: true, createdAt: true, updatedAt: true, importSource: true
+        }).safeParse(body);
+        if (!parsed.success) {
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid product", details: parsed.error.issues }) };
+        }
+
+        // CATALOG-MODE-1 write boundary: no monetary field on a catalog tenant; price and image required elsewhere.
+        const check = checkProductWrite(parsed.data, mode.catalogMode);
+        if (check.kind === "refused") return { statusCode: 400, body: JSON.stringify({ error: check.error }) };
+        const input = check.item as typeof parsed.data;
 
         // Auto-generate slug if not provided
         if (!input.slug) {

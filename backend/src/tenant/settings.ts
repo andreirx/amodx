@@ -5,6 +5,8 @@ import { AuthorizerContext } from "../auth/context.js"; // <--- Added .js
 import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { z } from "zod";
+import { isCatalogMode } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -27,6 +29,18 @@ const SERVER_OWNED_FIELDS = [
     "PK", "SK", "id", "Domain", "createdAt", "createdBy",
     "Type", "CreatedAt", "Status", "ScheduledFor", "TenantSlug",
 ] as const;
+
+/**
+ * CATALOG-MODE-1 (CM-D11) — the FIRST content validation on this route, and deliberately narrow: exactly the two
+ * mode flags, parsed on the MERGED item and used only as a check (the handler still writes `merged`). Never a full
+ * `TenantConfigSchema.parse` here: stored configs predate the schema, and a full parse could refuse a live tenant's
+ * next save for a field unrelated to the mode (spec § 3.1, "a new validator on a path that never validated").
+ * An absent flag defaults to false, so a record created before the flag existed is "not catalog" on both sides.
+ */
+const ModeFlagsSchema = z.object({
+    commerceEnabled: z.boolean().default(false),
+    catalogMode: z.boolean().default(false),
+});
 
 /**
  * Strips secret fields from tenant config before returning to any caller.
@@ -111,12 +125,17 @@ const _updateHandler: AmodxHandler = async (event) => {
         const rejectedFields = SERVER_OWNED_FIELDS.filter((field) => Object.hasOwn(body, field));
         for (const field of rejectedFields) delete body[field];
 
+        // CATALOG-MODE-1 (CM-D11 accepted refinement): the mode read is authoritative. Strongly consistent, and a
+        // missing tenant record answers 404 with nothing written. Before, a miss became `{ name: "Unknown" }` and this
+        // save created a record without its mode (intended regression, spec § 3.1).
         const result = await db.send(new GetCommand({
             TableName: TABLE_NAME,
-            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` },
+            ConsistentRead: true,
         }));
+        if (!result.Item) return { statusCode: 404, body: JSON.stringify({ error: "Site not found" }) };
 
-        const current = result.Item || { name: "Unknown" };
+        const current = result.Item;
         const merged = { ...current, ...body };
 
         // Deep-merge nested objects that contain secret fields.
@@ -137,6 +156,18 @@ const _updateHandler: AmodxHandler = async (event) => {
         }
         if (body.recaptcha && current.recaptcha) {
             merged.recaptcha = { ...current.recaptcha, ...body.recaptcha };
+        }
+
+        // CATALOG-MODE-1 (CM-D11): the mode is fixed when the site is created, and a catalog site never sells.
+        const flags = ModeFlagsSchema.safeParse(merged);
+        if (!flags.success) {
+            return { statusCode: 400, body: JSON.stringify({ error: "commerceEnabled and catalogMode must be true or false." }) };
+        }
+        if (flags.data.catalogMode !== isCatalogMode(current)) {
+            return { statusCode: 400, body: JSON.stringify({ error: "The catalog mode is fixed when the site is created and cannot be changed." }) };
+        }
+        if (flags.data.catalogMode && flags.data.commerceEnabled) {
+            return { statusCode: 400, body: JSON.stringify({ error: "A catalog site has no cart or checkout, so commerce cannot be enabled." }) };
         }
 
         // SETTINGS-KEYS-1B — best-effort hostname claim check: reject a new hostname when another tenant's record is

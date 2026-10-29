@@ -32,7 +32,12 @@ import {
     BUNDLE, versionedExpectation, operationInventory,
 } from "./harness.mjs";
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
+import { execFile } from "node:child_process";
 import {
+    CM1_BASELINE_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
+} from "./cm1-byte-identity.mjs";
+import {
+    CM1, CM1_STALE_SLUG,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1110,6 +1115,220 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.notEqual(res.status, 403, `${route} must let the first-party write past the guard`);
             assert.doesNotMatch(res.body, new RegExp(REJECTION_BODY));
             if (exp !== SAME) assert.equal(res.status, exp.behindEdgeStatus, `${route}: pinned status behind the edge`);
+        });
+    }
+
+    // ── ROWS (cm1-*) — CM1-BYTE-IDENTITY Layer 1 + the catalog surface rows (slice cat-mode-1) ──────────
+    // Spec docs/slices/catalog-mode-1.md § 3.6 (Layer 1, the gate; comparison contract amended by § 8.19 "CM1-A1")
+    // and § 3.2 (the surface table). `next` target only: the identity baseline was captured with `next start`
+    // (cm1-byte-identity/README.md). A failing `cm1-identity-*` row means a tenant WITHOUT catalogMode now renders
+    // different bytes — read the header of cm1-byte-identity.mjs before touching the baseline.
+    // `CM1_CAPTURE_DIR=<dir>` also writes this run's capture set (same layout as the baseline).
+    if (!BUNDLE) {
+        let cm1Candidate;
+        let cm1Baseline;
+        /** This run's capture set — every CM1 tenant, taken once, shared by the rows below. */
+        async function cm1Set() {
+            if (!cm1Candidate) {
+                const buildId = (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim();
+                const clientModules = await readClientModules(RENDERER_DIR);
+                const captures = await captureCm1(request, server.port, ["commerce", "content", "catalog"]);
+                cm1Candidate = { buildId, clientModules, captures };
+                if (process.env.CM1_CAPTURE_DIR) await writeCaptures(process.env.CM1_CAPTURE_DIR, cm1Candidate);
+            }
+            return cm1Candidate;
+        }
+        const cm1Base = async () => (cm1Baseline ??= await readCaptures(CM1_BASELINE_DIR));
+        const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
+
+        for (const tenantKey of ["commerce", "content"]) {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the de4ad52 baseline did, under the CM1-A1 canonicalisations`, async () => {
+                const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
+                // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
+                for (const r of rows) {
+                    console.log(`  (cm1-identity-${tenantKey}) ${r.same ? "same" : "DIFF"} ${r.path} baseline ${JSON.stringify(r.base)} candidate ${JSON.stringify(r.cand)}`);
+                }
+                assert.deepEqual(rows.filter((r) => !r.same).map((r) => `${r.path}: ${r.why}`), [], `${tenantKey} tenant bytes changed`);
+            });
+        }
+
+        // The bound mutation (CM1-A1 step 3, review-0 CM1-ORACLE): rewiring which component an element mounts MUST
+        // change the canonical body — both by pointing the element at another client row (the reviewer's in-memory
+        // edit: AddToCartButton's use → SearchBar's row) and by pointing the client row at another module.
+        test("(cm1-rewire) rewiring one client reference in a captured commerce body turns the comparison red", async () => {
+            const set = await cm1Set();
+            const page = await cm1Body("commerce", "/product/variant-rug");
+            const rows = splitFlight(page.body).flight.split("\n");
+            const rowOf = (exportName) => {
+                const row = rows.find((r) => new RegExp(`^[0-9a-f]+:I\\[\\d+,.*,"${exportName}"`).test(r));
+                assert.ok(row, `no client row exports ${exportName}`);
+                const [, id, moduleId] = /^([0-9a-f]+):I\[(\d+),/.exec(row);
+                return { id, moduleId };
+            };
+            const cart = rowOf("AddToCartButton");
+            const search = rowOf("SearchBar");
+            const original = maskBody(page.body, set).masked;
+            // (a) the element's use: `\"$L<cart>\"` → `\"$L<search>\"` inside the escaped flight chunk.
+            const useNeedle = `\\"$L${cart.id}\\"`;
+            assert.ok(page.body.includes(useNeedle), "AddToCartButton's use not found in the raw body");
+            const rewiredUse = page.body.split(useNeedle).join(`\\"$L${search.id}\\"`);
+            // (b) the client row's module: `<cart>:I[<cart module>,` → `<cart>:I[<search module>,`.
+            const rowNeedle = `${cart.id}:I[${cart.moduleId},`;
+            assert.ok(page.body.includes(rowNeedle), "AddToCartButton's client row not found in the raw body");
+            const rewiredRow = page.body.replace(rowNeedle, `${cart.id}:I[${search.moduleId},`);
+            for (const [name, body] of [["element use", rewiredUse], ["client row module", rewiredRow]]) {
+                assert.notEqual(body, page.body, `${name}: the mutation did not change the raw body`);
+                assert.notEqual(maskBody(body, set).masked, original, `${name}: the canonical body did not change`);
+            }
+            console.log(`  (cm1-rewire) AddToCartButton row ${cart.id} → SearchBar row ${search.id} / module ${search.moduleId}: both mutations change the canonical body (red)`);
+        });
+
+        // Positive control for the detector: the same comparison MUST see the catalog tenant change (the baseline
+        // printed " USD" with no amount and an `offers` block for a priceless product).
+        test("(cm1-control) the identity detector reports the catalog tenant's product page and feed as changed", async () => {
+            const changed = compareTenant(await cm1Base(), await cm1Set(), "catalog").filter((r) => !r.same).map((r) => r.path);
+            assert.ok(changed.includes("/product/oak-plank"), `detector saw no product change: ${changed.join("; ")}`);
+            assert.ok(changed.includes("/openai-feed"), "detector saw no feed change");
+        });
+
+        /** Literal terminators of a price / availability / ordering surface (spec § 3.2 closing rule), plus the
+         *  legacy product's stored amounts and Paddle id (defence-in-depth witness, cycle 2). */
+        const FORBIDDEN = [
+            "offers", "priceCurrency", "\"price\"", "USD", "Buy", "Add to Cart", "Pre-order", "Out of Stock", "In Stock",
+            "InStock", "OutOfStock", "PreOrder", "availability", "in_stock", "out_of_stock", "preorder", "Volume Pricing",
+            "99.00", "79.00", "69.00", "pri_cm1_legacy", "paddle_button",
+        ];
+        const hits = (body, terms) => terms.filter((t) => body.includes(t));
+        /** The showcase plugin's price line element (`CategoryShowcaseRender.tsx`), as React renders it. */
+        const PRICE_LINE = '<p class="text-sm text-center text-primary font-medium">';
+        const productJsonLd = (body) => {
+            // The JSON-LD is emitted by next/script, so it travels in the flight payload (pre-existing).
+            const m = /"id":"product-schema","type":"application\/ld\+json","dangerouslySetInnerHTML":\{"__html":("(?:[^"\\]|\\.)*")\}/.exec(splitFlight(body).flight);
+            assert.ok(m, "no product JSON-LD");
+            return JSON.parse(JSON.parse(m[1]));
+        };
+
+        test("(cm1-catalog-product) catalog product pages: Product JSON-LD without offers, no price/currency/availability/Buy even with legacy price data, a 3-option presenter, the attributes; no presenter under commerce", async () => {
+            const page = await cm1Body("catalog", "/product/oak-plank");
+            assert.equal(page.status, 200);
+            assert.deepEqual(hits(page.body, FORBIDDEN), []);
+            const jsonLd = productJsonLd(page.body);
+            assert.equal(jsonLd["@type"], "Product");
+            assert.equal(jsonLd.name, "Oak Plank");
+            assert.ok(!("offers" in jsonLd), "a catalog Product carries no offers");
+            const radios = page.body.match(/<input type="radio" class="peer sr-only" name="catalog-option-format" value="[^"]+"\/>/g) ?? [];
+            assert.deepEqual(radios.map((r) => r.match(/value="([^"]+)"/)[1]), ["120x20", "140x20", "180x20"]);
+            for (const [k, v] of [["unitate", "mp"], ["împachetare", "2,2 mp/cutie"], ["comandă minimă", "10 mp"]]) {
+                assert.ok(page.body.includes(`<dt class="text-muted-foreground">${k}</dt><dd class="font-medium">${v}</dd>`), `attribute ${k}`);
+            }
+            // Stored availability out_of_stock and no image: still no availability surface, no presenter.
+            const ash = await cm1Body("catalog", "/product/ash-plank");
+            assert.equal(ash.status, 200);
+            assert.deepEqual(hits(ash.body, FORBIDDEN), []);
+            assert.doesNotMatch(ash.body, /catalog-option-/);
+            // Legacy data (price, salePrice, tiers, Paddle link, preorder stored): every price/offer row still absent.
+            const legacy = await cm1Body("catalog", "/product/legacy-plank");
+            assert.equal(legacy.status, 200);
+            assert.deepEqual(hits(legacy.body, FORBIDDEN), []);
+            assert.ok(!("offers" in productJsonLd(legacy.body)), "legacy catalog product: no offers");
+            // Legacy by-ID page of the imageless Ash (spec § 3.2.6, CM-D7 guards `ProductByIdPage.tsx`): no main <img>,
+            // no JSON-LD `image`, no og:image. Positive control: the Oak legacy page has all three.
+            const ashLegacy = await cm1Body("catalog", "/products/e0000000-0000-4000-8000-000000000002");
+            assert.equal(ashLegacy.status, 200);
+            assert.ok(ashLegacy.body.includes("Ash Plank"), "the legacy page renders the product");
+            assert.ok(!ashLegacy.body.includes('alt="Ash Plank"'), "imageless product: no main <img>");
+            assert.ok(!("image" in productJsonLd(ashLegacy.body)), "imageless product: no JSON-LD image key");
+            assert.ok(!ashLegacy.body.includes('property="og:image"'), "imageless product: no og:image");
+            const oakLegacy = await cm1Body("catalog", "/products/e0000000-0000-4000-8000-000000000001");
+            assert.ok(oakLegacy.body.includes('alt="Oak Plank"'), "positive control: Oak's main <img>");
+            assert.deepEqual(productJsonLd(oakLegacy.body).image.slice(0, 1), ["https://img.serving-contract.test/oak-1.jpg"], "positive control: JSON-LD image");
+            assert.ok(oakLegacy.body.includes('property="og:image"'), "positive control: og:image");
+            // Under commerce the presenter is not rendered, although that product has a 3-option group.
+            const commerceVariants = await cm1Body("commerce", "/product/variant-rug");
+            assert.equal(commerceVariants.status, 200);
+            assert.doesNotMatch(commerceVariants.body, /catalog-option-/);
+        });
+
+        test("(cm1-catalog-listings) catalog shop, category, search, legacy pages and showcase: no price, currency, availability or Buy, also for the legacy-priced product", async () => {
+            for (const p of ["/", "/shop", "/category/floors", "/search?q=plank",
+                "/products/e0000000-0000-4000-8000-000000000001", "/products/e0000000-0000-4000-8000-000000000002",
+                "/products/e0000000-0000-4000-8000-000000000003"]) {
+                const page = await cm1Body("catalog", p);
+                assert.equal(page.status, 200, p);
+                assert.deepEqual(hits(page.body, FORBIDDEN), [], p);
+                assert.ok(page.body.includes("Plank"), `${p} lists a product`);
+            }
+            for (const p of ["/shop", "/category/floors", "/search?q=plank"]) {
+                assert.ok((await cm1Body("catalog", p)).body.includes("Legacy Plank"), `${p} lists the legacy-priced product`);
+            }
+            // The visitor's own `?availability=in_stock` is echoed in the flight payload; nothing else may match.
+            const filtered = await cm1Body("catalog", "/shop?availability=in_stock");
+            assert.deepEqual(hits(filtered.body, FORBIDDEN.filter((t) => t !== "availability" && t !== "in_stock")), []);
+            assert.ok(filtered.body.includes("Ash Plank"), "the availability filter is ignored on a catalog site");
+            assert.doesNotMatch(filtered.body, />All Products</);
+        });
+
+        // CM1-SHOWCASE-CLOSURE, server path: the category lookup MISSES (slug unknown to the stub) and the block's
+        // authored `prefetchedProducts` holds a priced, out-of-stock item. The renderer injects `_catalogMode` anyway
+        // and reduces the stale entries to display fields (cycle 3), so neither the HTML nor the RSC payload carries a
+        // price, currency or availability. Commerce = positive control (same block renders price line and overlay).
+        test("(cm1-catalog-showcase-stale) a showcase whose lookup misses, with stale authored prefetched data: no price or stock overlay on a catalog site", async () => {
+            const catalog = await cm1Body("catalog", CM1_STALE_SLUG);
+            assert.equal(catalog.status, 200);
+            const { html, flight } = splitFlight(catalog.body);
+            assert.ok(html.includes("Stale Item"), "the stale product is rendered (the plugin got the data)");
+            assert.deepEqual(hits(html, ["12.00", "USD", "Out of Stock"]), [], "catalog: price/currency/overlay in the HTML");
+            assert.ok(!catalog.body.includes("Out of Stock"), "catalog: overlay text anywhere in the body");
+            assert.ok(flight.includes('"_catalogMode":true'), "the renderer injected _catalogMode on a lookup miss");
+            assert.ok(!html.includes(PRICE_LINE), "catalog: no showcase price line element");
+            assert.deepEqual(hits(flight, ['"availability"', '"currency"', '"price"', "12.00", "out_of_stock"]), [],
+                "catalog: the stale entries reach the payload as display fields only");
+            const commerce = await cm1Body("commerce", CM1_STALE_SLUG);
+            assert.equal(commerce.status, 200);
+            const commerceHtml = splitFlight(commerce.body).html;
+            assert.ok(commerceHtml.includes("12.00") && commerceHtml.includes("Out of Stock"), "positive control: commerce renders price and overlay");
+            assert.ok(commerceHtml.includes(PRICE_LINE), "positive control: the price line element literal is right");
+            assert.ok(!commerce.body.includes("_catalogMode"), "commerce attrs carry no _catalogMode key");
+        });
+
+        // CM1-SHOWCASE-CLOSURE, browser path: the fallback fetch runs only in a browser, so it is exercised in a
+        // child process that renders the built plugin into jsdom with a mocked fetch (cm1-showcase-dom.mjs).
+        test("(cm1-catalog-showcase-dom) the showcase's browser fallback and stale prefetch: no price, currency or overlay under _catalogMode; both shown without it", async () => {
+            const out = await new Promise((resolve, reject) => {
+                execFile(process.execPath, ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", path.join(RENDERER_DIR, "test", "serving-contract", "cm1-showcase-dom.mjs")],
+                    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 60_000 },
+                    (err, stdout, stderr) => (err ? reject(new Error(`${err.message}\n${stderr}`)) : resolve(stdout)));
+            });
+            const r = JSON.parse(out.trim().split("\n").pop());
+            console.log(`  (cm1-catalog-showcase-dom) ${JSON.stringify(r)}`);
+            assert.equal(r.fallbackCatalog.fetched, 1, "the fallback fetch ran");
+            for (const name of ["fallbackCatalog", "staleCatalog"]) {
+                assert.deepEqual(r[name], { ...r[name], title: true, price: false, currency: false, outOfStock: false }, name);
+            }
+            for (const name of ["fallbackCommerce", "staleCommerce"]) {
+                assert.deepEqual(r[name], { ...r[name], title: true, price: true, currency: true, outOfStock: true }, `${name} (positive control)`);
+            }
+        });
+
+        test("(cm1-catalog-cart) /cart and /checkout on a catalog site: the not-found handoff, then 404", async () => {
+            for (const p of ["/cart", "/checkout"]) {
+                const first = await cm1Body("catalog", p);
+                assert.equal(first.status, 307, p);
+                const res = await request({ port: server.port, path: `${p}?nf=1`, host: CM1.catalog.host });
+                assert.equal(res.status, 404, `${p}?nf=1`);
+            }
+        });
+
+        test("(cm1-catalog-sitemap) a catalog site is indexable: its category and products are in the sitemap", async () => {
+            const map = await cm1Body("catalog", "/sitemap.xml");
+            assert.equal(map.status, 200);
+            for (const p of ["/category/floors", "/product/oak-plank", "/product/ash-plank", "/product/legacy-plank"]) {
+                assert.ok(map.body.includes(`<loc>https://${CM1.catalog.host}${p}</loc>`), p);
+            }
+        });
+
+        test("(cm1-catalog-feed) the OpenAI feed is withheld (404) for a catalog site", async () => {
+            assert.equal((await cm1Body("catalog", "/openai-feed")).status, 404);
         });
     }
 

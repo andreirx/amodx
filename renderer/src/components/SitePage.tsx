@@ -22,7 +22,7 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -207,6 +207,11 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 
     // --- COMMERCE ROUTING ---
     const commerceEnabled = config.commerceEnabled ?? false;
+    // CATALOG-MODE-1: a catalog site shows products with no price, availability or ordering surface (spec § 3.2).
+    // Byte identity (spec § 3.6): every catalog-only change below leaves a non-catalog render's elements, client
+    // props and RSC payload exactly as they were — catalog-only content takes an existing JSX slot, and a client prop
+    // is added only when catalog.
+    const catalog = isCatalogMode(config);
     const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
     if (commerce) {
         const prefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
@@ -249,7 +254,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             }
 
             const strings = getCommerceStrings(config);
-            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} commerceEnabled={commerceEnabled} basePath={basePath} categories={productCategories} categoryPaths={categoryPaths} rawCategoryIds={productCategoryIds} strings={strings} />;
+            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} commerceEnabled={commerceEnabled} catalog={catalog} basePath={basePath} categories={productCategories} categoryPaths={categoryPaths} rawCategoryIds={productCategoryIds} strings={strings} />;
         }
 
         if (commerce.type === 'category' && commerce.itemSlug) {
@@ -257,17 +262,18 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             if (!category) return notFoundHere();
             const page = parseInt(query.page || "1");
             const { items: products, total } = await getProductsByCategory(config.id, category.id, page, 24);
-            return <CategoryPageView category={category} products={products} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} />;
+            return <CategoryPageView category={category} products={products} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} />;
         }
 
         if (commerce.type === 'shop') {
             const page = parseInt(query.page || "1");
-            const availability = query.availability || undefined;
+            // Catalog: no availability filter exists, so a `?availability=` query is ignored (§ 3.2.1 SitePage:265).
+            const availability = catalog ? undefined : (query.availability || undefined);
             const [{ items: products, total }, categories] = await Promise.all([
                 getActiveProducts(config.id, page, 24, availability),
                 getAllCategories(config.id)
             ]);
-            return <ShopPageView products={products} categories={categories} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} availability={availability} />;
+            return <ShopPageView products={products} categories={categories} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} availability={availability} catalog={catalog} />;
         }
 
         if (commerce.type === 'search') {
@@ -280,7 +286,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 products = result.items;
                 total = result.total;
             }
-            return <SearchPageView query={q} products={products} total={total} page={pg} config={config} prefixes={prefixes} basePath={basePath} />;
+            return <SearchPageView query={q} products={products} total={total} page={pg} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} />;
         }
 
         // Account, cart, checkout, confirmation, tracking require commerceEnabled
@@ -522,6 +528,16 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                         block.attrs.prefetchedProducts = items;
                     }
                 }
+                // CATALOG-MODE-1 (§ 3.2.6): on EVERY showcase block of a catalog tenant — whether or not the lookup
+                // above succeeded. `_catalogMode` is the mechanism: the plugin emits no price, currency or stock overlay
+                // for any product source (this prefetch, stale authored attrs, its browser fallback fetch). Defence in
+                // depth: the block is a client component, so its attrs travel in the RSC payload — whatever their
+                // source, catalog `prefetchedProducts` keep display fields only (no currency, availability, tiers).
+                // Neither key changes for a non-catalog tenant, so their attrs and RSC payloads do not change.
+                if (isCatalogMode(config)) {
+                    block.attrs._catalogMode = true;
+                    if (Array.isArray(block.attrs.prefetchedProducts)) block.attrs.prefetchedProducts = block.attrs.prefetchedProducts.map((p: any) => ({ id: p.id, title: p.title, slug: p.slug, ...(p.imageLink !== undefined ? { imageLink: p.imageLink } : {}) }));
+                }
                 // Inject tenant-resolved URL prefixes so the component doesn't
                 // need to read from document meta tags (unavailable during SSR).
                 const resolvedPrefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
@@ -619,7 +635,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 
 // --- COMMERCE PAGE COMPONENTS ---
 
-function ProductCard({ product, productPrefix, basePath = "" }: { product: any; productPrefix: string; basePath?: string }) {
+/** `catalog` (CATALOG-MODE-1): no price line and no availability badge — not emitted, not hidden by CSS. */
+function ProductCard({ product, productPrefix, basePath = "", catalog = false }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean }) {
     return (
         <Link href={`${basePath}${productPrefix}/${product.slug}`} className="group block">
             <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-3">
@@ -630,7 +647,7 @@ function ProductCard({ product, productPrefix, basePath = "" }: { product: any; 
                 )}
             </div>
             <h3 className="font-medium text-foreground group-hover:text-primary transition-colors line-clamp-2">{product.title}</h3>
-            <div className="mt-1">
+            {!catalog && <div className="mt-1">
                 {product.salePrice ? (
                     <div className="flex items-center gap-2">
                         <span className="text-red-600 font-bold">{product.salePrice} {product.currency}</span>
@@ -639,8 +656,8 @@ function ProductCard({ product, productPrefix, basePath = "" }: { product: any; 
                 ) : (
                     <span className="font-semibold">{product.price} {product.currency}</span>
                 )}
-            </div>
-            {product.availability !== 'in_stock' && (
+            </div>}
+            {!catalog && product.availability !== 'in_stock' && (
                 <span className="text-xs text-amber-600 mt-1 block capitalize">{(product.availability || '').replace('_', ' ')}</span>
             )}
         </Link>
@@ -666,7 +683,61 @@ function Pagination({ page, total, limit, baseUrl, basePath = "" }: { page: numb
     );
 }
 
-function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [], strings }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[]; strings: Required<CommerceStrings> }) {
+/**
+ * CATALOG-MODE-1 (CM-D4 amended) — the catalog variant presenter: each variant group as a read-only set of options
+ * (label + image), with no price and no availability. Rendered only on a catalog site, where it is the only
+ * reader of `variants` (`AddToCartButton` is commerce-only). An imported product has exactly one group.
+ *
+ * Server-rendered, no JavaScript: each option is a native radio input, so the visitor's choice lives in the
+ * form state. That is how the selected option is exposed to the interest control (`cat-interest-1`): the checked
+ * input of the group named `catalog-option-<group id>`, whose value is the option label.
+ */
+function CatalogVariantPresenter({ variants }: { variants: { id: string; name: string; options?: { value: string; imageLink?: string }[] }[] }) {
+    const groups = variants.filter((group) => (group.options || []).length > 0);
+    if (groups.length === 0) return null;
+    return (
+        <div className="space-y-6">
+            {groups.map((group, gi) => (
+                <fieldset key={group.id || gi} className="space-y-3" data-catalog-variants={group.id}>
+                    <legend className="text-sm font-medium mb-2">{group.name}</legend>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                        {(group.options || []).map((option, oi) => (
+                            <label key={oi} className="cursor-pointer">
+                                <input type="radio" name={`catalog-option-${group.id || gi}`} value={option.value} className="peer sr-only" />
+                                <span className="block rounded-lg border-2 border-border overflow-hidden peer-checked:border-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary">
+                                    {option.imageLink ? (
+                                        <img src={option.imageLink} alt={option.value} loading="lazy" className="aspect-square w-full object-cover" />
+                                    ) : (
+                                        <span className="aspect-square w-full flex items-center justify-center bg-muted text-muted-foreground text-xs">—</span>
+                                    )}
+                                    <span className="block px-2 py-1 text-xs text-center">{option.value}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </fieldset>
+            ))}
+        </div>
+    );
+}
+
+/** CATALOG-MODE-1 (F-1): the product's `attributes` (e.g. unit, packaging, minimum order) as a key/value list. */
+function ProductAttributes({ attributes }: { attributes: { key: string; value: string }[] }) {
+    const rows = attributes.filter((a) => a.key && a.value);
+    if (rows.length === 0) return null;
+    return (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm border-t pt-4">
+            {rows.map((a, i) => (
+                <div key={i} className="contents">
+                    <dt className="text-muted-foreground">{a.key}</dt>
+                    <dd className="font-medium">{a.value}</dd>
+                </div>
+            ))}
+        </dl>
+    );
+}
+
+function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, catalog = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [], strings }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; catalog?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[]; strings: Required<CommerceStrings> }) {
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const jsonLd: any = {
@@ -675,12 +746,15 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
         "name": product.title,
         "description": product.description,
         "image": product.imageLink,
-        "offers": {
-            "@type": "Offer",
-            "price": product.salePrice || product.price,
-            "priceCurrency": product.currency || "USD",
-            "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
-        }
+        // CATALOG-MODE-1: a catalog product is a `Product` with no `offers` key (no price, no availability).
+        ...(catalog ? {} : {
+            "offers": {
+                "@type": "Offer",
+                "price": product.salePrice || product.price,
+                "priceCurrency": product.currency || "USD",
+                "availability": product.availability === 'in_stock' ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+            }
+        })
     };
     if (reviews && reviews.totalReviews > 0) {
         jsonLd.aggregateRating = {
@@ -701,6 +775,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     apiUrl={apiUrl}
                     contentMaxWidth={siteWidth}
                     labels={getSearchLabels(config)}
+                    {...(catalog ? { showPrices: false } : {})}
                 />
             )}
             <main className={`${siteWidth} mx-auto py-12 px-6`}>
@@ -728,7 +803,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     <h1 className="text-3xl font-bold tracking-tight">{product.title}</h1>
 
                     {/* Price */}
-                    <div className="text-2xl">
+                    {!catalog && <div className="text-2xl">
                         {product.salePrice ? (
                             <div className="flex items-center gap-3">
                                 <span className="font-bold text-red-600">{product.salePrice} {product.currency}</span>
@@ -737,10 +812,10 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         ) : (
                             <span className="font-bold">{product.price} {product.currency}</span>
                         )}
-                    </div>
+                    </div>}
 
                     {/* Volume Pricing */}
-                    {product.volumePricing?.length > 0 && (
+                    {!catalog && product.volumePricing?.length > 0 && (
                         <div className="border rounded-lg p-4">
                             <p className="text-sm font-medium mb-2">Volume Pricing</p>
                             <div className="space-y-1">
@@ -755,7 +830,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     )}
 
                     {/* Availability */}
-                    <div>
+                    {!catalog && <div>
                         {product.availability === 'in_stock' ? (
                             <span className="inline-flex items-center gap-1.5 text-green-600 text-sm font-medium">
                                 <span className="w-2 h-2 bg-green-500 rounded-full" /> {strings.inStock}
@@ -765,7 +840,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         ) : (
                             <span className="text-red-600 text-sm font-medium">{strings.outOfStock}</span>
                         )}
-                    </div>
+                    </div>}
 
                     {/* Categories as clickable badges */}
                     {categories.length > 0 ? (
@@ -810,7 +885,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     )}
 
                     {/* Digital product: Paddle button — always, regardless of commerceEnabled */}
-                    {product.paymentLinkId && (
+                    {!catalog && product.paymentLinkId && (
                         <a
                             href="#"
                             className="paddle_button inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-11 px-8 hover:opacity-90 transition-opacity"
@@ -820,8 +895,14 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         </a>
                     )}
 
-                    {/* Physical product: Add to Cart — only when commerceEnabled AND not a digital product */}
-                    {commerceEnabled && !product.paymentLinkId && (
+                    {/* Physical product: Add to Cart — only when commerceEnabled AND not a digital product.
+                        Catalog site (never commerceEnabled): this slot holds the variant presenter and the attributes. */}
+                    {catalog ? (
+                        <>
+                            <CatalogVariantPresenter variants={product.variants || []} />
+                            <ProductAttributes attributes={product.attributes || []} />
+                        </>
+                    ) : commerceEnabled && !product.paymentLinkId && (
                         <AddToCartButton
                             productId={product.id}
                             title={product.title}
@@ -943,7 +1024,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
     );
 }
 
-function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "" }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string }) {
+function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     return (
         <>
@@ -956,6 +1037,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
                     labels={getSearchLabels(config)}
+                    {...(catalog ? { showPrices: false } : {})}
                 />
             )}
             <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
@@ -981,7 +1063,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} />
                     ))}
                 </div>
             )}
@@ -992,7 +1074,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
     );
 }
 
-function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string }) {
+function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability, catalog = false }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string; catalog?: boolean }) {
     const shopUrl = prefixes.shop || "/magazin";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     return (
@@ -1006,13 +1088,14 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
                     labels={getSearchLabels(config)}
+                    {...(catalog ? { showPrices: false } : {})}
                 />
             )}
             <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
                 <h1 className="text-3xl font-bold tracking-tight mb-4">Shop</h1>
 
-            {/* Availability Filter */}
-            <div className="flex flex-wrap gap-2 mb-4">
+            {/* Availability Filter (none on a catalog site) */}
+            {!catalog && <div className="flex flex-wrap gap-2 mb-4">
                 <Link
                     href={`${basePath}${shopUrl}`}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!availability ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
@@ -1025,7 +1108,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                 >
                     In Stock
                 </Link>
-            </div>
+            </div>}
 
             {/* Category Navigation */}
             {categories.length > 0 && (
@@ -1045,7 +1128,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} />
                     ))}
                 </div>
             )}
@@ -1056,7 +1139,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
     );
 }
 
-function SearchPageView({ query, products, total, page, config, prefixes, basePath = "" }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string }) {
+function SearchPageView({ query, products, total, page, config, prefixes, basePath = "", catalog = false }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const strings = getCommerceStrings(config);
@@ -1071,6 +1154,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
                     apiUrl={apiUrl}
                     contentMaxWidth={siteWidth}
                     labels={getSearchLabels(config)}
+                    {...(catalog ? { showPrices: false } : {})}
                 />
             )}
             <main className={`${siteWidth} mx-auto py-12 px-6`}>
@@ -1094,7 +1178,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} />
                     ))}
                 </div>
             )}

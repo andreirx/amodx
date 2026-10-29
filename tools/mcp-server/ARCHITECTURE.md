@@ -10,10 +10,14 @@ A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop.
 
 ```
 src/
-└── index.ts          # MCP server: all 73 tools, block schemas, API helpers
+├── index.ts          # MCP server: all 73 tools, block schemas, API helpers
+└── tool-shapes.ts    # PURE request bodies / output lines of create_tenant, create_product, list_products
+                      #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested)
 
 scripts/
 └── route-coverage.ts # Drift oracle (npm test) — see "Drift oracle"
+test/
+└── tool-shapes.test.ts # node:test rows on tool-shapes.ts (npm test, after the drift oracle)
 routes.json           # Live API Gateway route table snapshot (operator-refreshed)
 
 .storage/             # Browser auth states per platform (gitignored)
@@ -41,7 +45,7 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | Tool | Method | Purpose |
 |------|--------|---------|
 | `list_tenants` | GET /tenants | List all sites |
-| `create_tenant` | POST /tenants | Create new site |
+| `create_tenant` | POST /tenants | Create new site; `catalog_mode` creates a catalog site (no prices, stock or ordering — fixed at creation, CAT-MODE-1) |
 
 ### Strategy & Context
 | Tool | Method | Purpose |
@@ -68,8 +72,8 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 ### Products (catalog — admin CRUD lives in `CatalogApi`)
 | Tool | Method | Purpose |
 |------|--------|---------|
-| `list_products` | GET /products | List all products |
-| `create_product` | POST /products | Create new product |
+| `list_products` | GET /products | List all products (the price part is printed only when the product has a price — catalog sites have none) |
+| `create_product` | POST /products | Create new product; `price` and `image_link` optional in the tool — the backend requires both on a shop site and refuses `price` on a catalog site (CAT-MODE-1); an empty value is omitted, never sent as `""` |
 | `get_product` | GET /products/{id} | Read one product |
 | `update_product` | GET + PUT /products/{id} | Read-merge-write update (see Key Patterns) |
 | `delete_product` | DELETE /products/{id} | Delete product and its category links |
@@ -187,7 +191,9 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 
 ## Drift oracle
 
-`npm test` runs `scripts/route-coverage.ts` (tsx). It reads `src/index.ts` as text — no import, no `.env`, no network — and checks it against `routes.json`.
+`npm test` runs `scripts/route-coverage.ts` (tsx), then `test/tool-shapes.test.ts` (`node --import tsx --test`;
+the catalog-mode payload and output rows: `create_tenant` `catalogMode`, no `imageLink`/`price` key when absent,
+no `undefined` in a priceless `list_products` line). The drift oracle reads `src/index.ts` as text — no import, no `.env`, no network — and checks it against `routes.json`.
 
 - **routes.json** — the live route table: output of `aws apigatewayv2 get-routes --api-id <prod api id> --query "Items[].RouteKey"`, with `generatedAt`, `stage`, `apiId` and the command. **Refresh duty:** after every backend route change the operator re-runs the command, replaces `routes`, and runs `npm test`.
 - **Extraction:** every `axios.<method>(` call whose first argument is a `${API_URL}/…` template literal, or an identifier bound by a `const <id> = …;` holding such literals (the `const url = cond ? … : …` pattern). `${…}` segments become wildcards that match a `{param}` route segment by position; the query string is dropped.
@@ -212,7 +218,7 @@ The `add_block` tool supports 20 block types (18 custom plugins + 2 Tiptap built
 cd tools/mcp-server
 npm run build          # Compile TypeScript
 npm run setup          # Inject into Claude Desktop config
-npm test               # Route-coverage drift oracle
+npm test               # Route-coverage drift oracle + tool-shapes rows
 ```
 
 `setup.ts` locates the Claude Desktop config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS) and writes the server entry with environment variables.
