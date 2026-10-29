@@ -334,3 +334,17 @@ Mutations (EXECUTED, each restored):
   renderer carries (checkout/coupons).
 - **Follow-ups filed (ROADMAP):** `BUILD-ENV-1`, `LAYER2-CANON-1`; earlier: `CATPROD-CONSISTENCY-1`, the untested
   surfaces of § 7.6.
+
+### 7.9 Prod deploy (operator record, 2026-10-29)
+
+- **Pre-prod queries (human, read-only, prod `AmodxTable`):** tenants with `commerceEnabled: true` = `povesti-pe-biscuite`
+  only; non-boolean `commerceEnabled` = none; pre-existing `catalogMode` = none; orders per tenant (`GSI_Type`,
+  `Type = "Order"`) = none. The CM-D6 order guard therefore refuses no tenant that has orders.
+- **Deploy (human):** `npx cdk deploy AmodxStack` from `main` at `5b66d3d`, with `NEXT_PUBLIC_API_URL`,
+  `NEXT_PUBLIC_USER_POOL_ID`, `NEXT_PUBLIC_USER_POOL_CLIENT_ID` set to prod's stack outputs on the command line.
+- **Public checks (operator, HTTP only, ~19:30Z):** `bijup.com/`, `blog.bijup.com/`, `bijup.com/robots.txt` → 200;
+  `d111wtnnjzzsb1.cloudfront.net/_site/povesti-pe-biscuite` and its `/checkout`, `/cart`, `/shop`, `/sitemap.xml`,
+  `/openai-feed` → 200. The checkout page's flight payload carries `"apiUrl":"https://vppjxqrc3c.execute-api.eu-central-1.amazonaws.com/"`
+  (prod's API, non-empty) — the empty-API-URL defect of the 2026-10-28 renderer is repaired. The commerce tenant
+  still renders prices (`/shop`: 50 `RON` occurrences) and still serves its product feed (JSON array, priced items).
+- No catalog tenant exists on prod yet; the catalog surfaces were proven on staging (§ 7.8, spec § 8.20).
