@@ -70,3 +70,59 @@ failed`) over a fetcher port, tested without the network. No new CDK resources (
 
 `docs/slices/catalog-mode-1.md` § 4 (CM-D2, CM-D7), § 3.4 (derived fields), § 8.5; `backend/src/lib/image-upload.ts`,
 `backend/src/lib/media-map.ts`, `backend/src/import/{media,wordpress}.ts`; `docs/slices/cat-import-1.md` § 2.8 (report).
+
+## 7. Launch amendment CIM-A1 (human rulings 2026-10-30; operator evidence)
+
+**Evidence (operator, 2026-10-30, verified TLS from the operator's machine).** The enriched files carry: BOEN 310
+image cells → 203 distinct URLs, all on `https://coreapi.boen.com`; ALPOD 1214 → 793 on `https://www.alpod.eu`; ITC
+531 → 366 on `https://www.arcedition.com`. ALPOD and ITC samples answer `200 image/jpeg`, 30–275 KB, 0.12–0.28 s.
+Every BOEN request fails: the host presents `CN=boen.com` (SAN `boen.com`, `*.boen.com`, issuer Buypass Class 2 CA 2,
+serial `2E16B6566C364B12C74A`), valid `2019-02-20` → `2021-02-20`; Node `fetch` fails with `CERT_HAS_EXPIRED`, and a
+browser refuses it too — the BOEN images that `cat-import-1` stores as producer URLs do not display today. The same
+path on `http://coreapi.boen.com`, `https://www.boen.com` and `https://boen.com` answers `404 application/json`.
+Whether `coreapi.boen.com` still serves the files is not known (not checked: a download without certificate checks
+was not run).
+
+**CIM-A1-1 — where the copy runs: browser batches (human).** A distinct-source copy of ALPOD's 793 images takes
+minutes; the HTTP API answers 503 after 30 s. The copy runs as the media importer's pattern does
+(`backend/src/import/media.ts`: one bounded batch per request, the admin page calls again until `complete`):
+- route `POST /import/glam-pricelist/images`, body `{ producer, sheet }` (the same normalisation as the import, so
+  the same `importSource`); the server reads the set by `importSource` itself — it never takes product ids or URLs
+  from the request;
+- each request processes distinct sources not yet copied, stops starting new sources at a time budget so that the
+  whole request ends inside 30 s, records each success in `MEDIAMAP#` at once, then writes one conditional
+  `UpdateCommand` per product it touched (successes → the CDN URL; failures → the option's `imageLink` removed; the
+  derived fields recomputed by the one § 3.4 rule); it answers per-source results, progress and `complete`;
+- termination: every processed source leaves the set's producer URLs (rewritten or removed), so each request
+  shrinks the remaining work; a closed tab leaves producer URLs, and the next "copy images" resumes (copied sources
+  come from `MEDIAMAP#` without a fetch);
+- after a successful import the admin page starts the batches by itself, shows progress, and adds the image section
+  to the report; the page also offers "copy images" for a pricelist without an import in the same session;
+- scope `catalog:write`, the same as the import; MCP tool: not in this slice (follow-up `CAT-IMAGES-MCP-1`; the
+  route is listed in `tools/mcp-server/routes.json` as the live route table);
+- infra: the route, its integration and its invoke permission in the parent stack (three resources, like
+  `cat-import-1`), served by the existing `GlamPricelistImportFunc`, which gains read/write on the uploads bucket
+  and the `UPLOADS_BUCKET` / `UPLOADS_CDN_URL` variables — no new function. § 4's "No new CDK resources" reads:
+  no new function, bucket or pipeline. Named gain: the copy must write to the uploads bucket and must be reachable
+  by a route.
+- REJECTED: a background job (self-invoke + stored job/report record + status route) — more state to build and
+  review; its reward (survives a closed tab) is covered by resume.
+
+**CIM-A1-2 — BOEN's expired certificate: allowed by a pin (human: "allow expired cert for BOEN").** Implemented in
+its narrowest form inside the destination policy: a TLS connection whose certificate verification fails is refused,
+EXCEPT when all hold: the request host is exactly `coreapi.boen.com`; the verification error is exactly
+`CERT_HAS_EXPIRED`; the hostname check against the presented certificate passes; and the presented leaf
+certificate's SHA-256 fingerprint equals
+`4C:5E:21:C9:A9:2D:A3:1F:11:5C:15:38:EA:42:AB:49:9F:E0:1C:E2:0C:81:6C:D1:33:BE:88:39:66:42:6F:27`.
+One constant entry in `lib/image-upload.ts`, no configuration layer. Every other host, error or certificate is
+refused as before; the address policy, hop limit, timeout, size cap and magic-byte check apply unchanged. Risk
+accepted by the human: a party holding that certificate's (expired) private key could serve any image for that host.
+When BOEN renews its certificate, the normal path applies and the pin no longer matches anything. If the old server
+no longer serves the files, the sources fail with their HTTP status and the products are imageless (§ 2 item 5).
+
+**CIM-A1-3 — report kinds.** A failure without an HTTP answer (DNS, connect, TLS, timeout) is `failed` with the
+error code (e.g. `CERT_HAS_EXPIRED`, `ETIMEDOUT`) instead of status/content-type/bytes.
+
+**CIM-A1-4 — staging acceptance.** BOEN stays the acceptance pricelist: 203 distinct sources over 310 cells; the
+record states how many were ingested, cached, refused and failed, with reasons. The "dead URL" proof uses a staging
+copy of the BOEN file with one URL changed (operator-run).
