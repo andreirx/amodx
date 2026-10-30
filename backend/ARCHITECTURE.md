@@ -13,12 +13,23 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 src/
 ├── lib/                   # (selected modules; 18 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
+│   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
+│   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
+│   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
+│   │                      #   loopback / RFC 1918 / link-local / CGNAT / ULA / IPv6 link-local / unspecified /
+│   │                      #   IPv4-mapped-to-those → refused; connection to the checked address (host name kept
+│   │                      #   for SNI + certificate check); redirects by hand, ≤ 3; one 8 s deadline (all hops +
+│   │                      #   body); 10 MiB cap; magic bytes jpeg/png/webp decide the stored type. One TLS
+│   │                      #   exception: the coreapi.boen.com expired-certificate pin (CIM-A1-2). Users:
+│   │                      #   import/media, import/wordpress (downloadAndUploadImage, throws), import/glam-images
+│   │                      #   (copyImageToTenantMedia, result sum type). GIF/SVG sources are now refused.
 │   ├── catalog-product.ts # CATALOG-MODE-1 product write boundary: readTenantMode() (ConsistentRead tenant mode,
 │   │                      #   null = missing → caller answers 404), checkProductWrite() (PURE: catalog tenant →
 │   │                      #   refuse price/salePrice/volumePricing/priceOverride/personalizations; other tenants →
 │   │                      #   price + imageLink required; importSource products → one variant group, unique
 │   │                      #   labels, derived imageLink/additionalImageLinks). Users: products/create, update,
-│   │                      #   import/woocommerce (mode read only), import/glam-pricelist (both)
+│   │                      #   import/woocommerce (mode read only), import/glam-pricelist (both);
+│   │                      #   withDerivedGallery() (the § 3.4 rule) exported for import/glam-images (CAT-IMAGES-1)
 │   ├── catprod.ts         # CATPROD#<categoryId>#<productId> projections (the card fields). writeCatProductItems /
 │   │                      #   deleteCatProductItems (BatchWrite, responses discarded) and queryCatProducts (one
 │   │                      #   page) as before; CAT-IMPORT-1 adds listCatProductIds (complete, ConsistentRead) and
@@ -146,7 +157,8 @@ src/
 ├── webhooks/
 │   └── paddle.ts          # POST /webhooks/paddle (payment fulfillment + SES email)
 └── import/
-    ├── wordpress.ts       # WordPress XML import handler
+    ├── wordpress.ts       # WordPress XML import handler (featured-image copy under the image destination policy;
+    │                      #   unreachable today: wxr-parser.ts never sets featuredImage)
     ├── wxr-parser.ts      # WXR XML parser utility
     ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
     ├── woocommerce.ts     # POST /import/woocommerce — product CSV import; refuses a catalog tenant (403) and
@@ -165,15 +177,27 @@ src/
     │                      #   create absent categories (attribute_not_exists, never deleted) → create → reconcile
     │                      #   every touched category (503 + incompleteCategories when the retry bound is
     │                      #   exhausted). Any failure → 500 naming the step. Dry run writes nothing (not even the
-    │                      #   CDN marker). Scope catalog:write
+    │                      #   CDN marker). Scope catalog:write. The same function serves
+    │                      #   POST /import/glam-pricelist/images: `handler` dispatches on routeKey (exhaustive)
+    ├── glam-images.ts     # POST /import/glam-pricelist/images (CAT-IMAGES-1) — body { producer, sheet }; copies the
+    │                      #   sheet's producer option images into tenant media, ONE BOUNDED BATCH per request (the
+    │                      #   admin page repeats until `complete`): set = PRODUCT# query selected by importSource;
+    │                      #   MEDIAMAP# read once (hits = `cached`, no fetch), each copy recorded at once; no new
+    │                      #   copy after 12 s, no new product update after 24 s (except the first); one UpdateCommand
+    │                      #   per touched product with attribute_exists(PK) (cancelled → reported, no CATPROD#
+    │                      #   write), failed sources REMOVED from their option, derived fields by § 3.4; then the
+    │                      #   CATPROD# rebuild. withInvalidation. Scope catalog:write
     ├── glam/              # CAT-IMPORT-1 PURE core (no I/O): parse.ts (RFC 4180, misplaced quotes refused; 12
     │                      #   columns by index, a non-12-cell record refuses the file; the row type has NO field
     │                      #   for columns 2–5; columns 3–4 = prices never read; columns 2/5 = producer codes read
     │                      #   only to drop every specs line holding one as a whole token), group.ts (key
     │                      #   normalisation trim→collapse→lower→NFC, U+001F rule, styles, options merged on equal
     │                      #   label + equal image cell, collision-aware labels and slugs), map.ts (upload
-    │                      #   identifier rule, importSource, GlamStyleDraft DTO, report counts)
-    ├── media.ts           # POST /import/media — bulk media import
+    │                      #   identifier rule, importSource, GlamStyleDraft DTO, report counts); images.ts
+    │                      #   (CAT-IMAGES-1: sources + holders, decision per source, per-product rewrite with the
+    │                      #   § 3.4 rule injected, termination measure)
+    ├── media.ts           # POST /import/media — bulk media import (copies under the image destination policy;
+    │                      #   a refused/failed source → errors[])
     ├── reviews.ts         # POST /import/reviews (rev-2b) — attestation-gated bulk review import.
     │                      #   Import-family instance #3 (own NodejsFunction). ORDER (all validation
     │                      #   is read-only BEFORE the first write): parse source → decode+bound the
@@ -209,7 +233,7 @@ Checked in this order by `auth/authorizer.ts`:
 3. **Service key** (SERVICE-ACCOUNT-1) — `x-api-key` starting `amx_sk_`. One consistent `GetItem` on the lookup item
    keyed by `sha256(secret)` (`lib/service-keys.ts`); absent (unknown or revoked) → deny. Then the route allowlist
    `SERVICE_ROUTE_SCOPES` (`policy.ts`: `GET /products` → `catalog:read`, `GET /leads` → `leads:read`,
-   `POST /import/glam-pricelist` → `catalog:write`): a route not in
+   `POST /import/glam-pricelist` and `POST /import/glam-pricelist/images` → `catalog:write`): a route not in
    the table, a missing scope, or an `x-tenant-id` other than the key's tenant → deny, before any Lambda runs.
    Otherwise → `{sub: "service:<keyId>", role: "SERVICE", tenantId, scopes: "a,b", keyId}`; the first use per UTC
    day updates `lastUsedAt` and publishes `SERVICE_KEY_USED` (best effort). A service key never falls through to 4–5.
@@ -320,7 +344,8 @@ test live here, both credential-free:
    neither `lib/db.ts` nor an AWS SDK client. Today: `lib/revalidate-paths.ts` (the ISR purge-path
    rule, `cache-2`), `lib/edge-invalidation.ts` (the fast-lane coalescing rule, `cache-4a` —
    dedupe + the `/*` collapse over 30 distinct paths) and `import/glam/` (CAT-IMPORT-1 parser, grouping and
-   mapper; `test/unit/glam-import-core.test.ts`, incl. the BOEN acceptance fixture). These exist partly *as* pure test seams,
+   mapper; `test/unit/glam-import-core.test.ts`, incl. the BOEN acceptance fixture; CAT-IMAGES-1 `images.ts`,
+   `test/unit/glam-images-core.test.ts`). These exist partly *as* pure test seams,
    extracted from AWS-touching callers precisely so the rule can be pinned here.
 
 2. **AWS-boundary modules — the SDK/`db` boundary is mocked at module load (`vi.mock`), so no

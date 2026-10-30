@@ -227,7 +227,7 @@ async function processPost(
         } else if (UPLOADS_BUCKET && UPLOADS_CDN_URL) {
             try {
                 featuredImageUrl = await downloadAndUploadImage(
-                    tenantId, post.featuredImage, UPLOADS_BUCKET, UPLOADS_CDN_URL,
+                    tenantId, post.featuredImage, UPLOADS_BUCKET, UPLOADS_CDN_URL, "wordpress-importer",
                 );
             } catch (error) {
                 console.warn(`Failed to download featured image for "${post.title}":`, error);

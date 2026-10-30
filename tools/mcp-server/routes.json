@@ -74,6 +74,7 @@
     "POST /email/dns-check",
     "POST /forms",
     "POST /import/glam-pricelist",
+    "POST /import/glam-pricelist/images",
     "POST /import/media",
     "POST /import/reviews",
     "POST /import/woocommerce",

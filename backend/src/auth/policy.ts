@@ -16,6 +16,7 @@ export const SERVICE_ROUTE_SCOPES: Readonly<Record<string, ServiceKeyScope>> = O
     "GET /products": "catalog:read",
     "GET /leads": "leads:read",
     "POST /import/glam-pricelist": "catalog:write",
+    "POST /import/glam-pricelist/images": "catalog:write",
 });
 
 /**

@@ -68,6 +68,7 @@ async function processBatch(
                 attachment.url,
                 UPLOADS_BUCKET,
                 UPLOADS_CDN_URL,
+                "wordpress-importer",
             );
             await writeMediaMapEntry(tenantId, attachment.url, newUrl);
             return newUrl;

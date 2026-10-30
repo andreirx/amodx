@@ -15,6 +15,7 @@ import { publishAudit } from "../lib/events.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { parseGlamCsv } from "./glam/parse.js";
 import { checkUpload, planGlamImport, type GlamImportPlan, type GlamStyleDraft, type GlamUpload } from "./glam/map.js";
+import { imagesHandler } from "./glam-images.js";
 
 /**
  * CAT-IMPORT-1 — `POST /import/glam-pricelist[?dryRun=1]`: one glam enriched pricelist CSV → one storefront product
@@ -29,7 +30,8 @@ import { checkUpload, planGlamImport, type GlamImportPlan, type GlamStyleDraft, 
  *   → lock (409) → category lookup, an occupied category key (409) → previous set (consistent query) → delete it →
  *   create absent categories → create products → reconcile touched categories (503 `incompleteCategories` when the retry bound is
  *   exhausted) → 200 report. Any failure → 500 naming the step; the lock is released in `finally` only if acquired.
- * The pure core (`./glam/`) decides what to write; this file only reads and writes.
+ * The pure core (`./glam/`) decides what to write; this file only reads and writes. The same function also serves
+ * `POST /import/glam-pricelist/images` (CAT-IMAGES-1, `./glam-images.ts`): `handler` dispatches on `routeKey`.
  */
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
@@ -222,8 +224,28 @@ const _handler: Handler = async (event) => {
 
 // Dry runs write nothing — not even the CDN marker that `withInvalidation` writes after a 2xx answer.
 const invalidating = withInvalidation(_handler);
-export const handler: Handler = (event, context, callback) =>
-    isDryRun(event) ? _handler(event, context, callback) : invalidating(event, context, callback);
+
+/** The routes this function serves (infra/lib/api.ts): the import, and the image copy of CAT-IMAGES-1 (glam-images.ts). */
+const IMPORT_ROUTE = "POST /import/glam-pricelist";
+const IMAGES_ROUTE = "POST /import/glam-pricelist/images";
+type GlamRoute = typeof IMPORT_ROUTE | typeof IMAGES_ROUTE;
+const isGlamRoute = (routeKey: string): routeKey is GlamRoute => routeKey === IMPORT_ROUTE || routeKey === IMAGES_ROUTE;
+
+export const handler: Handler = (event, context, callback) => {
+    const route = event.routeKey;
+    if (!isGlamRoute(route)) return Promise.resolve(json(404, { error: `This function does not serve ${route}.` }));
+    switch (route) {
+        case IMPORT_ROUTE:
+            return isDryRun(event) ? _handler(event, context, callback) : invalidating(event, context, callback);
+        case IMAGES_ROUTE:
+            return imagesHandler(event, context, callback);
+        default: {
+            // Exhaustiveness: a new GlamRoute member makes `route` not `never` here → compile error.
+            const unhandled: never = route;
+            throw new Error(`Unhandled route ${String(unhandled)}`);
+        }
+    }
+};
 
 // ── The lock (spec § 3.4 "Lock"; conditional-write pattern of backend/src/lib/service-keys.ts) ─────────────────────
 

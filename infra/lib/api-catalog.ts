@@ -271,19 +271,27 @@ export class CatalogApi extends NestedStack {
             resources: [`${props.privateBucket.bucketArn}/review-staging/*`],
         }));
 
-        // --- GLAM PRICELIST IMPORT (CAT-IMPORT-1) ---
+        // --- GLAM PRICELIST IMPORT (CAT-IMPORT-1) + ITS IMAGE COPY (CAT-IMAGES-1) ---
         // Instance #4 of the import family. Timeout 15 min = the import lock's lifetime (LOCK_DURATION_MS in
         // backend/src/import/glam-pricelist.ts; spec catalog-mode-1 § 3.4): a lock past `expiresAt` belongs to a
-        // job that can no longer run. Must stay ≤ that duration. DynamoDB only — no S3, no revalidation secret
-        // (the CDN is marked by `withInvalidation`, as the WooCommerce importer does).
+        // job that can no longer run. Must stay ≤ that duration. No revalidation secret (the CDN is marked by
+        // `withInvalidation`, as the WooCommerce importer does). CAT-IMAGES-1 (slice § 7 CIM-A1-1): the same function
+        // serves POST /import/glam-pricelist/images (dispatch on routeKey) and copies producer images into the uploads
+        // bucket — hence the bucket grant and the UPLOADS_* variables, the same shape as MediaImportFunc above.
         this.glamPricelistImportFunc = new nodejs.NodejsFunction(this, 'GlamPricelistImportFunc', {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/import/glam-pricelist.ts'),
             handler: 'handler',
             timeout: cdk.Duration.minutes(15),
             memorySize: 1024,
+            environment: {
+                ...nodeProps.environment,
+                UPLOADS_BUCKET: props.uploadsBucket.bucketName,
+                UPLOADS_CDN_URL: props.uploadsCdnUrl,
+            },
         });
         table.grantReadWriteData(this.glamPricelistImportFunc);
+        props.uploadsBucket.grantReadWrite(this.glamPricelistImportFunc);
 
         // Grant EventBus PutEvents to every Lambda in THIS stack (publishAudit). The parent's
         // identical loop over its own children (api.ts) no longer reaches these functions once they

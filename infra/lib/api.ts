@@ -376,6 +376,13 @@ export class AmodxApi extends Construct {
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('GlamPricelistImportInt', catalog.glamPricelistImportFunc),
         });
+        // CAT-IMAGES-1 (slice § 7 CIM-A1-1): the image copy, one bounded batch per request, served by the SAME function
+        // (it dispatches on routeKey). Route + integration + invoke permission here, like the import. `catalog:write`.
+        this.httpApi.addRoutes({
+            path: '/import/glam-pricelist/images',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('GlamPricelistImagesInt', catalog.glamPricelistImportFunc),
+        });
 
         // --- TENANTS ---
         const createTenantFunc = new nodejs.NodejsFunction(this, 'CreateTenantFunc', {

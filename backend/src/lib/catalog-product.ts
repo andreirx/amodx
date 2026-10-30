@@ -106,7 +106,7 @@ function monetaryFieldOf(product: Record<string, any>): string | null {
  * The § 3.4 derivation rule: `imageLink` = the image of the first option that has one; `additionalImageLinks` = the
  * other distinct option images, in option order. No option image → the product has no image (key absent, CM-D7).
  */
-function withDerivedGallery(product: Record<string, any>, options: any[]): Record<string, any> {
+export function withDerivedGallery(product: Record<string, any>, options: any[]): Record<string, any> {
     const images: string[] = [];
     for (const option of options) {
         if (option.imageLink !== undefined && !images.includes(option.imageLink)) images.push(option.imageLink);

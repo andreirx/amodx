@@ -980,9 +980,10 @@ describe('ReviewImportFunc — rev-2b import least-privilege', () => {
 //     integrations retargeted in place to the moved functions via a cross-stack Fn::GetAtt.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety invariant)', () => {
-    // The 15 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
-    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 4 (the 4th,
-    // POST /import/glam-pricelist, added by CAT-IMPORT-1 with its function in CatalogApi).
+    // The 16 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
+    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 5 (the 4th,
+    // POST /import/glam-pricelist, added by CAT-IMPORT-1 with its function in CatalogApi; the 5th,
+    // POST /import/glam-pricelist/images, added by CAT-IMAGES-1 on the SAME function — 15 functions, 16 routes).
     const CATALOG_ROUTE_KEYS = [
         'POST /content',
         'GET /content',
@@ -999,13 +1000,14 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         'POST /import/media',
         'POST /import/reviews',
         'POST /import/glam-pricelist',
+        'POST /import/glam-pricelist/images',
     ];
 
     test('(split1-1) CatalogApi holds EXACTLY the 15 catalog Lambda functions', () => {
         // The heavy resources that moved out of the parent template to buy headroom under the 500
         // ceiling. Exactly 15 — content 6 + products 5 + import 4 (CAT-IMPORT-1 added the glam
-        // pricelist import) — so a stray function moved in (count > 15) or one left behind
-        // re-inflating the parent (count < 15) both fail here.
+        // pricelist import; CAT-IMAGES-1 added a ROUTE to that function, no function) — so a stray
+        // function moved in (count > 15) or one left behind re-inflating the parent (count < 15) both fail here.
         expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(15);
     });
 
@@ -1024,6 +1026,39 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
             .filter(([id]) => id.includes('GlamPricelistImportFunc'));
         expect(fns).toHaveLength(1);
         expect((fns[0][1] as any).Properties.Timeout).toBeLessThanOrEqual(15 * 60);
+    });
+
+    test('(cat-images-1) POST /import/glam-pricelist/images integrates the SAME GlamPricelistImportFunc, which has the uploads bucket grant + UPLOADS_* env of MediaImportFunc', () => {
+        // Slice cat-images-1 § 7 CIM-A1-1: no new function; the import function serves the image copy (it dispatches
+        // on routeKey) and writes to the uploads bucket. The reference shape is MediaImportFunc (same bucket, same
+        // grantReadWrite, same two variables), compared rather than restated so the two cannot drift apart silently.
+        const routes = Object.values(template.findResources('AWS::ApiGatewayV2::Route'))
+            .filter((r: any) => r.Properties.RouteKey === 'POST /import/glam-pricelist/images');
+        expect(routes).toHaveLength(1);
+        const integrationId = JSON.stringify((routes[0] as any).Properties.Target).match(/"Ref":"([^"]+)"/)![1];
+        const integration = template.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+        expect(JSON.stringify(integration.Properties.IntegrationUri)).toMatch(/GlamPricelistImportFunc/);
+
+        const fn = (part: string) => {
+            const found = Object.entries(catalogTemplate.findResources('AWS::Lambda::Function')).filter(([id]) => id.includes(part));
+            expect(found).toHaveLength(1);
+            return (found[0][1] as any).Properties;
+        };
+        const s3Statements = (part: string) => {
+            const role = fn(part).Role['Fn::GetAtt'][0] as string;
+            return Object.values(catalogTemplate.findResources('AWS::IAM::Policy'))
+                .filter((p: any) => (p.Properties.Roles as any[]).some((r) => r.Ref === role))
+                .flatMap((p: any) => p.Properties.PolicyDocument.Statement as any[])
+                .filter((st) => (Array.isArray(st.Action) ? st.Action : [st.Action]).some((a: string) => a.startsWith('s3:')));
+        };
+        const glam = fn('GlamPricelistImportFunc');
+        const media = fn('MediaImportFunc');
+        for (const name of ['UPLOADS_BUCKET', 'UPLOADS_CDN_URL']) {
+            expect({ name, value: glam.Environment.Variables[name] }).toEqual({ name, value: media.Environment.Variables[name] });
+        }
+        const glamS3 = s3Statements('GlamPricelistImportFunc');
+        expect(glamS3.length).toBeGreaterThan(0);
+        expect(glamS3).toEqual(s3Statements('MediaImportFunc'));
     });
 
     test('(split1-2) CatalogApi contains NO route, integration, or Lambda permission — those stay in the parent', () => {
@@ -1045,7 +1080,7 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         expect(catalogTemplate.findResources('AWS::Cognito::UserPool')).toEqual({});
     });
 
-    test('(split1-4) the PARENT keeps all 15 catalog route keys, each wired INTO a CatalogApi function', () => {
+    test('(split1-4) the PARENT keeps all 16 catalog route keys, each wired INTO a CatalogApi function', () => {
         // Both halves of the v2 fix, together: (a) every catalog route key is still in the PARENT
         // template with its key unchanged — no collision on redeploy — and (b) each of those routes
         // now integrates a function that lives in the CatalogApi NestedStack. (b) is what proves the
@@ -1126,7 +1161,10 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         // Counts in this synth (CAT-IMPORT-1, 2026-10-30): 398 + 53 + 13 = 464 and 45 + 15 + 1 = 61 — the
         // glam import added Route + Integration + Permission to the parent and Function + Role + Policy
         // (+ its managed log group) to CatalogApi; the parent's growth since opennext-1c is earlier slices'.
-        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 398 + 53 + 13 = 464
+        // Counts in this synth (CAT-IMAGES-1, 2026-10-30): 401 + 53 + 13 = 467 and 45 + 15 + 1 = 61 — the image
+        // copy route added Route + Integration + Permission to the parent; CatalogApi gained no resource (the bucket
+        // grant is statements in the function's existing Policy, the variables are function properties).
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 401 + 53 + 13 = 467
         const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 45 + 15 + 1 = 61
 
         // Pre-split parent (email-2, measured 2026-08-10 against the real staging synth) = 501 = 446

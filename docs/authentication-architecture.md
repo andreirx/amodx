@@ -158,7 +158,7 @@ shown once and only `sha256(secret)` is stored (`backend/src/lib/service-keys.ts
 1. One strongly consistent `GetItem` on `SVCKEYHASH#<sha256(secret)>`. Absent = unknown or revoked → deny (API
    Gateway answers 403). No secret comparison exists: the hash is the read key.
 2. Route allowlist `SERVICE_ROUTE_SCOPES` in `backend/src/auth/policy.ts` — `GET /products` → `catalog:read`,
-   `GET /leads` → `leads:read`, `POST /import/glam-pricelist` → `catalog:write` (CAT-IMPORT-1). Route not in the table, scope not held, or `x-tenant-id` absent or ≠ the key's
+   `GET /leads` → `leads:read`, `POST /import/glam-pricelist` → `catalog:write` (CAT-IMPORT-1), `POST /import/glam-pricelist/images` → `catalog:write` (CAT-IMAGES-1). Route not in the table, scope not held, or `x-tenant-id` absent or ≠ the key's
    tenant → deny. This holds for every route behind the API's Lambda authorizer, whether or not its handler
    calls `requireRole`. Only routes configured `authorizationType: NONE` (`noAuth: true` in the nested stacks'
    `addRoute`) skip the authorizer; a key there is not evaluated and confers nothing over anonymous. The `/public/`
