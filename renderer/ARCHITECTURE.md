@@ -48,7 +48,8 @@ src/
 │   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
-    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts
+    ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing
+    ├── facets.ts                              # PURE storefront-filter rules of a catalog site (cat-facets-1) — see § Catalog listings and filters
     ├── tenant-directory.ts                    # EDGE runtime: "is this host a wired tenant?" for middleware (own client — see file header)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
     ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
@@ -280,9 +281,9 @@ signal-pairing table below. Read `docs/caching-architecture.md` § *Open hazards
 cache-1* before deploying.
 
 `cache-3` also narrowed the query-string carve-out at the **edge**: the CloudFront cache key
-now allowlists only `page`, `q`, `availability`, `id`, `email`, `preview`, `nf`, so a
-campaign or tracking parameter on a warm URL is answered from that URL's entry without
-reaching the origin.
+now allowlists only `page`, `q`, `availability`, `id`, `email`, `preview`, `nf` — and, since
+`cat-facets-1`, `f` (catalog storefront filters) — so a campaign or tracking parameter on a
+warm URL is answered from that URL's entry without reaching the origin.
 
 **Both of middleware's rendering-mode signals have an edge counterpart, and they must stay
 paired.** Middleware only executes on a CloudFront miss, so each signal it discriminates on
@@ -290,7 +291,7 @@ has to be in the cache key or the corresponding request never reaches it:
 
 | Middleware signal | Cache-key counterpart |
 |---|---|
-| query string → twin | the 7-parameter query allowlist |
+| query string → twin | the 8-parameter query allowlist |
 | session cookie → twin | `x-has-session: 0\|1`, derived from the cookie jar by the viewer-request CloudFront Function |
 
 The session pairing is hazard **H3**, closed in `cache-3` revision 3. The function matches
@@ -335,10 +336,13 @@ The renderer reads directly from DynamoDB for performance (bypasses backend API)
 - `getProductReviews(tenantId, productId)` — approved reviews for one SKU (`REVIEW#<productId>#`)
 - `getSiteReviews(tenantId)` — approved SITE-scope reviews (`SITEREVIEW#`), business-level "about us"
 
-  Both project the raw rows (incl. the `images` metadata array) and keep the `#src` alias on the
+  Both review reads (`getProductReviews`, `getSiteReviews`) project the raw rows (incl. the
+  `images` metadata array) and keep the `#src` alias on the
   reserved word `source` (prod hotfix `fed5924` — an un-aliased `source` invalidates the whole
   projection and 500s the page). They resolve nothing themselves; photo resolution is § *Review
   images* below.
+- `getCatalogListing(tenantId, categoryId?)` — a CATALOG site's whole shop or category listing from the
+  tenant's `PRODUCT#` items (§ *Catalog listings and filters* below)
 
 **Error semantics — one rule, no exceptions inside this file** (human decision CACHE-1-D4,
 2026-07-26; widened by review-1 the same day). No helper here catches an AWS/SDK error, and
@@ -369,6 +373,55 @@ Two read paths outside this file keep different internals on purpose: `lib/tenan
 whole estate on a blip — the render repeats the lookup and throws anyway; and
 `lib/api-client.ts` (Secrets Manager) returns `""`, which its callers forward to the backend,
 which rejects it, so the route still answers a non-2xx rather than a 200 with empty data.
+
+## Catalog listings and filters (`lib/facets.ts`) — slice `cat-facets-1` (PROTOTYPE)
+
+Spec: `docs/slices/cat-facets-1.md` (rulings § 12, amendment § 13 "CF1-FACET-SET-2"); impl record
+`docs/slices/cat-facets-1-impl.md`. Maturity: **PROTOTYPE** until the staging evidence of spec § 8.4 is recorded.
+
+**Which sites.** Only `isCatalogMode(config)`. On every other site the shop and category pages call
+`getActiveProducts` / `getProductsByCategory` exactly as before (byte identity: rows `cm1-identity-*`).
+
+**Data path (ruling CF1-DATA-PATH = B).** A catalog shop or category page calls `getCatalogListing`: one `PRODUCT#`
+query of the tenant (every page followed), projection = the shop card fields + `status`, `brand`, `attributes`,
+`variants`. Membership is the old one: shop `status === "active"`; category `!status || status === "active"` and
+`categoryIds` contains the category id (the field the `CATPROD#` cards are derived from). Then
+`isProductAvailable`, then `sortOrder`, ties by `id` (= DynamoDB's SK order of both item families). Cost: the whole
+tenant per UNCACHED render — what the shop page of every tenant already reads; a bare page is still ISR + edge cached.
+
+**Filter rules (`lib/facets.ts`, pure, no I/O).** `buildFacetListing(base, f, path)` returns the filtered items, the
+shown facets with counts, and every href the panel may emit:
+- facet set, rebuilt per base set (§ 13): the producer (`brand`, URL key `producator`), the variant option values
+  (URL key `varianta`; `#<digits>` labels excluded), then every `attributes` key with ≥ 2 holders, a most frequent
+  value on ≥ 2 products and ≤ 40 distinct values — ordered by holders, ties by the value order; label = the key as
+  stored;
+- URL identity (operator ruling 2 on review-0): the inner key is `producator` for the producer, `varianta` for the
+  variant values, and `a.<key>` for EVERY attribute key — so attributes literally named `producator` / `varianta`
+  are facets of their own (`a.producator`, `a.varianta`); any other inner key is not a facet id and is dropped;
+- a facet is shown iff it has a selection or some value is held by some but not all products of the base set;
+  OR within a facet, AND across facets; counts are disjunctive (a facet's own selection does not reduce its counts);
+- URL state: ONE query parameter `f` holding the form-encoded selection (`?f=producator%3DBOEN`); the parse is total
+  (never throws); canonical form = producer, variant, then attribute ids by the value order; values by the value order;
+- selection lifetime (operator ruling 1 on review-0): a selected attribute key is applied and shown — chip and facet,
+  removable — whether or not it passes the repeat rule on the current base set, and even when no product holds it;
+  the repeat rule decides only which keys are OFFERED (a selected key that is not offered lists its selected values
+  only);
+- URL budget: no emitted href exceeds 6,144 UTF-8 bytes, measured on the final string; an add-link exists only when its
+  selection fits with 16 bytes left for `&page=`; an incoming selection that does not fit is not applied (notice).
+
+**Rendering (`SitePage.tsx`).** `FacetedListing` + `FacetPanel` are server components with no JavaScript: every value
+is a plain `<a rel="nofollow">` (never prefetched — `cf1-prefetch`), every facet a native `<details>`; on small screens
+the panel is one collapsed block (CSS-only checkbox toggle), on `lg` a left column. The grid slot and `Pagination`'s
+base URL are the only existing slots the catalog branch fills, so a non-catalog render is unchanged. `Pagination` takes
+an optional `maxHrefBytes` (catalog only). Copy is fixed Romanian (spec § 6).
+
+**Caching.** `f` is in the CloudFront cache-key allowlist (`infra/lib/renderer-hosting.ts`) for CORRECTNESS: a
+filtered URL reaches the origin and the `no-store` twin; filtered views are never stored at the edge or in ISR
+(`docs/caching-architecture.md` § the query-string allowlist; rows `cf1-not-stored`, `cf1-bare-intact`).
+
+Tests: `test/unit/facets.test.ts` (the rules, the URL form, the budget, with the 147 measured collection names);
+serving-contract rows `cf1-*` (`test/serving-contract/contract.test.mjs`, fixtures block `CF1`);
+`test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
 
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
 

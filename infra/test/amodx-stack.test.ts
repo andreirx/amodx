@@ -305,14 +305,14 @@ describe('RendererCachePolicy — the CloudFront cache key', () => {
         ]);
     });
 
-    test('(a2) query allowlist is EXACTLY the seven read parameters, in order', () => {
+    test('(a2) query allowlist is EXACTLY the eight read parameters, in order', () => {
         // `cache-3` replaced `queryStringBehavior: all()` with this allowlist: `all()` let any
         // `?utm_*`/`?fbclid`/attacker-chosen junk parameter mint a distinct entry and an SSR
         // Lambda invocation per unique value.
         //
         // The list is exactly the set of `query.*` reads in renderer/src — `page`, `q`,
-        // `availability`, `id`, `email` (components/SitePage.tsx), `preview` (the %5Fdyn twins)
-        // and `nf` (lib/not-found-handoff.ts). A parameter that changes the rendered
+        // `availability`, `id`, `email`, `f` (components/SitePage.tsx; `f` = catalog storefront
+        // filters, cat-facets-1), `preview` (the %5Fdyn twins) and `nf` (lib/not-found-handoff.ts). A parameter that changes the rendered
         // representation and is NOT here collapses onto the bare-path entry and, once that entry
         // is warm, is answered at the edge WITHOUT REACHING THE LAMBDA — middleware cannot
         // rescue it, because middleware runs at the origin.
@@ -332,6 +332,7 @@ describe('RendererCachePolicy — the CloudFront cache key', () => {
             'email',
             'preview',
             'nf',
+            'f',
         ]);
     });
 

@@ -550,7 +550,7 @@ function handler(event) {
             //       it, so the origin would render the bare-path representation for it
             //       anyway. That is a code-inspection claim, verified in
             //       renderer/src: the complete set of `query.*` reads in the render body is
-            //       `page`, `q`, `availability`, `id`, `email` (components/SitePage.tsx),
+            //       `page`, `q`, `availability`, `id`, `email`, `f` (components/SitePage.tsx),
             //       `preview` (both %5Fdyn twins) and `nf` (lib/not-found-handoff.ts) — i.e.
             //       exactly this list. The cacheable route itself passes `query={{}}`
             //       literally (it is in ISR mode and cannot await searchParams), so the
@@ -584,6 +584,15 @@ function handler(event) {
                 // 307 and redirects to itself: an infinite client redirect loop on every
                 // 404.
                 'nf',
+                // Storefront filters of a catalog site's shop and category pages
+                // (SitePage.tsx: `query.f`; spec docs/slices/cat-facets-1.md § 5). Rule (a):
+                // `f` changes the representation, so it MUST be keyed — without it a filtered
+                // URL collapses onto the warm bare entry and the visitor gets the UNFILTERED
+                // page. Keying it buys correctness, not caching: a URL with a query string is
+                // rendered by the `no-store` twin, so a filtered view is never stored (§ 5.3).
+                // One name carries every facet (nested form encoding), so new facets need no
+                // change here. 8 of the 10 query strings a cache policy accepts (AWS quota).
+                'f',
             ),
 
             // COOKIES: deliberately not in the key. Cookie VALUES are per-visitor, so keying

@@ -37,7 +37,7 @@ import {
     CM1_BASELINE_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
 import {
-    CM1, CM1_STALE_SLUG,
+    CM1, CM1_STALE_SLUG, CF1, ITEMS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1329,6 +1329,367 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(cm1-catalog-feed) the OpenAI feed is withheld (404) for a catalog site", async () => {
             assert.equal((await cm1Body("catalog", "/openai-feed")).status, 404);
+        });
+
+        // ── ROWS (cf1-*) — storefront filters of a catalog site (slice cat-facets-1-impl) ───────────────────────
+        // Spec docs/slices/cat-facets-1.md § 5.5, amended by § 13 (the facet set is data-driven: the producer, the
+        // variant values, then every `attributes` key that passes the repeat rule) and by the operator rulings on
+        // review-0 (docs/slices/cat-facets-1-impl.md): (1) a selected key is applied and shown whether or not it is
+        // offered; (2) URL identity — `producator`, `varianta` for the fixed facets, `a.<key>` for EVERY attribute key.
+        // Fixtures: `CF1` block of fixtures.mjs, on the catalog tenant. `next` target only, like the cm1 rows whose
+        // tenant they share. A failing row here is a change of the filter contract — read the spec section the row
+        // names before changing an assertion.
+        const cf1Get = (p) => request({ port: server.port, path: p, host: CM1.catalog.host });
+        const fParam = (pairs) => `?f=${encodeURIComponent(new URLSearchParams(pairs).toString())}`;
+        const unescapeHtml = (t) => t.replace(/<!-- -->/g, "").replace(/<[^>]*>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'")
+            .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        /** The HTML part of a response (the flight payload repeats the same strings inside scripts). */
+        const htmlOf = (body) => splitFlight(body).html;
+        /** Card slugs in page order (`ProductCard` links). */
+        const cardSlugs = (body) => [...htmlOf(body).matchAll(/href="\/product\/([^"]+)"/g)].map((m) => m[1]);
+        const totalOf = (body) => Number(/data-facet-total="(\d+)"/.exec(htmlOf(body))?.[1]);
+        /** One facet's value rows: [{ state, value, count, href }]; `null` when the facet is not in the HTML. */
+        function facetRows(body, id) {
+            const html = htmlOf(body);
+            const at = html.indexOf(`data-facet="${id}"`);
+            if (at < 0) return null;
+            const section = html.slice(at, html.indexOf("</details>", at));
+            return [...section.matchAll(/<(a|span)((?: [\w-]+="[^"]*")*) data-facet-value="([\w-]+)">(.*?)<\/\1>/g)].map((m) => {
+                const text = unescapeHtml(m[4]).replace(/^✓ /, "");
+                const [, value, count] = /^(.*) \((\d+)\)$/s.exec(text);
+                const href = /href="([^"]*)"/.exec(m[2])?.[1]?.replace(/&amp;/g, "&") ?? null;
+                return { state: m[3], value, count: Number(count), href };
+            });
+        }
+        const plainRows = (rows) => rows.map(({ state, value, count }) => ({ state, value, count }));
+        /** Selection chips: [{ text, href }]. */
+        const chipLinks = (body) => [...htmlOf(body).matchAll(/<li><(?:a|span)((?: [\w-]+="[^"]*")*) class="inline-block rounded-full[^"]*"[^>]*>(.*?)<\/(?:a|span)><\/li>/g)]
+            .map((m) => ({ text: unescapeHtml(m[2]).replace(/ ×$/, ""), href: /href="([^"]*)"/.exec(m[1])?.[1]?.replace(/&amp;/g, "&") ?? null }));
+        const chipsOf = (body) => chipLinks(body).map((c) => c.text);
+        const allHrefs = (body) => [...htmlOf(body).matchAll(/href="([^"]*)"/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+        /** The filter panel's own links (every `rel="nofollow"` anchor). */
+        const panelHrefs = (body) => [...htmlOf(body).matchAll(/<a href="([^"]*)" rel="nofollow"/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+        /** The pager's Previous / Next hrefs (`Pagination`, existing English copy). */
+        const pagerHref = (body, label) => new RegExp(`<a[^>]*href="([^"]*)"[^>]*>${label}</a>`).exec(htmlOf(body))?.[1]?.replace(/&amp;/g, "&") ?? null;
+        const bytes = (t) => Buffer.byteLength(t, "utf8");
+        const catalogProducts = ITEMS.filter((i) => i.PK === `TENANT#${CM1.catalog.id}` && i.SK.startsWith("PRODUCT#"));
+        const today = new Date().toISOString().split("T")[0];
+        /** `isProductAvailable` (lib/dynamo.ts), restated for the model of the two existing reads. */
+        const available = (p) => !(p.availableFrom && today < p.availableFrom) && !(p.availableUntil && today > p.availableUntil);
+        /** The shop membership and order of `getActiveProducts`: `status = active`, available, stable `sortOrder` sort
+         *  over the SK order DynamoDB returns (`PRODUCT#<id>`). */
+        const shopModel = (pred = () => true) => catalogProducts.filter((p) => p.status === "active" && available(p) && pred(p))
+            .sort((a, b) => (a.SK < b.SK ? -1 : 1)).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map((p) => p.slug);
+        /** The category membership and order of `getProductsByCategory`: the category's CATPROD# cards in SK order, its
+         *  status rule, `isProductAvailable` on the card, then the stable `sortOrder` sort. */
+        const categoryModel = (categoryId, pred = () => true) => ITEMS.filter((i) => i.PK === `TENANT#${CM1.catalog.id}` && i.SK.startsWith(`CATPROD#${categoryId}#`))
+            .sort((a, b) => (a.SK < b.SK ? -1 : 1))
+            .filter((c) => (!c.status || c.status === "active") && available(c) && pred(c))
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+            .map((c) => c.slug);
+        /** Every card of a listing, following the rendered Next links; returns the pages' bodies too. */
+        async function allPages(path) {
+            const pages = [];
+            for (let next = path; next; next = pagerHref(pages[pages.length - 1].body, "Next")) {
+                const res = await cf1Get(next);
+                assert.equal(res.status, 200, next);
+                pages.push({ path: next, body: res.body });
+                assert.ok(pages.length < 10, "pager loop");
+            }
+            return pages;
+        }
+        const serie = (n) => CF1.longValues[n - 1];
+
+        test("(cf1-filter) /shop?f=<producator=BOEN>: 200, no-store, exactly the BOEN cards, total line = their count", async () => {
+            const res = await cf1Get(`/shop${fParam([["producator", "BOEN"]])}`);
+            assert.equal(res.status, 200);
+            assert.match(res.header("cache-control"), /no-store/);
+            // Active BOEN products in id order; the status-less legacy BOEN product is not on the shop page.
+            assert.deepEqual(cardSlugs(res.body), ["stejar-natur", "stejar-rustic", "frasin-alb"]);
+            assert.equal(totalOf(res.body), 3);
+            assert.match(htmlOf(res.body), />3 produse</);
+            assert.deepEqual(chipsOf(res.body), ["Producător: BOEN"]);
+        });
+
+        test("(cf1-counts) /category/cf1-boen?f=<a.colecție=Planks 138 mm>: the disjunctive counts of § 4.1, exact", async () => {
+            const res = await cf1Get(`/category/cf1-boen${fParam([["a.colecție", "Planks 138 mm"]])}`);
+            assert.equal(res.status, 200);
+            assert.deepEqual(cardSlugs(res.body), ["stejar-natur", "stejar-rustic"]);
+            assert.equal(totalOf(res.body), 2);
+            // The selected facet's counts ignore its own selection.
+            assert.deepEqual(plainRows(facetRows(res.body, "a.colecție")), [
+                { state: "link", value: "Castle planks 209 mm", count: 2 },
+                { state: "selected", value: "Planks 138 mm", count: 2 },
+            ]);
+            // Every other facet is counted under colecție = Planks 138 mm; a zero count is disabled.
+            assert.deepEqual(plainRows(facetRows(res.body, "a.Wood")), [
+                { state: "zero", value: "Ash", count: 0 },
+                { state: "link", value: "Oak", count: 2 },
+                { state: "zero", value: "Walnut", count: 0 },
+            ]);
+            // `#1` is not a value; the `,` label is; the heading is the group name.
+            assert.deepEqual(plainRows(facetRows(res.body, "varianta")), [
+                { state: "link", value: "13,2x181x2200 mm", count: 1 },
+                { state: "link", value: "14x138x2200 mm", count: 2 },
+            ]);
+            assert.match(htmlOf(res.body), /data-facet="varianta"[^>]*><summary[^>]*>Format<\/summary>/);
+            assert.doesNotMatch(htmlOf(res.body), /#1 \(/);
+            // § 13 on the base set: `Article no.` (rule ii) and `Nordic swan` (rule i) not offered; `Certificates`,
+            // `unitate` and the producer (one value on every product) hidden. Order: variant, then keys by holders.
+            for (const hidden of ["a.Article no.", "a.Nordic swan", "a.Certificates", "a.unitate", "producator"]) assert.equal(facetRows(res.body, hidden), null, hidden);
+            const order = [...htmlOf(res.body).matchAll(/data-facet="([^"]+)"/g)].map((m) => m[1]);
+            assert.deepEqual(order, ["varianta", "a.colecție", "a.Wood"]);
+        });
+
+        test("(cf1-not-stored) the cf1-filter URL twice: both no-store, neither an ISR entry", async () => {
+            for (let i = 0; i < 2; i++) {
+                const res = await cf1Get(`/shop${fParam([["producator", "BOEN"]])}`);
+                assert.equal(res.status, 200);
+                assert.match(res.header("cache-control"), /no-store/);
+                assert.equal(res.header("x-nextjs-cache"), undefined, "a filtered view is never an ISR entry");
+            }
+        });
+
+        test("(cf1-bare-intact) bare /shop after a filtered request: the stored entry is a HIT with the full count and page 1", async () => {
+            await cf1Get("/shop");                                        // warm (MISS or HIT)
+            await cf1Get(`/shop${fParam([["producator", "ITC"]])}`);
+            const res = await cf1Get("/shop");
+            assert.equal(res.status, 200);
+            assert.equal(res.header("x-nextjs-cache"), "HIT");
+            const expected = shopModel();
+            assert.equal(expected.length, 42);
+            assert.deepEqual(cardSlugs(res.body), expected.slice(0, 24));
+            assert.equal(totalOf(res.body), 42);
+            assert.deepEqual(chipsOf(res.body), []);
+        });
+
+        test("(cf1-empty) a selection that matches nothing, and an unknown value: 200, the empty-result copy, the selection shown", async () => {
+            const none = await cf1Get(`/shop${fParam([["producator", "BOEN"], ["a.unitate", "ml"]])}`);
+            assert.equal(none.status, 200);
+            assert.match(htmlOf(none.body), /Niciun produs nu corespunde filtrelor alese\./);
+            assert.match(htmlOf(none.body), /data-facet-empty.*Șterge filtrele/s);
+            assert.deepEqual(cardSlugs(none.body), []);
+            assert.deepEqual(chipsOf(none.body), ["Producător: BOEN", "unitate: ml"]);
+            const unknown = await cf1Get(`/shop${fParam([["producator", "Nimeni"]])}`);
+            assert.equal(unknown.status, 200);
+            assert.match(htmlOf(unknown.body), /Niciun produs nu corespunde filtrelor alese\./);
+            assert.deepEqual(chipsOf(unknown.body), ["Producător: Nimeni"]);
+            assert.ok(facetRows(unknown.body, "producator").some((r) => r.state === "selected" && r.value === "Nimeni" && r.count === 0 && r.href === "/shop"));
+        });
+
+        test("(cf1-roundtrip) a value with , / ² and diacritics: the link the panel emits selects exactly that value", async () => {
+            const bare = await cf1Get("/category/cf1-itc");
+            const row = facetRows(bare.body, "a.Pile weight").find((r) => r.value === CF1.roundtripValue);
+            assert.ok(row && row.state === "link" && row.count === 2, JSON.stringify(row));
+            const res = await cf1Get(row.href);
+            assert.equal(res.status, 200);
+            assert.deepEqual(chipsOf(res.body), [`Pile weight: ${CF1.roundtripValue}`]);
+            assert.deepEqual(cardSlugs(res.body), ["mocheta-arc", "mocheta-shell"]);
+            assert.ok(facetRows(res.body, "a.Pile weight").some((r) => r.state === "selected" && r.value === CF1.roundtripValue));
+            // § 13 rule (iii): `Color` has 41 distinct values on this base set — not offered.
+            assert.equal(facetRows(res.body, "a.Color"), null);
+        });
+
+        test("(cf1-order) the catalog category page lists the CATPROD#-path membership in the CATPROD#-path order (§ 3.3 B)", async () => {
+            const expected = categoryModel("cf1-boen");
+            assert.deepEqual(expected, ["stejar-natur", "stejar-rustic", "frasin-alb", "nuc-vechi"]);
+            const res = await cf1Get("/category/cf1-boen");
+            assert.equal(res.status, 200);
+            assert.deepEqual(cardSlugs(res.body), expected);
+        });
+
+        test("(cf1-preserve) both listing branches, over every rendered page: the existing reads' membership and order — draft, future-start and expired products out, nonzero sortOrder last", async () => {
+            const never = ["placa-ciorna", "placa-viitoare", "placa-expirata"];
+            for (const [path, expected] of [
+                ["/category/cf1-many", categoryModel("cf1-many")],
+                [`/shop${fParam([["producator", "KRONO"]])}`, shopModel((p) => p.brand === "KRONO")],
+            ]) {
+                // The models are discriminating: 30 listed, the two lowest ids (sortOrder 2 and 1) last, three never.
+                assert.equal(expected.length, 30, path);
+                assert.deepEqual(expected.slice(-2), ["placa-02", "placa-01"], path);
+                for (const slug of never) assert.ok(!expected.includes(slug), `${path}: model lists ${slug}`);
+                const pages = await allPages(path);
+                assert.equal(pages.length, 2, path);
+                assert.deepEqual(pages.flatMap((p) => cardSlugs(p.body)), expected, path);
+                assert.equal(totalOf(pages[0].body), 30, path);
+            }
+        });
+
+        test("(cf1-pager) a filtered result over 24 products, followed through the rendered pager: exact cards, totals, kept selection, page 1 on change, hrefs ≤ 6,144 bytes", async () => {
+            const selected = [1, 2, 3, 4].map(serie);
+            const path = `/category/cf1-many${fParam(selected.map((v) => ["a.Serie", v]))}`;
+            const expected = categoryModel("cf1-many", (c) => {
+                const p = catalogProducts.find((q) => q.id === c.id);
+                return selected.includes(p.attributes.find((a) => a.key === "Serie").value);
+            });
+            assert.equal(expected.length, 28);
+            const pages = await allPages(path);
+            assert.equal(pages.length, 2);
+            assert.deepEqual(cardSlugs(pages[0].body), expected.slice(0, 24));
+            assert.deepEqual(cardSlugs(pages[1].body), expected.slice(24));
+            for (const { path: p, body } of pages) {
+                assert.equal(totalOf(body), 28, p);
+                assert.equal(chipsOf(body).length, 4, `${p}: the selection is kept on every page`);
+                for (const href of allHrefs(body)) assert.ok(bytes(href) <= 6144, `${p}: href of ${bytes(href)} bytes`);
+            }
+            // The pager links carry the same `f` and only change `page`.
+            const next = pagerHref(pages[0].body, "Next");
+            const prev = pagerHref(pages[1].body, "Previous");
+            const fOf = (h) => new URL(h, "http://x").searchParams.get("f");
+            assert.equal(fOf(next), fOf(path));
+            assert.equal(new URL(next, "http://x").searchParams.get("page"), "2");
+            assert.equal(fOf(prev), fOf(path));
+            assert.ok(bytes(next) <= 6144 && bytes(prev) <= 6144);
+            // From page 2 every panel link (add, remove, chips, clear) drops `page`: a filter change returns to page 1.
+            const links = panelHrefs(pages[1].body);
+            assert.ok(links.length > 5);
+            for (const href of links) assert.ok(!new URL(href, "http://x").searchParams.has("page"), href);
+            const removeFirst = chipLinks(pages[1].body)[0].href;
+            const afterRemove = await cf1Get(removeFirst);
+            assert.equal(totalOf(afterRemove.body), 21);
+            assert.deepEqual(cardSlugs(afterRemove.body), expected.filter((slug) => {
+                const p = catalogProducts.find((q) => q.slug === slug);
+                return p.attributes.find((a) => a.key === "Serie").value !== serie(1);
+            }).slice(0, 21));
+        });
+
+        test("(cf1-pager-guard) a pager link that would exceed 6,144 bytes is not rendered; the same selection on page 2 renders it", async () => {
+            // A selection whose canonical href is 6,125 bytes (it fits: 6,125 + 16 ≤ 6,144): Serie 1–4 plus a stale value
+            // padded to length. On `page=99999999999999999999` the Previous link would end `&page=100000000000000000000`
+            // (6,152 bytes) — the measured guard drops it. On page 2, Previous ends `&page=1` (6,132 bytes) and renders.
+            const base = "/category/cf1-many";
+            const href = (pad) => `${base}?f=${encodeURIComponent(new URLSearchParams([1, 2, 3, 4].map((n) => ["a.Serie", serie(n)]).concat([["a.Serie", "Z" + "z".repeat(pad)]])).toString())}`;
+            const pad = 6125 - bytes(href(0));
+            assert.ok(pad > 0);
+            const fitting = href(pad);
+            assert.equal(bytes(fitting), 6125);
+            const huge = await cf1Get(`${fitting}&page=99999999999999999999`);
+            assert.equal(huge.status, 200);
+            assert.equal(chipsOf(huge.body).length, 5, "the selection was applied (not rejected as too long)");
+            assert.equal(pagerHref(huge.body, "Previous"), null, "the over-budget Previous link is not rendered");
+            for (const h of allHrefs(huge.body)) assert.ok(bytes(h) <= 6144, `href of ${bytes(h)} bytes`);
+            const page2 = await cf1Get(`${fitting}&page=2`);
+            const prev = pagerHref(page2.body, "Previous");
+            assert.ok(prev, "control: the Previous link renders when it fits");
+            assert.equal(bytes(prev), 6132);
+        });
+
+        test("(cf1-legacy) the status-less legacy product: on the category page, not on the shop page", async () => {
+            assert.ok(cardSlugs((await cf1Get("/category/cf1-boen")).body).includes("nuc-vechi"));
+            const shopSlugs = (await allPages("/shop")).flatMap((p) => cardSlugs(p.body));
+            assert.equal(shopSlugs.length, 42);
+            assert.ok(!shopSlugs.includes("nuc-vechi"));
+        });
+
+        test("(cf1-singleton) one `unitate` value with a product lacking it → shown and narrowing; on every product → absent", async () => {
+            const alpod = await cf1Get("/category/cf1-alpod");
+            assert.deepEqual(plainRows(facetRows(alpod.body, "a.unitate")), [{ state: "link", value: "ml", count: 2 }]);
+            const selected = await cf1Get(facetRows(alpod.body, "a.unitate")[0].href);
+            assert.deepEqual(cardSlugs(selected.body), ["profil-aluminiu", "profil-inox"]);
+            const boen = await cf1Get("/category/cf1-boen");
+            assert.equal(facetRows(boen.body, "a.unitate"), null);
+            assert.doesNotMatch(htmlOf(boen.body), /data-facet="a\.unitate"/);
+        });
+
+        test("(cf1-namespace) attributes literally named `producator` and `varianta` are facets of their own, independent of the fixed ones (ruling 2)", async () => {
+            const bare = await cf1Get("/shop");
+            assert.match(htmlOf(bare.body), /data-facet="producator"[^>]*><summary[^>]*>Producător<\/summary>/);
+            assert.match(htmlOf(bare.body), /data-facet="a\.producator"[^>]*><summary[^>]*>producator<\/summary>/);
+            assert.match(htmlOf(bare.body), /data-facet="a\.varianta"[^>]*><summary[^>]*>varianta<\/summary>/);
+            // The attribute `producator` filters on the attribute; the fixed producer facet is counted under it.
+            const attr = await cf1Get(`/shop${fParam([["a.producator", "Atelier Nord"]])}`);
+            assert.deepEqual(cardSlugs(attr.body), ["profil-aluminiu", "profil-inox"]);
+            assert.deepEqual(chipsOf(attr.body), ["producator: Atelier Nord"]);
+            assert.deepEqual(plainRows(facetRows(attr.body, "producator")), [
+                { state: "link", value: "ALPOD", count: 2 }, { state: "zero", value: "BOEN", count: 0 },
+                { state: "zero", value: "ITC", count: 0 }, { state: "zero", value: "KRONO", count: 0 },
+            ]);
+            // The fixed producer filters on the brand; the attribute facet is counted under it.
+            const fixed = await cf1Get(`/shop${fParam([["producator", "ALPOD"]])}`);
+            assert.deepEqual(cardSlugs(fixed.body), ["profil-aluminiu", "profil-inox", "adeziv-montaj"]);
+            assert.deepEqual(plainRows(facetRows(fixed.body, "a.producator")), [
+                { state: "link", value: "Atelier Nord", count: 2 }, { state: "link", value: "Atelier Sud", count: 1 },
+            ]);
+            // The brand value `Atelier Nord` matches no brand: the two sources never mix.
+            assert.deepEqual(cardSlugs((await cf1Get(`/shop${fParam([["producator", "Atelier Nord"]])}`)).body), []);
+            // `varianta`: the attribute and the option values are separate facets.
+            assert.deepEqual(cardSlugs((await cf1Get(`/shop${fParam([["a.varianta", "Mat"]])}`)).body), ["profil-aluminiu", "adeziv-montaj"]);
+            const optionSel = await cf1Get(`/shop${fParam([["varianta", "14x138x2200 mm"]])}`);
+            assert.deepEqual(cardSlugs(optionSel.body), ["stejar-natur", "stejar-rustic"]);
+            assert.deepEqual(plainRows(facetRows(optionSel.body, "a.varianta")), [
+                { state: "zero", value: "Lucios", count: 0 }, { state: "zero", value: "Mat", count: 0 },
+            ]);
+            assert.deepEqual(cardSlugs((await cf1Get(`/shop${fParam([["varianta", "Mat"]])}`)).body), []);
+        });
+
+        test("(cf1-lifetime) a selected key that is not offered — rule (i), (ii), (iii) failing, or held by no product — is applied, shown and removable (ruling 1)", async () => {
+            for (const [category, key, value, slugs] of [
+                ["cf1-boen", "Nordic swan", "da", ["stejar-natur"]],               // (i): one holder
+                ["cf1-boen", "Article no.", "BN-002", ["stejar-rustic"]],          // (ii): a value per product
+                ["cf1-itc", "Color", CF1.colors[4], ["mocheta-arc"]],             // (iii): 41 distinct values
+                ["cf1-boen", "Inexistent", "x", []],                               // no product holds the key
+            ]) {
+                const bare = `/category/${category}`;
+                assert.equal(facetRows((await cf1Get(bare)).body, `a.${key}`), null, `${key}: not offered without a selection`);
+                const res = await cf1Get(`${bare}${fParam([[`a.${key}`, value]])}`);
+                assert.equal(res.status, 200, key);
+                assert.deepEqual(cardSlugs(res.body), slugs, `${key}: the listing is filtered`);
+                assert.deepEqual(chipLinks(res.body), [{ text: `${key}: ${value}`, href: bare }], `${key}: the chip is shown and removes the selection`);
+                assert.deepEqual(facetRows(res.body, `a.${key}`), [{ state: "selected", value, count: slugs.length, href: bare }], `${key}: the facet shows the selected value only`);
+                if (slugs.length === 0) assert.match(htmlOf(res.body), /Niciun produs nu corespunde filtrelor alese\./);
+            }
+        });
+
+        test("(cf1-malformed) malformed and unknown `f` values: 200; unknown keys ignored; a value that matches nothing stays removable", async () => {
+            // The § 5.5 witnesses as written: `colectie` (no `a.`) is not a facet id under the identity rule (ruling 2),
+            // so § 4.4 step 3 drops it — 200, nothing applied.
+            for (const f of ["%zz", "colectie%3D%25E0%25A4%25A", "colectie%3Da%25", "%26%26", "zzz%3D1", "a.%3D1"]) {
+                const res = await cf1Get(`/shop?f=${f}`);
+                assert.equal(res.status, 200, f);
+                assert.deepEqual(chipsOf(res.body), [], f);
+                assert.equal(totalOf(res.body), 42, f);
+            }
+            // The same witnesses on the attribute id: the decoded value matches no product and is shown, removable.
+            for (const [f, value] of [["a.colec%25C8%259Bie%3D%25E0%25A4%25A", "�%A"], ["a.colec%25C8%259Bie%3Da%25", "a%"]]) {
+                const res = await cf1Get(`/shop?f=${f}`);
+                assert.equal(res.status, 200, f);
+                assert.deepEqual(chipsOf(res.body), [`colecție: ${value}`], f);
+                assert.ok(facetRows(res.body, "a.colecție").some((r) => r.state === "selected" && r.value === value && r.count === 0 && r.href === "/shop"), f);
+            }
+            // The OUTER malformed escape: RECORDED. 200 if Next passes it on; a 4xx is acceptable; a 5xx fails the row.
+            const outer = await cf1Get("/shop?f=%E0%A4%A");
+            console.log(`  (cf1-malformed) outer f=%E0%A4%A → ${outer.status}`);
+            assert.ok(outer.status < 500, `outer malformed escape answered ${outer.status}`);
+        });
+
+        test("(cf1-url-budget) every href ≤ 6,144 bytes; (a) a fitting selection whose next add-link would not fit, with the pager; (b) an over-budget incoming selection is not applied", async () => {
+            // (a) four of the five ~1,300-byte values fit together; the fifth would not. 28 results: the pager renders.
+            const a = await cf1Get(`/category/cf1-many${fParam([1, 2, 3, 4].map((n) => ["a.Serie", serie(n)]))}`);
+            assert.equal(a.status, 200);
+            for (const href of allHrefs(a.body)) assert.ok(bytes(href) <= 6144, `href of ${bytes(href)} bytes`);
+            const rows = facetRows(a.body, "a.Serie");
+            assert.deepEqual(rows.map((r) => [r.state, r.value.slice(0, 7)]), [
+                ["selected", "Seria 1"], ["selected", "Seria 2"], ["selected", "Seria 3"], ["selected", "Seria 4"], ["too-long", "Seria 5"],
+            ]);
+            assert.ok(rows.filter((r) => r.state === "selected").every((r) => r.href), "every remove-link is present");
+            assert.equal(chipsOf(a.body).length, 4);
+            assert.ok(pagerHref(a.body, "Next"), "the pager link is present");
+            assert.match(htmlOf(a.body), /data-facet-hint[^>]*>Prea multe filtre selectate — eliminați unul</);
+            // (b) the review-1 witness on the attribute id: canonical href ≫ 6,144 bytes → not applied.
+            const x = "/".repeat(2000);
+            const b = await cf1Get(`/shop?f=a.colec%C8%9Bie=${x}A%26a.colec%C8%9Bie=${x}B`);
+            assert.equal(b.status, 200);
+            assert.match(htmlOf(b.body), /Filtrele din adresă sunt prea lungi și nu au fost aplicate\./);
+            assert.deepEqual(chipsOf(b.body), []);
+            assert.equal(totalOf(b.body), 42);
+            for (const href of allHrefs(b.body)) assert.ok(bytes(href) <= 6144, `href of ${bytes(href)} bytes`);
+            // The witness exactly as § 5.5 writes it (`colectie`, 4,031 bytes): not a facet id → dropped, nothing applied.
+            const literal = `/shop?f=colectie=${x}A%26colectie=${x}B`;
+            assert.equal(bytes(literal), 4031);
+            const c = await cf1Get(literal);
+            assert.equal(c.status, 200);
+            assert.deepEqual(chipsOf(c.body), []);
+            assert.equal(totalOf(c.body), 42);
         });
     }
 

@@ -17,7 +17,7 @@ User Request ──> CloudFront Edge Cache ──> OpenNext ISR Cache (S3) ─�
 **Layer 1 — CloudFront**: Edge cache at 400+ global points of presence. Cache key is
 `X-Forwarded-Host` (tenant isolation) + the RSC content-negotiation header family +
 `x-has-session` (one bit, derived from the cookie jar at the edge — anonymous and
-authenticated requests must not share an entry) + an **allowlist** of seven query
+authenticated requests must not share an entry) + an **allowlist** of eight query
 parameters — see § *Cache Policy (Default Behavior)* for the list and the per-parameter
 justification. Serves HTML with sub-50ms latency on hit.
 
@@ -1941,7 +1941,7 @@ CloudFront Distribution
 ├── Default Behavior → Lambda Function URL (RendererCachePolicy)
 │   └── Cache Key: X-Forwarded-Host (tenant isolation) + RSC header family
 │                  + x-has-session (0|1, derived from cookies by the viewer-request Function)
-│                  + query allowlist (page, q, availability, id, email, preview, nf)
+│                  + query allowlist (page, q, availability, id, email, preview, nf, f)
 │      Cookies themselves are NOT in the key — only that one derived bit.
 │
 ├── api/* → Lambda Function URL (CACHING_DISABLED)
@@ -1980,7 +1980,7 @@ const rendererCachePolicy = new cloudfront.CachePolicy(this, 'RendererCachePolic
         'x-has-session',                     // derived at the edge, never viewer-supplied
     ),
     queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList(
-        'page', 'q', 'availability', 'id', 'email', 'preview', 'nf',
+        'page', 'q', 'availability', 'id', 'email', 'preview', 'nf', 'f',
     ),
     cookieBehavior: cloudfront.CacheCookieBehavior.none(),
     enableAcceptEncodingGzip: true,
@@ -2154,6 +2154,7 @@ any `?utm_*`, `?fbclid`, or attacker-chosen junk minted its own entry — a guar
 | `email` | `SitePage.tsx` `query.id`/`query.email` (checkout-confirm, checkout-track) | order lookup |
 | `preview` | `%5Fdyn/[[...slug]]` + `%5Fdyn/products/[productId]` `query.preview` | an editor previewing a draft must bypass the published entry |
 | `nf` | `lib/not-found-handoff.ts` (`NOT_FOUND_PARAM`) | **mandatory, not an optimisation** — see below |
+| `f` | `SitePage.tsx` `query.f` (catalog shop and category, `cat-facets-1`) | the storefront filter selection selects the listing. Keyed for **correctness**, not caching: without it a filtered URL collapses onto the warm bare entry and shows the unfiltered page; with it the request reaches the origin, where middleware sends it to the `no-store` twin, so a filtered view is never stored (`docs/slices/cat-facets-1.md` § 5.3). One name carries every facet, so a new facet needs no change here. 8 of the 10 query strings a cache policy accepts (AWS quota) |
 
 **`nf` is load-bearing.** The not-found handoff redirects `/p` → `/p?nf=1`, and that 307 is
 itself cacheable (measured: `307`, `s-maxage=31536000`, `x-nextjs-cache: MISS`). Drop `nf`
@@ -2175,7 +2176,7 @@ key is what forces an edge miss and gets the request to the origin at all. Nothi
 downstream can rescue a parameter stripped here, because on a warm entry **CloudFront
 answers before middleware runs** — the origin never sees the request. Concretely: drop
 `page` from the key, warm `/shop`, and `/shop?page=2` is answered with the stored page 1.
-The seven parameters above are listed precisely because each one selects a different
+The eight parameters above are listed precisely because each one selects a different
 representation (and `nf` because of the redirect loop below).
 
 **(b) A parameter that is *not* in the list is safe only because nothing reads it.** This
@@ -2185,7 +2186,7 @@ over `renderer/src`, then read in place — a literal-text scan, not an index or
 
 | Read site | Parameters |
 |---|---|
-| `components/SitePage.tsx` | `q`, `page`, `availability`, `id`, `email` |
+| `components/SitePage.tsx` | `q`, `page`, `availability`, `id`, `email`, `f` |
 | `app/[siteId]/%5Fdyn/[[...slug]]/page.tsx`, `…/%5Fdyn/products/[productId]/page.tsx` | `preview` |
 | `lib/not-found-handoff.ts` | `nf` (`NOT_FOUND_PARAM`) |
 

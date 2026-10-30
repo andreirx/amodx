@@ -365,6 +365,58 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
     return { items, total: allProducts.length };
 }
 
+/**
+ * CAT-FACETS-1 (spec docs/slices/cat-facets-1.md § 3.3 B, ruling CF1-DATA-PATH = B): the whole, unpaginated listing
+ * of a CATALOG site's shop (`categoryId` absent) or category page, read from the tenant's `PRODUCT#` items so the
+ * facet values and the card come from the same committed item. Called only under `isCatalogMode`; the non-catalog
+ * shop and category pages keep `getActiveProducts` / `getProductsByCategory` (spec § 7).
+ *
+ * Membership is what the two existing reads give (the two preservation obligations of § 3.3 B):
+ *   - shop: `status === "active"` — the in-memory form of `getActiveProducts`' `FilterExpression #s = :active`
+ *     (both are true exactly when the attribute exists and is the string "active");
+ *   - category: `!status || status === "active"` (`getProductsByCategory`'s rule; a status-less legacy product is
+ *     listed — its `CATPROD#` card carries `status || "active"`, `lib/catprod.ts`), and `categoryIds` contains the
+ *     category id — the field the `CATPROD#<categoryId>#<id>` items are derived from;
+ *   - both: `isProductAvailable`, then the `sortOrder` sort. Ties are broken by `id`: DynamoDB returns both item
+ *     families in SK order, and both SKs end with the product id (`PRODUCT#<id>`, `CATPROD#<cat>#<id>`), so for
+ *     ASCII ids this is the order the stable `sortOrder` sort already gives — stated explicitly so the order does
+ *     not depend on the store's page order (serving-contract row `cf1-order`).
+ * The projection is `getActiveProducts`' card fields plus `status` (the in-memory rule needs it) and the three facet
+ * sources `brand`, `attributes`, `variants`. No monetary field is read by the facets (CM-D8); the card suppresses
+ * price on a catalog site. Cost (§ 3.2): the whole tenant per uncached render — what the shop page already reads.
+ */
+export async function getCatalogListing(tenantId: string, categoryId?: string): Promise<any[]> {
+    const tableName = requireTableName();
+
+    const allItems: any[] = [];
+    let lastKey: any = undefined;
+
+    do {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: {
+                ":pk": `TENANT#${tenantId}`,
+                ":sk": "PRODUCT#",
+            },
+            ExpressionAttributeNames: { "#s": "status", "#b": "brand", "#a": "attributes", "#v": "variants" },
+            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, #s, #b, #a, #v",
+            ExclusiveStartKey: lastKey,
+        }));
+        allItems.push(...(result.Items || []));
+        lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    const member = categoryId === undefined
+        ? (p: any) => p.status === "active"
+        : (p: any) => (!p.status || p.status === "active") && Array.isArray(p.categoryIds) && p.categoryIds.includes(categoryId);
+
+    return allItems
+        .filter(member)
+        .filter((p: any) => isProductAvailable(p))
+        .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 // Search products by text query (title, description, sku, tags)
 export async function searchProducts(tenantId: string, query: string, page: number = 1, limit: number = 24) {
     // Configuration first, then the legitimate empty input: a blank query genuinely has no

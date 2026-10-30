@@ -351,6 +351,74 @@ const cm1CatalogProducts = [
 // The catalog products carry no `imageLink` key when they have none (CM-D7): drop the helper's absent value.
 for (const p of cm1CatalogProducts) if (p.imageLink === undefined) delete p.imageLink;
 
+// ── CAT-FACETS-1 facet fixtures (spec docs/slices/cat-facets-1.md § 5.5, amended by § 13) ─────────────────────────
+// Added to the catalog tenant `cm1-catalog`; serving-contract rows `cf1-*`, browser row `cf1-prefetch`
+// (interest-e2e/facets.spec.mjs). Four categories, ids = slugs:
+//  - `cf1-boen` (brand BOEN): one variant group "Format" with a `,` label and a generated `#1` label; `colecție`;
+//    the spec-style keys of § 13 — `Wood` (offered), `Article no.` (a value per product: not offered, rule ii),
+//    `Nordic swan` (one holder: not offered, rule i), `Certificates` (one value on every product: hidden, § 2.3);
+//    `unitate` = `mp` on every product (hidden, § 2.3); and one STATUS-LESS legacy product (`nuc-vechi`: on the
+//    category page, not on the shop page). Listed here out of id order on purpose, with equal `sortOrder`, so row
+//    `cf1-order` cannot pass on the stub's array order.
+//  - `cf1-alpod` (brand ALPOD): `unitate` = `ml` on two products, absent on the third (shown with one value); and
+//    attributes literally named `producator` and `varianta` (operator ruling 2 on review-0: facets of their own,
+//    `a.producator` / `a.varianta`, independent of the fixed producer and variant facets — row `cf1-namespace`).
+//  - `cf1-itc` (brand ITC): `Pile weight` (a value with `,` `/` `²` and diacritics — row `cf1-roundtrip`) and `Color`
+//    with 41 distinct values over two products (multi-valued, so 41 values need no 42 products: not offered, rule iii).
+//  - `cf1-many` (brand KRONO): 30 listed products, so a filtered result spans two pages (rows `cf1-pager`,
+//    `cf1-preserve`, `cf1-url-budget`). `Serie` has five values of ~1,300 bytes each (four fit together in an href,
+//    five do not), held by 7, 7, 7, 7 and 2 products. The two LOWEST ids carry `sortOrder` 2 and 1, so they sort LAST
+//    (an id-only order would put them first). Three more products are never listed: a draft, one whose
+//    `availableFrom` is in the future, one whose `availableUntil` is past. Listed in reverse id order.
+// No title, description or tag contains "plank" (row `cm1-catalog-listings` searches it) and no value contains a
+// term of that row's FORBIDDEN list. 46 products, 42 on the shop page. The three cm1 products keep `sortOrder` 0 and
+// the lowest ids, so they stay first on shop page 1 (rows `cm1-catalog-listings`, interest-e2e).
+const CF1_ID = (n) => `f1000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const cf1Format = (...values) => [{ id: "format", name: "Format", options: values.map((value) => ({ value })) }];
+const cf1Attrs = (pairs) => pairs.map(([key, value]) => ({ key, value }));
+export const CF1 = {
+    roundtripValue: "1.050 g/m², țesătură / buclă",
+    longValues: [1, 2, 3, 4, 5].map((n) => `Seria ${n} ` + "lungime".repeat(185)),
+    colors: Array.from({ length: 41 }, (_, i) => `Culoare ${String(i + 1).padStart(2, "0")}`),
+};
+const cf1 = (id, title, slug, category, fields) => cm1Product(CM1.catalog.id, { id: CF1_ID(id), title, slug, categoryIds: [category], ...fields });
+const cf1BoenAttrs = (collection, wood, article, extra = []) => cf1Attrs([
+    ["colecție", collection], ["unitate", "mp"], ["Wood", wood], ["Article no.", article], ["Certificates", "FSC"], ...extra,
+]);
+/** `cf1-many`: product n (1–30) holds Serie value `CF1_MANY_SERIE[n - 1]`; ids 41–70; ids 41, 42 sort last. */
+const CF1_MANY_SERIE = [...Array(7).fill(0), ...Array(7).fill(1), ...Array(7).fill(2), ...Array(7).fill(3), 4, 4];
+const cf1Many = (n, fields = {}) => cf1(40 + n, `Placa ${String(n).padStart(2, "0")}`, `placa-${String(n).padStart(2, "0")}`, "cf1-many", {
+    brand: "KRONO", sortOrder: n === 1 ? 2 : n === 2 ? 1 : 0, attributes: cf1Attrs([["Serie", CF1.longValues[CF1_MANY_SERIE[n - 1] ?? 0]]]), ...fields,
+});
+const cf1CatalogProducts = [
+    cf1(3, "Frasin Alb", "frasin-alb", "cf1-boen", { brand: "BOEN", variants: cf1Format("#1"), attributes: cf1BoenAttrs("Castle planks 209 mm", "Ash", "BN-003") }),
+    cf1(1, "Stejar Natur", "stejar-natur", "cf1-boen", { brand: "BOEN", variants: cf1Format("14x138x2200 mm", "13,2x181x2200 mm"), attributes: cf1BoenAttrs("Planks 138 mm", "Oak", "BN-001", [["Nordic swan", "da"]]) }),
+    cf1(4, "Nuc Vechi", "nuc-vechi", "cf1-boen", { brand: "BOEN", variants: cf1Format("14x138x2200 mm"), attributes: cf1BoenAttrs("Castle planks 209 mm", "Walnut", "BN-004") }),
+    cf1(2, "Stejar Rustic", "stejar-rustic", "cf1-boen", { brand: "BOEN", variants: cf1Format("14x138x2200 mm"), attributes: cf1BoenAttrs("Planks 138 mm", "Oak", "BN-002") }),
+    cf1(11, "Profil Aluminiu", "profil-aluminiu", "cf1-alpod", { brand: "ALPOD", attributes: cf1Attrs([["colecție", "Profiles"], ["unitate", "ml"], ["producator", "Atelier Nord"], ["varianta", "Mat"]]) }),
+    cf1(12, "Profil Inox", "profil-inox", "cf1-alpod", { brand: "ALPOD", attributes: cf1Attrs([["colecție", "Profiles"], ["unitate", "ml"], ["producator", "Atelier Nord"], ["varianta", "Lucios"]]) }),
+    cf1(13, "Adeziv Montaj", "adeziv-montaj", "cf1-alpod", { brand: "ALPOD", attributes: cf1Attrs([["colecție", "Adhesive"], ["producator", "Atelier Sud"], ["varianta", "Mat"]]) }),
+    cf1(21, "Mocheta Arc", "mocheta-arc", "cf1-itc", { brand: "ITC", attributes: cf1Attrs([["Pile weight", CF1.roundtripValue], ...CF1.colors.slice(0, 21).map((c) => ["Color", c])]) }),
+    cf1(22, "Mocheta Shell", "mocheta-shell", "cf1-itc", { brand: "ITC", attributes: cf1Attrs([["Pile weight", CF1.roundtripValue], ["Color", CF1.colors[0]], ...CF1.colors.slice(21).map((c) => ["Color", c])]) }),
+    cf1(23, "Mocheta Loop", "mocheta-loop", "cf1-itc", { brand: "ITC", attributes: cf1Attrs([["Pile weight", "900 g/m²"]]) }),
+    cf1Many(33, { title: "Placa Ciorna", slug: "placa-ciorna", status: "draft" }),
+    cf1Many(32, { title: "Placa Viitoare", slug: "placa-viitoare", availableFrom: "2099-01-01" }),
+    cf1Many(31, { title: "Placa Expirata", slug: "placa-expirata", availableUntil: "2000-01-01" }),
+    ...Array.from({ length: 30 }, (_, i) => cf1Many(30 - i)),
+];
+// The legacy product has no `status` attribute at all (written before the field existed).
+for (const p of cf1CatalogProducts) if (p.slug === "nuc-vechi") delete p.status;
+/** CATPROD# cards as `lib/catprod.ts` writes them (`status: product.status || "active"`). */
+const cf1CatProds = cf1CatalogProducts.map((p) => {
+    const card = { ...cm1CatProd(CM1.catalog.id, p.categoryIds[0], p), status: p.status || "active" };
+    // `buildCatProdItem` copies the availability window onto the card (`lib/catprod.ts`).
+    if (p.availableFrom !== undefined) card.availableFrom = p.availableFrom;
+    if (p.availableUntil !== undefined) card.availableUntil = p.availableUntil;
+    return card;
+});
+for (const c of cf1CatProds) if (c.imageLink === undefined) delete c.imageLink;
+for (const p of cf1CatalogProducts) if (p.imageLink === undefined) delete p.imageLink;
+
 const CM1_ITEMS = [
     cm1Tenant(CM1.commerce, "CM1 Commerce", { commerceEnabled: true, searchBar }),
     ...cm1Pages(CM1.commerce.id, [showcase("rugs")], { staleShowcase: true }),
@@ -369,6 +437,12 @@ const CM1_ITEMS = [
     cm1Category(CM1.catalog.id, "floors", "floors", "Floors"),
     ...cm1CatalogProducts,
     ...cm1CatalogProducts.map((p) => cm1CatProd(CM1.catalog.id, "floors", p)),
+    cm1Category(CM1.catalog.id, "cf1-boen", "cf1-boen", "BOEN"),
+    cm1Category(CM1.catalog.id, "cf1-alpod", "cf1-alpod", "ALPOD"),
+    cm1Category(CM1.catalog.id, "cf1-itc", "cf1-itc", "ITC"),
+    cm1Category(CM1.catalog.id, "cf1-many", "cf1-many", "KRONO"),
+    ...cf1CatalogProducts,
+    ...cf1CatProds,
 ];
 
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */

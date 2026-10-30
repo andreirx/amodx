@@ -16,7 +16,7 @@
 //
 // Phase 3.3: getCustomerOrders / getCustomerProfile are deliberately NOT imported here.
 // Customer-private data is fetched via session-validating API routes, not SSR.
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews } from "@/lib/dynamo";
 import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from "@/lib/review-images";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
@@ -38,6 +38,8 @@ import { SearchBar } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
 import { InterestToggle, InterestListPage } from "@/components/InterestShortlist";
+import { buildFacetListing, listingHref, utf8Bytes, HREF_BUDGET, type FacetListing, type FacetValueView } from "@/lib/facets";
+import type { ReactNode } from "react";
 
 // NEW: Auth Imports — signature verification only, no cookie access from this module.
 import { decode } from "next-auth/jwt";
@@ -286,12 +288,27 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             const category = await getCategoryBySlug(config.id, commerce.itemSlug);
             if (!category) return notFoundHere();
             const page = parseInt(query.page || "1");
+            // CAT-FACETS-1: a catalog site lists the category from its `PRODUCT#` items and filters it (`?f=`).
+            if (catalog) {
+                const path = `${prefixes.category}/${category.slug}`;
+                const listing = buildFacetListing(await getCatalogListing(config.id, category.id), query.f, `${basePath}${path}`);
+                const start = (page - 1) * 24;
+                return <CategoryPageView category={category} products={listing.items.slice(start, start + 24)} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(path, listing.selection) }} />;
+            }
             const { items: products, total } = await getProductsByCategory(config.id, category.id, page, 24);
             return <CategoryPageView category={category} products={products} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} />;
         }
 
         if (commerce.type === 'shop') {
             const page = parseInt(query.page || "1");
+            // CAT-FACETS-1: a catalog site's shop is filtered (`?f=`); same `PRODUCT#` read, plus the facet fields.
+            if (catalog) {
+                const shopUrl = prefixes.shop || "/magazin";
+                const [base, categories] = await Promise.all([getCatalogListing(config.id), getAllCategories(config.id)]);
+                const listing = buildFacetListing(base, query.f, `${basePath}${shopUrl}`);
+                const start = (page - 1) * 24;
+                return <ShopPageView products={listing.items.slice(start, start + 24)} categories={categories} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(shopUrl, listing.selection) }} />;
+            }
             // Catalog: no availability filter exists, so a `?availability=` query is ignored (§ 3.2.1 SitePage:265).
             const availability = catalog ? undefined : (query.availability || undefined);
             const [{ items: products, total }, categories] = await Promise.all([
@@ -700,19 +717,24 @@ function ProductCard({ product, productPrefix, basePath = "", catalog = false, t
     );
 }
 
-function Pagination({ page, total, limit, baseUrl, basePath = "" }: { page: number; total: number; limit: number; baseUrl: string; basePath?: string }) {
+/**
+ * `maxHrefBytes` (CAT-FACETS-1, catalog listings only): a pager link longer than this many UTF-8 bytes is not
+ * emitted (spec § 5.1 invariant, measured on the final string). Absent → every link is emitted, as before.
+ */
+function Pagination({ page, total, limit, baseUrl, basePath = "", maxHrefBytes }: { page: number; total: number; limit: number; baseUrl: string; basePath?: string; maxHrefBytes?: number }) {
     const totalPages = Math.ceil(total / limit);
     if (totalPages <= 1) return null;
     const sep = baseUrl.includes('?') ? '&' : '?';
     const fullBaseUrl = `${basePath}${baseUrl}`;
+    const fits = (href: string) => maxHrefBytes === undefined || utf8Bytes(href) <= maxHrefBytes;
 
     return (
         <div className="flex items-center justify-center gap-2 mt-12">
-            {page > 1 && (
+            {page > 1 && fits(`${fullBaseUrl}${sep}page=${page - 1}`) && (
                 <Link href={`${fullBaseUrl}${sep}page=${page - 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Previous</Link>
             )}
             <span className="text-sm text-muted-foreground px-4">Page {page} of {totalPages}</span>
-            {page < totalPages && (
+            {page < totalPages && fits(`${fullBaseUrl}${sep}page=${page + 1}`) && (
                 <Link href={`${fullBaseUrl}${sep}page=${page + 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Next</Link>
             )}
         </div>
@@ -1080,8 +1102,115 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
     );
 }
 
-function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
+// --- CAT-FACETS-1: the filter panel of a catalog site's shop and category pages (spec §§ 4, 5.1, 6) ---
+//
+// Server-rendered, no JavaScript. Every value is a plain `<a>` to the URL with that value added or removed: no form,
+// no client state, no prefetch (a plain anchor is never prefetched — load reduction, § 5.3), `rel="nofollow"` (§ 5.4).
+// The model — which facets, which values, every href already measured against the URL budget — comes from
+// `lib/facets.ts`; these components only lay it out. Copy is fixed Romanian (§ 6), like the catalog controls.
+
+/** The catalog listing's filter state, passed to the shop and category views only on a catalog site. */
+type CatalogFacets = { listing: FacetListing<any>; pagerBase: string };
+
+const FACET_HINT = "Prea multe filtre selectate — eliminați unul";
+
+function FacetValueRow({ v }: { v: FacetValueView }) {
+    switch (v.state) {
+        case "link":
+            return <a href={v.href} rel="nofollow" className="hover:text-primary" data-facet-value="link">{v.value} ({v.count})</a>;
+        case "selected": {
+            const text = <><span aria-hidden="true">✓ </span>{v.value} ({v.count})</>;
+            return v.href
+                ? <a href={v.href} rel="nofollow" aria-current="true" className="font-semibold text-primary" data-facet-value="selected">{text}</a>
+                : <span className="font-semibold" data-facet-value="selected">{text}</span>;
+        }
+        case "zero":
+            return <span aria-disabled="true" className="text-muted-foreground opacity-60" data-facet-value="zero">{v.value} (0)</span>;
+        case "too-long":
+            return <span aria-disabled="true" title={FACET_HINT} className="text-muted-foreground opacity-60" data-facet-value="too-long">{v.value} ({v.count})</span>;
+        default: {
+            const unreachable: never = v;
+            return unreachable;
+        }
+    }
+}
+
+function FacetPanel({ listing }: { listing: FacetListing<any> }) {
+    const n = listing.items.length;
+    return (
+        <div className="space-y-4 text-sm">
+            <p className="text-muted-foreground" data-facet-total={n}>{n === 1 ? "1 produs" : `${n} produse`}</p>
+            {listing.tooLong && <p role="status" className="text-muted-foreground" data-facet-notice>Filtrele din adresă sunt prea lungi și nu au fost aplicate.</p>}
+            {listing.chips.length > 0 && (
+                <ul className="flex flex-wrap gap-2" data-facet-chips>
+                    {listing.chips.map((c) => (
+                        <li key={`${c.facetLabel}\u0000${c.value}`}>
+                            {c.href
+                                ? <a href={c.href} rel="nofollow" aria-label={`Elimină filtrul ${c.facetLabel}: ${c.value}`} className="inline-block rounded-full border px-3 py-1 hover:bg-muted">{c.facetLabel}: {c.value} <span aria-hidden="true">×</span></a>
+                                : <span className="inline-block rounded-full border px-3 py-1">{c.facetLabel}: {c.value}</span>}
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {(listing.chips.length > 0 || listing.tooLong) && listing.clearHref && (
+                <a href={listing.clearHref} rel="nofollow" className="inline-block underline hover:text-primary" data-facet-clear>Șterge filtrele</a>
+            )}
+            {listing.budgetHint && <p className="text-muted-foreground" data-facet-hint>{FACET_HINT}</p>}
+            {listing.facets.map((f) => (
+                <details key={f.id} open={f.values.some((v) => v.state === "selected") || f.values.length <= 10} className="border-t pt-3" data-facet={f.id}>
+                    <summary className="cursor-pointer font-medium">{f.label}</summary>
+                    <ul className="mt-2 space-y-1">
+                        {f.values.map((v) => <li key={v.value}><FacetValueRow v={v} /></li>)}
+                    </ul>
+                </details>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * The listing area of a catalog page: the panel (a left column on `lg` and up; one collapsed block above the grid
+ * on smaller screens — a CSS-only toggle, the `peer` idiom of `CatalogVariantPresenter`) and the grid. When the
+ * panel has nothing to show (no facet narrows, no selection, no notice) the grid renders alone, as before.
+ * A selection that matches nothing replaces the grid with the § 4.3 empty result.
+ */
+function FacetedListing({ listing, grid }: { listing: FacetListing<any>; grid: ReactNode }) {
+    if (listing.facets.length === 0 && listing.chips.length === 0 && !listing.tooLong) return grid;
+    const active = listing.chips.length;
+    const body = listing.items.length === 0 && listing.selection.size > 0 ? (
+        <div className="py-12 text-center space-y-3" data-facet-empty>
+            <p className="text-muted-foreground">Niciun produs nu corespunde filtrelor alese.</p>
+            {listing.clearHref && <a href={listing.clearHref} rel="nofollow" className="underline hover:text-primary">Șterge filtrele</a>}
+        </div>
+    ) : grid;
+    return (
+        <div className="lg:flex lg:gap-8 lg:items-start">
+            <aside className="mb-6 lg:mb-0 lg:w-64 lg:shrink-0" aria-label="Filtre" data-facet-panel>
+                <input type="checkbox" id="facet-panel-toggle" className="peer sr-only lg:hidden" />
+                <label htmlFor="facet-panel-toggle" className="lg:hidden flex items-center justify-between rounded-lg border px-4 py-3 font-medium cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-primary">
+                    Filtre{active > 0 ? ` (${active})` : ""}
+                </label>
+                <h2 className="hidden lg:block font-semibold mb-3">Filtre</h2>
+                <div className="hidden peer-checked:block lg:block mt-4 lg:mt-0">
+                    <FacetPanel listing={listing} />
+                </div>
+            </aside>
+            <div className="flex-1 min-w-0">{body}</div>
+        </div>
+    );
+}
+
+function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false, facets }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean; facets?: CatalogFacets }) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const grid = products.length === 0 ? (
+                <p className="text-muted-foreground py-12 text-center">No products in this category yet.</p>
+            ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {products.map((product: any) => (
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
+                    ))}
+                </div>
+            );
     return (
         <>
             {config.searchBar?.enabled && (
@@ -1114,25 +1243,28 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                 <p className="text-sm text-muted-foreground mt-1">{total} product{total !== 1 ? 's' : ''}</p>
             </div>
 
-            {products.length === 0 ? (
-                <p className="text-muted-foreground py-12 text-center">No products in this category yet.</p>
+            {facets ? <FacetedListing listing={facets.listing} grid={grid} /> : grid}
+
+                <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : `${prefixes.category}/${category.slug}`} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} />
+            </main>
+        </>
+    );
+}
+
+function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability, catalog = false, facets }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string; catalog?: boolean; facets?: CatalogFacets }) {
+    const shopUrl = prefixes.shop || "/magazin";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const grid = products.length === 0 ? (
+                <p className="text-muted-foreground py-12 text-center">
+                    {availability === 'in_stock' ? 'No products currently in stock.' : 'No products available yet.'}
+                </p>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
                         <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
                     ))}
                 </div>
-            )}
-
-                <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.category}/${category.slug}`} basePath={basePath} />
-            </main>
-        </>
-    );
-}
-
-function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability, catalog = false }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string; catalog?: boolean }) {
-    const shopUrl = prefixes.shop || "/magazin";
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+            );
     return (
         <>
             {config.searchBar?.enabled && (
@@ -1177,19 +1309,9 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                 </div>
             )}
 
-            {products.length === 0 ? (
-                <p className="text-muted-foreground py-12 text-center">
-                    {availability === 'in_stock' ? 'No products currently in stock.' : 'No products available yet.'}
-                </p>
-            ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
-                    ))}
-                </div>
-            )}
+            {facets ? <FacetedListing listing={facets.listing} grid={grid} /> : grid}
 
-            <Pagination page={page} total={total} limit={24} baseUrl={availability ? `${shopUrl}?availability=${availability}` : shopUrl} basePath={basePath} />
+            <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : availability ? `${shopUrl}?availability=${availability}` : shopUrl} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} />
             </main>
         </>
     );
