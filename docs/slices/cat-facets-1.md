@@ -863,3 +863,34 @@ Decision review: 5 decisions, all converged (challenger codex gpt-6.1-sol, rebut
 **Next:** the impl slice `cat-facets-1-impl` per § 8, under these rulings. Named finding promoted for the human:
 the listing views around the panel print English copy ("Shop", "{n} products", "No products in this category yet.",
 "Page 1 of N") on a Romanian catalog storefront (§ 6).
+
+## 13. Amendment CF1-FACET-SET-2 (human ruling, 2026-10-30) — the facet set is data-driven
+
+**Human direction:** "filters will need to work on any spec sheet parameter that consistently repeats too, like the
+arc edition or itc various parameters for the carpeting." Rulings: (1) grouping and specification-filter choices live
+in an amodx **import profile** per producer, chosen in admin with a preview (new slice `CAT-IMPORT-PROFILE-1`, design
+first); (2) the filters are built NOW with a data-driven facet set, before the profiles.
+
+**Evidence (operator, 2026-10-30, enriched files, specs column idx 10 after the parser's code-line removal is NOT
+applied in this measure — `Article no.` lines are still counted here):** every specs line is `Key: value` (ITC 3,113
+lines / 0 other; ALPOD 3,726 / 0; BOEN 4,158 / 11). Keys, rows holding them, distinct values: ITC Pile weight 531/20,
+Structure 531/5, Usage class 531/2, Collection 531/6, Pile material 520/4, Pattern 469/5; ALPOD installation_method
+1096/5, installation_system 1058/11, dimensions 1050/82, type_of_material 522/6; BOEN Product type 310/2, Wood 310/5,
+Treatment 310/8, Format 310/11, Article no. 310/310, Dimensions (mm) 310/11, Connection 310/2, Floor Heating 310/3,
+Surface 310/17, Certificates 310/1, Color 305/31, Appearance 305/5, Style 304/17, Nordic swan 133/1.
+
+**What changes in this slice (replaces CF1-FACET-SET's fixed list of six):**
+- **Candidates** = producer (`brand`), the variant option values (§ 2.3 rules unchanged), and EVERY `attributes` key
+  present on the base set's products — not a fixed list.
+- **Repeat rule** (per base set, deterministic): a key is offered when (i) at least 2 products hold it, (ii) its most
+  frequent value is held by at least 2 products (a value unique to each product is not a filter — e.g. an article
+  number), and (iii) it has at most 40 distinct values. Then the § 2.3 visibility rule (shown only when selecting
+  could change the listing) applies unchanged. Expected on today's specs once extracted: ALPOD `dimensions` (82) not
+  offered; BOEN `Color` (31), ITC `Pile weight` (20) offered; `Certificates` (1 value) hidden by § 2.3.
+- **Labels:** the attribute key as stored, until a profile supplies a label (`CAT-IMPORT-PROFILE-1`). The four keys
+  the importer writes today are already Romanian (`colecție`, `unitate`, `împachetare`, `comandă minimă`).
+- **Order of facets:** producer, then the variant values, then the remaining keys by the number of products holding
+  them (descending), ties by the § 2.3 total order on the key.
+- **URL:** unchanged — `f` carries any facet name (§ 5.1); no infra change per key.
+- **Not in this slice:** extracting specs lines into `attributes` (the importer still writes the four keys; that is
+  `CAT-IMPORT-PROFILE-1`), label mapping, merges across producers, list splitting, variant-level specifications.
