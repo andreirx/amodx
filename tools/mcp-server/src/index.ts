@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import { chromium } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
-import { createTenantBody, createProductBody, productListLine } from "./tool-shapes.js";
+import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary } from "./tool-shapes.js";
 
 // Storage directory for browser auth states
 const STORAGE_DIR = path.join(import.meta.dirname, "../.storage");
@@ -1131,6 +1131,38 @@ server.tool("delete_product",
 );
 
 // ==========================================
+// CATALOG: GLAM PRICELIST IMPORT (CAT-IMPORT-1)
+// ==========================================
+
+server.tool("import_glam_pricelist",
+    "Import ONE glam enriched pricelist sheet (.csv, the 12-column layout) into a catalog site: one product per style, " +
+    "its rows as variants. REPLACES the products of that producer + sheet. Prices are never read; specification lines that name " +
+    "the row's producer code are removed (image URLs are kept as in the file until cat-images-1). " +
+    "Defaults to a dry run (nothing written) — call again with dry_run=false to apply.",
+    {
+        tenant_id: z.string(),
+        csv_path: z.string().describe("Local path of the enriched CSV, e.g. pl-tools/out/boen/enriched/PL.csv"),
+        producer: z.string().describe("Producer name (becomes the brand and the parent category); no '/'"),
+        sheet: z.string().optional().describe("Sheet name (default: the file name without .csv); no '/'"),
+        variant_name: z.string().optional().describe("What the variants are, e.g. Format, Culoare (default: Variantă)"),
+        dry_run: z.boolean().optional().describe("Preview only (default true)"),
+    },
+    async ({ tenant_id, csv_path, producer, sheet, variant_name, dry_run }) => {
+        try {
+            const csvContent = fs.readFileSync(csv_path, "utf8");
+            const request = glamPricelistRequest({ producer, sheet, variant_name, dry_run }, csvContent, path.basename(csv_path));
+            const response = await axios.post(`${API_URL}/import/glam-pricelist`, request.body, {
+                headers: getHeaders(tenant_id),
+                params: request.dryRun ? { dryRun: "1" } : undefined,
+            });
+            return { content: [{ type: "text", text: glamPricelistSummary(response.data) }] };
+        } catch (error: any) {
+            return apiError(error);
+        }
+    }
+);
+
+// ==========================================
 // COMMERCE: CATEGORIES
 // ==========================================
 
@@ -2158,7 +2190,7 @@ server.tool("delete_lead",
 // ==========================================
 // Tenant-bound `amx_sk_` keys for external systems. The scope list mirrors `ServiceKeyScope` in
 // packages/shared (this server does not depend on @amodx/shared); the backend validates it again.
-const SERVICE_KEY_SCOPES = ["catalog:read", "leads:read"] as const;
+const SERVICE_KEY_SCOPES = ["catalog:read", "leads:read", "catalog:write"] as const;
 
 const describeServiceKey = (k: any) =>
     `- ${k.name} [${(k.scopes || []).join(", ")}] id: ${k.id} — created ${k.createdAt} by ${k.createdBy}; ` +
@@ -2180,7 +2212,8 @@ server.tool("service_key_list",
 );
 
 server.tool("service_key_create",
-    "Create an integration (service) key bound to ONE site. Scopes: catalog:read = GET /products, leads:read = GET /leads. " +
+    "Create an integration (service) key bound to ONE site. Scopes: catalog:read = GET /products, leads:read = GET /leads, " +
+    "catalog:write = POST /import/glam-pricelist (replaces a pricelist sheet's products). " +
     "The result carries the secret ONCE — it is not stored and cannot be shown again. The caller then sends " +
     "`x-api-key: <secret>`, `Authorization: Bearer service` and `x-tenant-id: <this site>`.",
     {

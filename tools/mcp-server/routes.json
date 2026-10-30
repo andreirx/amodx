@@ -73,6 +73,7 @@
     "POST /coupons",
     "POST /email/dns-check",
     "POST /forms",
+    "POST /import/glam-pricelist",
     "POST /import/media",
     "POST /import/reviews",
     "POST /import/woocommerce",

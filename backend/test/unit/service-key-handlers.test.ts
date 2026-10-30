@@ -103,7 +103,9 @@ describe("SERVICE-ACCOUNT-1 — POST /service-keys", () => {
     });
 
     it.each([
-        ["unknown scope → 400", { name: "x", scopes: ["catalog:write"] }],
+        // `leads:write` was dropped from the scope set (no consumer). `catalog:write` was the witness here until
+        // CAT-IMPORT-1 added it to ServiceKeyScope with its route.
+        ["unknown scope → 400", { name: "x", scopes: ["leads:write"] }],
         ["empty scopes → 400", { name: "x", scopes: [] }],
         ["empty name → 400", { name: "   ", scopes: ["leads:read"] }],
         ["repeated scope → 400", { name: "x", scopes: ["leads:read", "leads:read"] }],

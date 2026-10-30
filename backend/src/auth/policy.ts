@@ -15,6 +15,7 @@ import type { ServiceKeyScope } from "@amodx/shared";
 export const SERVICE_ROUTE_SCOPES: Readonly<Record<string, ServiceKeyScope>> = Object.freeze({
     "GET /products": "catalog:read",
     "GET /leads": "leads:read",
+    "POST /import/glam-pricelist": "catalog:write",
 });
 
 /**

@@ -69,9 +69,13 @@ describe("SERVICE-ACCOUNT-1 — other roles unchanged when a serviceScope is dec
 });
 
 describe("SERVICE-ACCOUNT-1 — the authorizer's route allowlist (D-SA-E)", () => {
-    it("SERVICE_ROUTE_SCOPES has exactly 'GET /products' and 'GET /leads'", () => {
+    it("SERVICE_ROUTE_SCOPES has exactly 'GET /products', 'GET /leads' and 'POST /import/glam-pricelist'", () => {
         // Pins the allowlist: opening a route to service keys is a deliberate edit of this table AND this test.
-        expect({ ...SERVICE_ROUTE_SCOPES }).toEqual({ "GET /products": "catalog:read", "GET /leads": "leads:read" });
+        expect({ ...SERVICE_ROUTE_SCOPES }).toEqual({
+            "GET /products": "catalog:read",
+            "GET /leads": "leads:read",
+            "POST /import/glam-pricelist": "catalog:write",
+        });
         expect(Object.isFrozen(SERVICE_ROUTE_SCOPES)).toBe(true);
     });
 });

@@ -18,7 +18,12 @@ src/
 │   │                      #   refuse price/salePrice/volumePricing/priceOverride/personalizations; other tenants →
 │   │                      #   price + imageLink required; importSource products → one variant group, unique
 │   │                      #   labels, derived imageLink/additionalImageLinks). Users: products/create, update,
-│   │                      #   import/woocommerce (mode read only)
+│   │                      #   import/woocommerce (mode read only), import/glam-pricelist (both)
+│   ├── catprod.ts         # CATPROD#<categoryId>#<productId> projections (the card fields). writeCatProductItems /
+│   │                      #   deleteCatProductItems (BatchWrite, responses discarded) and queryCatProducts (one
+│   │                      #   page) as before; CAT-IMPORT-1 adds listCatProductIds (complete, ConsistentRead) and
+│   │                      #   writeCategoryProjections (one category, UnprocessedItems resent ≤ 5×, returns the
+│   │                      #   count left) — used only by the glam importer's reconciliation
 │   ├── events.ts          # EventBridge publishAudit() helper
 │   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
 │   ├── invalidate-cdn.ts  # Two invalidation classes (cache-4a): withInvalidation() HOF → bulk `/*`
@@ -146,6 +151,28 @@ src/
     ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
     ├── woocommerce.ts     # POST /import/woocommerce — product CSV import; refuses a catalog tenant (403) and
     │                      #   a missing tenant (404) before the first write (CATALOG-MODE-1, CM-D8 guard 1)
+    ├── glam-pricelist.ts  # POST /import/glam-pricelist[?dryRun=1] (CAT-IMPORT-1) — one glam enriched pricelist
+    │                      #   CSV → one product per style (its rows = options of one variant group), REPLACING
+    │                      #   the products carrying the sheet's importSource. Body must be a JSON object. Catalog
+    │                      #   tenants only (404/403 via a ConsistentRead before the lock); categories matched by
+    │                      #   slug (CATEGORY#<slug> with its stored slug checked, then GSI_Slug, every page) — an
+    │                      #   occupied CATEGORY#<slug> (renamed category) → 409 before any deletion, decided under
+    │                      #   the lock (every read that decides a write is made while the lock is held; only the
+    │                      #   tenant mode is read before it), reported by the dry run; per-tenant lock
+    │                      #   TENANT#<t>/IMPORTLOCK#glam (owner token, conditional put, 15-min expiry +
+    │                      #   conditional takeover, owner-only release in finally, only if acquired;
+    │                      #   contender → 409); previous set = consistent PRODUCT# query selected in code; delete →
+    │                      #   create absent categories (attribute_not_exists, never deleted) → create → reconcile
+    │                      #   every touched category (503 + incompleteCategories when the retry bound is
+    │                      #   exhausted). Any failure → 500 naming the step. Dry run writes nothing (not even the
+    │                      #   CDN marker). Scope catalog:write
+    ├── glam/              # CAT-IMPORT-1 PURE core (no I/O): parse.ts (RFC 4180, misplaced quotes refused; 12
+    │                      #   columns by index, a non-12-cell record refuses the file; the row type has NO field
+    │                      #   for columns 2–5; columns 3–4 = prices never read; columns 2/5 = producer codes read
+    │                      #   only to drop every specs line holding one as a whole token), group.ts (key
+    │                      #   normalisation trim→collapse→lower→NFC, U+001F rule, styles, options merged on equal
+    │                      #   label + equal image cell, collision-aware labels and slugs), map.ts (upload
+    │                      #   identifier rule, importSource, GlamStyleDraft DTO, report counts)
     ├── media.ts           # POST /import/media — bulk media import
     ├── reviews.ts         # POST /import/reviews (rev-2b) — attestation-gated bulk review import.
     │                      #   Import-family instance #3 (own NodejsFunction). ORDER (all validation
@@ -181,7 +208,8 @@ Checked in this order by `auth/authorizer.ts`:
 2. **Renderer API Key** — `x-api-key` matched against its own secret → `{sub: "renderer", role: "RENDERER", tenantId: "ALL"}`
 3. **Service key** (SERVICE-ACCOUNT-1) — `x-api-key` starting `amx_sk_`. One consistent `GetItem` on the lookup item
    keyed by `sha256(secret)` (`lib/service-keys.ts`); absent (unknown or revoked) → deny. Then the route allowlist
-   `SERVICE_ROUTE_SCOPES` (`policy.ts`: `GET /products` → `catalog:read`, `GET /leads` → `leads:read`): a route not in
+   `SERVICE_ROUTE_SCOPES` (`policy.ts`: `GET /products` → `catalog:read`, `GET /leads` → `leads:read`,
+   `POST /import/glam-pricelist` → `catalog:write`): a route not in
    the table, a missing scope, or an `x-tenant-id` other than the key's tenant → deny, before any Lambda runs.
    Otherwise → `{sub: "service:<keyId>", role: "SERVICE", tenantId, scopes: "a,b", keyId}`; the first use per UTC
    day updates `lastUsedAt` and publishes `SERVICE_KEY_USED` (best effort). A service key never falls through to 4–5.
@@ -249,9 +277,10 @@ All entities in one table. Partition key `PK`, sort key `SK`.
   `isCatalogMode()` (`@amodx/shared`). A catalog tenant stores no monetary field on any product (refused, 400, at
   `products/create.ts` / `update.ts` via `lib/catalog-product.ts`; WooCommerce import refused, 403); a non-catalog
   tenant must send `price` and `imageLink`. `POST /public/orders` refuses (403) every tenant whose `commerceEnabled`
-  is not `true`, before reCAPTCHA and any product read. Four mode-enforcing reads are `ConsistentRead` and answer
+  is not `true`, before reCAPTCHA and any product read. Five mode-enforcing reads are `ConsistentRead` and answer
   404 on a missing tenant record, with nothing written: `tenant/settings.ts` (PUT), `products/create.ts`,
-  `products/update.ts`, `import/woocommerce.ts`. Exception, by design (spec `catalog-mode-1.md` § 3.1): the order
+  `products/update.ts`, `import/woocommerce.ts`, `import/glam-pricelist.ts` (which also answers 403 for a
+  non-catalog tenant — it imports into catalog sites only). Exception, by design (spec `catalog-mode-1.md` § 3.1): the order
   handler `orders/create.ts` keeps its eventually consistent read; a missing record maps to `{}`, which the CM-D6
   guard refuses with 403 (fail closed). `products/update.ts` writes with `attribute_exists(PK)` (a product deleted meanwhile →
   404, no `CATPROD#` rebuild), reads `imageLink: null` as "remove the image", and both product routes strip
@@ -289,8 +318,9 @@ test live here, both credential-free:
 
 1. **Pure modules — imported and called directly, no mocks.** A module qualifies when it imports
    neither `lib/db.ts` nor an AWS SDK client. Today: `lib/revalidate-paths.ts` (the ISR purge-path
-   rule, `cache-2`) and `lib/edge-invalidation.ts` (the fast-lane coalescing rule, `cache-4a` —
-   dedupe + the `/*` collapse over 30 distinct paths). These exist partly *as* pure test seams,
+   rule, `cache-2`), `lib/edge-invalidation.ts` (the fast-lane coalescing rule, `cache-4a` —
+   dedupe + the `/*` collapse over 30 distinct paths) and `import/glam/` (CAT-IMPORT-1 parser, grouping and
+   mapper; `test/unit/glam-import-core.test.ts`, incl. the BOEN acceptance fixture). These exist partly *as* pure test seams,
    extracted from AWS-touching callers precisely so the rule can be pinned here.
 
 2. **AWS-boundary modules — the SDK/`db` boundary is mocked at module load (`vi.mock`), so no

@@ -349,7 +349,7 @@ export class AmodxApi extends Construct {
             integration: new integrations.HttpLambdaIntegration('ConsentInt', consentFunc),
         });
 
-        // --- IMPORT (routes only; ImportFunc/MediaImportFunc/ReviewImportFunc live in CatalogApi) ---
+        // --- IMPORT (routes only; ImportFunc/MediaImportFunc/ReviewImportFunc/GlamPricelistImportFunc live in CatalogApi) ---
         // The import-family functions (wordpress, media, reviews) and their grants/IAM moved to the
         // CatalogApi NestedStack verbatim (INFRA-SPLIT-1 v2). Routes + integrations + permissions stay
         // here with unchanged keys/logical ids. WooImportFunc is UNRELATED — it lives in the Commerce
@@ -368,6 +368,13 @@ export class AmodxApi extends Construct {
             path: '/import/reviews',
             methods: [apigw.HttpMethod.POST],
             integration: new integrations.HttpLambdaIntegration('ReviewImportInt', catalog.reviewImportFunc),
+        });
+        // CAT-IMPORT-1: the glam pricelist import (function in CatalogApi, route + integration here like its siblings).
+        // Service keys reach it only with `catalog:write` (SERVICE_ROUTE_SCOPES, backend/src/auth/policy.ts).
+        this.httpApi.addRoutes({
+            path: '/import/glam-pricelist',
+            methods: [apigw.HttpMethod.POST],
+            integration: new integrations.HttpLambdaIntegration('GlamPricelistImportInt', catalog.glamPricelistImportFunc),
         });
 
         // --- TENANTS ---

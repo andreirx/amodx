@@ -158,7 +158,7 @@ shown once and only `sha256(secret)` is stored (`backend/src/lib/service-keys.ts
 1. One strongly consistent `GetItem` on `SVCKEYHASH#<sha256(secret)>`. Absent = unknown or revoked → deny (API
    Gateway answers 403). No secret comparison exists: the hash is the read key.
 2. Route allowlist `SERVICE_ROUTE_SCOPES` in `backend/src/auth/policy.ts` — `GET /products` → `catalog:read`,
-   `GET /leads` → `leads:read`. Route not in the table, scope not held, or `x-tenant-id` absent or ≠ the key's
+   `GET /leads` → `leads:read`, `POST /import/glam-pricelist` → `catalog:write` (CAT-IMPORT-1). Route not in the table, scope not held, or `x-tenant-id` absent or ≠ the key's
    tenant → deny. This holds for every route behind the API's Lambda authorizer, whether or not its handler
    calls `requireRole`. Only routes configured `authorizationType: NONE` (`noAuth: true` in the nested stacks'
    `addRoute`) skip the authorizer; a key there is not evaluated and confers nothing over anonymous. The `/public/`
@@ -167,11 +167,12 @@ shown once and only `sha256(secret)` is stored (`backend/src/lib/service-keys.ts
    tenant and scopes come from the stored record).
 4. First use per UTC day: `lastUsedAt` + audit `SERVICE_KEY_USED` (best effort; a failure still authorises).
 
-**Handler side (defence in depth):** the two handlers also declare the scope — `requireRole(auth, roles, tenantId,
-"catalog:read" | "leads:read")`. Each layer checks only its own declaration: a route absent from the table is
+**Handler side (defence in depth):** the three handlers also declare the scope — `requireRole(auth, roles, tenantId,
+"catalog:read" | "leads:read" | "catalog:write")`. Each layer checks only its own declaration: a route absent from the table is
 denied by the authorizer; a handler with no declaration is denied by `requireRole`. Nothing compares the two
 declarations at runtime — keeping them equal is a maintenance requirement, pinned by the unit tests
-(`service-key-policy.test.ts` pins the table; `service-key-routes.test.ts` shows each handler admits a key holding
+(`service-key-policy.test.ts` pins the table; `service-key-routes.test.ts` and, for the import,
+`glam-import-handler.test.ts` show each handler admits a key holding
 only its table scope).
 
 **Revocation:** `POST /service-keys/{id}/revoke` deletes the lookup item; with `resultsCacheTtl` 0 the next request

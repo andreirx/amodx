@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createTenantBody, createProductBody, productListLine } from "../src/tool-shapes.ts";
+import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary } from "../src/tool-shapes.ts";
 
 test("create_tenant with catalog_mode: true → { name, domain, catalogMode: true }", () => {
     assert.deepEqual(createTenantBody({ name: "Glam", domain: "glam.test", catalog_mode: true }), { name: "Glam", domain: "glam.test", catalogMode: true });
@@ -37,4 +37,42 @@ test("list_products line for a priceless product prints no \"undefined\" and no 
 
 test("list_products line for a priced product keeps the price part", () => {
     assert.equal(productListLine({ title: "Rug", price: "10", currency: "USD", status: "draft", id: "p2" }), "- Rug (10 USD) [draft] ID: p2");
+});
+
+test("import_glam_pricelist: dry run by default; sheet defaults to the file name; body keys exactly csvContent, producer, sheet", () => {
+    const req = glamPricelistRequest({ producer: "BOEN" }, "csv", "PL.csv");
+    assert.equal(req.dryRun, true);
+    assert.deepEqual(req.body, { csvContent: "csv", producer: "BOEN", sheet: "PL" });
+});
+
+test("import_glam_pricelist: dry_run false applies; sheet and variant name are sent when given", () => {
+    const req = glamPricelistRequest({ producer: "ITC", sheet: "Arc_Edition", variant_name: "Culoare", dry_run: false }, "csv", "x.csv");
+    assert.equal(req.dryRun, false);
+    assert.deepEqual(req.body, { csvContent: "csv", producer: "ITC", sheet: "Arc_Edition", variantName: "Culoare" });
+});
+
+test("import_glam_pricelist summary: dry-run counts, the previous set and skipped rows", () => {
+    const text = glamPricelistSummary({
+        dryRun: true, producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl", totalRows: 3,
+        counts: { deleted: 2, products: 1, options: 2, deduped: 0, skipped: 1 }, categoriesCreated: 2,
+        previousSet: { count: 2, firstTitles: ["Oak", "Ash"] },
+        rows: [{ status: "created", index: 2 }, { status: "option", index: 3 }, { status: "skipped", index: 4, reason: "no-name" }],
+    });
+    assert.equal(text, [
+        "DRY RUN (nothing written) — BOEN / PL (glam:boen/pl), 3 rows",
+        "Would replace 2 previous products (e.g. Oak, Ash)",
+        "Would create 1 products with 2 variants; 0 rows merged; 2 new categories",
+        "Skipped 1 rows: row 4 no-name",
+        "To apply, call again with dry_run=false",
+    ].join("\n"));
+});
+
+test("import_glam_pricelist summary names category conflicts reported by a dry run", () => {
+    const text = glamPricelistSummary({
+        dryRun: true, producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl", totalRows: 1,
+        counts: { deleted: 0, products: 1, options: 1, deduped: 0, skipped: 0 }, categoriesCreated: 2,
+        previousSet: { count: 0, firstTitles: [] }, rows: [{ status: "created", index: 2 }],
+        categoryConflicts: [{ slug: "boen", storedSlug: "renamed-boen" }],
+    });
+    assert.ok(text.includes("BLOCKED — renamed categories hold keys this import needs: boen (now renamed-boen); the import would answer 409"));
 });

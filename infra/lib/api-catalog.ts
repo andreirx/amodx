@@ -37,8 +37,8 @@ interface CatalogApiProps extends NestedStackProps {
 
 /**
  * CatalogApi — a CloudFormation NestedStack holding ONLY the catalog group's Lambda Functions
- * (+ their CDK-generated Role/Policy), for the content (6), products (5) and import (3:
- * wordpress/media/reviews) handlers = 14 functions.
+ * (+ their CDK-generated Role/Policy), for the content (6), products (5) and import (4:
+ * wordpress/media/reviews/glam-pricelist) handlers = 15 functions.
  *
  * WHY THIS EXISTS (the single earned axis of variation): AmodxStack reached CloudFormation's hard
  * 500-resource-per-template ceiling (email-2 synth = 501), which BLOCKS every backend deploy that
@@ -76,10 +76,11 @@ export class CatalogApi extends NestedStack {
     public readonly getProductFunc: nodejs.NodejsFunction;
     public readonly updateProductFunc: nodejs.NodejsFunction;
     public readonly deleteProductFunc: nodejs.NodejsFunction;
-    // --- IMPORT (3) ---
+    // --- IMPORT (4) ---
     public readonly importFunc: nodejs.NodejsFunction;
     public readonly mediaImportFunc: nodejs.NodejsFunction;
     public readonly reviewImportFunc: nodejs.NodejsFunction;
+    public readonly glamPricelistImportFunc: nodejs.NodejsFunction;
 
     constructor(scope: Construct, id: string, props: CatalogApiProps) {
         super(scope, id, {
@@ -269,6 +270,20 @@ export class CatalogApi extends NestedStack {
             actions: ['s3:PutObject'],
             resources: [`${props.privateBucket.bucketArn}/review-staging/*`],
         }));
+
+        // --- GLAM PRICELIST IMPORT (CAT-IMPORT-1) ---
+        // Instance #4 of the import family. Timeout 15 min = the import lock's lifetime (LOCK_DURATION_MS in
+        // backend/src/import/glam-pricelist.ts; spec catalog-mode-1 § 3.4): a lock past `expiresAt` belongs to a
+        // job that can no longer run. Must stay ≤ that duration. DynamoDB only — no S3, no revalidation secret
+        // (the CDN is marked by `withInvalidation`, as the WooCommerce importer does).
+        this.glamPricelistImportFunc = new nodejs.NodejsFunction(this, 'GlamPricelistImportFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/import/glam-pricelist.ts'),
+            handler: 'handler',
+            timeout: cdk.Duration.minutes(15),
+            memorySize: 1024,
+        });
+        table.grantReadWriteData(this.glamPricelistImportFunc);
 
         // Grant EventBus PutEvents to every Lambda in THIS stack (publishAudit). The parent's
         // identical loop over its own children (api.ts) no longer reaches these functions once they

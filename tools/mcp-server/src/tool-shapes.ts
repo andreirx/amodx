@@ -2,8 +2,9 @@
  * Pure request-body builders and output formatters of MCP tools (slice cat-mode-1, CATALOG-MODE-1).
  *
  * No I/O, no environment, no import from `index.ts`: `index.ts` runs `dotenv.config()` and `main()` when imported,
- * so its handlers cannot be loaded by a test. The three handlers below call these functions; `test/tool-shapes.test.ts`
- * asserts on what they return. Users: `create_tenant`, `create_product`, `list_products` in `index.ts`.
+ * so its handlers cannot be loaded by a test. The handlers named below call these functions; `test/tool-shapes.test.ts`
+ * asserts on what they return. Users: `create_tenant`, `create_product`, `list_products`, `import_glam_pricelist` (CAT-IMPORT-1)
+ * in `index.ts`.
  */
 
 /** `POST /tenants` body. `catalogMode` is true only for the literal `true` (the mode is fixed at creation, CM-D11). */
@@ -43,4 +44,50 @@ export function createProductBody(args: {
 /** One `list_products` line. Catalog sites store no price: the price part is printed only when present (never "undefined"). */
 export function productListLine(p: { title: string; price?: string; currency?: string; status?: string; id: string }): string {
     return `- ${p.title}${p.price !== undefined ? ` (${p.price} ${p.currency})` : ""} [${p.status}] ID: ${p.id}`;
+}
+
+/**
+ * CAT-IMPORT-1 — `import_glam_pricelist`: the request of `POST /import/glam-pricelist`. The sheet defaults to the
+ * file name without `.csv` (as in the admin form); a dry run is the default — the import replaces the sheet's
+ * products, so the caller previews first. Absent `variant_name` → no key (the backend defaults it to "Variantă").
+ */
+export function glamPricelistRequest(
+    args: { producer: string; sheet?: string; variant_name?: string; dry_run?: boolean },
+    csvContent: string,
+    fileName: string,
+): { dryRun: boolean; body: Record<string, string> } {
+    const body: Record<string, string> = {
+        csvContent,
+        producer: args.producer,
+        sheet: args.sheet || fileName.replace(/\.csv$/i, ""),
+    };
+    if (args.variant_name) body.variantName = args.variant_name;
+    return { dryRun: args.dry_run !== false, body };
+}
+
+/** The `import_glam_pricelist` result text: counts, the previous set, skipped rows. Nothing about prices exists to print. */
+export function glamPricelistSummary(report: {
+    dryRun: boolean; producer: string; sheet: string; importSource: string; totalRows: number;
+    counts: { deleted: number; products: number; options: number; deduped: number; skipped: number };
+    categoriesCreated: number; previousSet: { count: number; firstTitles: string[] };
+    rows: { status: string; index: number; reason?: string }[];
+    incompleteCategories?: { categoryId: string }[];
+    categoryConflicts?: { slug: string; storedSlug: string }[];
+}): string {
+    const c = report.counts;
+    const lines = [
+        `${report.dryRun ? "DRY RUN (nothing written)" : "IMPORTED"} — ${report.producer} / ${report.sheet} (${report.importSource}), ${report.totalRows} rows`,
+        `${report.dryRun ? "Would replace" : "Replaced"} ${c.deleted} previous products` +
+            (report.previousSet.firstTitles.length ? ` (e.g. ${report.previousSet.firstTitles.join(", ")})` : ""),
+        `${report.dryRun ? "Would create" : "Created"} ${c.products} products with ${c.options} variants; ${c.deduped} rows merged; ${report.categoriesCreated} new categories`,
+        `Skipped ${c.skipped} rows` + (c.skipped ? `: ${report.rows.filter((r) => r.status === "skipped").map((r) => `row ${r.index} ${r.reason}`).join(", ")}` : ""),
+    ];
+    if (report.categoryConflicts?.length) {
+        lines.push(`BLOCKED — renamed categories hold keys this import needs: ${report.categoryConflicts.map((x) => `${x.slug} (now ${x.storedSlug})`).join(", ")}; the import would answer 409`);
+    }
+    if (report.incompleteCategories?.length) {
+        lines.push(`INCOMPLETE category lists: ${report.incompleteCategories.map((x) => x.categoryId).join(", ")} — import the same file again`);
+    }
+    if (report.dryRun) lines.push("To apply, call again with dry_run=false");
+    return lines.join("\n");
 }

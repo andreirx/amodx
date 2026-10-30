@@ -18,6 +18,7 @@ import { KeyRound, Loader2, Copy, Check } from "lucide-react";
 const SCOPE_LABELS: Record<ServiceKeyScope, string> = {
     "catalog:read": "Read products",
     "leads:read": "Read leads",
+    "catalog:write": "Import pricelists (replaces a sheet's products)",
 };
 
 const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "Never");

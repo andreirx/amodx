@@ -1,5 +1,6 @@
 import { db, TABLE_NAME } from "./db.js";
 import { BatchWriteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import type { QueryCommandOutput, BatchWriteCommandOutput } from "@aws-sdk/lib-dynamodb";
 
 /**
  * CATPROD# adjacency list items for O(1) category-product lookups.
@@ -112,4 +113,71 @@ export async function queryCatProducts(tenantId: string, categoryId: string) {
     }));
 
     return (result.Items || []).sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+}
+
+// ── CAT-IMPORT-1 — the end-of-import reconciliation (spec docs/slices/catalog-mode-1.md § 3.4, cycle 13) ──────────
+// Two functions added beside the three above, which are unchanged (as are their callers): the reconciliation needs a
+// COMPLETE, strongly consistent read and ACKNOWLEDGED writes, which `queryCatProducts` (one page, eventually
+// consistent) and the two writers (BatchWrite responses discarded) do not give. Kept in this module because it owns
+// the `CATPROD#<categoryId>#<productId>` key layout and the projection shape (`buildCatProdItem`).
+
+/** The retry bound of the reconciliation: at most 5 resends per request. */
+const MAX_RESENDS = 5;
+
+/** Full-jitter wait before resend `attempt` (0-based): uniform in [0, 100·2^attempt) ms — at most 3.1 s per request. */
+function backoff(attempt: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, Math.random() * 100 * 2 ** attempt));
+}
+
+/**
+ * Every product id that has a projection in `categoryId`: `begins_with(SK, "CATPROD#<categoryId>#")`, strongly
+ * consistent, projection `id`, following `LastEvaluatedKey` to the end. One caller: the glam importer's reconciliation.
+ */
+export async function listCatProductIds(tenantId: string, categoryId: string): Promise<string[]> {
+    const ids: string[] = [];
+    let startKey: Record<string, any> | undefined;
+    do {
+        const page: QueryCommandOutput = await db.send(new QueryCommand({
+            TableName: TABLE_NAME,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": `CATPROD#${categoryId}#` },
+            ProjectionExpression: "id",
+            ConsistentRead: true,
+            ExclusiveStartKey: startKey,
+        }));
+        for (const item of page.Items ?? []) ids.push(item.id);
+        startKey = page.LastEvaluatedKey;
+    } while (startKey);
+    return ids;
+}
+
+/**
+ * Write the projections of ONE category: delete `CATPROD#<categoryId>#<id>` of each orphan, put the projection of each
+ * member for this category only (built by `buildCatProdItem`, the shape every writer produces). Batches of 25; each
+ * response's `UnprocessedItems` are resent at most 5 times with full-jitter waits (100 ms doubling). Returns the
+ * number of requests still unprocessed after the bound — 0 means every write was acknowledged.
+ * One caller: the glam importer's reconciliation. A product id must not be both a member and an orphan.
+ */
+export async function writeCategoryProjections(
+    tenantId: string,
+    categoryId: string,
+    members: ProductCardProjection[],
+    orphanIds: string[],
+): Promise<{ unprocessed: number }> {
+    const requests: any[] = [
+        ...orphanIds.map((id) => ({ DeleteRequest: { Key: { PK: `TENANT#${tenantId}`, SK: `CATPROD#${categoryId}#${id}` } } })),
+        ...members.map((member) => ({ PutRequest: { Item: buildCatProdItem(tenantId, categoryId, member) } })),
+    ];
+    let unprocessed = 0;
+    for (let i = 0; i < requests.length; i += 25) {
+        let pending: any[] = requests.slice(i, i + 25);
+        for (let attempt = 0; ; attempt++) {
+            const result: BatchWriteCommandOutput = await db.send(new BatchWriteCommand({ RequestItems: { [TABLE_NAME]: pending } }));
+            pending = result.UnprocessedItems?.[TABLE_NAME] ?? [];
+            if (pending.length === 0 || attempt === MAX_RESENDS) break;
+            await backoff(attempt);
+        }
+        unprocessed += pending.length;
+    }
+    return { unprocessed };
 }

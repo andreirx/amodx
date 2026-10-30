@@ -405,7 +405,8 @@ export const UserRole = z.enum(["GLOBAL_ADMIN", "TENANT_ADMIN", "EDITOR"]);
 // The two declarations are kept equal by tests, not compared at runtime. A scope is added in the same change
 // as the route that honours it.
 //   catalog:read → GET /products     leads:read → GET /leads
-export const ServiceKeyScope = z.enum(["catalog:read", "leads:read"]);
+//   catalog:write → POST /import/glam-pricelist (CAT-IMPORT-1; the future glamCRM push)
+export const ServiceKeyScope = z.enum(["catalog:read", "leads:read", "catalog:write"]);
 export type ServiceKeyScope = z.infer<typeof ServiceKeyScope>;
 
 // What the API returns and the admin renders for one key. Never carries the hash or the secret.

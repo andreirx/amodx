@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { detectHeaderMappings, type HeaderMapping } from "@/lib/csv-headers";
+import { GlamPricelistImport } from "@/components/GlamPricelistImport";
 
 export default function Products() {
     const { currentTenant } = useTenant();
@@ -355,6 +356,12 @@ export default function Products() {
                                         <ul className="text-xs mt-1 space-y-0.5">{importResult.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}</ul>
                                     </details>
                                 )}
+                            </div>
+                        )}
+                        {/* CAT-IMPORT-1: the glam pricelist import — catalog sites only (the backend refuses it elsewhere). */}
+                        {catalog && (
+                            <div className="border-t pt-3">
+                                <GlamPricelistImport onImported={loadProducts} />
                             </div>
                         )}
                     </CardContent>

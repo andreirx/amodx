@@ -10,8 +10,9 @@ A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop.
 
 ```
 src/
-├── index.ts          # MCP server: all 73 tools, block schemas, API helpers
-└── tool-shapes.ts    # PURE request bodies / output lines of create_tenant, create_product, list_products
+├── index.ts          # MCP server: all 77 tools, block schemas, API helpers
+└── tool-shapes.ts    # PURE request bodies / output lines of create_tenant, create_product, list_products,
+                      #   import_glam_pricelist (glamPricelistRequest / glamPricelistSummary, CAT-IMPORT-1)
                       #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested)
 
 scripts/
@@ -37,7 +38,7 @@ tsconfig.json
 - **API URL:** `AMODX_API_URL` is normalised once at startup (trailing `/` stripped); every call is `${API_URL}/<path>`
 - **Startup check:** `GET /tenants`; on failure every API tool returns an error with the fix instruction, local tools still work
 
-## Tools (76 total)
+## Tools (77 total)
 
 Method column = the API route(s) the tool calls. Generated from the `server.tool(` registrations in `src/index.ts`, in source order.
 
@@ -77,6 +78,7 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | `get_product` | GET /products/{id} | Read one product |
 | `update_product` | GET + PUT /products/{id} | Read-merge-write update (see Key Patterns) |
 | `delete_product` | DELETE /products/{id} | Delete product and its category links |
+| `import_glam_pricelist` | POST /import/glam-pricelist | Import one glam enriched pricelist sheet (local `csv_path`) into a catalog site, REPLACING that producer + sheet's products; dry run by default (CAT-IMPORT-1) |
 
 ### Commerce (commerce track — not changed by mcp-sync-1)
 | Tool | Method | Purpose |

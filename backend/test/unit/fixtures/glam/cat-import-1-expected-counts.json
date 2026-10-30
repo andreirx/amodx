@@ -1,0 +1,403 @@
+{
+  "measuredAt": "2026-10-29",
+  "measure": "operator script (agent-manager session scratchpad cm-import-1-measure.mjs): RFC 4180 parse; header row ignored; rows = data rows; style key = producer + idx0 + idx1, each trim -> whitespace collapse -> lower-case -> NFC, joined with U+001F; option signature = format (idx 11, trimmed) + image (idx 9, trimmed), an equal signature is deduped; emptyLabels = options whose format is empty (they get #n labels); suffixed = options needing a \" (2)\" suffix; imagelessStyles = styles with no option image; collections = distinct normalised idx0",
+  "acceptance": {
+    "BOEN/PL": {
+      "fixture": "backend/test/unit/fixtures/glam/boen-PL.csv (glamCRM pl-tools/out/boen/enriched/PL.csv of 2026-08-02 with columns 3-4 (prices) blanked on data rows; columns 2 and 5 (producer codes) KEPT for the CI1-A2 code-removal oracle; counts proven identical before and after blanking)",
+      "producer": "BOEN",
+      "sheet": "PL",
+      "rows": 478,
+      "styles": 437,
+      "options": 455,
+      "deduped": 23,
+      "emptyLabels": 53,
+      "suffixed": 0,
+      "imagelessStyles": 157,
+      "collections": 27,
+      "skipped": {
+        "noName": 0,
+        "noCollection": 0,
+        "refusedSeparator": 0,
+        "blank": 0
+      },
+      "codeRemoval": {
+        "rowsWithSpecs": 310,
+        "specsLinesContainingTheRowCode": 310,
+        "note": "after removal by value (whole-token match of the row column-2/5 values), no specs line keeps a row code; operator measure 2026-10-30"
+      }
+    }
+  },
+  "informational_pre_PL_TOOLS_2": {
+    "note": "ITC and ALPOD files of 2026-08-02, before the storefront-grain mapping (glamCRM PL-TOOLS-2, deferred by the human 2026-10-29). NOT acceptance values; not committed as fixtures.",
+    "sheets": {
+      "ITC/Arc_Edition": {
+        "rows": 536,
+        "styles": 532,
+        "options": 536,
+        "deduped": 0,
+        "emptyLabels": 536,
+        "suffixed": 0,
+        "imagelessStyles": 5,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ITC/ITC": {
+        "rows": 44,
+        "styles": 44,
+        "options": 44,
+        "deduped": 0,
+        "emptyLabels": 44,
+        "suffixed": 0,
+        "imagelessStyles": 44,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/AUR": {
+        "rows": 219,
+        "styles": 7,
+        "options": 63,
+        "deduped": 156,
+        "emptyLabels": 63,
+        "suffixed": 0,
+        "imagelessStyles": 3,
+        "collections": 4,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/CLA": {
+        "rows": 44,
+        "styles": 21,
+        "options": 43,
+        "deduped": 1,
+        "emptyLabels": 43,
+        "suffixed": 0,
+        "imagelessStyles": 15,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/COS": {
+        "rows": 28,
+        "styles": 28,
+        "options": 28,
+        "deduped": 0,
+        "emptyLabels": 28,
+        "suffixed": 0,
+        "imagelessStyles": 2,
+        "collections": 7,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/DEC": {
+        "rows": 72,
+        "styles": 63,
+        "options": 63,
+        "deduped": 9,
+        "emptyLabels": 63,
+        "suffixed": 0,
+        "imagelessStyles": 60,
+        "collections": 5,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/EGP": {
+        "rows": 168,
+        "styles": 37,
+        "options": 161,
+        "deduped": 7,
+        "emptyLabels": 161,
+        "suffixed": 0,
+        "imagelessStyles": 15,
+        "collections": 8,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/EVO": {
+        "rows": 12,
+        "styles": 7,
+        "options": 10,
+        "deduped": 2,
+        "emptyLabels": 10,
+        "suffixed": 0,
+        "imagelessStyles": 6,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/EXT": {
+        "rows": 18,
+        "styles": 18,
+        "options": 18,
+        "deduped": 0,
+        "emptyLabels": 18,
+        "suffixed": 0,
+        "imagelessStyles": 3,
+        "collections": 2,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/Flexcare": {
+        "rows": 6,
+        "styles": 6,
+        "options": 6,
+        "deduped": 0,
+        "emptyLabels": 6,
+        "suffixed": 0,
+        "imagelessStyles": 0,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/HER": {
+        "rows": 148,
+        "styles": 123,
+        "options": 140,
+        "deduped": 8,
+        "emptyLabels": 140,
+        "suffixed": 0,
+        "imagelessStyles": 54,
+        "collections": 15,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/ISOFLEX": {
+        "rows": 19,
+        "styles": 19,
+        "options": 19,
+        "deduped": 0,
+        "emptyLabels": 19,
+        "suffixed": 0,
+        "imagelessStyles": 6,
+        "collections": 2,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/KRO": {
+        "rows": 171,
+        "styles": 14,
+        "options": 131,
+        "deduped": 40,
+        "emptyLabels": 131,
+        "suffixed": 0,
+        "imagelessStyles": 5,
+        "collections": 4,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/KTX": {
+        "rows": 31,
+        "styles": 11,
+        "options": 31,
+        "deduped": 0,
+        "emptyLabels": 31,
+        "suffixed": 0,
+        "imagelessStyles": 9,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/LFS": {
+        "rows": 119,
+        "styles": 110,
+        "options": 110,
+        "deduped": 9,
+        "emptyLabels": 110,
+        "suffixed": 0,
+        "imagelessStyles": 47,
+        "collections": 14,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/ORC-laminate": {
+        "rows": 132,
+        "styles": 8,
+        "options": 100,
+        "deduped": 32,
+        "emptyLabels": 100,
+        "suffixed": 0,
+        "imagelessStyles": 1,
+        "collections": 2,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/ORC-wood": {
+        "rows": 132,
+        "styles": 8,
+        "options": 100,
+        "deduped": 32,
+        "emptyLabels": 100,
+        "suffixed": 0,
+        "imagelessStyles": 1,
+        "collections": 2,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/ORG": {
+        "rows": 35,
+        "styles": 35,
+        "options": 35,
+        "deduped": 0,
+        "emptyLabels": 35,
+        "suffixed": 0,
+        "imagelessStyles": 27,
+        "collections": 8,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/PRO": {
+        "rows": 136,
+        "styles": 136,
+        "options": 136,
+        "deduped": 0,
+        "emptyLabels": 136,
+        "suffixed": 0,
+        "imagelessStyles": 136,
+        "collections": 10,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/PROFILEX": {
+        "rows": 184,
+        "styles": 135,
+        "options": 180,
+        "deduped": 4,
+        "emptyLabels": 180,
+        "suffixed": 0,
+        "imagelessStyles": 133,
+        "collections": 22,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/SIL": {
+        "rows": 9,
+        "styles": 9,
+        "options": 9,
+        "deduped": 0,
+        "emptyLabels": 9,
+        "suffixed": 0,
+        "imagelessStyles": 0,
+        "collections": 1,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/WIN-spc": {
+        "rows": 77,
+        "styles": 77,
+        "options": 77,
+        "deduped": 0,
+        "emptyLabels": 77,
+        "suffixed": 0,
+        "imagelessStyles": 10,
+        "collections": 8,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      },
+      "ALPOD/WIN-vinyl": {
+        "rows": 43,
+        "styles": 43,
+        "options": 43,
+        "deduped": 0,
+        "emptyLabels": 43,
+        "suffixed": 0,
+        "imagelessStyles": 0,
+        "collections": 3,
+        "skipped": {
+          "noName": 0,
+          "noCollection": 0,
+          "refusedSeparator": 0,
+          "blank": 0
+        }
+      }
+    }
+  }
+}

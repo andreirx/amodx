@@ -980,8 +980,9 @@ describe('ReviewImportFunc — rev-2b import least-privilege', () => {
 //     integrations retargeted in place to the moved functions via a cross-stack Fn::GetAtt.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety invariant)', () => {
-    // The 14 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
-    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 3.
+    // The 15 catalog route keys that MUST remain in the PARENT with unchanged keys. Enumerated, not
+    // counted, so a dropped or renamed route fails by NAME. content 6 + products 5 + import 4 (the 4th,
+    // POST /import/glam-pricelist, added by CAT-IMPORT-1 with its function in CatalogApi).
     const CATALOG_ROUTE_KEYS = [
         'POST /content',
         'GET /content',
@@ -997,13 +998,32 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         'POST /import/wordpress',
         'POST /import/media',
         'POST /import/reviews',
+        'POST /import/glam-pricelist',
     ];
 
-    test('(split1-1) CatalogApi holds EXACTLY the 14 catalog Lambda functions', () => {
+    test('(split1-1) CatalogApi holds EXACTLY the 15 catalog Lambda functions', () => {
         // The heavy resources that moved out of the parent template to buy headroom under the 500
-        // ceiling. Exactly 14 — content 6 + products 5 + import 3 — so a stray function moved in
-        // (count > 14) or one left behind re-inflating the parent (count < 14) both fail here.
-        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(14);
+        // ceiling. Exactly 15 — content 6 + products 5 + import 4 (CAT-IMPORT-1 added the glam
+        // pricelist import) — so a stray function moved in (count > 15) or one left behind
+        // re-inflating the parent (count < 15) both fail here.
+        expect(Object.keys(catalogTemplate.findResources('AWS::Lambda::Function'))).toHaveLength(15);
+    });
+
+    test('(cat-import-1) POST /import/glam-pricelist integrates GlamPricelistImportFunc, whose timeout ≤ the 15-min import lock', () => {
+        // The route lives in the parent (split1-4 checks key + CatalogApi wiring); this pins WHICH function it
+        // reaches, and the timeout invariant of spec catalog-mode-1 § 3.4: a lock past `expiresAt` (15 min,
+        // LOCK_DURATION_MS in backend/src/import/glam-pricelist.ts) belongs to a job that can no longer run.
+        const routes = Object.values(template.findResources('AWS::ApiGatewayV2::Route'))
+            .filter((r: any) => r.Properties.RouteKey === 'POST /import/glam-pricelist');
+        expect(routes).toHaveLength(1);
+        const integrationId = JSON.stringify((routes[0] as any).Properties.Target).match(/"Ref":"([^"]+)"/)![1];
+        const integration = template.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+        expect(JSON.stringify(integration.Properties.IntegrationUri)).toMatch(/GlamPricelistImportFunc/);
+
+        const fns = Object.entries(catalogTemplate.findResources('AWS::Lambda::Function'))
+            .filter(([id]) => id.includes('GlamPricelistImportFunc'));
+        expect(fns).toHaveLength(1);
+        expect((fns[0][1] as any).Properties.Timeout).toBeLessThanOrEqual(15 * 60);
     });
 
     test('(split1-2) CatalogApi contains NO route, integration, or Lambda permission — those stay in the parent', () => {
@@ -1025,7 +1045,7 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         expect(catalogTemplate.findResources('AWS::Cognito::UserPool')).toEqual({});
     });
 
-    test('(split1-4) the PARENT keeps all 14 catalog route keys, each wired INTO a CatalogApi function', () => {
+    test('(split1-4) the PARENT keeps all 15 catalog route keys, each wired INTO a CatalogApi function', () => {
         // Both halves of the v2 fix, together: (a) every catalog route key is still in the PARENT
         // template with its key unchanged — no collision on redeploy — and (b) each of those routes
         // now integrates a function that lives in the CatalogApi NestedStack. (b) is what proves the
@@ -1103,8 +1123,11 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         // Counts in this synth (opennext-1c, 2026-10-15): 377 + 50 + 13 = 440 and 42 + 14 + 1 = 57.
         // The cdk.out staging template still shows 446 until the opennext-1c deploy; expected 440
         // after it — INFERRED until the operator's deploy synth confirms.
-        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 377 + 50 + 13 = 440
-        const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 42 + 14 + 1 = 57 (== cdk.out)
+        // Counts in this synth (CAT-IMPORT-1, 2026-10-30): 398 + 53 + 13 = 464 and 45 + 15 + 1 = 61 — the
+        // glam import added Route + Integration + Permission to the parent and Function + Role + Policy
+        // (+ its managed log group) to CatalogApi; the parent's growth since opennext-1c is earlier slices'.
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 398 + 53 + 13 = 464
+        const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 45 + 15 + 1 = 61
 
         // Pre-split parent (email-2, measured 2026-08-10 against the real staging synth) = 501 = 446
         // (post-split deployed parent at the split commit) − 1 (the new CFN::Stack pointer) + 56
