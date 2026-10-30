@@ -209,6 +209,28 @@ export class EngagementApi extends NestedStack {
         addRoute('FormSubmissions', 'GET /forms/{id}/submissions', formSubmissionsFunc);
         addRoute('PublicSubmitForm', 'POST /public/forms/{slug}/submit', publicSubmitFormFunc, { noAuth: true });
 
+        // ===================== INTEREST LIST (CAT-INTEREST-1) =====================
+        // A catalog visitor's shortlist: the submit (a submission of the `interest-list` system form) and the list
+        // page's identity read (resolve), one function dispatching on routeKey. Same posture as PublicSubmitForm:
+        // public routes, origin check (+ reCAPTCHA on the submit) in the handler, SES scoped to the verified identity.
+        const publicInterestFunc = new nodejs.NodejsFunction(this, 'PublicInterestFunc', {
+            ...nodeProps,
+            entry: path.join(__dirname, '../../backend/src/interest/public.ts'),
+            handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                SES_FROM_EMAIL: sesEmail,
+                ...(props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
+            },
+        });
+        table.grantReadWriteData(publicInterestFunc);
+        publicInterestFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+            resources: [sesIdentityArn],
+        }));
+        addRoute('PublicSubmitInterest', 'POST /public/interest', publicInterestFunc, { noAuth: true });
+        addRoute('PublicResolveInterest', 'POST /public/interest/resolve', publicInterestFunc, { noAuth: true });
+
         // Grant EventBus permissions to all Lambdas in this stack
         this.node.children.forEach(child => {
             if (child instanceof nodejs.NodejsFunction) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
+import { INTEREST_FORM_ID } from "@amodx/shared";
 import { apiRequest } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,9 +14,49 @@ const STATUS_COLORS: Record<string, string> = {
     archived: "bg-gray-50 text-gray-400",
 };
 
+/** CAT-INTEREST-1: one product of an interest-list submission, as the table shows it. */
+export interface InterestItemRow { key: string; title: string; optionValue?: string; href: string }
+
+/**
+ * CAT-INTEREST-1: the interest list's `items` value as rows linking to the product editor (`/products/:id`). ONLY for
+ * the reserved form's `items` field (review-0 F6, § 8 F8 — the field is typed `textarea`); `null` for every other
+ * form and field, which keep their existing cell whatever their value. Pure.
+ */
+export function interestItemRows(formId: string, fieldId: string, value: unknown): InterestItemRow[] | null {
+    if (formId !== INTEREST_FORM_ID || fieldId !== "items" || !Array.isArray(value)) return null;
+    return value
+        .filter((v): v is Record<string, unknown> => !!v && typeof v === "object" && typeof (v as any).productId === "string")
+        .map((v, i) => ({
+            key: `${v.productId}#${typeof v.optionValue === "string" ? v.optionValue : ""}#${i}`,
+            title: typeof v.title === "string" && v.title ? v.title : String(v.productId),
+            ...(typeof v.optionValue === "string" ? { optionValue: v.optionValue } : {}),
+            href: `/products/${encodeURIComponent(String(v.productId))}`,
+        }));
+}
+
+/**
+ * Where the page's back buttons go. A user form → its editor (as before). The interest list (CAT-INTEREST-1) has no
+ * editor; it is opened from the sidebar entry "Liste de interes" → back to the page the user was on (`-1`), or to
+ * the dashboard when the page was opened directly (no in-app history). Pure.
+ */
+export function submissionsBackTarget(formId: string, hasInAppHistory: boolean): string | -1 {
+    if (formId !== INTEREST_FORM_ID) return `/forms/${formId}`;
+    return hasInAppHistory ? -1 : "/";
+}
+
+/**
+ * CAT-INTEREST-1 (review-0 F6): true only when the interest-list system form is NOT FOUND — it is created by the first
+ * submission, so a 404 there means "no submissions yet". `apiRequest` reports a failed call as
+ * `API Error (<status>): …` (`@/lib/api`). Every other failure, and any failure for another form, stays an error. Pure.
+ */
+export function isMissingSystemForm(formId: string, error: unknown): boolean {
+    return formId === INTEREST_FORM_ID && error instanceof Error && error.message.startsWith("API Error (404)");
+}
+
 export default function FormSubmissions() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { currentTenant } = useTenant();
 
     const [form, setForm] = useState<any>(null);
@@ -32,7 +73,9 @@ export default function FormSubmissions() {
         setError("");
         try {
             const [formData, submissionsData] = await Promise.all([
-                apiRequest(`/forms/${id}`),
+                // CAT-INTEREST-1: the interest-list system form is created by the first submission; before it there
+                // is no form and therefore no submission — an empty list. Only that not-found; other errors surface.
+                apiRequest(`/forms/${id}`).catch((e: unknown) => (isMissingSystemForm(id!, e) ? null : Promise.reject(e))),
                 apiRequest(`/forms/${id}/submissions`),
             ]);
             setForm(formData);
@@ -57,25 +100,30 @@ export default function FormSubmissions() {
     );
 
     const formFields: Array<{ id: string; label: string; type: string }> = form?.fields || [];
+    // React Router marks the first entry of the app's history with the key "default".
+    const back = () => {
+        const target = submissionsBackTarget(id!, location.key !== "default");
+        if (target === -1) navigate(-1); else navigate(target);
+    };
 
     return (
         <div className="p-8 space-y-6">
             {/* Header */}
             <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => navigate(`/forms/${id}`)}>
+                <Button variant="ghost" size="icon" onClick={back}>
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">
-                        {form?.name || "Form"} - Submissions
+                        {form?.name || (id === INTEREST_FORM_ID ? "Listă de interes" : "Form")} - Submissions
                     </h1>
                     <p className="text-muted-foreground">
                         {submissions.length} submission{submissions.length !== 1 ? "s" : ""}
                     </p>
                 </div>
                 <div className="ml-auto flex gap-2">
-                    <Button variant="outline" onClick={() => navigate(`/forms/${id}`)}>
-                        Back to Form
+                    <Button variant="outline" onClick={back}>
+                        {id === INTEREST_FORM_ID ? "Back" : "Back to Form"}
                     </Button>
                 </div>
             </div>
@@ -106,7 +154,21 @@ export default function FormSubmissions() {
                                                 {sub.status || "new"}
                                             </span>
                                         </TableCell>
-                                        {formFields.map(field => (
+                                        {formFields.map(field => {
+                                            const itemRows = interestItemRows(id!, field.id, data[field.id]);
+                                            if (itemRows) return (
+                                                <TableCell key={field.id} className="text-sm align-top">
+                                                    <ul className="space-y-1">
+                                                        {itemRows.map((row) => (
+                                                            <li key={row.key}>
+                                                                <Link to={row.href} className="text-primary hover:underline">{row.title}</Link>
+                                                                {row.optionValue && <span className="text-muted-foreground"> — {row.optionValue}</span>}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </TableCell>
+                                            );
+                                            return (
                                             <TableCell key={field.id} className="text-sm max-w-[200px] truncate">
                                                 {data[field.id] !== undefined
                                                     ? field.type === "checkbox"
@@ -118,7 +180,8 @@ export default function FormSubmissions() {
                                                     )
                                                 }
                                             </TableCell>
-                                        ))}
+                                            );
+                                        })}
                                         <TableCell className="text-sm">
                                             {sub.submitterEmail ? (
                                                 <span className="text-blue-600">{sub.submitterEmail}</span>

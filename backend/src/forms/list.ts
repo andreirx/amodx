@@ -3,6 +3,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
+import { INTEREST_FORM_ID } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -26,8 +27,9 @@ export const handler: Handler = async (event) => {
             ScanIndexForward: false
         }));
 
-        // Sort by createdAt descending
-        const items = (result.Items || []).sort((a, b) =>
+        // Sort by createdAt descending. CAT-INTEREST-1: the interest-list system form is left out — the editor
+        // cannot open a form without a slug; its submissions are reached from the sidebar entry "Liste de interes".
+        const items = (result.Items || []).filter((f) => f.id !== INTEREST_FORM_ID).sort((a, b) =>
             (b.createdAt || "").localeCompare(a.createdAt || "")
         );
 

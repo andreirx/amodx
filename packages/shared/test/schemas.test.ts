@@ -99,7 +99,11 @@ describe("UrlPrefixesSchema / TenantConfig.urlPrefixes — English-first default
     /**
      * INVARIANT (CLAUDE.md-level rule, MEMORY "Hardcoded Defaults — English First"):
      * `URL_PREFIX_DEFAULTS` is the SINGLE source of truth for commerce URL prefixes, and
-     * every default is English. Romanian tenants opt in; they are not the default.
+     * every default is English — with ONE ratified exception: `interest: "/lista-mea"`
+     * (CAT-INTEREST-1, slice docs/slices/cat-interest-1.md § 8). That prefix is served only
+     * under `catalogMode` and is not in `checkSlugCommerceConflict`'s list, so it changes no
+     * tenant's allowed slugs. For every other prefix, Romanian tenants opt in; Romanian is not
+     * the default.
      *
      * Consumers that read these values without re-deriving them: `matchCommercePrefix()`
      * in the renderer's catch-all route, the admin Settings page, and
@@ -111,7 +115,7 @@ describe("UrlPrefixesSchema / TenantConfig.urlPrefixes — English-first default
         expect(TenantConfigSchema.parse(MINIMAL_TENANT).urlPrefixes).toEqual(URL_PREFIX_DEFAULTS);
     });
 
-    it("pins the defaults as English, not Romanian", () => {
+    it("pins the defaults as English, except the catalog-only interest prefix", () => {
         expect(URL_PREFIX_DEFAULTS).toEqual({
             product: "/product",
             category: "/category",
@@ -120,6 +124,12 @@ describe("UrlPrefixesSchema / TenantConfig.urlPrefixes — English-first default
             shop: "/shop",
             account: "/account",
             search: "/search",
+            // CAT-INTEREST-1 (slice docs/slices/cat-interest-1.md § 8, operator ruling): the ONE Romanian default.
+            // The interest-list page is served only under `catalogMode`, and `interest` is NOT in
+            // `checkSlugCommerceConflict`'s list (backend/src/lib/slug-guard.ts:23-29), so no tenant's page slugs
+            // change. Named, not fixed: a catalog tenant's content page slugged `lista-mea` would collide with the list
+            // page (follow-up CAT-INTEREST-SLUG-GUARD-1).
+            interest: "/lista-mea",
         });
     });
 

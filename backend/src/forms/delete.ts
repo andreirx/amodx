@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { INTEREST_FORM_ID } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -21,6 +22,10 @@ const _handler: Handler = async (event) => {
         }
 
         if (!tenantId || !id) return { statusCode: 400, body: JSON.stringify({ error: "Missing ID" }) };
+
+        // CAT-INTEREST-1: deleting the interest-list system form would orphan its submissions (and delete a
+        // `FORMSLUG#undefined` key). Refused before any read or write.
+        if (id === INTEREST_FORM_ID) return { statusCode: 409, body: JSON.stringify({ error: "The interest list is a system form and cannot be deleted" }) };
 
         // Fetch existing form to get its slug for cleanup
         const existing = await db.send(new GetCommand({

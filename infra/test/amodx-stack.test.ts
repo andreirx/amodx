@@ -91,6 +91,8 @@ let template: Template;
 let allTemplates: Template[];
 /** The CatalogApi NestedStack template alone (INFRA-SPLIT-1 v2 safety-invariant assertions). */
 let catalogTemplate: Template;
+/** The EngagementApi NestedStack template alone (CAT-INTEREST-1 route assertion). */
+let engagementTemplate: Template;
 
 /**
  * Replace this process's environment with one that carries no credential and no project
@@ -224,6 +226,9 @@ beforeAll(() => {
     const catalogNested = byId.get('CatalogApi');
     if (!catalogNested) throw new Error('CatalogApi NestedStack not found in the stack tree');
     catalogTemplate = catalogNested;
+    const engagementNested = byId.get('EngagementApi');
+    if (!engagementNested) throw new Error('EngagementApi NestedStack not found in the stack tree');
+    engagementTemplate = engagementNested;
 
     // Labeled per-template resource counts, logged once as INFRA-SPLIT-1 evidence. The parent count
     // is the CFN-500 gate; the nested counts let a reviewer see at a glance that CommerceApi/
@@ -1435,5 +1440,43 @@ describe('CACHE-9 event-driven fast lane — mutation handlers invoke the flushe
             expect(JSON.stringify(invokeResources[0])).toContain(`:function:${name}`);
             expect(JSON.stringify(invokeResources[0])).not.toContain(':function:*');
         }
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// CAT-INTEREST-1 — the interest list's two public routes (spec docs/slices/catalog-mode-1.md § 3.5; slice
+// docs/slices/cat-interest-1.md § 2.4 and § 8 F3): the submit and the list page's identity read (resolve), one
+// function, on the engagement group beside PublicSubmitForm.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('CAT-INTEREST-1 — POST /public/interest and POST /public/interest/resolve', () => {
+    test('(cat-interest-1) both routes exist once in the stack tree, in EngagementApi, with NO authorizer, integrating PublicInterestFunc (SES scoped like PublicSubmitFormFunc)', () => {
+        for (const key of ['POST /public/interest', 'POST /public/interest/resolve']) {
+            const routes = Object.values(engagementTemplate.findResources('AWS::ApiGatewayV2::Route'))
+                .filter((r: any) => r.Properties.RouteKey === key);
+            expect({ key, count: routes.length }).toEqual({ key, count: 1 });
+            const route = (routes[0] as any).Properties;
+            expect({ key, auth: route.AuthorizationType, authorizer: route.AuthorizerId }).toEqual({ key, auth: 'NONE', authorizer: undefined });
+            // Not anywhere else in the stack tree (a duplicate key on the shared HttpApi fails the deploy).
+            const everywhere = allTemplates.flatMap((t) => Object.values(t.findResources('AWS::ApiGatewayV2::Route')))
+                .filter((r: any) => r.Properties.RouteKey === key);
+            expect({ key, count: everywhere.length }).toEqual({ key, count: 1 });
+
+            const integrationId = JSON.stringify(route.Target).match(/"Ref":"([^"]+)"/)![1];
+            const integration = engagementTemplate.findResources('AWS::ApiGatewayV2::Integration')[integrationId] as any;
+            expect({ key, uri: /PublicInterestFunc/.test(JSON.stringify(integration.Properties.IntegrationUri)) }).toEqual({ key, uri: true });
+        }
+
+        const sesStatements = (part: string) => {
+            const fn = Object.entries(engagementTemplate.findResources('AWS::Lambda::Function')).filter(([id]) => id.includes(part));
+            expect(fn).toHaveLength(1);
+            const role = (fn[0][1] as any).Properties.Role['Fn::GetAtt'][0] as string;
+            return Object.values(engagementTemplate.findResources('AWS::IAM::Policy'))
+                .filter((p: any) => (p.Properties.Roles as any[]).some((r) => r.Ref === role))
+                .flatMap((p: any) => p.Properties.PolicyDocument.Statement as any[])
+                .filter((st) => (Array.isArray(st.Action) ? st.Action : [st.Action]).some((a: string) => a.startsWith('ses:')));
+        };
+        const interestSes = sesStatements('PublicInterestFunc');
+        expect(interestSes.length).toBe(1);
+        expect(interestSes).toEqual(sesStatements('PublicSubmitFormFunc'));
     });
 });

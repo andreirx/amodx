@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { INTEREST_FORM_ID } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -30,6 +31,10 @@ const _handler: Handler = async (event) => {
         }
 
         if (!tenantId || !id || !event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing Data" }) };
+
+        // CAT-INTEREST-1: the interest-list system form has no slug, so either pointer write below would create a
+        // FORMSLUG# item (`FORMSLUG#undefined` on a rename). Refused before any read or write.
+        if (id === INTEREST_FORM_ID) return { statusCode: 409, body: JSON.stringify({ error: "The interest list is a system form and cannot be edited" }) };
 
         const body = JSON.parse(event.body);
 

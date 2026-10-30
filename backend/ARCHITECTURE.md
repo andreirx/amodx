@@ -125,6 +125,20 @@ src/
 ├── leads/
 │   ├── create.ts          # POST /leads (public, no auth)
 │   └── list.ts            # GET /leads
+├── interest/
+│   └── public.ts          # CAT-INTEREST-1: the interest list's two PUBLIC routes, one Lambda (dispatch on routeKey).
+│                          #   POST /public/interest — a catalog visitor's shortlist as ONE submission of the system
+│                          #   form `interest-list` (FORMSUB#interest-list#<sha256(token)>). Origin + reCAPTCHA as
+│                          #   forms/public-submit; the shared InterestSubmissionSchema; readTenantMode (404 / 403
+│                          #   non-catalog); then a REPLAY check (record for the token → 200 "already-recorded" from
+│                          #   that record, before any catalogue read); items deduped by (productId, option), read by
+│                          #   a consistent chunked BatchGet (UnprocessedKeys ≤ 3 retries → 503, nothing written);
+│                          #   title/slug/option/image recorded from that read; conditional Puts. Mail to
+│                          #   integrations.contactEmail only (none → logged, no fallback).
+│                          #   POST /public/interest/resolve — the list page's identity read: the same BatchGet,
+│                          #   per id active {title, slug, imageLink, collection (attribute `colecție`), optionValues}
+│                          #   | not-available (no fields) | absent; incomplete → 503. No reCAPTCHA (public fields).
+│                          #   forms/update + forms/delete refuse `interest-list` (409); forms/list omits it
 ├── context/
 │   ├── create.ts          # POST /context
 │   ├── list.ts            # GET /context
@@ -261,7 +275,7 @@ Public endpoints are unauthenticated but protected by reCAPTCHA v3. The `resolve
 
 Deployment-level protection is mandatory. Tenants can override with their own keys or adjust the score threshold, but cannot disable.
 
-Protected public endpoints: `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/orders`, `POST /coupons/validate`.
+Protected public endpoints: `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/interest`, `POST /public/orders`, `POST /coupons/validate`.
 
 Logs include `[deployment]` or `[tenant]` tag for tracing which key source was used.
 

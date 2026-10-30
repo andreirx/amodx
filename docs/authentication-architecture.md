@@ -251,7 +251,7 @@ Customer accounts in the commerce module do **not** use either Cognito pool. The
 
 reCAPTCHA v3 is orthogonal to authentication -- it protects **unauthenticated public routes** from bot abuse. It runs invisibly (no checkbox/puzzle), scoring each request 0.0 (bot) to 1.0 (human).
 
-**Protected endpoints:** `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/orders`, `POST /coupons/validate`
+**Protected endpoints:** `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/interest`, `POST /public/orders`, `POST /coupons/validate`
 
 **Architecture:** Two-tier resolution with mandatory deployment-level baseline:
 1. Deployment-level keys stored in SSM Parameter Store, injected as Lambda env vars at deploy time

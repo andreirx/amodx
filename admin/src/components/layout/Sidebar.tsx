@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
 import {Shield, Users, ArrowRightLeft} from "lucide-react";
-import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages } from "lucide-react";
+import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages, Heart } from "lucide-react";
+import { INTEREST_FORM_ID, isCatalogMode } from "@amodx/shared";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph, Radar
 } from "lucide-react";
@@ -40,6 +41,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     const [isCreating, setIsCreating] = useState(false);
 
     const isCommerce = currentTenant?.commerceEnabled ?? false;
+    const isCatalog = isCatalogMode(currentTenant);
 
     const navSections = [
         {
@@ -81,6 +83,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             items: [
                 { name: "Popups", href: "/popups", icon: Megaphone },
                 { name: "Forms", href: "/forms", icon: ClipboardList },
+                // CAT-INTEREST-1: a catalog site's interest lists (submissions of the system form, which the forms list omits).
+                ...(isCatalog ? [{ name: "Liste de interes", href: `/forms/${INTEREST_FORM_ID}/submissions`, icon: Heart }] : []),
             ]
         },
         {

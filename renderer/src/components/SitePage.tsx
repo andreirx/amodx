@@ -37,6 +37,7 @@ import { AccountPageView } from "@/components/AccountPageView";
 import { SearchBar } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
+import { InterestToggle, InterestListPage } from "@/components/InterestShortlist";
 
 // NEW: Auth Imports — signature verification only, no cookie access from this module.
 import { decode } from "next-auth/jwt";
@@ -117,12 +118,22 @@ function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch 
     return null;
 }
 
+/** CAT-INTEREST-1: the interest-list path of a tenant (`urlPrefixes.interest`, default "/lista-mea"). Catalog sites only. */
+function interestPrefix(config: any): string {
+    return config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest;
+}
+
 export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePageInput, "siteId" | "slug" | "query">): Promise<Metadata> {
     const config = await getTenantConfig(siteId);
     if (!config) return {};
 
     const slugPath = slug ? "/" + slug.join("/") : "/";
     const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
+
+    // CAT-INTEREST-1: the interest-list page of a catalog site (personal, client-rendered: not indexed).
+    if (isCatalogMode(config) && slugPath === interestPrefix(config)) {
+        return { title: "Lista mea", robots: { index: false } };
+    }
 
     // Check commerce routes first
     const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
@@ -212,6 +223,20 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
     // props and RSC payload exactly as they were — catalog-only content takes an existing JSX slot, and a client prop
     // is added only when catalog.
     const catalog = isCatalogMode(config);
+    // CAT-INTEREST-1: a catalog site's interest list (a client page; the list lives in the visitor's browser). Only
+    // under catalog — on any other site the path stays an ordinary content slug.
+    if (catalog && slugPath === interestPrefix(config)) {
+        const prefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
+        return (
+            <InterestListPage
+                tenantId={config.id}
+                apiUrl={process.env.NEXT_PUBLIC_API_URL || ""}
+                productPrefix={prefixes.product || URL_PREFIX_DEFAULTS.product}
+                shopPrefix={prefixes.shop || URL_PREFIX_DEFAULTS.shop}
+                contentMaxWidth={config.header?.contentMaxWidth || "max-w-4xl"}
+            />
+        );
+    }
     const commerce = matchCommercePrefix(slugPath, config.urlPrefixes);
     if (commerce) {
         const prefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
@@ -635,9 +660,13 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 
 // --- COMMERCE PAGE COMPONENTS ---
 
-/** `catalog` (CATALOG-MODE-1): no price line and no availability badge — not emitted, not hidden by CSS. */
-function ProductCard({ product, productPrefix, basePath = "", catalog = false }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean }) {
-    return (
+/**
+ * `catalog` (CATALOG-MODE-1): no price line and no availability badge — not emitted, not hidden by CSS.
+ * CAT-INTEREST-1: on a catalog site the card is followed by the "Mă interesează" toggle (a button may not sit inside
+ * the card's link); any other site renders the link alone, exactly as before.
+ */
+function ProductCard({ product, productPrefix, basePath = "", catalog = false, tenantId }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean; tenantId: string }) {
+    const card = (
         <Link href={`${basePath}${productPrefix}/${product.slug}`} className="group block">
             <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-3">
                 {product.imageLink ? (
@@ -661,6 +690,13 @@ function ProductCard({ product, productPrefix, basePath = "", catalog = false }:
                 <span className="text-xs text-amber-600 mt-1 block capitalize">{(product.availability || '').replace('_', ' ')}</span>
             )}
         </Link>
+    );
+    if (!catalog) return card;
+    return (
+        <div>
+            {card}
+            <InterestToggle tenantId={tenantId} productId={product.id} title={product.title} slug={product.slug} {...(product.imageLink ? { imageLink: product.imageLink } : {})} />
+        </div>
     );
 }
 
@@ -719,6 +755,23 @@ function CatalogVariantPresenter({ variants }: { variants: { id: string; name: s
             ))}
         </div>
     );
+}
+
+/**
+ * CAT-INTEREST-1: the product-page toggle's props. The option comes from the presenter's FIRST group with options
+ * (an imported product has exactly one group) — the radio group named as `CatalogVariantPresenter` names it.
+ */
+function interestToggleProps(tenantId: string, product: any) {
+    const groups = (product.variants || []).filter((group: any) => (group.options || []).length > 0);
+    const group = groups[0];
+    return {
+        tenantId, productId: product.id, title: product.title, slug: product.slug || "",
+        ...(product.imageLink ? { imageLink: product.imageLink } : {}),
+        ...(group ? {
+            optionGroupName: `catalog-option-${group.id || 0}`,
+            options: (group.options || []).map((o: any) => (o.imageLink ? { value: o.value, imageLink: o.imageLink } : { value: o.value })),
+        } : {}),
+    };
 }
 
 /** CATALOG-MODE-1 (F-1): the product's `attributes` (e.g. unit, packaging, minimum order) as a key/value list. */
@@ -899,7 +952,10 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         Catalog site (never commerceEnabled): this slot holds the variant presenter and the attributes. */}
                     {catalog ? (
                         <>
-                            <CatalogVariantPresenter variants={product.variants || []} />
+                            {/* CAT-INTEREST-1 (review-0 F4): keyed by product, so a client navigation to another product
+                                mounts fresh radio inputs and a fresh toggle — no choice carries over between products. */}
+                            <CatalogVariantPresenter key={`presenter-${product.id}`} variants={product.variants || []} />
+                            <InterestToggle key={`interest-${product.id}`} variant="page" {...interestToggleProps(config.id, product)} />
                             <ProductAttributes attributes={product.attributes || []} />
                         </>
                     ) : commerceEnabled && !product.paymentLinkId && (
@@ -1063,7 +1119,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
                     ))}
                 </div>
             )}
@@ -1128,7 +1184,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
                     ))}
                 </div>
             )}
@@ -1178,7 +1234,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} tenantId={config.id} />
                     ))}
                 </div>
             )}

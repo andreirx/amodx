@@ -86,6 +86,8 @@
     "POST /public/coupons/validate",
     "POST /public/customers/profile",
     "POST /public/forms/{slug}/submit",
+    "POST /public/interest",
+    "POST /public/interest/resolve",
     "POST /public/orders",
     "POST /research/search",
     "POST /resources/upload",

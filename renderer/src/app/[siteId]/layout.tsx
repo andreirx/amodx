@@ -12,7 +12,7 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode } from "@amodx/shared";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
 
@@ -190,6 +190,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         titleSize={config.header?.titleSize}
                         titleSizeScrolled={config.header?.titleSizeScrolled}
                         contentMaxWidth={config.header?.contentMaxWidth}
+                        {...(isCatalogMode(config) ? { interest: { tenantId: config.id, listPrefix: config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest } } : {})}
                     />
 
                 </div>

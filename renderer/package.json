@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:serving": "node --test --test-concurrency=1 test/serving-contract/contract.test.mjs",
     "test:serving-bundle": "SERVING_TARGET=bundle node --test --test-concurrency=1 test/serving-bundle/bundle.test.mjs",
+    "test:interest-e2e": "playwright test -c test/interest-e2e/playwright.config.mjs",
     "build:open": "open-next build",
     "lint": "eslint"
   },
