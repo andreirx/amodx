@@ -404,3 +404,9 @@ staging admin; screenshots in `.agent-manager/slices/CAT-IMPORT-PROFILE-1C/opera
 **Findings for the human (not fixed):** the glam import dialog mixes English (pre-existing: "Check the file",
 "Confirm the import", "File", "Producer", the report) with the new Romanian profile section; the label inputs are
 narrow ("Product ty", "Connectio" are cut off). Staging holds dozens of leftover "E2E Test Site" tenants.
+
+**Correction to § 13 "Gates" (operator, 2026-10-31).** The list of changed paths omits `admin/src/lib/api.ts`. That
+change is allocated (packet: `admin/src/lib/**` "only if an existing helper must be extended (name it)") and named by the
+builder (§ 1 step 3, § 5 `ApiError`: the 409 path reads `storedRevision`; `message` unchanged for existing callers). The
+operator's gate printed only the `admin/src/components/` paths; the omission is in the operator's sentence, not in the
+candidate.
