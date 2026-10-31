@@ -248,3 +248,27 @@ packages' `dist/*.d.ts` on disk, and `renderer/tsconfig.json` includes `.next/ty
   (14 covered, measured 2026-07-28). Where the tool reports the same fact about itself —
   `next build` prints `- Environments: <files>` — assert that too: it is the one reading that
   needs no cooperation from the harness.
+
+## CI credentials and target table (operator, 2026-10-31)
+
+**Finding.** The `Playwright Tests` workflow's step "Run Backend Integration Tests" (`backend npm test`) used the
+repository secret `TABLE_NAME`, which named the PROD table `AmodxTable`: every DynamoDB `Scan` on `AmodxTable` between
+2026-10-29 and 2026-10-31 coincided one-to-one with a run of that workflow (CloudWatch `SuccessfulRequestLatency`,
+`Operation=Scan`, `SampleCount`; `cleanupTenant` in `backend/test/utils.ts` scans the table). The suites create and
+delete `test-*` tenants. The AWS key secrets were, with high likelihood, the full-administrator key of the account
+(the only access key in recent use; not provable from IAM because the operator's machine uses the same key).
+
+**Change (human approval 2026-10-31).**
+- `TABLE_NAME` = `AmodxTable-staging`.
+- New IAM user `amodx-ci-staging` (tag `purpose=github-ci-amodx-integration-tests`), created outside CDK, with one
+  inline policy `AmodxStagingTableOnly`: `dynamodb:*` on `table/AmodxTable-staging` and its `index/*`, nothing else.
+  Its access key was piped from `aws iam create-access-key` into `gh secret set AWS_ACCESS_KEY_ID` /
+  `AWS_SECRET_ACCESS_KEY` (never displayed).
+- Proof: the re-run of run 41175388370 (commit `cb105c4`) passed both test steps with the new secrets, and the
+  minute of its integration step shows 3 `Scan`s on `AmodxTable-staging` and none on `AmodxTable`.
+
+**Open.** Test records that a crashed past run may have left in prod (`PK SYSTEM`, `SK TENANT#test-…`, and items under
+`PK TENANT#test-…`) were not looked for (operator reads of prod data are not permitted); the human can count them with
+`aws dynamodb query --table-name AmodxTable --key-condition-expression "PK = :p AND begins_with(SK, :s)"
+--expression-attribute-values '{":p":{"S":"SYSTEM"},":s":{"S":"TENANT#test-"}}' --select COUNT`. If this workflow ever
+needs another AWS service, widen the inline policy for that action only.
