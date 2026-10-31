@@ -1399,3 +1399,15 @@ carries). Packet: `.agent-manager/slices/CAT-IMPORT-PROFILE-1/ratification-packe
   also remains in `longDescription` / `description`. The duplication on the product page is accepted.
 
 **Next:** `cat-import-profile-1a` per § 7.1 under these rulings (the T3 obligations above added to its oracles).
+
+## 12. Correction to § 11 CIP1-VALUE-GUARD obligation (2) (operator, 2026-10-31)
+
+§ 11 obligation (2) reads "every token of the derived identifier is a token of the folded source line". That wording,
+written by the operator at ratification, is unsatisfiable for harmless input: the whole line `Collection:Oak` folds
+to one token `collectionoak`, while the derived category slug holds `oak` (review-0 of `cat-import-profile-1a`). The
+guard examines a line's KEY and VALUE as separate fragments. Obligation (2) is replaced by: **every token of every
+identifier derived from a checked spec line is a token of one of that line's guarded fragments (the folded key, the
+folded value, or the folded value's list parts when splitting applies).** Together with the guard refusing any
+fragment that holds a folded same-file code token or a folded money token, this gives the ratified property: no
+derived identifier holds either. Profile labels are author input, not file data; they are not guarded and carry no
+file value. The ruling itself (B1 with T3) is unchanged.
