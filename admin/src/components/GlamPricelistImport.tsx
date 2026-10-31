@@ -1,9 +1,16 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { utcDay } from "@amodx/shared";
+import { ApiError, apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Upload } from "lucide-react";
+import {
+    ImportPreview, NOT_LOADED, ProfileEditorPanel, baseRevisionOf, confirmChoiceOf, editedEditor, editorAfterConflict,
+    editorAfterImport, loadEditor, movedNotice, previewedEditor, storedMoved, type ExecutionProfileReport, type GlamDryRun,
+    type ProfileChoice, type ProfileEdit, type ProfileEditor,
+} from "./GlamProfileEditor";
+import { siteContextOf, type SiteContext } from "./glamPreview";
 
 /**
  * CAT-IMPORT-1 — Products → Import → "Listă de prețuri (glam)" (catalog sites only; mounted by `pages/Products.tsx`).
@@ -17,6 +24,13 @@ import { Loader2, Upload } from "lucide-react";
  * until `complete` (`imageCopyReducer`). "Copiază imaginile" starts the same copy for a producer/sheet without an
  * import in this session. The image section lists every refused or failed source with the rows that hold it
  * (`imageProblems`).
+ *
+ * CAT-IMPORT-PROFILE-1C — the producer's import profile (docs/slices/cat-import-profile-1.md § 5, § 6): the first
+ * "Check the file" loads the stored profile (or the default) into the editor (`ProfileEditor`, a member of this
+ * form's state); "Previzualizează" sends a dry run with `profileChoice` = { the edited profile, the loaded stored
+ * revision }; "Confirm the import" sends the snapshot the shown preview was made for. A 409 "changed by another
+ * import" reloads the stored profile and asks for a new preview (§ 6.6). Editor and preview: GlamProfileEditor.tsx,
+ * glamPreview.ts.
  */
 
 interface Props {
@@ -48,8 +62,15 @@ export interface GlamFormState {
     /** A file read is pending: checking is not possible. */
     reading: boolean;
     input: GlamInput;
-    /** The accepted dry run, bound to the exact input it was sent with. */
-    preview: { revision: number; input: GlamInput; report: any } | null;
+    /**
+     * The accepted dry run, bound to the exact input it was sent with. `choice` = what "Confirm the import" sends as
+     * `profileChoice`: the choice a preview was sent with, or — for the first check, sent without one — the profile
+     * that check was planned with (`confirmChoiceOf`); `null` = this report cannot be imported (unsupported stored
+     * profile, § 3.3). `context` = the site's URL prefixes and categories for the preview panels (`null`: not read).
+     */
+    preview: { revision: number; input: GlamInput; choice: ProfileChoice | null; report: any; context: SiteContext | null } | null;
+    /** The producer's import-profile editor. Reset when the file or the producer changes (a profile is per producer). */
+    profile: ProfileEditor;
     pending: "check" | "import" | null;
     result: any;
     error: string | null;
@@ -60,22 +81,32 @@ export type GlamFormEvent =
     | { type: "file-read"; fileToken: number; content: string }
     | { type: "field"; field: "producer" | "sheet" | "variantName"; value: string }
     | { type: "check-sent" }
-    | { type: "check-done"; revision: number; input: GlamInput; report: any }
+    /** `choice` = the `profileChoice` the dry run was SENT with (`null`: none — the stored profile is loaded). */
+    | { type: "check-done"; revision: number; input: GlamInput; choice: ProfileChoice | null; report: any; context: SiteContext | null }
     | { type: "check-failed"; revision: number; message: string }
     | { type: "import-sent" }
     | { type: "import-done"; result: any }
-    | { type: "import-failed"; message: string };
+    | { type: "import-failed"; message: string }
+    /** 503 "incomplete": the products were written and the profile saved; the answer reports the stored state. */
+    | { type: "import-incomplete"; message: string; reported: ExecutionProfileReport }
+    /** 409: another import changed the stored profile since it was loaded (§ 6.6); a reload dry run follows. */
+    | { type: "import-profile-changed"; message: string; storedRevision: number | null }
+    | { type: "profile-edit"; edit: ProfileEdit };
 
 export const INITIAL_GLAM_FORM: GlamFormState = {
     revision: 0, fileToken: 0, reading: false,
     input: { csvContent: "", fileName: "", producer: "", sheet: "", variantName: "Variantă" },
-    preview: null, pending: null, result: null, error: null,
+    preview: null, profile: NOT_LOADED, pending: null, result: null, error: null,
 };
 
 /**
  * Every input change clears the shown report. Completions that belong to an older revision (a dry run sent before an
  * edit) or an older file choice (a slow read of a file the user replaced) are ignored. Choosing a file drops the old
  * content at once, so it cannot be checked or imported while the new file is read.
+ *
+ * Profile (1c): a profile edit is an input change too (revision bumped, report withdrawn). A check answered WITHOUT a
+ * choice loads the editor — or, when it is already loaded (the reload after a 409), only refreshes its stored base and
+ * facts and shows no importable report: the user must preview again (§ 6.6).
  */
 export function glamFormReducer(state: GlamFormState, event: GlamFormEvent): GlamFormState {
     const changed = (input: GlamInput, extra: Partial<GlamFormState> = {}): GlamFormState =>
@@ -84,27 +115,47 @@ export function glamFormReducer(state: GlamFormState, event: GlamFormEvent): Gla
         case "file-chosen":
             return changed(
                 { ...state.input, csvContent: "", fileName: event.fileName, sheet: event.fileName.replace(/\.csv$/i, "") },
-                { fileToken: event.fileToken, reading: true },
+                { fileToken: event.fileToken, reading: true, profile: NOT_LOADED },
             );
         case "file-read":
             if (event.fileToken !== state.fileToken) return state;
             return changed({ ...state.input, csvContent: event.content }, { reading: false });
         case "field":
-            return changed({ ...state.input, [event.field]: event.value });
+            return changed({ ...state.input, [event.field]: event.value }, event.field === "producer" ? { profile: NOT_LOADED } : {});
+        case "profile-edit":
+            return changed(state.input, { profile: editedEditor(state.profile, event.edit) });
         case "check-sent":
             return { ...state, pending: "check", error: null };
-        case "check-done":
+        case "check-done": {
             if (event.revision !== state.revision) return { ...state, pending: null };
-            return { ...state, pending: null, preview: { revision: event.revision, input: event.input, report: event.report } };
+            const report = event.report as GlamDryRun;
+            const shown = (choice: ProfileChoice | null) => ({ revision: event.revision, input: event.input, choice, report: event.report, context: event.context });
+            if (event.choice !== null) return { ...state, pending: null, profile: previewedEditor(state.profile, report), preview: shown(event.choice) };
+            switch (state.profile.kind) {
+                case "editing":
+                    return { ...state, pending: null, profile: loadEditor(state.profile, report) };
+                case "not-loaded":
+                case "unsupported":
+                    return { ...state, pending: null, profile: loadEditor(state.profile, report), preview: shown(confirmChoiceOf(report.profile)) };
+                default: {
+                    const unhandled: never = state.profile;
+                    throw new Error(`Unhandled profile editor ${JSON.stringify(unhandled)}`);
+                }
+            }
+        }
         case "check-failed":
             if (event.revision !== state.revision) return { ...state, pending: null };
             return { ...state, pending: null, error: event.message };
         case "import-sent":
             return { ...state, pending: "import", error: null };
         case "import-done":
-            return { ...state, pending: null, preview: null, result: event.result };
+            return { ...state, pending: null, preview: null, result: event.result, profile: editorAfterImport(state.profile, event.result) };
         case "import-failed":
             return { ...state, pending: null, error: event.message };
+        case "import-incomplete":
+            return { ...state, pending: null, error: event.message, profile: editorAfterImport(state.profile, event.reported) };
+        case "import-profile-changed":
+            return { ...state, pending: null, preview: null, error: event.message, profile: editorAfterConflict(state.profile, event.storedRevision) };
     }
 }
 
@@ -114,9 +165,48 @@ export function canCheck(state: GlamFormState): boolean {
     return !state.reading && state.pending === null && csvContent !== "" && producer.trim() !== "" && sheet.trim() !== "";
 }
 
-/** The input a confirmation sends: the checked snapshot, and only while it is still the current revision. */
-export function confirmInput(state: GlamFormState): GlamInput | null {
-    return state.preview && state.preview.revision === state.revision && state.pending === null ? state.preview.input : null;
+/**
+ * The request a check sends now: none loaded yet → no choice (the stored profile is loaded); editing → the working
+ * profile with the loaded stored revision as `baseRevision`; an unsupported stored profile with nothing chosen → none
+ * possible (take the proposal first).
+ */
+export function checkRequest(state: GlamFormState): { input: GlamInput; choice: ProfileChoice | null } | null {
+    if (!canCheck(state)) return null;
+    switch (state.profile.kind) {
+        case "not-loaded": return { input: state.input, choice: null };
+        case "editing": return { input: state.input, choice: { profile: state.profile.working, baseRevision: baseRevisionOf(state.profile.base) } };
+        case "unsupported": return null;
+        default: {
+            const unhandled: never = state.profile;
+            throw new Error(`Unhandled profile editor ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/**
+ * What a confirmation sends: the checked snapshot — the input AND the profile choice the shown report was made for —
+ * and only while it is still the current revision and the report is importable.
+ */
+export function confirmRequest(state: GlamFormState): { input: GlamInput; choice: ProfileChoice | null } | null {
+    const p = state.preview;
+    if (!p || p.revision !== state.revision || state.pending !== null || p.choice === null) return null;
+    return { input: p.input, choice: p.choice };
+}
+
+/** A 503 whose body reports the stored state (`profile` + `sheets`): the import wrote, but category lists are incomplete. */
+export function incompleteImportReport(err: unknown): ExecutionProfileReport | null {
+    if (!(err instanceof ApiError) || err.status !== 503 || typeof err.body !== "object" || err.body === null) return null;
+    const body = err.body as Record<string, unknown>;
+    if (typeof body.profile !== "object" || body.profile === null || !Array.isArray(body.sheets)) return null;
+    return { profile: body.profile as ExecutionProfileReport["profile"], sheets: body.sheets as ExecutionProfileReport["sheets"] };
+}
+
+/** § 6.6: a 409 whose body names the stored and the loaded revision is "changed by another import" (backend `profileRefusal`). */
+export function profileChangedRefusal(err: unknown): { storedRevision: number | null } | null {
+    if (!(err instanceof ApiError) || err.status !== 409 || typeof err.body !== "object" || err.body === null) return null;
+    const body = err.body as Record<string, unknown>;
+    if (!("storedRevision" in body) || !("baseRevision" in body)) return null;
+    return { storedRevision: typeof body.storedRevision === "number" ? body.storedRevision : null };
 }
 
 /** Producer suggestions: the distinct non-empty `brand` values, sorted. */
@@ -323,8 +413,12 @@ export function imageProblems(totals: ImageCopyTotals, importReport: any | null)
     return out;
 }
 
-const requestBody = (input: GlamInput) =>
-    JSON.stringify({ csvContent: input.csvContent, producer: input.producer, sheet: input.sheet, variantName: input.variantName });
+/** The request body; `profileChoice` only when a choice is sent (without it the backend applies the stored profile). */
+export const requestBody = (input: GlamInput, choice: ProfileChoice | null) =>
+    JSON.stringify({
+        csvContent: input.csvContent, producer: input.producer, sheet: input.sheet, variantName: input.variantName,
+        ...(choice ? { profileChoice: choice } : {}),
+    });
 
 const explain = (err: any) => {
     const message: string = err?.message || "The import failed.";
@@ -362,28 +456,60 @@ export function GlamPricelistImport({ onImported }: Props) {
         dispatch({ type: "file-read", fileToken, content: await file.text() });
     }
 
-    async function check() {
-        const snapshot = { revision: state.revision, input: state.input };
-        dispatch({ type: "check-sent" });
+    /** The preview panels need the site's URL prefixes and categories; without them the panels say so. */
+    async function loadSiteContext(): Promise<SiteContext | null> {
         try {
-            const report = await apiRequest("/import/glam-pricelist?dryRun=1", { method: "POST", body: requestBody(snapshot.input) });
-            dispatch({ type: "check-done", ...snapshot, report });
-        } catch (err) {
-            dispatch({ type: "check-failed", revision: snapshot.revision, message: explain(err) });
+            const [settings, categories] = await Promise.all([apiRequest("/settings"), apiRequest("/categories")]);
+            return siteContextOf(settings ?? {}, categories?.items ?? []);
+        } catch {
+            return null;
         }
     }
 
+    async function sendCheck(revision: number, input: GlamInput, choice: ProfileChoice | null) {
+        dispatch({ type: "check-sent" });
+        try {
+            const [report, context] = await Promise.all([
+                apiRequest("/import/glam-pricelist?dryRun=1", { method: "POST", body: requestBody(input, choice) }),
+                loadSiteContext(),
+            ]);
+            dispatch({ type: "check-done", revision, input, choice, report, context });
+        } catch (err) {
+            dispatch({ type: "check-failed", revision, message: explain(err) });
+        }
+    }
+
+    async function check() {
+        const request = checkRequest(state);
+        if (request) await sendCheck(state.revision, request.input, request.choice);
+    }
+
     async function confirm() {
-        const input = confirmInput(state);
-        if (!input) return;
+        const request = confirmRequest(state);
+        if (!request) return;
         dispatch({ type: "import-sent" });
         let result: any;
         try {
-            result = await apiRequest("/import/glam-pricelist", { method: "POST", body: requestBody(input) });
+            result = await apiRequest("/import/glam-pricelist", { method: "POST", body: requestBody(request.input, request.choice) });
             dispatch({ type: "import-done", result });
             onImported();
             loadBrands();
         } catch (err) {
+            const changed = profileChangedRefusal(err);
+            if (changed) {
+                // § 6.6: nothing was written; reload the stored profile (a dry run without a choice), then the user previews again.
+                dispatch({
+                    type: "import-profile-changed", storedRevision: changed.storedRevision,
+                    message: `Profilul producătorului a fost schimbat de alt import (revizia ${changed.storedRevision ?? "—"}) după ce l-ați încărcat. Nimic nu a fost schimbat. Profilul salvat se reîncarcă; alegeți profilul și previzualizați din nou.`,
+                });
+                await sendCheck(state.revision, request.input, null);
+                return;
+            }
+            const incomplete = incompleteImportReport(err);
+            if (incomplete) {
+                dispatch({ type: "import-incomplete", message: explain(err), reported: incomplete });
+                return;
+            }
             dispatch({ type: "import-failed", message: explain(err) });
             return;
         }
@@ -412,6 +538,13 @@ export function GlamPricelistImport({ onImported }: Props) {
     const busy = state.pending !== null || images.kind === "running";
     const { input, preview, result, error } = state;
     const conflicts = preview?.report.categoryConflicts ?? [];
+    const loaded = state.profile.kind !== "not-loaded";
+    const moved = preview ? storedMoved(state.profile, preview.report) : null;
+    const checkButton = (
+        <Button variant="outline" onClick={check} disabled={checkRequest(state) === null}>
+            {state.pending === "check" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} {loaded ? "Previzualizează" : "Check the file"}
+        </Button>
+    );
 
     return (
         <div className="space-y-3">
@@ -454,11 +587,9 @@ export function GlamPricelistImport({ onImported }: Props) {
             </div>
 
             <div className="flex gap-2">
-                <Button variant="outline" onClick={check} disabled={!canCheck(state)}>
-                    {state.pending === "check" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Check the file
-                </Button>
+                {checkButton}
                 {preview && conflicts.length === 0 && (
-                    <Button onClick={confirm} disabled={confirmInput(state) === null || images.kind === "running"}>
+                    <Button onClick={confirm} disabled={confirmRequest(state) === null || images.kind === "running"}>
                         {state.pending === "import" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Confirm the import
                     </Button>
                 )}
@@ -471,6 +602,19 @@ export function GlamPricelistImport({ onImported }: Props) {
 
             {error && <div className="text-sm p-3 rounded-md bg-destructive/10 text-destructive">{error}</div>}
             {preview && <ImportReport report={preview.report} />}
+            {preview && preview.choice === null && (
+                <div className="text-sm p-3 rounded-md bg-destructive/10 text-destructive">
+                    Acest raport nu poate fi importat: profilul salvat nu poate fi aplicat. Folosiți propunerea de mai jos și previzualizați.
+                </div>
+            )}
+            {moved && (
+                <div className="text-sm p-3 rounded-md bg-destructive/10 text-destructive">
+                    {movedNotice(moved.storedRevision)}
+                </div>
+            )}
+            <ProfileEditorPanel editor={state.profile} onEdit={(edit) => dispatch({ type: "profile-edit", edit })} disabled={busy} />
+            {loaded && <div className="flex gap-2">{checkButton}</div>}
+            {preview && <ImportPreview key={preview.revision} report={preview.report} context={preview.context} today={utcDay(new Date())} />}
             {result && (
                 <div className="text-sm p-3 rounded-md bg-muted space-y-1">
                     <div className="font-medium">

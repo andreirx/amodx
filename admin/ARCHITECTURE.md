@@ -14,7 +14,7 @@ src/
 ├── App.tsx                     # React Router v7 routes + AppShell auth guard
 ├── index.css                   # Tailwind v4 imports
 ├── lib/
-│   ├── api.ts                  # apiRequest() — fetch wrapper with auth, tenant header, error handling
+│   ├── api.ts                  # apiRequest() — fetch wrapper with auth, tenant header, error handling; a non-OK answer throws ApiError (message unchanged + status + parsed body)
 │   ├── seoExtract.ts           # extractText()/findImage()/stripMarkdown() — SEO auto-extraction from a Tiptap block doc on save; walks rich-text AND markdown-atom blocks (attrs.content) in document order. Sole consumer: ContentEditor.tsx. Extracted from the page for a node-env test seam (see seoExtract.test.ts)
 │   └── utils.ts                # cn() (clsx + tailwind-merge)
 ├── components/
@@ -24,6 +24,9 @@ src/
 │   ├── editor/
 │   │   ├── BlockEditor.tsx     # Tiptap editor wrapper with media picker injection
 │   │   └── Toolbar.tsx         # Formatting toolbar + plugin insert buttons
+│   ├── GlamPricelistImport.tsx # Products → Import → glam pricelist: form reducer (dry run bound to its input + profile choice), image copy loop (CAT-IMPORT-1, CAT-IMAGES-1, CAT-IMPORT-PROFILE-1C)
+│   ├── GlamProfileEditor.tsx   # The producer's import profile: dry-run DTO types, ProfileEditor state + pure transitions, proposeProfile, hints; layout of the editor and the preview (CAT-IMPORT-PROFILE-1C)
+│   ├── glamPreview.ts          # PURE preview assembly: cards, product page, 3 filter panels via @amodx/shared catalogListing / catalogListingPath / buildFacetListing (CAT-IMPORT-PROFILE-1C)
 │   ├── MediaPicker.tsx         # Modal for selecting uploaded assets
 │   ├── SmartLinkInput.tsx      # Autocomplete input for internal page links
 │   └── TagInput.tsx            # Multi-tag input with suggestion autocomplete
@@ -79,13 +82,49 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 - **Dirty-state protection**: ContentEditor and StrategyEditor use `useBlocker()` + `beforeunload` to warn about unsaved changes
 - **Custom events**: `amodx:refresh-links` dispatched by ContentList, listened by AdminLayout to update the global link datalist
 
+## Glam pricelist import and the import profile (`components/GlamPricelistImport.tsx`, `GlamProfileEditor.tsx`, `glamPreview.ts`)
+
+Catalog sites only (mounted by `pages/Products.tsx`). The backend (`POST /import/glam-pricelist`) decides every rule;
+the admin collects the input, shows the dry run, and guarantees that "Confirm the import" sends EXACTLY the request the
+shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, § 6; record `docs/slices/cat-import-profile-1c.md`.
+
+- **One reducer** (`glamFormReducer`). State: the input, `revision` (bumped by every input change, profile edits
+  included — each withdraws the shown report), `preview` = `{ revision, input, choice, report, context }`, and
+  `profile` = the editor (`ProfileEditor`, a sum: `not-loaded` | `unsupported` | `editing { base, working, facts,
+  otherImport }`). The file or the producer changing resets the editor (a profile is per producer).
+- **Requests.** `checkRequest`: first check WITHOUT `profileChoice` (loads the stored profile, or the default); then
+  "Previzualizează" with `profileChoice = { working, baseRevision }` (`baseRevision` = the stored revision the editor
+  loaded, `null` = none). `confirmRequest`: the preview's input and choice — for the first check, the profile that check
+  was planned with (`confirmChoiceOf`); none when the stored profile is `unsupported` (§ 3.3: take the proposal first).
+- **409 "changed by another import"** (`profileChangedRefusal` reads `ApiError.body.storedRevision`): the report is
+  withdrawn, a reload dry run without a choice refreshes the editor's base and KEEPS the user's working profile; the
+  user takes the stored one or keeps theirs, then previews again (§ 6.6).
+- **Every answer that reports the stored state refreshes the editor**: the execution's 200 and its 503 "incomplete"
+  (written, profile saved) carry `profile` and `sheets`; `editorAfterImport` takes both, so sheets a profile change
+  made `stale` are listed at once (§ 6.3).
+- **Preview** (`glamPreview.ts`, pure): base sets = `catalogListing(siteProducts ∪ drafts, scope, today)` for the
+  producer category, one collection and the shop; panel = `buildFacetListing(base, f, catalogListingPath(prefixes,
+  slug))` — the renderer's own functions and inputs. `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` from
+  `GET /settings`; found category slugs from `GET /categories` (the dry run names them by id). A value click follows
+  the panel's own href (`selectionOfHref`). The chosen product and collection are checked against the report they are
+  shown with (`effectivePreviewChoice`). The look is approximate: the ruled notice and every § 5.3 limit
+  (`FIDELITY_LIMITS`) are shown. The prose is shown as text (`proseParagraphs`, pure, reverses the importer's `<p>` +
+  escape format), never injected as HTML. Copy that restates a rule owned elsewhere (`FILTER_MODE_HELP`,
+  `VARIANT_MODE_HELP`, `FACET_VISIBILITY_HELP`, `SAVE_RULE`) is an exported constant scoped to the step it restates and
+  pinned by units next to counterexamples computed by the owning module (`buildFacetListing`); the backend's acceptance
+  rule is not restated (`movedNotice` is bounded: the import "poate fi refuzat").
+- **Tests** (node, no DOM): `GlamPricelistImport.test.ts` (reducer, proposal over BOEN's measured `specKeys`, edits, the
+  409 path), `glamPreview.test.ts` (§ 5.5 assembly rows, no-copy rows, near-budget rows). The components only lay out
+  what these pure functions return.
+- Maturity: PROTOTYPE (enters with this slice; MATURE after the design § 7.5 staging evidence).
+
 ## API Client (`lib/api.ts`)
 
 `apiRequest(path, options?)` handles:
 - Auth: fetches Amplify session, attaches ID token as `Authorization: Bearer` header
 - Tenant: reads `AMODX_TENANT_ID` from localStorage, sends as `x-tenant-id` header
 - Config: checks `window.AMODX_CONFIG` (runtime, from `/config.json`) before `import.meta.env` (build-time)
-- Error handling: 401/403 triggers sign-out and redirect to `/login`
+- Error handling: 401/403 triggers sign-out and redirect to `/login`; any other non-OK answer throws `ApiError` — `message` = `API Error (<status>): <error>` (as before), plus `status` and the parsed JSON `body` (`null` when not JSON)
 - File uploads: POST to `/assets` returns presigned URL, then client PUTs binary directly to S3
 
 ## Tiptap Editor Integration

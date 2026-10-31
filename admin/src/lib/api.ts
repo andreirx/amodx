@@ -7,6 +7,22 @@ const getConfig = (key: string) => {
     return window.AMODX_CONFIG?.[key] || import.meta.env[key];
 };
 
+/**
+ * A non-OK answer of the API (401/403 excepted: they sign out). `message` is exactly the message every caller saw
+ * before (`API Error (<status>): <error>`), so callers that read only the message are unchanged. `status` and `body`
+ * (the parsed JSON body, `null` when it was not JSON) are for a caller that must branch on the answer's members —
+ * CAT-IMPORT-PROFILE-1C: the glam import's 409 "profile changed by another import" (`storedRevision`).
+ */
+export class ApiError extends Error {
+    readonly status: number;
+    readonly body: unknown;
+    constructor(status: number, body: unknown, message: string) {
+        super(message);
+        this.status = status;
+        this.body = body;
+    }
+}
+
 export async function apiRequest(path: string, options: RequestInit = {}) {
     const API_URL = getConfig('VITE_API_URL');
     if (!API_URL) {
@@ -46,11 +62,13 @@ export async function apiRequest(path: string, options: RequestInit = {}) {
         }
 
         let errorMessage = response.statusText;
+        let body: unknown = null;
         try {
             const errorBody = await response.json();
             errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
+            body = errorBody;
         } catch (e) {}
-        throw new Error(`API Error (${response.status}): ${errorMessage}`);
+        throw new ApiError(response.status, body, `API Error (${response.status}): ${errorMessage}`);
     }
 
     return response.json();
