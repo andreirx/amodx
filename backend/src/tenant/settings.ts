@@ -6,7 +6,7 @@ import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { z } from "zod";
-import { isCatalogMode } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -41,6 +41,40 @@ const ModeFlagsSchema = z.object({
     commerceEnabled: z.boolean().default(false),
     catalogMode: z.boolean().default(false),
 });
+
+/**
+ * LOCALE-1A (docs/slices/locale-1.md § 4.4) — limits of the two NEW locale-table attributes, checked on the
+ * attribute AS SENT and only when the body contains it. Same narrow kind as the mode-flag check: `commerceStrings`,
+ * `gdpr` and `legalLinks` stay unvalidated, so no live tenant's next save can be refused for data it already has.
+ * Unknown keys are kept (§ 2.4) and count toward every limit. What this bounds: the serialised size of these two
+ * attributes (2 × 32 768 bytes); it does not bound the whole tenant item.
+ */
+const LOCALE_STRING_ATTRIBUTES = ["siteStrings", "catalogStrings"] as const;
+const LOCALE_KEY_FORM = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
+const LOCALE_MAX_ENTRIES = 200;
+const LOCALE_MAX_VALUE_UNITS = 500;      // UTF-16 code units (String.length)
+const LOCALE_MAX_BYTES = 32_768;         // UTF-8 bytes of JSON.stringify(attribute)
+
+/** The first limit `value` breaks, as a message that names the attribute and the limit; null when it breaks none. */
+function localeStringsLimitError(attribute: (typeof LOCALE_STRING_ATTRIBUTES)[number], value: unknown): string | null {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return `${attribute} must be a JSON object of texts.`;
+    }
+    const entries = Object.entries(value);
+    if (entries.length > LOCALE_MAX_ENTRIES) return `${attribute} has ${entries.length} entries; at most ${LOCALE_MAX_ENTRIES} are allowed.`;
+    for (const [key, text] of entries) {
+        if (!LOCALE_KEY_FORM.test(key)) return `${attribute} key "${key.slice(0, 80)}" is not a valid key (a letter, then letters or digits, at most 64 characters).`;
+        if (typeof text !== "string") return `${attribute}.${key} must be a text.`;
+        if (text.length > LOCALE_MAX_VALUE_UNITS) return `${attribute}.${key} is ${text.length} characters long; at most ${LOCALE_MAX_VALUE_UNITS} are allowed.`;
+        if (attribute === "siteStrings" && Object.hasOwn(COOKIE_AND_LEGAL_LABEL_LOCATIONS, key)) {
+            const { attribute: home, field } = COOKIE_AND_LEGAL_LABEL_LOCATIONS[key as CookieOrLegalLabelKey];
+            return `siteStrings must not contain "${key}": that text is stored only in ${home}.${field}.`;
+        }
+    }
+    const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+    if (bytes > LOCALE_MAX_BYTES) return `${attribute} is ${bytes} bytes as JSON; at most ${LOCALE_MAX_BYTES} are allowed.`;
+    return null;
+}
 
 /**
  * Strips secret fields from tenant config before returning to any caller.
@@ -124,6 +158,13 @@ const _updateHandler: AmodxHandler = async (event) => {
         const body = JSON.parse(event.body);
         const rejectedFields = SERVER_OWNED_FIELDS.filter((field) => Object.hasOwn(body, field));
         for (const field of rejectedFields) delete body[field];
+
+        // LOCALE-1A § 4.4: before any read, so a refused body costs nothing and writes nothing.
+        for (const attribute of LOCALE_STRING_ATTRIBUTES) {
+            if (!Object.hasOwn(body, attribute)) continue;
+            const limitError = localeStringsLimitError(attribute, body[attribute]);
+            if (limitError) return { statusCode: 400, body: JSON.stringify({ error: limitError }) };
+        }
 
         // CATALOG-MODE-1 (CM-D11 accepted refinement): the mode read is authoritative. Strongly consistent, and a
         // missing tenant record answers 404 with nothing written. Before, a miss became `{ name: "Unknown" }` and this

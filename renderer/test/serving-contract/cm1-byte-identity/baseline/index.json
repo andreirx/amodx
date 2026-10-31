@@ -1,5 +1,5 @@
 {
-  "buildId": "EnDoO3f0jr-r2N0gB4-lB",
+  "buildId": "1-KNoKCLJNj3_OcG4T5LY",
   "captures": [
     {
       "tenant": "commerce",
@@ -340,8 +340,8 @@
     {
       "tenant": "catalog",
       "path": "/openai-feed",
-      "status": 200,
-      "contentType": "application/json",
+      "status": 404,
+      "contentType": "text/plain;charset=UTF-8",
       "body": "catalog/openai-feed.body"
     },
     {

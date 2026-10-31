@@ -66,7 +66,6 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                     { name: "Reviews", href: "/reviews", icon: Star },
                     { name: "Delivery", href: "/delivery", icon: Truck },
                     { name: "Email Templates", href: "/order-emails", icon: Mail },
-                    { name: "Labels", href: "/labels", icon: Languages },
                 ] : []),
             ]
         },
@@ -96,6 +95,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 { name: "Team", href: "/users", icon: Shield },
                 { name: "WP Migration", href: "/migration", icon: ArrowRightLeft },
                 { name: "Email DNS", href: "/email", icon: Mail },
+                // LOCALE-1A (docs/slices/locale-1.md § 7.1): the locale table is general, so every tenant has Labels.
+                { name: "Labels", href: "/labels", icon: Languages },
                 { name: "Settings", href: "/settings", icon: Settings },
             ]
         },

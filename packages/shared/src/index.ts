@@ -9,6 +9,14 @@ import { normalizeEmail } from "./normalizeEmail.js";
 // moved here by IMPORT-POLICY-1 D2): one rule for the backend content API and the admin warnings.
 export { normalizeSlug, needsSlugReview } from "./slug.js";
 
+// LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
+// pattern as slug.ts. The EN pack is imported as a value because COMMERCE_STRINGS_DEFAULTS (below) is bound to it.
+export { normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS } from "./locale-strings.js";
+export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey } from "./locale-strings.js";
+export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
+export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
+import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
+
 // Re-export the STATIC-1 iframe sandbox contract (D-STATIC-1). Framework-agnostic
 // constant consumed by static-4's renderer shell; guarded by packages/shared/test/sandbox.test.ts.
 export {
@@ -672,93 +680,95 @@ export const CommerceStringsSchema = z.object({
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
 
-// Default commerce strings (English)
-export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = {
-    description: "Description",
-    addToCart: "Add to Cart",
-    addedToCart: "Added to Cart!",
-    viewCart: "View Cart",
-    inStock: "In Stock",
-    outOfStock: "Out of Stock",
-    variantUnavailable: "Variant Unavailable",
-    units: "units",
-    cart: "Cart",
-    shoppingCart: "Shopping Cart",
-    emptyCart: "Your cart is empty",
-    emptyCartMessage: "Browse our products and add something you like.",
-    continueShopping: "Continue Shopping",
-    orderSummary: "Order Summary",
-    subtotal: "Subtotal",
-    shipping: "Shipping",
-    discount: "Discount",
-    total: "Total",
-    freeShipping: "Free",
-    freeDeliveryFrom: "Free delivery from",
-    addMoreForFreeDelivery: "Add {amount} more for free delivery",
-    minimumOrder: "Minimum order",
-    proceedToCheckout: "Proceed to Checkout",
-    couponCode: "Coupon code",
-    apply: "Apply",
-    remove: "Remove",
-    invalidCoupon: "Invalid coupon",
-    checkout: "Checkout",
-    placeOrder: "Place Order",
-    placingOrder: "Placing Order...",
-    orderConfirmation: "Order Confirmation",
-    contactInformation: "Contact Information",
-    fullName: "Full Name",
-    email: "Email",
-    phone: "Phone",
-    phonePlaceholder: "",
-    shippingAddress: "Shipping Address",
-    shippingStreetAddress: "",  // Empty = fallback to streetAddress
-    streetAddress: "Street Address",
-    billingStreetAddress: "",   // Empty = fallback to streetAddress
-    city: "City",
-    county: "County",
-    selectCounty: "Select county...",
-    postalCode: "Postal Code",
-    deliveryNotes: "Delivery Notes",
-    deliveryNotesPlaceholder: "Apartment, floor, etc.",
-    paymentMethod: "Payment Method",
-    cashOnDelivery: "Cash on Delivery",
-    cashOnDeliveryDesc: "Pay when you receive your order",
-    bankTransfer: "Bank Transfer",
-    termsAgreement: "By placing your order, you agree to our terms and conditions.",
-    preferredDeliveryDate: "Preferred Delivery Date",
-    country: "Country",
-    selectCountry: "Select country...",
-    // Customer extras
-    birthday: "Birthday",
-    birthdayHint: "For a birthday surprise!",
+// LOCALE-1 (docs/slices/locale-1.md § 2) — the tenant locale table has three parts. `commerceStrings` (above) is the
+// commerce part; these two are the catalog and site parts, stored as the tenant attributes `catalogStrings` and
+// `siteStrings` (§ 4.1). Every key is optional: an absent key = no override. A key is never renamed (§ 2.2 rule 5).
+// Adding a key: schema here → EN value in language-packs/en.ts (compile error until done) → RO value in
+// language-packs/ro.ts (test failure until done) → the reader → the Labels input (§ 2.3).
+//
+// The catalog part gets its 40 keys in `locale-1b`; until then it has none, but the attribute is already read
+// (mapTenant), validated (PUT /settings) and resolved, so `1b` only adds keys.
+export const CatalogStringsSchema = z.object({});
+export type CatalogStrings = z.infer<typeof CatalogStringsSchema>;
 
-    // Billing / Company (B2B) - generic defaults, customizable per locale
-    billingDetails: "Billing Details",
-    firstName: "First Name",
-    lastName: "Last Name",
-    orderAsCompany: "Order as a company",
-    companyName: "Company Name",
-    taxId: "Tax ID",
-    taxIdPlaceholder: "",
-    vatNumber: "VAT Number",
-    vatNumberPlaceholder: "",
-    registrationNumber: "Registration No.",
-    registrationNumberPlaceholder: "",
-    useSameAsShipping: "Use same address for billing",
-    billingAddress: "Billing Address",
+// The site part: texts every tenant shows (§ 6.1). `locale-1a` ships the site chrome keys; `locale-1c` adds the block
+// chrome keys. The nine cookie and legal keys are stored ONLY in `gdpr` / `legalLinks` (§ 4.1): `PUT /settings`
+// refuses them in `siteStrings`, and the resolver never reads them from there (COOKIE_AND_LEGAL_LABEL_LOCATIONS).
+export const SiteStringsSchema = z.object({
+    // Site identity and footer (renderer/src/lib/dynamo.ts, app/[siteId]/layout.tsx)
+    untitledSiteName: z.string().optional(),            // "Untitled Site"
+    metaSiteDescription: z.string().optional(),         // "Official site for {name}"
+    footerTaxId: z.string().optional(),                 // "CUI: {value}"
+    footerTradeRegister: z.string().optional(),         // "Reg: {value}"
+    footerPhone: z.string().optional(),                 // "Tel: {value}"
+    footerLinksHeading: z.string().optional(),          // "Links"
+    footerLegalHeading: z.string().optional(),          // "Legal"
+    legalTermsLabel: z.string().optional(),             // stored only in legalLinks.termsLabel
+    legalPrivacyLabel: z.string().optional(),           // stored only in legalLinks.privacyLabel
+    legalConsumerProtectionLabel: z.string().optional(), // stored only in legalLinks.anpcLabel
+    legalDisputeResolutionLabel: z.string().optional(), // stored only in legalLinks.anpcSalLabel
+    footerCopyright: z.string().optional(),             // "© {year} {name}. All rights reserved."
+    // Cookie banner (components/CookieConsent.tsx) — stored only in gdpr.*
+    cookieHeadline: z.string().optional(),
+    cookieDescription: z.string().optional(),
+    cookieDenyAll: z.string().optional(),
+    cookieNecessaryOnly: z.string().optional(),
+    cookieAcceptAll: z.string().optional(),
+    // Navigation (components/Navbar.tsx)
+    navAllOf: z.string().optional(),                    // "{label} (All)"
+    navContact: z.string().optional(),                  // "Contact"
+    navToggleMenu: z.string().optional(),               // "Toggle menu" (aria-label)
+    navViewAll: z.string().optional(),                  // "View All"
+    navContactUs: z.string().optional(),                // "Contact Us"
+    // Page chrome (components/SitePage.tsx)
+    breadcrumbHome: z.string().optional(),              // "Home"
+    restrictedTitle: z.string().optional(),             // "Restricted Access"
+    restrictedLoginRequired: z.string().optional(),     // "You must be logged in to view this page."
+    restrictedSubscription: z.string().optional(),      // "This content requires a subscription ({currency} {price})."
+    restrictedLogIn: z.string().optional(),             // "Log In with Google"
+    restrictedPurchase: z.string().optional(),          // "Purchase Access"
+    paginationPrevious: z.string().optional(),          // "Previous"
+    paginationPageOf: z.string().optional(),            // "Page {page} of {total}"
+    paginationNext: z.string().optional(),              // "Next"
+    // Comments (components/CommentsSection.tsx)
+    commentsPostFailed: z.string().optional(),          // "Failed to post"
+    commentsHeading: z.string().optional(),             // "Discussion ({count})"
+    commentsEmpty: z.string().optional(),               // "No comments yet. Be the first!"
+    commentsClosed: z.string().optional(),              // "Comments are closed for this post."
+    commentsPlaceholder: z.string().optional(),         // "Write a comment..."
+    commentsPost: z.string().optional(),                // "Post"
+    commentsJoin: z.string().optional(),                // "Join the conversation"
+    commentsSignIn: z.string().optional(),              // "Sign in with Google"
+    // Social share (components/SocialShare.tsx)
+    shareLabel: z.string().optional(),                  // "Share:"
+    shareOnX: z.string().optional(),                    // "Share on X"
+    shareOnLinkedIn: z.string().optional(),             // "Share on LinkedIn"
+    shareOnFacebook: z.string().optional(),             // "Share on Facebook"
+    shareByEmail: z.string().optional(),                // "Share via Email"
+    shareCopyLink: z.string().optional(),               // "Copy Link"
+    // Quick contact button (components/QuickContact.tsx)
+    quickContactCall: z.string().optional(),            // "Call us"
+    quickContactEmail: z.string().optional(),           // "Email us"
+    // Forms (components/DynamicForm.tsx)
+    formSubmissionFailed: z.string().optional(),        // "Submission failed"
+    formErrorShort: z.string().optional(),              // "Something went wrong"
+    formSelectPlaceholder: z.string().optional(),       // "Select..."
+    formSubmitting: z.string().optional(),              // "Submitting..."
+});
+export type SiteStrings = z.infer<typeof SiteStringsSchema>;
 
-    // Search
-    searchButton: "Search",
-    searchNoResults: "No products found",
-    searchSearching: "Searching...",
-    viewAllResults: "View all results",
-    resultsFor: "Results for",
-    searchProducts: "Search Products",
-
-    // Account / Auth
-    signIn: "Sign In",
-    accountLabel: "Account",
+/** The resolved locale table (§ 2.3): every key of every part holds a string. A DTO — plain strings only. */
+export type LocaleStrings = {
+    commerce: Required<CommerceStrings>;
+    catalog: Required<CatalogStrings>;
+    site: Required<SiteStrings>;
 };
+
+// Default commerce strings (English). LOCALE-1: the literal now lives in the EN language pack
+// (`language-packs/en.ts`, the one place English texts are written); this compatibility member keeps its name and
+// value until its last reader moves (`locale-1d`, docs/slices/locale-1.md § 10.2). It is bound here, not
+// re-exported as `export … from`, so the name stays a declaration of this module for every existing importer.
+export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = EN_LANGUAGE_PACK.commerce;
 
 export const TenantConfigSchema = z.object({
     id: z.string(), // e.g., "client-bob"
@@ -847,8 +857,11 @@ export const TenantConfigSchema = z.object({
     countryCode: z.string().default("EN"),
     locale: z.string().default("en-US"),
 
-    // Commerce UI strings (i18n)
+    // Commerce UI strings (i18n) — the commerce part of the locale table (LOCALE-1 § 4.1)
     commerceStrings: CommerceStringsSchema.default({}),
+    // LOCALE-1: the catalog and site parts of the locale table; absent = no override (§ 4.1)
+    catalogStrings: CatalogStringsSchema.optional(),
+    siteStrings: SiteStringsSchema.optional(),
 
     // Company details (footer, invoices)
     companyDetails: CompanyDetailsSchema.default({}),

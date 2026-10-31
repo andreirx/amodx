@@ -16,7 +16,9 @@ src/
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
 ├── facets.ts           # Catalog storefront filter rules: buildFacetListing, the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
-└── country-packs/      # Per-country locale/currency/address packs
+├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a)
+├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
+└── country-packs/      # Per-country facts: currency, regions, phone prefix (+ text members kept until locale-1d)
 ```
 
 `src/index.ts` is the single public entry point: every sibling module is re-exported from it,
@@ -115,6 +117,31 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 > **`normalizeEmail` is not an ordinary helper.** Changing its output is a DynamoDB key
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
 > pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
+
+## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slice `locale-1a` (PROTOTYPE)
+
+Design: `docs/slices/locale-1.md` (§ 16 rulings win); record `docs/slices/locale-1a.md`. Maturity **PROTOTYPE** until
+every visitor surface reads it (end of `locale-1d`).
+
+- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 77 keys,
+  unchanged), `catalogStrings` (`CatalogStringsSchema`, no keys until `locale-1b`) and `siteStrings`
+  (`SiteStringsSchema`, 51 keys in `1a`). Every key is optional (absent = no override). The nine cookie/legal site keys
+  are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
+  in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string).
+- **Language.** `normalizeLocale(raw)` (never throws: not a string, malformed or unsupported → `en-US`; Unicode
+  extensions dropped; idempotent) gives the date/number locale; its language subtag selects the pack in
+  `LANGUAGE_PACKS` (none → English). `countryCode` never selects texts.
+- **Resolution.** `resolveLocaleStrings(tenantFields)` → `{ locale, language, strings, defaults }`: per key, EN pack <
+  language pack < tenant override (an own string property; for the nine cookie/legal keys a non-empty string — the old
+  `||` rule). Non-string and unknown stored values are ignored. `defaults` = without the override (admin placeholders,
+  the fallback reader sites of § 5.2). `fillTemplate` fills `{name}` placeholders; an unknown one stays visible.
+- **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
+  (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
+  slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.
+- **`COMMERCE_STRINGS_DEFAULTS`** is now bound to `EN_LANGUAGE_PACK.commerce` (same name, same 77 values, verified
+  equal to `5841a86`). The literal lives in `language-packs/en.ts` because `index.ts` re-exports the resolver: a value
+  import from `index.ts` inside that module graph is read before `index.ts` has run (ESM cycle → `ReferenceError`).
+  The RO pack READS its commerce, cookie and legal values from `RO_PACK` (one copy until `locale-1d`).
 
 ## Key Patterns
 

@@ -1,0 +1,506 @@
+{
+  "rule": "Rows loc1-ro-content / loc1-ro-commerce: per URL, textChanges(extraction of the EN source fixture, extraction of the RO copy) equals this list (kind, from, to), and each from / to equals fillTemplate(EN / RO pack value of key, values). Ledger rows L-RO-1 (site part; the cookie banner L-RO-5 is client-only and is checked in renderer/test/unit/locale-1a-client.test.ts). The year token is proof.mjs maskFooterYear.",
+  "fixtures": {
+    "roContent": {
+      "source": "content",
+      "paths": {
+        "/": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/about": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/shop": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/shop?availability=in_stock": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/category/mats": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/product/plain-rug": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/products/d0000000-0000-4000-8000-000000000001": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/search?q=rug": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Content"
+            },
+            "from": "© {year} CM1 Content. All rights reserved.",
+            "to": "© {year} CM1 Content. Toate drepturile rezervate."
+          }
+        ],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    },
+    "roCommerce": {
+      "source": "commerce",
+      "paths": {
+        "/": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/about": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/stale-showcase": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/shop": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/shop?availability=in_stock": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/category/rugs": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/product/sale-rug": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/product/variant-rug": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/product/sold-out-rug": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/product/rug-care-guide": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/products/c0000000-0000-4000-8000-000000000001": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/search?q=rug": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "breadcrumbHome",
+            "kind": "text",
+            "values": {},
+            "from": "Home",
+            "to": "Acasă"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/cart": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/checkout": [
+          {
+            "key": "navToggleMenu",
+            "kind": "@aria-label",
+            "values": {},
+            "from": "Toggle menu",
+            "to": "Deschide sau închide meniul"
+          },
+          {
+            "key": "footerCopyright",
+            "kind": "text",
+            "values": {
+              "year": "{year}",
+              "name": "CM1 Commerce"
+            },
+            "from": "© {year} CM1 Commerce. All rights reserved.",
+            "to": "© {year} CM1 Commerce. Toate drepturile rezervate."
+          }
+        ],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    }
+  }
+}

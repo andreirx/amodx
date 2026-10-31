@@ -1,0 +1,362 @@
+{
+  "buildId": "EnDoO3f0jr-r2N0gB4-lB",
+  "captures": [
+    {
+      "tenant": "commerce",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/root.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/about.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/stale-showcase",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/stale-showcase.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/shop.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/category/rugs",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/category_rugs.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/sale-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_sale-rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/variant-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_variant-rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/sold-out-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_sold-out-rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/rug-care-guide",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_rug-care-guide.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/products/c0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/products_c0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/search?q=rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/search_q_rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/cart",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/cart.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "commerce/sitemap.xml.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "commerce/openai-feed.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "commerce/robots.txt.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "commerce/llms.txt.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/root.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/about.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/shop.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/category/mats",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/category_mats.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/product/plain-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/product_plain-rug.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/products/d0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/products_d0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/search?q=rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/search_q_rug.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/cart",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/cart.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/checkout",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/checkout.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "content/sitemap.xml.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "content/openai-feed.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "content/robots.txt.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "content/llms.txt.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/root.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/about.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/stale-showcase",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/stale-showcase.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/shop.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/category/floors",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/category_floors.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/product/oak-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/product_oak-plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/product/ash-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/product_ash-plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/product/legacy-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/product_legacy-plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/products_e0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000002",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/products_e0000000-0000-4000-8000-000000000002.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000003",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/products_e0000000-0000-4000-8000-000000000003.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/search?q=plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/search_q_plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/cart",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/cart.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/checkout",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/checkout.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "catalog/sitemap.xml.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "catalog/openai-feed.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "catalog/robots.txt.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "catalog/llms.txt.body"
+    }
+  ]
+}

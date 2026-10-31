@@ -26,11 +26,44 @@ import { ShieldCheck, Sparkles } from "lucide-react";
 import { EffectControls } from "@amodx/plugins/common/EffectControls";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
 import { ServiceKeys } from "@/components/ServiceKeys";
-import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack, isCatalogMode } from "@amodx/shared";
+import { THEME_PRESETS, COUNTRY_PACKS, getCountryPack, isCatalogMode, LANGUAGE_PACKS, resolveLocaleStrings } from "@amodx/shared";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
+
+// ── LOCALE-1A (docs/slices/locale-1.md § 3.5, § 7.2): the "Language & Country" card's rules, pure so that
+// Settings.test.ts pins them (the admin unit config has no DOM). ───────────────────────────────────────────────
+
+/** True when `value` is itself a spelling of en-US (after the trim and `_` → `-` steps of normalizeLocale). */
+function spellsEnUs(value: string): boolean {
+    try { return new Intl.Locale(value.trim().replace(/_/g, "-")).baseName === "en-US"; } catch { return false; }
+}
+
+/**
+ * What the stored `locale` means for visitors: the date locale, the text language, and whether the value FELL BACK to
+ * en-US. The warning is for a value that is present (a string, also "" or blanks) but is not a locale, so en-US is
+ * used in its place; an absent value is the documented default and shows no warning.
+ */
+export function localeStatus(stored: unknown): { dates: string; language: string; languageName: string; fallbackWarning: boolean } {
+    const resolved = resolveLocaleStrings({ locale: stored });
+    return {
+        dates: resolved.locale,
+        language: resolved.language,
+        languageName: LANGUAGE_PACKS[resolved.language].name,
+        fallbackWarning: typeof stored === "string" && resolved.locale === "en-US" && !spellsEnUs(stored),
+    };
+}
+
+/** "Site language": writes the language pack's default locale (§ 3.5); nothing else. */
+export function withSiteLanguage<T extends object>(config: T, language: string): T & { locale: string } {
+    return { ...config, locale: LANGUAGE_PACKS[language].defaultLocale };
+}
+
+/** "Apply" of the country (§ 7.2): writes `countryCode` and `currency` only — never `locale` or any text. */
+export function withCountry<T extends object>(config: T, code: string): T & { countryCode: string; currency: string } {
+    return { ...config, countryCode: code, currency: getCountryPack(code).currency.code };
+}
 
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
@@ -1151,7 +1184,7 @@ export default function SettingsPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Legal Links</CardTitle>
-                            <CardDescription>Shown in the footer. Labels default to the country pack language.</CardDescription>
+                            <CardDescription>Shown in the footer. The link texts are edited in Labels → Cookie banner & legal links.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -1164,27 +1197,11 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Terms Label (footer)</Label>
-                                    <Input
-                                        value={config.legalLinks?.termsLabel || ""}
-                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, termsLabel: e.target.value } })}
-                                        placeholder="Auto from country pack"
-                                    />
-                                </div>
-                                <div className="space-y-2">
                                     <Label>Privacy Policy URL</Label>
                                     <SmartLinkInput
                                         value={config.legalLinks?.privacyUrl || ""}
                                         onChange={val => setConfig({ ...config, legalLinks: { ...config.legalLinks, privacyUrl: val } })}
                                         placeholder="/politica-confidentialitate"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Privacy Label (footer)</Label>
-                                    <Input
-                                        value={config.legalLinks?.privacyLabel || ""}
-                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, privacyLabel: e.target.value } })}
-                                        placeholder="Auto from country pack"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -1196,27 +1213,11 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Consumer Protection Label</Label>
-                                    <Input
-                                        value={config.legalLinks?.anpcLabel || ""}
-                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcLabel: e.target.value } })}
-                                        placeholder="Auto from country pack"
-                                    />
-                                </div>
-                                <div className="space-y-2">
                                     <Label>Dispute Resolution URL</Label>
                                     <Input
                                         value={config.legalLinks?.anpcSalUrl || ""}
                                         onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcSalUrl: e.target.value } })}
                                         placeholder="https://ec.europa.eu/consumers/odr"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Dispute Resolution Label</Label>
-                                    <Input
-                                        value={config.legalLinks?.anpcSalLabel || ""}
-                                        onChange={e => setConfig({ ...config, legalLinks: { ...config.legalLinks, anpcSalLabel: e.target.value } })}
-                                        placeholder="Auto from country pack"
                                     />
                                 </div>
                             </div>
@@ -1599,16 +1600,52 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
-                    {/* COUNTRY, LOCALE & CURRENCY — always visible (drives GDPR texts, date formats, etc.) */}
+                    {/* SITE LANGUAGE, LOCALE, COUNTRY & CURRENCY — always visible (LOCALE-1A, docs/slices/locale-1.md § 3.5).
+                        Texts follow the language of the normalised `locale`; dates follow the locale; the country sets
+                        country facts only (it no longer copies texts into storage, § 7.2). */}
+                    {(() => {
+                        const status = localeStatus(config.locale);
+                        return (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Country & Locale</CardTitle>
-                            <CardDescription>Selecting a country pack auto-fills locale, currency, GDPR texts, legal labels, and commerce translations.</CardDescription>
+                            <CardTitle>Language & Country</CardTitle>
+                            <CardDescription>The site language selects the texts visitors see; the country selects country facts such as the currency.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
-                                    <Label>Country Pack</Label>
+                                    <Label>Site language</Label>
+                                    <Select
+                                        value={status.language}
+                                        onValueChange={language => setConfig(withSiteLanguage(config, language))}
+                                    >
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {Object.values(LANGUAGE_PACKS).map(pack => (
+                                                <SelectItem key={pack.language} value={pack.language}>
+                                                    {pack.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">The language of every text visitors see. Edit single texts in Labels.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Locale (advanced)</Label>
+                                    <Input
+                                        value={config.locale ?? ""}
+                                        onChange={e => setConfig({ ...config, locale: e.target.value })}
+                                        placeholder="en-US"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Dates: {status.dates}. Texts: {status.languageName}.
+                                    </p>
+                                    {status.fallbackWarning && (
+                                        <p className="text-xs text-destructive">Not a valid locale; en-US is used.</p>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Country</Label>
                                     <Select
                                         value={config.countryCode || "EN"}
                                         onValueChange={code => setPendingPackCode(code)}
@@ -1628,18 +1665,12 @@ export default function SettingsPage() {
                                         className="w-full"
                                         onClick={() => setPendingPackCode(config.countryCode || "EN")}
                                     >
-                                        Apply Pack
+                                        Apply Country
                                     </Button>
+                                    <p className="text-xs text-muted-foreground">Sets the country and its currency.</p>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Locale</Label>
-                                    <Input
-                                        value={config.locale || "en-US"}
-                                        onChange={e => setConfig({ ...config, locale: e.target.value })}
-                                        placeholder="en-US"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
-                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label>Currency</Label>
                                     <Input
@@ -1647,11 +1678,13 @@ export default function SettingsPage() {
                                         onChange={e => setConfig({ ...config, currency: e.target.value })}
                                         placeholder="USD"
                                     />
-                                    <p className="text-xs text-muted-foreground">Auto-filled from pack. Override if needed.</p>
+                                    <p className="text-xs text-muted-foreground">Auto-filled from the country. Override if needed.</p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
+                        );
+                    })()}
 
                     {/* GDPR / PRIVACY */}
                     <Card>
@@ -1677,67 +1710,7 @@ export default function SettingsPage() {
                                 <Label htmlFor="gdpr-enabled">Enable Cookie Banner</Label>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label>Headline</Label>
-                                <Input
-                                    value={config.gdpr?.headline || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        gdpr: { ...config.gdpr!, headline: e.target.value }
-                                    })}
-                                    placeholder="We value your privacy"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Description Text</Label>
-                                <textarea
-                                    className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                    value={config.gdpr?.description || ""}
-                                    onChange={e => setConfig({
-                                        ...config,
-                                        gdpr: { ...config.gdpr!, description: e.target.value }
-                                    })}
-                                    placeholder="We use cookies to improve your experience..."
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Deny All Button</Label>
-                                    <Input
-                                        value={config.gdpr?.denyAll || ""}
-                                        onChange={e => setConfig({
-                                            ...config,
-                                            gdpr: { ...config.gdpr!, denyAll: e.target.value }
-                                        })}
-                                        placeholder="Deny All"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Necessary Only Button</Label>
-                                    <Input
-                                        value={config.gdpr?.necessaryOnly || ""}
-                                        onChange={e => setConfig({
-                                            ...config,
-                                            gdpr: { ...config.gdpr!, necessaryOnly: e.target.value }
-                                        })}
-                                        placeholder="Necessary Only"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Accept All Button</Label>
-                                    <Input
-                                        value={config.gdpr?.acceptAll || ""}
-                                        onChange={e => setConfig({
-                                            ...config,
-                                            gdpr: { ...config.gdpr!, acceptAll: e.target.value }
-                                        })}
-                                        placeholder="Accept All"
-                                    />
-                                </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground">Leave blank to use defaults from country pack.</p>
+                            <p className="text-xs text-muted-foreground">The banner texts are edited in Labels → Cookie banner & legal links.</p>
 
                             <div className="space-y-2">
                                 <Label>Position</Label>
@@ -2023,58 +1996,20 @@ export default function SettingsPage() {
             <Dialog open={pendingPackCode !== null} onOpenChange={open => { if (!open) setPendingPackCode(null); }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Apply Country Pack: {pendingPackCode ? getCountryPack(pendingPackCode).name : ""}</DialogTitle>
+                        <DialogTitle>Apply Country: {pendingPackCode ? getCountryPack(pendingPackCode).name : ""}</DialogTitle>
                     </DialogHeader>
                     <p className="text-sm text-muted-foreground">
-                        This will update locale and currency. Do you also want to overwrite your existing commerce labels, GDPR texts, and legal link labels with the country pack defaults?
+                        This sets the country and its currency. The site language and the texts do not change.
                     </p>
                     <div className="flex flex-col gap-2 pt-2">
                         <Button
-                            variant="outline"
                             onClick={() => {
                                 if (!pendingPackCode) return;
-                                const pack = getCountryPack(pendingPackCode);
-                                setConfig(prev => ({
-                                    ...prev,
-                                    countryCode: pendingPackCode,
-                                    locale: pack.locale,
-                                    currency: pack.currency.code,
-                                }));
+                                setConfig(prev => withCountry(prev, pendingPackCode));
                                 setPendingPackCode(null);
                             }}
                         >
-                            Locale & Currency Only
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                if (!pendingPackCode) return;
-                                const pack = getCountryPack(pendingPackCode);
-                                setConfig(prev => ({
-                                    ...prev,
-                                    countryCode: pendingPackCode,
-                                    locale: pack.locale,
-                                    currency: pack.currency.code,
-                                    commerceStrings: pack.defaultStrings as any,
-                                    gdpr: {
-                                        ...prev.gdpr!,
-                                        headline: pack.gdpr.headline,
-                                        description: pack.gdpr.description,
-                                        denyAll: pack.gdpr.denyAll,
-                                        necessaryOnly: pack.gdpr.necessaryOnly,
-                                        acceptAll: pack.gdpr.acceptAll,
-                                    },
-                                    legalLinks: {
-                                        ...prev.legalLinks,
-                                        termsLabel: pack.legal.termsLabel,
-                                        privacyLabel: pack.legal.privacyLabel,
-                                        anpcLabel: pack.legal.consumerProtectionLabel || "",
-                                        anpcSalLabel: pack.legal.disputeResolutionLabel || "",
-                                    },
-                                }));
-                                setPendingPackCode(null);
-                            }}
-                        >
-                            Overwrite All Texts
+                            Apply
                         </Button>
                     </div>
                 </DialogContent>

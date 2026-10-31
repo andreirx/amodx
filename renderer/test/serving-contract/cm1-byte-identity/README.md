@@ -5,10 +5,11 @@ Spec: `docs/slices/catalog-mode-1.md` § 3.6; comparison contract amended by § 
 
 | Directory | What | Used by |
 |---|---|---|
-| `baseline/` | The renderer at commit `de4ad52` — the commit `cat-mode-1` starts from — answering every CM1 request of the commerce (18), content (14) and catalog (19) fixture tenants (`../fixtures.mjs`, `CM1`): `<tenant>/<file>.body`, `index.json` (build id; per URL the path, status, Content-Type), `client-modules.json` (that build's client-module id → module path map, read from its `*_client-reference-manifest.js` files). | rows `cm1-identity-commerce`, `cm1-identity-content`, `cm1-control` |
+| `baseline/` | The strict byte baseline of rows `cm1-identity-commerce` / `cm1-identity-content`: the renderer of the `locale-1a` tree answering every CM1 request of the commerce (18), content (14) and catalog (19) fixture tenants (`../fixtures.mjs`, `CM1`). Same layout as before: `<tenant>/<file>.body`, `index.json` (build id; per URL the path, status, Content-Type), `client-modules.json`. Advanced by `locale-1a` (history below). | rows `cm1-identity-commerce`, `cm1-identity-content` |
+| `control-de4ad52/` | The original baseline: the renderer at commit `de4ad52` (the commit `cat-mode-1` starts from), same layout. Kept unchanged when `locale-1a` advanced `baseline/`, because row `cm1-control` needs the pre-catalog-mode catalog bodies to prove that the detector sees a change. | row `cm1-control` |
 | `candidate/` | The same capture set from the `cat-mode-1` tree, written by the gate run recorded in `docs/slices/cat-mode-1.md` § 7 (`CM1_CAPTURE_DIR=… npm run test:serving`). The 32 commerce/content captures are the "after" side of the identity comparison; the 19 catalog captures are the evidence for the negative grep (oracle 5). Not read by any row (each run captures afresh). | the slice record |
 
-## How `baseline/` was produced (EXECUTED 2026-10-29, cycle 3)
+## How the de4ad52 set (now `control-de4ad52/`) was produced (EXECUTED 2026-10-29, cycle 3)
 
 ```bash
 git worktree add --detach /tmp/CAT-MODE-1-baseline de4ad52
@@ -48,5 +49,23 @@ each matches the baseline on all 32 commerce/content URLs (cycle 3).
 ## When a `cm1-identity-*` row fails
 
 A tenant without `catalogMode` now renders different bytes. If that is a regression, fix it. If a later slice
-changes those bytes on purpose, it re-captures `baseline/` from its own start commit with the procedure above and
-records the change in its slice document. Never widen a canonicalisation to make a row pass.
+changes those bytes on purpose (the procedure of `docs/slices/locale-1.md` § 8.5, first used by `locale-1a`): it
+captures its start commit once with the procedure above into its own immutable `before/`, commits the exact list of
+differences (`expected-diff.json`, each with its category) and a row that checks it, and only then re-captures
+`baseline/` from its own candidate tree and adds a line to the history below. Never widen a canonicalisation to make a
+row pass.
+
+## Baseline history
+
+| Date | Slice | `baseline/` captured from | Reviewed reason for the byte change |
+|---|---|---|---|
+| 2026-10-29 | `cat-mode-1` | commit `de4ad52` (the set is now `control-de4ad52/`) | — (first baseline) |
+| 2026-10-31 | `locale-1a` | the `locale-1a` candidate tree, with `node test/serving-contract/cm1-byte-identity.mjs capture test/serving-contract/cm1-byte-identity/baseline` (run from `renderer/`) | `../locale-1/1a/expected-diff.json`: against the immutable start-commit capture `../locale-1/1a/before/` (from `5841a86`), the en-US commerce and content URLs differ ONLY by category-2 added string props (`Navbar`, `SocialShare`, `CommentsSection` receive their site keys), and the catalog `/shop` pages also by one category-1 pager consolidation (`Page <!-- -->1<!-- --> of <!-- -->2` → `Page 1 of 2`); the visible text is equal (rows `loc1-text-*`, `loc1-diff-1a`; `docs/slices/locale-1a.md`). |
+
+The `cm1-identity-*` rows keep the CM1-A1 canonicalisations exactly. The locale rows (`loc1-diff-*`) add ONE ruled
+canonicalisation on top — RSC row labels renumbered in first-reference order (`../locale-1/proof.mjs` `renumberRows`;
+operator ruling LOCALE1A-ROW-IDS = A, 2026-10-31) — because catalog-mode category pages number their rows differently
+from render to render; it does not apply here.
+
+Rule for the next slice (`docs/slices/locale-1.md` § 8.5 rule 5): it starts from this `baseline/`; its own byte changes need its
+own `expected-diff.json` against its own start-commit capture, and only then may it re-capture `baseline/`.

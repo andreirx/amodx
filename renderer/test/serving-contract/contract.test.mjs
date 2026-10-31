@@ -34,10 +34,12 @@ import {
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
 import { execFile } from "node:child_process";
 import {
-    CM1_BASELINE_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
+    CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
+import { EN_US_REQUESTS, LOC1_DIR, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, fillTemplate } from "@amodx/shared";
 import {
-    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN,
+    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1139,10 +1141,13 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             return cm1Candidate;
         }
         const cm1Base = async () => (cm1Baseline ??= await readCaptures(CM1_BASELINE_DIR));
+        let cm1Control;
+        /** The de4ad52 capture set (the pre-catalog-mode renderer), kept for `cm1-control` when locale-1a advanced `baseline/`. */
+        const cm1ControlSet = async () => (cm1Control ??= await readCaptures(CM1_CONTROL_DIR));
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
-            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the de4ad52 baseline did, under the CM1-A1 canonicalisations`, async () => {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1a tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
                 const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
                 // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
                 for (const r of rows) {
@@ -1186,7 +1191,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // Positive control for the detector: the same comparison MUST see the catalog tenant change (the baseline
         // printed " USD" with no amount and an `offers` block for a priceless product).
         test("(cm1-control) the identity detector reports the catalog tenant's product page and feed as changed", async () => {
-            const changed = compareTenant(await cm1Base(), await cm1Set(), "catalog").filter((r) => !r.same).map((r) => r.path);
+            const changed = compareTenant(await cm1ControlSet(), await cm1Set(), "catalog").filter((r) => !r.same).map((r) => r.path);
             assert.ok(changed.includes("/product/oak-plank"), `detector saw no product change: ${changed.join("; ")}`);
             assert.ok(changed.includes("/openai-feed"), "detector saw no feed change");
         });
@@ -1795,6 +1800,191 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
+        // ── ROWS (loc1-*) — LOCALE-1 proof, slice locale-1a (docs/slices/locale-1.md § 8.5; rulings § 16.2 items 4-5).
+        // Helpers: locale-1/proof.mjs. Inputs: locale-1/1a/before/ (immutable, captured from 5841a86 with the
+        // cm1-byte-identity/README.md procedure), locale-1/1a/expected-diff.json (the reviewed byte-difference list) and
+        // locale-1/1a/ro-expected.json (the RO text changes, from the approved packs).
+        // SUBJECTS (review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`) —
+        // the CM1 tenants with their reviewed request lists, every other one with a list derived by rule. These rows run
+        // LAST in this block: the non-CM1 subjects are captured here, after every row that depends on those tenants'
+        // cache state (on this target no row edits stub data; `failContentReads` is reset by its own row).
+        // The RO subjects are the copies `loc1-ro-*` of the CM1 commerce and content tenants (fixtures.mjs LOC1).
+        let loc1Before, loc1Ro, loc1En;
+        const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, "1a", "before")));
+        const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "1a", file), "utf8"));
+        const loc1RoSet = async () => (loc1Ro ??= await captureLoc1(request, server.port));
+        const isHtml = (c) => c.contentType.startsWith("text/html");
+        const CM1_KEYS = new Set(Object.keys(CM1));
+        /** This run's capture set of every en-US subject: the CM1 captures of `cm1Set()` plus the other subjects, now. */
+        async function loc1EnSet() {
+            if (!loc1En) {
+                const cm1 = await cm1Set();
+                const rest = await captureRequests(request, server.port, Object.entries(EN_US_REQUESTS).filter(([key]) => !CM1_KEYS.has(key)).flatMap(([, list]) => list));
+                loc1En = { buildId: cm1.buildId, clientModules: cm1.clientModules, captures: [...cm1.captures.filter((c) => Object.hasOwn(EN_US_REQUESTS, c.tenant)), ...rest] };
+            }
+            return loc1En;
+        }
+        const pathsBySubject = (captures) => {
+            const out = {};
+            for (const c of captures) (out[c.tenant] ??= []).push(c.path);
+            for (const list of Object.values(out)) list.sort();
+            return out;
+        };
+
+        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ and expected-diff.json hold exactly their URLs, with zero category-3 items", async () => {
+            const want = Object.fromEntries(Object.entries(EN_US_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
+            const withoutLocale = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#") && !Object.hasOwn(i, "locale")).length;
+            assert.equal(Object.keys(want).length, withoutLocale, "every tenant without `locale` is a subject");
+            for (const key of CM1_KEYS) assert.ok(want[key], `CM1 ${key} is a subject`);
+            for (const t of Object.values(LOC1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (ro-RO) is not an en-US subject`);
+            assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), want, "before/ must hold exactly the subjects' URLs");
+            const doc = await loc1Json("expected-diff.json");
+            assert.deepEqual(Object.fromEntries(Object.entries(doc.fixtures).map(([key, urls]) => [key, Object.keys(urls).sort()])), want, "expected-diff.json must list exactly the subjects' URLs");
+            assert.deepEqual(Object.values(doc.fixtures).flatMap((urls) => Object.values(urls).flat()).filter((e) => e.category === 3), [], "an en-US subject lists a category-3 item");
+            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs: ${Object.keys(want).join(", ")}`);
+        });
+
+        for (const subject of Object.keys(EN_US_REQUESTS)) {
+            test(`(loc1-text-${subject}) en-US subject ${subject}: the visible text of every captured URL equals the 5841a86 capture (§ 16.2 item 4)`, async () => {
+                const before = await loc1BeforeSet();
+                const problems = textMismatches(before, await loc1EnSet(), subject);
+                assert.deepEqual(problems, [], `${subject}: visible text changed`);
+                const html = before.captures.filter((c) => c.tenant === subject && isHtml(c));
+                console.log(`  (loc1-text-${subject}) ${html.length} HTML URLs, ${html.reduce((n, c) => n + extractVisibleText(c.body).length, 0)} extracted items, all equal`);
+            });
+        }
+
+        // The bound mutation of the text rows (review-0 R1): for EVERY subject, one visible text added to one captured
+        // page must be reported — a subject whose comparison could not fail would be outside the gate in effect.
+        test("(loc1-text-mutation) for every en-US subject, a mutated visible text on one page is reported", async () => {
+            const before = await loc1BeforeSet();
+            const cand = await loc1EnSet();
+            for (const subject of Object.keys(EN_US_REQUESTS)) {
+                const page = cand.captures.find((c) => c.tenant === subject && isHtml(c) && c.body.includes("</body>"));
+                assert.ok(page, `${subject} has an HTML page`);
+                const mutated = { ...cand, captures: cand.captures.map((c) => (c === page ? { ...c, body: c.body.replace("</body>", "<p>LOC1 MUTATION</p></body>") } : c)) };
+                assert.deepEqual(textMismatches(before, mutated, subject), [`${page.path}: visible text changed`], `${subject}: the mutation was not reported`);
+            }
+        });
+
+        test("(loc1-diff-1a) en-US subjects: every byte difference to the 5841a86 capture is listed in expected-diff.json, and every listed one occurs", async () => {
+            const before = await loc1BeforeSet();
+            const cand = await loc1EnSet();
+            const doc = await loc1Json("expected-diff.json");
+            const problems = [];
+            // Every URL of every subject gets the exact byte assertion (CM1-A1 + the ruled row renumbering; no exclusion).
+            assert.ok(!Object.hasOwn(doc, "byteGateExclusions"), "expected-diff.json must not exclude any URL");
+            for (const subject of Object.keys(EN_US_REQUESTS)) {
+                for (const b of before.captures.filter((c) => c.tenant === subject)) {
+                    const a = cand.captures.find((c) => c.tenant === subject && c.path === b.path);
+                    if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
+                    const expected = expectedFor(doc, subject, b.path);
+                    for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
+                    console.log(`  (loc1-diff-1a) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category}${e.element ? " " + e.element.split("/").pop() + "." + e.prop : ""}`).join(", ")}]`);
+                }
+            }
+            assert.deepEqual(problems, []);
+            // The checker can fail (the bound mutations of this row, as cm1-rewire is for the identity rows): on content
+            // `/`, a dropped listed entry, a listed entry that does not occur, one changed HTML byte and a changed prop
+            // value; on catalog `/shop`, a dropped category-1 entry — each must be reported.
+            const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
+            const [b, a] = pick("content", "/");
+            const listed = expectedFor(doc, "content", "/");
+            const ghost = { category: 2, element: "[project]/renderer/src/components/QuickContact.tsx#QuickContact", prop: "strings", value: {} };
+            const navContact = '\\"navContact\\":\\"Contact\\"';
+            assert.ok(a.body.includes(navContact), "mutation precondition: the Navbar strings travel in the captured payload");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, listed.slice(1)), [], "a dropped listed entry was not reported");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, [...listed, ghost]), [], "a listed entry that does not occur was not reported");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace("CM1 Content", "CM1 C0ntent"), listed), [], "a changed HTML byte was not reported");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(navContact, '\\"navContact\\":\\"Kontakt\\"'), listed), [], "a changed prop value was not reported");
+            const [bs, as] = pick("catalog", "/shop");
+            const shopListed = expectedFor(doc, "catalog", "/shop");
+            assert.ok(shopListed.some((e) => e.category === 1), "catalog /shop lists its category-1 pager consolidation");
+            assert.notDeepEqual(checkExpected(before, bs.body, cand, as.body, shopListed.filter((e) => e.category !== 1)), [], "a dropped category-1 entry was not reported");
+        });
+
+        // The bound controls of the ruled row renumbering (LOCALE1A-ROW-IDS = A, packet § 6 item 3): on a small payload,
+        // a rewired reference, a changed value, a dropped row, an added row, two rows' contents swapped and one changed
+        // HTML byte must each be reported; rows that are only permuted with their ids consistently renamed compare equal.
+        test("(loc1-renumber-controls) the row renumbering ignores row labels only: every mutation is reported, a consistent renaming is not, an unknown form fails closed", () => {
+            const side = { buildId: "", clientModules: {} };
+            const body = (rows, html = "<p>page</p>") => `<html><body>${html}<script>self.__next_f.push([1,${JSON.stringify(rows.join("\n") + "\n")}])</script></body></html>`;
+            const cmp = (before, after, beforeHtml, afterHtml) => checkExpected(side, body(before, beforeHtml), side, body(after, afterHtml), []);
+            // The base exercises every protocol position the renumbering must respect (review-2 R5): an object KEY that
+            // looks like a reference (data, never rewritten), a Set reference (`$W`), a reference with a path, and an
+            // error row whose digest looks like a reference (metadata, never scanned).
+            const base = [
+                '0:["$","div",null,{"children":["$1","$2"],"data":{"$1":"a key, not a reference"},"set":"$W4","deep":"$2:props:children"}]',
+                '1:["$","p",null,{"children":"$L3"}]',
+                '2:["$","span",null,{"children":"two"}]',
+                '3:["$","b",null,{"children":"three"}]',
+                '4:["s1","s2"]',
+                '5:E{"digest":"$2"}',
+            ];
+            // positive: the same graph, rows permuted, every LABEL renamed (1→9, 2→8, 3→7, 4→6, 5→c) with every
+            // reference to it; the key "$1" and the digest "$2" are data and stay exactly as they were.
+            assert.deepEqual(cmp(base, [
+                'c:E{"digest":"$2"}',
+                '7:["$","b",null,{"children":"three"}]',
+                '6:["s1","s2"]',
+                '0:["$","div",null,{"children":["$9","$8"],"data":{"$1":"a key, not a reference"},"set":"$W6","deep":"$8:props:children"}]',
+                '8:["$","span",null,{"children":"two"}]',
+                '9:["$","p",null,{"children":"$L7"}]',
+            ]), [], "a consistent renaming must compare equal");
+            const mutations = {
+                "rewired reference (row 0 points to 3 instead of 2)": [base[0].replace('["$1","$2"]', '["$1","$3"]'), ...base.slice(1)],
+                "changed value inside one row": [base[0], base[1], base[2].replace('"two"', '"TWO"'), ...base.slice(3)],
+                "dropped row": [base[0], base[1], base[2], base[4], base[5]],
+                "added row": [...base, '6:["$","i",null,{"children":"extra"}]'],
+                "two rows' contents swapped": [base[0], base[1], base[3].replace(/^3:/, "2:"), base[2].replace(/^2:/, "3:"), base[4], base[5]],
+            };
+            for (const [name, rows] of Object.entries(mutations)) assert.notDeepEqual(cmp(base, rows), [], `${name} was not reported`);
+            assert.notDeepEqual(cmp(base, base, "<p>page</p>", "<p>pagE</p>"), [], "one changed HTML byte was not reported");
+            // review-2 R5 counterexamples — each was accepted by the spelling-based renumbering; each must be reported.
+            const r5 = {
+                "object key changed from $1 to $7 (with a reference that moved with it)": [
+                    ['0:{"$1":"x","r":"$1"}', '1:["a"]'],
+                    ['0:{"$7":"x","r":"$7"}', '7:["a"]'],
+                ],
+                "error digest changed from $2 to $9": [
+                    ['0:["$L1"]', '1:E{"digest":"$2"}', '2:["x"]'],
+                    ['0:["$L1"]', '1:E{"digest":"$9"}', '9:["x"]'],
+                ],
+                "Set reference $W1 retargeted from row A to row B": [
+                    ['0:["$2","$W1"]', '1:["a"]', '2:["b"]'],
+                    ['0:["$1","$W1"]', '1:["b"]', '2:["a"]'],
+                ],
+            };
+            for (const [name, [before, after]] of Object.entries(r5)) assert.notDeepEqual(cmp(before, after), [], `R5: ${name} was not reported`);
+            // fail closed: a $-form or a row kind whose meaning is unknown is refused, never compared by guess.
+            assert.throws(() => cmp(['0:["$X12"]'], ['0:["$X12"]']), /unknown RSC string form/, "an unknown $-form must fail closed");
+            assert.throws(() => cmp(['0:["$1"]', '1:A0a1b'], ['0:["$1"]', '1:A0a1b']), /unsupported RSC row kind/, "an unknown row kind must fail closed");
+            console.log(`  (loc1-renumber-controls) positive control equal; ${Object.keys(mutations).length + 1} mutations and ${Object.keys(r5).length} R5 counterexamples reported; 2 unknown forms fail closed`);
+        });
+
+        for (const [fixture, rowId] of [["roContent", "loc1-ro-content"], ["roCommerce", "loc1-ro-commerce"]]) {
+            test(`(${rowId}) RO copy of the ${fixture === "roContent" ? "content" : "commerce"} fixture: per URL exactly the listed text changes against its EN source, each the approved RO pack value`, async () => {
+                const spec = (await loc1Json("ro-expected.json")).fixtures[fixture];
+                const ro = await loc1RoSet();
+                const cand = await cm1Set();
+                const sourcePaths = cand.captures.filter((c) => c.tenant === spec.source).map((c) => c.path).sort();
+                assert.deepEqual(Object.keys(spec.paths).sort(), sourcePaths, "ro-expected.json must list exactly the captured URLs");
+                let changes = 0;
+                for (const [urlPath, list] of Object.entries(spec.paths)) {
+                    for (const e of list) {
+                        assert.equal(e.from, fillTemplate(EN_LANGUAGE_PACK.site[e.key], e.values), `${urlPath} ${e.key}: from is not the EN pack value`);
+                        assert.equal(e.to, fillTemplate(RO_LANGUAGE_PACK.site[e.key], e.values), `${urlPath} ${e.key}: to is not the RO pack value`);
+                    }
+                    const r = ro.find((c) => c.tenant === fixture && c.path === urlPath);
+                    const en = cand.captures.find((c) => c.tenant === spec.source && c.path === urlPath);
+                    assert.equal(r.status, en.status, `${urlPath} status`);
+                    const got = isHtml(r) ? textChanges(extractVisibleText(en.body), extractVisibleText(r.body)) : [];
+                    assert.deepEqual(got, list.map(({ kind, from, to }) => ({ kind, from, to })), `${fixture} ${urlPath}`);
+                    changes += got.length;
+                }
+                console.log(`  (${rowId}) ${Object.keys(spec.paths).length} URLs, ${changes} text changes, all listed and all from the RO pack`);
+            });
+        }
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

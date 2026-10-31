@@ -1,0 +1,860 @@
+{
+  "slice": "locale-1a",
+  "before": "locale-1/1a/before/ — 74 captures of the 8 en-US subjects from 5841a86, with the cm1-byte-identity/README.md procedure (this tree's fixtures.mjs, ddb-stub.mjs, cm1-byte-identity.mjs and locale-1/proof.mjs copied into the worktree)",
+  "rule": "docs/slices/locale-1.md § 8.5 rules 2-3 and § 16.2 item 4: every en-US subject (every fixtures.mjs tenant without `locale`, locale-1/proof.mjs EN_US_REQUESTS) holds byte categories 1 and 2 only; zero category-3 (ledger) items. A URL with [] must be byte-equal under the CM1-A1 canonicalisations plus the ruled row renumbering (LOCALE1A-ROW-IDS = A, locale-1/proof.mjs renumberRows; row labels only). No URL is excluded. Checked by row loc1-diff-1a (locale-1/proof.mjs checkExpected).",
+  "propValues": {
+    "navbar": {
+      "navAllOf": "{label} (All)",
+      "navContact": "Contact",
+      "navToggleMenu": "Toggle menu",
+      "navViewAll": "View All",
+      "navContactUs": "Contact Us"
+    },
+    "socialShare": {
+      "shareLabel": "Share:",
+      "shareOnX": "Share on X",
+      "shareOnLinkedIn": "Share on LinkedIn",
+      "shareOnFacebook": "Share on Facebook",
+      "shareByEmail": "Share via Email",
+      "shareCopyLink": "Copy Link"
+    },
+    "comments": {
+      "commentsPostFailed": "Failed to post",
+      "commentsHeading": "Discussion ({count})",
+      "commentsEmpty": "No comments yet. Be the first!",
+      "commentsClosed": "Comments are closed for this post.",
+      "commentsPlaceholder": "Write a comment...",
+      "commentsPost": "Post",
+      "commentsJoin": "Join the conversation",
+      "commentsSignIn": "Sign in with Google"
+    }
+  },
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/published": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/d4-page": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ]
+    },
+    "wk": {
+      "/index.php": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ]
+    },
+    "iso-a": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/listed-post": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ]
+    },
+    "iso-b": {
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ]
+    },
+    "commerce": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/rugs": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/sale-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/variant-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/sold-out-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/rug-care-guide": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/products/c0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/search?q=rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "content": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/mats": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/plain-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/products/d0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/search?q=rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SocialShare.tsx#SocialShare",
+          "prop": "strings",
+          "valueRef": "socialShare",
+          "why": "SocialShare receives its 6 site keys as a prop; it renders nothing on the server (window check); visible text unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CommentsSection.tsx#CommentsSection",
+          "prop": "strings",
+          "valueRef": "comments",
+          "why": "CommentsSection receives its 8 site keys as a prop; no dateLocale for an en-US tenant (§ 16.2 item 4); visible text unchanged"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 1,
+          "before": "px-4\">Page <!-- -->1<!-- --> of <!-- -->2</span>",
+          "after": "px-4\">Page 1 of 2</span>",
+          "flightBefore": "\"children\":[\"Page \",1,\" of \",2]",
+          "flightAfter": "\"children\":\"Page 1 of 2\"",
+          "why": "paginationPageOf: the fragment literal \"Page {page} of {total}\" becomes one filled string (§ 2.2 rule 2); the visible text \"Page 1 of 2\" is unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 1,
+          "before": "px-4\">Page <!-- -->1<!-- --> of <!-- -->2</span>",
+          "after": "px-4\">Page 1 of 2</span>",
+          "flightBefore": "\"children\":[\"Page \",1,\" of \",2]",
+          "flightAfter": "\"children\":\"Page 1 of 2\"",
+          "why": "paginationPageOf: the fragment literal \"Page {page} of {total}\" becomes one filled string (§ 2.2 rule 2); the visible text \"Page 1 of 2\" is unchanged"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/floors": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/oak-plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/ash-plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/legacy-plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000002": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000003": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/search?q=plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/cip1b-boen": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/cip1b-itc": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/cip1b-x": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/category/cip1b-u": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/stejar-mixt": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/frasin-mixt": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/nuc-fara-fisa": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/covor-arc": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/covor-shell": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/placa-nod": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/placa-nod-doi": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/lemn-x-unu": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/lemn-x-doi": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ],
+      "/product/lemn-x-trei": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "strings",
+          "valueRef": "navbar",
+          "why": "Navbar receives its 5 site keys as a prop (§ 5.3); visible text unchanged"
+        }
+      ]
+    }
+  }
+}

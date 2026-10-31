@@ -7,6 +7,10 @@ import { useSession } from "next-auth/react";
 import { useTenantUrl } from "@/lib/routing";
 import { CartWidget } from "./CartWidget";
 import { InterestWidget } from "./InterestShortlist";
+import { fillTemplate, type LocaleStrings } from "@amodx/shared";
+
+/** LOCALE-1A: the site keys this component renders, resolved by the layout (docs/slices/locale-1.md § 5.3). */
+export type NavbarStrings = Pick<LocaleStrings["site"], "navAllOf" | "navContact" | "navToggleMenu" | "navViewAll" | "navContactUs">;
 
 interface LinkItem {
     label: string;
@@ -31,6 +35,7 @@ export function Navbar({
                            titleSizeScrolled = "text-lg",
                            contentMaxWidth = "max-w-7xl",
                            interest,
+                           strings,
                        }: {
     siteName: string;
     logo?: string;
@@ -53,6 +58,7 @@ export function Navbar({
      * never rendered together.
      */
     interest?: { tenantId: string; listPrefix: string };
+    strings: NavbarStrings;
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -122,7 +128,7 @@ export function Navbar({
                                                     className="block px-4 py-2 text-sm text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
                                                     onClick={() => setOpenDropdown(null)}
                                                 >
-                                                    {link.label} (All)
+                                                    {fillTemplate(strings.navAllOf, { label: link.label })}
                                                 </Link>
                                             )}
                                             {link.children.map((child, j) => (
@@ -169,7 +175,7 @@ export function Navbar({
                                 href={getUrl("/contact")}
                                 className="bg-primary text-primary-foreground px-5 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
                             >
-                                Contact
+                                {strings.navContact}
                             </Link>
                         )}
                     </div>
@@ -181,7 +187,7 @@ export function Navbar({
                         <button
                             onClick={() => setIsMobileOpen(!isMobileOpen)}
                             className="text-foreground p-2 -mr-2"
-                            aria-label="Toggle menu"
+                            aria-label={strings.navToggleMenu}
                         >
                             {isMobileOpen ? <X className="h-6 w-6"/> : <Menu className="h-6 w-6"/>}
                         </button>
@@ -213,7 +219,7 @@ export function Navbar({
                                                     className="block py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
                                                     onClick={() => setIsMobileOpen(false)}
                                                 >
-                                                    View All
+                                                    {strings.navViewAll}
                                                 </Link>
                                             )}
                                             {link.children.map((child, j) => (
@@ -268,7 +274,7 @@ export function Navbar({
                                     className="block w-full text-center bg-primary text-primary-foreground px-4 py-3 rounded-md text-base font-medium hover:opacity-90"
                                     onClick={() => setIsMobileOpen(false)}
                                 >
-                                    Contact Us
+                                    {strings.navContactUs}
                                 </Link>
                             </div>
                         )}

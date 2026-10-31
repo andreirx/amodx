@@ -9,12 +9,14 @@ interface ConsentState {
 
 interface CookieConsentProps {
     tenantId: string;
-    config?: {
-        headline?: string;
-        description?: string;
-        denyAll?: string;
-        necessaryOnly?: string;
-        acceptAll?: string;
+    /** LOCALE-1A: the five texts are the resolved site keys cookie* (docs/slices/locale-1.md § 4.1), so they are
+     *  required; the layout is the one caller. The component has no text of its own. */
+    config: {
+        headline: string;
+        description: string;
+        denyAll: string;
+        necessaryOnly: string;
+        acceptAll: string;
         position?: "bottom" | "top";
         primaryColor?: string;
     };
@@ -142,12 +144,8 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
     const [showBanner, setShowBanner] = useState(false);
     const [isClient, setIsClient] = useState(false);
 
-    const headline = config?.headline || "We value your privacy";
-    const description = config?.description || "We use cookies to enhance your browsing experience and analyze our traffic. Choose your preference below.";
-    const denyAllLabel = config?.denyAll || "Deny All";
-    const necessaryOnlyLabel = config?.necessaryOnly || "Necessary Only";
-    const acceptAllLabel = config?.acceptAll || "Accept All";
-    const position = config?.position || "bottom";
+    const { headline, description, denyAll: denyAllLabel, necessaryOnly: necessaryOnlyLabel, acceptAll: acceptAllLabel } = config;
+    const position = config.position || "bottom";
 
     useEffect(() => {
         setIsClient(true);
@@ -225,7 +223,7 @@ export function CookieConsent({ tenantId, config }: CookieConsentProps) {
                         <button
                             onClick={() => handleChoice('all')}
                             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
-                            style={config?.primaryColor ? { backgroundColor: config.primaryColor } : {}}
+                            style={config.primaryColor ? { backgroundColor: config.primaryColor } : {}}
                         >
                             {acceptAllLabel}
                         </button>

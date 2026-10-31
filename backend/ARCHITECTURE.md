@@ -150,7 +150,12 @@ src/
 │   ├── list.ts            # GET /tenant (projects commerceEnabled + catalogMode for the admin)
 │   └── settings.ts        # GET/PUT /tenant/settings; PUT: ConsistentRead, 404 on a missing tenant record, and
 │                          #   a narrow parse of { commerceEnabled, catalogMode } on the merged item (mode change
-│                          #   → 400; commerce on a catalog site → 400) — never a full TenantConfigSchema parse
+│                          #   → 400; commerce on a catalog site → 400) — never a full TenantConfigSchema parse.
+│                          #   LOCALE-1A: when the body holds `siteStrings`/`catalogStrings`, the limits of
+│                          #   docs/slices/locale-1.md § 4.4 on that attribute as sent (a JSON object of texts; keys
+│                          #   ^[A-Za-z][A-Za-z0-9]{0,63}$; ≤ 200 entries; values ≤ 500 UTF-16 units; ≤ 32 768 UTF-8
+│                          #   bytes as JSON; `siteStrings` without the nine cookie/legal keys) → 400 before any read.
+│                          #   commerceStrings, gdpr, legalLinks stay unvalidated (test/unit/locale-settings.test.ts)
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/

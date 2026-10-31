@@ -43,7 +43,7 @@ src/
 │   ├── CommentsSection.tsx                    # Comment list + form (requires NextAuth session)
 │   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
-│   ├── CookieConsent.tsx                      # GDPR banner with accept/necessary/deny
+│   ├── CookieConsent.tsx                      # GDPR banner with accept/necessary/deny (texts = resolved site keys, from the layout)
 │   ├── PaddleLoader.tsx                       # Lazy Paddle.js script loader for payments
 │   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
@@ -458,6 +458,35 @@ and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCa
 `test/unit/memory-dynamo.ts` and pins the `facetModes` projection); serving-contract rows `cf1-*` (fixtures block
 `CF1`) and `cip1b-*` (fixtures block `CIP1B`, a tenant of its own) in `test/serving-contract/contract.test.mjs`;
 `test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
+
+## Tenant locale table in the renderer — slice `locale-1a` (PROTOTYPE)
+
+Design `docs/slices/locale-1.md` (§ 16 rulings win); record `docs/slices/locale-1a.md`.
+
+- `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
+  every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
+  formatter throws on; absent/malformed → `en-US`. `countryCode` stays out (F-LOCALE-COUNTIES, `cmrc-counties-1`). A
+  tenant without a name gets `site.untitledSiteName` of its language. `test/unit/locale-1a-map-tenant.test.ts` lists
+  the part fields from the schema and fails when one is dropped.
+- Server components resolve once per request (`resolveLocaleStrings(config)`) and pass each client component only
+  its keys as a plain `strings` prop (`Navbar`, `CommentsSection`, `SocialShare`, `QuickContact`; `CookieConsent`
+  keeps its `config` object shape). `layout.tsx`: cookie texts, footer lines/headings, legal labels, copyright, meta
+  description fallback. `SitePage.tsx`: restricted page, pagination, breadcrumb Home, comments, sharing.
+- **en-US tenants do not change** (§ 16.2 item 4): every EN value is today's literal; `CommentsSection` gets
+  `dateLocale` only for a non-en-US tenant (a spread — an `undefined` prop would be serialised into the RSC payload);
+  the footer copyright is split by a local `interpolate` into the same children as before, so its HTML/RSC bytes and
+  the CM1-A1 footer-year canonicalisation are unchanged.
+- Commerce-only pages keep `getCommerceStrings` / `COMMERCE_STRINGS_DEFAULTS` until `locale-1d` (§ 10.2).
+- `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
+- Proof: `test/serving-contract/locale-1/` — `proof.mjs` (visible-text extraction, byte-difference check),
+  `1a/before/` (immutable capture of `5841a86`), `1a/expected-diff.json`, `1a/ro-expected.json`, `1a/coverage.json`;
+  rows `loc1-subjects`, `loc1-text-<subject>`, `loc1-text-mutation`, `loc1-diff-1a`, `loc1-renumber-controls`,
+  `loc1-ro-content`, `loc1-ro-commerce`. The byte rows compare CM1-A1 plus a ruled row renumbering (`renumberRows`, row
+  labels only; LOCALE1A-ROW-IDS = A): catalog-mode category pages number their RSC rows differently between renders
+  (follow-up F-CATALOG-RSC-ORDER removes that at the source).
+  The en-US subjects are, by rule, every `fixtures.mjs` tenant without `locale` (`proof.mjs` `EN_US_REQUESTS`), so a new
+  locale-less fixture joins the gate; fixtures `LOC1` are the RO copies of the CM1 commerce/content tenants. The strict `cm1-byte-identity/baseline/` was advanced from
+  this tree; `cm1-control` reads the preserved `control-de4ad52/`. Unit: `locale-1a-{server-render,client,coverage}.test.ts`.
 
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
 

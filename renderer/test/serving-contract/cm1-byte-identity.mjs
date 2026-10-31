@@ -26,6 +26,9 @@ import { CM1 } from "./fixtures.mjs";
 
 export const CM1_DIR = fileURLToPath(new URL("./cm1-byte-identity/", import.meta.url));
 export const CM1_BASELINE_DIR = path.join(CM1_DIR, "baseline");
+/** The de4ad52 capture set: the strict baseline until locale-1a advanced `baseline/` (README § "Baseline history");
+ *  kept as the reference of row `cm1-control`, whose catalog tenant must differ from the pre-catalog-mode renderer. */
+export const CM1_CONTROL_DIR = path.join(CM1_DIR, "control-de4ad52");
 export const CM1_CANDIDATE_DIR = path.join(CM1_DIR, "candidate");
 
 /** The § 3.6 step-3 request list for one tenant (paths as a visitor sends them; the host selects the tenant). */

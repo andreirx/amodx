@@ -3,8 +3,12 @@
 import { usePathname } from "next/navigation";
 import { Twitter, Linkedin, Facebook, Mail, Link as LinkIcon, Check } from "lucide-react";
 import { useState } from "react";
+import type { LocaleStrings } from "@amodx/shared";
 
-export function SocialShare({ title }: { title: string }) {
+/** LOCALE-1A: the site keys this component renders (docs/slices/locale-1.md § 6.1). */
+export type SocialShareStrings = Pick<LocaleStrings["site"], "shareLabel" | "shareOnX" | "shareOnLinkedIn" | "shareOnFacebook" | "shareByEmail" | "shareCopyLink">;
+
+export function SocialShare({ title, strings }: { title: string; strings: SocialShareStrings }) {
     const pathname = usePathname();
     const [copied, setCopied] = useState(false);
 
@@ -23,13 +27,13 @@ export function SocialShare({ title }: { title: string }) {
 
     return (
         <div className="flex items-center gap-2 my-8 pt-8 border-t border-border">
-            <span className="text-sm font-medium text-muted-foreground mr-2">Share:</span>
+            <span className="text-sm font-medium text-muted-foreground mr-2">{strings.shareLabel}</span>
 
             <a
                 href={`https://twitter.com/intent/tweet?text=${text}&url=${link}`}
                 target="_blank" rel="noreferrer"
                 className="p-2 rounded-full bg-muted hover:bg-black hover:text-white transition-colors"
-                title="Share on X"
+                title={strings.shareOnX}
             >
                 <Twitter className="w-4 h-4" />
             </a>
@@ -38,7 +42,7 @@ export function SocialShare({ title }: { title: string }) {
                 href={`https://www.linkedin.com/shareArticle?mini=true&url=${link}&title=${text}`}
                 target="_blank" rel="noreferrer"
                 className="p-2 rounded-full bg-muted hover:bg-[#0077b5] hover:text-white transition-colors"
-                title="Share on LinkedIn"
+                title={strings.shareOnLinkedIn}
             >
                 <Linkedin className="w-4 h-4" />
             </a>
@@ -47,7 +51,7 @@ export function SocialShare({ title }: { title: string }) {
                 href={`https://www.facebook.com/sharer/sharer.php?u=${link}`}
                 target="_blank" rel="noreferrer"
                 className="p-2 rounded-full bg-muted hover:bg-[#1877f2] hover:text-white transition-colors"
-                title="Share on Facebook"
+                title={strings.shareOnFacebook}
             >
                 <Facebook className="w-4 h-4" />
             </a>
@@ -55,7 +59,7 @@ export function SocialShare({ title }: { title: string }) {
             <a
                 href={`mailto:?subject=${text}&body=Check this out: ${link}`}
                 className="p-2 rounded-full bg-muted hover:bg-gray-600 hover:text-white transition-colors"
-                title="Share via Email"
+                title={strings.shareByEmail}
             >
                 <Mail className="w-4 h-4" />
             </a>
@@ -63,7 +67,7 @@ export function SocialShare({ title }: { title: string }) {
             <button
                 onClick={copyLink}
                 className="p-2 rounded-full bg-muted hover:bg-primary hover:text-primary-foreground transition-colors ml-auto"
-                title="Copy Link"
+                title={strings.shareCopyLink}
             >
                 {copied ? <Check className="w-4 h-4" /> : <LinkIcon className="w-4 h-4" />}
             </button>

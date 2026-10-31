@@ -47,7 +47,17 @@ src/
     ├── Comments.tsx            # Moderation queue with status control
     ├── Resources.tsx           # Private file manager for gated downloads
     ├── Users.tsx               # Team management with invite dialog and role assignment
-    ├── Settings.tsx            # Site config: identity, theme, analytics, OAuth, Paddle, GDPR, nav
+    ├── Settings.tsx            # Site config: identity, theme, analytics, OAuth, Paddle, GDPR on/off + position, nav;
+    │                           #   "Language & Country" (locale-1a): Site language (LANGUAGE_PACKS → locale), Locale
+    │                           #   (advanced) with its normalised value and a warning when a present value falls back
+    │                           #   to en-US, Country apply = countryCode + currency only; the rules are the exported
+    │                           #   pure helpers localeStatus / withSiteLanguage / withCountry (Settings.test.ts)
+    ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
+    │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
+    │                           #   commerce cards (commerce tenants); placeholders = language defaults; Reset per
+    │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them
+    │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
+    │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)
     └── AuditLog.tsx            # Activity feed with action icons
 ```
 

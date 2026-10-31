@@ -12,11 +12,26 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate } from "@amodx/shared";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
 
 export const revalidate = false;
+
+/**
+ * LOCALE-1A — a site-part template split at its `{placeholders}` into React children: each text segment, and each
+ * value as its OWN child (numbers stay numbers); empty segments are dropped; an unknown placeholder stays as written.
+ * Used for the footer copyright only. `"© {year} {name}. All rights reserved."` gives exactly the children of the JSX
+ * this slice replaced (`© {year} {name}. All rights reserved.`), so the HTML (`© <!-- -->2026<!-- --> <!-- -->…`) and
+ * the RSC row are byte-identical, and the clock-derived year stays the separate text node that the CM1-A1
+ * footer-year canonicalisation matches (`cm1-byte-identity.mjs`, step 4). `fillTemplate` would merge it into one
+ * string and put a literal year into the strict byte baseline.
+ */
+function interpolate(template: string, values: Record<string, string | number>): (string | number)[] {
+    return template.split(/\{([A-Za-z0-9_]+)\}/)
+        .map((piece, i) => (i % 2 === 0 ? piece : Object.prototype.hasOwnProperty.call(values, piece) ? values[piece] : `{${piece}}`))
+        .filter((part) => part !== "");
+}
 
 type Props = {
     children: React.ReactNode;
@@ -37,7 +52,7 @@ export async function generateMetadata({ params }: { params: Promise<{ siteId: s
             template: `%s | ${config.name}`,
             default: config.name,
         },
-        description: config.description || `Official site for ${config.name}`,
+        description: config.description || fillTemplate(resolveLocaleStrings(config).strings.site.metaSiteDescription, { name: config.name }),
         icons: {
             icon: config.icon || config.logo || '/favicon.ico',
         },
@@ -86,6 +101,9 @@ export default async function SiteLayout({ children, params }: Props) {
     const cartPrefix = config.urlPrefixes?.cart || URL_PREFIX_DEFAULTS.cart;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const showPopups = apiUrl ? await hasActivePopups(config.id) : false;
+    // LOCALE-1A: the tenant's locale table, resolved once per request (docs/slices/locale-1.md § 5.3). Each client
+    // component below receives only the keys it renders, as a plain prop.
+    const site = resolveLocaleStrings(config).strings.site;
 
     return (
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
@@ -124,23 +142,20 @@ export default async function SiteLayout({ children, params }: Props) {
                 })()}
 
                 {/* GDPR Cookie Consent Banner */}
-                {(() => {
-                    const gdprPack = getCountryPack(config.countryCode || "EN").gdpr;
-                    return (
-                        <CookieConsent
-                            tenantId={config.id}
-                            config={{
-                                headline: config.gdpr?.headline || gdprPack.headline,
-                                description: config.gdpr?.description || gdprPack.description,
-                                denyAll: config.gdpr?.denyAll || gdprPack.denyAll,
-                                necessaryOnly: config.gdpr?.necessaryOnly || gdprPack.necessaryOnly,
-                                acceptAll: config.gdpr?.acceptAll || gdprPack.acceptAll,
-                                position: config.gdpr?.position || "bottom",
-                                primaryColor: config.theme?.primaryColor,
-                            }}
-                        />
-                    );
-                })()}
+                {/* LOCALE-1A: the five texts are the site keys cookie*, stored only in `gdpr.*` (the resolver keeps the
+                    `||` rule: an empty field falls through to the language default). Same object shape as before. */}
+                <CookieConsent
+                    tenantId={config.id}
+                    config={{
+                        headline: site.cookieHeadline,
+                        description: site.cookieDescription,
+                        denyAll: site.cookieDenyAll,
+                        necessaryOnly: site.cookieNecessaryOnly,
+                        acceptAll: site.cookieAcceptAll,
+                        position: config.gdpr?.position || "bottom",
+                        primaryColor: config.theme?.primaryColor,
+                    }}
+                />
 
                 {/* Sticky Header Wrapper */}
                 <div className="sticky top-0 z-50">
@@ -191,6 +206,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         titleSizeScrolled={config.header?.titleSizeScrolled}
                         contentMaxWidth={config.header?.contentMaxWidth}
                         {...(isCatalogMode(config) ? { interest: { tenantId: config.id, listPrefix: config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest } } : {})}
+                        strings={{ navAllOf: site.navAllOf, navContact: site.navContact, navToggleMenu: site.navToggleMenu, navViewAll: site.navViewAll, navContactUs: site.navContactUs }}
                     />
 
                 </div>
@@ -214,9 +230,9 @@ export default async function SiteLayout({ children, params }: Props) {
                                         <p className="font-semibold text-foreground">{config.companyDetails.legalName}</p>
                                     )}
                                     {config.companyDetails?.address && <p>{config.companyDetails.address}</p>}
-                                    {config.companyDetails?.cui && <p>CUI: {config.companyDetails.cui}</p>}
-                                    {config.companyDetails?.tradeRegister && <p>Reg: {config.companyDetails.tradeRegister}</p>}
-                                    {config.companyDetails?.phone && <p>Tel: {config.companyDetails.phone}</p>}
+                                    {config.companyDetails?.cui && <p>{fillTemplate(site.footerTaxId, { value: config.companyDetails.cui })}</p>}
+                                    {config.companyDetails?.tradeRegister && <p>{fillTemplate(site.footerTradeRegister, { value: config.companyDetails.tradeRegister })}</p>}
+                                    {config.companyDetails?.phone && <p>{fillTemplate(site.footerPhone, { value: config.companyDetails.phone })}</p>}
                                     {config.companyDetails?.email && <p>{config.companyDetails.email}</p>}
                                 </div>
                             )}
@@ -224,7 +240,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             {/* Column 2: Footer Links */}
                             {(config.footerLinks || []).length > 0 && (
                                 <div className="space-y-1">
-                                    <p className="font-semibold text-foreground mb-2">Links</p>
+                                    <p className="font-semibold text-foreground mb-2">{site.footerLinksHeading}</p>
                                     {(config.footerLinks || []).map((link: any, i: number) => (
                                         <a key={i} href={link.href} className="block hover:text-foreground">{link.label}</a>
                                     ))}
@@ -233,28 +249,27 @@ export default async function SiteLayout({ children, params }: Props) {
 
                             {/* Column 3: Legal Links */}
                             {(config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (() => {
-                                const pack = getCountryPack(config.countryCode || "EN");
                                 return (
                                 <div className="space-y-1">
-                                    <p className="font-semibold text-foreground mb-2">Legal</p>
+                                    <p className="font-semibold text-foreground mb-2">{site.footerLegalHeading}</p>
                                     {config.legalLinks?.termsUrl && (
-                                        <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">{config.legalLinks.termsLabel || pack.legal.termsLabel || "Terms & Conditions"}</a>
+                                        <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">{site.legalTermsLabel}</a>
                                     )}
                                     {config.legalLinks?.privacyUrl && (
-                                        <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">{config.legalLinks.privacyLabel || pack.legal.privacyLabel || "Privacy Policy"}</a>
+                                        <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">{site.legalPrivacyLabel}</a>
                                     )}
                                     {config.legalLinks?.anpcUrl && (
-                                        <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{config.legalLinks.anpcLabel || pack.legal.consumerProtectionLabel || "Consumer Protection"}</a>
+                                        <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{site.legalConsumerProtectionLabel}</a>
                                     )}
                                     {config.legalLinks?.anpcSalUrl && (
-                                        <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{config.legalLinks.anpcSalLabel || pack.legal.disputeResolutionLabel || "Dispute Resolution"}</a>
+                                        <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{site.legalDisputeResolutionLabel}</a>
                                     )}
                                 </div>
                                 );
                             })()}
                         </div>
                         <div className="mt-8 pt-4 border-t text-center text-xs text-muted-foreground">
-                            <p>© {new Date().getFullYear()} {config.companyDetails?.legalName || config.name}. All rights reserved.</p>
+                            <p>{interpolate(site.footerCopyright, { year: new Date().getFullYear(), name: config.companyDetails?.legalName || config.name })}</p>
                         </div>
                     </div>
                 </footer>
@@ -265,6 +280,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         type={config.quickContact.type}
                         value={config.quickContact.value}
                         label={config.quickContact.label}
+                        strings={{ quickContactCall: site.quickContactCall, quickContactEmail: site.quickContactEmail }}
                     />
                 )}
 

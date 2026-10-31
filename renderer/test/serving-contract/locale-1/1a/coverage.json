@@ -1,0 +1,603 @@
+{
+  "slice": "locale-1a",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule): every key this slice allocates maps to at least one check — a captured URL of a serving-contract row (fixture + path; the row's expectation file ro-expected.json must list the key there) or a named unit test (file + a substring of its title). Checked by renderer/test/unit/locale-1a-coverage.test.ts, which also fails when a schema key is allocated to no slice.",
+  "allocatedKeys": {
+    "site": [
+      "untitledSiteName",
+      "metaSiteDescription",
+      "footerTaxId",
+      "footerTradeRegister",
+      "footerPhone",
+      "footerLinksHeading",
+      "footerLegalHeading",
+      "legalTermsLabel",
+      "legalPrivacyLabel",
+      "legalConsumerProtectionLabel",
+      "legalDisputeResolutionLabel",
+      "footerCopyright",
+      "cookieHeadline",
+      "cookieDescription",
+      "cookieDenyAll",
+      "cookieNecessaryOnly",
+      "cookieAcceptAll",
+      "navAllOf",
+      "navContact",
+      "navToggleMenu",
+      "navViewAll",
+      "navContactUs",
+      "breadcrumbHome",
+      "restrictedTitle",
+      "restrictedLoginRequired",
+      "restrictedSubscription",
+      "restrictedLogIn",
+      "restrictedPurchase",
+      "paginationPrevious",
+      "paginationPageOf",
+      "paginationNext",
+      "commentsPostFailed",
+      "commentsHeading",
+      "commentsEmpty",
+      "commentsClosed",
+      "commentsPlaceholder",
+      "commentsPost",
+      "commentsJoin",
+      "commentsSignIn",
+      "shareLabel",
+      "shareOnX",
+      "shareOnLinkedIn",
+      "shareOnFacebook",
+      "shareByEmail",
+      "shareCopyLink",
+      "quickContactCall",
+      "quickContactEmail",
+      "formSubmissionFailed",
+      "formErrorShort",
+      "formSelectPlaceholder",
+      "formSubmitting"
+    ],
+    "catalog": [],
+    "commerce": []
+  },
+  "checks": {
+    "site.untitledSiteName": [
+      {
+        "test": "renderer/test/unit/locale-1a-map-tenant.test.ts",
+        "case": "untitledSiteName: a tenant without a name gets the fallback of its language"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-map-tenant.test.ts",
+        "case": "§ 5.2 pattern D: a stored \"\" is an override that renders empty"
+      }
+    ],
+    "site.metaSiteDescription": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] meta description fallback (metaSiteDescription), EN and RO"
+      }
+    ],
+    "site.footerTaxId": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      }
+    ],
+    "site.footerTradeRegister": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      }
+    ],
+    "site.footerPhone": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      }
+    ],
+    "site.footerLinksHeading": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] preservation (§ 5.2): a new site key is pattern D"
+      }
+    ],
+    "site.footerLegalHeading": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      }
+    ],
+    "site.legalTermsLabel": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] preservation (§ 5.2): cookie/legal keys are pattern F"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.legalPrivacyLabel": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.legalConsumerProtectionLabel": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.legalDisputeResolutionLabel": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.footerCopyright": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] the copyright year stays its own text node"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/"
+        }
+      }
+    ],
+    "site.cookieHeadline": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] cookie banner props: EN = today's EN-pack texts; RO = the RO pack"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] EN and RO: headline, description and the three buttons are the props the layout passes"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.cookieDescription": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] cookie banner props: EN = today's EN-pack texts; RO = the RO pack"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] EN and RO: headline, description and the three buttons are the props the layout passes"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.cookieDenyAll": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] cookie banner props: EN = today's EN-pack texts; RO = the RO pack"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] EN and RO: headline, description and the three buttons are the props the layout passes"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.cookieNecessaryOnly": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] cookie banner props: EN = today's EN-pack texts; RO = the RO pack"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] EN and RO: headline, description and the three buttons are the props the layout passes"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.cookieAcceptAll": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] cookie banner props: EN = today's EN-pack texts; RO = the RO pack"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] EN and RO: headline, description and the three buttons are the props the layout passes"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] preservation (§ 5.2): cookie/legal keys are pattern F"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "§ 5.2 pattern F — the nine cookie/legal readers"
+      }
+    ],
+    "site.navAllOf": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "dropdown open → navAllOf; mobile menu open → navViewAll and navContactUs; aria-label navToggleMenu"
+      }
+    ],
+    "site.navContact": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "dropdown open → navAllOf; mobile menu open → navViewAll and navContactUs; aria-label navToggleMenu"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] D Navbar navContact"
+      }
+    ],
+    "site.navToggleMenu": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "dropdown open → navAllOf; mobile menu open → navViewAll and navContactUs; aria-label navToggleMenu"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/"
+        }
+      }
+    ],
+    "site.navViewAll": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "dropdown open → navAllOf; mobile menu open → navViewAll and navContactUs; aria-label navToggleMenu"
+      }
+    ],
+    "site.navContactUs": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "dropdown open → navAllOf; mobile menu open → navViewAll and navContactUs; aria-label navToggleMenu"
+      }
+    ],
+    "site.breadcrumbHome": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] breadcrumb Home on the search and product pages"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/category/mats"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/product/sale-rug"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] pagination on page 2 of 3, and the breadcrumb Home, on a category page"
+      }
+    ],
+    "site.restrictedTitle": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] restricted page, sign-in required"
+      }
+    ],
+    "site.restrictedLoginRequired": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] restricted page, sign-in required"
+      }
+    ],
+    "site.restrictedSubscription": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] restricted page, purchase"
+      }
+    ],
+    "site.restrictedLogIn": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] restricted page, sign-in required"
+      }
+    ],
+    "site.restrictedPurchase": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] restricted page, purchase"
+      }
+    ],
+    "site.paginationPrevious": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] pagination on page 2 of 3, and the breadcrumb Home, on a category page"
+      }
+    ],
+    "site.paginationPageOf": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] pagination on page 2 of 3, and the breadcrumb Home, on a category page"
+      }
+    ],
+    "site.paginationNext": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] pagination on page 2 of 3, and the breadcrumb Home, on a category page"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] preservation (§ 5.2) at a page-chrome D site"
+      }
+    ],
+    "site.commentsPostFailed": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "signed in → placeholder and Post; a failed post → the commentsPostFailed alert"
+      }
+    ],
+    "site.commentsHeading": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] comments, signed out (server render)"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] EN tenant: fetched list → heading with count"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] RO tenant: heading in Romanian"
+      }
+    ],
+    "site.commentsEmpty": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] comments, signed out (server render)"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "empty list, locked thread (leading space kept), signed-out join and sign-in"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] D CommentsSection commentsEmpty"
+      }
+    ],
+    "site.commentsClosed": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "empty list, locked thread (leading space kept), signed-out join and sign-in"
+      }
+    ],
+    "site.commentsPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "signed in → placeholder and Post; a failed post → the commentsPostFailed alert"
+      }
+    ],
+    "site.commentsPost": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "signed in → placeholder and Post; a failed post → the commentsPostFailed alert"
+      }
+    ],
+    "site.commentsJoin": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] comments, signed out (server render)"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "empty list, locked thread (leading space kept), signed-out join and sign-in"
+      }
+    ],
+    "site.commentsSignIn": [
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] comments, signed out (server render)"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "empty list, locked thread (leading space kept), signed-out join and sign-in"
+      }
+    ],
+    "site.shareLabel": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "label and the five button titles (rendered in the browser only)"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] D SocialShare shareLabel"
+      }
+    ],
+    "site.shareOnX": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "label and the five button titles (rendered in the browser only)"
+      }
+    ],
+    "site.shareOnLinkedIn": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "label and the five button titles (rendered in the browser only)"
+      }
+    ],
+    "site.shareOnFacebook": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "label and the five button titles (rendered in the browser only)"
+      }
+    ],
+    "site.shareByEmail": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "label and the five button titles (rendered in the browser only)"
+      }
+    ],
+    "site.shareCopyLink": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "label and the five button titles (rendered in the browser only)"
+      }
+    ],
+    "site.quickContactCall": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "call / email titles; WhatsApp stays a brand name; a tenant label wins"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] EN tenant: footer company lines, headings, legal labels, copyright"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] RO tenant: the same states in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] D QuickContact quickContactCall"
+      }
+    ],
+    "site.quickContactEmail": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "call / email titles; WhatsApp stays a brand name; a tenant label wins"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-server-render.test.ts",
+        "case": "[1a-server] quick contact email title, EN and RO; the tenant label wins"
+      }
+    ],
+    "site.formSubmissionFailed": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "select placeholder; submitting state; a failed answer without an error → formSubmissionFailed"
+      }
+    ],
+    "site.formErrorShort": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "an error without a message → formErrorShort"
+      }
+    ],
+    "site.formSelectPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "select placeholder; submitting state; a failed answer without an error → formSubmissionFailed"
+      }
+    ],
+    "site.formSubmitting": [
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "select placeholder; submitting state; a failed answer without an error → formSubmissionFailed"
+      },
+      {
+        "test": "renderer/test/unit/locale-1a-client.test.ts",
+        "case": "[1a-client] D DynamicForm formSubmitting"
+      }
+    ]
+  }
+}

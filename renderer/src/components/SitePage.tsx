@@ -22,7 +22,7 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode, catalogListingPath } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, type LocaleStrings } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -511,6 +511,9 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         };
     }
 
+    // LOCALE-1A: the tenant's locale table for this page's chrome (docs/slices/locale-1.md § 5.3).
+    const { locale, strings: { site } } = resolveLocaleStrings(config);
+
     // --- RENDER: ACCESS DENIED ---
     if (!hasAccess) {
         return (
@@ -521,11 +524,11 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                         <span className="text-2xl">🔒</span>
                     </div>
 
-                    <h1 className="text-4xl font-bold tracking-tight">Restricted Access</h1>
+                    <h1 className="text-4xl font-bold tracking-tight">{site.restrictedTitle}</h1>
 
                     <p className="text-xl text-muted-foreground max-w-lg mx-auto">
-                        {policy.type === 'LoginRequired' && "You must be logged in to view this page."}
-                        {policy.type === 'Purchase' && `This content requires a subscription (${policy.currency} ${policy.price}).`}
+                        {policy.type === 'LoginRequired' && site.restrictedLoginRequired}
+                        {policy.type === 'Purchase' && fillTemplate(site.restrictedSubscription, { currency: String(policy.currency), price: String(policy.price) })}
                     </p>
 
                     <div className="flex gap-4 justify-center pt-4">
@@ -533,12 +536,12 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                             href={`/api/auth/signin?callbackUrl=${encodeURIComponent(slugPath)}`}
                             className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-10 px-8 hover:opacity-90 transition-opacity"
                         >
-                            Log In with Google
+                            {site.restrictedLogIn}
                         </Link>
 
                         {policy.type === 'Purchase' && (
                             <button className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-8">
-                                Purchase Access
+                                {site.restrictedPurchase}
                             </button>
                         )}
                     </div>
@@ -668,13 +671,18 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 
             {!content.hideSharing && !config.hideSocialSharing && (
                 <div className={`${cw} mx-auto px-6`}>
-                    <SocialShare title={content.title} />
+                    <SocialShare title={content.title} strings={{ shareLabel: site.shareLabel, shareOnX: site.shareOnX, shareOnLinkedIn: site.shareOnLinkedIn, shareOnFacebook: site.shareOnFacebook, shareByEmail: site.shareByEmail, shareCopyLink: site.shareCopyLink }} />
                 </div>
             )}
 
             <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} siteMaxWidth={sw} basePath={basePath} />
 
-            <CommentsSection pageId={content.nodeId} mode={content.commentsMode} contentMaxWidth={cw} />
+            {/* LOCALE-1A: `dateLocale` only for a non-en-US tenant — an en-US tenant keeps the runtime default (§ 16.2
+                item 4). A spread, not `dateLocale={undefined}`: an undefined prop would still be serialised into the
+                RSC payload ("$undefined") and change an en-US page's bytes. */}
+            <CommentsSection pageId={content.nodeId} mode={content.commentsMode} contentMaxWidth={cw}
+                strings={{ commentsPostFailed: site.commentsPostFailed, commentsHeading: site.commentsHeading, commentsEmpty: site.commentsEmpty, commentsClosed: site.commentsClosed, commentsPlaceholder: site.commentsPlaceholder, commentsPost: site.commentsPost, commentsJoin: site.commentsJoin, commentsSignIn: site.commentsSignIn }}
+                {...(locale !== "en-US" ? { dateLocale: locale } : {})} />
         </main>
     );
 }
@@ -725,7 +733,7 @@ function ProductCard({ product, productPrefix, basePath = "", catalog = false, t
  * `maxHrefBytes` (CAT-FACETS-1, catalog listings only): a pager link longer than this many UTF-8 bytes is not
  * emitted (spec § 5.1 invariant, measured on the final string). Absent → every link is emitted, as before.
  */
-function Pagination({ page, total, limit, baseUrl, basePath = "", maxHrefBytes }: { page: number; total: number; limit: number; baseUrl: string; basePath?: string; maxHrefBytes?: number }) {
+function Pagination({ page, total, limit, baseUrl, basePath = "", maxHrefBytes, strings }: { page: number; total: number; limit: number; baseUrl: string; basePath?: string; maxHrefBytes?: number; strings: Pick<LocaleStrings["site"], "paginationPrevious" | "paginationPageOf" | "paginationNext"> }) {
     const totalPages = Math.ceil(total / limit);
     if (totalPages <= 1) return null;
     const sep = baseUrl.includes('?') ? '&' : '?';
@@ -735,11 +743,11 @@ function Pagination({ page, total, limit, baseUrl, basePath = "", maxHrefBytes }
     return (
         <div className="flex items-center justify-center gap-2 mt-12">
             {page > 1 && fits(`${fullBaseUrl}${sep}page=${page - 1}`) && (
-                <Link href={`${fullBaseUrl}${sep}page=${page - 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Previous</Link>
+                <Link href={`${fullBaseUrl}${sep}page=${page - 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">{strings.paginationPrevious}</Link>
             )}
-            <span className="text-sm text-muted-foreground px-4">Page {page} of {totalPages}</span>
+            <span className="text-sm text-muted-foreground px-4">{fillTemplate(strings.paginationPageOf, { page, total: totalPages })}</span>
             {page < totalPages && fits(`${fullBaseUrl}${sep}page=${page + 1}`) && (
-                <Link href={`${fullBaseUrl}${sep}page=${page + 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">Next</Link>
+                <Link href={`${fullBaseUrl}${sep}page=${page + 1}`} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">{strings.paginationNext}</Link>
             )}
         </div>
     );
@@ -828,6 +836,7 @@ function ProductAttributes({ attributes }: { attributes: { key: string; value: s
 }
 
 function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, catalog = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [], strings }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; catalog?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[]; strings: Required<CommerceStrings> }) {
+    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const jsonLd: any = {
@@ -873,7 +882,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
 
             {/* Breadcrumbs */}
             <nav className="text-sm text-muted-foreground mb-8">
-                <Link href={`${basePath}/`} className="hover:text-primary">Home</Link>
+                <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
                 <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">Shop</Link>
                 <span className="mx-2">/</span>
@@ -1216,6 +1225,7 @@ function FacetedListing({ listing, grid }: { listing: FacetListing<any>; grid: R
 }
 
 function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false, facets }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean; facets?: CatalogFacets }) {
+    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const grid = products.length === 0 ? (
                 <p className="text-muted-foreground py-12 text-center">No products in this category yet.</p>
@@ -1243,7 +1253,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
             <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
                 {/* Breadcrumbs */}
                 <nav className="text-sm text-muted-foreground mb-8">
-                <Link href={`${basePath}/`} className="hover:text-primary">Home</Link>
+                <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
                 <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">Shop</Link>
                 <span className="mx-2">/</span>
@@ -1260,13 +1270,14 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
 
             {facets ? <FacetedListing listing={facets.listing} grid={grid} /> : grid}
 
-                <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : `${prefixes.category}/${category.slug}`} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} />
+                <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : `${prefixes.category}/${category.slug}`} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} strings={site} />
             </main>
         </>
     );
 }
 
 function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability, catalog = false, facets }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string; catalog?: boolean; facets?: CatalogFacets }) {
+    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
     const shopUrl = prefixes.shop || "/magazin";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const grid = products.length === 0 ? (
@@ -1326,13 +1337,14 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
 
             {facets ? <FacetedListing listing={facets.listing} grid={grid} /> : grid}
 
-            <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : availability ? `${shopUrl}?availability=${availability}` : shopUrl} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} />
+            <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : availability ? `${shopUrl}?availability=${availability}` : shopUrl} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} strings={site} />
             </main>
         </>
     );
 }
 
 function SearchPageView({ query, products, total, page, config, prefixes, basePath = "", catalog = false }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
+    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const strings = getCommerceStrings(config);
@@ -1352,7 +1364,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
             )}
             <main className={`${siteWidth} mx-auto py-12 px-6`}>
                 <nav className="text-sm text-muted-foreground mb-8">
-                <Link href={`${basePath}/`} className="hover:text-primary">Home</Link>
+                <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
                 <Link href={`${basePath}${prefixes.shop || "/shop"}`} className="hover:text-primary">Shop</Link>
                 <span className="mx-2">/</span>
@@ -1376,7 +1388,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
                 </div>
             )}
 
-                <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.search || "/search"}?q=${encodeURIComponent(query)}`} basePath={basePath} />
+                <Pagination page={page} total={total} limit={24} baseUrl={`${prefixes.search || "/search"}?q=${encodeURIComponent(query)}`} basePath={basePath} strings={site} />
             </main>
         </>
     );

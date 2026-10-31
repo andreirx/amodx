@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2, CheckCircle } from "lucide-react";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
+import type { LocaleStrings } from "@amodx/shared";
 
 interface FormField {
     id: string;
@@ -21,9 +22,11 @@ interface DynamicFormProps {
     successMessage: string;
     tenantId: string;
     apiUrl: string;
+    /** LOCALE-1A: the site keys this component renders (docs/slices/locale-1.md § 6.1). */
+    strings: Pick<LocaleStrings["site"], "formSubmissionFailed" | "formErrorShort" | "formSelectPlaceholder" | "formSubmitting">;
 }
 
-export function DynamicForm({ formSlug, formName, fields, submitButtonText, successMessage, tenantId, apiUrl }: DynamicFormProps) {
+export function DynamicForm({ formSlug, formName, fields, submitButtonText, successMessage, tenantId, apiUrl, strings }: DynamicFormProps) {
     const [values, setValues] = useState<Record<string, any>>({});
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
@@ -61,12 +64,12 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || "Submission failed");
+                throw new Error(err.error || strings.formSubmissionFailed);
             }
 
             setSubmitted(true);
         } catch (err: any) {
-            setError(err.message || "Something went wrong");
+            setError(err.message || strings.formErrorShort);
         } finally {
             setSubmitting(false);
         }
@@ -106,7 +109,7 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
                             required={field.required}
                             className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                         >
-                            <option value="">{field.placeholder || "Select..."}</option>
+                            <option value="">{field.placeholder || strings.formSelectPlaceholder}</option>
                             {(field.options || []).map(opt => (
                                 <option key={opt} value={opt}>{opt}</option>
                             ))}
@@ -143,7 +146,7 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
                 className="w-full bg-primary text-primary-foreground py-3 rounded-md font-medium text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
             >
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                {submitting ? "Submitting..." : submitButtonText}
+                {submitting ? strings.formSubmitting : submitButtonText}
             </button>
         </form>
     );

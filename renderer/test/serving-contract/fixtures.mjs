@@ -497,6 +497,37 @@ const CM1_ITEMS = [
     ...cf1CatProds,
 ];
 
+// ── LOCALE-1 fixtures (slice locale-1a; spec docs/slices/locale-1.md § 8.5 "RO rows", § 16.2 item 5) ─────────────
+// Romanian copies of the CM1 commerce and content tenants: every item of the source tenant, deep-copied, with ONLY the
+// key fields rewritten (PK/SK, id, host, TenantSlug, tenantId) and `locale: "ro-RO"` on the tenant item. Every text
+// (site name, page titles, product data) stays as in the source, so the visible-text extraction of a RO copy differs
+// from its EN source only by what the locale changes (rows `loc1-ro-*` in contract.test.mjs). No en-GB copy (§ 16.2
+// item 5). The CM1 tenants keep no `locale`: they are the en-US subjects of rows `loc1-text-*` and `loc1-diff-1a`.
+export const LOC1 = {
+    roContent: { id: "loc1-ro-content", host: "loc1-ro-content.serving-contract.test", source: "content" },
+    roCommerce: { id: "loc1-ro-commerce", host: "loc1-ro-commerce.serving-contract.test", source: "commerce" },
+};
+
+function localeCopy(items, from, to, fields) {
+    const swapKey = (v) => (typeof v === "string" ? v.replace(`TENANT#${from.id}`, `TENANT#${to.id}`) : v);
+    return items
+        .filter((item) => item.PK === `TENANT#${from.id}` || item.SK === `TENANT#${from.id}`)
+        .map((source) => {
+            const item = structuredClone(source);
+            item.PK = swapKey(item.PK);
+            item.SK = swapKey(item.SK);
+            if (typeof item.TenantSlug === "string") item.TenantSlug = item.TenantSlug.replace(`${from.id}#`, `${to.id}#`);
+            if (item.tenantId === from.id) item.tenantId = to.id;
+            if (item.SK === `TENANT#${to.id}`) Object.assign(item, { id: to.id, Domain: to.host, domain: to.host }, fields);
+            return item;
+        });
+}
+
+const LOC1_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.content, LOC1.roContent, { locale: "ro-RO" }),
+    ...localeCopy(CM1_ITEMS, CM1.commerce, LOC1.roCommerce, { locale: "ro-RO" }),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -525,6 +556,8 @@ export const ITEMS = [
     ...CM1_ITEMS,
     // cat-import-profile-1b: the filter-mode tenant (above).
     ...CIP1B_ITEMS,
+    // locale-1a: the Romanian copies (above).
+    ...LOC1_ITEMS,
 ];
 
 /**

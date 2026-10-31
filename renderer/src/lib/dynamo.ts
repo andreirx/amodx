@@ -47,7 +47,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -136,7 +136,8 @@ function mapTenant(item: any): TenantConfig {
 
     return {
         id: item.id,
-        name: item.name || "Untitled Site",
+        // LOCALE-1A: the fallback name is the site part's `untitledSiteName` in the tenant's language (§ 6.1).
+        name: item.name || resolveLocaleStrings(item).strings.site.untitledSiteName,
         domain: item.Domain || item.domain,
         description: item.description || undefined,
         status: item.status || "LIVE",
@@ -154,6 +155,14 @@ function mapTenant(item: any): TenantConfig {
         commerceBar: item.commerceBar || undefined,
         searchBar: item.searchBar || undefined,
         commerceStrings: item.commerceStrings || undefined,
+        // LOCALE-1A (docs/slices/locale-1.md § 3.2 item 4): the other two parts of the locale table and the language.
+        // `locale` is NORMALISED here (§ 3.3), so every reader of `config.locale` — including the commerce readers that
+        // this slice does not touch (`SitePage.tsx` checkout, confirmation, tracking, review dates) — receives a value
+        // no formatter throws on; an absent or malformed value is "en-US", which those readers already used.
+        // `countryCode` stays out on purpose (F-LOCALE-COUNTIES, § 13, slice cmrc-counties-1).
+        catalogStrings: item.catalogStrings || undefined,
+        siteStrings: item.siteStrings || undefined,
+        locale: normalizeLocale(item.locale),
         currency: item.currency || undefined,
         askBirthdayOnAccount: item.askBirthdayOnAccount ?? true,
         askBirthdayOnCheckout: item.askBirthdayOnCheckout ?? true,
