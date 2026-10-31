@@ -3,6 +3,7 @@ import {
     glamFormReducer, canCheck, confirmRequest, brandsOf, INITIAL_GLAM_FORM, type GlamFormState, type GlamFormEvent,
     imageCopyReducer, imageProblems, imageCounts, IDLE_IMAGE_COPY, type ImageCopyState,
     checkRequest, profileChangedRefusal, requestBody, incompleteImportReport, hiddenProducts, hiddenCauseText, HIDDEN_CAUSE_UNKNOWN,
+    crossSheetLine, withinFileLine,
 } from "./GlamPricelistImport";
 import {
     proposeProfile, keyHints, applyProfileEdit, keyActionOf, attributeModeOf, nameNumberHint, collectionHint,
@@ -776,5 +777,49 @@ describe("CAT-IMAGE-GATE-1 — the image section: published count and the produc
     it("hiddenCauseText: one line per lost source; the confirmed empty cell in words", () => {
         expect(hiddenCauseText(FAILED_U1 as any)).toEqual([`${U1} — HTTP 404, text/html, 10 bytes — error status`]);
         expect(hiddenCauseText({ kind: "no-image-address" })).toEqual(["Fără adresă de imagine în fișier."]);
+    });
+});
+
+describe("CAT-SLUG-UNIQUE-1 — the cross-sheet and within-file address lines (review-0 R2: true on every allocation path)", () => {
+    // One entry per allocation path of the backend's `avoidTakenSlugs` (values as `glam-import-core.test.ts` produces them).
+    const paths = {
+        ordinary: { slug: "boen-coll-oak-pl-2", previousSlug: "boen-coll-oak", rowIndex: 2, heldBy: "glam:boen/pl 1" },
+        suffixTaken: { slug: "boen-coll-oak-pl-2-2", previousSlug: "boen-coll-oak", rowIndex: 2, heldBy: null },
+        emptySheet: { slug: "boen-coll-oak-2", previousSlug: "boen-coll-oak", rowIndex: 2, heldBy: null },
+        withinFileThenSheet: { slug: "boen-coll-oak-2-pl-2", previousSlug: "boen-coll-oak-2", rowIndex: 3, heldBy: null },
+    };
+    const RULE = "adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr";
+
+    it("absent or empty list → no line", () => {
+        expect(crossSheetLine(undefined, true)).toBeNull();
+        expect(crossSheetLine([], false)).toBeNull();
+        expect(withinFileLine([])).toBeNull();
+    });
+
+    it("dry run: the cause, the rule true on every path, each old → new address with its row and holder, and that the import can differ", () => {
+        expect(crossSheetLine([paths.ordinary, paths.emptySheet], true)).toBe(
+            `Adrese de produs schimbate, pentru că sunt deja ale altor produse de pe site — ${RULE} (2): ` +
+            "boen-coll-oak → boen-coll-oak-pl-2 (rândul 2; adresa este a unui produs din glam:boen/pl 1), " +
+            "boen-coll-oak → boen-coll-oak-2 (rândul 2; adresa este a unui produs fără sursă de import). " +
+            "La import lista poate diferi dacă produsele altor foi se schimbă între timp.");
+    });
+
+    it("every path: the line shows the exact new address and never promises what the address ends with", () => {
+        for (const [name, entry] of Object.entries(paths)) {
+            const line = crossSheetLine([entry], false)!;
+            expect(line, name).toContain(`${entry.previousSlug} → ${entry.slug} (rândul ${entry.rowIndex};`);
+            expect(line, name).toContain(RULE);
+            expect(line, name).not.toMatch(/la sfârșit|at the end/);
+            expect(line, name).not.toContain("poate diferi");
+            // the rule the copy states holds for the entry: the occupied address, then more
+            expect(entry.slug.startsWith(`${entry.previousSlug}-`), name).toBe(true);
+        }
+    });
+
+    it("within-file line: the final address, no claim about where the number is (combined path: number, then the sheet)", () => {
+        const line = withinFileLine([{ slug: paths.withinFileThenSheet.slug, rowIndex: 3 }, { slug: "boen-coll-ash-2", rowIndex: 5 }])!;
+        expect(line).toBe("2 product address(es) got a number (-2, -3…) because products of this file had the same address; final address: " +
+            "boen-coll-oak-2-pl-2 (row 3), boen-coll-ash-2 (row 5)");
+        expect(line).not.toMatch(/at the end/);
     });
 });

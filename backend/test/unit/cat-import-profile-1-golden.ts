@@ -18,11 +18,13 @@ type Item = Record<string, any>;
 
 /**
  * The response members added after the golden's base commit b0a3055: CAT-IMPORT-PROFILE-1 § 3.5 (`profile` …
- * `specLineRefusals`) and CAT-IMAGE-GATE-1 § 3 item 4 (`publication`). The golden holds the base commit's response
- * shape: the capture leaves these out of every response (a no-op on a commit that does not send them) and the
- * comparison removes them before comparing (`glam-profile-golden.test.ts`). Every other member must equal the golden.
+ * `specLineRefusals`), CAT-IMAGE-GATE-1 § 3 item 4 (`publication`) and CAT-SLUG-UNIQUE-1 § 2 item 3
+ * (`crossSheetSuffixed`; the golden test asserts it is `[]` wherever it is sent — no golden input has a taken slug).
+ * The golden holds the base commit's response shape: the capture leaves these out of every response (a no-op on a
+ * commit that does not send them) and the comparison removes them before comparing (`glam-profile-golden.test.ts`).
+ * Every other member must equal the golden.
  */
-export const ADDED_MEMBERS = ["profile", "sheets", "specKeys", "drafts", "siteProducts", "specLineRefusals", "publication"] as const;
+export const ADDED_MEMBERS = ["profile", "sheets", "specKeys", "drafts", "siteProducts", "specLineRefusals", "publication", "crossSheetSuffixed"] as const;
 
 /** `body` without the `ADDED_MEMBERS` (`kept`) and those members alone (`extra`). */
 export function splitAddedMembers(body: Record<string, unknown>): { kept: Record<string, unknown>; extra: Record<string, unknown> } {

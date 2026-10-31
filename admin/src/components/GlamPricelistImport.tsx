@@ -700,6 +700,9 @@ export function GlamPricelistImport({ onImported }: Props) {
                         replaced, {result.categoriesCreated} new categories.
                     </div>
                     {result.publication && <PublicationLines publication={result.publication} dryRun={false} />}
+                    {crossSheetLine(result.crossSheetSuffixed, false) && (
+                        <div className="text-xs text-muted-foreground">{crossSheetLine(result.crossSheetSuffixed, false)}</div>
+                    )}
                 </div>
             )}
             {images.kind !== "idle" && <ImageCopyReport state={images} importReport={result} />}
@@ -766,6 +769,39 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
     );
 }
 
+/**
+ * CAT-SLUG-UNIQUE-1 § 2 item 3 — the report line for the backend's `crossSheetSuffixed` (dry run and import
+ * response): every product whose planned address was already another product's, with its old → new address. The
+ * copy states only what is true on every allocation path (backend `avoidTakenSlugs`): the new address is the
+ * occupied one followed by the sheet's name and/or a number — it never promises what the address ends with. `null`
+ * when the list is absent or empty (nothing to say). The dry run says the import can differ: the import reads the
+ * other products again, under its lock.
+ */
+export function crossSheetLine(
+    list: { slug: string; previousSlug: string; rowIndex: number; heldBy: string | null }[] | undefined,
+    dryRun: boolean,
+): string | null {
+    if (!list || list.length === 0) return null;
+    const items = list.map((c) =>
+        `${c.previousSlug} → ${c.slug} (rândul ${c.rowIndex}; adresa este a unui produs ${c.heldBy === null ? "fără sursă de import" : `din ${c.heldBy}`})`);
+    const rule = "adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr";
+    return dryRun
+        ? `Adrese de produs schimbate, pentru că sunt deja ale altor produse de pe site — ${rule} (${list.length}): ${items.join(", ")}. La import lista poate diferi dacă produsele altor foi se schimbă între timp.`
+        : `Adrese de produs schimbate, pentru că erau deja ale altor produse de pe site — ${rule} (${list.length}): ${items.join(", ")}.`;
+}
+
+/**
+ * The report line for `suffixedSlugs` (CAT-IMPORT-1): products whose address got a number because products of this
+ * file had the same address. The address shown is the final one; after CAT-SLUG-UNIQUE-1 the sheet's name can follow
+ * the number (then the product is also in `crossSheetSuffixed`), so the copy does not say where the number is.
+ * `null` when the list is empty.
+ */
+export function withinFileLine(list: { slug: string; rowIndex: number }[]): string | null {
+    if (list.length === 0) return null;
+    return `${list.length} product address(es) got a number (-2, -3…) because products of this file had the same address; final address:` +
+        ` ${list.map((s) => `${s.slug} (row ${s.rowIndex})`).join(", ")}`;
+}
+
 /** The dry-run report in business language (spec § 3.4 "Report shape"). */
 function ImportReport({ report }: { report: any }) {
     const skipped = report.rows.filter((r: any) => r.status === "skipped");
@@ -790,11 +826,11 @@ function ImportReport({ report }: { report: any }) {
                     Rename it back, or use another producer or collection name.
                 </div>
             )}
-            {report.suffixedSlugs.length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                    {report.suffixedSlugs.length} product address(es) got a number at the end because two products had the same address:
-                    {" "}{report.suffixedSlugs.map((s: any) => `${s.slug} (row ${s.rowIndex})`).join(", ")}
-                </div>
+            {withinFileLine(report.suffixedSlugs) && (
+                <div className="text-xs text-muted-foreground">{withinFileLine(report.suffixedSlugs)}</div>
+            )}
+            {crossSheetLine(report.crossSheetSuffixed, true) && (
+                <div className="text-xs text-muted-foreground">{crossSheetLine(report.crossSheetSuffixed, true)}</div>
             )}
             {skipped.length > 0 && (
                 <details>

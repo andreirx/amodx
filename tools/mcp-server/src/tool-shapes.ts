@@ -79,6 +79,11 @@ export function glamPricelistSummary(report: {
     specLineRefusals?: { key: string; rowIndex: number; reason: string }[];
     /** CAT-IMAGE-GATE-1 § 3 items 4, 7: the status the products get, how many start hidden, those with no image address. */
     publication?: { status: "active" | "draft"; startHidden: number; withoutImageAddress: { slug: string; rowIndexes: number[] }[] };
+    /**
+     * CAT-SLUG-UNIQUE-1 § 2 item 3: the products whose planned address another product held; the new address is the
+     * occupied one followed by the sheet's name and/or a number (backend `avoidTakenSlugs`).
+     */
+    crossSheetSuffixed?: { slug: string; previousSlug: string }[];
 }): string {
     const c = report.counts;
     const lines = [
@@ -120,6 +125,10 @@ export function glamPricelistSummary(report: {
                 throw new Error(`Unhandled publication status ${String(unhandled)}`);
             }
         }
+    }
+    if (report.crossSheetSuffixed?.length) {
+        // Only what is true on every allocation path: never what the new address ends with.
+        lines.push(`Adrese ${report.dryRun ? "care ar fi schimbate" : "schimbate"} (adresa era deja a altui produs; adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr): ${report.crossSheetSuffixed.length} ${report.crossSheetSuffixed.length === 1 ? "produs" : "produse"}`);
     }
     if (report.categoryConflicts?.length) {
         lines.push(`BLOCKED — renamed categories hold keys this import needs: ${report.categoryConflicts.map((x) => `${x.slug} (now ${x.storedSlug})`).join(", ")}; the import would answer 409`);

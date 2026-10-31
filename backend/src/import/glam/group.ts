@@ -12,6 +12,9 @@ import type { GlamRow } from "./parse.js";
  *   never a label already present in the style.
  * - Slugs: slugify of the three normalised components joined with a space; a repeated slug gets `-2`, `-3`… in file
  *   order, never a slug already present in the file.
+ * - CAT-SLUG-UNIQUE-1 (docs/slices/cat-slug-unique-1.md § 1): with `crossSheet` (the slugs held by the tenant's products
+ *   this import does not replace), a slug from the step above that another product holds is replaced by the held
+ *   slug followed by the sheet's slug and/or a number, never a slug held or planned (exact rule: `avoidTakenSlugs`).
  */
 
 /** The key separator. It may not occur inside a key component (refused per row, or per upload field). */
@@ -97,6 +100,12 @@ export interface GlamStylePlan {
     readonly slug: string;
     /** True when the slug carries a `-<n>` suffix because an earlier style had the same slug. */
     readonly slugSuffixed: boolean;
+    /**
+     * CAT-SLUG-UNIQUE-1: present only when another product of the tenant held the within-file slug (`previousSlug`),
+     * so `slug` is `previousSlug` followed by the sheet's slug and/or a number (`avoidTakenSlugs`). `heldBy`: that
+     * product's `importSource`, `null` for a product without one.
+     */
+    readonly crossSheet?: { readonly previousSlug: string; readonly heldBy: string | null };
     /** The rows of the style, in file order (deduped rows included). */
     readonly rows: readonly GlamRow[];
     readonly options: readonly GlamOptionPlan[];
@@ -129,10 +138,24 @@ function imageOf(row: GlamRow): RowImage {
 }
 
 /**
- * Group the rows of one file into styles. `producer` is the upload field (already checked by the identifier rule).
- * Pure; the output depends only on the input and its order.
+ * CAT-SLUG-UNIQUE-1 — the product slugs the import may not take: slug → the holder's `importSource` (`null` for a
+ * product without one). Only products this import does not replace are in it (`takenSlugsOf`, ./map.ts).
  */
-export function groupStyles(rows: readonly GlamRow[], producer: string): GroupResult {
+export type TakenSlugs = ReadonlyMap<string, string | null>;
+
+/** CAT-SLUG-UNIQUE-1 — the input of the cross-sheet pass: the taken slugs and the suffix `slugify(norm(sheet))`. */
+export interface CrossSheetCheck {
+    readonly taken: TakenSlugs;
+    readonly sheetSlug: string;
+}
+
+/**
+ * Group the rows of one file into styles. `producer` is the upload field (already checked by the identifier rule).
+ * Pure; the output depends only on the input, its order and `crossSheet`. Without it the slugs are only unique
+ * within the file (the output is exactly what it was before CAT-SLUG-UNIQUE-1); with it the output differs only where
+ * a within-file slug is in `crossSheet.taken` (that style's `slug` and `crossSheet`, and its rows' `slug`).
+ */
+export function groupStyles(rows: readonly GlamRow[], producer: string, crossSheet?: CrossSheetCheck): GroupResult {
     const producerKey = norm(producer);
     const styles = new Map<string, StyleDraft>();
     const skipped = new Map<number, GlamRowResult>();
@@ -165,11 +188,13 @@ export function groupStyles(rows: readonly GlamRow[], producer: string): GroupRe
         else style.options.push({ labelRead: row.format, labelNorm, imageCell: row.imageUrl, imageLink: usableImage(row.imageUrl), rows: [row] });
     }
 
-    const slugs = allocateSlugs([...styles.values()].map((s) => s.slugBase));
+    const inFile = allocateSlugs([...styles.values()].map((s) => s.slugBase));
+    const slugs = crossSheet ? avoidTakenSlugs(inFile, crossSheet) : inFile;
     const planned: GlamStylePlan[] = [...styles.values()].map((style, i) => ({
         key: style.key,
         slug: slugs[i].slug,
         slugSuffixed: slugs[i].suffixed,
+        ...(slugs[i].crossSheet ? { crossSheet: slugs[i].crossSheet } : {}),
         rows: style.rows,
         options: allocateLabels(style.options),
     }));
@@ -232,7 +257,7 @@ function firstFree(candidate: (n: number) => string, taken: ReadonlySet<string>,
  * Slugs in file order: the first style with a slug keeps it; a later style with the same slug gets the first
  * `<slug>-2`, `<slug>-3`… not already used by any style of the file.
  */
-function allocateSlugs(bases: readonly string[]): { slug: string; suffixed: boolean }[] {
+function allocateSlugs(bases: readonly string[]): AllocatedSlug[] {
     const taken = new Set(bases);
     const used = new Set<string>();
     return bases.map((base) => {
@@ -243,5 +268,32 @@ function allocateSlugs(bases: readonly string[]): { slug: string; suffixed: bool
         taken.add(slug);
         used.add(slug);
         return { slug, suffixed: true };
+    });
+}
+
+interface AllocatedSlug {
+    readonly slug: string;
+    readonly suffixed: boolean;
+    readonly crossSheet?: { readonly previousSlug: string; readonly heldBy: string | null };
+}
+
+/**
+ * CAT-SLUG-UNIQUE-1 — the cross-sheet pass, in file order, over the within-file slugs. A slug not in `taken` is kept.
+ * A slug in `taken` gets the candidate `<slug>-<sheetSlug>` (just `<slug>` when the sheet gives an empty slug, which
+ * is taken); when the candidate is reserved — taken, or another slug of this file — it becomes the first
+ * `<candidate>-2`, `<candidate>-3`… not reserved. So the new slug is always the held slug followed by the sheet's slug
+ * and/or a number: `<slug>-<sheetSlug>`, `<slug>-<sheetSlug>-<n>`, or `<slug>-<n>` (empty sheet slug). Each new slug
+ * is reserved at once, so the file's slugs stay unique.
+ */
+function avoidTakenSlugs(inFile: readonly AllocatedSlug[], check: CrossSheetCheck): AllocatedSlug[] {
+    const reserved = new Set<string>([...check.taken.keys(), ...inFile.map((s) => s.slug)]);
+    return inFile.map((allocated) => {
+        if (!check.taken.has(allocated.slug)) return allocated;
+        const heldBy = check.taken.get(allocated.slug) ?? null;
+        const base = check.sheetSlug === "" ? allocated.slug : `${allocated.slug}-${check.sheetSlug}`;
+        let slug = base;
+        for (let n = 2; reserved.has(slug); n++) slug = `${base}-${n}`;
+        reserved.add(slug);
+        return { ...allocated, slug, crossSheet: { previousSlug: allocated.slug, heldBy } };
     });
 }

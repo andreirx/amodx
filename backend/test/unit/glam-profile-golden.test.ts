@@ -16,7 +16,8 @@ import { GOLDEN_TIME, captureCase, goldenInputs, mask, planOf, splitAddedMembers
  * (a) no `profileChoice`, no stored profile; (b) `profileChoice = DEFAULT_PROFILE` (baseRevision null), no stored
  * profile. Each must give the golden plan, the golden write history (every write command's payload, in order), the
  * golden audit calls and the golden response — after removing ONLY the response members added after b0a3055
- * (`ADDED_MEMBERS`, additive) — and write no `IMPORTPROFILE#` item.
+ * (`ADDED_MEMBERS`, additive) — and write no `IMPORTPROFILE#` item. CAT-SLUG-UNIQUE-1 added `crossSheetSuffixed`
+ * to `ADDED_MEMBERS` with no re-capture: it must be `[]` here (asserted below), so every write is unchanged.
  */
 
 const { holder, mockAudit, nextUuid } = vi.hoisted(() => {
@@ -102,6 +103,8 @@ describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import equal
                 }
                 for (const extra of Object.values(added)) {
                     expect("specLineRefusals" in extra).toBe(false);
+                    // CAT-SLUG-UNIQUE-1: no golden input has a slug held outside its own sheet → nothing suffixed
+                    if ("crossSheetSuffixed" in extra) expect(extra.crossSheetSuffixed).toEqual([]);
                     if (extra.profile) expect(extra.profile).toMatchObject({ source: profileChoice ? "explicit" : "default", revision: null });
                 }
             }, 60_000);

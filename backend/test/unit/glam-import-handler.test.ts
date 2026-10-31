@@ -194,8 +194,9 @@ describe("CAT-IMPORT-1 integration (in-memory store)", () => {
     it("the previous-set read is a strongly consistent PRODUCT# query without FilterExpression", async () => {
         await call(event(body()));
         const q = table.commands.find((c) => c instanceof QueryCommand && c.input.ExpressionAttributeValues[":sk"] === "PRODUCT#");
-        // CAT-IMPORT-PROFILE-1 § 3.4: the projection gains `importProfileRevision` (the sheet discovery).
-        expect(q.input).toMatchObject({ ConsistentRead: true, ProjectionExpression: "id, title, categoryIds, importSource, importProfileRevision" });
+        // CAT-IMPORT-PROFILE-1 § 3.4: the projection gains `importProfileRevision` (the sheet discovery);
+        // CAT-SLUG-UNIQUE-1 § 2 item 1: and `slug` (the taken slugs).
+        expect(q.input).toMatchObject({ ConsistentRead: true, ProjectionExpression: "id, title, categoryIds, importSource, importProfileRevision, slug" });
         expect(q.input.FilterExpression).toBeUndefined();
     });
 });
@@ -962,5 +963,79 @@ describe("CAT-IMAGE-GATE-1 import status (hidden until an image copies, unless t
         expect(res.body.profile).toMatchObject({ source: "explicit", revision: 3 });
         expect(profileItem()).toMatchObject({ profile: DEFAULT, revision: 3 });
         expect(products().every((p) => p.importProfileRevision === 3 && p.status === "draft")).toBe(true);
+    });
+});
+
+// ── CAT-SLUG-UNIQUE-1 — product addresses unique across a producer's sheets (docs/slices/cat-slug-unique-1.md § 3) ──
+
+describe("CAT-SLUG-UNIQUE-1 taken slugs through the handler", () => {
+    const OTHER = { PK: "TENANT#t1", SK: "PRODUCT#other", id: "other", title: "Other sheet", slug: SLUGS[0], TenantSlug: `t1#${SLUGS[0]}`, importSource: "glam:boen/pl-old", categoryIds: [] };
+    const HAND = { PK: "TENANT#t1", SK: "PRODUCT#hand", id: "hand", title: "Hand made", slug: SLUGS[2], TenantSlug: `t1#${SLUGS[2]}`, categoryIds: [] };
+
+    it("dry run and execution: slugs held by another sheet and by a hand-made product get `-pl`, listed; written item and slug index use them", async () => {
+        table.put(OTHER);
+        table.put(HAND);
+        const expected = [
+            { slug: `${SLUGS[0]}-pl`, previousSlug: SLUGS[0], rowIndex: 2, heldBy: "glam:boen/pl-old" },
+            { slug: `${SLUGS[2]}-pl`, previousSlug: SLUGS[2], rowIndex: 5, heldBy: null },
+        ];
+        const dry = await call(event(body(), { dryRun: true }));
+        expect(dry.status).toBe(200);
+        expect(dry.body.crossSheetSuffixed).toEqual(expected);
+        expect(dry.body.products.map((p: any) => p.slug)).toEqual([`${SLUGS[0]}-pl`, SLUGS[1], `${SLUGS[2]}-pl`]);
+        expect(dry.body.drafts.map((d: any) => d.slug)).toEqual([`${SLUGS[0]}-pl`, SLUGS[1], `${SLUGS[2]}-pl`]);
+        // the projection reads `slug`; `siteProducts` keeps its field list (slug is not one of them)
+        expect(dry.body.siteProducts.every((p: any) => !("slug" in p))).toBe(true);
+
+        const res = await call(event(body()));
+        expect(res.status).toBe(200);
+        expect(res.body.crossSheetSuffixed).toEqual(expected);
+        const mine = products().filter((p) => p.importSource === "glam:boen/pl");
+        expect(mine.map((p) => p.slug).sort()).toEqual([`${SLUGS[0]}-pl`, SLUGS[1], `${SLUGS[2]}-pl`].sort());
+        for (const p of mine) expect(p.TenantSlug).toBe(`t1#${p.slug}`);
+        // the holders are untouched
+        expect(table.get("TENANT#t1", "PRODUCT#other")!.slug).toBe(SLUGS[0]);
+        expect(table.get("TENANT#t1", "PRODUCT#hand")!.slug).toBe(SLUGS[2]);
+        // every product slug of the tenant is unique
+        const all = products().map((p) => p.slug);
+        expect(new Set(all).size).toBe(all.length);
+    });
+
+    it("re-import of the same sheet keeps its slugs (its own previous set is not taken)", async () => {
+        table.put(OTHER);
+        const first = await call(event(body()));
+        const slugsAfterFirst = products().filter((p) => p.importSource === "glam:boen/pl").map((p) => p.slug).sort();
+        const again = await call(event(body()));
+        expect(again.status).toBe(200);
+        expect(again.body.crossSheetSuffixed).toEqual(first.body.crossSheetSuffixed);
+        expect(products().filter((p) => p.importSource === "glam:boen/pl").map((p) => p.slug).sort()).toEqual(slugsAfterFirst);
+    });
+
+    it("no product of another sheet holds a slug → `crossSheetSuffixed: []` and today's slugs", async () => {
+        const res = await call(event(body()));
+        expect(res.body.crossSheetSuffixed).toEqual([]);
+        expect(products().map((p) => p.slug).sort()).toEqual([...SLUGS].sort());
+    });
+
+    it("the deciding read is the one under the lock: a slug taken after the dry run (before the lock) is avoided by the execution", async () => {
+        const dry = await call(event(body(), { dryRun: true }));
+        expect(dry.body.crossSheetSuffixed).toEqual([]);
+        const realSend = table.send.bind(table);
+        table.send = async (cmd: any) => {
+            const out = await realSend(cmd);
+            // just after this job takes the lock, another writer (not an import) creates a product with SLUGS[1]
+            if (cmd instanceof PutCommand && cmd.input.Item?.SK === "IMPORTLOCK#glam") table.put({ ...HAND, slug: SLUGS[1], TenantSlug: `t1#${SLUGS[1]}` });
+            return out;
+        };
+        const res = await call(event(body()));
+        expect(res.status).toBe(200);
+        expect(res.body.crossSheetSuffixed).toEqual([{ slug: `${SLUGS[1]}-pl`, previousSlug: SLUGS[1], rowIndex: 4, heldBy: null }]);
+        expect(products().some((p) => p.importSource === "glam:boen/pl" && p.slug === `${SLUGS[1]}-pl`)).toBe(true);
+    });
+
+    it("the 400 'no product rows' body has no `crossSheetSuffixed` (its plan has no product and was not checked)", async () => {
+        const res = await call(event(body(csv({ c: "", p: "Orphan" }))));
+        expect(res.status).toBe(400);
+        expect("crossSheetSuffixed" in res.body).toBe(false);
     });
 });

@@ -203,11 +203,22 @@ src/
     │                      #   `facetModes` when not empty). Response members `profile`, `sheets` (per-sheet
     │                      #   no-profile/current/stale/mixed), `specLineRefusals` (profiled only); dry run also
     │                      #   `specKeys`, `drafts` (the execution's productItem), `siteProducts`. With no stored
-    │                      #   profile and no non-default choice, every write equals the base capture (golden test).
+    │                      #   profile and no non-default choice, every write equals the base capture (golden test)
+    │                      #   except the intended changes: `status` (CAT-IMAGE-GATE-1, below) and, ONLY when a
+    │                      #   product outside this sheet's previous set holds a slug the file plans, that
+    │                      #   product's slug (CAT-SLUG-UNIQUE-1, below); the golden covers the no-holder case.
     │                      #   CAT-IMAGE-GATE-1: every product is written `draft` (hidden) unless the profile says
     │                      #   `publishWithoutImages: true` (`glam/profile.ts` importStatus; absent ≡ false, also in
     │                      #   the "same profile" comparison); response member `publication` { status, startHidden,
-    │                      #   withoutImageAddress[] } on the dry run and the execution
+    │                      #   withoutImageAddress[] } on the dry run and the execution.
+    │                      #   CAT-SLUG-UNIQUE-1: the PRODUCT# read also projects `slug`; a product slug held by a
+    │                      #   product outside this sheet's previous set (other importSource, or none) is not
+    │                      #   taken — the product gets the held slug followed by the sheet's slug and/or a number
+    │                      #   (`glam/group.ts` avoidTakenSlugs: -<sheet>, -<sheet>-<n>, or -<n> when the sheet
+    │                      #   gives an empty slug); the plan that is written is made from that read (under the
+    │                      #   lock; the dry run's read has no lock, so its list can differ); response member
+    │                      #   `crossSheetSuffixed` [{ slug, previousSlug, rowIndex, heldBy }] on the dry run and
+    │                      #   the execution
     ├── glam-images.ts     # POST /import/glam-pricelist/images (CAT-IMAGES-1) — body { producer, sheet }; copies the
     │                      #   sheet's producer option images into tenant media, ONE BOUNDED BATCH per request (the
     │                      #   admin page repeats until `complete`): set = PRODUCT# query selected by importSource;
@@ -230,9 +241,11 @@ src/
     │                      #   for columns 2–5; columns 3–4 = prices never read; columns 2/5 = producer codes read
     │                      #   only to drop every specs line holding one as a whole token), group.ts (key
     │                      #   normalisation trim→collapse→lower→NFC, U+001F rule, styles, options merged on equal
-    │                      #   label + equal image cell, collision-aware labels and slugs), map.ts (upload
-    │                      #   identifier rule, importSource, GlamStyleDraft DTO, report counts; with an
-    │                      #   AppliedProfile: the profile's row rules, extracted attributes, stamps, refusals);
+    │                      #   label + equal image cell, collision-aware labels and slugs; with TakenSlugs the
+    │                      #   cross-sheet pass `avoidTakenSlugs`), map.ts (upload identifier rule, importSource,
+    │                      #   GlamStyleDraft DTO, report counts; `takenSlugsOf` = the slugs of products outside
+    │                      #   the previous set; with an AppliedProfile: the profile's row rules, extracted
+    │                      #   attributes, stamps, refusals);
     │                      #   profile.ts (CAT-IMPORT-PROFILE-1A: checkProfile, parseProfileChoice,
     │                      #   readStoredProfile, resolveProfile, applyProfileToRows (grouping trailing-number,
     │                      #   collection from a spec key → else the sheet name), extractAttributes (union over the

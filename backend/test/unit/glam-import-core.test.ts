@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import * as path from "path";
 import { parseGlamCsv, parseCsvRecords, type GlamRow } from "../../src/import/glam/parse.js";
 import { groupStyles, norm, KEY_SEPARATOR } from "../../src/import/glam/group.js";
-import { checkUpload, planGlamImport, type GlamUpload } from "../../src/import/glam/map.js";
+import { checkUpload, planGlamImport, takenSlugsOf, type GlamUpload } from "../../src/import/glam/map.js";
 import { codeHits } from "./glam-code-hits.js";
 
 /**
@@ -464,3 +464,137 @@ describe("CAT-IMPORT-1 acceptance fixture — BOEN PL.csv (launch amendment CI1-
     });
 });
 
+// ── CAT-SLUG-UNIQUE-1 — product addresses unique across a producer's sheets (docs/slices/cat-slug-unique-1.md § 3) ──
+
+describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
+    const OAK = "boen-coll-oak";
+    const ASH = "boen-coll-ash";
+    const file = () => csv({ name: "Oak", format: "a" }, { name: "Oak", format: "b" }, { name: "Ash" });
+    const planWith = (taken: Map<string, string | null>, upload = uploadOf("BOEN", "PL 2")) =>
+        planGlamImport(rowsOf(file()), upload, undefined, taken);
+
+    it("a slug another sheet holds → the sheet is appended; draft, rows and the report list carry the new slug", () => {
+        const p = planWith(new Map([[OAK, "glam:boen/pl 1"]]));
+        expect(p.styles.map((s) => s.draft.slug)).toEqual([`${OAK}-pl-2`, ASH]);
+        expect(p.rows.map((r) => ("slug" in r ? r.slug : null))).toEqual([`${OAK}-pl-2`, `${OAK}-pl-2`, ASH]);
+        expect(p.crossSheetSuffixed).toEqual([{ slug: `${OAK}-pl-2`, previousSlug: OAK, rowIndex: 2, heldBy: "glam:boen/pl 1" }]);
+        // the within-file list is about within-file numbers only
+        expect(p.suffixedSlugs).toEqual([]);
+    });
+
+    it("a slug a product without importSource holds (made by hand) → suffixed, heldBy null", () => {
+        const taken = takenSlugsOf([{ slug: ASH }, { slug: "unrelated", importSource: "glam:boen/pl 1" }], "glam:boen/pl 2");
+        expect([...taken]).toEqual([[ASH, null], ["unrelated", "glam:boen/pl 1"]]);
+        const p = planWith(new Map(taken));
+        expect(p.styles.map((s) => s.draft.slug)).toEqual([OAK, `${ASH}-pl-2`]);
+        expect(p.crossSheetSuffixed).toEqual([{ slug: `${ASH}-pl-2`, previousSlug: ASH, rowIndex: 4, heldBy: null }]);
+    });
+
+    it("the import's own previous set is not taken: a re-import keeps its slugs, suffixed ones included", () => {
+        const own = "glam:boen/pl 2";
+        const first = planWith(new Map([[OAK, "glam:boen/pl 1"]]));
+        // the store after the first import: the other sheet's product, and this sheet's products with their slugs
+        const store = [
+            { slug: OAK, importSource: "glam:boen/pl 1" },
+            ...first.styles.map((s) => ({ slug: s.draft.slug, importSource: own })),
+        ];
+        const taken = takenSlugsOf(store, own);
+        expect([...taken.keys()]).toEqual([OAK]);
+        const again = planWith(new Map(taken));
+        expect(again).toEqual(first);
+        // and the other sheet (its file holds only Oak) re-imported keeps its slug: `${OAK}-pl-2` is not its slug
+        const other = planGlamImport(rowsOf(csv({ name: "Oak", format: "a" })), uploadOf("BOEN", "PL 1"), undefined, takenSlugsOf(store, "glam:boen/pl 1"));
+        expect(other.styles.map((s) => s.draft.slug)).toEqual([OAK]);
+        expect(other.crossSheetSuffixed).toEqual([]);
+    });
+
+    it("the suffixed slug taken too → the within-file numbering continues: -2, -3 …; a slug planned in the file is never reused", () => {
+        const p = planWith(new Map([[OAK, null], [`${OAK}-pl-2`, null], [`${OAK}-pl-2-2`, "glam:x/y"]]));
+        expect(p.styles[0].draft.slug).toBe(`${OAK}-pl-2-3`);
+        expect(p.crossSheetSuffixed).toEqual([{ slug: `${OAK}-pl-2-3`, previousSlug: OAK, rowIndex: 2, heldBy: null }]);
+
+        // the file itself plans "<slug>-pl-2" for another style: the suffixed slug must not take it
+        const text = csv({ name: "Oak" }, { name: "Oak PL 2" });
+        const q = planGlamImport(rowsOf(text), uploadOf("BOEN", "PL 2"), undefined, new Map([[OAK, null]]));
+        expect(q.styles.map((s) => s.draft.slug)).toEqual([`${OAK}-pl-2-2`, `${OAK}-pl-2`]);
+        expect(new Set(q.styles.map((s) => s.draft.slug)).size).toBe(2);
+
+        // a within-file `-2` that is taken gets the sheet after its number
+        const r = planGlamImport(rowsOf(csv({ name: "Oak" }, { name: "Oak." })), uploadOf("BOEN", "PL 2"), undefined, new Map([[`${OAK}-2`, null]]));
+        expect(r.styles.map((s) => s.draft.slug)).toEqual([OAK, `${OAK}-2-pl-2`]);
+        expect(r.suffixedSlugs).toEqual([{ slug: `${OAK}-2-pl-2`, rowIndex: 3 }]);
+        expect(r.crossSheetSuffixed).toEqual([{ slug: `${OAK}-2-pl-2`, previousSlug: `${OAK}-2`, rowIndex: 3, heldBy: null }]);
+    });
+
+    it("a sheet whose name gives no slug → the numbering applies to the taken slug itself", () => {
+        const p = planWith(new Map([[OAK, null]]), uploadOf("BOEN", "—"));
+        expect(p.styles[0].draft.slug).toBe(`${OAK}-2`);
+    });
+
+    it("no collision → the plan is today's plan plus `crossSheetSuffixed: []`; deterministic", () => {
+        const without = planGlamImport(rowsOf(file()), uploadOf("BOEN", "PL 2"));
+        expect("crossSheetSuffixed" in without).toBe(false);
+        const withTaken = planWith(new Map([["boen-coll-elm", "glam:boen/pl 1"]]));
+        const { crossSheetSuffixed, ...rest } = withTaken;
+        expect(crossSheetSuffixed).toEqual([]);
+        expect(JSON.stringify(rest)).toBe(JSON.stringify(without));
+        expect(planWith(new Map([[OAK, null]]))).toEqual(planWith(new Map([[OAK, null]])));
+    });
+
+    it("review-0 R2 rule: every new slug is the held slug followed by the sheet's slug and/or a number — on all four paths", () => {
+        const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        // the exact rule (avoidTakenSlugs): `<prev>-<sheet>` or `<prev>-<sheet>-<n>`; with an empty sheet slug `<prev>-<n>`
+        const form = (prev: string, sheetSlug: string) =>
+            new RegExp(sheetSlug === "" ? `^${esc(prev)}-\\d+$` : `^${esc(prev)}-${esc(sheetSlug)}(?:-\\d+)?$`);
+        const cases = [
+            // ordinary: the sheet's slug
+            { text: file(), sheet: "PL 2", sheetSlug: "pl-2", taken: new Map([[OAK, "glam:boen/pl 1"]]), want: [`${OAK}-pl-2`] },
+            // the suffixed slug held too: sheet slug, then a number
+            { text: file(), sheet: "PL 2", sheetSlug: "pl-2", taken: new Map([[OAK, null], [`${OAK}-pl-2`, null]]), want: [`${OAK}-pl-2-2`] },
+            // the sheet gives an empty slug: a number only (review-0 witness: sheet "—", boen-coll-oak held → boen-coll-oak-2)
+            { text: file(), sheet: "—", sheetSlug: "", taken: new Map([[OAK, null]]), want: [`${OAK}-2`] },
+            // within-file number, then the sheet's slug
+            { text: csv({ name: "Oak" }, { name: "Oak." }), sheet: "PL 2", sheetSlug: "pl-2", taken: new Map([[`${OAK}-2`, null]]), want: [`${OAK}-2-pl-2`] },
+        ];
+        for (const c of cases) {
+            const p = planGlamImport(rowsOf(c.text), uploadOf("BOEN", c.sheet), undefined, c.taken as Map<string, string | null>);
+            expect(p.crossSheetSuffixed!.map((x) => x.slug)).toEqual(c.want);
+            for (const x of p.crossSheetSuffixed!) {
+                expect(x.slug).not.toBe(x.previousSlug);
+                expect(x.slug).toMatch(form(x.previousSlug, c.sheetSlug));
+            }
+        }
+    });
+
+    it("takenSlugsOf: a product without a string slug holds nothing; the first holder of a slug is reported", () => {
+        const taken = takenSlugsOf([
+            { importSource: "glam:a/b" }, { slug: "" }, { slug: 7 },
+            { slug: "s", importSource: "glam:a/b" }, { slug: "s" }, { slug: "own", importSource: "glam:a/c" },
+        ], "glam:a/c");
+        expect([...taken]).toEqual([["s", "glam:a/b"]]);
+    });
+
+    it("ALPOD ORC-laminate then ORC-wood (the sanitised fixtures, § 1's measure): ORC-wood's colliding slugs get -orc-wood; a re-import keeps them", () => {
+        const dir = path.resolve(__dirname, "fixtures/glam/alpod");
+        const rows = (sheet: string) => rowsOf(readFileSync(path.join(dir, `${sheet}.csv`), "utf8"));
+        const laminate = planGlamImport(rows("ORC-laminate"), uploadOf("ALPOD", "ORC-laminate", ""), undefined, new Map());
+        const store = laminate.styles.map((s) => ({ slug: s.draft.slug, importSource: "glam:alpod/orc-laminate" }));
+        const wood = planGlamImport(rows("ORC-wood"), uploadOf("ALPOD", "ORC-wood", ""), undefined, takenSlugsOf(store, "glam:alpod/orc-wood"));
+        expect(wood.crossSheetSuffixed).toHaveLength(8);
+        for (const c of wood.crossSheetSuffixed!) {
+            expect(c.slug).toBe(`${c.previousSlug}-orc-wood`);
+            expect(c.heldBy).toBe("glam:alpod/orc-laminate");
+        }
+        expect(wood.crossSheetSuffixed!.map((c) => c.previousSlug)).toContain("alpod-organic-eco-design-water-resistant-wood-flooring-clever");
+        const all = [...laminate.styles, ...wood.styles].map((s) => s.draft.slug);
+        expect(new Set(all).size).toBe(all.length);
+        // re-import of ORC-wood: its own products are not taken → the same 8 slugs
+        const after = [...store, ...wood.styles.map((s) => ({ slug: s.draft.slug, importSource: "glam:alpod/orc-wood" }))];
+        const again = planGlamImport(rows("ORC-wood"), uploadOf("ALPOD", "ORC-wood", ""), undefined, takenSlugsOf(after, "glam:alpod/orc-wood"));
+        expect(again.crossSheetSuffixed).toEqual(wood.crossSheetSuffixed);
+        // re-import of ORC-laminate: it keeps its own slugs
+        const lamAgain = planGlamImport(rows("ORC-laminate"), uploadOf("ALPOD", "ORC-laminate", ""), undefined, takenSlugsOf(after, "glam:alpod/orc-laminate"));
+        expect(lamAgain.crossSheetSuffixed).toEqual([]);
+        expect(lamAgain.styles.map((s) => s.draft.slug)).toEqual(laminate.styles.map((s) => s.draft.slug));
+    });
+});

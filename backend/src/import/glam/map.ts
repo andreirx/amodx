@@ -2,7 +2,7 @@ import type { FacetModes, GlamImportProfile } from "@amodx/shared";
 import type { GlamRow } from "./parse.js";
 import {
     groupStyles, norm, slugify, KEY_SEPARATOR,
-    type GlamOptionPlan, type GlamRowResult, type GlamStylePlan,
+    type GlamOptionPlan, type GlamRowResult, type GlamStylePlan, type TakenSlugs,
 } from "./group.js";
 import {
     applyProfileToRows, buildGuard, extractAttributes, facetModesOf, COLUMN_ATTRIBUTE,
@@ -125,6 +125,11 @@ export interface GlamImportPlan {
     readonly rows: readonly GlamRowResult[];
     readonly relabelled: readonly { readonly slug: string; readonly value: string }[];
     readonly suffixedSlugs: readonly { readonly slug: string; readonly rowIndex: number }[];
+    /**
+     * CAT-SLUG-UNIQUE-1: present only on a plan made against the tenant's taken slugs (`taken` given) — then every
+     * product whose within-file slug another product held, in file order (`[]` = none). Absent = not checked.
+     */
+    readonly crossSheetSuffixed?: readonly CrossSheetSuffix[];
     readonly counts: {
         readonly products: number;
         readonly options: number;
@@ -136,6 +141,38 @@ export interface GlamImportPlan {
      * spec line the value guard refused (collection lines and attribute lines), by row.
      */
     readonly profile?: { readonly revision: number; readonly refused: readonly SpecLineRefusal[] };
+}
+
+/**
+ * CAT-SLUG-UNIQUE-1 § 2 item 3 — one product whose planned address another product held. `previousSlug`: the slug it
+ * would have had (unique in the file) and that another product holds — NOT a slug the product had before; `slug`: the
+ * slug it gets, `previousSlug` followed by the sheet's slug and/or a number (`avoidTakenSlugs`, ./group.ts);
+ * `rowIndex`: its first row; `heldBy`: the holder's `importSource`, `null` for a product without one.
+ */
+export interface CrossSheetSuffix {
+    readonly slug: string;
+    readonly previousSlug: string;
+    readonly rowIndex: number;
+    readonly heldBy: string | null;
+}
+
+/**
+ * CAT-SLUG-UNIQUE-1 § 2 item 1 — the taken slugs: the slug of every product that is NOT in this import's own previous
+ * set (`importSource` other than `importSource`, or none), mapped to its `importSource` (`null` when it has none).
+ * A product without a string slug holds no address. When two such products hold one slug, the first in `products`
+ * order is reported. Pure.
+ */
+export function takenSlugsOf(
+    products: readonly { readonly slug?: unknown; readonly importSource?: unknown }[],
+    importSource: string,
+): TakenSlugs {
+    const taken = new Map<string, string | null>();
+    for (const p of products) {
+        if (p.importSource === importSource) continue;
+        if (typeof p.slug !== "string" || p.slug === "" || taken.has(p.slug)) continue;
+        taken.set(p.slug, typeof p.importSource === "string" ? p.importSource : null);
+    }
+    return taken;
 }
 
 /** The profile a profiled import applies (CAT-IMPORT-PROFILE-1). Absent = an import without a profile (§ 2.8). */
@@ -155,11 +192,15 @@ const SPECS_FIELD = "specificații tehnice";
 const DESCRIPTION_LIMIT = 300;
 
 /**
- * Plan the import of one parsed file. Pure. Without `applied` the plan is today's (the 1a golden pins it). With it,
- * the profile's row rules run before the grouping, each product gains the extracted attributes and the stamps, and
- * the plan reports the refused spec lines.
+ * Plan the import of one parsed file. Pure. Without `applied` and without `taken` the plan is today's (the 1a golden
+ * pins it). With `applied`, the profile's row rules run before the grouping, each product gains the extracted
+ * attributes and the stamps, and the plan reports the refused spec lines. With `taken` (CAT-SLUG-UNIQUE-1) no product
+ * gets a slug in it — see `groupStyles` — and the plan lists the changed ones in `crossSheetSuffixed`; when no planned
+ * slug is in `taken` the plan differs from the plan without `taken` only by `crossSheetSuffixed: []` (an intended
+ * exception to "today's plan" otherwise). Without `taken` the slugs are only unique within the file and the plan has
+ * no `crossSheetSuffixed`.
  */
-export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, applied?: AppliedProfile): GlamImportPlan {
+export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, applied?: AppliedProfile, taken?: TakenSlugs): GlamImportPlan {
     const extraction = applied ? { applied, guard: buildGuard(applied.codeCells), refused: [] as SpecLineRefusal[] } : undefined;
     let planned = rows;
     if (extraction) {
@@ -167,7 +208,7 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, app
         planned = profiled.rows;
         extraction.refused.push(...profiled.refused);
     }
-    const grouped = groupStyles(planned, upload.producer);
+    const grouped = groupStyles(planned, upload.producer, taken ? { taken, sheetSlug: slugify(norm(upload.sheet)) } : undefined);
     const producerSlug = slugify(norm(upload.producer));
 
     const categories = new Map<string, GlamCategoryDraft>();
@@ -197,6 +238,11 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, app
         suffixedSlugs: grouped.styles
             .filter((s) => s.slugSuffixed)
             .map((s) => ({ slug: s.slug, rowIndex: s.rows[0].index })),
+        ...(taken ? {
+            crossSheetSuffixed: grouped.styles.flatMap((s): CrossSheetSuffix[] => s.crossSheet
+                ? [{ slug: s.slug, previousSlug: s.crossSheet.previousSlug, rowIndex: s.rows[0].index, heldBy: s.crossSheet.heldBy }]
+                : []),
+        } : {}),
         counts: {
             products: grouped.styles.length,
             options: grouped.styles.reduce((n, s) => n + s.options.length, 0),

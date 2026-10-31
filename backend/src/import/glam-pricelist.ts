@@ -16,8 +16,9 @@ import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { parseGlamCsv } from "./glam/parse.js";
 import { norm } from "./glam/group.js";
 import {
-    checkUpload, planGlamImport, type AppliedProfile, type GlamImportPlan, type GlamStyleDraft, type GlamUpload,
+    checkUpload, planGlamImport, takenSlugsOf, type AppliedProfile, type GlamImportPlan, type GlamStyleDraft, type GlamUpload,
 } from "./glam/map.js";
+import type { TakenSlugs } from "./glam/group.js";
 import {
     analyseSpecKeys, buildGuard, importStatus, parseProfileChoice, profileReport, profileSortKey, readStoredProfile, resolveProfile,
     DEFAULT_PROFILE, type ProfileChoice, type ProfileReport, type ProfileResolution, type StoredProfile,
@@ -34,18 +35,24 @@ import { imagesHandler } from "./glam-images.js";
  *   role + tenant binding → body, upload fields, CSV, `profileChoice` (400) → tenant read, ConsistentRead (404 / 403)
  *   → the producer's stored import profile (CAT-IMPORT-PROFILE-1)
  *   → dry run: category lookup + previous set (reads), report incl. `categoryConflicts`, `profile`, `sheets`,
- *   `specKeys`, `drafts`, `siteProducts`; nothing written (not even the CDN marker)
+ *   `specKeys`, `drafts`, `siteProducts`, `crossSheetSuffixed`; nothing written (not even the CDN marker)
  *   → execution: profile refusal (409) / no style in the file (400), nothing written
  *   → lock (409) → the stored profile again, deciding (409 / 400) → category lookup, an occupied category key (409)
- *   → previous set (consistent query) → profile item write when a new profile is saved (step `profile`) → delete the
+ *   → previous set (consistent query; it also gives the taken product slugs, CAT-SLUG-UNIQUE-1, and the plan that
+ *   decides the writes is made from it) → profile item write when a new profile is saved (step `profile`) → delete the
  *   previous set → create absent categories → create products → reconcile touched categories (503
  *   `incompleteCategories` when the retry bound is exhausted) → 200 report. Any failure → 500 naming the step; the
  *   lock is released in `finally` only if acquired.
  * Without a stored profile and without a non-default `profileChoice`, every written item is what the import wrote
- * before CAT-IMPORT-PROFILE-1 (§ 2.8; the 1a golden, backend/test/unit/glam-profile-golden.test.ts) — except `status`:
- * CAT-IMAGE-GATE-1 writes every product `draft` unless the profile says `publishWithoutImages: true` (`importStatus`);
- * the image copy publishes a product when one of its images is copied (glam-images.ts). The dry run and the execution
- * report it in `publication` (`publicationOf`).
+ * before CAT-IMPORT-PROFILE-1 (§ 2.8; the 1a golden, backend/test/unit/glam-profile-golden.test.ts) — with two
+ * intended exceptions: (1) `status`: CAT-IMAGE-GATE-1 writes every product `draft` unless the profile says
+ * `publishWithoutImages: true` (`importStatus`); the image copy publishes a product when one of its images is copied
+ * (glam-images.ts). The dry run and the execution report it in `publication` (`publicationOf`). (2) The product slug
+ * (and so `TenantSlug` and the CATPROD# `slug`) when a product outside this sheet's previous set holds a slug the file
+ * plans: CAT-SLUG-UNIQUE-1 (docs/slices/cat-slug-unique-1.md) gives the product another slug — the held slug followed
+ * by the sheet's slug and/or a number (`avoidTakenSlugs`, ./glam/group.ts) — listed in `crossSheetSuffixed`. When no
+ * such product holds a planned slug, the writes are unchanged (the golden covers only this case). The dry run reads
+ * the taken slugs without the lock, so its list can differ from the execution's.
  * The pure core (`./glam/`) decides what to write; this file only reads and writes. The same function also serves
  * `POST /import/glam-pricelist/images` (CAT-IMAGES-1, `./glam-images.ts`): `handler` dispatches on `routeKey`.
  */
@@ -64,6 +71,8 @@ const backoff = (attempt: number) => new Promise((r) => setTimeout(r, Math.rando
 interface StoredProductRef {
     id: string;
     title?: string;
+    /** CAT-SLUG-UNIQUE-1: the taken slugs (`takenSlugsOf`). */
+    slug?: string;
     categoryIds?: string[];
     importSource?: string;
     /** CAT-IMPORT-PROFILE-1 § 3.4: the sheet discovery. */
@@ -72,8 +81,8 @@ interface StoredProductRef {
     [field: string]: unknown;
 }
 
-/** The execution's previous-set projection: the previous set, the reconciliation and the sheet discovery. */
-const EXECUTION_PROJECTION = { expression: "id, title, categoryIds, importSource, importProfileRevision" } as const;
+/** The execution's previous-set projection: the previous set, the reconciliation, the sheet discovery, the taken slugs. */
+const EXECUTION_PROJECTION = { expression: "id, title, categoryIds, importSource, importProfileRevision, slug" } as const;
 
 /**
  * CAT-IMPORT-PROFILE-1 § 5.2 `siteProducts`: the fields the two site readers read — the facet function (`brand`,
@@ -84,7 +93,7 @@ const SITE_PRODUCT_FIELDS = [
     "id", "status", "categoryIds", "availableFrom", "availableUntil", "sortOrder", "brand", "attributes", "variants", "facetModes",
 ] as const;
 /** The dry run's projection: the execution's fields plus `SITE_PRODUCT_FIELDS`, every name through `#n` placeholders. */
-const DRY_RUN_FIELDS = [...new Set(["title", "importSource", "importProfileRevision", ...SITE_PRODUCT_FIELDS])];
+const DRY_RUN_FIELDS = [...new Set(["title", "importSource", "importProfileRevision", "slug", ...SITE_PRODUCT_FIELDS])];
 const DRY_RUN_PROJECTION = {
     expression: DRY_RUN_FIELDS.map((_, i) => `#f${i}`).join(", "),
     names: Object.fromEntries(DRY_RUN_FIELDS.map((f, i) => [`#f${i}`, f])),
@@ -143,8 +152,12 @@ const _handler: Handler = async (event) => {
     }
     const { rows, codeCells } = parsed;
     const up = upload.upload;
-    /** The plan for a resolution: profiled only for `stored` / `save` (an unsupported profile is never applied). */
-    const planFor = (resolution: ProfileResolution) => planGlamImport(rows, up, appliedOf(resolution, codeCells));
+    /**
+     * The plan for a resolution: profiled only for `stored` / `save` (an unsupported profile is never applied). Without
+     * `taken` its product slugs are unique only within the file: such a plan decides only the refusals and the category
+     * lookup (neither depends on a product slug); the plan that is reported and written is made with `taken`.
+     */
+    const planFor = (resolution: ProfileResolution, taken?: TakenSlugs) => planGlamImport(rows, up, appliedOf(resolution, codeCells), taken);
 
     // Every asynchronous step below runs under `step`, so a failure answers 500 naming it. The lock is released in
     // `finally` only when this job acquired it (`lockOwner`); a step before that holds no lock.
@@ -173,12 +186,12 @@ const _handler: Handler = async (event) => {
         // Dry run: no lock, reads only — the category lookup, then the previous set.
         if (isDryRun(event)) {
             const { reported, analysed } = dryRunProfile(early);
-            const plan = planFor(reported);
             const status = importStatus(analysed);
             step = "categories-lookup";
-            const categories = await lookupCategories(tenantId, plan);
+            const categories = await lookupCategories(tenantId, planFor(reported));
             step = "previous-set";
             const products = await readTenantProducts(tenantId, DRY_RUN_PROJECTION);
+            const plan = planFor(reported, takenSlugsOf(products, up.importSource));
             const previous = products.filter((p) => p.importSource === plan.upload.importSource);
             return json(200, {
                 ...report(plan, true, previous, categories.toCreate.length, new Map(), categories.conflicts),
@@ -210,13 +223,13 @@ const _handler: Handler = async (event) => {
         const stored = readStoredProfile(await readProfileItem(tenantId, up.producer));
         const used = resolveProfile(choice, stored, "execution");
         if (!isUsable(used)) return json(409, profileRefusal(used, up.producer));
-        const plan = planFor(used);
-        if (plan.counts.products === 0) return json(400, noProductBody(plan, used, stored));
+        const unchecked = planFor(used);
+        if (unchecked.counts.products === 0) return json(400, noProductBody(unchecked, used, stored));
         const status = importStatus(used.profile);
 
         // Category lookup: an occupied `CATEGORY#<slug>` refuses (409) before any deletion (§ 9).
         step = "categories-lookup";
-        const categories = await lookupCategories(tenantId, plan);
+        const categories = await lookupCategories(tenantId, unchecked);
         if (categories.conflicts.length > 0) {
             return json(409, {
                 error: `A category key this import needs is held by a category that was renamed: ${categories.conflicts.map((c) => `"${c.slug}" (now "${c.storedSlug}")`).join(", ")}. Nothing was changed. Rename it back or give the producer/collection another name.`,
@@ -227,6 +240,9 @@ const _handler: Handler = async (event) => {
         // (3) the previous set: the tenant's products, read completely and strongly consistently; selected in code.
         step = "previous-set";
         const products = await readTenantProducts(tenantId, EXECUTION_PROJECTION);
+        // CAT-SLUG-UNIQUE-1: the plan that is written, from the taken slugs of this read (under the lock). Its
+        // categories equal `unchecked`'s: the taken slugs change product slugs only.
+        const plan = planFor(used, takenSlugsOf(products, up.importSource));
         const previous = products.filter((p) => p.importSource === plan.upload.importSource);
 
         // CAT-IMPORT-PROFILE-1 § 6.6 step 4: the profile snapshot is stored BEFORE any product claims its revision.
@@ -702,6 +718,9 @@ function report(
         })),
         relabelled: plan.relabelled,
         suffixedSlugs: plan.suffixedSlugs,
+        // CAT-SLUG-UNIQUE-1: on every plan made with the taken slugs (dry run, execution); absent on the 400 "no
+        // product rows" body, whose plan was not checked (it has no product).
+        ...(plan.crossSheetSuffixed ? { crossSheetSuffixed: plan.crossSheetSuffixed } : {}),
         categoryConflicts,
     };
 }

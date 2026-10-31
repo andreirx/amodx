@@ -126,3 +126,22 @@ test("import_glam_pricelist summary (CAT-IMAGE-GATE-1): how many start hidden, t
     assert.ok(published.includes("niciun produs nu pornește ascuns") && published.includes("Publicate fără adresă de imagine în fișier: 1"));
     assert.ok(!glamPricelistSummary(base).includes("ascuns")); // an answer without the member (an older backend) prints nothing about it
 });
+
+test("import_glam_pricelist summary (CAT-SLUG-UNIQUE-1): the count of products whose address another product held", () => {
+    const base = {
+        dryRun: false, producer: "ALPOD", sheet: "ORC-wood", importSource: "glam:alpod/orc-wood", totalRows: 132,
+        counts: { deleted: 0, products: 8, options: 132, deduped: 0, skipped: 0 }, categoriesCreated: 0,
+        previousSet: { count: 0, firstTitles: [] }, rows: [],
+    };
+    const eight = Array.from({ length: 8 }, (_, i) => ({ slug: `s${i}-orc-wood`, previousSlug: `s${i}` }));
+    const rule = "(adresa era deja a altui produs; adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr)";
+    const done = glamPricelistSummary({ ...base, crossSheetSuffixed: eight });
+    assert.ok(done.includes(`Adrese schimbate ${rule}: 8 produse`));
+    assert.ok(glamPricelistSummary({ ...base, dryRun: true, crossSheetSuffixed: eight }).includes(`Adrese care ar fi schimbate ${rule}: 8 produse`));
+    // review-0 R2: true on every allocation path — an empty sheet slug gives a number only, so no "at the end" promise
+    const emptySheet = glamPricelistSummary({ ...base, crossSheetSuffixed: [{ slug: "s0-2", previousSlug: "s0" }] });
+    assert.ok(emptySheet.includes(`Adrese schimbate ${rule}: 1 produs`) && !emptySheet.includes("1 produse") && !/sfârșit/.test(emptySheet));
+    // an empty list, or an answer without the member (an older backend), prints nothing about it
+    assert.ok(!glamPricelistSummary({ ...base, crossSheetSuffixed: [] }).includes("numele foii"));
+    assert.ok(!glamPricelistSummary(base).includes("numele foii"));
+});
