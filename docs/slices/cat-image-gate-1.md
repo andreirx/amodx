@@ -380,3 +380,7 @@ committed and the re-captured file finds exactly 4,430 differences, every one `s
   within one file. The importer's own planner over the 24 real files: 1,920 distinct slugs, 8 produced by two sheets —
   all `ALPOD/ORC-laminate` + `ALPOD/ORC-wood` (e.g. `alpod-organic-eco-design-water-resistant-wood-flooring-clever`).
   After both sheets are imported, such an address shows whichever product the slug index returns first.
+
+**Human rulings on the findings (2026-10-31).** F-1: **leave as is** — the human accepts that on non-catalog sites
+`?preview=<any value>` shows draft products (and probably draft content pages) without login; catalog sites are closed
+by this slice. F-2: **suffix on collision** — slice `cat-slug-unique-1`.
