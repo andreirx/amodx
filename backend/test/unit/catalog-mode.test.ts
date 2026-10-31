@@ -236,6 +236,14 @@ describe("CM1 — POST /products write boundary", () => {
         expect((await call(createProduct, event(TENANT_ADMIN, { ...base, importSource: "glam:x/y" }))).statusCode).toBe(201);
         expect(productPuts()[0].input.Item).not.toHaveProperty("importSource");
     });
+
+    it("CAT-IMPORT-PROFILE-1: facetModes and importProfileRevision are omitted from authoring input (stripped, never stored)", async () => {
+        mockDb({ tenant: CATALOG_TENANT });
+        const stamps = { facetModes: { attributes: [{ key: "colecție", mode: "always" }] }, importProfileRevision: 3 };
+        expect((await call(createProduct, event(TENANT_ADMIN, { ...base, ...stamps }))).statusCode).toBe(201);
+        expect(productPuts()[0].input.Item).not.toHaveProperty("facetModes");
+        expect(productPuts()[0].input.Item).not.toHaveProperty("importProfileRevision");
+    });
 });
 
 describe("CM1 — PUT /products/{id} write boundary and hardening", () => {
@@ -299,6 +307,18 @@ describe("CM1 — PUT /products/{id} write boundary and hardening", () => {
         mockDb({ tenant: CATALOG_TENANT, product: CATALOG_PRODUCT });
         expect((await put({ ...CATALOG_PRODUCT, importSource: "glam:x/y" })).statusCode).toBe(200);
         expect(productPuts()[0].input.Item).not.toHaveProperty("importSource");
+    });
+
+    it("CAT-IMPORT-PROFILE-1: an admin edit keeps facetModes and importProfileRevision and cannot set or change them", async () => {
+        const stamped = { ...IMPORTED_PRODUCT, facetModes: { variant: "never", attributes: [] }, importProfileRevision: 2 };
+        mockDb({ tenant: CATALOG_TENANT, product: stamped });
+        expect((await put({ ...stamped, title: "Rug 2", facetModes: { attributes: [] }, importProfileRevision: 9 })).statusCode).toBe(200);
+        expect(productPuts()[0].input.Item).toMatchObject({ title: "Rug 2", facetModes: { variant: "never", attributes: [] }, importProfileRevision: 2 });
+        ddbSend.mockClear();
+        mockDb({ tenant: CATALOG_TENANT, product: CATALOG_PRODUCT });
+        expect((await put({ ...CATALOG_PRODUCT, importProfileRevision: 9, facetModes: { attributes: [] } })).statusCode).toBe(200);
+        expect(productPuts()[0].input.Item).not.toHaveProperty("importProfileRevision");
+        expect(productPuts()[0].input.Item).not.toHaveProperty("facetModes");
     });
 
     it("importSource product: the derived gallery is recomputed from the options, overwriting a direct edit", async () => {

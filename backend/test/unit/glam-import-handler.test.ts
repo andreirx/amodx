@@ -193,7 +193,8 @@ describe("CAT-IMPORT-1 integration (in-memory store)", () => {
     it("the previous-set read is a strongly consistent PRODUCT# query without FilterExpression", async () => {
         await call(event(body()));
         const q = table.commands.find((c) => c instanceof QueryCommand && c.input.ExpressionAttributeValues[":sk"] === "PRODUCT#");
-        expect(q.input).toMatchObject({ ConsistentRead: true, ProjectionExpression: "id, title, categoryIds, importSource" });
+        // CAT-IMPORT-PROFILE-1 § 3.4: the projection gains `importProfileRevision` (the sheet discovery).
+        expect(q.input).toMatchObject({ ConsistentRead: true, ProjectionExpression: "id, title, categoryIds, importSource, importProfileRevision" });
         expect(q.input.FilterExpression).toBeUndefined();
     });
 });
@@ -634,5 +635,264 @@ describe("CAT-IMPORT-1 BOEN PL.csv through the handler", () => {
         expect(codeHits([{ ...product, attributes: [{ key: "unitate", value: codes[1] }] }], codes)).toHaveLength(1);
         expect(codeHits([{ imageLink: codes[0], additionalImageLinks: [codes[0]], variants: [{ options: [{ value: "v", imageLink: codes[0] }] }] }], codes)).toEqual([]);
         expect(codeHits(second.body, codes).filter((h) => !h.includes(".sourceUrl"))).toEqual([]); // report: only the image source cell
+    });
+});
+
+// ── CAT-IMPORT-PROFILE-1A: the import profile through the handler (docs/slices/cat-import-profile-1.md § 7.4) ───────
+
+describe("CAT-IMPORT-PROFILE-1A import profile (stored item, acceptance, stamps, failures)", () => {
+    const DEFAULT = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
+    const P1 = { ...DEFAULT, specKeys: [{ key: "Wood", action: "attribute", label: "Esență", split: "none" }], facetModes: { attributes: [{ key: "Esență", mode: "always" }] } };
+    const P2 = { ...DEFAULT, specKeys: [{ key: "Wood", action: "attribute", label: "Lemn", split: "none" }], facetModes: { attributes: [] } };
+    const P3 = { ...DEFAULT, specKeys: [{ key: "Wood", action: "prose-only" }], facetModes: { attributes: [] } };
+    const WOOD = csv(
+        { c: "Herringbone", p: "Oak Vivo", f: "120", img: img(1), specs: "Wood: Oak" },
+        { c: "Herringbone", p: "Oak Vivo", f: "140", img: img(2), specs: "Wood: Oak\nPrice: 9 EUR" },
+        { c: "Chevron", p: "Ash", f: "90", specs: "Wood: Ash" },
+    );
+    const choice = (profile: unknown, baseRevision: number | null) => ({ profileChoice: { profile, baseRevision } });
+    const profileItem = () => table.get("TENANT#t1", "IMPORTPROFILE#glam#boen");
+    const storeProfile = (profile: unknown, revision: number) =>
+        table.put({ PK: "TENANT#t1", SK: "IMPORTPROFILE#glam#boen", Type: "ImportProfile", producer: "BOEN", profile, revision });
+    const profilePuts = () => table.commands.filter((c) => c instanceof PutCommand && c.input.Item?.SK === "IMPORTPROFILE#glam#boen");
+    const productWrites = () => table.commands.filter((c) => String(c.input.Item?.SK ?? c.input.Key?.SK ?? "").startsWith("PRODUCT#")
+        && (c instanceof PutCommand || c instanceof DeleteCommand));
+
+    it("explicit profile, none stored → the item (revision 1) is written BEFORE the first product write; every product stamped", async () => {
+        const res = await call(event(body(WOOD, choice(P1, null))));
+        expect(res.status).toBe(200);
+        expect(profileItem()).toMatchObject({ Type: "ImportProfile", producer: "BOEN", profile: P1, revision: 1, updatedBy: "admin@t1.test" });
+        const order = table.commands.indexOf(profilePuts()[0]);
+        expect(order).toBeGreaterThan(-1);
+        expect(order).toBeLessThan(table.commands.indexOf(productWrites()[0]));
+        expect(profilePuts()[0].input.ConditionExpression).toBe("attribute_not_exists(SK)");
+        expect(products().every((p) => p.importProfileRevision === 1)).toBe(true);
+        expect(products().every((p) => JSON.stringify(p.facetModes) === JSON.stringify(P1.facetModes))).toBe(true);
+        expect(products().find((p) => p.slug === "boen-herringbone-oak-vivo")!.attributes)
+            .toEqual([{ key: "colecție", value: "Herringbone" }, { key: "unitate", value: "mp" }, { key: "Esență", value: "Oak" }]);
+        expect(res.body.profile).toEqual({ source: "explicit", revision: 1, value: P1, stored: { kind: "none" } });
+        expect(res.body.sheets).toEqual([{ importSource: "glam:boen/pl", products: 2, state: "current", revisions: [1], unstamped: 0 }]);
+        expect(res.body.specLineRefusals).toEqual([]);
+        expect(mockAudit.mock.calls[0][0].details).toMatchObject({ profileRevision: 1, profileSource: "explicit" });
+    });
+
+    it("dry run with an explicit profile writes nothing; drafts are the execution's items; siteProducts carry only the listing/facet fields", async () => {
+        table.put({ PK: "TENANT#t1", SK: "PRODUCT#hand", id: "hand", title: "Hand", status: "active", categoryIds: ["boen"], brand: "X", price: "1", attributes: [{ key: "a", value: "b" }] });
+        table.put({ PK: "TENANT#t1", SK: "PRODUCT#old", id: "old", title: "Old", importSource: "glam:boen/pl", categoryIds: [] });
+        const before = JSON.stringify([...table.items.entries()]);
+        const res = await call(event(body(WOOD, choice(P1, null)), { dryRun: true }));
+        expect(res.status).toBe(200);
+        expect(JSON.stringify([...table.items.entries()])).toBe(before);
+        expect(dataWrites()).toEqual([]);
+        expect(lockCommands()).toEqual([]);
+        expect(res.body.profile).toMatchObject({ source: "explicit", revision: 1 });
+        expect(res.body.drafts.map((d: any) => [d.id, d.importProfileRevision, d.categoryIds])).toEqual([
+            ["preview:boen-herringbone-oak-vivo", 1, ["new:boen", "new:boen-herringbone"]],
+            ["preview:boen-chevron-ash", 1, ["new:boen", "new:boen-chevron"]],
+        ]);
+        expect(res.body.drafts.every((d: any) => !("PK" in d) && !("SK" in d) && !("TenantSlug" in d) && d.status === "active")).toBe(true);
+        expect(res.body.siteProducts).toEqual([{ id: "hand", status: "active", categoryIds: ["boen"], brand: "X", attributes: [{ key: "a", value: "b" }] }]);
+        const wood = res.body.specKeys.find((k: any) => k.key === "Wood");
+        expect(wood).toMatchObject({ rows: 3, products: 2, distinctValues: 2, rule: { action: "attribute", label: "Esență", split: "none" } });
+        expect(res.body.specKeys.find((k: any) => k.key === "Price")).toMatchObject({ refused: [{ rowIndex: 3, reason: "money" }], samples: [], rule: { action: "not-reviewed" } });
+    });
+
+    it("re-import without profileChoice (the MCP form) applies the stored profile: source stored, no profile write, same stamp", async () => {
+        await call(event(body(WOOD, choice(P1, null))));
+        table.commands = [];
+        const res = await call(event(body(WOOD)));
+        expect(res.status).toBe(200);
+        expect(res.body.profile).toEqual({ source: "stored", revision: 1, value: P1 });
+        expect(profilePuts()).toEqual([]);
+        expect(products().every((p) => p.importProfileRevision === 1)).toBe(true);
+        expect(mockAudit.mock.calls.at(-1)![0].details).toMatchObject({ profileRevision: 1, profileSource: "stored" });
+    });
+
+    it("acceptance: baseRevision equal → revision + 1 (conditioned on the observed revision); stale base but equal content → accepted, no write", async () => {
+        storeProfile(P1, 1);
+        let res = await call(event(body(WOOD, choice(P2, 1))));
+        expect(res.status).toBe(200);
+        expect(profileItem()).toMatchObject({ profile: P2, revision: 2 });
+        expect(profilePuts()[0].input).toMatchObject({ ConditionExpression: "#revision = :observed", ExpressionAttributeValues: { ":observed": 1 } });
+        table.commands = [];
+        res = await call(event(body(WOOD, choice(P2, 1))));
+        expect(res.status).toBe(200);
+        expect(res.body.profile).toMatchObject({ source: "explicit", revision: 2, stored: { kind: "supported", revision: 2 } });
+        expect(profilePuts()).toEqual([]);
+        expect(products().every((p) => p.importProfileRevision === 2 && !("facetModes" in p))).toBe(true);
+    });
+
+    it("acceptance: base and content both differ → 409 before the lock; nothing written", async () => {
+        storeProfile(P1, 1);
+        await call(event(body(WOOD)));
+        const before = JSON.stringify(products());
+        table.commands = [];
+        const res = await call(event(body(WOOD, choice(P2, 7))));
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({ storedRevision: 1, baseRevision: 7 });
+        expect(res.body.error).toMatch(/changed by another import/);
+        expect(dataWrites()).toEqual([]);
+        expect(lockCommands()).toEqual([]);
+        expect(JSON.stringify(products())).toBe(before);
+    });
+
+    it("a profile changed between the early read and the lock is seen under the lock → 409, nothing changed, lock released", async () => {
+        storeProfile(P1, 1);
+        const send = table.send.bind(table);
+        let reads = 0;
+        table.send = async (cmd: any) => {
+            const out = await send(cmd);
+            if (cmd instanceof GetCommand && cmd.input.Key.SK === "IMPORTPROFILE#glam#boen" && ++reads === 1) storeProfile(P3, 2);
+            return out;
+        };
+        const res = await call(event(body(WOOD, choice(P2, 1))));
+        expect(res.status).toBe(409);
+        expect(reads).toBe(2);
+        expect(productWrites()).toEqual([]);
+        expect(profilePuts()).toEqual([]);
+        expect(table.get("TENANT#t1", "IMPORTLOCK#glam")).toBeUndefined();
+    });
+
+    it("step `profile` fails → 500 'the profile may have been saved'; no product or category changed; the retry is accepted", async () => {
+        table.failOn = (c) => c instanceof PutCommand && c.input.Item?.SK === "IMPORTPROFILE#glam#boen";
+        let res = await call(event(body(WOOD, choice(P1, null))));
+        expect(res.status).toBe(500);
+        expect(res.body).toMatchObject({ failedStep: "profile", recovery: expect.stringMatching(/^No product or category was changed; the profile may have been saved/) });
+        expect(products()).toEqual([]);
+        expect(table.all("CATEGORY#")).toEqual([]);
+        expect(table.get("TENANT#t1", "IMPORTLOCK#glam")).toBeUndefined();
+        res = await call(event(body(WOOD, choice(P1, null))));
+        expect(res.status).toBe(200);
+        expect(profileItem()).toMatchObject({ revision: 1 });
+    });
+
+    it("step `profile` saved but its answer was lost → the retry with the same choice is accepted by 'stored equals sent'", async () => {
+        const send = table.send.bind(table);
+        let lost = false;
+        table.send = async (cmd: any) => {
+            const out = await send(cmd);
+            if (!lost && cmd instanceof PutCommand && cmd.input.Item?.SK === "IMPORTPROFILE#glam#boen") { lost = true; throw new Error("timeout"); }
+            return out;
+        };
+        expect((await call(event(body(WOOD, choice(P1, null))))).status).toBe(500);
+        expect(profileItem()).toMatchObject({ revision: 1 });
+        expect(products()).toEqual([]);
+        const res = await call(event(body(WOOD, choice(P1, null))));
+        expect(res.status).toBe(200);
+        expect(res.body.profile).toMatchObject({ source: "explicit", revision: 1, stored: { kind: "supported", revision: 1 } });
+        expect(products().every((p) => p.importProfileRevision === 1)).toBe(true);
+    });
+
+    it("a failure after the mutation phase → the retry with the same snapshot reproduces the plan of that profile", async () => {
+        const clean = new MemoryTable();
+        clean.put(SYSTEM_TENANT());
+        holder.table = clean;
+        await call(event(body(WOOD, choice(P1, null))));
+        const expected = clean.all("PRODUCT#").map((p) => [p.slug, p.attributes, p.importProfileRevision]).sort();
+        holder.table = table;
+        table.failOn = (c) => c instanceof PutCommand && String(c.input.Item?.SK).startsWith("PRODUCT#");
+        const failed = await call(event(body(WOOD, choice(P1, null))));
+        expect(failed.status).toBe(500);
+        expect(failed.body.recovery).toBe("Import the same file again: it replaces the sheet's products in full.");
+        const res = await call(event(body(WOOD, choice(P1, null))));
+        expect(res.status).toBe(200);
+        expect(products().map((p) => [p.slug, p.attributes, p.importProfileRevision]).sort()).toEqual(expected);
+    });
+
+    it("sheet states: current / stale / mixed / no-profile, from the products' stamps (another producer excluded)", async () => {
+        storeProfile(P1, 2);
+        const seed = (id: string, importSource: string, importProfileRevision?: number) =>
+            table.put({ PK: "TENANT#t1", SK: `PRODUCT#${id}`, id, title: id, importSource, categoryIds: [], ...(importProfileRevision ? { importProfileRevision } : {}) });
+        seed("a1", "glam:boen/a", 2); seed("a2", "glam:boen/a", 2);
+        seed("b1", "glam:boen/b", 1);
+        seed("c1", "glam:boen/c", 2); seed("c2", "glam:boen/c");
+        seed("d1", "glam:boen/d");
+        seed("x1", "glam:itc/x", 2);
+        const res = await call(event(body(WOOD), { dryRun: true }));
+        expect(res.body.sheets.map((s: any) => [s.importSource, s.state, s.revisions, s.unstamped])).toEqual([
+            ["glam:boen/a", "current", [2], 0], ["glam:boen/b", "stale", [1], 0], ["glam:boen/c", "mixed", [2], 1], ["glam:boen/d", "no-profile", [], 1],
+        ]);
+    });
+
+    it.each([
+        ["an unknown key", { ...P1, valueMap: {} }, /valueMap/],
+        ["an unknown enum value", { ...P1, grouping: { kind: "trailing-letter" } }, /grouping/],
+        ["version 2", { ...P1, version: 2 }, /version/],
+    ])("versioning: a stored profile with %s → dry run 'unsupported' (unprofiled plan); execution 409; replaced only with its revision", async (_n, stored, reason) => {
+        storeProfile(stored, 4);
+        const dry = await call(event(body(WOOD), { dryRun: true }));
+        expect(dry.status).toBe(200);
+        expect(dry.body.profile).toMatchObject({ source: "unsupported", revision: 4, reason: expect.stringMatching(reason) });
+        expect(dry.body.drafts.every((d: any) => !("importProfileRevision" in d))).toBe(true);
+        table.commands = [];
+        const refused = await call(event(body(WOOD)));
+        expect(refused.status).toBe(409);
+        expect(refused.body.error).toMatch(/cannot apply/);
+        expect(dataWrites()).toEqual([]);
+        expect((await call(event(body(WOOD, choice(P2, 3))))).status).toBe(409);
+        expect(profileItem()).toMatchObject({ revision: 4 });
+        const replaced = await call(event(body(WOOD, choice(P2, 4))));
+        expect(replaced.status).toBe(200);
+        expect(profileItem()).toMatchObject({ profile: P2, revision: 5 });
+        expect(products().every((p) => p.importProfileRevision === 5)).toBe(true);
+    });
+
+    it("intervening import: stored m=2 after a failed import with n=1 → admin retry (n, base 1) 409; (n, base 2) accepted; MCP form applies m", async () => {
+        storeProfile(P1, 1);           // the failed import's snapshot n
+        storeProfile(P2, 2);           // another import stored m
+        expect((await call(event(body(WOOD, choice(P1, 1))))).status).toBe(409);
+        const mcp = await call(event(body(WOOD)));
+        expect(mcp.body.profile).toMatchObject({ source: "stored", revision: 2 });
+        expect(products().every((p) => p.importProfileRevision === 2)).toBe(true);
+        const overwrite = await call(event(body(WOOD, choice(P1, 2))));
+        expect(overwrite.status).toBe(200);
+        expect(profileItem()).toMatchObject({ profile: P1, revision: 3 });
+    });
+
+    it("an invalid profileChoice → 400 before any read", async () => {
+        for (const bad of [choice({ ...P1, version: 2 }, null), choice(P1, 0), { profileChoice: "x" },
+            choice({ ...DEFAULT, specKeys: [{ key: "Wood", action: "attribute", label: "colecție", split: "none" }] }, null)]) {
+            table.commands = [];
+            const res = await call(event(body(WOOD, bad)));
+            expect(res.status).toBe(400);
+            expect(table.commands).toEqual([]);
+        }
+    });
+
+    it("O-CODES-4 (handler): a cross-row code in a selected line is refused (row 3, code); no written payload holds it outside images", async () => {
+        const file = [HEADER,
+            "Coll,Oak,AAA-1,1.00,2.00,,mp,,,https://img.test/1.jpg,Wood: Oak,1",
+            `Coll,Oak,BBB-2,1.00,2.00,,mp,,,https://img.test/2.jpg,"Wood: Oak\nAlternate article: AAA-1",2`].join("\n") + "\n";
+        table.writes = [];
+        const res = await call(event(body(file, choice({ ...DEFAULT, specKeys: [{ key: "Alternate article", action: "attribute", label: "Articol", split: "none" }] }, null))));
+        expect(res.status).toBe(200);
+        expect(res.body.specLineRefusals).toEqual([{ key: "Alternate article", rowIndex: 3, reason: "code" }]);
+        expect(codeHits(table.writes, ["AAA-1", "BBB-2"])).toEqual([]);
+        expect(products()[0].attributes.some((a: any) => a.key === "Articol")).toBe(false);
+    });
+
+    it("O-CODES-3 + O-PRICES-1 (BOEN, worst-case profile: every key an attribute, split comma): no code in the write history outside images; no monetary key", async () => {
+        const { readFileSync } = await import("fs");
+        const path = await import("path");
+        const file = readFileSync(path.resolve(__dirname, "fixtures/glam/boen-PL.csv"), "utf8");
+        const records = parseCsvRecords(file);
+        if (records.kind !== "records") throw new Error(records.error);
+        const codes = [...new Set(records.records.slice(1).flatMap((r) => [r[2], r[5]]).map((c) => c.trim()).filter(Boolean))];
+        const keys = [...new Set(records.records.slice(1).flatMap((r) => r[10].split(/\r\n|\r|\n/)).map((l) => l.split(":")[0].trim()).filter(Boolean))];
+        const worst = { ...DEFAULT, specKeys: keys.map((k) => ({ key: k, action: "attribute", label: `L ${k}`, split: "comma" })) };
+        table.writes = [];
+        const res = await call(event({ csvContent: file, producer: "BOEN", sheet: "PL", variantName: "Format", ...choice(worst, null) }));
+        expect(res.status).toBe(200);
+        expect(res.body.counts).toMatchObject({ products: 437, options: 455 });
+        expect(products().filter((p) => p.attributes.some((a: any) => a.key.startsWith("L "))).length).toBe(280);
+        expect(codeHits(table.writes, codes)).toEqual([]);
+        const product = table.writes.find((w) => String(w.SK).startsWith("PRODUCT#"))!;
+        expect(codeHits([{ ...product, attributes: [{ key: "L Wood", value: codes[0] }] }], codes)).toHaveLength(1); // positive control
+        for (const item of table.writes) {
+            for (const key of ["price", "salePrice", "volumePricing", "personalizations", "sku"]) {
+                if (String(item.SK).startsWith("PRODUCT#")) expect(key in item).toBe(false);
+            }
+            if (String(item.SK).startsWith("CATPROD#")) expect("price" in item || "salePrice" in item).toBe(false);
+        }
     });
 });

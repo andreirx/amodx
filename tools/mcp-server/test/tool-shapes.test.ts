@@ -76,3 +76,28 @@ test("import_glam_pricelist summary names category conflicts reported by a dry r
     });
     assert.ok(text.includes("BLOCKED — renamed categories hold keys this import needs: boen (now renamed-boen); the import would answer 409"));
 });
+
+test("import_glam_pricelist summary (CAT-IMPORT-PROFILE-1): the profile used, the sheets not current, refused spec lines", () => {
+    const base = {
+        dryRun: true, producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl", totalRows: 1,
+        counts: { deleted: 0, products: 1, options: 1, deduped: 0, skipped: 0 }, categoriesCreated: 0,
+        previousSet: { count: 0, firstTitles: [] }, rows: [{ status: "created", index: 2 }],
+    };
+    const text = glamPricelistSummary({
+        ...base,
+        profile: { source: "stored", revision: 3 },
+        sheets: [
+            { importSource: "glam:boen/pl", state: "current", revisions: [3] },
+            { importSource: "glam:boen/a", state: "stale", revisions: [2] },
+            { importSource: "glam:boen/b", state: "no-profile", revisions: [] },
+        ],
+        specLineRefusals: [{ key: "Price", rowIndex: 4, reason: "money" }],
+    });
+    assert.ok(text.includes("Profil: stored, revizia 3"));
+    assert.ok(text.includes("Sheets not current (import them again): glam:boen/a stale [2], glam:boen/b no-profile"));
+    assert.ok(!text.includes("glam:boen/pl current"));
+    assert.ok(text.includes("Spec lines refused by the value guard: row 4 Price (money)"));
+    const plain = glamPricelistSummary({ ...base, profile: { source: "default", revision: null }, sheets: [], specLineRefusals: undefined });
+    assert.ok(plain.includes("Profil: default, fără revizie"));
+    assert.ok(!plain.includes("Sheets not current") && !plain.includes("refused"));
+});

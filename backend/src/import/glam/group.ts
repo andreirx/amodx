@@ -42,6 +42,16 @@ export function slugify(str: string): string {
         .replace(/^-|-$/g, '');
 }
 
+/**
+ * CAT-IMPORT-PROFILE-1 ruling CIP1-VALUE-GUARD = B1 with T3 — the ONE folding of the value guard: `text` as the
+ * address rule folds it (`slugify ∘ norm`, exactly what the category and product slugs compute from a component),
+ * cut into its tokens (the slug's `-`-separated parts). Derived from `slugify`, so the two cannot drift; a corpus test
+ * (`glam-profile.test.ts`) pins that the tokens join back to `slugify(text)`.
+ */
+export function foldTokens(text: string): string[] {
+    return slugify(norm(text)).split("-").filter((token) => token !== "");
+}
+
 /** A usable option image: an absolute http(s) URL. Anything else is no image (CM-D7 (a)). */
 export function usableImage(sourceUrl: string): string | undefined {
     if (!/^https?:\/\//i.test(sourceUrl)) return undefined;

@@ -6,7 +6,8 @@ import {
 /**
  * An IN-MEMORY DynamoDB table for handler tests (users: glam-import-handler.test.ts, glam-images-handler.test.ts). It
  * implements exactly the behaviour those handlers use: Get / Put / Delete with the condition forms they send
- * (`attribute_not_exists(SK)`, `expiresAt = :observed`, `#owner = :me`), Update with `attribute_exists(PK)` and a
+ * (`attribute_not_exists(SK)`, `expiresAt = :observed`, `#revision = :observed` — the import-profile write of
+ * CAT-IMPORT-PROFILE-1 —, `#owner = :me`), Update with `attribute_exists(PK)` and a
  * `SET … [REMOVE …]` expression (`ReturnValues: ALL_NEW`), Query on the base table (begins_with, page size,
  * `LastEvaluatedKey`) and on `GSI_Slug`, BatchWrite / BatchGet with injectable `Unprocessed*`, projections, and
  * removal of undefined attributes (the document client's `removeUndefinedValues`). Any other condition throws.
@@ -61,7 +62,10 @@ export class MemoryTable {
             if (input.ConditionExpression === "expiresAt = :observed" && existing?.expiresAt !== input.ExpressionAttributeValues[":observed"]) {
                 throw new ConditionalCheckFailed();
             }
-            if (input.ConditionExpression && !["attribute_not_exists(SK)", "expiresAt = :observed"].includes(input.ConditionExpression)) {
+            if (input.ConditionExpression === "#revision = :observed" && existing?.revision !== input.ExpressionAttributeValues[":observed"]) {
+                throw new ConditionalCheckFailed();
+            }
+            if (input.ConditionExpression && !["attribute_not_exists(SK)", "expiresAt = :observed", "#revision = :observed"].includes(input.ConditionExpression)) {
                 throw new Error(`unsupported condition ${input.ConditionExpression}`);
             }
             this.put(input.Item);

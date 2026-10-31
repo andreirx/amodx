@@ -14,7 +14,15 @@ import { readTenantMode, checkProductWrite } from "../lib/catalog-product.js";
 import { publishAudit } from "../lib/events.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { parseGlamCsv } from "./glam/parse.js";
-import { checkUpload, planGlamImport, type GlamImportPlan, type GlamStyleDraft, type GlamUpload } from "./glam/map.js";
+import { norm } from "./glam/group.js";
+import {
+    checkUpload, planGlamImport, type AppliedProfile, type GlamImportPlan, type GlamStyleDraft, type GlamUpload,
+} from "./glam/map.js";
+import {
+    analyseSpecKeys, buildGuard, parseProfileChoice, profileReport, profileSortKey, readStoredProfile, resolveProfile,
+    DEFAULT_PROFILE, type ProfileChoice, type ProfileReport, type ProfileResolution, type StoredProfile,
+} from "./glam/profile.js";
+import type { GlamImportProfile } from "@amodx/shared";
 import { imagesHandler } from "./glam-images.js";
 
 /**
@@ -22,14 +30,19 @@ import { imagesHandler } from "./glam-images.js";
  * per style, REPLACING the sheet's previous product set, for one catalog tenant.
  * Spec: docs/slices/catalog-mode-1.md § 3.4; slice docs/slices/cat-import-1.md § 2 and § 9 (amendment CI1-A2).
  *
- * Body (a JSON object): `{ csvContent, producer, sheet, variantName? }`. Order of execution:
- *   role + tenant binding → body, upload fields, CSV (400) → tenant read, ConsistentRead (404 / 403)
- *   → no style in the file (400, execution only)
- *   → dry run: category lookup + previous set (reads), report incl. `categoryConflicts`, nothing written (not even
- *   the CDN marker)
- *   → lock (409) → category lookup, an occupied category key (409) → previous set (consistent query) → delete it →
- *   create absent categories → create products → reconcile touched categories (503 `incompleteCategories` when the retry bound is
- *   exhausted) → 200 report. Any failure → 500 naming the step; the lock is released in `finally` only if acquired.
+ * Body (a JSON object): `{ csvContent, producer, sheet, variantName?, profileChoice? }`. Order of execution:
+ *   role + tenant binding → body, upload fields, CSV, `profileChoice` (400) → tenant read, ConsistentRead (404 / 403)
+ *   → the producer's stored import profile (CAT-IMPORT-PROFILE-1)
+ *   → dry run: category lookup + previous set (reads), report incl. `categoryConflicts`, `profile`, `sheets`,
+ *   `specKeys`, `drafts`, `siteProducts`; nothing written (not even the CDN marker)
+ *   → execution: profile refusal (409) / no style in the file (400), nothing written
+ *   → lock (409) → the stored profile again, deciding (409 / 400) → category lookup, an occupied category key (409)
+ *   → previous set (consistent query) → profile item write when a new profile is saved (step `profile`) → delete the
+ *   previous set → create absent categories → create products → reconcile touched categories (503
+ *   `incompleteCategories` when the retry bound is exhausted) → 200 report. Any failure → 500 naming the step; the
+ *   lock is released in `finally` only if acquired.
+ * Without a stored profile and without a non-default `profileChoice`, every written item is what the import wrote
+ * before CAT-IMPORT-PROFILE-1 (§ 2.8; the 1a golden, backend/test/unit/glam-profile-golden.test.ts).
  * The pure core (`./glam/`) decides what to write; this file only reads and writes. The same function also serves
  * `POST /import/glam-pricelist/images` (CAT-IMAGES-1, `./glam-images.ts`): `handler` dispatches on `routeKey`.
  */
@@ -50,7 +63,29 @@ interface StoredProductRef {
     title?: string;
     categoryIds?: string[];
     importSource?: string;
+    /** CAT-IMPORT-PROFILE-1 § 3.4: the sheet discovery. */
+    importProfileRevision?: number;
+    /** The dry run reads more (DRY_RUN_PROJECTION): the `siteProducts` fields. */
+    [field: string]: unknown;
 }
+
+/** The execution's previous-set projection: the previous set, the reconciliation and the sheet discovery. */
+const EXECUTION_PROJECTION = { expression: "id, title, categoryIds, importSource, importProfileRevision" } as const;
+
+/**
+ * CAT-IMPORT-PROFILE-1 § 5.2 `siteProducts`: the fields the two site readers read — the facet function (`brand`,
+ * `attributes`, `variants`, `facetModes`) and the catalog-listing rule (`id`, `status`, `categoryIds`,
+ * `availableFrom`, `availableUntil`, `sortOrder`).
+ */
+const SITE_PRODUCT_FIELDS = [
+    "id", "status", "categoryIds", "availableFrom", "availableUntil", "sortOrder", "brand", "attributes", "variants", "facetModes",
+] as const;
+/** The dry run's projection: the execution's fields plus `SITE_PRODUCT_FIELDS`, every name through `#n` placeholders. */
+const DRY_RUN_FIELDS = [...new Set(["title", "importSource", "importProfileRevision", ...SITE_PRODUCT_FIELDS])];
+const DRY_RUN_PROJECTION = {
+    expression: DRY_RUN_FIELDS.map((_, i) => `#f${i}`).join(", "),
+    names: Object.fromEntries(DRY_RUN_FIELDS.map((f, i) => [`#f${i}`, f])),
+} as const;
 
 interface IncompleteCategory {
     categoryId: string;
@@ -91,7 +126,22 @@ const _handler: Handler = async (event) => {
     if (upload.kind === "refused") return json(400, { error: upload.error });
     const parsed = parseGlamCsv(body.csvContent);
     if (parsed.kind === "refused") return json(400, { error: parsed.error });
-    const plan = planGlamImport(parsed.rows, upload.upload);
+    // CAT-IMPORT-PROFILE-1 § 3.5: the optional explicit profile, checked before any read (400).
+    const choiceParse = parseProfileChoice(body.profileChoice);
+    let choice: ProfileChoice | null;
+    switch (choiceParse.kind) {
+        case "absent": choice = null; break;
+        case "accepted": choice = choiceParse.choice; break;
+        case "refused": return json(400, { error: choiceParse.error });
+        default: {
+            const unhandled: never = choiceParse;
+            throw new Error(`Unhandled profileChoice parse ${JSON.stringify(unhandled)}`);
+        }
+    }
+    const { rows, codeCells } = parsed;
+    const up = upload.upload;
+    /** The plan for a resolution: profiled only for `stored` / `save` (an unsupported profile is never applied). */
+    const planFor = (resolution: ProfileResolution) => planGlamImport(rows, up, appliedOf(resolution, codeCells));
 
     // Every asynchronous step below runs under `step`, so a failure answers 500 naming it. The lock is released in
     // `finally` only when this job acquired it (`lockOwner`); a step before that holds no lock.
@@ -101,6 +151,8 @@ const _handler: Handler = async (event) => {
     // loop, even when the previous set is empty). Before it, a failure has certainly changed no product or category;
     // after it, data MAY have changed (a failed write's outcome can be unknown), so the recovery is the full re-import.
     let mutationPhaseEntered = false;
+    // CAT-IMPORT-PROFILE-1 § 6.6: set just before the profile item write; a failure after it MAY have saved the profile.
+    let profileWriteAttempted = false;
     try {
         // Start-of-job tenant checks, strongly consistent, BEFORE the lock (CM-D11): a refused import writes nothing.
         const mode = await readTenantMode(tenantId);
@@ -109,23 +161,34 @@ const _handler: Handler = async (event) => {
             return json(403, { error: "The pricelist import is available only on catalog sites (sites that show products without prices)." });
         }
 
-        // Nothing in the file to import: refused, so a wrong file cannot delete a sheet and create nothing (B-2, § 9).
-        if (!isDryRun(event) && plan.counts.products === 0) {
-            return json(400, {
-                error: "The file has no product rows to import; nothing was changed. Run a dry run to see why each row was skipped.",
-                ...report(plan, false, [], 0, new Map(), []),
-            });
-        }
+        // The stored profile, read before the lock too: a dry run uses this read; an execution uses it only to refuse
+        // early (409 / 400, nothing written) and decides on the read it repeats under the lock.
+        step = "profile-read";
+        const storedEarly = readStoredProfile(await readProfileItem(tenantId, up.producer));
+        const early = resolveProfile(choice, storedEarly, isDryRun(event) ? "dry-run" : "execution");
 
         // Dry run: no lock, reads only — the category lookup, then the previous set.
         if (isDryRun(event)) {
+            const { reported, analysed } = dryRunProfile(early);
+            const plan = planFor(reported);
             step = "categories-lookup";
             const categories = await lookupCategories(tenantId, plan);
             step = "previous-set";
-            const products = await readTenantProducts(tenantId);
+            const products = await readTenantProducts(tenantId, DRY_RUN_PROJECTION);
             const previous = products.filter((p) => p.importSource === plan.upload.importSource);
-            return json(200, report(plan, true, previous, categories.toCreate.length, new Map(), categories.conflicts));
+            return json(200, {
+                ...report(plan, true, previous, categories.toCreate.length, new Map(), categories.conflicts),
+                ...profileMembers(plan, profileReport(reported, storedEarly), sheetStates(products, up.producer, storedRevisionOf(storedEarly))),
+                specKeys: analyseSpecKeys(rows, plan.styles.map((s) => s.draft.rowIndexes), analysed, buildGuard(codeCells)),
+                drafts: previewDrafts(tenantId, plan, categories),
+                siteProducts: products.filter((p) => p.importSource !== plan.upload.importSource).map(siteProductOf),
+            });
         }
+
+        if (!isUsable(early)) return json(409, profileRefusal(early, up.producer));
+        const earlyPlan = planFor(early);
+        // Nothing in the file to import: refused, so a wrong file cannot delete a sheet and create nothing (B-2, § 9).
+        if (earlyPlan.counts.products === 0) return json(400, noProductBody(earlyPlan, early, storedEarly));
 
         step = "lock";
         const owner = randomUUID();
@@ -136,7 +199,15 @@ const _handler: Handler = async (event) => {
 
         // Rule (review-1 R1): every read that decides an execution write is made while this job holds the lock — a
         // decision read before the lock may describe a store another import has changed since. Only the tenant
-        // mode is read before the lock (spec § 3.4 / CM-D11: a refused import writes nothing, not even a lock).
+        // mode is read before the lock (spec § 3.4 / CM-D11: a refused import writes nothing, not even a lock); the
+        // early profile read above only refuses.
+        step = "profile-read";
+        const stored = readStoredProfile(await readProfileItem(tenantId, up.producer));
+        const used = resolveProfile(choice, stored, "execution");
+        if (!isUsable(used)) return json(409, profileRefusal(used, up.producer));
+        const plan = planFor(used);
+        if (plan.counts.products === 0) return json(400, noProductBody(plan, used, stored));
+
         // Category lookup: an occupied `CATEGORY#<slug>` refuses (409) before any deletion (§ 9).
         step = "categories-lookup";
         const categories = await lookupCategories(tenantId, plan);
@@ -149,8 +220,24 @@ const _handler: Handler = async (event) => {
 
         // (3) the previous set: the tenant's products, read completely and strongly consistently; selected in code.
         step = "previous-set";
-        const products = await readTenantProducts(tenantId);
+        const products = await readTenantProducts(tenantId, EXECUTION_PROJECTION);
         const previous = products.filter((p) => p.importSource === plan.upload.importSource);
+
+        // CAT-IMPORT-PROFILE-1 § 6.6 step 4: the profile snapshot is stored BEFORE any product claims its revision.
+        switch (used.kind) {
+            case "save":
+                step = "profile";
+                profileWriteAttempted = true;
+                await writeProfile(tenantId, up.producer, used, auth.email);
+                break;
+            case "unprofiled":
+            case "stored":
+                break; // nothing to save
+            default: {
+                const unhandled: never = used;
+                throw new Error(`Unhandled profile resolution ${JSON.stringify(unhandled)}`);
+            }
+        }
 
         step = "delete";
         mutationPhaseEntered = true;
@@ -197,17 +284,29 @@ const _handler: Handler = async (event) => {
             actor: { id: auth.sub, email: auth.email },
             action: "GLAM_PRICELIST_IMPORT",
             target: { title: `Listă de prețuri ${plan.upload.producer} / ${plan.upload.sheet}`, id: plan.upload.importSource },
-            details: { ...result.counts, categoriesCreated: categories.toCreate.length, incompleteCategories: incomplete.length },
+            details: {
+                ...result.counts, categoriesCreated: categories.toCreate.length, incompleteCategories: incomplete.length,
+                ...auditProfileDetails(used),
+            },
             ip: event.requestContext.http.sourceIp,
         });
+        // The producer's sheets AFTER this import: this sheet's products are the created ones, stamped as the plan says.
+        const after = [
+            ...products.filter((p) => p.importSource !== plan.upload.importSource),
+            ...created.map(() => ({ importSource: plan.upload.importSource, importProfileRevision: plan.profile?.revision })),
+        ];
+        const profiled = {
+            ...result,
+            ...profileMembers(plan, profileReport(used, stored), sheetStates(after, up.producer, plan.profile?.revision ?? null)),
+        };
         if (incomplete.length > 0) {
             return json(503, {
                 error: `The products were written, but the product lists of ${incomplete.length} categor${incomplete.length === 1 ? "y are" : "ies are"} not complete. Import the same file again.`,
-                ...result,
+                ...profiled,
                 incompleteCategories: incomplete,
             });
         }
-        return json(200, result);
+        return json(200, profiled);
     } catch (e: unknown) {
         console.error(`[glam-pricelist] import failed at step ${step}:`, e);
         return json(500, {
@@ -215,7 +314,9 @@ const _handler: Handler = async (event) => {
             failedStep: step,
             recovery: mutationPhaseEntered
                 ? "Import the same file again: it replaces the sheet's products in full."
-                : "No product or category was changed. Try again.",
+                : profileWriteAttempted
+                    ? "No product or category was changed; the profile may have been saved. Import the same file again with the same profile."
+                    : "No product or category was changed. Try again.",
         });
     } finally {
         if (lockOwner) await releaseLock(tenantId, lockOwner);
@@ -307,7 +408,10 @@ export async function releaseLock(tenantId: string, owner: string): Promise<void
  * `FilterExpression` — the previous set is selected in code, and the same pages give every product's `categoryIds`
  * for the reconciliation (spec § 3.4, cycle 13).
  */
-async function readTenantProducts(tenantId: string): Promise<StoredProductRef[]> {
+async function readTenantProducts(
+    tenantId: string,
+    projection: { readonly expression: string; readonly names?: Record<string, string> },
+): Promise<StoredProductRef[]> {
     const products: StoredProductRef[] = [];
     let startKey: Record<string, any> | undefined;
     do {
@@ -315,7 +419,8 @@ async function readTenantProducts(tenantId: string): Promise<StoredProductRef[]>
             TableName: TABLE_NAME,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": "PRODUCT#" },
-            ProjectionExpression: "id, title, categoryIds, importSource",
+            ProjectionExpression: projection.expression,
+            ...(projection.names ? { ExpressionAttributeNames: projection.names } : {}),
             ConsistentRead: true,
             ExclusiveStartKey: startKey,
         }));
@@ -476,6 +581,9 @@ function productItem(tenantId: string, id: string, draft: GlamStyleDraft, catego
         productType: "physical",
         sortOrder: 0,
         importSource: draft.importSource,
+        // CAT-IMPORT-PROFILE-1 § 3.4: the stamps of a profiled import (absent without a profile: byte identity).
+        ...(draft.facetModes !== undefined ? { facetModes: draft.facetModes } : {}),
+        ...(draft.importProfileRevision !== undefined ? { importProfileRevision: draft.importProfileRevision } : {}),
         createdAt: now,
         updatedAt: now,
     };
@@ -588,4 +696,230 @@ function report(
         suffixedSlugs: plan.suffixedSlugs,
         categoryConflicts,
     };
+}
+
+// ── The import profile (CAT-IMPORT-PROFILE-1, docs/slices/cat-import-profile-1.md § 3, § 6.6) ─────────────────────
+
+/** The producer's profile item (`TENANT#<t>` / `IMPORTPROFILE#glam#<norm(producer)>`), strongly consistent. */
+async function readProfileItem(tenantId: string, producer: string): Promise<Record<string, unknown> | undefined> {
+    const result = await db.send(new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: `TENANT#${tenantId}`, SK: profileSortKey(producer) },
+        ConsistentRead: true,
+    }));
+    return result.Item;
+}
+
+/**
+ * Store the profile as `revision`, conditioned on the revision observed under the lock (`attribute_not_exists(SK)`
+ * when none was stored). One import per tenant runs at a time, so the condition fails only if the lock was lost:
+ * the import then fails at step `profile` (500) before any product is changed.
+ */
+async function writeProfile(
+    tenantId: string,
+    producer: string,
+    save: Extract<ProfileResolution, { kind: "save" }>,
+    email: string | undefined,
+): Promise<void> {
+    await db.send(new PutCommand({
+        TableName: TABLE_NAME,
+        Item: {
+            PK: `TENANT#${tenantId}`,
+            SK: profileSortKey(producer),
+            Type: "ImportProfile",
+            producer,
+            profile: save.profile,
+            revision: save.revision,
+            updatedAt: new Date().toISOString(),
+            ...(email ? { updatedBy: email } : {}),
+        },
+        ...(save.observedRevision === null
+            ? { ConditionExpression: "attribute_not_exists(SK)" }
+            : {
+                ConditionExpression: "#revision = :observed",
+                ExpressionAttributeNames: { "#revision": "revision" },
+                ExpressionAttributeValues: { ":observed": save.observedRevision },
+            }),
+    }));
+}
+
+/** The profile a plan applies: only a `stored` or a `save` resolution is profiled (§ 2.8). */
+function appliedOf(resolution: ProfileResolution, codeCells: ReadonlySet<string>): AppliedProfile | undefined {
+    switch (resolution.kind) {
+        case "stored":
+        case "save":
+            return { profile: resolution.profile, revision: resolution.revision, codeCells };
+        case "unprofiled":
+        case "unsupported":
+        case "changed":
+            return undefined;
+        default: {
+            const unhandled: never = resolution;
+            throw new Error(`Unhandled profile resolution ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/** A resolution an execution can import with; the other two are refused (409). */
+type UsableResolution = Exclude<ProfileResolution, { kind: "changed" | "unsupported" }>;
+type RefusedResolution = Extract<ProfileResolution, { kind: "changed" | "unsupported" }>;
+
+function isUsable(resolution: ProfileResolution): resolution is UsableResolution {
+    switch (resolution.kind) {
+        case "unprofiled":
+        case "stored":
+        case "save":
+            return true;
+        case "unsupported":
+        case "changed":
+            return false;
+        default: {
+            const unhandled: never = resolution;
+            throw new Error(`Unhandled profile resolution ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/** The 409 body of an execution the profile refuses (§ 3.3 item 4, § 3.5). Nothing is written. */
+function profileRefusal(resolution: RefusedResolution, producer: string): Record<string, unknown> {
+    switch (resolution.kind) {
+        case "unsupported":
+            return {
+                error: `The stored import profile of ${producer} (revision ${resolution.revision}) uses settings this importer cannot apply: ${resolution.reason}. Nothing was changed. To replace it, import with a profile this importer supports and baseRevision ${resolution.revision}.`,
+                profile: { source: "unsupported", revision: resolution.revision, reason: resolution.reason },
+            };
+        case "changed":
+            return {
+                error: `The import profile of ${producer} was changed by another import since you loaded it (stored revision ${resolution.storedRevision ?? "none"}, loaded ${resolution.baseRevision ?? "none"}). Nothing was changed. Load the stored profile, preview again and import.`,
+                storedRevision: resolution.storedRevision,
+                baseRevision: resolution.baseRevision,
+            };
+        default: {
+            const unhandled: never = resolution;
+            throw new Error(`Unhandled profile resolution ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+function storedRevisionOf(stored: StoredProfile): number | null {
+    switch (stored.kind) {
+        case "none": return null;
+        case "supported":
+        case "unsupported":
+            return stored.revision;
+        default: {
+            const unhandled: never = stored;
+            throw new Error(`Unhandled stored profile ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/**
+ * The dry run's view of a resolution: the one it reports and plans with, and the profile its `specKeys` analysis
+ * uses. An unsupported stored profile is never applied: the plan is unprofiled and the analysis uses the default.
+ */
+function dryRunProfile(resolution: ProfileResolution): { reported: Exclude<ProfileResolution, { kind: "changed" }>; analysed: GlamImportProfile } {
+    switch (resolution.kind) {
+        case "unprofiled":
+        case "stored":
+        case "save":
+            return { reported: resolution, analysed: resolution.profile };
+        case "unsupported":
+            return { reported: resolution, analysed: DEFAULT_PROFILE };
+        case "changed":
+            throw new Error("Internal: a dry run never applies the acceptance rule.");
+        default: {
+            const unhandled: never = resolution;
+            throw new Error(`Unhandled profile resolution ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/** § 6.6 step 6: the audit's profile details — only on a profiled import (an unprofiled one audits as before). */
+function auditProfileDetails(used: UsableResolution): { profileRevision?: number; profileSource?: "stored" | "explicit" } {
+    switch (used.kind) {
+        case "unprofiled": return {};
+        case "stored": return { profileRevision: used.revision, profileSource: used.source };
+        case "save": return { profileRevision: used.revision, profileSource: "explicit" };
+        default: {
+            const unhandled: never = used;
+            throw new Error(`Unhandled profile resolution ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/** The 400 "no product row" body: as before, plus the profile that planned it. */
+function noProductBody(plan: GlamImportPlan, resolution: UsableResolution, stored: StoredProfile) {
+    return {
+        error: "The file has no product rows to import; nothing was changed. Run a dry run to see why each row was skipped.",
+        ...report(plan, false, [], 0, new Map(), []),
+        profile: profileReport(resolution, stored),
+    };
+}
+
+/**
+ * The response members of § 3.5 shared by the dry run and the execution: `profile`, `sheets`, and — on a profiled
+ * plan only — `specLineRefusals` (every spec line the value guard refused, by key and row; the line is not echoed).
+ */
+function profileMembers(plan: GlamImportPlan, profile: ProfileReport, sheets: SheetReport[]) {
+    return { profile, sheets, ...(plan.profile ? { specLineRefusals: plan.profile.refused } : {}) };
+}
+
+/** § 3.4 discovery. `no-profile`: no product stamped; `current` / `stale`: all stamped with one revision, equal / not equal to the stored one; `mixed`: otherwise. */
+type SheetState = "no-profile" | "current" | "stale" | "mixed";
+interface SheetReport {
+    /** `glam:<norm(producer)>/<norm(sheet)>` — the sheet's display form is not stored on products. */
+    importSource: string;
+    products: number;
+    state: SheetState;
+    /** The distinct stamped revisions, ascending. */
+    revisions: number[];
+    /** Products without `importProfileRevision`. */
+    unstamped: number;
+}
+
+/** Per sheet of the producer (products whose `importSource` starts with `glam:<norm(producer)>/`), sorted by `importSource`. */
+function sheetStates(
+    products: readonly { importSource?: unknown; importProfileRevision?: unknown }[],
+    producer: string,
+    storedRevision: number | null,
+): SheetReport[] {
+    const prefix = `glam:${norm(producer)}/`;
+    const bySheet = new Map<string, unknown[]>();
+    for (const p of products) {
+        if (typeof p.importSource !== "string" || !p.importSource.startsWith(prefix)) continue;
+        const stamps = bySheet.get(p.importSource) ?? [];
+        stamps.push(p.importProfileRevision);
+        bySheet.set(p.importSource, stamps);
+    }
+    return [...bySheet].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([importSource, stamps]) => {
+        const revisions = [...new Set(stamps.filter((s): s is number => typeof s === "number"))].sort((a, b) => a - b);
+        const unstamped = stamps.filter((s) => typeof s !== "number").length;
+        const state: SheetState = unstamped === stamps.length ? "no-profile"
+            : unstamped > 0 || revisions.length > 1 ? "mixed"
+            : revisions[0] === storedRevision ? "current" : "stale";
+        return { importSource, products: stamps.length, state, revisions, unstamped };
+    });
+}
+
+/**
+ * § 5.2 `drafts[]`: the item the execution would write for each planned product, built by the same `productItem`,
+ * without `PK`, `SK`, `TenantSlug`; `id` = `preview:<slug>`; category ids = the found id, `new:<slug>` for a category
+ * the import would create, `occupied:<slug>` for a renamed category that blocks the import (`categoryConflicts`).
+ */
+function previewDrafts(tenantId: string, plan: GlamImportPlan, categories: CategoryResolution) {
+    const now = new Date().toISOString();
+    const toCreate = new Set(categories.toCreate.map((c) => c.slug));
+    const occupied = new Set(categories.conflicts.map((c) => c.slug));
+    return plan.styles.map(({ draft }) => {
+        const categoryIds = draft.categoryKeys.map((slug) =>
+            toCreate.has(slug) ? `new:${slug}` : occupied.has(slug) ? `occupied:${slug}` : categories.idBySlug.get(slug)!);
+        const { PK: _pk, SK: _sk, TenantSlug: _tenantSlug, ...item } = productItem(tenantId, `preview:${draft.slug}`, draft, categoryIds, now);
+        return item;
+    });
+}
+
+/** § 5.2 `siteProducts[]`: one kept product with exactly the `SITE_PRODUCT_FIELDS` it has. */
+function siteProductOf(product: StoredProductRef): Record<string, unknown> {
+    return Object.fromEntries(SITE_PRODUCT_FIELDS.filter((f) => product[f] !== undefined).map((f) => [f, product[f]]));
 }

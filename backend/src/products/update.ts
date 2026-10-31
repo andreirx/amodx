@@ -45,9 +45,11 @@ const _handler: Handler = async (event) => {
         const removeImage = body.imageLink === null;
         if (removeImage) delete body.imageLink;
 
-        // Partial validation. `importSource` is importer-owned: omitted, so the body cannot set, change or remove it.
+        // Partial validation. `importSource`, `facetModes` and `importProfileRevision` are importer-owned: omitted, so
+        // the body cannot set, change or remove them (the merge keeps the stored values).
         const parsed = ProductSchema.omit({
-            id: true, tenantId: true, createdAt: true, updatedAt: true, importSource: true
+            id: true, tenantId: true, createdAt: true, updatedAt: true, importSource: true,
+            facetModes: true, importProfileRevision: true,
         }).partial().safeParse(body);
         if (!parsed.success) {
             return { statusCode: 400, body: JSON.stringify({ error: "Invalid product", details: parsed.error.issues }) };

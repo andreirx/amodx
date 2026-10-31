@@ -1002,6 +1002,49 @@ export const NutritionalValueSchema = z.object({
 });
 export type NutritionalValue = z.infer<typeof NutritionalValueSchema>;
 
+// --- GLAM IMPORT PROFILE (CAT-IMPORT-PROFILE-1, docs/slices/cat-import-profile-1.md § 3.2) ---
+// One per tenant and producer. It crosses the admin ↔ API ↔ MCP boundary and is stored as written. Every object is
+// STRICT (§ 3.3 item 1): an unknown key, enum value or version fails the parse; a parse never strips, so an importer
+// never applies only part of a stored profile.
+
+/**
+ * The filter modes the renderer applies to one product's facet values (§ 2.6). `key` = a STORED attribute key (a
+ * label, or one of the four column keys). Absence of a key = automatic (the repeat rule); `variant` absent = automatic.
+ */
+export const FacetModesSchema = z.strictObject({
+    variant: z.literal("never").optional(),
+    attributes: z.array(z.strictObject({ key: z.string().min(1), mode: z.enum(["always", "never"]) })).default([]),
+});
+export type FacetModes = z.infer<typeof FacetModesSchema>;
+
+/**
+ * What one spec key of the file becomes (§ 2.4). `attribute`: every line with this key gives `{ key: label, value }`
+ * (split on "," when `split` is "comma"). `prose-only`: reviewed, not an attribute; its lines stay in the prose. A key
+ * the profile does not list is not extracted either (it is reported as "not reviewed").
+ */
+export const SpecKeyRuleSchema = z.discriminatedUnion("action", [
+    z.strictObject({ key: z.string().min(1), action: z.literal("attribute"), label: z.string().min(1), split: z.enum(["none", "comma"]) }),
+    z.strictObject({ key: z.string().min(1), action: z.literal("prose-only") }),
+]);
+export type SpecKeyRule = z.infer<typeof SpecKeyRuleSchema>;
+
+export const GlamImportProfileSchema = z.strictObject({
+    version: z.literal(1),
+    /** What one product is (§ 2.1). `trailing-number`: a last all-digit name token is removed from the name. */
+    grouping: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("as-is") }),
+        z.strictObject({ kind: z.literal("trailing-number"), label: z.enum(["removed-token", "format-column"]) }),
+    ]),
+    /** Where the collection comes from (§ 2.3): column 0, or the value of one spec key (fallback: the sheet name). */
+    collection: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("column") }),
+        z.strictObject({ kind: z.literal("spec"), key: z.string().min(1) }),
+    ]),
+    specKeys: z.array(SpecKeyRuleSchema),
+    facetModes: FacetModesSchema,
+});
+export type GlamImportProfile = z.infer<typeof GlamImportProfileSchema>;
+
 export const ProductSchema = z.object({
     id: z.string(),
     tenantId: z.string(),
@@ -1081,6 +1124,12 @@ export const ProductSchema = z.object({
     // CATALOG-MODE-1: written only by the catalog importer (CAT-IMPORT-1), e.g. "glam:<producer>/<sheet>".
     // The authoring routes omit it from their parsed input, so they can never set, change or remove it.
     importSource: z.string().optional(),
+    // CAT-IMPORT-PROFILE-1 (§ 3.2, § 3.4): importer-owned, omitted from the authoring input like `importSource`, so
+    // an admin edit keeps them and cannot set them. `facetModes` = the modes the renderer applies to this product's
+    // facet values; `importProfileRevision` = the revision of the producer's import profile this product was
+    // written with (absent = written without a profile).
+    facetModes: FacetModesSchema.optional(),
+    importProfileRevision: z.number().int().positive().optional(),
 
     createdAt: z.string(),
     updatedAt: z.string(),

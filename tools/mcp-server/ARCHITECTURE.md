@@ -12,7 +12,10 @@ A Model Context Protocol (MCP) server that integrates AMODX with Claude Desktop.
 src/
 ├── index.ts          # MCP server: all 77 tools, block schemas, API helpers
 └── tool-shapes.ts    # PURE request bodies / output lines of create_tenant, create_product, list_products,
-                      #   import_glam_pricelist (glamPricelistRequest / glamPricelistSummary, CAT-IMPORT-1)
+                      #   import_glam_pricelist (glamPricelistRequest / glamPricelistSummary, CAT-IMPORT-1;
+                      #   CAT-IMPORT-PROFILE-1A: the summary adds "Profil: <source>, revizia <n>", the sheets
+                      #   not current and the refused spec lines — the tool sends no profileChoice, so the
+                      #   server applies the producer's stored profile; it cannot change one)
                       #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested)
 
 scripts/

@@ -192,7 +192,18 @@ src/
     │                      #   every touched category (503 + incompleteCategories when the retry bound is
     │                      #   exhausted). Any failure → 500 naming the step. Dry run writes nothing (not even the
     │                      #   CDN marker). Scope catalog:write. The same function serves
-    │                      #   POST /import/glam-pricelist/images: `handler` dispatches on routeKey (exhaustive)
+    │                      #   POST /import/glam-pricelist/images: `handler` dispatches on routeKey (exhaustive).
+    │                      #   CAT-IMPORT-PROFILE-1A: the producer's import profile, TENANT#<t>/IMPORTPROFILE#glam#
+    │                      #   <norm(producer)> (revision; written ONLY by an execution, under the lock, conditioned
+    │                      #   on the observed revision, BEFORE the mutation phase — step `profile`); optional body
+    │                      #   `profileChoice { profile, baseRevision }` (400 when invalid; 409 when made against
+    │                      #   another revision with other content, or when the stored profile is unsupported and
+    │                      #   not replaced); read before the lock only to refuse early, re-read under the lock to
+    │                      #   decide; every product of a profiled import stamped `importProfileRevision` (+
+    │                      #   `facetModes` when not empty). Response members `profile`, `sheets` (per-sheet
+    │                      #   no-profile/current/stale/mixed), `specLineRefusals` (profiled only); dry run also
+    │                      #   `specKeys`, `drafts` (the execution's productItem), `siteProducts`. With no stored
+    │                      #   profile and no non-default choice, every write equals the base commit's (golden test)
     ├── glam-images.ts     # POST /import/glam-pricelist/images (CAT-IMAGES-1) — body { producer, sheet }; copies the
     │                      #   sheet's producer option images into tenant media, ONE BOUNDED BATCH per request (the
     │                      #   admin page repeats until `complete`): set = PRODUCT# query selected by importSource;
@@ -207,7 +218,15 @@ src/
     │                      #   only to drop every specs line holding one as a whole token), group.ts (key
     │                      #   normalisation trim→collapse→lower→NFC, U+001F rule, styles, options merged on equal
     │                      #   label + equal image cell, collision-aware labels and slugs), map.ts (upload
-    │                      #   identifier rule, importSource, GlamStyleDraft DTO, report counts); images.ts
+    │                      #   identifier rule, importSource, GlamStyleDraft DTO, report counts; with an
+    │                      #   AppliedProfile: the profile's row rules, extracted attributes, stamps, refusals);
+    │                      #   profile.ts (CAT-IMPORT-PROFILE-1A: checkProfile, parseProfileChoice,
+    │                      #   readStoredProfile, resolveProfile, applyProfileToRows (grouping trailing-number,
+    │                      #   collection from a spec key → else the sheet name), extractAttributes (union over the
+    │                      #   style's rows), guardSpecLine (value guard B1 + T3: file-wide code cells and money
+    │                      #   words, unfolded AND folded by group.ts `foldTokens` = slugify∘norm, on the line and
+    │                      #   each fragment it can feed), analyseSpecKeys; never sees a raw record — it gets the
+    │                      #   file's code cells as parse.ts `codeCells`); images.ts
     │                      #   (CAT-IMAGES-1: sources + holders, decision per source, per-product rewrite with the
     │                      #   § 3.4 rule injected, termination measure)
     ├── media.ts           # POST /import/media — bulk media import (copies under the image destination policy;
@@ -359,7 +378,10 @@ test live here, both credential-free:
    rule, `cache-2`), `lib/edge-invalidation.ts` (the fast-lane coalescing rule, `cache-4a` —
    dedupe + the `/*` collapse over 30 distinct paths) and `import/glam/` (CAT-IMPORT-1 parser, grouping and
    mapper; `test/unit/glam-import-core.test.ts`, incl. the BOEN acceptance fixture; CAT-IMAGES-1 `images.ts`,
-   `test/unit/glam-images-core.test.ts`). These exist partly *as* pure test seams,
+   `test/unit/glam-images-core.test.ts`; CAT-IMPORT-PROFILE-1A `profile.ts`, `test/unit/glam-profile.test.ts`,
+   incl. the T3 fold corpus `fixtures/glam/cat-import-profile-1a-fold-corpus.json`). The handler's preservation
+   is pinned against a golden captured from the base commit (`test/unit/glam-profile-golden.test.ts`, fixture
+   `fixtures/glam/cat-import-profile-1-baseline.json`, capture `cat-import-profile-1-golden.capture.test.ts`). These exist partly *as* pure test seams,
    extracted from AWS-touching callers precisely so the rule can be pinned here.
 
 2. **AWS-boundary modules — the SDK/`db` boundary is mocked at module load (`vi.mock`), so no

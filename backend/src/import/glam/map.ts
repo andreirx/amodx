@@ -1,8 +1,13 @@
+import type { FacetModes, GlamImportProfile } from "@amodx/shared";
 import type { GlamRow } from "./parse.js";
 import {
     groupStyles, norm, slugify, KEY_SEPARATOR,
     type GlamOptionPlan, type GlamRowResult, type GlamStylePlan,
 } from "./group.js";
+import {
+    applyProfileToRows, buildGuard, extractAttributes, facetModesOf, COLUMN_ATTRIBUTE,
+    type SpecLineGuard, type SpecLineRefusal,
+} from "./profile.js";
 
 /**
  * CAT-IMPORT-1 — the upload fields, and each style → one `GlamStyleDraft` (the storefront product as a raw DTO, never a
@@ -91,6 +96,10 @@ export interface GlamStyleDraft {
     readonly categoryKeys: readonly string[];
     readonly slug: string;
     readonly importSource: string;
+    /** CAT-IMPORT-PROFILE-1 (§ 3.4): present only on a profiled import, and only when the profile's modes are not empty. */
+    readonly facetModes?: FacetModes;
+    /** CAT-IMPORT-PROFILE-1 (§ 3.4): the profile revision of a profiled import; absent without a profile. */
+    readonly importProfileRevision?: number;
     readonly rowIndexes: readonly number[];
 }
 
@@ -122,23 +131,43 @@ export interface GlamImportPlan {
         readonly deduped: number;
         readonly skipped: number;
     };
+    /**
+     * CAT-IMPORT-PROFILE-1: present only on a profiled plan — the revision every product is stamped with, and every
+     * spec line the value guard refused (collection lines and attribute lines), by row.
+     */
+    readonly profile?: { readonly revision: number; readonly refused: readonly SpecLineRefusal[] };
 }
 
-/** The attribute names (spec § 3.4 column table), in the order they are written. */
-const ATTRIBUTE = {
-    collection: "colecție",
-    unit: "unitate",
-    packaging: "împachetare",
-    minimumOrder: "comandă minimă",
-} as const;
+/** The profile a profiled import applies (CAT-IMPORT-PROFILE-1). Absent = an import without a profile (§ 2.8). */
+export interface AppliedProfile {
+    readonly profile: GlamImportProfile;
+    /** The revision every product of the import is stamped with (`importProfileRevision`). */
+    readonly revision: number;
+    /** The file's code cells (`parseGlamCsv(...).codeCells`), for the value guard. */
+    readonly codeCells: ReadonlySet<string>;
+}
+
+/** The attribute names (spec § 3.4 column table), in the order they are written (defined in `./profile.ts`). */
+const ATTRIBUTE = COLUMN_ATTRIBUTE;
 const SPECS_FIELD = "specificații tehnice";
 
 /** The plain description: the specs text with whitespace collapsed, at most this many characters. */
 const DESCRIPTION_LIMIT = 300;
 
-/** Plan the import of one parsed file. Pure. */
-export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload): GlamImportPlan {
-    const grouped = groupStyles(rows, upload.producer);
+/**
+ * Plan the import of one parsed file. Pure. Without `applied` the plan is today's (the 1a golden pins it). With it,
+ * the profile's row rules run before the grouping, each product gains the extracted attributes and the stamps, and
+ * the plan reports the refused spec lines.
+ */
+export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, applied?: AppliedProfile): GlamImportPlan {
+    const extraction = applied ? { applied, guard: buildGuard(applied.codeCells), refused: [] as SpecLineRefusal[] } : undefined;
+    let planned = rows;
+    if (extraction) {
+        const profiled = applyProfileToRows(rows, extraction.applied.profile, upload.sheet, extraction.guard);
+        planned = profiled.rows;
+        extraction.refused.push(...profiled.refused);
+    }
+    const grouped = groupStyles(planned, upload.producer);
     const producerSlug = slugify(norm(upload.producer));
 
     const categories = new Map<string, GlamCategoryDraft>();
@@ -146,9 +175,9 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload): Gl
         const first = style.rows[0];
         const childSlug = slugify(`${norm(upload.producer)} ${norm(first.collection)}`);
         if (!categories.has(producerSlug)) categories.set(producerSlug, { slug: producerSlug, name: upload.producer, parentSlug: null });
-        if (childSlug === producerSlug) return mapStyle(style, upload, [producerSlug]);
+        if (childSlug === producerSlug) return mapStyle(style, upload, [producerSlug], extraction);
         if (!categories.has(childSlug)) categories.set(childSlug, { slug: childSlug, name: first.collection, parentSlug: producerSlug });
-        return mapStyle(style, upload, [producerSlug, childSlug]);
+        return mapStyle(style, upload, [producerSlug, childSlug], extraction);
     });
 
     const relabelled: { slug: string; value: string }[] = [];
@@ -174,10 +203,23 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload): Gl
             deduped: grouped.rows.filter((r) => r.status === "deduped").length,
             skipped: grouped.rows.filter((r) => r.status === "skipped").length,
         },
+        ...(extraction ? {
+            profile: {
+                revision: extraction.applied.revision,
+                refused: [...extraction.refused].sort((a, b) => a.rowIndex - b.rowIndex || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+            },
+        } : {}),
     };
 }
 
-function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string[]): GlamStyleOutcome {
+/** What `mapStyle` needs on a profiled import; the refusals of every style are collected into `refused`. */
+interface Extraction {
+    readonly applied: AppliedProfile;
+    readonly guard: SpecLineGuard;
+    readonly refused: SpecLineRefusal[];
+}
+
+function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string[], extraction?: Extraction): GlamStyleOutcome {
     const first = style.rows[0];
     const specsRow = style.rows.find((r) => r.specs !== "");
 
@@ -187,6 +229,16 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
     attribute(ATTRIBUTE.unit, first.unit);
     attribute(ATTRIBUTE.packaging, first.packaging);
     attribute(ATTRIBUTE.minimumOrder, first.minimumOrder);
+    // CAT-IMPORT-PROFILE-1: the spec-line attributes follow the column attributes (§ 2.4, § 2.5). The prose below is
+    // not changed by a profile (ruling CIP1-PROSE = A).
+    let stamps: { facetModes?: FacetModes; importProfileRevision: number } | undefined;
+    if (extraction) {
+        const extracted = extractAttributes(style.rows, extraction.applied.profile, extraction.guard);
+        attributes.push(...extracted.attributes);
+        extraction.refused.push(...extracted.refused);
+        const facetModes = facetModesOf(extraction.applied.profile);
+        stamps = { ...(facetModes ? { facetModes } : {}), importProfileRevision: extraction.applied.revision };
+    }
 
     // The § 3.4 derivation: the first option image, then the other distinct option images in option order.
     const images: string[] = [];
@@ -217,6 +269,7 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
         categoryKeys,
         slug: style.slug,
         importSource: upload.importSource,
+        ...(stamps ?? {}),
         rowIndexes: style.rows.map((r) => r.index),
     };
     return { draft, options: style.options, differing };

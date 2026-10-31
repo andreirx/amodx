@@ -73,6 +73,10 @@ export function glamPricelistSummary(report: {
     rows: { status: string; index: number; reason?: string }[];
     incompleteCategories?: { categoryId: string }[];
     categoryConflicts?: { slug: string; storedSlug: string }[];
+    /** CAT-IMPORT-PROFILE-1 § 6.4: the profile the import used (`revision` null = no profile stored or saved). */
+    profile?: { source: string; revision: number | null; reason?: string };
+    sheets?: { importSource: string; state: string; revisions: number[] }[];
+    specLineRefusals?: { key: string; rowIndex: number; reason: string }[];
 }): string {
     const c = report.counts;
     const lines = [
@@ -82,6 +86,18 @@ export function glamPricelistSummary(report: {
         `${report.dryRun ? "Would create" : "Created"} ${c.products} products with ${c.options} variants; ${c.deduped} rows merged; ${report.categoriesCreated} new categories`,
         `Skipped ${c.skipped} rows` + (c.skipped ? `: ${report.rows.filter((r) => r.status === "skipped").map((r) => `row ${r.index} ${r.reason}`).join(", ")}` : ""),
     ];
+    if (report.profile) {
+        // The tool cannot change a profile: it applies the producer's stored one (§ 6.4).
+        lines.push(`Profil: ${report.profile.source}, ${report.profile.revision === null ? "fără revizie" : `revizia ${report.profile.revision}`}` +
+            (report.profile.reason ? ` — ${report.profile.reason}` : ""));
+    }
+    const notCurrent = (report.sheets ?? []).filter((x) => x.state !== "current");
+    if (notCurrent.length) {
+        lines.push(`Sheets not current (import them again): ${notCurrent.map((x) => `${x.importSource} ${x.state}${x.revisions.length ? ` [${x.revisions.join(", ")}]` : ""}`).join(", ")}`);
+    }
+    if (report.specLineRefusals?.length) {
+        lines.push(`Spec lines refused by the value guard: ${report.specLineRefusals.map((x) => `row ${x.rowIndex} ${x.key} (${x.reason})`).join(", ")}`);
+    }
     if (report.categoryConflicts?.length) {
         lines.push(`BLOCKED — renamed categories hold keys this import needs: ${report.categoryConflicts.map((x) => `${x.slug} (now ${x.storedSlug})`).join(", ")}; the import would answer 409`);
     }

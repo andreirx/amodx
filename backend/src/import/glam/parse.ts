@@ -52,7 +52,16 @@ export interface GlamRow {
 }
 
 export type GlamParseResult =
-    | { readonly kind: "parsed"; readonly rows: GlamRow[] }
+    | {
+        readonly kind: "parsed";
+        readonly rows: GlamRow[];
+        /**
+         * CAT-IMPORT-PROFILE-1 (§ 4.3, value guard B1/T3): every trimmed, non-empty column-2 and column-5 cell of every
+         * data record of the file. An opaque set for the value guard of `./profile.ts` only — never a `GlamRow` field,
+         * never stored, never in a report.
+         */
+        readonly codeCells: ReadonlySet<string>;
+    }
     | { readonly kind: "refused"; readonly error: string };
 
 /**
@@ -68,6 +77,7 @@ export function parseGlamCsv(text: string): GlamParseResult {
 
     const wrongWidth: string[] = [];
     const rows: GlamRow[] = [];
+    const codeCells = new Set<string>();
     // records[0] is the header: ignored.
     for (let r = 1; r < records.length; r++) {
         const cells = records[r];
@@ -77,6 +87,9 @@ export function parseGlamCsv(text: string): GlamParseResult {
         if (cells.length !== GLAM_COLUMN_COUNT) {
             wrongWidth.push(`row ${index} has ${cells.length}`);
             continue;
+        }
+        for (const cell of [cells[CODE_COLUMNS.codeOld], cells[CODE_COLUMNS.codeNew]]) {
+            if (cell.trim() !== "") codeCells.add(cell.trim());
         }
         rows.push({
             index,
@@ -98,7 +111,7 @@ export function parseGlamCsv(text: string): GlamParseResult {
             error: `The file is not the 12-column pricelist layout: ${shown}${more} cells.`,
         };
     }
-    return { kind: "parsed", rows };
+    return { kind: "parsed", rows, codeCells };
 }
 
 /**
@@ -108,12 +121,20 @@ export function parseGlamCsv(text: string): GlamParseResult {
  */
 function removeCodeLines(specs: string, codeCells: readonly string[]): string {
     const codes = codeCells.map((c) => c.trim()).filter((c) => c !== "");
-    const tokens = codes.map((code) =>
-        new RegExp(`(?<![\\p{L}\\p{N}])${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u"));
+    const tokens = codes.map(wholeTokenPattern);
     return specs
         .split(/\r\n|\r|\n/)
         .filter((line) => !tokens.some((token) => token.test(line)))
         .join("\n");
+}
+
+/**
+ * The whole-token rule of CI1-SPECS-CODES: `text` as a token not preceded or followed by a letter or a digit
+ * (case-sensitive). One rule for the same-row code removal above and the file-wide code check of the value guard
+ * (`./profile.ts`).
+ */
+export function wholeTokenPattern(text: string): RegExp {
+    return new RegExp(`(?<![\\p{L}\\p{N}])${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
 }
 
 export type CsvRecordsResult =
