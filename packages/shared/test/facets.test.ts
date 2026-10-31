@@ -1,5 +1,6 @@
-// CAT-FACETS-1 — units of `src/lib/facets.ts` (spec docs/slices/cat-facets-1.md § 8.3, amended by § 13
-// "CF1-FACET-SET-2"). Pure: no server, no DynamoDB, no React.
+// CAT-FACETS-1 — units of `src/facets.ts` (spec docs/slices/cat-facets-1.md § 8.3, amended by § 13
+// "CF1-FACET-SET-2"). Pure: no server, no DynamoDB, no React. Moved from `renderer/test/unit/` with the module by
+// CAT-IMPORT-PROFILE-1B; only this header and the import path changed. The filter-mode rows are `facet-modes.test.ts`.
 //
 // Fixture shapes follow the measured data (§ 2.2, § 13): one `brand`, the four importer keys (`colecție`, `unitate`,
 // `împachetare`, `comandă minimă`), a single variant group whose labels may be generated (`#<digits>`), and the
@@ -12,7 +13,7 @@ import {
     HREF_BUDGET, PAGE_RESERVE, PRODUCER_FACET, VARIANT_FACET,
     attributeFacetId, buildFacetListing, compareValues, facetValuesOf, formatSelection, isFacetId, listingHref,
     matchesGeneratedLabelForm, parseSelection, selectionFits, utf8Bytes, type FacetListing, type Selection,
-} from "../../src/lib/facets";
+} from "../src/facets";
 
 const MEASURED_COLLECTIONS: string[] = [
     "AURORA - Accessories / Skirtings",

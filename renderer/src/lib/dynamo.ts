@@ -47,7 +47,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS, normalizeEmail } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -71,13 +71,10 @@ function requireTableName(): string {
     return table;
 }
 
-/** Check if a product is within its availability date window */
+/** Check if a product is within its availability date window today (UTC day). The rule is `@amodx/shared`'s
+ *  `isProductAvailable` (CAT-IMPORT-PROFILE-1B moved it there for the admin preview); this binds it to the clock. */
 function isProductAvailable(p: { availableFrom?: string; availableUntil?: string }): boolean {
-    if (!p.availableFrom && !p.availableUntil) return true;
-    const now = new Date().toISOString().split("T")[0];
-    if (p.availableFrom && now < p.availableFrom) return false;
-    if (p.availableUntil && now > p.availableUntil) return false;
-    return true;
+    return isAvailableOn(p, utcDay(new Date()));
 }
 
 // Define a Result Type that handles both cases
@@ -371,6 +368,8 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
  * facet values and the card come from the same committed item. Called only under `isCatalogMode`; the non-catalog
  * shop and category pages keep `getActiveProducts` / `getProductsByCategory` (spec § 7).
  *
+ * The membership, date and order rule below is `catalogListing` in `@amodx/shared` (CAT-IMPORT-PROFILE-1B moved it there,
+ * unchanged — golden `packages/shared/test/fixtures/cat-import-profile-1b-baseline.json`); this function keeps the read.
  * Membership is what the two existing reads give (the two preservation obligations of § 3.3 B):
  *   - shop: `status === "active"` — the in-memory form of `getActiveProducts`' `FilterExpression #s = :active`
  *     (both are true exactly when the attribute exists and is the string "active");
@@ -382,7 +381,8 @@ export async function getActiveProducts(tenantId: string, page: number = 1, limi
  *     ASCII ids this is the order the stable `sortOrder` sort already gives — stated explicitly so the order does
  *     not depend on the store's page order (serving-contract row `cf1-order`).
  * The projection is `getActiveProducts`' card fields plus `status` (the in-memory rule needs it) and the three facet
- * sources `brand`, `attributes`, `variants`. No monetary field is read by the facets (CM-D8); the card suppresses
+ * sources `brand`, `attributes`, `variants`, plus `facetModes` (CAT-IMPORT-PROFILE-1B: the importer-owned filter modes
+ * the facet rules apply, design § 2.6). No monetary field is read by the facets (CM-D8); the card suppresses
  * price on a catalog site. Cost (§ 3.2): the whole tenant per uncached render — what the shop page already reads.
  */
 export async function getCatalogListing(tenantId: string, categoryId?: string): Promise<any[]> {
@@ -400,21 +400,15 @@ export async function getCatalogListing(tenantId: string, categoryId?: string): 
                 ":sk": "PRODUCT#",
             },
             ExpressionAttributeNames: { "#s": "status", "#b": "brand", "#a": "attributes", "#v": "variants" },
-            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, #s, #b, #a, #v",
+            ProjectionExpression: "id, title, slug, price, currency, salePrice, availability, imageLink, tags, categoryIds, sortOrder, volumePricing, availableFrom, availableUntil, #s, #b, #a, #v, facetModes",
             ExclusiveStartKey: lastKey,
         }));
         allItems.push(...(result.Items || []));
         lastKey = result.LastEvaluatedKey;
     } while (lastKey);
 
-    const member = categoryId === undefined
-        ? (p: any) => p.status === "active"
-        : (p: any) => (!p.status || p.status === "active") && Array.isArray(p.categoryIds) && p.categoryIds.includes(categoryId);
-
-    return allItems
-        .filter(member)
-        .filter((p: any) => isProductAvailable(p))
-        .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    // Membership, date window and order: the shared rule, so the admin's import preview lists what the site lists.
+    return catalogListing(allItems, categoryId, utcDay(new Date()));
 }
 
 // Search products by text query (title, description, sku, tags)

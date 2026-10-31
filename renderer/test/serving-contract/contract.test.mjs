@@ -37,7 +37,7 @@ import {
     CM1_BASELINE_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
 import {
-    CM1, CM1_STALE_SLUG, CF1, ITEMS,
+    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1690,6 +1690,80 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.equal(c.status, 200);
             assert.deepEqual(chipsOf(c.body), []);
             assert.equal(totalOf(c.body), 42);
+        });
+
+        // ── ROWS (cip1b-*) — filter modes copied onto products (slice cat-import-profile-1b) ────────────────────────
+        // Design docs/slices/cat-import-profile-1.md § 2.6 under ruling CIP1-FILTER-PRECEDENCE = S-A with N2: "always"
+        // overrides the repeat rule; "never" suppresses the OFFER only — matching and counts are kept. Fixtures: the
+        // `CIP1B` block of fixtures.mjs, a tenant of its own (no `cm1-*` / `cf1-*` row sees it). The stub ignores
+        // `ProjectionExpression`, so these rows prove the render path; the projection itself is pinned by
+        // `test/unit/catalog-listing.test.ts`. Helpers are the cf1 rows' (same panel markup).
+        const cipGet = (p) => request({ port: server.port, path: p, host: CIP1B.host });
+        const facetOrder = (body) => [...htmlOf(body).matchAll(/data-facet="([^"]+)"/g)].map((m) => m[1]);
+        const cipProducts = ITEMS.filter((i) => i.PK === `TENANT#${CIP1B.id}` && i.SK.startsWith("PRODUCT#"));
+
+        test("(cip1b-never) BOEN marks Certificates and Esență never: neither is offered on its category, although Certificates would pass the repeat rule and narrow", async () => {
+            // Premise (data): FSC on 2 of the 3 BOEN products — without the mode the facet is offered and shown.
+            const holders = cipProducts.filter((p) => p.categoryIds.includes("cip1b-boen") && p.attributes.some((a) => a.key === "Certificates"));
+            assert.equal(holders.length, 2);
+            const res = await cipGet("/category/cip1b-boen");
+            assert.equal(res.status, 200);
+            assert.deepEqual(cardSlugs(res.body), ["stejar-mixt", "frasin-mixt", "nuc-fara-fisa"]);
+            assert.equal(facetRows(res.body, "a.Certificates"), null);
+            assert.equal(facetRows(res.body, "a.Esență"), null);
+            assert.deepEqual(facetOrder(res.body), ["varianta"], "only BOEN's own variant facet (no mode) is shown");
+        });
+
+        test("(cip1b-variant-never) ITC marks variant never: no `varianta` on its category; a colour selected through the URL still matches both products", async () => {
+            const bare = await cipGet("/category/cip1b-itc");
+            assert.equal(bare.status, 200);
+            assert.deepEqual(cardSlugs(bare.body), ["covor-arc", "covor-shell"]);
+            assert.equal(facetRows(bare.body, "varianta"), null);
+            const sel = await cipGet(`/category/cip1b-itc${fParam([["varianta", "34"]])}`);
+            assert.equal(sel.status, 200);
+            assert.deepEqual(cardSlugs(sel.body), ["covor-arc", "covor-shell"], "matching kept (N2)");
+            assert.deepEqual(plainRows(facetRows(sel.body, "varianta")), [{ state: "selected", value: "34", count: 2 }], "nothing listed but the selection");
+        });
+
+        test("(cip1b-mixed) the § 2.6 mixed-producer witness on the shop: Esență offered, Oak (3) Ash (1); selecting Oak lists the BOEN product too", async () => {
+            const res = await cipGet("/shop");
+            assert.equal(res.status, 200);
+            assert.deepEqual(plainRows(facetRows(res.body, "a.Esență")), [
+                { state: "link", value: "Ash", count: 1 },
+                { state: "link", value: "Oak", count: 3 },
+            ]);
+            const oak = await cipGet(facetRows(res.body, "a.Esență").find((r) => r.value === "Oak").href);
+            assert.equal(oak.status, 200);
+            assert.deepEqual(cardSlugs(oak.body), ["stejar-mixt", "lemn-x-unu", "lemn-x-doi"]);
+            assert.deepEqual(chipsOf(oak.body), ["Esență: Oak"]);
+            // The BOEN product's page shows the value its card was matched on.
+            const page = await cipGet("/product/stejar-mixt");
+            assert.equal(page.status, 200);
+            assert.ok(htmlOf(page.body).includes('<dt class="text-muted-foreground">Esență</dt><dd class="font-medium">Oak</dd>'));
+        });
+
+        test("(cip1b-shop-modes) on the shop: `always` offers a one-holder key; variant never keeps ITC colours out of `varianta`; an unknown mode is automatic; Certificates (never everywhere) absent", async () => {
+            const res = await cipGet("/shop");
+            assert.deepEqual(plainRows(facetRows(res.body, "a.Finisaj")), [{ state: "link", value: "Mat", count: 1 }], "always: rule (i) overridden");
+            assert.deepEqual(plainRows(facetRows(res.body, "varianta")), [
+                { state: "link", value: "13,2x181x2200 mm", count: 1 },
+                { state: "link", value: "14x138x2200 mm", count: 2 },
+            ], "BOEN sizes only");
+            assert.deepEqual(plainRows(facetRows(res.body, "a.Nod")), [{ state: "link", value: "da", count: 2 }], "mode 'sometimes' = automatic");
+            assert.equal(facetRows(res.body, "a.Certificates"), null);
+            // § 13 order: producer, variant, then keys by holders — every holder, silent ones included (Esență 4, Nod 2,
+            // Finisaj 1). The discriminating order case (silent holders decide the order) is the unit in facet-modes.test.ts.
+            assert.deepEqual(facetOrder(res.body), ["producator", "varianta", "a.Esență", "a.Nod", "a.Finisaj"]);
+        });
+
+        test("(cip1b-attributes-joined) a key stored twice is one row on the product page, values joined by \", \"", async () => {
+            const page = await cipGet("/product/stejar-mixt");
+            assert.equal(page.status, 200);
+            const html = htmlOf(page.body);
+            assert.ok(html.includes('<dt class="text-muted-foreground">Format</dt><dd class="font-medium">14x138x2200 mm, 13,2x181x2200 mm</dd>'));
+            assert.equal(html.split('<dt class="text-muted-foreground">Format</dt>').length - 1, 1, "one Format row");
+            // A marked key is still displayed: `never` hides the filter, not the attribute.
+            assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
     }
 

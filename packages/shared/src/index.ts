@@ -25,6 +25,18 @@ export {
     type MediaKind, type UploadValidationResult,
 } from "./media.js";
 
+// Re-export the catalog facet rules and the catalog listing rule (CAT-IMPORT-PROFILE-1B, moved from the renderer by
+// ruling CIP1-PREVIEW = A): one implementation for the public site and the admin's import preview.
+export {
+    PRODUCER_FACET, VARIANT_FACET, ATTRIBUTE_FACET_PREFIX, HREF_BUDGET, PAGE_RESERVE, MAX_ATTRIBUTE_VALUES, MIN_HOLDERS,
+    attributeFacetId, isFacetId, compareValues, matchesGeneratedLabelForm, facetValuesOf, parseSelection,
+    formatSelection, utf8Bytes, listingHref, selectionFits, buildFacetListing,
+    type FacetProduct, type Selection, type FacetValueView, type FacetView, type SelectionChip, type FacetListing,
+} from "./facets.js";
+export {
+    utcDay, isProductAvailable, catalogListing, catalogListingPath, type CatalogListingItem,
+} from "./catalog-listing.js";
+
 // ==========================================
 // 1. GLOBAL ENUMS & CONSTANTS
 // ==========================================

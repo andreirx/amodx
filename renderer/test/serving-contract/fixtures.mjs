@@ -419,6 +419,48 @@ const cf1CatProds = cf1CatalogProducts.map((p) => {
 for (const c of cf1CatProds) if (c.imageLink === undefined) delete c.imageLink;
 for (const p of cf1CatalogProducts) if (p.imageLink === undefined) delete p.imageLink;
 
+// ── CAT-IMPORT-PROFILE-1B filter-mode fixtures (design docs/slices/cat-import-profile-1.md § 2.6, ruling
+// CIP1-FILTER-PRECEDENCE = S-A with N2) ───────────────────────────────────────────────────────────────────────────
+// A tenant of its own (`cip1b-catalog`), so no `cm1-*` / `cf1-*` row sees a new product. Products carry `facetModes`
+// as the importer writes them (`FacetModesSchema`), one producer per category:
+//  - `cip1b-boen` (BOEN): `Esență` and `Certificates` marked "never". `Certificates` = FSC on 2 of 3 products, so
+//    without the mode it would be shown (repeat rule passes, it narrows). `stejar-mixt` stores the attribute `Format`
+//    twice (two option values) — the product page shows one joined row.
+//  - `cip1b-itc` (ITC): `variant: "never"`; colour numbers shared between the two products (would be shown without it).
+//  - `cip1b-x` (XPROD): `Esență` and `Finisaj` marked "always"; `Finisaj` has one holder (rule (i) fails without it).
+//  - `cip1b-u` (U): `Nod` on two products, one of them with the unknown mode "sometimes" (= automatic, § 3.3 item 6).
+// On the shop the BOEN/XPROD pair is the § 2.6 mixed-producer witness: `Esență: Oak` on BOEN `stejar-mixt` (never)
+// and on XPROD `lemn-x-unu`, `lemn-x-doi` (always); `Esență: Ash` on `lemn-x-trei`.
+export const CIP1B = { id: "cip1b-catalog", host: "cip1b-catalog.serving-contract.test" };
+const CIP1B_ID = (n) => `c1b00000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const cip1bBoenModes = { attributes: [{ key: "Esență", mode: "never" }, { key: "Certificates", mode: "never" }] };
+const cip1bItcModes = { variant: "never", attributes: [] };
+const cip1bXModes = { attributes: [{ key: "Esență", mode: "always" }, { key: "Finisaj", mode: "always" }] };
+const cip1b = (n, title, slug, category, fields) => cm1Product(CIP1B.id, { id: CIP1B_ID(n), title, slug, categoryIds: [category], ...fields });
+const cip1bProducts = [
+    cip1b(1, "Stejar Mixt", "stejar-mixt", "cip1b-boen", {
+        brand: "BOEN", facetModes: cip1bBoenModes, variants: cf1Format("14x138x2200 mm", "13,2x181x2200 mm"),
+        attributes: cf1Attrs([["Esență", "Oak"], ["Certificates", "FSC"], ["Format", "14x138x2200 mm"], ["Format", "13,2x181x2200 mm"]]),
+    }),
+    cip1b(2, "Frasin Mixt", "frasin-mixt", "cip1b-boen", { brand: "BOEN", facetModes: cip1bBoenModes, variants: cf1Format("14x138x2200 mm"), attributes: cf1Attrs([["Certificates", "FSC"]]) }),
+    cip1b(3, "Nuc Fara Fisa", "nuc-fara-fisa", "cip1b-boen", { brand: "BOEN", facetModes: cip1bBoenModes }),
+    cip1b(11, "Covor Arc", "covor-arc", "cip1b-itc", { brand: "ITC", facetModes: cip1bItcModes, variants: [{ id: "culoare", name: "Culoare", options: [{ value: "10" }, { value: "34" }] }] }),
+    cip1b(12, "Covor Shell", "covor-shell", "cip1b-itc", { brand: "ITC", facetModes: cip1bItcModes, variants: [{ id: "culoare", name: "Culoare", options: [{ value: "34" }, { value: "50" }] }] }),
+    cip1b(21, "Placa Nod", "placa-nod", "cip1b-u", { brand: "U", facetModes: { attributes: [{ key: "Nod", mode: "sometimes" }] }, attributes: cf1Attrs([["Nod", "da"]]) }),
+    cip1b(22, "Placa Nod Doi", "placa-nod-doi", "cip1b-u", { brand: "U", attributes: cf1Attrs([["Nod", "da"]]) }),
+    cip1b(31, "Lemn X Unu", "lemn-x-unu", "cip1b-x", { brand: "XPROD", facetModes: cip1bXModes, attributes: cf1Attrs([["Esență", "Oak"], ["Finisaj", "Mat"]]) }),
+    cip1b(32, "Lemn X Doi", "lemn-x-doi", "cip1b-x", { brand: "XPROD", facetModes: cip1bXModes, attributes: cf1Attrs([["Esență", "Oak"]]) }),
+    cip1b(33, "Lemn X Trei", "lemn-x-trei", "cip1b-x", { brand: "XPROD", facetModes: cip1bXModes, attributes: cf1Attrs([["Esență", "Ash"]]) }),
+];
+const CIP1B_ITEMS = [
+    cm1Tenant(CIP1B, "CIP1B Catalog", { commerceEnabled: false, catalogMode: true }),
+    cm1Category(CIP1B.id, "cip1b-boen", "cip1b-boen", "BOEN"),
+    cm1Category(CIP1B.id, "cip1b-itc", "cip1b-itc", "ITC"),
+    cm1Category(CIP1B.id, "cip1b-x", "cip1b-x", "XPROD"),
+    cm1Category(CIP1B.id, "cip1b-u", "cip1b-u", "U"),
+    ...cip1bProducts,
+];
+
 const CM1_ITEMS = [
     cm1Tenant(CM1.commerce, "CM1 Commerce", { commerceEnabled: true, searchBar }),
     ...cm1Pages(CM1.commerce.id, [showcase("rugs")], { staleShowcase: true }),
@@ -471,6 +513,8 @@ export const ITEMS = [
     siteContentItem(ISO_TENANT_B, "b-about", ABOUT_SLUG, ISO_ABOUT_TITLE_B),
     // cat-mode-1: CM1-BYTE-IDENTITY tenants (above).
     ...CM1_ITEMS,
+    // cat-import-profile-1b: the filter-mode tenant (above).
+    ...CIP1B_ITEMS,
 ];
 
 /**

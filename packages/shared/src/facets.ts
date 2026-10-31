@@ -1,6 +1,8 @@
 // CAT-FACETS-1 — storefront filters of a catalog site (spec docs/slices/cat-facets-1.md §§ 2, 4, 5.1, amended by
-// § 12 and § 13 "CF1-FACET-SET-2"). PURE: no I/O, no React, no Next. Users: the catalog category and shop branches of
-// `components/SitePage.tsx` and `test/unit/facets.test.ts`.
+// § 12 and § 13 "CF1-FACET-SET-2"). PURE: no I/O, no React, no Next. Moved from `renderer/src/lib/facets.ts` to this
+// package by CAT-IMPORT-PROFILE-1B (ruling CIP1-PREVIEW = A) so the admin's import preview (slice 1c) builds the panel
+// with the same function as the site. Users: the catalog category and shop branches of
+// `renderer/src/components/SitePage.tsx`; tests `test/facets.test.ts`, `test/facet-modes.test.ts` and the 1b golden.
 //
 // What this module decides, from the base set (the page's products before any facet filter) and the raw `f` string:
 //   - the facet set (§ 13): the producer (`brand`), the variant option values, then every `attributes` key that passes
@@ -13,7 +15,10 @@
 //     are OFFERED; § 2.3 / § 4.3 keep every selection visible and removable);
 //   - the filtered list (§ 4.1: OR within a facet, AND across facets), the disjunctive counts, which facets are shown
 //     (§ 2.3) and which values are links, disabled, or blocked by the URL budget (§ 5.1);
-//   - every href the filter panel emits, each measured in UTF-8 bytes on its final string (§ 5.1 invariant).
+//   - every href the filter panel emits, each measured in UTF-8 bytes on its final string (§ 5.1 invariant);
+//   - the filter modes a product carries (`facetModes`, written by the importer from the producer's import profile;
+//     docs/slices/cat-import-profile-1.md § 2.6, ruling CIP1-FILTER-PRECEDENCE = S-A with N2). See `modesOf` and
+//     `facetDefs`. A base set in which no product carries `facetModes` gives exactly the pre-1b result (1b golden).
 
 /** The URL inner key of the producer facet (`brand`). */
 export const PRODUCER_FACET = "producator";
@@ -54,6 +59,8 @@ export type FacetProduct = {
     brand?: unknown;
     attributes?: unknown;
     variants?: unknown;
+    /** `FacetModesSchema` as stored; read tolerantly (`modesOf`): anything this module does not know = automatic. */
+    facetModes?: unknown;
 };
 
 /** Facet id → the selected values. A key with an empty set is not a selection. */
@@ -162,6 +169,50 @@ export function facetValuesOf(p: FacetProduct): Map<string, Set<string>> {
     return out;
 }
 
+// ── filter modes of one product (cat-import-profile-1 § 2.6, ruling S-A with N2) ─────────────────────────────────
+
+/** The mode one product gives one attribute key. Absent = automatic (the repeat rule decides). */
+type AttributeMode = "always" | "never";
+
+/**
+ * The filter modes one product carries, read from its stored `facetModes`:
+ *   - `silentVariant`: `variant` is exactly "never";
+ *   - `attributes`: attribute key → its mode, for the FIRST entry of each key (the importer writes each key once,
+ *     `checkProfile`); an entry whose mode is not "always" / "never" is automatic (§ 3.3 item 6: a value written by a
+ *     newer importer is treated as absent), and so is everything that is not the stored shape.
+ * The failure direction of every tolerance here is presentation only: a facet may be offered that the profile hid.
+ */
+function modesOf(p: FacetProduct): { silentVariant: boolean; attributes: Map<string, AttributeMode> } {
+    const attributes = new Map<string, AttributeMode>();
+    const fm = p.facetModes;
+    if (!fm || typeof fm !== "object") return { silentVariant: false, attributes };
+    const entries = (fm as any).attributes;
+    if (Array.isArray(entries)) {
+        const seen = new Set<string>();
+        for (const e of entries) {
+            const key = e && typeof e === "object" ? (e as any).key : undefined;
+            if (!nonEmptyString(key) || seen.has(key)) continue;
+            seen.add(key);
+            const mode = (e as any).mode;
+            if (mode === "always" || mode === "never") attributes.set(key, mode);
+        }
+    }
+    return { silentVariant: (fm as any).variant === "never", attributes };
+}
+
+type Modes = ReturnType<typeof modesOf>;
+
+/**
+ * A SILENT holder of facet `id` (§ 2.6): a product that marks the facet `never` — attribute `k` with mode "never", or
+ * the variant facet with `variant: "never"`. The producer facet has no mode. Under N2 a silent holder's values do not
+ * count toward the offer and are not listed; they still match a selection and still count in the listed values.
+ */
+function isSilent(modes: Modes, id: string): boolean {
+    if (id === VARIANT_FACET) return modes.silentVariant;
+    const key = attributeKeyOf(id);
+    return key !== null && modes.attributes.get(key) === "never";
+}
+
 // ── the facet set (§ 13) ───────────────────────────────────────────────────────────────────────────────────────
 
 /** § 4.5: the variant heading — the one group name every product with options shares, else "Variantă". */
@@ -174,44 +225,60 @@ function variantLabel(base: FacetProduct[]): string {
 
 /**
  * One facet the panel may render. `offered` = its values may be ADDED to the selection: always true for the producer
- * and variant facets; for an attribute key, true when it passes the § 13 repeat rule on this base set. A selected
+ * and variant facets; for an attribute key, true when it is offered on this base set (`facetDefs`). A selected
  * attribute key that is not offered is still rendered, with its selected values only (operator ruling 1).
  */
 type FacetDef = { id: string; label: string; offered: boolean };
 
 /**
  * The facets of this base set and selection, in § 13 order: producer, variant values, then the attribute facets —
- * every key that passes the repeat rule ((i) ≥ 2 products hold it, (ii) its most frequent value is held by ≥ 2
- * products, (iii) it has ≤ 40 distinct values) and every selected attribute key — by number of holders (descending),
- * ties by `compareValues` on the key. Label of an attribute facet = the key as stored.
+ * every OFFERED key and every selected attribute key — by number of holders (descending; EVERY holder, silent ones
+ * included — the modes do not change the order), ties by `compareValues` on the key. Label of an attribute facet =
+ * the key as stored.
+ *
+ * Attribute key `k` is OFFERED (cat-import-profile-1 § 2.6, N2) when, counting only the products that do not mark `k`
+ * "never" (its non-silent holders):
+ *   - some of them marks `k` "always" — whatever the repeat rule gives; or
+ *   - `k` passes the § 13 repeat rule: (i) ≥ 2 of them hold it, (ii) its most frequent value is held by ≥ 2 of them,
+ *     (iii) it has ≤ 40 distinct values among them.
+ * The modes change only what § 2.6 names — the offer and the listed values; everything else (order, labels, matching,
+ * counts) is computed over every product, as before. With no `facetModes` on any product, every holder is non-silent
+ * and nothing is "always": the pre-1b rule.
  */
-function facetDefs(base: FacetProduct[], valuesOf: Map<string, Set<string>>[], selection: Selection): FacetDef[] {
-    const holders = new Map<string, number>();
-    const valueHolders = new Map<string, Map<string, number>>();
-    for (const values of valuesOf) {
+function facetDefs(base: FacetProduct[], valuesOf: Map<string, Set<string>>[], modes: Modes[], selection: Selection): FacetDef[] {
+    const holders = new Map<string, number>();              // every holder: the § 13 order
+    const offerHolders = new Map<string, number>();         // non-silent holders: the offer
+    const valueHolders = new Map<string, Map<string, number>>();   // non-silent holders per value: the offer
+    const always = new Set<string>();
+    valuesOf.forEach((values, i) => {
         for (const [id, set] of values) {
-            if (attributeKeyOf(id) === null || set.size === 0) continue;
+            const key = attributeKeyOf(id);
+            if (key === null || set.size === 0) continue;
             holders.set(id, (holders.get(id) ?? 0) + 1);
+            if (isSilent(modes[i], id)) continue;
+            if (modes[i].attributes.get(key) === "always") always.add(id);
+            offerHolders.set(id, (offerHolders.get(id) ?? 0) + 1);
             let byValue = valueHolders.get(id);
             if (!byValue) valueHolders.set(id, (byValue = new Map()));
             for (const v of set) byValue.set(v, (byValue.get(v) ?? 0) + 1);
         }
-    }
+    });
     const passesRepeatRule = (id: string) => {
         const byValue = valueHolders.get(id);
         if (!byValue) return false;
         // (i) is implied by (ii) — a value held by ≥ 2 products means ≥ 2 holders; kept so the code reads as the rule.
-        return holders.get(id)! >= MIN_HOLDERS
+        return offerHolders.get(id)! >= MIN_HOLDERS
             && Math.max(...byValue.values()) >= MIN_HOLDERS
             && byValue.size <= MAX_ATTRIBUTE_VALUES;
     };
-    const ids = new Set([...holders.keys()].filter(passesRepeatRule));
+    const isOffered = (id: string) => always.has(id) || passesRepeatRule(id);
+    const ids = new Set([...holders.keys()].filter(isOffered));
     for (const id of selection.keys()) if (attributeKeyOf(id) !== null) ids.add(id);
     const attributeIds = [...ids].sort((a, b) => (holders.get(b) ?? 0) - (holders.get(a) ?? 0) || compareValues(attributeKeyOf(a)!, attributeKeyOf(b)!));
     return [
         { id: PRODUCER_FACET, label: PRODUCER_LABEL, offered: true },
         { id: VARIANT_FACET, label: variantLabel(base), offered: true },
-        ...attributeIds.map((id) => ({ id, label: attributeKeyOf(id)!, offered: passesRepeatRule(id) })),
+        ...attributeIds.map((id) => ({ id, label: attributeKeyOf(id)!, offered: isOffered(id) })),
     ];
 }
 
@@ -310,11 +377,16 @@ function matches(values: Map<string, Set<string>>, sel: Selection, exceptId: str
  * path every href starts with, including any `basePath`).
  *
  * Counts are disjunctive (§ 4.1): count(F, v) = products of the base set that match every active selection of the
- * OTHER facets and hold v. A facet is shown iff it has a selection, or some value is held by at least one but not all
- * products of the base set (§ 2.3). A selected value is always listed (a stale one with count 0, § 4.3).
+ * OTHER facets and hold v. A facet is shown iff it has a selection, or some LISTED value is held by at least one but
+ * not all products of the base set (§ 2.3). A selected value is always listed (a stale one with count 0, § 4.3).
+ *
+ * Filter modes (cat-import-profile-1 § 2.6, N2): an offered facet lists the values of its NON-SILENT holders (plus the
+ * selected values); a silent holder's values are not listed, but every product — silent or not — matches a selection
+ * and counts in the listed values' counts. So a selected value lists every product that shows it on its page.
  */
 export function buildFacetListing<P extends FacetProduct>(base: P[], f: string | undefined, path: string): FacetListing<P> {
     const valuesOf = base.map(facetValuesOf);
+    const modes = base.map(modesOf);
 
     // Every facet id of the parse is kept, offered on this base set or not (operator ruling 1 on review-0).
     let selection = parseSelection(f);
@@ -325,28 +397,32 @@ export function buildFacetListing<P extends FacetProduct>(base: P[], f: string |
     const items: P[] = [];
     base.forEach((p, i) => { if (matches(valuesOf[i], selection, null)) items.push(p); });
 
-    const defs = facetDefs(base, valuesOf, selection);
+    const defs = facetDefs(base, valuesOf, modes, selection);
     const labelOf = new Map(defs.map((d) => [d.id, d.label]));
     let budgetHint = false;
     const facets: FacetView[] = [];
     for (const def of defs) {
         const baseHolders = new Map<string, number>();
         const counts = new Map<string, number>();
+        const nonSilentValues = new Set<string>();     // the values an offer lists: those of the non-silent holders
         valuesOf.forEach((values, i) => {
             const held = values.get(def.id);
             if (!held) return;
             const counted = matches(valuesOf[i], selection, def.id);
+            const silent = isSilent(modes[i], def.id);
             for (const v of held) {
                 baseHolders.set(v, (baseHolders.get(v) ?? 0) + 1);
                 if (counted) counts.set(v, (counts.get(v) ?? 0) + 1);
+                if (!silent) nonSilentValues.add(v);
             }
         });
         const selected = selection.get(def.id) ?? new Set<string>();
-        const narrows = [...baseHolders.values()].some((n) => n < base.length);
+        // § 2.3 over the listed values: selecting v lists every holder of v, silent ones included (N2).
+        const narrows = [...nonSilentValues].some((v) => baseHolders.get(v)! < base.length);
         if (selected.size === 0 && !narrows) continue;
 
         // A facet that is not offered lists only its selected values: nothing can be added to it.
-        const listed = def.offered ? [...new Set([...baseHolders.keys(), ...selected])] : [...selected];
+        const listed = def.offered ? [...new Set([...nonSilentValues, ...selected])] : [...selected];
         const values: FacetValueView[] = listed.sort(compareValues).map((value) => {
             const count = counts.get(value) ?? 0;
             if (selected.has(value)) return { state: "selected", value, count, href: withinBudget(listingHref(path, withoutValue(selection, def.id, value))) };

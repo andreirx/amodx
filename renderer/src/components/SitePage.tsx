@@ -22,7 +22,7 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode, catalogListingPath } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -38,7 +38,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
 import { InterestToggle, InterestListPage } from "@/components/InterestShortlist";
-import { buildFacetListing, listingHref, utf8Bytes, HREF_BUDGET, type FacetListing, type FacetValueView } from "@/lib/facets";
+import { buildFacetListing, listingHref, utf8Bytes, HREF_BUDGET, type FacetListing, type FacetValueView } from "@amodx/shared";
 import type { ReactNode } from "react";
 
 // NEW: Auth Imports — signature verification only, no cookie access from this module.
@@ -290,7 +290,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             const page = parseInt(query.page || "1");
             // CAT-FACETS-1: a catalog site lists the category from its `PRODUCT#` items and filters it (`?f=`).
             if (catalog) {
-                const path = `${prefixes.category}/${category.slug}`;
+                const path = catalogListingPath(prefixes, category.slug);
                 const listing = buildFacetListing(await getCatalogListing(config.id, category.id), query.f, `${basePath}${path}`);
                 const start = (page - 1) * 24;
                 return <CategoryPageView category={category} products={listing.items.slice(start, start + 24)} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(path, listing.selection) }} />;
@@ -303,7 +303,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             const page = parseInt(query.page || "1");
             // CAT-FACETS-1: a catalog site's shop is filtered (`?f=`); same `PRODUCT#` read, plus the facet fields.
             if (catalog) {
-                const shopUrl = prefixes.shop || "/magazin";
+                const shopUrl = catalogListingPath(prefixes, undefined);
                 const [base, categories] = await Promise.all([getCatalogListing(config.id), getAllCategories(config.id)]);
                 const listing = buildFacetListing(base, query.f, `${basePath}${shopUrl}`);
                 const start = (page - 1) * 24;
@@ -796,16 +796,27 @@ function interestToggleProps(tenantId: string, product: any) {
     };
 }
 
-/** CATALOG-MODE-1 (F-1): the product's `attributes` (e.g. unit, packaging, minimum order) as a key/value list. */
+/**
+ * CATALOG-MODE-1 (F-1): the product's `attributes` (e.g. unit, packaging, minimum order) as a key/value list.
+ * CAT-IMPORT-PROFILE-1B (design § 2.5): a key may be stored more than once (a value per option, or a split list);
+ * such a key is ONE row, at the place of its first entry, with its values in stored order joined by ", ". A product
+ * whose keys are all distinct renders exactly the rows it rendered before.
+ */
 function ProductAttributes({ attributes }: { attributes: { key: string; value: string }[] }) {
-    const rows = attributes.filter((a) => a.key && a.value);
-    if (rows.length === 0) return null;
+    const rows = new Map<string, string[]>();
+    for (const a of attributes) {
+        if (!a.key || !a.value) continue;
+        const values = rows.get(a.key);
+        if (values) values.push(a.value);
+        else rows.set(a.key, [a.value]);
+    }
+    if (rows.size === 0) return null;
     return (
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm border-t pt-4">
-            {rows.map((a, i) => (
+            {[...rows].map(([key, values], i) => (
                 <div key={i} className="contents">
-                    <dt className="text-muted-foreground">{a.key}</dt>
-                    <dd className="font-medium">{a.value}</dd>
+                    <dt className="text-muted-foreground">{key}</dt>
+                    <dd className="font-medium">{values.join(", ")}</dd>
                 </div>
             ))}
         </dl>
@@ -1107,7 +1118,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
 // Server-rendered, no JavaScript. Every value is a plain `<a>` to the URL with that value added or removed: no form,
 // no client state, no prefetch (a plain anchor is never prefetched — load reduction, § 5.3), `rel="nofollow"` (§ 5.4).
 // The model — which facets, which values, every href already measured against the URL budget — comes from
-// `lib/facets.ts`; these components only lay it out. Copy is fixed Romanian (§ 6), like the catalog controls.
+// `@amodx/shared` (`facets.ts`); these components only lay it out. Copy is fixed Romanian (§ 6), like the catalog controls.
 
 /** The catalog listing's filter state, passed to the shop and category views only on a catalog site. */
 type CatalogFacets = { listing: FacetListing<any>; pagerBase: string };

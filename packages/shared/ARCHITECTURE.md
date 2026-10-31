@@ -14,6 +14,8 @@ src/
 ├── normalizeEmail.ts   # normalizeEmail() — the canonical email identity primitive (PD-001, slice fnd-1)
 ├── slug.ts             # normalizeSlug(), needsSlugReview() — the content-slug rule (backend-contract-1 D3; moved here by import-policy-1)
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
+├── facets.ts           # Catalog storefront filter rules: buildFacetListing, the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
+├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
 └── country-packs/      # Per-country locale/currency/address packs
 ```
 
@@ -85,6 +87,9 @@ shape** — a function with its own contract and its own test file.
 | `normalizeEmail(raw)` | `NFKC → trim → lowercase`. Pure, deterministic, idempotent, no locale/env/IO. Its output IS the `CUSTOMER#<email>` sort key and the pre-image of the Cognito username hash (PD-001) | **Nothing yet** — slice `fnd-1` added the primitive and migrated zero call sites by design; `fnd-2` migrates the 14 inline sites (inventory in `docs/slices/fnd-1-normalize-email.md`) |
 | `normalizeSlug(raw)` | Pure. lowercase + trim → `[\s_]+`→`-` → strip `[^a-z0-9-/]` → collapse `-+` → strip trailing `-` → ensure leading `/`. Applied to a slug supplied to create and to a changed slug on update; NOT applied by the WordPress importer, which stores `/<wp:post_name>` raw by human decision (slice `import-policy-1`). Full contract in the module header | `backend/src/content/create.ts`, `backend/src/content/update.ts`, `admin/src/pages/ContentEditor.tsx` ("saved as" text) |
 | `needsSlugReview(slug)` | Pure. `slug !== normalizeSlug(slug)` — a text rule only: it says the slug breaks the slug rules, it knows nothing of where the slug came from | `admin/src/pages/ContentList.tsx` (REVIEW SLUG badge), `admin/src/pages/ContentEditor.tsx` (red URL line) |
+| `buildFacetListing(base, f, path)` (+ `parseSelection`, `formatSelection`, `listingHref`, `selectionFits`, `facetValuesOf`, `compareValues`, …) | Pure. The catalog filter panel model: from a base set, the raw `f` and the page path — the filtered items, the shown facets with disjunctive counts, chips, and every href measured against the 6,144-byte budget. Facet set = producer, variant values, then every attribute key that is offered. Filter modes (`facetModes` on a product, design `cat-import-profile-1` § 2.6, ruling S-A with N2): a product marking a facet `never` is a silent holder — its values neither count toward the offer nor are listed, but still match a selection and count in the listed values; `always` offers a key whatever the repeat rule gives; unknown or malformed modes = automatic. Moved from `renderer/src/lib/facets.ts` by `cat-import-profile-1b` (ruling CIP1-PREVIEW = A). Full contract in the module header | `renderer/src/components/SitePage.tsx` (catalog shop and category); admin import preview (slice `cat-import-profile-1c`, not built yet) |
+| `catalogListing(items, categoryId \| undefined, today)` | Pure. Which products a catalog page lists, in which order: shop `status === "active"`; category `!status \|\| status === "active"` and `categoryIds` holds the id; then `isProductAvailable(p, today)`; then `sortOrder` (absent = 0), ties by `id`. `today` = `utcDay(now)` (UTC `YYYY-MM-DD`; injected — the module reads no clock). Behaviour of the renderer's former inline rule, pinned by the 1b golden | `renderer/src/lib/dynamo.ts` (`getCatalogListing`; its other availability checks call `isProductAvailable`); admin import preview (1c) |
+| `catalogListingPath(prefixes, categorySlug \| undefined)` | Pure. The public path of a catalog page without `basePath`: shop `prefixes.shop \|\| "/magazin"` (the renderer's literal fallback, kept), category `` `${prefixes.category}/${slug}` ``. The path is an input of the URL budget, so both callers must pass the same string | `renderer/src/components/SitePage.tsx`; admin import preview (1c) |
 | `deriveEmailDnsValue(kind, domain)` | Pure. Computes a recipe value that depends on the tenant domain. Only variant today: `"m365-mx"` → `<domain dots→dashes>.mail.protection.outlook.com`. Exhaustive `switch` with an `assertNever` default — a new `EmailDnsDerivation` variant breaks the compile until handled. Consumed on BOTH sides of the admin↔backend boundary (slice `email-2`) | `backend/src/email/dns-check.ts` (server-authoritative `expected` for the M365 MX check) and `admin/src/pages/Email.tsx` (mirrors the same target for display/copy) |
 
 ### Email guided-DNS catalogue (`EMAIL_PROVIDER_RECIPES`, slice `email-2`)
@@ -125,3 +130,8 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 - Adding a field: add with a default value to preserve backward compatibility with existing DynamoDB items
 - Changing an enum: search all consumers — backend handlers, admin forms, renderer pages, MCP tools
 - Rebuild after changes: `cd packages/shared && npm run build`, then rebuild dependents
+- Changing `facets.ts` or `catalog-listing.ts` changes what every catalog site lists and filters. The 1b golden
+  (`test/cat-import-profile-1b-golden.test.ts` over `test/fixtures/cat-import-profile-1b-baseline.json`, captured from
+  `2cf738e` by `test/fixtures/cat-import-profile-1b-capture/run.sh`) must stay green: a red row there is a behaviour
+  change for products without `facetModes`, not a test to update. Run the renderer serving suite too
+  (`cd renderer && npm run test:serving`, rows `cf1-*`, `cip1b-*`)

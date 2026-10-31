@@ -49,7 +49,6 @@ src/
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
     ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing
-    ├── facets.ts                              # PURE storefront-filter rules of a catalog site (cat-facets-1) — see § Catalog listings and filters
     ├── tenant-directory.ts                    # EDGE runtime: "is this host a wired tenant?" for middleware (own client — see file header)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
     ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
@@ -374,23 +373,35 @@ whole estate on a blip — the render repeats the lookup and throws anyway; and
 `lib/api-client.ts` (Secrets Manager) returns `""`, which its callers forward to the backend,
 which rejects it, so the route still answers a non-2xx rather than a 200 with empty data.
 
-## Catalog listings and filters (`lib/facets.ts`) — slice `cat-facets-1` (PROTOTYPE)
+## Catalog listings and filters (`@amodx/shared` `facets.ts`, `catalog-listing.ts`) — slices `cat-facets-1`, `cat-import-profile-1b` (PROTOTYPE)
 
 Spec: `docs/slices/cat-facets-1.md` (rulings § 12, amendment § 13 "CF1-FACET-SET-2"); impl record
-`docs/slices/cat-facets-1-impl.md`. Maturity: **PROTOTYPE** until the staging evidence of spec § 8.4 is recorded.
+`docs/slices/cat-facets-1-impl.md`. Filter modes and the move to `packages/shared`: design
+`docs/slices/cat-import-profile-1.md` § 2.6, § 5.2 (rulings CIP1-PREVIEW = A, CIP1-FILTER-PRECEDENCE = S-A with N2),
+record `docs/slices/cat-import-profile-1b.md`. Maturity: **PROTOTYPE** until the staging evidence of spec § 8.4 (and
+of the 1b design § 7.5) is recorded.
+
+**Where the rules live.** The filter rules (`buildFacetListing` …) and the listing rule (`catalogListing`,
+`isProductAvailable(p, today)`, `catalogListingPath`) are pure modules of `packages/shared`, imported from
+`@amodx/shared`, because the admin's import preview (slice `cat-import-profile-1c`) must build the same base sets and
+the same panel as the site. The renderer keeps the I/O (`getCatalogListing`) and the layout (`SitePage.tsx`).
 
 **Which sites.** Only `isCatalogMode(config)`. On every other site the shop and category pages call
 `getActiveProducts` / `getProductsByCategory` exactly as before (byte identity: rows `cm1-identity-*`).
 
 **Data path (ruling CF1-DATA-PATH = B).** A catalog shop or category page calls `getCatalogListing`: one `PRODUCT#`
 query of the tenant (every page followed), projection = the shop card fields + `status`, `brand`, `attributes`,
-`variants`. Membership is the old one: shop `status === "active"`; category `!status || status === "active"` and
+`variants`, `facetModes` (1b). It then applies the shared `catalogListing(items, categoryId, utcDay(new Date()))`.
+Membership is the old one: shop `status === "active"`; category `!status || status === "active"` and
 `categoryIds` contains the category id (the field the `CATPROD#` cards are derived from). Then
-`isProductAvailable`, then `sortOrder`, ties by `id` (= DynamoDB's SK order of both item families). Cost: the whole
-tenant per UNCACHED render — what the shop page of every tenant already reads; a bare page is still ISR + edge cached.
+`isProductAvailable` (UTC day), then `sortOrder`, ties by `id` (= DynamoDB's SK order of both item families). The
+page path passed to the panel is `catalogListingPath(prefixes, slug | undefined)` with `basePath` prepended. Every
+other availability check of `dynamo.ts` calls the same shared `isProductAvailable` bound to today's UTC day. Cost: the
+whole tenant per UNCACHED render — what the shop page of every tenant already reads; a bare page is still ISR + edge
+cached.
 
-**Filter rules (`lib/facets.ts`, pure, no I/O).** `buildFacetListing(base, f, path)` returns the filtered items, the
-shown facets with counts, and every href the panel may emit:
+**Filter rules (`packages/shared/src/facets.ts`, pure, no I/O).** `buildFacetListing(base, f, path)` returns the
+filtered items, the shown facets with counts, and every href the panel may emit:
 - facet set, rebuilt per base set (§ 13): the producer (`brand`, URL key `producator`), the variant option values
   (URL key `varianta`; `#<digits>` labels excluded), then every `attributes` key with ≥ 2 holders, a most frequent
   value on ≥ 2 products and ≤ 40 distinct values — ordered by holders, ties by the value order; label = the key as
@@ -407,7 +418,20 @@ shown facets with counts, and every href the panel may emit:
   the repeat rule decides only which keys are OFFERED (a selected key that is not offered lists its selected values
   only);
 - URL budget: no emitted href exceeds 6,144 UTF-8 bytes, measured on the final string; an add-link exists only when its
-  selection fits with 16 bytes left for `&page=`; an incoming selection that does not fit is not applied (notice).
+  selection fits with 16 bytes left for `&page=`; an incoming selection that does not fit is not applied (notice);
+- filter modes (1b, design § 2.6, N2): a product may carry `facetModes` (importer-owned, a copy of its producer's
+  import profile). A product that marks a facet `never` (attribute key, or `variant: "never"`) is a SILENT holder:
+  its values do not count toward the offer and are not listed, but they still MATCH a selection and still COUNT in
+  the listed values' counts. An attribute key is offered when a non-silent holder marks it `always` (whatever the
+  repeat rule gives) or when it passes the repeat rule over the non-silent holders. Visibility runs over the listed
+  values. The modes change nothing else: the facet order (by EVERY holder), labels, matching and counts are computed
+  over every product as before. A mode value this code does not know, or a malformed
+  `facetModes`, is automatic (design § 3.3 item 6); for a key listed twice the first entry decides. Inert while no
+  product carries the field (1b golden).
+
+**Product page attributes (1b, design § 2.5).** `ProductAttributes` shows a key stored more than once as ONE row at
+the place of its first entry, its values in stored order joined by ", ". A product with distinct keys renders as
+before.
 
 **Rendering (`SitePage.tsx`).** `FacetedListing` + `FacetPanel` are server components with no JavaScript: every value
 is a plain `<a rel="nofollow">` (never prefetched — `cf1-prefetch`), every facet a native `<details>`; on small screens
@@ -419,8 +443,12 @@ an optional `maxHrefBytes` (catalog only). Copy is fixed Romanian (spec § 6).
 filtered URL reaches the origin and the `no-store` twin; filtered views are never stored at the edge or in ISR
 (`docs/caching-architecture.md` § the query-string allowlist; rows `cf1-not-stored`, `cf1-bare-intact`).
 
-Tests: `test/unit/facets.test.ts` (the rules, the URL form, the budget, with the 147 measured collection names);
-serving-contract rows `cf1-*` (`test/serving-contract/contract.test.mjs`, fixtures block `CF1`);
+Tests: `packages/shared/test/facets.test.ts` (the rules, the URL form, the budget, with the 147 measured collection
+names — moved from `test/unit/` by 1b), `packages/shared/test/facet-modes.test.ts` (§ 2.6 rows),
+`packages/shared/test/catalog-listing.test.ts`, the 1b golden (`packages/shared/test/cat-import-profile-1b-golden.test.ts`
+and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCatalogListing` over the in-memory store
+`test/unit/memory-dynamo.ts` and pins the `facetModes` projection); serving-contract rows `cf1-*` (fixtures block
+`CF1`) and `cip1b-*` (fixtures block `CIP1B`, a tenant of its own) in `test/serving-contract/contract.test.mjs`;
 `test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
 
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
