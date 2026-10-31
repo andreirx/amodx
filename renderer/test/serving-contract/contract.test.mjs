@@ -37,7 +37,7 @@ import {
     CM1_BASELINE_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
 import {
-    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS,
+    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1317,6 +1317,36 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const res = await request({ port: server.port, path: `${p}?nf=1`, host: CM1.catalog.host });
                 assert.equal(res.status, 404, `${p}?nf=1`);
             }
+        });
+
+        // ── ROWS (cig1-*) — a hidden product's page (slice cat-image-gate-1 § 3 item 5) ───────────────────────────
+        // A catalog site's non-active product answers exactly as a missing product — also with `?preview=` (that flag is
+        // not authenticated); a non-catalog site is unchanged. Active products' pages and listings: rows
+        // `cm1-catalog-product`, `cf1-preserve` (unchanged).
+        const cigGet = (tenant, p) => request({ port: server.port, path: p, host: CM1[tenant].host });
+
+        test("(cig1-catalog-hidden) a catalog draft product page: the cacheable handoff then 404 no-store, and 404 with ?preview=true — the answers of a missing product", async () => {
+            for (const slug of ["placa-ciorna", "cig1-no-such-product"]) {
+                const first = await cigGet("catalog", `/product/${slug}`);
+                assert.equal(first.status, 307, slug);
+                assert.equal(first.header("location"), `/product/${slug}?nf=1`, slug);
+                const nf = await cigGet("catalog", `/product/${slug}?nf=1`);
+                assert.equal(nf.status, 404, `${slug}?nf=1`);
+                assert.match(nf.header("cache-control"), /no-store/);
+                const preview = await cigGet("catalog", `/product/${slug}?preview=true`);
+                assert.equal(preview.status, 404, `${slug}?preview=true`);
+                assert.ok(!preview.body.includes("Placa Ciorna"), `${slug}?preview=true leaks the hidden title`);
+            }
+        });
+
+        test("(cig1-commerce-hidden) a commerce draft product page is unchanged: the handoff then 404 without preview; 200 with ?preview=true", async () => {
+            const p = `/product/${CIG1_COMMERCE_HIDDEN.slug}`;
+            const first = await cigGet("commerce", p);
+            assert.equal(first.status, 307);
+            assert.equal((await cigGet("commerce", `${p}?nf=1`)).status, 404);
+            const preview = await cigGet("commerce", `${p}?preview=true`);
+            assert.equal(preview.status, 200);
+            assert.ok(preview.body.includes(CIG1_COMMERCE_HIDDEN.title));
         });
 
         test("(cm1-catalog-sitemap) a catalog site is indexable: its category and products are in the sitemap", async () => {

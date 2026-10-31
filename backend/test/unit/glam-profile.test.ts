@@ -6,7 +6,7 @@ import { parseGlamCsv, parseCsvRecords } from "../../src/import/glam/parse.js";
 import { foldTokens, norm, slugify } from "../../src/import/glam/group.js";
 import { checkUpload, planGlamImport, type GlamImportPlan, type GlamUpload } from "../../src/import/glam/map.js";
 import {
-    DEFAULT_PROFILE, MONEY_WORDS, analyseSpecKeys, buildGuard, checkProfile, guardSpecLine, guardedFragments,
+    DEFAULT_PROFILE, MONEY_WORDS, analyseSpecKeys, buildGuard, checkProfile, guardSpecLine, guardedFragments, importStatus,
     parseProfileChoice, readStoredProfile, resolveProfile, specLinesOf, splitParts, type SpecLineGuard,
 } from "../../src/import/glam/profile.js";
 import { codeHits } from "./glam-code-hits.js";
@@ -514,5 +514,28 @@ describe("CAT-IMPORT-PROFILE-1A over the BOEN fixture", () => {
         expect(by.get("Certificates")).toMatchObject({ products: 280, distinctValues: 1, maxValueHolders: 280, repeatRule: "offered" });
         expect(by.get("Nordic swan")).toMatchObject({ products: 120 });
         expect(analysed.every((k) => k.refused.length === 0 && k.samples.length <= 5)).toBe(true);
+    });
+});
+
+describe("CAT-IMAGE-GATE-1 — importStatus and the publishWithoutImages equivalence (absent = false)", () => {
+    const PUBLISH: GlamImportProfile = { ...DEFAULT_PROFILE, publishWithoutImages: true };
+    it("importStatus: active only for publishWithoutImages true; absent or false → draft", () => {
+        expect(importStatus(DEFAULT_PROFILE)).toBe("draft");
+        expect(importStatus({ ...DEFAULT_PROFILE, publishWithoutImages: false })).toBe("draft");
+        expect(importStatus(PUBLISH)).toBe("active");
+    });
+    it("resolveProfile: false equals absent (unprofiled with none stored; `stored` against a stored profile without it); true is a change", () => {
+        const sentFalse = { profile: { ...DEFAULT_PROFILE, publishWithoutImages: false }, baseRevision: null };
+        expect(resolveProfile(sentFalse, { kind: "none" }, "execution").kind).toBe("unprofiled");
+        expect(resolveProfile({ ...sentFalse, baseRevision: 2 }, { kind: "supported", revision: 2, profile: DEFAULT_PROFILE }, "execution"))
+            .toMatchObject({ kind: "stored", revision: 2 });
+        expect(resolveProfile({ profile: PUBLISH, baseRevision: null }, { kind: "none" }, "execution")).toMatchObject({ kind: "save", revision: 1 });
+        expect(resolveProfile({ profile: DEFAULT_PROFILE, baseRevision: 4 }, { kind: "supported", revision: 4, profile: PUBLISH }, "execution"))
+            .toMatchObject({ kind: "save", revision: 5 });
+    });
+    it("readStoredProfile: a stored item without the member is supported and reads as off", () => {
+        const stored = readStoredProfile({ profile: { ...DEFAULT_PROFILE }, revision: 1 });
+        expect(stored).toMatchObject({ kind: "supported", revision: 1 });
+        if (stored.kind === "supported") expect(importStatus(stored.profile)).toBe("draft");
     });
 });

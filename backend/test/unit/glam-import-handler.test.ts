@@ -86,7 +86,8 @@ describe("CAT-IMPORT-1 integration (in-memory store)", () => {
         expect(res.body.counts).toEqual({ deleted: 0, products: 3, options: 4, deduped: 0, skipped: 0 });
         expect(res.body.categoriesCreated).toBe(3);
         expect(products().map((p) => p.slug).sort()).toEqual([...SLUGS].sort());
-        expect(products().every((p) => p.importSource === "glam:boen/pl" && p.brand === "BOEN" && p.status === "active")).toBe(true);
+        // CAT-IMAGE-GATE-1: an import without a profile writes every product hidden (`draft`) until its image is copied.
+        expect(products().every((p) => p.importSource === "glam:boen/pl" && p.brand === "BOEN" && p.status === "draft")).toBe(true);
         expect(table.all("CATEGORY#").map((c) => [c.slug, c.parentId]).sort()).toEqual([
             ["boen", null], ["boen-chevron", "boen"], ["boen-herringbone", "boen"],
         ]);
@@ -690,7 +691,8 @@ describe("CAT-IMPORT-PROFILE-1A import profile (stored item, acceptance, stamps,
             ["preview:boen-herringbone-oak-vivo", 1, ["new:boen", "new:boen-herringbone"]],
             ["preview:boen-chevron-ash", 1, ["new:boen", "new:boen-chevron"]],
         ]);
-        expect(res.body.drafts.every((d: any) => !("PK" in d) && !("SK" in d) && !("TenantSlug" in d) && d.status === "active")).toBe(true);
+        // CAT-IMAGE-GATE-1: P1 does not publish products without images → the execution would write `draft`.
+        expect(res.body.drafts.every((d: any) => !("PK" in d) && !("SK" in d) && !("TenantSlug" in d) && d.status === "draft")).toBe(true);
         expect(res.body.siteProducts).toEqual([{ id: "hand", status: "active", categoryIds: ["boen"], brand: "X", attributes: [{ key: "a", value: "b" }] }]);
         const wood = res.body.specKeys.find((k: any) => k.key === "Wood");
         expect(wood).toMatchObject({ rows: 3, products: 2, distinctValues: 2, rule: { action: "attribute", label: "Esență", split: "none" } });
@@ -894,5 +896,71 @@ describe("CAT-IMPORT-PROFILE-1A import profile (stored item, acceptance, stamps,
             }
             if (String(item.SK).startsWith("CATPROD#")) expect("price" in item || "salePrice" in item).toBe(false);
         }
+    });
+});
+
+// ── CAT-IMAGE-GATE-1: the status an import writes, and `publication` (docs/slices/cat-image-gate-1.md § 3 items 1, 2, 4) ──
+
+describe("CAT-IMAGE-GATE-1 import status (hidden until an image copies, unless the profile publishes without images)", () => {
+    const DEFAULT = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
+    const PUBLISH = { ...DEFAULT, publishWithoutImages: true };
+    const choice = (profile: unknown, baseRevision: number | null) => ({ profileChoice: { profile, baseRevision } });
+    const storeProfile = (profile: unknown, revision: number) =>
+        table.put({ PK: "TENANT#t1", SK: "IMPORTPROFILE#glam#boen", Type: "ImportProfile", producer: "BOEN", profile, revision });
+    const profileItem = () => table.get("TENANT#t1", "IMPORTPROFILE#glam#boen");
+    /** FILE: Oak Vivo (2 images), Ash (no image cell), Chevron Oak Vivo (1 image). */
+    const ASH = { slug: "boen-herringbone-ash", title: "Ash", rowIndexes: [4] };
+
+    it("no profile: every product and every CATPROD# card is written draft; publication says all start hidden and names the product without an image address", async () => {
+        const res = await call(event(body()));
+        expect(res.status).toBe(200);
+        expect(products().map((p) => p.status)).toEqual(["draft", "draft", "draft"]);
+        for (const c of ["boen", "boen-herringbone", "boen-chevron"]) {
+            expect(table.all(`CATPROD#${c}#`).every((card) => card.status === "draft")).toBe(true);
+        }
+        expect(res.body.publication).toEqual({ status: "draft", startHidden: 3, withoutImageAddress: [ASH] });
+        // the 1a members keep their shape (the golden's `counts`)
+        expect(res.body.counts).toEqual({ deleted: 0, products: 3, options: 4, deduped: 0, skipped: 0 });
+    });
+
+    it("dry run (no profile): the same publication member; the drafts carry draft; nothing written", async () => {
+        const res = await call(event(body(), { dryRun: true }));
+        expect(res.status).toBe(200);
+        expect(res.body.publication).toEqual({ status: "draft", startHidden: 3, withoutImageAddress: [ASH] });
+        expect(res.body.drafts.map((d: any) => d.status)).toEqual(["draft", "draft", "draft"]);
+        expect(dataWrites()).toEqual([]);
+    });
+
+    it("profile publishWithoutImages: true (saved as revision 1): every product active, also the one without an image; startHidden 0", async () => {
+        const dry = await call(event(body(FILE, choice(PUBLISH, null)), { dryRun: true }));
+        expect(dry.body.publication).toEqual({ status: "active", startHidden: 0, withoutImageAddress: [ASH] });
+        expect(dry.body.drafts.map((d: any) => d.status)).toEqual(["active", "active", "active"]);
+        const res = await call(event(body(FILE, choice(PUBLISH, null))));
+        expect(res.status).toBe(200);
+        expect(profileItem()).toMatchObject({ profile: PUBLISH, revision: 1 });
+        expect(products().map((p) => p.status)).toEqual(["active", "active", "active"]);
+        expect(table.all("CATPROD#boen#").every((card) => card.status === "active")).toBe(true);
+        expect(res.body.publication).toEqual({ status: "active", startHidden: 0, withoutImageAddress: [ASH] });
+        // the stored profile is applied by an import without a choice (the MCP form)
+        const again = await call(event(body()));
+        expect(again.body.profile).toMatchObject({ source: "stored", revision: 1 });
+        expect(products().map((p) => p.status)).toEqual(["active", "active", "active"]);
+    });
+
+    it("publishWithoutImages: false equals absent: the default sent with false stays unprofiled (no profile item, no stamp, draft)", async () => {
+        const res = await call(event(body(FILE, choice({ ...DEFAULT, publishWithoutImages: false }, null))));
+        expect(res.status).toBe(200);
+        expect(res.body.profile).toMatchObject({ source: "explicit", revision: null });
+        expect(profileItem()).toBeUndefined();
+        expect(products().every((p) => !("importProfileRevision" in p) && p.status === "draft")).toBe(true);
+    });
+
+    it("a profile stored before this slice (no member) imports draft; a choice equal to it with false keeps its revision (no write)", async () => {
+        storeProfile(DEFAULT, 3);
+        const res = await call(event(body(FILE, choice({ ...DEFAULT, publishWithoutImages: false }, 3))));
+        expect(res.status).toBe(200);
+        expect(res.body.profile).toMatchObject({ source: "explicit", revision: 3 });
+        expect(profileItem()).toMatchObject({ profile: DEFAULT, revision: 3 });
+        expect(products().every((p) => p.importProfileRevision === 3 && p.status === "draft")).toBe(true);
     });
 });

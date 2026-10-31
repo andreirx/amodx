@@ -2,18 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import * as path from "path";
 import { MemoryTable } from "./memory-table.js";
-import { GOLDEN_TIME, captureCase, goldenInputs, mask, planOf } from "./cat-import-profile-1-golden.js";
+import { GOLDEN_TIME, captureCase, goldenInputs, mask, planOf, splitAddedMembers } from "./cat-import-profile-1-golden.js";
 
 /**
- * CAT-IMPORT-PROFILE-1A — preservation against the golden captured from the BASE commit b0a3055
+ * CAT-IMPORT-PROFILE-1A — preservation against the golden captured from a BASE commit
  * (docs/slices/cat-import-profile-1.md § 7.3; § 2.8 "the byte-identity promise"). The golden file was written by
- * `cat-import-profile-1-golden.capture.test.ts` running on the unchanged code; this file runs the SAME steps
+ * `cat-import-profile-1-golden.capture.test.ts` running on base code; this file runs the SAME steps
  * (`captureCase`) on the current code and compares — never two new code paths with each other.
+ * First capture: b0a3055 (unchanged). Re-capture (CAT-IMAGE-GATE-1, docs/slices/cat-image-gate-1.md § 5 and § 7):
+ * b5ef8fb with only `productItem`'s `status` changed to `"draft"` — the one intended change of an import without a
+ * profile; the re-captured file differs from the b0a3055 one only in `status` values (diff in the slice record).
  *
  * (a) no `profileChoice`, no stored profile; (b) `profileChoice = DEFAULT_PROFILE` (baseRevision null), no stored
  * profile. Each must give the golden plan, the golden write history (every write command's payload, in order), the
- * golden audit calls and the golden response — after removing ONLY the response members this slice adds (§ 3.5,
- * additive) — and write no `IMPORTPROFILE#` item.
+ * golden audit calls and the golden response — after removing ONLY the response members added after b0a3055
+ * (`ADDED_MEMBERS`, additive) — and write no `IMPORTPROFILE#` item.
  */
 
 const { holder, mockAudit, nextUuid } = vi.hoisted(() => {
@@ -37,8 +40,6 @@ import { DEFAULT_PROFILE, resolveProfile } from "../../src/import/glam/profile.j
 const GOLDEN_FILE = path.resolve(__dirname, "fixtures/glam/cat-import-profile-1-baseline.json");
 const golden = JSON.parse(readFileSync(GOLDEN_FILE, "utf8")) as { goldenTime: string; cases: Record<string, any> };
 
-/** The response members CAT-IMPORT-PROFILE-1 adds (§ 3.5). Everything else must equal the golden. */
-const ADDED_MEMBERS = ["profile", "sheets", "specKeys", "drafts", "siteProducts", "specLineRefusals"] as const;
 
 const TENANT_ADMIN = { sub: "u1", email: "admin@t1.test", role: "TENANT_ADMIN", tenantId: "t1" };
 const event = (body: unknown, dryRun: boolean) => ({
@@ -62,8 +63,8 @@ const VARIANTS = [
     ["(b) profileChoice = DEFAULT_PROFILE, baseRevision null", { profile: DEFAULT_PROFILE, baseRevision: null }],
 ] as const;
 
-describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import is the base commit's", () => {
-    it("the golden file is the one recorded in the slice report (base b0a3055)", () => {
+describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import equals the base capture (b5ef8fb, products written draft)", () => {
+    it("the golden file has the capture clock and one case per golden input (re-captured from b5ef8fb + the status change)", () => {
         expect(golden.goldenTime).toBe(GOLDEN_TIME);
         expect(Object.keys(golden.cases)).toEqual(goldenInputs().map((i) => i.name));
     });
@@ -77,10 +78,8 @@ describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import is th
                 const added: Record<string, Record<string, unknown>> = {};
                 const call = async (body: Record<string, unknown>, dryRun: boolean) => {
                     const res = (await handler(event(profileChoice ? { ...body, profileChoice } : body, dryRun), {} as any, () => {})) as any;
-                    const parsed = JSON.parse(res.body);
-                    const kept: Record<string, unknown> = {};
-                    const extra: Record<string, unknown> = {};
-                    for (const [k, v] of Object.entries(parsed)) ((ADDED_MEMBERS as readonly string[]).includes(k) ? extra : kept)[k] = v;
+                    // The members added after the base commit (`ADDED_MEMBERS`) are compared separately below.
+                    const { kept, extra } = splitAddedMembers(JSON.parse(res.body));
                     added[`${dryRun ? "dry" : "exec"}-${Object.keys(added).length}`] = extra;
                     return { status: res.statusCode as number, body: kept };
                 };

@@ -4,15 +4,16 @@ import {
     listingHref, selectionFits, utf8Bytes, type FacetValueView,
 } from "@amodx/shared";
 import {
-    CARD_LIMIT, FIDELITY_LIMITS, FIDELITY_NOTICE, attributeRows, effectivePreviewChoice, proseParagraphs, categoryLabel, collectionCategoryIds, defaultProductSlug, previewCards,
+    CARD_LIMIT, FIDELITY_LIMITS, FIDELITY_NOTICE, PENDING_COPY_LABEL, PENDING_COPY_TITLE, PUBLICATION_NOTICE, draftPublication, hiddenDrafts, publishedDrafts, attributeRows, effectivePreviewChoice, proseParagraphs, categoryLabel, collectionCategoryIds, defaultProductSlug, previewCards,
     previewPanel, previewProductPage, producerCategoryId, selectionOfHref, siteContextOf, type PreviewItem, type SiteContext,
 } from "./glamPreview";
 
 /**
  * CAT-IMPORT-PROFILE-1C — the preview assembly (design docs/slices/cat-import-profile-1.md § 5.1, § 5.2; units § 5.5
  * for `1c`). The dry-run members are built in the shape the backend sends (`previewDrafts`, `siteProductOf`,
- * backend/src/import/glam-pricelist.ts): drafts carry `id = preview:<slug>`, `status: "active"`, `sortOrder: 0` and
- * category ids `<found id>` / `new:<slug>`; site products carry only the site-reader fields.
+ * backend/src/import/glam-pricelist.ts): drafts carry `id = preview:<slug>`, `status: "active"` (what a profile with
+ * `publishWithoutImages: true` writes; the default `draft` is covered by the CAT-IMAGE-GATE-1 rows at the end), `sortOrder: 0`
+ * and category ids `<found id>` / `new:<slug>`; site products carry only the site-reader fields.
  */
 
 const TODAY = "2026-10-31";
@@ -259,5 +260,48 @@ describe("the prose as the component shows it (review-0 R5)", () => {
     it("any other form is returned whole and undecoded (shown as text)", () => {
         expect(proseParagraphs("<p>a</p><b>x</b>")).toEqual(["<p>a</p><b>x</b>"]);
         expect(proseParagraphs("plain &amp; text")).toEqual(["plain &amp; text"]);
+    });
+});
+
+// ── CAT-IMAGE-GATE-1: the preview shows what the site would publish (docs/slices/cat-image-gate-1.md § 3 item 6) ──────
+
+describe("CAT-IMAGE-GATE-1 — publication in the preview", () => {
+    const withImage = (slug: string, categoryIds: string[], status: string) =>
+        draft(slug, categoryIds, { status, variants: [{ id: "g", name: "Format", options: [{ value: "A", imageLink: `https://img.test/${slug}.jpg` }, { value: "B" }] }], imageLink: `https://img.test/${slug}.jpg` });
+    const noImage = (slug: string, categoryIds: string[], status: string) => draft(slug, categoryIds, { status });
+    const HIDDEN_DRAFTS = [withImage("boen-oak", ["cat-boen"], "draft"), noImage("boen-ash", ["cat-boen"], "draft")];
+
+    it("draftPublication: active → published; draft with an option image address → after-copy; draft without one → hidden", () => {
+        expect(draftPublication(withImage("a", [], "active"))).toBe("published");
+        expect(draftPublication(noImage("a", [], "active"))).toBe("published"); // the profile publishes without images
+        expect(draftPublication(withImage("a", [], "draft"))).toBe("after-copy");
+        expect(draftPublication(noImage("a", [], "draft"))).toBe("hidden");
+    });
+
+    it("cards: the product waiting for its copy is shown and marked; the one without an image address is not a card and is listed hidden", () => {
+        const { count, cards } = previewCards(HIDDEN_DRAFTS);
+        expect(count).toBe(1);
+        expect(cards).toEqual([{ slug: "boen-oak", title: "boen-oak", imageLink: "https://img.test/boen-oak.jpg", pendingCopy: true }]);
+        expect(hiddenDrafts(HIDDEN_DRAFTS).map((d) => d.slug)).toEqual(["boen-ash"]);
+        // with the option on, every draft is active: all shown, none marked, none hidden
+        const on = [withImage("boen-oak", ["cat-boen"], "active"), noImage("boen-ash", ["cat-boen"], "active")];
+        expect(previewCards(on).cards.map((c) => [c.slug, c.pendingCopy])).toEqual([["boen-oak", false], ["boen-ash", false]]);
+        expect(hiddenDrafts(on)).toEqual([]);
+    });
+
+    it("panels: a draft waiting for its copy is in the shop and category base sets (as active); one without an image address is in neither", () => {
+        const report = { drafts: HIDDEN_DRAFTS, siteProducts: [] };
+        expect(ids(panelOf({ kind: "shop" }, "", CONTEXT, report).listing.items)).toEqual(["preview:boen-oak"]);
+        expect(ids(panelOf({ kind: "category", id: "cat-boen" }, "", CONTEXT, report).listing.items)).toEqual(["preview:boen-oak"]);
+        // the renderer's rule alone (no projection) would list neither: that is the departure the header states
+        expect(catalogListing(HIDDEN_DRAFTS, undefined, TODAY)).toEqual([]);
+        expect(publishedDrafts(HIDDEN_DRAFTS).map((d) => [d.slug, d.status])).toEqual([["boen-oak", "active"]]);
+    });
+
+    it("the ruled copy: the notice says hidden until the copy and that the preview cannot know which links work", () => {
+        expect(PUBLICATION_NOTICE).toMatch(/ascuns până la copierea imaginilor/);
+        expect(PUBLICATION_NOTICE).toMatch(/nu poate ști care adrese de imagine vor funcționa/);
+        expect(PUBLICATION_NOTICE).toMatch(/„imagine de copiat”/);
+        expect([PENDING_COPY_LABEL, PENDING_COPY_TITLE]).toEqual(["imagine de copiat", "ascuns până la copierea imaginilor"]);
     });
 });

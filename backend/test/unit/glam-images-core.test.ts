@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../../src/lib/db.js", () => ({ db: { send: vi.fn() }, TABLE_NAME: "test-table" }));
 
 import {
-    collectSources, decideSource, resolveSources, rewriteProduct, remainingWork,
+    collectSources, decideSource, hiddenWithoutImage, holdsCopiedImage, planProductWrite, resolveSources, rewriteProduct, remainingWork,
     type IngestProduct, type SourceResult,
 } from "../../src/import/glam/images.js";
 import type { CopyResult } from "../../src/lib/image-upload.js";
@@ -168,5 +168,63 @@ describe("remainingWork — the termination measure", () => {
         const set = [product("a", [src(7)]), product("b", [src(7)])];
         expect(remainingWork(set, new Map(), CDN)).toEqual({ options: 2, sources: 1 });
         expect(remainingWork(set, new Map([["a", [{ value: "o1", imageLink: cdn(7) }]]]), CDN)).toEqual({ options: 1, sources: 1 });
+    });
+});
+
+describe("CAT-IMAGE-GATE-1 — publication rules (docs/slices/cat-image-gate-1.md § 3 items 3, 4)", () => {
+    const CDN = "https://cdn.test";
+    const cdn = `${CDN}/t1/a.jpg`;
+    const producer = "https://img.test/1.jpg";
+    const rewritten = (options: { value: string; imageLink?: string }[], imageLink?: string) =>
+        ({ kind: "rewritten" as const, options, ...(imageLink !== undefined ? { imageLink } : {}), additionalImageLinks: [] });
+
+    it("holdsCopiedImage: an option image or the main image under the CDN; producer URLs and no image do not count", () => {
+        expect(holdsCopiedImage([{ value: "a", imageLink: cdn }], undefined, CDN)).toBe(true);
+        expect(holdsCopiedImage([{ value: "a" }], cdn, CDN)).toBe(true);
+        expect(holdsCopiedImage([{ value: "a", imageLink: producer }], producer, CDN)).toBe(false);
+        expect(holdsCopiedImage([{ value: "a" }], undefined, CDN)).toBe(false);
+        // the CDN prefix needs its "/": a host that only starts with the CDN text is a producer URL
+        expect(holdsCopiedImage([{ value: "a", imageLink: `${CDN}.evil/x.jpg` }], undefined, CDN)).toBe(false);
+    });
+
+    const ok = (url: string): SourceResult => ({ kind: "ingested", url, cdnUrl: cdn });
+    const dead = (url: string): SourceResult => ({ kind: "failed", url, failure: { kind: "error", code: "ENOTFOUND" } });
+    const results = (...r: SourceResult[]) => new Map(r.map((x) => [x.url, x]));
+
+    it("planProductWrite: publish only from draft, only when a copied image is held after the write", () => {
+        const read = [{ value: "a", imageLink: producer }];
+        expect(planProductWrite({ options: read, imageLink: producer, status: "draft" }, read, results(ok(producer)), derive, CDN))
+            .toMatchObject({ kind: "write", publish: true, images: { options: [{ value: "a", imageLink: cdn }], imageLink: cdn } });
+        expect(planProductWrite({ options: read, imageLink: producer, status: "draft" }, read, results(dead(producer)), derive, CDN))
+            .toMatchObject({ kind: "write", publish: false, images: { options: [{ value: "a" }] } }); // every source failed
+        expect(planProductWrite({ options: read, imageLink: producer, status: "draft" }, read, results(), derive, CDN)).toEqual({ kind: "none" }); // not resolved yet
+        for (const status of ["active", "archived", undefined]) {
+            expect(planProductWrite({ options: read, imageLink: producer, status }, read, results(ok(producer)), derive, CDN)).toMatchObject({ kind: "write", publish: false });
+        }
+    });
+
+    it("planProductWrite (CIG-R2): a draft already holding a tenant-CDN image gets a publish-only write; a draft with no image gets none", () => {
+        const onCdn = [{ value: "a", imageLink: cdn }];
+        expect(planProductWrite({ options: onCdn, imageLink: cdn, status: "draft" }, onCdn, results(), derive, CDN)).toEqual({ kind: "write", images: null, publish: true });
+        expect(planProductWrite({ options: onCdn, imageLink: cdn, status: "active" }, onCdn, results(), derive, CDN)).toEqual({ kind: "none" });
+        expect(planProductWrite({ options: [{ value: "a" }], status: "draft" }, [{ value: "a" }], results(), derive, CDN)).toEqual({ kind: "none" });
+    });
+
+    it("planProductWrite re-planned on a later read (CIG-R1): a success is applied where another request removed the image; a failure never removes a stored copied image", () => {
+        const read = [{ value: "a", imageLink: producer }];
+        // another request removed `a` (its copy failed) and published through another option meanwhile
+        expect(planProductWrite({ options: [{ value: "a" }, { value: "b", imageLink: cdn }], imageLink: cdn, status: "active" }, read, results(ok(producer)), derive, CDN))
+            .toMatchObject({ kind: "write", publish: false, images: { options: [{ value: "a", imageLink: cdn }, { value: "b", imageLink: cdn }] } });
+        // another request stored the copied image and published; this request's failure for the same source changes nothing
+        expect(planProductWrite({ options: [{ value: "a", imageLink: cdn }], imageLink: cdn, status: "active" }, read, results(dead(producer)), derive, CDN)).toEqual({ kind: "none" });
+        // default `read` = the product's own options: CAT-IMAGES-1's rule unchanged (no image → nothing to resolve)
+        expect(rewriteProduct({ id: "p", slug: "p", options: [{ value: "a" }] }, results(ok(producer)), derive)).toEqual({ kind: "unchanged" });
+    });
+
+    it("hiddenWithoutImage: draft, no copied image and no producer URL left; undecided or hand-hidden products are not listed", () => {
+        expect(hiddenWithoutImage("draft", [{ value: "a" }], undefined, CDN)).toBe(true);
+        expect(hiddenWithoutImage("draft", [{ value: "a", imageLink: producer }], producer, CDN)).toBe(false); // still to copy
+        expect(hiddenWithoutImage("draft", [{ value: "a", imageLink: cdn }], cdn, CDN)).toBe(false); // hidden by hand, has an image
+        expect(hiddenWithoutImage("active", [{ value: "a" }], undefined, CDN)).toBe(false); // published without images
     });
 });

@@ -1,11 +1,11 @@
 import { describe, it, vi, beforeEach, afterEach } from "vitest";
 import { writeFileSync } from "fs";
 import { MemoryTable } from "./memory-table.js";
-import { GOLDEN_TIME, captureCase, goldenInputs, mask } from "./cat-import-profile-1-golden.js";
+import { GOLDEN_TIME, captureCase, goldenInputs, mask, splitAddedMembers } from "./cat-import-profile-1-golden.js";
 
 /**
  * CAT-IMPORT-PROFILE-1A — the golden CAPTURE (docs/slices/cat-import-profile-1.md § 7.3). Skipped unless
- * `CAPTURE_GOLDEN_TO` names the output file. It is run ONCE, on the base commit, from a separate worktree:
+ * `CAPTURE_GOLDEN_TO` names the output file. It is run on the base commit, from a separate worktree:
  *
  *   git -C <repo> worktree add /tmp/CAT-IMPORT-PROFILE-1A-baseline <base commit>
  *   (copy this file and cat-import-profile-1-golden.ts into its backend/test/unit/; link node_modules)
@@ -15,6 +15,11 @@ import { GOLDEN_TIME, captureCase, goldenInputs, mask } from "./cat-import-profi
  *
  * The comparison against the current code is `glam-profile-golden.test.ts`. Running this file on changed code
  * would capture the changed behaviour — that is never a preservation proof (§ 7.3 rule).
+ *
+ * CAT-IMAGE-GATE-1 re-capture (docs/slices/cat-image-gate-1.md § 5, record § 7): base b5ef8fb with ONE change applied in
+ * the worktree — `productItem` writes `status: "draft"` instead of `"active"` (the slice's intended new default for an
+ * import without a profile). The responses leave out `ADDED_MEMBERS` (members b0a3055 did not send), so the golden
+ * keeps the base response shape and the re-captured file differs from the b0a3055 capture only in `status` values.
  */
 
 const { holder, mockAudit, nextUuid } = vi.hoisted(() => {
@@ -43,7 +48,7 @@ const event = (body: unknown, dryRun: boolean) => ({
 }) as any;
 const call = async (body: unknown, dryRun: boolean) => {
     const res = (await handler(event(body, dryRun), {} as any, () => {})) as any;
-    return { status: res.statusCode as number, body: JSON.parse(res.body) };
+    return { status: res.statusCode as number, body: splitAddedMembers(JSON.parse(res.body)).kept };
 };
 
 beforeEach(() => {

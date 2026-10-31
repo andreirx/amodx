@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
     glamFormReducer, canCheck, confirmRequest, brandsOf, INITIAL_GLAM_FORM, type GlamFormState, type GlamFormEvent,
     imageCopyReducer, imageProblems, imageCounts, IDLE_IMAGE_COPY, type ImageCopyState,
-    checkRequest, profileChangedRefusal, requestBody, incompleteImportReport,
+    checkRequest, profileChangedRefusal, requestBody, incompleteImportReport, hiddenProducts, hiddenCauseText, HIDDEN_CAUSE_UNKNOWN,
 } from "./GlamPricelistImport";
 import {
     proposeProfile, keyHints, applyProfileEdit, keyActionOf, attributeModeOf, nameNumberHint, collectionHint,
-    sheetsToReimport, storedMoved, movedNotice, SAVE_RULE, FILTER_MODE_HELP, VARIANT_MODE_HELP, FACET_VISIBILITY_HELP, type SpecKeyFact, type ProfileEditor,
+    sheetsToReimport, storedMoved, movedNotice, SAVE_RULE, FILTER_MODE_HELP, VARIANT_MODE_HELP, FACET_VISIBILITY_HELP, PUBLISH_WITHOUT_IMAGES_HELP, type SpecKeyFact, type ProfileEditor,
 } from "./GlamProfileEditor";
 import { buildFacetListing } from "@amodx/shared";
 import { ApiError } from "@/lib/api";
@@ -135,7 +135,7 @@ const batch = (sources: any[], over: Record<string, any> = {}) => ({
     ...over,
 });
 const done = { complete: true, progress: { sourcesAtStart: 1, resolved: 1, remainingOptions: 0, remainingSources: 0 } };
-const started = () => imageCopyReducer(IDLE_IMAGE_COPY, { type: "start", target: TARGET });
+const started = () => imageCopyReducer(IDLE_IMAGE_COPY, { type: "start", target: TARGET, resume: false });
 const run2 = (...answers: any[]) => answers.reduce((s: ImageCopyState, response) => imageCopyReducer(s, { type: "batch", response }), started());
 const totalsOf = (s: ImageCopyState) => { if (s.kind === "idle") throw new Error("idle"); return s.totals; };
 
@@ -165,7 +165,7 @@ describe("imageCopyReducer — the batch loop", () => {
 
     it("events that do not apply leave the state unchanged (a second start while running, a batch when idle or done)", () => {
         const running = started();
-        expect(imageCopyReducer(running, { type: "start", target: { producer: "X", sheet: "Y" } })).toBe(running);
+        expect(imageCopyReducer(running, { type: "start", target: { producer: "X", sheet: "Y" }, resume: true })).toBe(running);
         expect(imageCopyReducer(IDLE_IMAGE_COPY, { type: "batch", response: batch([], done) })).toBe(IDLE_IMAGE_COPY);
         const finished = imageCopyReducer(running, { type: "batch", response: batch([], done) });
         expect(imageCopyReducer(finished, { type: "failed", message: "late" })).toBe(finished);
@@ -691,5 +691,90 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
         expect(SAVE_RULE).toContain("profilul implicit nu se salvează");
         // what is sent for that case: the default with no stored revision (backend resolveProfile → unprofiled, no write)
         expect(confirmRequest(answer(loadedFile, dryRun()))!.choice).toEqual({ profile: DEFAULT, baseRevision: null });
+    });
+});
+
+// ── CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 items 4, 6) ────────────────────────────────────────────────
+
+describe("CAT-IMAGE-GATE-1 — the profile checkbox", () => {
+    const DEFAULT: GlamImportProfile = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
+    it("checked → publishWithoutImages: true; unchecked → the member is removed, so the profile equals the default again (nothing to save)", () => {
+        const on = applyProfileEdit(DEFAULT, { kind: "publish-without-images", value: true });
+        expect(on).toEqual({ ...DEFAULT, publishWithoutImages: true });
+        const off = applyProfileEdit(on, { kind: "publish-without-images", value: false });
+        expect(off).toEqual(DEFAULT);
+        expect("publishWithoutImages" in off).toBe(false);
+        expect(applyProfileEdit({ ...DEFAULT, publishWithoutImages: false }, { kind: "publish-without-images", value: false })).toEqual(DEFAULT);
+    });
+    it("the help text states both settings (Romanian)", () => {
+        expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/Oprit \(implicit\): fiecare produs importat rămâne ascuns/);
+        expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/Pornit: toate produsele sunt publicate la import/);
+    });
+});
+
+describe("CAT-IMAGE-GATE-1 — the image section: published count and the products that stay hidden", () => {
+    const H = (p: { productId: string; slug: string }, title: string) => ({ ...p, title });
+    it("published is summed over batches; hidden is the LATEST batch's list (computed over the whole sheet)", () => {
+        const s = run2(
+            batch([{ kind: "ingested", url: U2, cdnUrl: "c2", holders: [A] }], { products: { updated: 1, replaced: [], published: [A] }, hiddenWithoutImage: [H(B, "Ash"), H(C, "Elm")] }),
+            batch([{ kind: "ingested", url: U1, cdnUrl: "c1", holders: [B] }], { ...done, products: { updated: 1, replaced: [], published: [B] }, hiddenWithoutImage: [H(C, "Elm")] }),
+        );
+        expect(totalsOf(s)).toMatchObject({ productsPublished: 2, hidden: [{ productId: "pC", slug: "boen-elm", title: "Elm" }] });
+    });
+    it("an answer without the members (an older backend) keeps the totals: 0 published, hidden null", () => {
+        expect(totalsOf(run2(batch([], done)))).toMatchObject({ productsPublished: 0, hidden: null });
+    });
+    const REPORT = {
+        importSource: "glam:boen/pl",
+        products: [
+            { slug: "boen-oak", rowIndexes: [7, 3], options: [{ value: "120", imageLink: U1, rowIndexes: [7, 3] }] },
+            { slug: "boen-elm", rowIndexes: [9], options: [{ value: "60", rowIndexes: [9] }] }, // an empty image cell
+        ],
+    };
+    const FAILED_U1 = { kind: "failed", sources: [{ url: U1, reason: "HTTP 404, text/html, 10 bytes — error status" }] };
+
+    it("hiddenProducts: title, address, the file rows from the same sheet's import report, and the cause", () => {
+        const t = totalsOf(run2(batch([{ ...http404, url: U1, holders: [A] }], { ...done, hiddenWithoutImage: [H(A, "Oak"), H(C, "Elm")] })));
+        expect(hiddenProducts(t, REPORT)).toEqual([
+            { slug: "boen-oak", title: "Oak", rows: [3, 7], cause: FAILED_U1 },
+            { slug: "boen-elm", title: "Elm", rows: [9], cause: { kind: "no-image-address" } }, // confirmed by the report
+        ]);
+        // without the report (a copy started on its own) or with another sheet's: no rows; Elm's cause is UNKNOWN, not "no address"
+        expect(hiddenProducts(t, null).map((h) => [h.rows, h.cause.kind])).toEqual([[[], "failed"], [[], "unknown"]]);
+        expect(hiddenProducts(t, { ...REPORT, importSource: "glam:alpod/x" }).map((h) => h.cause.kind)).toEqual(["failed", "unknown"]);
+    });
+
+    it("CIG-R3 same-sheet retry: \"Copiază imaginile\" again resumes the recorded outcomes — the failure seen before stays the cause", () => {
+        let s = run2(batch([{ ...http404, url: U1, holders: [A] }], { ...done, hiddenWithoutImage: [H(A, "Oak")] }));
+        s = imageCopyReducer(s, { type: "start", target: TARGET, resume: true });
+        // the backend's repeat: the failed URL was removed, so it reports no source, only the hidden product
+        s = imageCopyReducer(s, { type: "batch", response: batch([], { ...done, products: { updated: 0, replaced: [] }, hiddenWithoutImage: [H(A, "Oak")] }) });
+        expect(hiddenProducts(totalsOf(s), REPORT)[0]).toEqual({ slug: "boen-oak", title: "Oak", rows: [3, 7], cause: FAILED_U1 });
+        expect(hiddenProducts(totalsOf(s), null)[0].cause).toEqual(FAILED_U1);
+    });
+
+    it("CIG-R3 standalone copy (nothing recorded, no import report): the cause is unknown — never \"no image address\"", () => {
+        const t = totalsOf(run2(batch([], { ...done, products: { updated: 0, replaced: [] }, hiddenWithoutImage: [H(A, "Oak")] })));
+        const [h] = hiddenProducts(t, null);
+        expect(h.cause).toEqual({ kind: "unknown" });
+        expect(hiddenCauseText(h.cause)).toEqual([HIDDEN_CAUSE_UNKNOWN]);
+        expect(HIDDEN_CAUSE_UNKNOWN).not.toMatch(/^Fără adresă/);
+        // a report that shows an image address for it does not make it "no address" either
+        expect(hiddenProducts({ ...t, importSource: "glam:boen/pl" }, REPORT)[0].cause).toEqual({ kind: "unknown" });
+    });
+
+    it("CIG-R3 the copy after an import starts fresh; a resumed copy answered for another sheet discards the recorded outcomes", () => {
+        const before = run2(batch([{ ...http404, url: U1, holders: [A] }], { ...done, hiddenWithoutImage: [H(A, "Oak")] }));
+        const fresh = imageCopyReducer(before, { type: "start", target: TARGET, resume: false });
+        expect(totalsOf(fresh).sources).toEqual({});
+        const resumed = imageCopyReducer(before, { type: "start", target: { producer: "ALPOD", sheet: "X" }, resume: true });
+        const other = imageCopyReducer(resumed, { type: "batch", response: batch([], { ...done, importSource: "glam:alpod/x", hiddenWithoutImage: [H(A, "Oak")] }) });
+        expect(totalsOf(other)).toMatchObject({ importSource: "glam:alpod/x", sources: {}, batches: 1 });
+        expect(hiddenProducts(totalsOf(other), null)[0].cause).toEqual({ kind: "unknown" });
+    });
+
+    it("hiddenCauseText: one line per lost source; the confirmed empty cell in words", () => {
+        expect(hiddenCauseText(FAILED_U1 as any)).toEqual([`${U1} — HTTP 404, text/html, 10 bytes — error status`]);
+        expect(hiddenCauseText({ kind: "no-image-address" })).toEqual(["Fără adresă de imagine în fișier."]);
     });
 });

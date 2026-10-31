@@ -7,7 +7,8 @@ import type { CopyResult, ImageFailure } from "../../lib/image-upload.js";
  * entries arrive as a map, and the § 3.4 derivation rule arrives as `derive` (production: `withDerivedGallery` of
  * lib/catalog-product.ts — the one implementation; importing it here would load lib/db.ts into this pure core).
  * Spec: docs/slices/catalog-mode-1.md § 4 CM-D2, CM-D7, § 3.4 "Derived"; slice docs/slices/cat-images-1.md § 2
- * items 4–7 and § 7 (CIM-A1-1, CIM-A1-3).
+ * items 4–7 and § 7 (CIM-A1-1, CIM-A1-3). CAT-IMAGE-GATE-1 (end of file): which write publishes a hidden product, and
+ * which products stay hidden for lack of an image.
  */
 
 /** A variant option as stored on an imported product. Other keys, if any, are kept by the rewrite. */
@@ -130,19 +131,34 @@ export type ProductRewrite =
  * The per-product rewrite (slice § 2.4–2.5, C8-4): a resolved source that succeeded (`ingested`/`cached`) becomes its
  * CDN URL; one that did not (`refused`/`failed`) is removed from the option (the option keeps its label). Then
  * `imageLink` / `additionalImageLinks` are derived again by the one § 3.4 rule (`derive`).
+ *
+ * `read` (CAT-IMAGE-GATE-1 CIG-R1): the options of the read the source results belong to, when `product` is a LATER
+ * read of the same product (the rebase after a cancelled write). An option's source is its own image when it has one,
+ * else the image it had in `read` (matched by option value — unique within an imported product). So a success is
+ * applied even when another request has meanwhile removed that image after a failure, and a failure never removes
+ * what another request has meanwhile stored (a CDN URL is not a source: it has no result). Default: `product.options`
+ * — the rule of CAT-IMAGES-1, unchanged.
  */
-export function rewriteProduct(product: IngestProduct, results: ReadonlyMap<string, SourceResult>, derive: DeriveGallery): ProductRewrite {
+export function rewriteProduct(
+    product: IngestProduct,
+    results: ReadonlyMap<string, SourceResult>,
+    derive: DeriveGallery,
+    read: readonly IngestOption[] = product.options,
+): ProductRewrite {
     let changed = false;
     const options = product.options.map((option): IngestOption => {
-        const result = option.imageLink === undefined ? undefined : results.get(option.imageLink);
+        const source = option.imageLink ?? read.find((r) => r.value === option.value)?.imageLink;
+        const result = source === undefined ? undefined : results.get(source);
         if (result === undefined) return option;
-        changed = true;
         switch (result.kind) {
             case "ingested":
             case "cached":
+                changed = true;
                 return { ...option, imageLink: result.cdnUrl };
             case "refused":
             case "failed": {
+                if (option.imageLink === undefined) return option; // nothing to remove
+                changed = true;
                 const { imageLink: _removed, ...rest } = option;
                 return rest as IngestOption;
             }
@@ -180,4 +196,58 @@ export function remainingWork(
         }
     }
     return { options, sources: urls.size };
+}
+
+// ── CAT-IMAGE-GATE-1: publication follows the copy (docs/slices/cat-image-gate-1.md § 1 ruling, § 3 item 3) ──────────
+
+/** A product holds a copied image when one of its option images, or its main image, is under the tenant media CDN. */
+export function holdsCopiedImage(options: readonly IngestOption[], imageLink: string | undefined, cdnUrl: string): boolean {
+    return [...options.map((o) => o.imageLink), imageLink].some((url) => url !== undefined && !isProducerUrl(url, cdnUrl));
+}
+
+/** One product as the copy last read it: its options, main image and status. */
+export interface ProductState {
+    readonly options: readonly IngestOption[];
+    readonly imageLink?: string;
+    readonly status?: unknown;
+}
+
+/** What one product's write must do: its images (or none), and whether it publishes. */
+export type ProductWrite =
+    | { readonly kind: "none" }
+    | { readonly kind: "write"; readonly images: Extract<ProductRewrite, { kind: "rewritten" }> | null; readonly publish: boolean };
+
+/**
+ * The one decision of a product's write. Images: `rewriteProduct` over `current`, with `read` the read the results
+ * belong to (see there). Publish (`status` → `active`, in the SAME conditional write): exactly when `current` is
+ * `draft` and the product holds a copied image after the write — also when the write changes no image (CIG-R2: an
+ * image already under the tenant CDN, imported as such or copied earlier, publishes a hidden product; no fetch).
+ * Any other status is never changed: an import with `publishWithoutImages: true` writes `active`, so the copy never
+ * changes its products' status, and no profile read is needed (the profile is per producer and may since have been
+ * changed by another sheet's import).
+ */
+export function planProductWrite(
+    current: ProductState,
+    read: readonly IngestOption[],
+    results: ReadonlyMap<string, SourceResult>,
+    derive: DeriveGallery,
+    cdnUrl: string,
+): ProductWrite {
+    const rewrite = rewriteProduct({ id: "", slug: "", options: current.options }, results, derive, read);
+    const images = rewrite.kind === "rewritten" ? rewrite : null;
+    const publish = current.status === "draft"
+        && (images ? holdsCopiedImage(images.options, images.imageLink, cdnUrl) : holdsCopiedImage(current.options, current.imageLink, cdnUrl));
+    return images !== null || publish ? { kind: "write", images, publish } : { kind: "none" };
+}
+
+/**
+ * Hidden for lack of an image (the report list of § 3 item 4): `draft`, no copied image, and no producer URL left to
+ * try — every source failed or was refused, or the product never had one. A `draft` product that still holds a
+ * producer URL is not decided yet (a later request copies it); a `draft` product WITH a copied image is hidden for
+ * another reason (set by hand) and is not listed.
+ */
+export function hiddenWithoutImage(status: unknown, options: readonly IngestOption[], imageLink: string | undefined, cdnUrl: string): boolean {
+    return status === "draft"
+        && !holdsCopiedImage(options, imageLink, cdnUrl)
+        && !options.some((o) => o.imageLink !== undefined && isProducerUrl(o.imageLink, cdnUrl));
 }

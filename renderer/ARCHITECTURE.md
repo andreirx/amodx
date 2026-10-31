@@ -433,6 +433,14 @@ filtered items, the shown facets with counts, and every href the panel may emit:
 the place of its first entry, its values in stored order joined by ", ". A product with distinct keys renders as
 before.
 
+**Hidden products (slice `cat-image-gate-1`).** A product page whose product is not `active` takes the missing-product
+path (the not-found handoff) on every site; the dynamic twin's `?preview=` flag (not authenticated) is an exception
+only on a NON-catalog site (unchanged). On a catalog site a glam import writes products `draft` until their image
+copies, so `?preview=` does not open them, and `buildSitePageMetadata` gives such a product the missing-product
+metadata (no title). Non-catalog renders are unchanged (`cm1-*`). Tests: `test/unit/catalog-product-status.test.ts`,
+serving rows `cig1-catalog-hidden`, `cig1-commerce-hidden`. Not covered: `/products/<id>` (`ProductByIdPage.tsx`) keeps
+the `?preview=` exception on catalog sites too (finding in `docs/slices/cat-image-gate-1.md` § 7).
+
 **Rendering (`SitePage.tsx`).** `FacetedListing` + `FacetPanel` are server components with no JavaScript: every value
 is a plain `<a rel="nofollow">` (never prefetched — `cf1-prefetch`), every facet a native `<details>`; on small screens
 the panel is one collapsed block (CSS-only checkbox toggle), on `lg` a left column. The grid slot and `Pagination`'s

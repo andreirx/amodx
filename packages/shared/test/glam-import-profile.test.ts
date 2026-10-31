@@ -34,6 +34,18 @@ describe("GlamImportProfileSchema", () => {
         expect(GlamImportProfileSchema.safeParse(value).success).toBe(false);
     });
 
+    it("CAT-IMAGE-GATE-1: publishWithoutImages is optional — a profile stored before it parses unchanged (absent = off); a non-boolean is refused", () => {
+        // An old stored profile: no member, no default inserted (the parse never adds a key, so the stored text and the
+        // parsed value stay equal — the importer reads absence as false).
+        const old = GlamImportProfileSchema.parse(DEFAULT);
+        expect(old).toEqual(DEFAULT);
+        expect("publishWithoutImages" in old).toBe(false);
+        expect(GlamImportProfileSchema.parse({ ...DEFAULT, publishWithoutImages: true })).toEqual({ ...DEFAULT, publishWithoutImages: true });
+        expect(GlamImportProfileSchema.parse({ ...DEFAULT, publishWithoutImages: false })).toEqual({ ...DEFAULT, publishWithoutImages: false });
+        expect(GlamImportProfileSchema.safeParse({ ...DEFAULT, publishWithoutImages: "yes" }).success).toBe(false);
+        expect(GlamImportProfileSchema.safeParse({ ...DEFAULT, version: 2, publishWithoutImages: true }).success).toBe(false);
+    });
+
     it("FacetModesSchema: attributes default to [] (absence of a key = automatic; no 'auto' value exists)", () => {
         expect(FacetModesSchema.parse({})).toEqual({ attributes: [] });
         expect(FacetModesSchema.safeParse({ attributes: [], variant: "always" }).success).toBe(false);

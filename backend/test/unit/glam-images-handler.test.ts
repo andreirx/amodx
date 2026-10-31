@@ -54,10 +54,17 @@ const call = async (e: any) => {
 };
 const importFile = (csvContent = FILE) => call(event(IMPORT, { csvContent, producer: "BOEN", sheet: "PL", variantName: "Format" }));
 const copyImages = (extra: Item = {}) => call(event(IMAGES, { producer: "BOEN", sheet: "PL", ...extra }));
+const DEFAULT_PROFILE_DTO = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
+/** An import whose profile publishes products without images (every product `active`; saved as revision 1 on a fresh table). */
+const importPublished = (csvContent = FILE) => call(event(IMPORT, {
+    csvContent, producer: "BOEN", sheet: "PL", variantName: "Format",
+    profileChoice: { profile: { ...DEFAULT_PROFILE_DTO, publishWithoutImages: true }, baseRevision: null },
+}));
 
 let table: MemoryTable;
 const bySlug = (slug: string) => table.all("PRODUCT#").find((p) => p.slug === slug)!;
-const updates = () => table.commands.filter((c) => c instanceof UpdateCommand && c.input.ConditionExpression === "attribute_exists(PK)");
+/** The product writes of the image copy (every one starts with the existence guard). */
+const updates = () => table.commands.filter((c) => c instanceof UpdateCommand && String(c.input.ConditionExpression).startsWith("attribute_exists(PK)"));
 
 beforeEach(() => {
     table = new MemoryTable();
@@ -194,7 +201,7 @@ describe("CAT-IMAGES-1 review-0 CIM-F2 — a source shared by two products, the 
         await importFile(FILE2);
         const realSend = table.send.bind(table);
         table.send = async (cmd: any) => {
-            if (cmd instanceof UpdateCommand && cmd.input.ConditionExpression === "attribute_exists(PK)") now += 25_000;
+            if (cmd instanceof UpdateCommand && String(cmd.input.ConditionExpression).startsWith("attribute_exists(PK)")) now += 25_000;
             return realSend(cmd);
         };
         const batches = [];
@@ -235,7 +242,7 @@ describe("CAT-IMAGES-1 review-1 CIM-F2 — copy provenance apart from committed 
         await importFile(csv({ c: "Plank", p: "A", f: "1", img: img(60) }, { c: "Plank", p: "B", f: "1", img: img(61) }));
         const realSend = table.send.bind(table);
         table.send = async (cmd: any) => {
-            if (cmd instanceof UpdateCommand && cmd.input.ConditionExpression === "attribute_exists(PK)") now += 25_000; // past the update budget
+            if (cmd instanceof UpdateCommand && String(cmd.input.ConditionExpression).startsWith("attribute_exists(PK)")) now += 25_000; // past the update budget
             return realSend(cmd);
         };
         now += 60_000;
@@ -254,7 +261,10 @@ describe("CAT-IMAGES-1 review-1 CIM-F2 — copy provenance apart from committed 
     });
 });
 
-describe("CAT-IMAGES-1 slice § 9 — two overlapping requests over the same product converge", () => {
+// CAT-IMAGE-GATE-1: these rows import with `publishWithoutImages: true` (products `active`), so no publication is at
+// stake and the stale write commits exactly as CAT-IMAGES-1 § 9 rules. With the default (`draft`), R1 publishes the
+// product and R2's stale write is cancelled and re-planned — rows "CAT-IMAGE-GATE-1 CIG-R1" below.
+describe("CAT-IMAGES-1 slice § 9 — two overlapping requests over the same product converge (no publication at stake)", () => {
     const X = img(70);
     const Y = img(71);
     const mediaMapItem = (url: string) => ({ PK: "TENANT#t1", SK: `MEDIAMAP#${createHash("md5").update(url).digest("hex")}`, oldUrl: url, newUrl: copied(url), Type: "MediaMap" });
@@ -267,7 +277,7 @@ describe("CAT-IMAGES-1 slice § 9 — two overlapping requests over the same pro
         try {
             let now = 1_000_000;
             vi.spyOn(Date, "now").mockImplementation(() => now);
-            await importFile(csv({ c: "Plank", p: "P", f: "1", img: X }, { c: "Plank", p: "P", f: "2", img: Y }));
+            await importPublished(csv({ c: "Plank", p: "P", f: "1", img: X }, { c: "Plank", p: "P", f: "2", img: Y }));
             table.put(mediaMapItem(Y)); // Y copied in an earlier session
             const options = () => bySlug("boen-plank-p").variants[0].options;
 
@@ -344,5 +354,208 @@ describe("CAT-IMAGES-1 admission and dispatch", () => {
         const res = await call(event("POST /import/glam-pricelist/other", {}));
         expect(res.status).toBe(404);
         expect(table.commands).toHaveLength(0);
+    });
+});
+
+// ── CAT-IMAGE-GATE-1: the copy publishes (docs/slices/cat-image-gate-1.md § 3 items 3, 4; § 5 units) ─────────────────
+
+describe("CAT-IMAGE-GATE-1 the image copy publishes a hidden product in its image write", () => {
+    const DEFAULT = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
+    const allDead = async () => ({ kind: "failed", failure: { kind: "http", reason: "status", status: 404, contentType: "text/html", bytes: 10 } });
+    const cards = (productId: string) => table.all("CATPROD#").filter((i) => i.id === productId);
+
+    it("draft + one copied image → active in ONE conditional write; CATPROD# carries active; the product without a source is untouched, stays draft and is listed", async () => {
+        await importFile();
+        expect(table.all("PRODUCT#").every((p) => p.status === "draft")).toBe(true);
+        table.commands = [];
+        const res = await copyImages();
+        expect(res.status).toBe(200);
+        const herringbone = bySlug("boen-herringbone-oak-vivo"); // img(1) dead, img(2) copied
+        const chevron = bySlug("boen-chevron-oak-vivo");
+        const ash = bySlug("boen-herringbone-ash"); // no image cell
+        expect([herringbone.status, chevron.status, ash.status]).toEqual(["active", "active", "draft"]);
+        // one write per published product: images and status together, the existence condition kept
+        expect(updates()).toHaveLength(2);
+        for (const u of updates()) {
+            expect(u.input.UpdateExpression).toContain("#status = :active");
+            expect(u.input.ConditionExpression).toBe("attribute_exists(PK) AND #status = :read");
+            expect(u.input.ExpressionAttributeValues[":read"]).toBe("draft");
+            expect(u.input.ExpressionAttributeNames["#status"]).toBe("status");
+        }
+        expect(table.commands.filter((c) => c instanceof UpdateCommand && String(c.input.Key?.SK).startsWith("PRODUCT#"))).toHaveLength(2);
+        // set order = store order (`PRODUCT#<random id>`): compared without order
+        expect([...res.body.products.published].sort((a: any, b: any) => a.slug.localeCompare(b.slug))).toEqual([
+            { productId: chevron.id, slug: "boen-chevron-oak-vivo" },
+            { productId: herringbone.id, slug: "boen-herringbone-oak-vivo" },
+        ]);
+        expect(cards(herringbone.id).length).toBeGreaterThan(0);
+        expect(cards(herringbone.id).every((c) => c.status === "active")).toBe(true);
+        expect(cards(ash.id).every((c) => c.status === "draft")).toBe(true);
+        expect(updates().some((u) => u.input.Key.SK === `PRODUCT#${ash.id}`)).toBe(false);
+        expect(res.body.hiddenWithoutImage).toEqual([{ productId: ash.id, slug: "boen-herringbone-ash", title: "Ash" }]);
+        expect(mockAudit.mock.calls.find((c) => c[0].action === "GLAM_PRICELIST_IMAGES")![0].details).toMatchObject({ productsPublished: 2 });
+    });
+
+    it("every source failed → the image write keeps draft (no status in the expression); the product is listed hidden; its failed source names it", async () => {
+        await importFile();
+        copy.mockImplementation(allDead);
+        table.commands = [];
+        const res = await copyImages();
+        expect(res.status).toBe(200);
+        expect(table.all("PRODUCT#").every((p) => p.status === "draft")).toBe(true);
+        expect(updates()).toHaveLength(2);
+        for (const u of updates()) expect(u.input.UpdateExpression).not.toContain("#status"); // the condition reads it; the write keeps it
+        expect(res.body.products.published).toEqual([]);
+        expect(res.body.hiddenWithoutImage.map((h: any) => h.slug).sort()).toEqual(["boen-chevron-oak-vivo", "boen-herringbone-ash", "boen-herringbone-oak-vivo"]);
+        const chevron = bySlug("boen-chevron-oak-vivo");
+        expect(res.body.sources.find((s: any) => s.url === img(3))).toMatchObject({ kind: "failed", holders: [{ productId: chevron.id }] });
+    });
+
+    it("publishWithoutImages: true → the import writes active; the copy never changes a status; nothing is listed hidden", async () => {
+        const res0 = await call(event(IMPORT, { csvContent: FILE, producer: "BOEN", sheet: "PL", variantName: "Format", profileChoice: { profile: { ...DEFAULT, publishWithoutImages: true }, baseRevision: null } }));
+        expect(res0.status).toBe(200);
+        expect(table.all("PRODUCT#").every((p) => p.status === "active")).toBe(true);
+        copy.mockImplementation(allDead);
+        table.commands = [];
+        const res = await copyImages();
+        expect(updates()).toHaveLength(2);
+        for (const u of updates()) expect(u.input.UpdateExpression).not.toContain("#status");
+        expect(table.all("PRODUCT#").every((p) => p.status === "active")).toBe(true);
+        expect(res.body.products.published).toEqual([]);
+        expect(res.body.hiddenWithoutImage).toEqual([]);
+    });
+
+    it("the update condition cancelled (replaced meanwhile) → nothing written, not published, reported as replaced", async () => {
+        await importFile();
+        const chevron = bySlug("boen-chevron-oak-vivo");
+        const realSend = table.send.bind(table);
+        table.send = async (cmd: any) => {
+            if (cmd instanceof UpdateCommand && cmd.input.Key.SK === `PRODUCT#${chevron.id}`) table.items.delete(`TENANT#t1\u0000PRODUCT#${chevron.id}`);
+            return realSend(cmd);
+        };
+        const res = await copyImages();
+        expect(res.body.products.replaced).toEqual([{ productId: chevron.id, slug: "boen-chevron-oak-vivo" }]);
+        expect(res.body.products.published.map((p: any) => p.slug)).toEqual(["boen-herringbone-oak-vivo"]);
+        expect(table.get("TENANT#t1", `PRODUCT#${chevron.id}`)).toBeUndefined();
+        expect(res.body.hiddenWithoutImage.map((h: any) => h.slug)).toEqual(["boen-herringbone-ash"]); // a replaced product is not listed
+    });
+
+    it("only the copy's own import set: a draft product of another sheet with a producer image is not touched", async () => {
+        table.put({ PK: "TENANT#t1", SK: "PRODUCT#other", id: "other", slug: "other", title: "Other", status: "draft", importSource: "glam:boen/other",
+            variants: [{ id: "v", name: "F", options: [{ value: "1", imageLink: img(9) }] }], imageLink: img(9) });
+        await importFile();
+        const res = await copyImages();
+        expect(res.status).toBe(200);
+        expect(table.get("TENANT#t1", "PRODUCT#other")).toMatchObject({ status: "draft", imageLink: img(9) });
+        expect(res.body.hiddenWithoutImage.some((h: any) => h.productId === "other")).toBe(false);
+    });
+});
+
+// ── CAT-IMAGE-GATE-1 review-0: overlapping copies with opposing outcomes (CIG-R1), an image already on the CDN (CIG-R2) ──
+
+describe("CAT-IMAGE-GATE-1 CIG-R1 — overlapping copies of one draft product with opposing outcomes converge to a correct terminal state", () => {
+    const X = img(80);
+    const Y = img(81);
+    const failed = { kind: "failed", failure: { kind: "http", reason: "status", status: 404, contentType: "text/html", bytes: 10 } };
+
+    /**
+     * R2 reads the set and MEDIAMAP# and is held; R1 runs to the end; then R2 resumes (it copies after the hold). Copy
+     * outcomes are dealt per URL in call order (`plan[url]`), so R1 gets the first outcome of each URL and R2 the second.
+     */
+    async function overlap(rows: R[], plan: Record<string, ("ok" | "dead")[]>) {
+        await importFile(csv(...rows));
+        const queue = Object.fromEntries(Object.entries(plan).map(([u, o]) => [u, [...o]]));
+        copy.mockImplementation(async (_t: string, url: string) => (queue[url].shift() === "ok" ? { kind: "copied", cdnUrl: copied(url) } : failed));
+        let reached!: () => void;
+        const atGate = new Promise<void>((r) => { reached = r; });
+        let release!: () => void;
+        const gate = new Promise<void>((r) => { release = r; });
+        const realSend = table.send.bind(table);
+        let held = false;
+        table.send = async (cmd: any) => {
+            const res = await realSend(cmd);
+            if (!held && cmd instanceof QueryCommand && cmd.input.ExpressionAttributeValues[":sk"] === "MEDIAMAP#") {
+                held = true;
+                reached();
+                await gate;
+            }
+            return res;
+        };
+        const r2 = copyImages();
+        await atGate;
+        const r1 = (await copyImages()).body;
+        release();
+        const r2body = (await r2).body;
+        table.send = realSend;
+        copy.mockImplementation(async () => { throw new Error("no fetch expected after convergence"); });
+        const r3 = (await copyImages()).body;
+        return { r1, r2: r2body, r3 };
+    }
+    const product = () => bySlug("boen-plank-p");
+    const cardsOf = (id: string) => table.all("CATPROD#").filter((c) => c.id === id);
+    /** Terminal: nothing left to copy, a further copy writes nothing. */
+    const terminal = (r3: any) => {
+        expect(r3).toMatchObject({ complete: true, sources: [], products: { updated: 0, replaced: [], published: [] } });
+    };
+
+    it("success committed first, then the stale failure: the failure write is cancelled and re-planned to nothing — active WITH its copied image, cards too", async () => {
+        const { r1, r2, r3 } = await overlap([{ c: "Plank", p: "P", f: "1", img: X }], { [X]: ["ok", "dead"] });
+        expect(r1.products.published.map((p: any) => p.slug)).toEqual(["boen-plank-p"]);
+        expect(r2).toMatchObject({ sources: [], products: { updated: 0, replaced: [], published: [] }, hiddenWithoutImage: [] });
+        expect(product()).toMatchObject({ status: "active", imageLink: copied(X), variants: [{ options: [{ value: "1", imageLink: copied(X) }] }] });
+        expect(cardsOf(product().id).every((c) => c.status === "active" && c.imageLink === copied(X))).toBe(true);
+        terminal(r3);
+        expect(r3.hiddenWithoutImage).toEqual([]);
+    });
+
+    it("failure committed first, then the stale success: the status is unchanged, so the success commits and publishes — active with the image", async () => {
+        const { r1, r2, r3 } = await overlap([{ c: "Plank", p: "P", f: "1", img: X }], { [X]: ["dead", "ok"] });
+        expect(r1.hiddenWithoutImage.map((h: any) => h.slug)).toEqual(["boen-plank-p"]); // decided hidden by R1 …
+        expect(r2.products.published.map((p: any) => p.slug)).toEqual(["boen-plank-p"]); // … and published by R2
+        expect(r2.sources).toEqual([expect.objectContaining({ kind: "ingested", url: X, holders: [expect.objectContaining({ option: "1" })] })]);
+        expect(r2.hiddenWithoutImage).toEqual([]);
+        expect(product()).toMatchObject({ status: "active", imageLink: copied(X) });
+        expect(cardsOf(product().id).every((c) => c.status === "active" && c.imageLink === copied(X))).toBe(true);
+        terminal(r3);
+    });
+
+    it("R1 removes X (failed) and publishes through Y; R2's stale write (X copied) is cancelled, re-planned on the fresh read, restores X; reports only the holding it changed", async () => {
+        const { r1, r2, r3 } = await overlap(
+            [{ c: "Plank", p: "P", f: "1", img: X }, { c: "Plank", p: "P", f: "2", img: Y }],
+            { [X]: ["dead", "ok"], [Y]: ["ok", "ok"] },
+        );
+        expect(r1.products.published.map((p: any) => p.slug)).toEqual(["boen-plank-p"]);
+        const writes = updates().filter((u) => u.input.Key.SK === `PRODUCT#${product().id}`);
+        expect(writes.map((u) => u.input.ExpressionAttributeValues[":read"])).toEqual(["draft", "draft", "active"]); // R1, R2 cancelled, R2 re-planned
+        expect(product()).toMatchObject({ status: "active", variants: [{ options: [{ value: "1", imageLink: copied(X) }, { value: "2", imageLink: copied(Y) }] }] });
+        expect(r2.products).toMatchObject({ updated: 1, replaced: [], published: [] });
+        expect(r2.sources).toEqual([expect.objectContaining({ kind: "ingested", url: X, holders: [expect.objectContaining({ option: "1" })] })]);
+        terminal(r3);
+    });
+
+    it("both copies fail: the product ends draft, no producer URL left, listed hidden by the last request; no active imageless state", async () => {
+        const { r2, r3 } = await overlap([{ c: "Plank", p: "P", f: "1", img: X }], { [X]: ["dead", "dead"] });
+        expect(product().status).toBe("draft");
+        expect(product().imageLink).toBeUndefined();
+        expect(r2.hiddenWithoutImage.map((h: any) => h.slug)).toEqual(["boen-plank-p"]);
+        terminal(r3);
+        expect(r3.hiddenWithoutImage.map((h: any) => h.slug)).toEqual(["boen-plank-p"]);
+    });
+});
+
+describe("CAT-IMAGE-GATE-1 CIG-R2 — an imported image already under the tenant CDN publishes on the copy", () => {
+    it("import → draft with the CDN image; copy → ONE publish-only write (no image rewrite, no fetch), active, cards active, complete", async () => {
+        const onCdn = `${CDN}/t1/earlier-copy.jpg`;
+        const imported = await importFile(csv({ c: "Plank", p: "P", f: "1", img: onCdn }));
+        expect(imported.body.publication).toEqual({ status: "draft", startHidden: 1, withoutImageAddress: [] });
+        table.commands = [];
+        const res = await copyImages();
+        expect(copy).not.toHaveBeenCalled();
+        expect(updates()).toHaveLength(1);
+        expect(updates()[0].input.UpdateExpression).toBe("SET #updatedAt = :now, #status = :active");
+        expect(bySlug("boen-plank-p")).toMatchObject({ status: "active", imageLink: onCdn });
+        expect(table.all("CATPROD#").filter((c) => c.id === bySlug("boen-plank-p").id).every((c) => c.status === "active")).toBe(true);
+        expect(res.body).toMatchObject({ complete: true, sources: [], products: { updated: 1, published: [{ slug: "boen-plank-p" }] }, hiddenWithoutImage: [] });
+        expect((await copyImages()).body.products.updated).toBe(0); // published once; nothing more to write
     });
 });

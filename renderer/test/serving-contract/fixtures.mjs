@@ -316,6 +316,15 @@ const cm1CommerceProducts = [
         imageLink: IMG("guide"), paymentLinkId: "pri_cm1", productType: "digital",
     }),
 ];
+// CAT-IMAGE-GATE-1 (rows `cig1-*`): a hidden product of the commerce tenant, to pin that a non-catalog product page is
+// unchanged (not found without preview, shown with `?preview=`). It has NO CATPROD# card and is `draft`, and every other
+// read of the tenant's products filters `status = active` (`getActiveProducts`, `searchProducts`), so no `cm1-*`
+// capture can see it. The catalog side uses the existing draft `placa-ciorna` (cf1).
+export const CIG1_COMMERCE_HIDDEN = { slug: "cig1-hidden-rug", title: "CIG1 Hidden Rug" };
+const cig1CommerceHidden = cm1Product(CM1.commerce.id, {
+    id: "c0000000-0000-4000-8000-0000000000c1", title: CIG1_COMMERCE_HIDDEN.title, slug: CIG1_COMMERCE_HIDDEN.slug,
+    status: "draft", price: "10.00", imageLink: IMG("hidden"),
+});
 const cm1ContentProducts = [
     cm1Product(CM1.content.id, {
         id: "d0000000-0000-4000-8000-000000000001", title: "Plain Rug", slug: "plain-rug", price: "10.00",
@@ -467,6 +476,7 @@ const CM1_ITEMS = [
     cm1Category(CM1.commerce.id, "rugs", "rugs", "Rugs"),
     ...cm1CommerceProducts,
     ...cm1CommerceProducts.filter((p) => p.categoryIds.includes("rugs")).map((p) => cm1CatProd(CM1.commerce.id, "rugs", p)),
+    cig1CommerceHidden,
 
     cm1Tenant(CM1.content, "CM1 Content", { commerceEnabled: false }),
     ...cm1Pages(CM1.content.id, []),

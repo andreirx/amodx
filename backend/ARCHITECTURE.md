@@ -203,7 +203,11 @@ src/
     │                      #   `facetModes` when not empty). Response members `profile`, `sheets` (per-sheet
     │                      #   no-profile/current/stale/mixed), `specLineRefusals` (profiled only); dry run also
     │                      #   `specKeys`, `drafts` (the execution's productItem), `siteProducts`. With no stored
-    │                      #   profile and no non-default choice, every write equals the base commit's (golden test)
+    │                      #   profile and no non-default choice, every write equals the base capture (golden test).
+    │                      #   CAT-IMAGE-GATE-1: every product is written `draft` (hidden) unless the profile says
+    │                      #   `publishWithoutImages: true` (`glam/profile.ts` importStatus; absent ≡ false, also in
+    │                      #   the "same profile" comparison); response member `publication` { status, startHidden,
+    │                      #   withoutImageAddress[] } on the dry run and the execution
     ├── glam-images.ts     # POST /import/glam-pricelist/images (CAT-IMAGES-1) — body { producer, sheet }; copies the
     │                      #   sheet's producer option images into tenant media, ONE BOUNDED BATCH per request (the
     │                      #   admin page repeats until `complete`): set = PRODUCT# query selected by importSource;
@@ -211,7 +215,16 @@ src/
     │                      #   copy after 12 s, no new product update after 24 s (except the first); one UpdateCommand
     │                      #   per touched product with attribute_exists(PK) (cancelled → reported, no CATPROD#
     │                      #   write), failed sources REMOVED from their option, derived fields by § 3.4; then the
-    │                      #   CATPROD# rebuild. withInvalidation. Scope catalog:write
+    │                      #   CATPROD# rebuild. withInvalidation. Scope catalog:write. CAT-IMAGE-GATE-1: a product
+    │                      #   read as `draft` that holds a copied image after its write is published (`status =
+    │                      #   active`) IN THE SAME UpdateCommand (`glam/images.ts` planProductWrite; a draft whose
+    │                      #   image is already under the CDN gets a publish-only write; no other status is ever
+    │                      #   changed). Write condition `attribute_exists(PK) AND #status = :read`: a cancelled
+    │                      #   write re-reads (absent → replaced) and is re-planned from the fresh read (≤ 3 tries;
+    │                      #   a success is never undone, so a copy-published product keeps a copied image).
+    │                      #   Holdings reported = options the committed write changed. Answer adds
+    │                      #   `products.published[]` and `hiddenWithoutImage[]` (draft, no copied image, no
+    │                      #   producer URL left); audit `productsPublished`
     ├── glam/              # CAT-IMPORT-1 PURE core (no I/O): parse.ts (RFC 4180, misplaced quotes refused; 12
     │                      #   columns by index, a non-12-cell record refuses the file; the row type has NO field
     │                      #   for columns 2–5; columns 3–4 = prices never read; columns 2/5 = producer codes read
@@ -380,7 +393,8 @@ test live here, both credential-free:
    mapper; `test/unit/glam-import-core.test.ts`, incl. the BOEN acceptance fixture; CAT-IMAGES-1 `images.ts`,
    `test/unit/glam-images-core.test.ts`; CAT-IMPORT-PROFILE-1A `profile.ts`, `test/unit/glam-profile.test.ts`,
    incl. the T3 fold corpus `fixtures/glam/cat-import-profile-1a-fold-corpus.json`). The handler's preservation
-   is pinned against a golden captured from the base commit (`test/unit/glam-profile-golden.test.ts`, fixture
+   is pinned against a golden captured from a base commit — b0a3055, re-captured from b5ef8fb with only the
+   CAT-IMAGE-GATE-1 status change (`test/unit/glam-profile-golden.test.ts`, fixture
    `fixtures/glam/cat-import-profile-1-baseline.json`, capture `cat-import-profile-1-golden.capture.test.ts`). These exist partly *as* pure test seams,
    extracted from AWS-touching callers precisely so the rule can be pinned here.
 

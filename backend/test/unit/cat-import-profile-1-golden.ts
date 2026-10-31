@@ -16,6 +16,22 @@ import { checkUpload, planGlamImport } from "../../src/import/glam/map.js";
 
 type Item = Record<string, any>;
 
+/**
+ * The response members added after the golden's base commit b0a3055: CAT-IMPORT-PROFILE-1 § 3.5 (`profile` …
+ * `specLineRefusals`) and CAT-IMAGE-GATE-1 § 3 item 4 (`publication`). The golden holds the base commit's response
+ * shape: the capture leaves these out of every response (a no-op on a commit that does not send them) and the
+ * comparison removes them before comparing (`glam-profile-golden.test.ts`). Every other member must equal the golden.
+ */
+export const ADDED_MEMBERS = ["profile", "sheets", "specKeys", "drafts", "siteProducts", "specLineRefusals", "publication"] as const;
+
+/** `body` without the `ADDED_MEMBERS` (`kept`) and those members alone (`extra`). */
+export function splitAddedMembers(body: Record<string, unknown>): { kept: Record<string, unknown>; extra: Record<string, unknown> } {
+    const kept: Record<string, unknown> = {};
+    const extra: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(body)) ((ADDED_MEMBERS as readonly string[]).includes(k) ? extra : kept)[k] = v;
+    return { kept, extra };
+}
+
 /** The fixed clock of a capture: every `Date` (ISO stamps, `Date.now()`) is this instant. */
 export const GOLDEN_TIME = "2026-10-31T12:00:00.000Z";
 

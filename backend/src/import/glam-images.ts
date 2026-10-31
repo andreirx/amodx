@@ -1,5 +1,5 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { QueryCommand, UpdateCommand, type QueryCommandOutput } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, UpdateCommand, type QueryCommandOutput } from "@aws-sdk/lib-dynamodb";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
@@ -11,8 +11,8 @@ import { publishAudit } from "../lib/events.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { checkUpload } from "./glam/map.js";
 import {
-    collectSources, resolveSources, rewriteProduct, remainingWork,
-    type DeriveGallery, type IngestOption, type IngestProduct, type SourceResult,
+    collectSources, hiddenWithoutImage, planProductWrite, resolveSources, remainingWork,
+    type DeriveGallery, type IngestOption, type IngestProduct, type ProductWrite, type SourceResult,
 } from "./glam/images.js";
 
 /**
@@ -25,6 +25,23 @@ import {
  * sources not yet copied until the copy budget, each success recorded in `MEDIAMAP#` at once → one conditional
  * `UpdateCommand` per touched product until the update budget, then its `CATPROD#` rebuild → 200 with per-source
  * results, progress and `complete`. Any failure → 500 naming the step.
+ *
+ * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 items 3, 4): a product read as `draft` that holds a copied
+ * image after its write is published (`status = active`) in that same conditional write (`planProductWrite`) — also a
+ * draft whose image is already under the tenant CDN and needs no rewrite (CIG-R2); its `CATPROD#` rebuild carries the
+ * new status. Every other status is left as it is. The answer lists the products published by this request
+ * (`products.published`) and every product of the set that stays hidden for lack of an image (`hiddenWithoutImage`:
+ * no copied image and no producer URL left); the failed sources of such a product are the `sources` entries that name
+ * it as a holder, in this answer or an earlier one of the same copy.
+ *
+ * Write rule (CIG-R1, closes "a stale write overrides a publication another request committed"): a product's write
+ * commits only if the `status` it was planned from is still stored (`attribute_exists(PK) AND #status = :read`). A
+ * cancelled write re-reads the product (consistent): absent → replaced (as before); present → planned again from
+ * that read, with the source results of this request (`rewriteProduct` `read`), at most WRITE_ATTEMPTS times; a
+ * product still contended after that is left to a later request. While the status is unchanged, a stale write still
+ * commits exactly as in CAT-IMAGES-1 § 9 (a later request repairs a restored producer URL); once a request has
+ * published a product, no stale write of another request can commit over it, and a re-planned write never removes a
+ * stored copied image — so a product the copy published always holds a copied image.
  *
  * Report rule (review-0 CIM-F2): a source is reported with the holders whose product write COMMITTED in this request,
  * and only then. A resolved source whose products were deferred by the update budget is not reported: it is resolved
@@ -52,6 +69,8 @@ export const COPY_START_BUDGET_MS = 12_000;
 export const UPDATE_START_BUDGET_MS = 24_000;
 /** Copies in flight at once (one producer host per sheet; ALPOD's 793 sources at ~0.2 s ≈ 4 requests). */
 export const COPY_CONCURRENCY = 4;
+/** CIG-R1: a product's write is tried at most this many times (first write + re-plans after a cancelled one). */
+export const WRITE_ATTEMPTS = 3;
 /** The `uploadedBy` of the `ASSET#` items this route writes. */
 const UPLOADED_BY = "glam-pricelist-images";
 
@@ -66,6 +85,9 @@ const isConditionFailure = (e: unknown) => e instanceof Error && e.name === "Con
 interface StoredProduct {
     id: string;
     slug: string;
+    title?: string;
+    status?: string;
+    imageLink?: string;
     importSource?: string;
     categoryIds?: string[];
     variants?: { options?: IngestOption[]; [key: string]: unknown }[];
@@ -134,32 +156,59 @@ const _handler: Handler = async (event) => {
         );
 
         step = "update";
-        const written = new Map<string, readonly IngestOption[]>();
+        /** Products this request wrote (committed). */
+        const written = new Set<string>();
+        /** The latest stored state this request knows per product: its committed write's item, or a re-read. */
+        const latest = new Map<string, StoredProduct>();
+        /** Per written product, the option values its committed write changed (the holdings it may report). */
+        const changedOptions = new Map<string, Set<string>>();
         const replaced: { productId: string; slug: string }[] = [];
+        const published: { productId: string; slug: string }[] = [];
         let attempted = 0;
         for (let i = 0; i < set.length; i++) {
-            const rewrite = rewriteProduct(set[i], results, deriveGallery);
-            if (rewrite.kind === "unchanged") continue;
+            const product = stored[i];
+            const read = set[i].options;
+            let state: StoredProduct = product;
+            let plan = planProductWrite(stateOf(state), read, results, deriveGallery, cdnUrl);
+            if (plan.kind === "none") continue;
             if (attempted > 0 && elapsed() >= UPDATE_START_BUDGET_MS) break;
             attempted++;
-            const product = stored[i];
-            const newItem = await updateProductImages(tenantId, product, rewrite);
-            if (newItem === null) {
-                // Replaced by an import since the read: nothing written, no CATPROD# write; its ingest stops here.
-                replaced.push({ productId: product.id, slug: product.slug });
-                continue;
+            for (let attempt = 1; plan.kind === "write" && attempt <= WRITE_ATTEMPTS; attempt++) {
+                const newItem = await writeProduct(tenantId, state, plan);
+                if (newItem !== null) {
+                    written.add(product.id);
+                    latest.set(product.id, newItem as StoredProduct);
+                    changedOptions.set(product.id, changedValues(optionsOf(state), optionsOf(newItem as StoredProduct)));
+                    if (plan.publish) published.push({ productId: product.id, slug: product.slug });
+                    await deleteCatProductItems(tenantId, product.id, state.categoryIds ?? []);
+                    await writeCatProductItems(tenantId, cardOf(newItem));
+                    break;
+                }
+                // Cancelled: the product is gone (replaced by an import), or its status changed since `state` was read.
+                const fresh = await readProduct(tenantId, product.id);
+                if (fresh === null || fresh.importSource !== importSource) {
+                    replaced.push({ productId: product.id, slug: product.slug });
+                    break;
+                }
+                state = fresh;
+                latest.set(product.id, fresh);
+                plan = planProductWrite(stateOf(fresh), read, results, deriveGallery, cdnUrl);
             }
-            written.set(product.id, rewrite.options);
-            await deleteCatProductItems(tenantId, product.id, product.categoryIds ?? []);
-            await writeCatProductItems(tenantId, cardOf(newItem));
         }
 
         const live = set.filter((p) => !replaced.some((r) => r.productId === p.id));
-        const remaining = remainingWork(live, written, cdnUrl);
-        // Only committed holders: a holder's option was rewritten exactly when its product's write committed.
+        const remaining = remainingWork(live, new Map([...latest].map(([id, p]) => [id, optionsOf(p)])), cdnUrl);
+        const hidden = stored
+            .filter((p) => !replaced.some((r) => r.productId === p.id))
+            .filter((p) => {
+                const now = latest.get(p.id) ?? p;
+                return hiddenWithoutImage(now.status, optionsOf(now), now.imageLink, cdnUrl);
+            })
+            .map((p) => ({ productId: p.id, slug: p.slug, title: p.title ?? "" }));
+        // Only committed holdings: a holding is reported when this request's committed write changed that option.
         const sourceResults = sources
             .filter((s) => results.has(s.url))
-            .map((s) => ({ ...results.get(s.url)!, holders: s.holders.filter((h) => written.has(h.productId)) }))
+            .map((s) => ({ ...results.get(s.url)!, holders: s.holders.filter((h) => changedOptions.get(h.productId)?.has(h.option) === true) }))
             .filter((s) => s.holders.length > 0);
         const counts = countKinds(sourceResults);
         // Provenance, independent of commits: the sources this request copied (fetched + stored + MEDIAMAP# written).
@@ -173,7 +222,7 @@ const _handler: Handler = async (event) => {
                 action: "GLAM_PRICELIST_IMAGES",
                 target: { title: `Imagini ${producer} / ${sheet}`, id: importSource },
                 details: {
-                    ...counts, productsUpdated: written.size, productsReplaced: replaced.length,
+                    ...counts, productsUpdated: written.size, productsReplaced: replaced.length, productsPublished: published.length,
                     remainingOptions: remaining.options, remainingSources: remaining.sources,
                 },
                 ip: event.requestContext.http.sourceIp,
@@ -187,7 +236,8 @@ const _handler: Handler = async (event) => {
             sources: sourceResults,
             copied,
             counts,
-            products: { updated: written.size, replaced },
+            products: { updated: written.size, replaced, published },
+            hiddenWithoutImage: hidden,
             progress: {
                 sourcesAtStart: sources.length,
                 resolved: results.size,
@@ -208,6 +258,31 @@ const _handler: Handler = async (event) => {
 
 export const imagesHandler = withInvalidation(_handler);
 
+/** The attributes the images route reads of a product (the set query and the re-read of CIG-R1). */
+const PRODUCT_PROJECTION = "id, slug, title, #status, imageLink, categoryIds, importSource, variants";
+
+const optionsOf = (p: StoredProduct): readonly IngestOption[] => p.variants?.[0]?.options ?? [];
+const stateOf = (p: StoredProduct) => ({ options: optionsOf(p), imageLink: p.imageLink, status: p.status });
+
+/** The option values whose image differs between two states of one product (options matched by value). */
+function changedValues(before: readonly IngestOption[], after: readonly IngestOption[]): Set<string> {
+    const out = new Set<string>();
+    for (const option of after) if (before.find((b) => b.value === option.value)?.imageLink !== option.imageLink) out.add(option.value);
+    return out;
+}
+
+/** One product, strongly consistent; `null` when it no longer exists. */
+async function readProduct(tenantId: string, id: string): Promise<StoredProduct | null> {
+    const result = await db.send(new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: `TENANT#${tenantId}`, SK: `PRODUCT#${id}` },
+        ConsistentRead: true,
+        ProjectionExpression: PRODUCT_PROJECTION,
+        ExpressionAttributeNames: { "#status": "status" },
+    }));
+    return (result.Item as StoredProduct | undefined) ?? null;
+}
+
 /**
  * Every product of the tenant: `PRODUCT#` query, strongly consistent, every page; the set is selected in code by
  * `importSource`, as the import selects its previous set (glam-pricelist.ts `readTenantProducts`).
@@ -220,7 +295,8 @@ async function readTenantProducts(tenantId: string): Promise<StoredProduct[]> {
             TableName: TABLE_NAME,
             KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
             ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": "PRODUCT#" },
-            ProjectionExpression: "id, slug, categoryIds, importSource, variants",
+            ProjectionExpression: PRODUCT_PROJECTION,
+            ExpressionAttributeNames: { "#status": "status" },
             ConsistentRead: true,
             ExclusiveStartKey: startKey,
         }));
@@ -231,37 +307,53 @@ async function readTenantProducts(tenantId: string): Promise<StoredProduct[]> {
 }
 
 /**
- * One product's image write: the options of its variant group and the two derived fields; `imageLink` REMOVED when
- * the product has no image left (CM-D7). `attribute_exists(PK)`: a product deleted since the read is never re-created
- * (an unconditional update upserts). Returns the stored item, or `null` when the condition cancelled the write.
+ * One product's write, as `plan` says: the options of its variant group and the two derived fields (`imageLink`
+ * REMOVED when the product has no image left, CM-D7), and/or `status = active` (CAT-IMAGE-GATE-1 — one write, never a
+ * second one). Condition (CIG-R1): the product exists (`attribute_exists(PK)`: never re-created — an unconditional
+ * update upserts) AND its `status` is still the one `state` was read with. Returns the stored item, or `null` when the
+ * condition cancelled the write (nothing written, nothing published; the caller re-reads to tell why).
  */
-async function updateProductImages(
+async function writeProduct(
     tenantId: string,
-    product: StoredProduct,
-    rewrite: Extract<ReturnType<typeof rewriteProduct>, { kind: "rewritten" }>,
+    state: StoredProduct,
+    plan: Extract<ProductWrite, { kind: "write" }>,
 ): Promise<Record<string, any> | null> {
-    const variants = [{ ...(product.variants?.[0] ?? {}), options: rewrite.options }, ...(product.variants ?? []).slice(1)];
-    const values: Record<string, unknown> = {
-        ":variants": variants,
-        ":additional": rewrite.additionalImageLinks,
-        ":now": new Date().toISOString(),
-    };
-    let expression = "SET #variants = :variants, #additional = :additional, #updatedAt = :now";
-    if (rewrite.imageLink !== undefined) {
-        values[":imageLink"] = rewrite.imageLink;
-        expression += ", #imageLink = :imageLink";
-    } else {
-        expression += " REMOVE #imageLink";
+    // DynamoDB refuses an unused name or value: each is added only with the clause that uses it.
+    const names: Record<string, string> = { "#updatedAt": "updatedAt", "#status": "status" };
+    const values: Record<string, unknown> = { ":now": new Date().toISOString() };
+    const set = ["#updatedAt = :now"];
+    let remove = "";
+    const images = plan.images;
+    if (images !== null) {
+        names["#variants"] = "variants";
+        names["#additional"] = "additionalImageLinks";
+        names["#imageLink"] = "imageLink";
+        values[":variants"] = [{ ...(state.variants?.[0] ?? {}), options: images.options }, ...(state.variants ?? []).slice(1)];
+        values[":additional"] = images.additionalImageLinks;
+        set.unshift("#variants = :variants", "#additional = :additional");
+        if (images.imageLink !== undefined) {
+            values[":imageLink"] = images.imageLink;
+            set.push("#imageLink = :imageLink");
+        } else {
+            remove = " REMOVE #imageLink";
+        }
+    }
+    if (plan.publish) {
+        values[":active"] = "active";
+        set.push("#status = :active");
+    }
+    let condition = "attribute_exists(PK) AND attribute_not_exists(#status)";
+    if (state.status !== undefined) {
+        values[":read"] = state.status;
+        condition = "attribute_exists(PK) AND #status = :read";
     }
     try {
         const result = await db.send(new UpdateCommand({
             TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `PRODUCT#${product.id}` },
-            UpdateExpression: expression,
-            ConditionExpression: "attribute_exists(PK)",
-            ExpressionAttributeNames: {
-                "#variants": "variants", "#additional": "additionalImageLinks", "#updatedAt": "updatedAt", "#imageLink": "imageLink",
-            },
+            Key: { PK: `TENANT#${tenantId}`, SK: `PRODUCT#${state.id}` },
+            UpdateExpression: `SET ${set.join(", ")}${remove}`,
+            ConditionExpression: condition,
+            ExpressionAttributeNames: names,
             ExpressionAttributeValues: values,
             ReturnValues: "ALL_NEW",
         }));

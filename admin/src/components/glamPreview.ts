@@ -18,6 +18,13 @@ import {
  *     expression) and `basePath = ""` (the tenant's public domain);
  *   - selection: the raw `f` string. A click follows the href the panel built (`selectionOfHref`), the same link the
  *     site's `<a>` carries.
+ *
+ * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 item 6): the one deliberate departure from "the renderer's
+ * input". An import without `publishWithoutImages` writes every product `draft`, and the image copy — which runs AFTER
+ * the import — publishes each one whose image copies. The preview cannot know which image links will work, so it shows
+ * the state after a copy in which every link works: a `draft` product with an image address is shown as published and
+ * marked "imagine de copiat" (`draftPublication` = `after-copy`); a `draft` product without any image address stays
+ * hidden and is listed apart (`hidden`). `previewCards` and `previewPanel` read the drafts through this rule.
  */
 
 /** A product item of the dry run (`drafts[]` or `siteProducts[]`): raw, as the API sent it. */
@@ -48,16 +55,20 @@ export interface PreviewCard {
     slug: string;
     title: string;
     imageLink: string | null;
+    /** CAT-IMAGE-GATE-1: published only once one of its images is copied ("imagine de copiat"). */
+    pendingCopy: boolean;
 }
 
-/** § 5.1 item 1: the first 24 drafts in file order (the plan's order) and the count of all of them. */
+/** § 5.1 item 1: the first 24 drafts the site would show, in file order (the plan's order), and the count of all of them. */
 export function previewCards(drafts: readonly PreviewItem[]): { count: number; cards: PreviewCard[] } {
+    const shown = drafts.filter((d) => draftPublication(d) !== "hidden");
     return {
-        count: drafts.length,
-        cards: drafts.slice(0, CARD_LIMIT).map((d) => ({
+        count: shown.length,
+        cards: shown.slice(0, CARD_LIMIT).map((d) => ({
             slug: String(d.slug ?? ""),
             title: String(d.title ?? ""),
             imageLink: typeof d.imageLink === "string" ? d.imageLink : null,
+            pendingCopy: draftPublication(d) === "after-copy",
         })),
     };
 }
@@ -67,6 +78,45 @@ const optionsOf = (d: PreviewItem): VariantOption[] => {
     const group = Array.isArray(d.variants) ? (d.variants[0] as { options?: unknown } | undefined) : undefined;
     return Array.isArray(group?.options) ? (group.options as VariantOption[]) : [];
 };
+
+// ── Publication (CAT-IMAGE-GATE-1 § 3 item 6) ─────────────────────────────────────────────────────────────────────
+
+/**
+ * What the site does with one draft (backend `productItem` writes `status` by `importStatus`):
+ *   - `published`: `active` — the profile publishes products without images;
+ *   - `after-copy`: `draft` with at least one option image address — published when the copy copies one of them;
+ *   - `hidden`: anything else — `draft` without any image address stays hidden after the copy.
+ */
+export type DraftPublication = "published" | "after-copy" | "hidden";
+
+export function draftPublication(d: PreviewItem): DraftPublication {
+    if (d.status === "active") return "published";
+    if (d.status === "draft" && optionsOf(d).some((o) => typeof o.imageLink === "string")) return "after-copy";
+    return "hidden";
+}
+
+/** The drafts the site would list after a copy in which every image link works: `after-copy` ones as `active`, `hidden` left out. */
+export function publishedDrafts(drafts: readonly PreviewItem[]): PreviewItem[] {
+    return drafts.flatMap((d) => {
+        const publication = draftPublication(d);
+        switch (publication) {
+            case "published": return [d];
+            case "after-copy": return [{ ...d, status: "active" }];
+            case "hidden": return [];
+            default: return assertNever(publication);
+        }
+    });
+}
+
+/** The drafts that stay hidden whatever the copy does (no image address in the file). */
+export function hiddenDrafts(drafts: readonly PreviewItem[]): PreviewItem[] {
+    return drafts.filter((d) => draftPublication(d) === "hidden");
+}
+
+/** Shown on the preview when some product starts hidden (the ruled copy of § 3 item 6). */
+export const PUBLICATION_NOTICE = "Opțiunea „Publică și produsele fără imagine” este oprită: fiecare produs importat este ascuns până la copierea imaginilor și devine public când una dintre imaginile lui se copiază pe site. Previzualizarea nu poate ști care adrese de imagine vor funcționa: arată toate produsele care au o imagine în fișier, marcate „imagine de copiat”. Un produs ale cărui imagini nu se pot copia rămâne ascuns.";
+export const PENDING_COPY_LABEL = "imagine de copiat";
+export const PENDING_COPY_TITLE = "ascuns până la copierea imaginilor";
 
 /** § 5.1 item 2 default: the draft with the most options; ties → the first in file order. `null` when there is none. */
 export function defaultProductSlug(drafts: readonly PreviewItem[]): string | null {
@@ -171,7 +221,7 @@ export type PreviewPanel =
     | { kind: "unavailable"; reason: string };
 
 /**
- * One filter panel: the base set of `scope` over `siteProducts ∪ drafts`, then the site's facet function on the
+ * One filter panel: the base set of `scope` over `siteProducts ∪ publishedDrafts(drafts)`, then the site's facet function on the
  * page's public path. A panel cannot be built (and says why) when the site context could not be read, when a found
  * category is not in the category list, or when the category address is occupied (the import is refused then).
  */
@@ -212,7 +262,8 @@ export function previewPanel(
             return assertNever(scope);
     }
     const path = catalogListingPath(context.prefixes, slug);
-    const base = catalogListing([...report.siteProducts, ...report.drafts], categoryId, today);
+    // CAT-IMAGE-GATE-1: the drafts as published after a copy in which every link works (see the header).
+    const base = catalogListing([...report.siteProducts, ...publishedDrafts(report.drafts)], categoryId, today);
     return { kind: "panel", path, baseCount: base.length, listing: buildFacetListing(base, f, path) };
 }
 

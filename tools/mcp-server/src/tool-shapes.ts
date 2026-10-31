@@ -77,6 +77,8 @@ export function glamPricelistSummary(report: {
     profile?: { source: string; revision: number | null; reason?: string };
     sheets?: { importSource: string; state: string; revisions: number[] }[];
     specLineRefusals?: { key: string; rowIndex: number; reason: string }[];
+    /** CAT-IMAGE-GATE-1 § 3 items 4, 7: the status the products get, how many start hidden, those with no image address. */
+    publication?: { status: "active" | "draft"; startHidden: number; withoutImageAddress: { slug: string; rowIndexes: number[] }[] };
 }): string {
     const c = report.counts;
     const lines = [
@@ -97,6 +99,27 @@ export function glamPricelistSummary(report: {
     }
     if (report.specLineRefusals?.length) {
         lines.push(`Spec lines refused by the value guard: ${report.specLineRefusals.map((x) => `row ${x.rowIndex} ${x.key} (${x.reason})`).join(", ")}`);
+    }
+    if (report.publication) {
+        // CAT-IMAGE-GATE-1 § 3 item 7: this tool does not copy images (follow-up CAT-IMAGES-MCP-1), so hidden products
+        // stay hidden until someone runs the copy ("Copiază imaginile" in admin, or POST /import/glam-pricelist/images).
+        const pub = report.publication;
+        const listed = pub.withoutImageAddress.slice(0, 10).map((x) => `${x.slug} (rândurile ${x.rowIndexes.join(", ")})`).join(", ") +
+            (pub.withoutImageAddress.length > 10 ? `, și încă ${pub.withoutImageAddress.length - 10}` : "");
+        switch (pub.status) {
+            case "draft":
+                lines.push(`${report.dryRun ? "Ar porni ascunse" : "Pornesc ascunse"}: ${pub.startHidden} produse — fiecare devine public când copierea imaginilor („Copiază imaginile” în admin) copiază una dintre imaginile lui. Acest instrument nu copiază imagini: fără copiere, produsele rămân ascunse.`);
+                if (pub.withoutImageAddress.length) lines.push(`Fără adresă de imagine în fișier (rămân ascunse dacă nu adăugați imagini în fișier): ${pub.withoutImageAddress.length} — ${listed}`);
+                break;
+            case "active":
+                lines.push(`Profilul publică și produsele fără imagine: niciun produs nu pornește ascuns.`);
+                if (pub.withoutImageAddress.length) lines.push(`Publicate fără adresă de imagine în fișier: ${pub.withoutImageAddress.length} — ${listed}`);
+                break;
+            default: {
+                const unhandled: never = pub.status;
+                throw new Error(`Unhandled publication status ${String(unhandled)}`);
+            }
+        }
     }
     if (report.categoryConflicts?.length) {
         lines.push(`BLOCKED — renamed categories hold keys this import needs: ${report.categoryConflicts.map((x) => `${x.slug} (now ${x.storedSlug})`).join(", ")}; the import would answer 409`);

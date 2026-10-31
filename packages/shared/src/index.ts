@@ -1054,6 +1054,13 @@ export const GlamImportProfileSchema = z.strictObject({
     ]),
     specKeys: z.array(SpecKeyRuleSchema),
     facetModes: FacetModesSchema,
+    /**
+     * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 item 1): `true` = every product the import writes is
+     * published at once (`status: "active"`), with or without an image. Absent or `false` = every product starts
+     * hidden (`status: "draft"`) and the image copy publishes it when one of its images is copied. Optional, so a
+     * profile stored before this member still parses; `version` stays 1. Absent and `false` mean the same.
+     */
+    publishWithoutImages: z.boolean().optional(),
 });
 export type GlamImportProfile = z.infer<typeof GlamImportProfileSchema>;
 

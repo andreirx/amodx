@@ -110,7 +110,22 @@ function canonicalJson(value: unknown): string {
     return JSON.stringify(value);
 }
 
-const sameProfile = (a: GlamImportProfile, b: GlamImportProfile) => canonicalJson(a) === canonicalJson(b);
+/**
+ * Two profiles are the same when their canonical texts are equal, with one equivalence: `publishWithoutImages` absent
+ * and `false` mean the same (CAT-IMAGE-GATE-1 § 3 item 1), so a sent `false` equals a stored profile without the
+ * member — and the default sent as `false` stays unprofiled (no save, no stamp).
+ */
+const comparable = (p: GlamImportProfile) => ({ ...p, publishWithoutImages: p.publishWithoutImages === true ? true : undefined });
+const sameProfile = (a: GlamImportProfile, b: GlamImportProfile) => canonicalJson(comparable(a)) === canonicalJson(comparable(b));
+
+/**
+ * CAT-IMAGE-GATE-1 § 3 item 2: the `status` every product of an import is written with. `active` only when the
+ * profile the import plans with says `publishWithoutImages: true`; otherwise `draft` — hidden until the image copy
+ * publishes it (`glam/images.ts` `planProductWrite`). An unprofiled import plans with `DEFAULT_PROFILE`: `draft`.
+ */
+export function importStatus(profile: GlamImportProfile): "active" | "draft" {
+    return profile.publishWithoutImages === true ? "active" : "draft";
+}
 
 function describeIssues(issues: readonly z.core.$ZodIssue[]): string {
     return issues.map((i) => `${i.path.length ? i.path.join(".") : "(profile)"}: ${i.message}`).join("; ");

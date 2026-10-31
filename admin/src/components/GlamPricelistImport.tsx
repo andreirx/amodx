@@ -25,6 +25,11 @@ import { siteContextOf, type SiteContext } from "./glamPreview";
  * import in this session. The image section lists every refused or failed source with the rows that hold it
  * (`imageProblems`).
  *
+ * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 items 4, 6) — an import without "Publică și produsele fără
+ * imagine" writes every product hidden; the copy publishes each product whose image copies. The check and the import
+ * report state how many start hidden and which rows have no image address (`publication`); the image section counts
+ * the products published and lists those that stay hidden for lack of an image (`hiddenProducts`).
+ *
  * CAT-IMPORT-PROFILE-1C — the producer's import profile (docs/slices/cat-import-profile-1.md § 5, § 6): the first
  * "Check the file" loads the stored profile (or the default) into the editor (`ProfileEditor`, a member of this
  * form's state); "Previzualizează" sends a dry run with `profileChoice` = { the edited profile, the loaded stored
@@ -230,6 +235,13 @@ export interface SourceResult {
     failure?: { kind: "http"; reason: string; status: number; contentType: string | null; bytes: number } | { kind: "error"; code: string };
 }
 
+/** One product the images route reports as hidden for lack of an image (`hiddenWithoutImage`). */
+export interface HiddenProductDTO {
+    productId: string;
+    slug: string;
+    title: string;
+}
+
 /** One (product, option) holding of a source, as the latest request that rewrote it reported it (`mergeSources`). */
 export interface HolderOutcome {
     productId: string;
@@ -255,6 +267,14 @@ export interface ImageCopyTotals {
     copiedThisSession: Record<string, true>;
     productsUpdated: number;
     productsReplaced: number;
+    /** CAT-IMAGE-GATE-1: products this copy published (their first image copied), summed over batches. */
+    productsPublished: number;
+    /**
+     * CAT-IMAGE-GATE-1: after the last batch, the products of the sheet that stay hidden for lack of an image (the
+     * route's `hiddenWithoutImage`, computed over the whole sheet each batch, so the latest answer replaces the earlier
+     * one). `null` until a batch answered.
+     */
+    hidden: HiddenProductDTO[] | null;
     /** After the last batch: (product, option) holdings still on a producer URL — the measure that must fall. */
     remainingOptions: number | null;
     /** After the last batch: distinct producer URLs among them. */
@@ -272,14 +292,20 @@ export type ImageCopyState =
     | { kind: "stopped"; target: ImageCopyTarget; totals: ImageCopyTotals; error: string };
 
 export type ImageCopyEvent =
-    | { type: "start"; target: ImageCopyTarget }
+    /**
+     * `resume` (CIG-R3): keep the outcomes recorded so far ("Copiază imaginile" again on the same sheet). `false`: start
+     * from nothing — the copy that follows an import (its products are new). Either way, a batch answered for another
+     * `importSource` than the recorded one discards the recorded outcomes first (`imageCopyReducer`).
+     */
+    | { type: "start"; target: ImageCopyTarget; resume: boolean }
     | { type: "batch"; response: any }
     | { type: "failed"; message: string };
 
 export const IDLE_IMAGE_COPY: ImageCopyState = { kind: "idle" };
 
 const NO_TOTALS: ImageCopyTotals = {
-    sources: {}, copiedThisSession: {}, productsUpdated: 0, productsReplaced: 0, remainingOptions: null, remainingSources: null, batches: 0, importSource: null,
+    sources: {}, copiedThisSession: {}, productsUpdated: 0, productsReplaced: 0, productsPublished: 0, hidden: null,
+    remainingOptions: null, remainingSources: null, batches: 0, importSource: null,
 };
 
 const holderKey = (h: { productId: string; option: string }) => `${h.productId}\u0000${h.option}`;
@@ -316,16 +342,20 @@ function mergeSources(records: Record<string, SourceRecord>, reported: any[], ba
 export function imageCopyReducer(state: ImageCopyState, event: ImageCopyEvent): ImageCopyState {
     switch (event.type) {
         case "start":
-            return state.kind === "running" ? state : { kind: "running", target: event.target, totals: NO_TOTALS };
+            if (state.kind === "running") return state;
+            return { kind: "running", target: event.target, totals: event.resume && state.kind !== "idle" ? state.totals : NO_TOTALS };
         case "batch": {
             if (state.kind !== "running") return state;
             const r = event.response;
-            const t = state.totals;
+            // Outcomes recorded for another product set are never merged into this one.
+            const t = state.totals.importSource !== null && state.totals.importSource !== r.importSource ? NO_TOTALS : state.totals;
             const totals: ImageCopyTotals = {
                 sources: mergeSources(t.sources, r.sources, t.batches + 1),
                 copiedThisSession: { ...t.copiedThisSession, ...Object.fromEntries((r.copied ?? []).map((c: { url: string }) => [c.url, true])) },
                 productsUpdated: t.productsUpdated + r.products.updated,
                 productsReplaced: t.productsReplaced + r.products.replaced.length,
+                productsPublished: t.productsPublished + (r.products.published?.length ?? 0),
+                hidden: r.hiddenWithoutImage ?? t.hidden,
                 remainingOptions: r.progress.remainingOptions,
                 remainingSources: r.progress.remainingSources,
                 batches: t.batches + 1,
@@ -412,6 +442,53 @@ export function imageProblems(totals: ImageCopyTotals, importReport: any | null)
     }
     return out;
 }
+
+/**
+ * Why a product stays hidden, as far as this page knows (CIG-R3: missing evidence is never an absence claim):
+ *   - `failed`: the sources it lost, with the reasons, recorded by this copy (or the resumed one before it);
+ *   - `no-image-address`: the import report of the same sheet, in memory, shows no image address for it;
+ *   - `unknown`: neither — e.g. a copy started without an import in this session whose failures were recorded earlier.
+ */
+export type HiddenCause =
+    | { kind: "failed"; sources: { url: string; reason: string }[] }
+    | { kind: "no-image-address" }
+    | { kind: "unknown" };
+
+/**
+ * CAT-IMAGE-GATE-1 § 3 item 4 — the products that stay hidden for lack of an image, after the latest batch: title,
+ * address, the file rows (from the import report of the same sheet, when in memory) and the cause (`HiddenCause`).
+ */
+export function hiddenProducts(totals: ImageCopyTotals, importReport: any | null): { slug: string; title: string; rows: number[]; cause: HiddenCause }[] {
+    const report = importReport && totals.importSource !== null && importReport.importSource === totals.importSource ? importReport : null;
+    return (totals.hidden ?? []).map((h) => {
+        const failed: { url: string; reason: string }[] = [];
+        for (const record of Object.values(totals.sources)) {
+            const lost = record.holders.filter((x) => x.productId === h.productId && isLoss(x.result.kind));
+            if (lost.length > 0) failed.push({ url: record.url, reason: problemReason(lost.reduce((a, b) => (b.batch >= a.batch ? b : a)).result) });
+        }
+        const planned = report?.products.find((p: any) => p.slug === h.slug);
+        const cause: HiddenCause = failed.length > 0 ? { kind: "failed", sources: failed }
+            : planned && !planned.options.some((o: any) => o.imageLink) ? { kind: "no-image-address" }
+            : { kind: "unknown" };
+        const rows: number[] = planned?.rowIndexes ?? [];
+        return { slug: h.slug, title: h.title, rows: [...rows].sort((a, b) => a - b), cause };
+    });
+}
+
+/** The cause in words (Romanian, § 3 item 4). */
+export function hiddenCauseText(cause: HiddenCause): string[] {
+    switch (cause.kind) {
+        case "failed": return cause.sources.map((f) => `${f.url} — ${f.reason}`);
+        case "no-image-address": return ["Fără adresă de imagine în fișier."];
+        case "unknown": return [HIDDEN_CAUSE_UNKNOWN];
+        default: {
+            const unhandled: never = cause;
+            throw new Error(`Unhandled hidden cause ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+export const HIDDEN_CAUSE_UNKNOWN = "Cauza nu este cunoscută în această sesiune: fie rândul nu are adresă de imagine, fie imaginile lui au eșuat la o copiere anterioară. Importați lista din nou și copiați imaginile ca să vedeți adresele care eșuează.";
 
 /** The request body; `profileChoice` only when a choice is sent (without it the backend applies the stored profile). */
 export const requestBody = (input: GlamInput, choice: ProfileChoice | null) =>
@@ -513,14 +590,15 @@ export function GlamPricelistImport({ onImported }: Props) {
             dispatch({ type: "import-failed", message: explain(err) });
             return;
         }
-        await copyImages({ producer: result.producer, sheet: result.sheet });
+        await copyImages({ producer: result.producer, sheet: result.sheet }, false);
     }
 
     /** The batch loop: one request per batch until the reducer leaves `running`. */
-    async function copyImages(target: ImageCopyTarget) {
+    /** `resume`: keep the outcomes recorded so far (the button); `false` after an import (new products). */
+    async function copyImages(target: ImageCopyTarget, resume: boolean) {
         if (copyRunning.current) return;
         copyRunning.current = true;
-        let s = imageCopyReducer(IDLE_IMAGE_COPY, { type: "start", target });
+        let s = imageCopyReducer(images, { type: "start", target, resume });
         setImages(s);
         while (s.kind === "running") {
             try {
@@ -593,7 +671,7 @@ export function GlamPricelistImport({ onImported }: Props) {
                         {state.pending === "import" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Confirm the import
                     </Button>
                 )}
-                <Button variant="outline" onClick={() => copyImages({ producer: input.producer, sheet: input.sheet })}
+                <Button variant="outline" onClick={() => copyImages({ producer: input.producer, sheet: input.sheet }, true)}
                     disabled={busy || input.producer.trim() === "" || input.sheet.trim() === ""}
                     title="Copy the producer images of this producer and sheet into the site's media">
                     {images.kind === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Copiază imaginile
@@ -621,6 +699,7 @@ export function GlamPricelistImport({ onImported }: Props) {
                         Imported: {result.counts.products} products ({result.counts.options} variants), {result.counts.deleted} previous products
                         replaced, {result.categoriesCreated} new categories.
                     </div>
+                    {result.publication && <PublicationLines publication={result.publication} dryRun={false} />}
                 </div>
             )}
             {images.kind !== "idle" && <ImageCopyReport state={images} importReport={result} />}
@@ -633,6 +712,7 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
     const { remainingOptions, remainingSources, batches, productsReplaced } = state.totals;
     const counts = imageCounts(state.totals);
     const problems = imageProblems(state.totals, importReport);
+    const hidden = hiddenProducts(state.totals, importReport);
     return (
         <div className="text-sm p-3 rounded-md bg-muted space-y-2">
             <div className="font-medium flex items-center gap-2">
@@ -647,8 +727,26 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
                 <li>Refused (address not allowed): <b>{counts.refused}</b></li>
                 <li>Failed (no image at that address): <b>{counts.failed}</b></li>
                 {productsReplaced > 0 && <li>Products replaced by another import during the copy: <b>{productsReplaced}</b></li>}
+                <li>Produse publicate acum (o imagine a lor s-a copiat): <b>{state.totals.productsPublished}</b></li>
+                {state.totals.hidden !== null && <li>Produse care rămân ascunse — nicio imagine copiată: <b>{state.totals.hidden.length}</b></li>}
             </ul>
             {state.kind === "stopped" && <div className="text-sm p-2 rounded-md bg-destructive/10 text-destructive">{state.error}</div>}
+            {hidden.length > 0 && (
+                <div className="space-y-1">
+                    <div className="text-xs">
+                        Aceste produse rămân ascunse pe site: niciuna dintre imaginile lor nu s-a copiat. Adăugați în fișier adrese de imagine care
+                        funcționează și importați-l din nou. O imagine adăugată în editorul produsului se pierde la următorul import al listei.
+                    </div>
+                    <ul className="text-xs space-y-1">
+                        {hidden.map((h) => (
+                            <li key={h.slug}>
+                                <b>{h.title}</b> <span className="text-muted-foreground">({h.slug}{h.rows.length > 0 ? `, rândurile ${h.rows.join(", ")}` : ""})</span>
+                                {hiddenCauseText(h.cause).map((line) => <div key={line} className="text-muted-foreground break-all">{line}</div>)}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
             {problems.length > 0 && (
                 <div className="space-y-1">
                     <div className="text-xs">
@@ -671,7 +769,6 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
 /** The dry-run report in business language (spec § 3.4 "Report shape"). */
 function ImportReport({ report }: { report: any }) {
     const skipped = report.rows.filter((r: any) => r.status === "skipped");
-    const imageless = report.products.filter((p: any) => !p.options.some((o: any) => o.imageLink));
     return (
         <div className="text-sm p-3 rounded-md bg-muted space-y-2">
             <div className="font-medium">Check of “{report.sheet}” by {report.producer} — nothing has been changed yet</div>
@@ -682,11 +779,11 @@ function ImportReport({ report }: { report: any }) {
                 </li>
                 <li>Products to create: <b>{report.counts.products}</b>, with <b>{report.counts.options}</b> variants in total ({report.variantName})</li>
                 <li>Rows merged into an existing variant (same label and image): <b>{report.counts.deduped}</b></li>
-                <li>Products without any image: <b>{imageless.length}</b></li>
                 <li>Variants given a label by the import (no label or a repeated label in the file): <b>{report.relabelled.length}</b></li>
                 <li>New categories: <b>{report.categoriesCreated}</b></li>
                 <li>Rows skipped: <b>{report.counts.skipped}</b> of {report.totalRows}</li>
             </ul>
+            {report.publication && <PublicationLines publication={report.publication} dryRun={true} />}
             {report.categoryConflicts?.length > 0 && (
                 <div className="text-sm p-2 rounded-md bg-destructive/10 text-destructive">
                     The import cannot run: {report.categoryConflicts.map((c: any) => `the category address “${c.slug}” belongs to a category that was renamed to “${c.storedSlug}”`).join("; ")}.
@@ -717,4 +814,48 @@ function ImportReport({ report }: { report: any }) {
             </details>
         </div>
     );
+}
+
+/**
+ * CAT-IMAGE-GATE-1 § 3 items 2, 4: the backend's `publication` member in words — how many products start hidden, and
+ * the products whose rows have no image address (with `draft` they stay hidden after the copy; with `active` they are
+ * published without an image).
+ */
+function PublicationLines({ publication, dryRun }: { publication: { status: "active" | "draft"; startHidden: number; withoutImageAddress: { slug: string; title: string; rowIndexes: number[] }[] }; dryRun: boolean }) {
+    const none = publication.withoutImageAddress;
+    const list = none.length > 0 && (
+        <details>
+            <summary className="cursor-pointer text-xs">
+                {publication.status === "draft"
+                    ? `Fără adresă de imagine în fișier — rămân ascunse dacă nu adăugați imagini în fișier (${none.length})`
+                    : `Fără adresă de imagine în fișier — publicate fără imagine (${none.length})`}
+            </summary>
+            <ul className="text-xs mt-1 space-y-0.5">
+                {none.map((p) => <li key={p.slug}>{p.title} ({p.slug}) — rândurile {p.rowIndexes.join(", ")}</li>)}
+            </ul>
+        </details>
+    );
+    switch (publication.status) {
+        case "draft":
+            return (
+                <div className="text-xs space-y-1">
+                    <div>
+                        {dryRun ? "Ar porni ascunse" : "Pornesc ascunse"}: <b>{publication.startHidden}</b> produse — fiecare devine public când una dintre imaginile
+                        lui se copiază pe site. Dacă copierea se oprește, apăsați din nou „Copiază imaginile”.
+                    </div>
+                    {list}
+                </div>
+            );
+        case "active":
+            return (
+                <div className="text-xs space-y-1">
+                    <div>Profilul publică și produsele fără imagine: toate produsele sunt publicate la import.</div>
+                    {list}
+                </div>
+            );
+        default: {
+            const unhandled: never = publication.status;
+            throw new Error(`Unhandled publication status ${String(unhandled)}`);
+        }
+    }
 }

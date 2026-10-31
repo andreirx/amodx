@@ -19,7 +19,7 @@ import {
     checkUpload, planGlamImport, type AppliedProfile, type GlamImportPlan, type GlamStyleDraft, type GlamUpload,
 } from "./glam/map.js";
 import {
-    analyseSpecKeys, buildGuard, parseProfileChoice, profileReport, profileSortKey, readStoredProfile, resolveProfile,
+    analyseSpecKeys, buildGuard, importStatus, parseProfileChoice, profileReport, profileSortKey, readStoredProfile, resolveProfile,
     DEFAULT_PROFILE, type ProfileChoice, type ProfileReport, type ProfileResolution, type StoredProfile,
 } from "./glam/profile.js";
 import type { GlamImportProfile } from "@amodx/shared";
@@ -42,7 +42,10 @@ import { imagesHandler } from "./glam-images.js";
  *   `incompleteCategories` when the retry bound is exhausted) → 200 report. Any failure → 500 naming the step; the
  *   lock is released in `finally` only if acquired.
  * Without a stored profile and without a non-default `profileChoice`, every written item is what the import wrote
- * before CAT-IMPORT-PROFILE-1 (§ 2.8; the 1a golden, backend/test/unit/glam-profile-golden.test.ts).
+ * before CAT-IMPORT-PROFILE-1 (§ 2.8; the 1a golden, backend/test/unit/glam-profile-golden.test.ts) — except `status`:
+ * CAT-IMAGE-GATE-1 writes every product `draft` unless the profile says `publishWithoutImages: true` (`importStatus`);
+ * the image copy publishes a product when one of its images is copied (glam-images.ts). The dry run and the execution
+ * report it in `publication` (`publicationOf`).
  * The pure core (`./glam/`) decides what to write; this file only reads and writes. The same function also serves
  * `POST /import/glam-pricelist/images` (CAT-IMAGES-1, `./glam-images.ts`): `handler` dispatches on `routeKey`.
  */
@@ -171,6 +174,7 @@ const _handler: Handler = async (event) => {
         if (isDryRun(event)) {
             const { reported, analysed } = dryRunProfile(early);
             const plan = planFor(reported);
+            const status = importStatus(analysed);
             step = "categories-lookup";
             const categories = await lookupCategories(tenantId, plan);
             step = "previous-set";
@@ -180,8 +184,9 @@ const _handler: Handler = async (event) => {
                 ...report(plan, true, previous, categories.toCreate.length, new Map(), categories.conflicts),
                 ...profileMembers(plan, profileReport(reported, storedEarly), sheetStates(products, up.producer, storedRevisionOf(storedEarly))),
                 specKeys: analyseSpecKeys(rows, plan.styles.map((s) => s.draft.rowIndexes), analysed, buildGuard(codeCells)),
-                drafts: previewDrafts(tenantId, plan, categories),
+                drafts: previewDrafts(tenantId, plan, categories, status),
                 siteProducts: products.filter((p) => p.importSource !== plan.upload.importSource).map(siteProductOf),
+                publication: publicationOf(plan, status),
             });
         }
 
@@ -207,6 +212,7 @@ const _handler: Handler = async (event) => {
         if (!isUsable(used)) return json(409, profileRefusal(used, up.producer));
         const plan = planFor(used);
         if (plan.counts.products === 0) return json(400, noProductBody(plan, used, stored));
+        const status = importStatus(used.profile);
 
         // Category lookup: an occupied `CATEGORY#<slug>` refuses (409) before any deletion (§ 9).
         step = "categories-lookup";
@@ -259,7 +265,7 @@ const _handler: Handler = async (event) => {
         for (const { draft } of plan.styles) {
             const id = randomUUID();
             const categoryIds = draft.categoryKeys.map((slug) => categories.idBySlug.get(slug)!);
-            const item = productItem(tenantId, id, draft, categoryIds, now);
+            const item = productItem(tenantId, id, draft, categoryIds, now, status);
             await db.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
             await writeCatProductItems(tenantId, cardOf(item));
             createdIds.set(draft.slug, id);
@@ -298,6 +304,7 @@ const _handler: Handler = async (event) => {
         const profiled = {
             ...result,
             ...profileMembers(plan, profileReport(used, stored), sheetStates(after, up.producer, plan.profile?.revision ?? null)),
+            publication: publicationOf(plan, status),
         };
         if (incomplete.length > 0) {
             return json(503, {
@@ -551,7 +558,7 @@ async function createCategories(tenantId: string, resolution: CategoryResolution
  * (`checkProductWrite`) is applied, which re-derives `imageLink` / `additionalImageLinks` from the options. A refusal
  * here means the pure core broke an invariant — not an expected failure — so it throws.
  */
-function productItem(tenantId: string, id: string, draft: GlamStyleDraft, categoryIds: string[], now: string) {
+function productItem(tenantId: string, id: string, draft: GlamStyleDraft, categoryIds: string[], now: string, status: "active" | "draft") {
     const product: Record<string, any> = {
         PK: `TENANT#${tenantId}`,
         SK: `PRODUCT#${id}`,
@@ -559,7 +566,8 @@ function productItem(tenantId: string, id: string, draft: GlamStyleDraft, catego
         Type: "Product",
         id,
         tenantId,
-        status: "active",
+        // CAT-IMAGE-GATE-1: `importStatus(profile)` — `draft` unless the profile publishes products without images.
+        status,
         title: draft.title,
         slug: draft.slug,
         description: draft.description,
@@ -907,14 +915,14 @@ function sheetStates(
  * without `PK`, `SK`, `TenantSlug`; `id` = `preview:<slug>`; category ids = the found id, `new:<slug>` for a category
  * the import would create, `occupied:<slug>` for a renamed category that blocks the import (`categoryConflicts`).
  */
-function previewDrafts(tenantId: string, plan: GlamImportPlan, categories: CategoryResolution) {
+function previewDrafts(tenantId: string, plan: GlamImportPlan, categories: CategoryResolution, status: "active" | "draft") {
     const now = new Date().toISOString();
     const toCreate = new Set(categories.toCreate.map((c) => c.slug));
     const occupied = new Set(categories.conflicts.map((c) => c.slug));
     return plan.styles.map(({ draft }) => {
         const categoryIds = draft.categoryKeys.map((slug) =>
             toCreate.has(slug) ? `new:${slug}` : occupied.has(slug) ? `occupied:${slug}` : categories.idBySlug.get(slug)!);
-        const { PK: _pk, SK: _sk, TenantSlug: _tenantSlug, ...item } = productItem(tenantId, `preview:${draft.slug}`, draft, categoryIds, now);
+        const { PK: _pk, SK: _sk, TenantSlug: _tenantSlug, ...item } = productItem(tenantId, `preview:${draft.slug}`, draft, categoryIds, now, status);
         return item;
     });
 }
@@ -922,4 +930,21 @@ function previewDrafts(tenantId: string, plan: GlamImportPlan, categories: Categ
 /** § 5.2 `siteProducts[]`: one kept product with exactly the `SITE_PRODUCT_FIELDS` it has. */
 function siteProductOf(product: StoredProductRef): Record<string, unknown> {
     return Object.fromEntries(SITE_PRODUCT_FIELDS.filter((f) => product[f] !== undefined).map((f) => [f, product[f]]));
+}
+
+/**
+ * CAT-IMAGE-GATE-1 § 3 items 2, 4 — the response member `publication` (dry run and execution): the `status` every
+ * product of this import is (or would be) written with, how many products start hidden (all of them with `draft`,
+ * none with `active`), and the products whose rows hold no usable image address (an empty or invalid image cell):
+ * with `draft` they stay hidden after the image copy unless an image is added to the file; with `active` they are
+ * published without an image. A separate member, so the 1a golden's `counts` and `products[]` keep their shape.
+ */
+function publicationOf(plan: GlamImportPlan, status: "active" | "draft") {
+    return {
+        status,
+        startHidden: status === "draft" ? plan.styles.length : 0,
+        withoutImageAddress: plan.styles
+            .filter(({ draft }) => !draft.variants[0].options.some((o) => o.imageLink !== undefined))
+            .map(({ draft }) => ({ slug: draft.slug, title: draft.title, rowIndexes: draft.rowIndexes })),
+    };
 }

@@ -102,7 +102,7 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
 - **Every answer that reports the stored state refreshes the editor**: the execution's 200 and its 503 "incomplete"
   (written, profile saved) carry `profile` and `sheets`; `editorAfterImport` takes both, so sheets a profile change
   made `stale` are listed at once (§ 6.3).
-- **Preview** (`glamPreview.ts`, pure): base sets = `catalogListing(siteProducts ∪ drafts, scope, today)` for the
+- **Preview** (`glamPreview.ts`, pure): base sets = `catalogListing(siteProducts ∪ publishedDrafts(drafts), scope, today)` for the
   producer category, one collection and the shop; panel = `buildFacetListing(base, f, catalogListingPath(prefixes,
   slug))` — the renderer's own functions and inputs. `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` from
   `GET /settings`; found category slugs from `GET /categories` (the dry run names them by id). A value click follows
@@ -113,6 +113,18 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   `VARIANT_MODE_HELP`, `FACET_VISIBILITY_HELP`, `SAVE_RULE`) is an exported constant scoped to the step it restates and
   pinned by units next to counterexamples computed by the owning module (`buildFacetListing`); the backend's acceptance
   rule is not restated (`movedNotice` is bounded: the import "poate fi refuzat").
+- **Publication (CAT-IMAGE-GATE-1).** The editor's checkbox "Publică și produsele fără imagine" sets
+  `publishWithoutImages: true` (unchecked = the member removed, so the default stays the default). The backend writes
+  each draft's `status`; the preview reads it through `draftPublication` (`active` → published; `draft` with an option
+  image address → shown as published after the copy, card marked "imagine de copiat"; `draft` without one → hidden,
+  listed apart) — the one place the preview's input departs from the renderer's, because the copy runs after the
+  import and no preview can know which links work (`PUBLICATION_NOTICE`). The check and import reports show the
+  backend's `publication` (`PublicationLines`); the image section counts `productsPublished` and lists the products
+  that stay hidden (`hiddenProducts`: the latest batch's `hiddenWithoutImage`, rows from the import report, and a
+  cause sum `failed | no-image-address | unknown` — "no image address" only when the same sheet's import report shows
+  it; without evidence the cause is `unknown`, never an absence claim). "Copiază imaginile" resumes the outcomes
+  recorded so far (`start` with `resume: true`); the copy after an import starts fresh (new products); a batch for
+  another `importSource` discards the recorded outcomes.
 - **Tests** (node, no DOM): `GlamPricelistImport.test.ts` (reducer, proposal over BOEN's measured `specKeys`, edits, the
   409 path), `glamPreview.test.ts` (§ 5.5 assembly rows, no-copy rows, near-budget rows). The components only lay out
   what these pure functions return.

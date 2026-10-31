@@ -54,7 +54,7 @@ shape** — a function with its own contract and its own test file.
 | ContextItemSchema | ContextItem | Strategy documents with tags and blocks |
 | WorkItemSchema | WorkItem | Automation tasks (social, email, research, audit) |
 | ProductSchema | Product | E-commerce product with pricing, inventory, Paddle integration; importer-owned `importSource`, `facetModes`, `importProfileRevision` (omitted from the authoring input by products/create.ts, update.ts) |
-| GlamImportProfileSchema | GlamImportProfile | CAT-IMPORT-PROFILE-1: per-producer import profile (grouping, collection source, `specKeys` rules, `facetModes`); every object STRICT — an unknown key, value or version fails the parse, never stripped |
+| GlamImportProfileSchema | GlamImportProfile | CAT-IMPORT-PROFILE-1: per-producer import profile (grouping, collection source, `specKeys` rules, `facetModes`); every object STRICT — an unknown key, value or version fails the parse, never stripped. CAT-IMAGE-GATE-1: optional `publishWithoutImages` (absent ≡ false: products start hidden until an image copies); `version` stays 1, so profiles stored before it still parse |
 | SpecKeyRuleSchema | SpecKeyRule | One spec key → `attribute { label, split }` or `prose-only` |
 | FacetModesSchema | FacetModes | Filter modes per stored attribute key (`always` / `never`), `variant: never`; absence = automatic |
 | LeadSchema | Lead | Email capture with source tracking and status |

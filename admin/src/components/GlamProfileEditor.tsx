@@ -3,7 +3,8 @@ import type { FacetModes, GlamImportProfile, SpecKeyRule, FacetValueView } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-    FIDELITY_LIMITS, FIDELITY_NOTICE, categoryLabel, collectionCategoryIds, effectivePreviewChoice, previewCards, proseParagraphs, previewPanel, previewProductPage,
+    FIDELITY_LIMITS, FIDELITY_NOTICE, PENDING_COPY_LABEL, PENDING_COPY_TITLE, PUBLICATION_NOTICE, categoryLabel, collectionCategoryIds, draftPublication,
+    effectivePreviewChoice, hiddenDrafts, previewCards, proseParagraphs, previewPanel, previewProductPage, publishedDrafts,
     producerCategoryId, selectionOfHref, type PreviewItem, type PreviewPanel, type PreviewScope, type SiteContext,
 } from "./glamPreview";
 
@@ -239,6 +240,7 @@ export function editedEditor(editor: ProfileEditor, edit: ProfileEdit): ProfileE
                 case "key-split":
                 case "attribute-mode":
                 case "variant-mode":
+                case "publish-without-images":
                     return editor; // nothing is loaded to edit (§ 3.3 item 5)
                 default: return assertNever(edit);
             }
@@ -317,6 +319,9 @@ export const VARIANT_MODE_HELP = "Filtrul variantelor — automat: este oferit p
     + "importate cu acest profil nu sunt propuse, dar aceste produse rămân găsite și numărate când o variantă este aleasă.";
 
 /** The VISIBILITY step, every facet (`buildFacetListing`): a selection, or some proposed value not held by every product. */
+/** CAT-IMAGE-GATE-1 § 3 item 6: what the checkbox does (saved with the profile by an accepted import, like every setting). */
+export const PUBLISH_WITHOUT_IMAGES_HELP = "Oprit (implicit): fiecare produs importat rămâne ascuns până când una dintre imaginile lui se copiază pe site; produsele fără nicio imagine copiată rămân ascunse și apar în raportul imaginilor. Pornit: toate produsele sunt publicate la import, cu sau fără imagine.";
+
 export const FACET_VISIBILITY_HELP = "Pe pagină, un filtru este afișat dacă are deja o valoare aleasă, sau dacă este oferit și cel puțin una dintre "
     + "valorile propuse nu este la toate produsele paginii.";
 
@@ -341,7 +346,9 @@ export type ProfileEdit =
     | { kind: "key-label"; key: string; label: string }
     | { kind: "key-split"; key: string; split: "none" | "comma" }
     | { kind: "attribute-mode"; attributeKey: string; mode: FilterMode }
-    | { kind: "variant-mode"; mode: "auto" | "never" };
+    | { kind: "variant-mode"; mode: "auto" | "never" }
+    /** CAT-IMAGE-GATE-1: the checkbox "Publică și produsele fără imagine". */
+    | { kind: "publish-without-images"; value: boolean };
 
 /** § 6.1 step 3: every key → `attribute`, label = the key as written, `split: "none"`, no mode; grouping and collection at the default. */
 export function proposeProfile(keys: readonly SpecKeyFact[]): GlamImportProfile {
@@ -493,6 +500,12 @@ export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit):
                 case "never": return { ...profile, facetModes: { variant: "never", attributes } };
                 default: return assertNever(mode);
             }
+        }
+        case "publish-without-images": {
+            // Enabled-only serialisation, as `variant`: the member is present only when true, so an unchecked box gives
+            // the default profile (and a stored profile without the member) exactly — nothing to save, no new revision.
+            const { publishWithoutImages: _off, ...rest } = profile;
+            return edit.value ? { ...rest, publishWithoutImages: true } : rest;
         }
         default:
             return assertNever(edit);
@@ -719,6 +732,15 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
                 </label>
             </div>
 
+            <label className="flex items-start gap-2 text-xs">
+                <input type="checkbox" className="mt-0.5" checked={working.publishWithoutImages === true} disabled={disabled}
+                    onChange={(e) => onEdit({ kind: "publish-without-images", value: e.target.checked })} />
+                <span>
+                    <span className="font-medium">Publică și produsele fără imagine</span>
+                    <span className="block text-muted-foreground">{PUBLISH_WITHOUT_IMAGES_HELP}</span>
+                </span>
+            </label>
+
             <KeyTable facts={facts.specKeys} working={working} onEdit={onEdit} disabled={disabled} />
 
             <div className="space-y-1">
@@ -859,19 +881,25 @@ function KeyRow({ keyName, fact, working, onEdit, disabled }: { keyName: string;
  * Cards, one product page and the three filter panels of one answered dry run. The filter selection of each panel and
  * the WANTED product and collection are local UI state. The parent keys this component by the form revision, so an
  * edited input starts from the defaults; a new report of the same revision keeps the wanted values, and what is shown is
- * `effectivePreviewChoice(report.drafts, wanted)` — a wanted value the report still holds is kept, one it no longer
+ * `effectivePreviewChoice(shown, wanted)` — a wanted value the report still holds is kept, one it no longer
  * holds is replaced by the report's default.
+ * CAT-IMAGE-GATE-1: cards, the product page choice and the panels show only the products the site would publish
+ * (`publishedDrafts`: a product waiting for its image copy is marked "imagine de copiat"); the products without any
+ * image address are listed apart as hidden (`hiddenDrafts`). The categories are the import's either way.
  */
 export function ImportPreview({ report, context, today }: { report: GlamDryRun; context: SiteContext | null; today: string }) {
     const producerId = producerCategoryId(report.drafts);
     const collectionIds = collectionCategoryIds(report.drafts);
     const [wanted, setWanted] = useState<{ productSlug: string | null; collectionId: string | null }>({ productSlug: null, collectionId: null });
-    const { productSlug, collectionId } = effectivePreviewChoice(report.drafts, wanted);
+    const shown = publishedDrafts(report.drafts);
+    const hidden = hiddenDrafts(report.drafts);
+    const startsHidden = report.drafts.some((d) => draftPublication(d) !== "published");
+    const { productSlug, collectionId } = effectivePreviewChoice(shown, wanted);
     const setProductSlug = (slug: string) => setWanted({ ...wanted, productSlug: slug });
     const setCollectionId = (id: string) => setWanted({ ...wanted, collectionId: id });
     const [selections, setSelections] = useState<Record<string, string>>({});
     const { count, cards } = previewCards(report.drafts);
-    const draft = report.drafts.find((d) => d.slug === productSlug) ?? null;
+    const draft = shown.find((d) => d.slug === productSlug) ?? null;
 
     const panel = (id: string, title: string, scope: PreviewScope) => (
         <FilterPanelPreview key={id} title={title} panel={previewPanel(report, context, scope, selections[id] ?? "", today)}
@@ -886,6 +914,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
                     <div>{FIDELITY_NOTICE}.</div>
                     <ul className="list-disc pl-4">{FIDELITY_LIMITS.map((t) => <li key={t}>{t}</li>)}</ul>
                 </div>
+                {startsHidden && <div className="text-xs">{PUBLICATION_NOTICE}</div>}
             </div>
 
             <div className="space-y-2">
@@ -897,6 +926,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
                                 {c.imageLink && <img src={c.imageLink} alt={c.title} loading="lazy" className="w-full h-full object-cover" />}
                             </div>
                             <div className="text-xs leading-tight">{c.title}</div>
+                            {c.pendingCopy && <div className="text-[10px] text-muted-foreground" title={PENDING_COPY_TITLE}>{PENDING_COPY_LABEL}</div>}
                         </button>
                     ))}
                 </div>
@@ -906,11 +936,22 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
                 <label className="text-xs font-medium flex items-center gap-2">
                     Pagina produsului
                     <select className={SELECT} value={productSlug ?? ""} onChange={(e) => setProductSlug(e.target.value)}>
-                        {report.drafts.map((d) => <option key={String(d.slug)} value={String(d.slug)}>{String(d.title)}</option>)}
+                        {shown.map((d) => <option key={String(d.slug)} value={String(d.slug)}>{String(d.title)}</option>)}
                     </select>
                 </label>
                 {draft && <ProductPagePreview draft={draft} />}
             </div>
+
+            {hidden.length > 0 && (
+                <details className="text-xs">
+                    <summary className="cursor-pointer font-medium">
+                        Rămân ascunse — fără adresă de imagine în fișier ({hidden.length}); se publică doar dacă adăugați imagini în fișier
+                    </summary>
+                    <ul className="mt-1 space-y-0.5">
+                        {hidden.map((d) => <li key={String(d.slug)}>{String(d.title)} <span className="text-muted-foreground">({String(d.slug)})</span></li>)}
+                    </ul>
+                </details>
+            )}
 
             <div className="space-y-2">
                 <div className="text-xs font-medium">Filtrele, după import</div>

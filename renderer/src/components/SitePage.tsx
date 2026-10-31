@@ -142,7 +142,8 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
     if (commerce) {
         if (commerce.type === 'product' && commerce.itemSlug) {
             const product = await getProductBySlug(config.id, commerce.itemSlug);
-            if (product) return {
+            // CAT-IMAGE-GATE-1: a catalog site's hidden product takes the missing-product path here too (no title leak).
+            if (product && !(isCatalogMode(config) && (product as any).status !== 'active')) return {
                 title: (product as any).seoTitle || product.title,
                 description: (product as any).seoDescription || product.description?.substring(0, 160),
                 metadataBase: new URL(`https://${config.domain}`),
@@ -247,7 +248,10 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         if (commerce.type === 'product' && commerce.itemSlug) {
             const product = await getProductBySlug(config.id, commerce.itemSlug);
             if (!product) return notFoundHere();
-            if ((product as any).status !== 'active' && !preview) return notFoundHere();
+            // A non-active product is not found. CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 item 5): on a
+            // catalog site also with `?preview=` — that flag is not authenticated, and an imported product hidden until
+            // its image copies must not be reachable by link. Other sites keep the preview exception (byte identity).
+            if ((product as any).status !== 'active' && (catalog || !preview)) return notFoundHere();
             const [reviews, allCategories] = await Promise.all([
                 getProductReviews(config.id, (product as any).id),
                 getAllCategories(config.id)

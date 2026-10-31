@@ -101,3 +101,28 @@ test("import_glam_pricelist summary (CAT-IMPORT-PROFILE-1): the profile used, th
     assert.ok(plain.includes("Profil: default, fără revizie"));
     assert.ok(!plain.includes("Sheets not current") && !plain.includes("refused"));
 });
+
+test("import_glam_pricelist summary (CAT-IMAGE-GATE-1): how many start hidden, that this tool does not copy images, the products with no image address", () => {
+    const base = {
+        dryRun: false, producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl", totalRows: 3,
+        counts: { deleted: 0, products: 3, options: 3, deduped: 0, skipped: 0 }, categoriesCreated: 0,
+        previousSet: { count: 0, firstTitles: [] }, rows: [],
+    };
+    const hidden = glamPricelistSummary({
+        ...base,
+        publication: { status: "draft", startHidden: 3, withoutImageAddress: [{ slug: "boen-pl-ash", rowIndexes: [4, 5] }] },
+    });
+    assert.ok(hidden.includes("Pornesc ascunse: 3 produse"));
+    assert.ok(hidden.includes("Acest instrument nu copiază imagini: fără copiere, produsele rămân ascunse."));
+    assert.ok(hidden.includes("Fără adresă de imagine în fișier (rămân ascunse dacă nu adăugați imagini în fișier): 1 — boen-pl-ash (rândurile 4, 5)"));
+    const dry = glamPricelistSummary({ ...base, dryRun: true, publication: { status: "draft", startHidden: 3, withoutImageAddress: [] } });
+    assert.ok(dry.includes("Ar porni ascunse: 3 produse") && !dry.includes("Fără adresă"));
+    const many = glamPricelistSummary({
+        ...base,
+        publication: { status: "draft", startHidden: 12, withoutImageAddress: Array.from({ length: 12 }, (_, i) => ({ slug: `p${i}`, rowIndexes: [i + 2] })) },
+    });
+    assert.ok(many.includes("p9 (rândurile 11), și încă 2") && !many.includes("p10 ("));
+    const published = glamPricelistSummary({ ...base, publication: { status: "active", startHidden: 0, withoutImageAddress: [{ slug: "boen-pl-ash", rowIndexes: [4] }] } });
+    assert.ok(published.includes("niciun produs nu pornește ascuns") && published.includes("Publicate fără adresă de imagine în fișier: 1"));
+    assert.ok(!glamPricelistSummary(base).includes("ascuns")); // an answer without the member (an older backend) prints nothing about it
+});
