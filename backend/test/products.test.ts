@@ -1,14 +1,16 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { handler as createProduct } from '../src/products/create';
 import { handler as listProducts } from '../src/products/list';
 import { handler as updateProduct } from '../src/products/update';
 import { handler as deleteProduct } from '../src/products/delete';
-import { createEvent, generateTenantId, cleanupTenant } from './utils';
+import { createEvent, generateTenantId, cleanupTenant, createTenantRecord } from './utils';
 
 describe('Product Domain', () => {
     const tenantId = generateTenantId();
     let productId: string;
 
+    // The site must exist: product writes read its record (cat-mode-1, readTenantMode).
+    beforeAll(async () => { await createTenantRecord(tenantId); });
     afterAll(async () => { await cleanupTenant(tenantId); });
 
     it('1. Create Product', async () => {
