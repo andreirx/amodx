@@ -41,6 +41,7 @@ import OrderEmails from "@/pages/OrderEmails";
 import Labels from "@/pages/Labels";
 import Reports from "@/pages/Reports";
 import MigrationPage from "@/pages/Migration";
+import CatalogImport from "@/pages/CatalogImport";
 import EmailPage from "@/pages/Email";
 
 // 1. Create a Shell Component to handle Auth & Context
@@ -98,6 +99,7 @@ const router = createBrowserRouter([
             { path: "digital-products/:id", element: <DigitalProductEditor /> },
             { path: "categories", element: <Categories /> },
             { path: "categories/:id", element: <CategoryEditor /> },
+            { path: "catalog-import", element: <CatalogImport /> },
             { path: "reports", element: <Reports /> },
             { path: "orders", element: <Orders /> },
             { path: "orders/:id", element: <OrderDetail /> },

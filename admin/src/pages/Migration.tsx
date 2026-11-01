@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, Upload, CheckCircle2, AlertCircle, ImageIcon, ShoppingBag, FileText } from "lucide-react";
 import { detectHeaderMappings, type HeaderMapping } from "@/lib/csv-headers";
 import { useTenant } from "@/context/TenantContext";
+import { isCatalogMode } from "@amodx/shared";
 
 interface StepResult {
     success: boolean;
@@ -17,6 +18,9 @@ interface StepResult {
 
 export default function MigrationPage() {
     const { currentTenant } = useTenant();
+    // CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.6): a catalog's products come from the pricelist import (the WooCommerce
+    // products import is refused for it, 403) — the page has two steps there, Media and Pages.
+    const catalog = isCatalogMode(currentTenant);
 
     // Step 1: Media
     const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -197,6 +201,7 @@ export default function MigrationPage() {
                 <p className="text-muted-foreground">
                     Import media, products, and pages from WordPress/WooCommerce exports.
                 </p>
+                {catalog && <p className="text-muted-foreground">Products of a catalog come from the pricelist import.</p>}
             </div>
 
             {/* STEP 1: MEDIA */}
@@ -239,13 +244,16 @@ export default function MigrationPage() {
                     {!mediaResult && existingMediaCount !== null && existingMediaCount > 0 && (
                         <div className="rounded-md p-3 text-sm flex items-start gap-2 bg-green-50 text-green-800 border border-green-200">
                             <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
-                            <p>{existingMediaCount.toLocaleString()} media files already imported. You can proceed to Steps 2 & 3, or re-import to add new files.</p>
+                            <p>{existingMediaCount.toLocaleString()}{catalog
+                                ? " media files already imported. You can proceed to Step 2, or re-import to add new files."
+                                : " media files already imported. You can proceed to Steps 2 & 3, or re-import to add new files."}</p>
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            {/* STEP 2: PRODUCTS */}
+            {/* STEP 2: PRODUCTS (not on a catalog) */}
+            {!catalog && (
             <Card className={!mediaComplete ? "opacity-50" : ""}>
                 <CardContent className="pt-6 space-y-4">
                     <div className="flex items-center gap-3">
@@ -286,8 +294,9 @@ export default function MigrationPage() {
                     {productsResult && <ResultBanner result={productsResult} />}
                 </CardContent>
             </Card>
+            )}
 
-            {/* STEP 3: PAGES */}
+            {/* STEP 3: PAGES (step 2 on a catalog) */}
             <Card className={!mediaComplete ? "opacity-50" : ""}>
                 <CardContent className="pt-6 space-y-4">
                     <div className="flex items-center gap-3">
@@ -297,7 +306,7 @@ export default function MigrationPage() {
                                 : <FileText className="h-5 w-5 text-purple-600" />}
                         </div>
                         <div>
-                            <h3 className="font-semibold">Step 3: Pages</h3>
+                            <h3 className="font-semibold">{catalog ? "Step 2: Pages" : "Step 3: Pages"}</h3>
                             <p className="text-xs text-muted-foreground">
                                 Upload WordPress pages export XML. Content and comments will be imported.
                             </p>

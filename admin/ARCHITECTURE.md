@@ -6,6 +6,14 @@ The admin panel SPA. Used by agency operators and client admins to manage conten
 
 **Depends on:** packages/shared (types, theme presets), packages/plugins/admin (Tiptap editor extensions), backend (HTTP API)
 
+**Site kinds and switches** (CAT-ADMIN-1, `docs/slices/cat-admin-1.md` § 3): a site is one of two kinds, chosen in
+"Create New Site" and fixed for its life — **catalog** (`catalogMode`: products without any price, stock or ordering;
+visitors send an interest list) or **non-catalog** (products with prices). A non-catalog site has two independent
+switches, **commerce** (`commerceEnabled`: cart, checkout, orders) and **digital sales** (Paddle), and a catalog has
+only the digital-sales switch (catalog + commerce is refused by the backend, 400). The admin follows this: the
+sidebar's kind group is "Commerce" or "Catalog", "Digital sales" is its own group on every site, and the pages that
+differ by kind (Products, Settings, WP Migration, Pricelist import) read `isCatalogMode` from `@amodx/shared`.
+
 ## Internal Structure
 
 ```
@@ -24,7 +32,7 @@ src/
 │   ├── editor/
 │   │   ├── BlockEditor.tsx     # Tiptap editor wrapper with media picker injection
 │   │   └── Toolbar.tsx         # Formatting toolbar + plugin insert buttons
-│   ├── GlamPricelistImport.tsx # Products → Import → glam pricelist: form reducer (dry run bound to its input + profile choice), image copy loop (CAT-IMPORT-1, CAT-IMAGES-1, CAT-IMPORT-PROFILE-1C)
+│   ├── GlamPricelistImport.tsx # The pricelist import form (mounted by pages/CatalogImport.tsx since CAT-ADMIN-1): form reducer (dry run bound to its input + profile choice), image copy loop (CAT-IMPORT-1, CAT-IMAGES-1, CAT-IMPORT-PROFILE-1C)
 │   ├── GlamProfileEditor.tsx   # The producer's import profile: dry-run DTO types, ProfileEditor state + pure transitions, proposeProfile, hints; layout of the editor and the preview (CAT-IMPORT-PROFILE-1C)
 │   ├── glamPreview.ts          # PURE preview assembly: cards, product page, 3 filter panels via @amodx/shared catalogListing / catalogListingPath / buildFacetListing (CAT-IMPORT-PROFILE-1C; facet headings = the tenant's catalog texts, siteContextOf.facetLabels, LOCALE-1B)
 │   ├── MediaPicker.tsx         # Modal for selecting uploaded assets
@@ -37,7 +45,10 @@ src/
     ├── ContentList.tsx         # Page listing, create, WordPress import
     ├── ContentEditor.tsx       # Full page editor: blocks, metadata, SEO, versions, theme overrides
     ├── ContentGraph.tsx        # ReactFlow + Dagre visualization of internal links, orphan detection
-    ├── Products.tsx            # Product listing table
+    ├── Products.tsx            # Product listing table; on a catalog (CAT-ADMIN-1 § 4.4): catalog subtitle, "Import a
+    │                           #   pricelist" link to /catalog-import, no WooCommerce import, no price/stock columns
+    ├── CatalogImport.tsx       # "Pricelist import" (catalog sites; CAT-ADMIN-1 § 4.3): the import contract in two
+    │                           #   sentences + GlamPricelistImport unchanged; a non-catalog site: one sentence, no form
     ├── ProductEditor.tsx       # Product form: pricing, inventory, images, Paddle/digital delivery
     ├── StrategyBoard.tsx       # Strategy document cards with quick-create dialog
     ├── StrategyEditor.tsx      # Block editor for strategy docs with tags
@@ -51,7 +62,9 @@ src/
     │                           #   "Language & Country" (locale-1a): Site language (LANGUAGE_PACKS → locale), Locale
     │                           #   (advanced) with its normalised value and a warning when a present value falls back
     │                           #   to en-US, Country apply = countryCode + currency only; the rules are the exported
-    │                           #   pure helpers localeStatus / withSiteLanguage / withCountry (Settings.test.ts)
+    │                           #   pure helpers localeStatus / withSiteLanguage / withCountry (Settings.test.ts);
+    │                           #   CAT-ADMIN-1 § 4.5: a catalog gets a "Catalog" card (no control) instead of
+    │                           #   "Commerce", Product Search, and URL prefixes product/category/shop/search/interest
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"
@@ -67,7 +80,12 @@ src/
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)
-    └── AuditLog.tsx            # Activity feed with action icons
+    ├── Migration.tsx           # WP Migration: Media → Products → Pages; a catalog has Media → Pages (CAT-ADMIN-1 § 4.6)
+    ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists"
+    ├── AuditLog.tsx            # Activity feed with action icons
+    └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
+                                #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
+                                #   byte for byte (toMatchFileSnapshot; never run `vitest -u` to "fix" a difference)
 ```
 
 ## Routing
@@ -82,6 +100,8 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 | `/content/:id` | ContentEditor | Page editor |
 | `/products` | Products | Product listing |
 | `/products/:id` | ProductEditor | Product editor |
+| `/catalog-import` | CatalogImport | Pricelist import (catalog sites; CAT-ADMIN-1) |
+| `/forms/:id/submissions` | FormSubmissions | A form's submissions; `/forms/interest-list/submissions` = the catalog's "Interest lists" |
 | `/strategy` | StrategyBoard | Strategy docs |
 | `/strategy/:id` | StrategyEditor | Strategy editor |
 | `/signals` | Signals | Outbound lead signals |
@@ -103,7 +123,7 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 
 ## Glam pricelist import and the import profile (`components/GlamPricelistImport.tsx`, `GlamProfileEditor.tsx`, `glamPreview.ts`)
 
-Catalog sites only (mounted by `pages/Products.tsx`). The backend (`POST /import/glam-pricelist`) decides every rule;
+Catalog sites only (mounted by `pages/CatalogImport.tsx`, route `/catalog-import`, since CAT-ADMIN-1; before, by `pages/Products.tsx`). The backend (`POST /import/glam-pricelist`) decides every rule;
 the admin collects the input, shows the dry run, and guarantees that "Confirm the import" sends EXACTLY the request the
 shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, § 6; record `docs/slices/cat-import-profile-1c.md`.
 

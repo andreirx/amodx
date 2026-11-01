@@ -668,7 +668,19 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* COMMERCE TOGGLE */}
+                    {/* COMMERCE TOGGLE — CATALOG-MODE-1 (CM-D11): the kind is fixed at creation; a catalog site never sells.
+                        CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.5): a catalog gets its own card, which states the kind; no control. */}
+                    {isCatalogMode(config) ? (
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <ShoppingBag className="h-5 w-5 text-muted-foreground" />
+                                <CardTitle>Catalog</CardTitle>
+                            </div>
+                            <CardDescription>A catalog site: products without prices, stock or ordering. Visitors collect an interest list and send it to the contact e-mail below (Notifications).</CardDescription>
+                        </CardHeader>
+                    </Card>
+                    ) : (
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
@@ -678,13 +690,6 @@ export default function SettingsPage() {
                             <CardDescription>Enable the full e-commerce flow: cart, checkout, orders, delivery, and coupons. Products, categories, and Paddle purchases work without this.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            {/* CATALOG-MODE-1 (CM-D11): the mode is fixed at creation; a catalog site never sells. */}
-                            {isCatalogMode(config) ? (
-                                <div>
-                                    <span className="font-medium text-sm">Catalog site</span>
-                                    <p className="text-xs text-muted-foreground">Products are shown without prices, stock or ordering. This mode was chosen when the site was created and cannot be changed here.</p>
-                                </div>
-                            ) : (
                             <label className="flex items-center gap-3 cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -697,9 +702,9 @@ export default function SettingsPage() {
                                     <p className="text-xs text-muted-foreground">Shows cart in navbar, enables checkout flow, orders management, delivery settings, and coupons.</p>
                                 </div>
                             </label>
-                            )}
                         </CardContent>
                     </Card>
+                    )}
 
                     {/* DIGITAL SALES (PADDLE) */}
                     <Card>
@@ -916,8 +921,8 @@ export default function SettingsPage() {
                     </Card>
                     )}
 
-                    {/* PRODUCT SEARCH BAR */}
-                    {config.commerceEnabled && (
+                    {/* PRODUCT SEARCH BAR — CAT-ADMIN-1 (§ 4.5): search is a catalog feature too (catalog-mode-1.md § 8.4 F-5). */}
+                    {(config.commerceEnabled || isCatalogMode(config)) && (
                     <Card>
                         <CardHeader>
                             <CardTitle>Product Search</CardTitle>
@@ -1357,7 +1362,8 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* URL PREFIXES (Commerce Routing) */}
+                    {/* URL PREFIXES (Commerce Routing) — CAT-ADMIN-1 (§ 4.5, CA-D2): a catalog has no cart, checkout or account
+                        pages; it has the interest-list page (`urlPrefixes.interest`, finding F-CA-1). A non-catalog site: unchanged. */}
                     <Card>
                         <CardHeader>
                             <CardTitle>URL Prefixes</CardTitle>
@@ -1381,22 +1387,26 @@ export default function SettingsPage() {
                                         placeholder="/categorie"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Cart</Label>
-                                    <Input
-                                        value={config.urlPrefixes?.cart || ""}
-                                        onChange={e => updateUrlPrefix("cart", e.target.value)}
-                                        placeholder="/cos"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Checkout</Label>
-                                    <Input
-                                        value={config.urlPrefixes?.checkout || ""}
-                                        onChange={e => updateUrlPrefix("checkout", e.target.value)}
-                                        placeholder="/comanda"
-                                    />
-                                </div>
+                                {!isCatalogMode(config) && (
+                                    <div className="space-y-2">
+                                        <Label>Cart</Label>
+                                        <Input
+                                            value={config.urlPrefixes?.cart || ""}
+                                            onChange={e => updateUrlPrefix("cart", e.target.value)}
+                                            placeholder="/cos"
+                                        />
+                                    </div>
+                                )}
+                                {!isCatalogMode(config) && (
+                                    <div className="space-y-2">
+                                        <Label>Checkout</Label>
+                                        <Input
+                                            value={config.urlPrefixes?.checkout || ""}
+                                            onChange={e => updateUrlPrefix("checkout", e.target.value)}
+                                            placeholder="/comanda"
+                                        />
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <Label>Shop</Label>
                                     <Input
@@ -1405,14 +1415,16 @@ export default function SettingsPage() {
                                         placeholder="/magazin"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Account</Label>
-                                    <Input
-                                        value={config.urlPrefixes?.account || ""}
-                                        onChange={e => updateUrlPrefix("account", e.target.value)}
-                                        placeholder="/account"
-                                    />
-                                </div>
+                                {!isCatalogMode(config) && (
+                                    <div className="space-y-2">
+                                        <Label>Account</Label>
+                                        <Input
+                                            value={config.urlPrefixes?.account || ""}
+                                            onChange={e => updateUrlPrefix("account", e.target.value)}
+                                            placeholder="/account"
+                                        />
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <Label>Search</Label>
                                     <Input
@@ -1421,6 +1433,16 @@ export default function SettingsPage() {
                                         placeholder="/search"
                                     />
                                 </div>
+                                {isCatalogMode(config) && (
+                                    <div className="space-y-2">
+                                        <Label>Interest list</Label>
+                                        <Input
+                                            value={config.urlPrefixes?.interest || ""}
+                                            onChange={e => updateUrlPrefix("interest", e.target.value)}
+                                            placeholder="/lista-mea"
+                                        />
+                                    </div>
+                                )}
                             </div>
                             <p className="text-[10px] text-muted-foreground">
                                 Changing these will update how commerce URLs are generated and resolved. Existing links using old prefixes will stop working.

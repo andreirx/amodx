@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, ShoppingBag, Edit, Trash2, Upload, Percent, ExternalLink } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 // Helper to get the base Renderer URL (CloudFront)
 const getRendererUrl = () => {
@@ -29,7 +29,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { detectHeaderMappings, type HeaderMapping } from "@/lib/csv-headers";
-import { GlamPricelistImport } from "@/components/GlamPricelistImport";
 
 export default function Products() {
     const { currentTenant } = useTenant();
@@ -202,7 +201,10 @@ export default function Products() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Products</h1>
-                    <p className="text-muted-foreground">Manage physical products for your store.</p>
+                    {/* CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.4): what a catalog's product list is, and how the import treats it. */}
+                    <p className="text-muted-foreground">{catalog
+                        ? "The products of the catalog. Imported products are replaced by the next import of their sheet; products you add here stay."
+                        : "Manage physical products for your store."}</p>
                 </div>
                 <div className="flex gap-2">
                     {!catalog && <Dialog open={bulkOpen} onOpenChange={(open) => { setBulkOpen(open); if (!open) { setBulkPreview(null); setBulkResult(null); } }}>
@@ -322,16 +324,23 @@ export default function Products() {
                             </div>
                         </DialogContent>
                     </Dialog>}
+                    {/* CAT-ADMIN-1 (§ 4.4): a catalog imports pricelists on its own page; the WooCommerce import is refused for it (403). */}
+                    {catalog ? (
+                        <Button asChild>
+                            <Link to="/catalog-import"><Upload className="mr-2 h-4 w-4" /> Import a pricelist</Link>
+                        </Button>
+                    ) : (
                     <Button variant="outline" onClick={() => setShowImport(!showImport)}>
                         <Upload className="mr-2 h-4 w-4" /> Import CSV
                     </Button>
+                    )}
                     <Button onClick={() => navigate("/products/new")}>
                         <Plus className="mr-2 h-4 w-4" /> Add Product
                     </Button>
                 </div>
             </div>
 
-            {showImport && (
+            {!catalog && showImport && (
                 <Card>
                     <CardContent className="p-4 space-y-3">
                         <div>
@@ -356,12 +365,6 @@ export default function Products() {
                                         <ul className="text-xs mt-1 space-y-0.5">{importResult.errors.map((e: string, i: number) => <li key={i}>{e}</li>)}</ul>
                                     </details>
                                 )}
-                            </div>
-                        )}
-                        {/* CAT-IMPORT-1: the glam pricelist import — catalog sites only (the backend refuses it elsewhere). */}
-                        {catalog && (
-                            <div className="border-t pt-3">
-                                <GlamPricelistImport onImported={loadProducts} />
                             </div>
                         )}
                     </CardContent>

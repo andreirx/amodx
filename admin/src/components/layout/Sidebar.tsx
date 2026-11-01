@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
 import {Shield, Users, ArrowRightLeft} from "lucide-react";
-import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages, Heart } from "lucide-react";
+import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages, Heart, Upload } from "lucide-react";
 import { INTEREST_FORM_ID, isCatalogMode } from "@amodx/shared";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph, Radar
@@ -52,12 +52,17 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 { name: "Media", href: "/media", icon: ImageIcon },
             ]
         },
+        // CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.2, CA-L1): one group for the site kind, named by the kind. A catalog
+        // adds its pricelist import and its interest lists (submissions of the system form, which the forms list omits).
         {
-            label: "Commerce",
+            label: isCatalog ? "Catalog" : "Commerce",
             items: [
                 { name: "Products", href: "/products", icon: ShoppingBag },
-                { name: "Digital Products", href: "/digital-products", icon: FileBox },
                 { name: "Categories", href: "/categories", icon: FolderTree },
+                ...(isCatalog ? [
+                    { name: "Pricelist import", href: "/catalog-import", icon: Upload },
+                    { name: "Interest lists", href: `/forms/${INTEREST_FORM_ID}/submissions`, icon: Heart },
+                ] : []),
                 ...(isCommerce ? [
                     { name: "Reports", href: "/reports", icon: BarChart3 },
                     { name: "Orders", href: "/orders", icon: Package },
@@ -67,6 +72,13 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                     { name: "Delivery", href: "/delivery", icon: Truck },
                     { name: "Email Templates", href: "/order-emails", icon: Mail },
                 ] : []),
+            ]
+        },
+        // CAT-ADMIN-1 (CA-D1 = A): Paddle digital sales are a mode of their own, unrelated to the site kind — every site.
+        {
+            label: "Digital sales",
+            items: [
+                { name: "Digital Products", href: "/digital-products", icon: FileBox },
             ]
         },
         {
@@ -82,8 +94,6 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             items: [
                 { name: "Popups", href: "/popups", icon: Megaphone },
                 { name: "Forms", href: "/forms", icon: ClipboardList },
-                // CAT-INTEREST-1: a catalog site's interest lists (submissions of the system form, which the forms list omits).
-                ...(isCatalog ? [{ name: "Liste de interes", href: `/forms/${INTEREST_FORM_ID}/submissions`, icon: Heart }] : []),
             ]
         },
         {
@@ -175,19 +185,36 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                                         <Label>Domain (Optional)</Label>
                                         <Input value={newDomain} onChange={e => setNewDomain(e.target.value)} placeholder="client.com" />
                                     </div>
-                                    {/* CATALOG-MODE-1 (CM-D11): the mode is chosen here and cannot be changed later. */}
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={newCatalogMode}
-                                            onChange={e => setNewCatalogMode(e.target.checked)}
-                                            className="rounded border-input h-4 w-4 mt-0.5"
-                                        />
-                                        <div>
-                                            <span className="text-sm font-medium">Catalog site — no prices, no ordering</span>
-                                            <p className="text-xs text-muted-foreground">Products are shown without prices, stock or a cart. This cannot be changed after the site is created.</p>
-                                        </div>
-                                    </label>
+                                    {/* CATALOG-MODE-1 (CM-D11): the kind is chosen here and cannot be changed later.
+                                        CAT-ADMIN-1 (§ 4.1): a choice between the two kinds, one sentence each; the payload is unchanged. */}
+                                    <div role="radiogroup" aria-label="Site kind" className="space-y-3">
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="site-kind"
+                                                checked={!newCatalogMode}
+                                                onChange={() => setNewCatalogMode(false)}
+                                                className="border-input h-4 w-4 mt-0.5"
+                                            />
+                                            <p className="text-sm">
+                                                <span className="font-medium">Shop or content site</span>
+                                                <span className="text-muted-foreground"> — products with prices; commerce (cart, checkout, orders) can be switched on later in Settings.</span>
+                                            </p>
+                                        </label>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="site-kind"
+                                                checked={newCatalogMode}
+                                                onChange={() => setNewCatalogMode(true)}
+                                                className="border-input h-4 w-4 mt-0.5"
+                                            />
+                                            <p className="text-sm">
+                                                <span className="font-medium">Catalog site</span>
+                                                <span className="text-muted-foreground"> — products without prices or ordering; visitors collect an interest list and send it to you. This choice is fixed for the life of the site.</span>
+                                            </p>
+                                        </label>
+                                    </div>
                                     <Button onClick={handleCreateSite} disabled={isCreating} className="w-full">
                                         {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                         {isCreating ? "Creating..." : "Launch Site"}

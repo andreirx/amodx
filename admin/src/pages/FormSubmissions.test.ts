@@ -1,5 +1,25 @@
-import { describe, it, expect } from "vitest";
-import { interestItemRows, isMissingSystemForm, submissionsBackTarget } from "./FormSubmissions";
+import { describe, it, expect, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+
+/*
+ * CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.8) renders the real page with react-dom/server (no DOM). Replaced: the
+ * tenant context, Amplify, and ONE test-only state seed — `useState(true)` starts `false`, because the page's only
+ * `true` initial state is `loading` and react-dom/server never runs the effect that would clear it. The rendered
+ * state is "loaded, no form definition read, no submission". The pure tests below do not use React state.
+ */
+vi.mock("@/context/TenantContext", () => ({
+    useTenant: () => ({ tenants: [], currentTenant: { id: "t1", name: "T", domain: "t.test" }, selectTenant: () => {}, refreshTenants: async () => {} }),
+}));
+vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn() }));
+vi.mock("react", async (importOriginal) => {
+    const React = await importOriginal<typeof import("react")>();
+    const useState = ((init: unknown) => React.useState(init === true ? false : init)) as typeof React.useState;
+    return { ...React, default: { ...React, useState }, useState };
+});
+
+import FormSubmissions, { interestItemRows, isMissingSystemForm, submissionsBackTarget } from "./FormSubmissions";
 
 /**
  * CAT-INTEREST-1 — the submissions page's pure parts (slice docs/slices/cat-interest-1.md § 2.7; spec
@@ -70,5 +90,19 @@ describe("isMissingSystemForm — only not-found of the interest list means \"no
     });
     it("a 404 for an ordinary form stays an error", () => {
         expect(isMissingSystemForm("f-123", new Error("API Error (404): Form not found"))).toBe(false);
+    });
+});
+
+const renderPage = (formId: string) => renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: [`/forms/${formId}/submissions`] },
+    createElement(Routes, null, createElement(Route, { path: "/forms/:id/submissions", element: createElement(FormSubmissions) }))));
+const title = (html: string) => html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)![1];
+
+describe("the page title (CAT-ADMIN-1 § 4.8)", () => {
+    it("the interest list → \"Interest lists\" (English admin; the stored form name is data)", () => {
+        expect(title(renderPage("interest-list"))).toBe("Interest lists");
+    });
+    it("an ordinary form renders byte-equal to 3912c5d (rule 2)", async () => {
+        // The file under __markup__/ was written by the first run of this test on the unchanged tree (3912c5d).
+        await expect(renderPage("f-123")).toMatchFileSnapshot("./__markup__/form-submissions.ordinary.html");
     });
 });

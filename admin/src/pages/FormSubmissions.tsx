@@ -36,7 +36,7 @@ export function interestItemRows(formId: string, fieldId: string, value: unknown
 
 /**
  * Where the page's back buttons go. A user form → its editor (as before). The interest list (CAT-INTEREST-1) has no
- * editor; it is opened from the sidebar entry "Liste de interes" → back to the page the user was on (`-1`), or to
+ * editor; it is opened from the sidebar entry "Interest lists" → back to the page the user was on (`-1`), or to
  * the dashboard when the page was opened directly (no in-app history). Pure.
  */
 export function submissionsBackTarget(formId: string, hasInAppHistory: boolean): string | -1 {
@@ -114,8 +114,9 @@ export default function FormSubmissions() {
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div>
+                    {/* CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.8): the admin is English; the stored form name "Listă de interes" is data. */}
                     <h1 className="text-3xl font-bold tracking-tight">
-                        {form?.name || (id === INTEREST_FORM_ID ? "Listă de interes" : "Form")} - Submissions
+                        {id === INTEREST_FORM_ID ? "Interest lists" : <>{form?.name || "Form"} - Submissions</>}
                     </h1>
                     <p className="text-muted-foreground">
                         {submissions.length} submission{submissions.length !== 1 ? "s" : ""}
