@@ -102,9 +102,10 @@ shown exactly as resolved (a stored `""` stays empty, docs/slices/locale-1.md §
 names `videoTitle` / `videoBackgroundTitle`: pattern F in `blockStrings` (a stored `""` → the language default), so an
 iframe's accessible name is never empty (ruling LOCALE1C-IFRAME-NAMES = A). A branch (which error text, whether an
 error box shows) is chosen by the server's answer or the fetch outcome, never by testing a table text.
-Dates: the post grid uses `strings.dateLocale` (absent for an en-US tenant → the runtime default, as before); the reviews
-carousel passes a PRESENT block `locale` attribute raw (any value, even `""`), and without it uses `strings.dateLocale`
-or, for an en-US tenant, `"ro-RO"` as before (finding F-LOCALE-REVIEWS-DATE, the human's decision).
+Dates: the post grid uses `strings.dateLocale` (absent for an en-US tenant → the runtime default, as before). The reviews
+carousel (slice `locale-reviews-date-1`, human ruling 2026-11-01 on finding F-LOCALE-REVIEWS-DATE): a block `locale`
+attribute that is a non-empty string is passed raw (not normalised); otherwise (absent, `""`, not a string) the site
+setting — `strings.dateLocale`, or `"en-US"` for an en-US tenant. No Romanian date default remains.
 The render files import `BlockStrings` as a TYPE only: a runtime import of `@amodx/shared` in a render module makes the
 renderer's bundler split the shared package into an extra client chunk on every page (EXECUTED, docs/slices/locale-1c.md
 D3). There is no English fallback (ruling LOCALE1C-FALLBACK = A): `strings` is required by the typed contract and

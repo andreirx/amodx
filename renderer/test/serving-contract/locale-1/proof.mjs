@@ -136,15 +136,25 @@ export const EN_US_REQUESTS = Object.fromEntries(tenantItems
     .filter((t) => !Object.prototype.hasOwnProperty.call(t, "locale"))
     .map((t) => (cm1KeyOf[t.id] ? [cm1KeyOf[t.id], cm1Requests(cm1KeyOf[t.id])] : [t.id, derivedRequests(t)])));
 
-/** Per subject, the URLs whose visible text differs between two capture sets (status, structure or text). */
-export function textMismatches(beforeSet, afterSet, key) {
+/**
+ * Per subject, the URLs whose visible text differs between two capture sets (status, structure or text) beyond the
+ * listed changes. `listed(path)` → the exact `[{ kind, from, to }]` (`textChanges` form, document order) the URL must
+ * show — LOCALE-REVIEWS-DATE-1: the `text` of its category-3 (ledger) entries; default none, i.e. the extractions must
+ * be equal. A listed change that does not occur is a mismatch too.
+ */
+export function textMismatches(beforeSet, afterSet, key, listed = () => []) {
     const out = [];
     for (const b of beforeSet.captures.filter((c) => c.tenant === key)) {
         const a = afterSet.captures.find((c) => c.tenant === key && c.path === b.path);
         if (!a) { out.push(`${b.path}: not captured`); continue; }
         if (a.status !== b.status) { out.push(`${b.path}: status ${b.status} → ${a.status}`); continue; }
         if (!b.contentType.startsWith("text/html")) continue;
-        if (JSON.stringify(extractVisibleText(a.body)) !== JSON.stringify(extractVisibleText(b.body))) out.push(`${b.path}: visible text changed`);
+        const from = extractVisibleText(b.body), to = extractVisibleText(a.body);
+        const want = listed(b.path);
+        let same;
+        if (want.length === 0) same = JSON.stringify(to) === JSON.stringify(from);
+        else { try { same = JSON.stringify(textChanges(from, to)) === JSON.stringify(want); } catch { same = false; } }
+        if (!same) out.push(`${b.path}: visible text changed`);
     }
     return out;
 }

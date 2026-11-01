@@ -460,10 +460,10 @@ and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCa
 `CF1`) and `cip1b-*` (fixtures block `CIP1B`, a tenant of its own) in `test/serving-contract/contract.test.mjs`;
 `test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
 
-## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c` (PROTOTYPE)
+## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c`, `locale-reviews-date-1` (PROTOTYPE)
 
 Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
-`docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`.
+`docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`, `docs/slices/locale-reviews-date-1.md`.
 
 - `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
   every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
@@ -474,7 +474,8 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   its keys as a plain `strings` prop (`Navbar`, `CommentsSection`, `SocialShare`, `QuickContact`; `CookieConsent`
   keeps its `config` object shape). `layout.tsx`: cookie texts, footer lines/headings, legal labels, copyright, meta
   description fallback. `SitePage.tsx`: restricted page, pagination, breadcrumb Home, comments, sharing.
-- **en-US tenants do not change** (§ 16.2 item 4): every EN value is today's literal; `CommentsSection` gets
+- **en-US tenants do not change** (§ 16.2 item 4), with ONE ruled exception since `locale-reviews-date-1`: the
+  reviews-carousel date (ledger row L-ALL-2, below). Every EN value is today's literal; `CommentsSection` gets
   `dateLocale` only for a non-en-US tenant (a spread — an `undefined` prop would be serialised into the RSC payload);
   the footer copyright is split by a local `interpolate` into the same children as before, so its HTML/RSC bytes and
   the CM1-A1 footer-year canonicalisation are unchanged.
@@ -504,18 +505,27 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   block (plugin or core) and down its `RenderChildren` recursion, so a block nested in a list or a quote gets it too.
   It is the only `RenderBlocks` caller (`git grep '<RenderBlocks'`). On an en-US page the only byte change is that one
   prop in the RSC payload (category 2).
+- `locale-reviews-date-1` — review dates (human ruling 2026-11-01, finding F-LOCALE-REVIEWS-DATE closed): the reviews
+  carousel (`packages/plugins`) uses a block `locale` attribute that is a non-empty string, raw; otherwise the tenant's
+  normalised locale (`strings.dateLocale`, or `"en-US"` for an en-US tenant). No renderer source change; on an en-US page
+  the only change is the carousel's date in the server HTML (`31 octombrie 2026` → `October 31, 2026`, row L-ALL-2,
+  category 3). Romanian scope: on a RO tenant a carousel without the attribute (the fixtures; every editor-made block — the
+  block schema has no `locale` field) keeps its date, but a `""` or non-string attribute now also takes the tenant's
+  locale (before: the raw date string, or the runtime default).
 - `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
 - Proof: `test/serving-contract/locale-1/` — `proof.mjs` (byte-difference check incl. the 1b changed-prop form
   `beforeValue`, `renderItem` incl. the 1d `segment` form, the request rules incl. `orderRequests`), `extract.mjs` (the
   visible-text extraction, re-exported by `proof.mjs`; importable under jsdom), per slice `<slice>/before/` (immutable
   start capture; since 1d also the RO copies), `expected-diff.json`, `ro-expected.json`, `coverage.json` (1b also
-  `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT slice's set (`1c`; the `1a`/`1b`/`1d` files are
-  their records): `loc1-subjects`, `loc1-text-<subject>`, `loc1-text-mutation`, `loc1-diff-1c`, `loc1-facet-hrefs`,
+  `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT slice's set (`reviews-date-1`, from `eba5e18`; the
+  `1a`/`1b`/`1c`/`1d` files are their records): `loc1-subjects`, `loc1-text-<subject>` (equal except the listed
+  category-3 ledger texts), `loc1-text-mutation`, `loc1-diff-reviews-date-1`, `loc1-facet-hrefs`,
   `loc1-flight-controls`, `loc1-ro-content`, `loc1-ro-commerce`, `loc1-ro-catalog` (each RO copy against its own start
   capture), `loc1-order-pages`. Client-only commerce states: `test/unit/locale-1d-client.test.ts` (en-US markup equal to a
   92adbba capture; `CheckoutPageView`'s `DeliveryDatePicker` is exported for it only, a test seam); headless renders: `test/unit/locale-1d-server-render.test.ts`.
   Block states (`1c`): `test/unit/locale-1c-blocks-client.test.ts` (jsdom; the eleven block renderers through
-  `@amodx/plugins/render`; en-US markup equal to a 0c0dbc8 capture; the § 5.2 preservation cases; `swiper/react` mocked —
+  `@amodx/plugins/render`; en-US markup equal to a 0c0dbc8 capture except the declared L-ALL-2 review dates of
+  `locale-reviews-date-1` (`L_ALL_2`); the reviews-carousel date cases of that ruling; the § 5.2 preservation cases; `swiper/react` mocked —
   it is bound to the monorepo root's React copy). Since `1c` the `cm1-content` home holds the block-chrome blocks. The byte rows compare CM1-A1 plus the ruled resolved-tree payload comparison
   (`resolveFlight`, LOCALE1B-ROW-CUT = A; it replaced the 1a row renumbering, LOCALE1A-ROW-IDS = A): every outlined row
   (plain `$<id>`, or the encoder's element outline `$L<id>` to an element tuple) is resolved into its place on both sides, so
@@ -523,7 +533,7 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   reference stays a typed leaf; an unknown form fails closed; no URL is excluded.
   The en-US subjects are, by rule, every `fixtures.mjs` tenant without `locale` (`proof.mjs` `EN_US_REQUESTS`), so a new
   locale-less fixture joins the gate; fixtures `LOC1` are the RO copies of the CM1 commerce/content/catalog tenants. The strict `cm1-byte-identity/baseline/` was advanced from
-  the 1a, 1b, cmrc-counties-1, 1d and 1c trees (history in its README); `cm1-control` reads the preserved `control-de4ad52/`. Unit:
+  the 1a, 1b, cmrc-counties-1, 1d, 1c and reviews-date-1 trees (history in its README); `cm1-control` reads the preserved `control-de4ad52/`. Unit:
   `locale-1a-{server-render,client}.test.ts`, `locale-1b-{server-render,client}.test.ts`; the coverage checker
   `locale-coverage.test.ts` (named `locale-1a-coverage.test.ts` until 1b) checks every slice, and each plural category
   of each count key, per language.

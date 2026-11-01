@@ -123,7 +123,9 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
 `docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`. Maturity **PROTOTYPE**: since `locale-1c` every visitor text
 surface reads the table (the block chrome was the last); promotion is the operator's decision at closeout (open: `1e`
-`<html lang>`, finding F-LOCALE-REVIEWS-DATE, money formatting out of scope).
+`<html lang>`, money formatting out of scope). Finding F-LOCALE-REVIEWS-DATE is closed by `locale-reviews-date-1`
+(`docs/slices/locale-reviews-date-1.md`): a reviews carousel without its own non-empty `locale` attribute formats its
+dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it is absent.
 
 - **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 179 keys:
   the 77 existing ones, the 21 shared product-surface keys of `1b`, the 80 commerce-only keys of `1d` — cart, checkout,

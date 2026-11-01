@@ -41,7 +41,7 @@ const FacebookBadge = () => (
     </svg>
 );
 
-function formatDate(dateStr: string, locale = "ro-RO") {
+function formatDate(dateStr: string, locale: string) {
     if (!dateStr) return "";
     try {
         const d = new Date(dateStr);
@@ -51,7 +51,7 @@ function formatDate(dateStr: string, locale = "ro-RO") {
     }
 }
 
-function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, onToggle, strings }: { item: any; showSource: boolean; showPhotos: boolean; locale?: string; maxLines: number; expanded: boolean; onToggle: () => void; strings: BlockStrings }) {
+function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, onToggle, strings }: { item: any; showSource: boolean; showPhotos: boolean; locale: string; maxLines: number; expanded: boolean; onToggle: () => void; strings: BlockStrings }) {
     const initial = item.name?.charAt(0)?.toUpperCase() || "?";
     const color = getInitialColor(item.name || "");
     const textRef = useRef<HTMLParagraphElement>(null);
@@ -152,16 +152,18 @@ function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, 
 }
 
 /**
- * LOCALE-1C: "Read more" / "Show less" come from `strings` (the tenant's locale table; RenderBlocks always
- * gives it). The review date format (§ 3.4, packet hard rule 1): a block `locale` attribute that is PRESENT — any
- * value, even "" — is passed raw, exactly as before (not normalised: `ro_RO` and "" keep the raw date string,
- * `-u-nu-arab` keeps its digits). Without the attribute: the tenant's normalised locale (`strings.dateLocale`, present
- * only for a tenant that is not en-US); an en-US tenant keeps today's `"ro-RO"` (finding F-LOCALE-REVIEWS-DATE: Romanian
- * dates on English sites, left to the human).
+ * LOCALE-1C: "Read more" / "Show less" come from `strings` (the tenant's locale table; RenderBlocks always gives it).
+ * LOCALE-REVIEWS-DATE-1 (human ruling 2026-11-01: "en-US style dates if no other setting is in effect, or use the site
+ * setting"), the review date locale:
+ *  1. a block `locale` attribute that is a NON-EMPTY string is the block's own setting: passed raw, not normalised (as
+ *     since locale-1c: `ro_RO` keeps the raw date string, `-u-nu-arab` keeps its digits);
+ *  2. otherwise (absent, `""`, not a string) the site setting: the tenant's normalised locale — `strings.dateLocale`,
+ *     which `blockStrings` gives only for a tenant that is not en-US, else `"en-US"` (the tenant normalised to en-US).
+ *     `""` counts as "no setting": the block schema has no `locale` field, and `toLocaleDateString("")` throws.
  */
 export function ReviewsCarouselRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const { headline, items = [], showSource, autoScroll, maxLines = 4, locale, scope } = attrs;
-    const dateLocale = locale !== undefined ? locale : (strings.dateLocale ?? "ro-RO");
+    const dateLocale = typeof locale === "string" && locale !== "" ? locale : (strings.dateLocale ?? "en-US");
     // Photos render ONLY in a DB-backed scope, where the server prefetch has resolved them from
     // approved System-A reviews (assetKey → raw asset URL). "manual" (and any legacy block with no
     // scope) never shows photos — see the gate note in ReviewCard.

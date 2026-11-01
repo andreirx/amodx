@@ -1,0 +1,115 @@
+{
+  "slice": "locale-reviews-date-1",
+  "rule": "docs/slices/locale-reviews-date-1.md § 3 (human ruling 2026-11-01 on finding F-LOCALE-REVIEWS-DATE; docs/slices/locale-1.md § 8.3 row L-ALL-2, now in force; § 8.5 rules 2-3): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (eba5e18, served with this tree's fixtures.mjs), each with its category. Category 3 only, row L-ALL-2: a reviews carousel without its own non-empty `locale` attribute formats its review dates in the tenant's normalised locale, en-US for every en-US subject — before: the old \"ro-RO\" default. `before`/`after` are the HTML substrings (checkExpected); `text` is the visible-text change of the § 8.5 extraction (rows loc1-text-*). The only en-US capture with a reviews carousel is content / (fixtures.mjs blockChromeBlocks; the date is server-rendered HTML only — the payload carries the item's ISO date and the unchanged `strings`). Every other URL: [] (byte-equal under the comparison). Checked by row loc1-diff-reviews-date-1 (locale-1/proof.mjs checkExpected, the comparison of locale-1b unchanged: CM1-A1 plus the ruled resolved-tree payload comparison). No URL is excluded.",
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [],
+      "/published": [],
+      "/d4-page": []
+    },
+    "wk": {
+      "/index.php": []
+    },
+    "iso-a": {
+      "/": [],
+      "/about": [],
+      "/listed-post": []
+    },
+    "iso-b": {
+      "/about": []
+    },
+    "commerce": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/rugs": [],
+      "/product/sale-rug": [],
+      "/product/variant-rug": [],
+      "/product/sold-out-rug": [],
+      "/product/rug-care-guide": [],
+      "/products/c0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": [],
+      "/account": [],
+      "/checkout/confirmare": [],
+      "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+      "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": []
+    },
+    "content": {
+      "/": [
+        {
+          "category": 3,
+          "row": "L-ALL-2",
+          "before": "<p class=\"text-xs text-muted-foreground\">31 octombrie 2026</p>",
+          "after": "<p class=\"text-xs text-muted-foreground\">October 31, 2026</p>",
+          "text": {
+            "kind": "text",
+            "from": "31 octombrie 2026",
+            "to": "October 31, 2026"
+          }
+        }
+      ],
+      "/about": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/mats": [],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/floors": [],
+      "/product/oak-plank": [],
+      "/product/ash-plank": [],
+      "/product/legacy-plank": [],
+      "/products/e0000000-0000-4000-8000-000000000001": [],
+      "/products/e0000000-0000-4000-8000-000000000002": [],
+      "/products/e0000000-0000-4000-8000-000000000003": [],
+      "/search?q=plank": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [],
+      "/category/cip1b-boen": [],
+      "/category/cip1b-itc": [],
+      "/category/cip1b-x": [],
+      "/category/cip1b-u": [],
+      "/product/stejar-mixt": [],
+      "/product/frasin-mixt": [],
+      "/product/nuc-fara-fisa": [],
+      "/product/covor-arc": [],
+      "/product/covor-shell": [],
+      "/product/placa-nod": [],
+      "/product/placa-nod-doi": [],
+      "/product/lemn-x-unu": [],
+      "/product/lemn-x-doi": [],
+      "/product/lemn-x-trei": []
+    }
+  }
+}

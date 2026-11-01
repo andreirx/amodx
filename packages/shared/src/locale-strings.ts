@@ -211,9 +211,9 @@ export type BlockStrings = { [K in (typeof BLOCK_SITE_KEYS)[number]]: string } &
     /** The showcase's stock overlay text. ABSENT on a catalog site: CATALOG-MODE-1 (§ 3.2.6) lets no stock text reach
      *  a catalog page, its RSC payload included (the plugin never shows the overlay there). */
     outOfStock?: string;
-    /** The tenant's normalised locale, present ONLY for a tenant that is not en-US (§ 16.2 item 4): an en-US tenant keeps
-     *  today's date formats — the runtime default in the post grid, `"ro-RO"` in a reviews carousel without a `locale`
-     *  attribute (finding F-LOCALE-REVIEWS-DATE, a decision of the human). */
+    /** The tenant's normalised locale, present ONLY for a tenant that is not en-US (§ 16.2 item 4). Its absence means an
+     *  en-US tenant: the post grid then keeps the runtime default; a reviews carousel without its own non-empty `locale`
+     *  attribute formats `"en-US"` (LOCALE-REVIEWS-DATE-1, the human's ruling on finding F-LOCALE-REVIEWS-DATE). */
     dateLocale?: string;
 };
 

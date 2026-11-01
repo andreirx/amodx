@@ -24,10 +24,14 @@ import { extractVisibleText, textChanges } from "../serving-contract/locale-1/ex
  *  1. EN (an en-US tenant): the markup after every step equals `locale-1c-blocks-client-before.json`, rendered by THIS
  *     file from the slice's start commit 0c0dbc8 (capture mode `LOCALE_1C_CAPTURE=<file>`; procedure in the record). A
  *     date the runtime default formats (the post grid of an en-US tenant; a reviews `locale` the runtime cannot use) is
- *     replaced by a token on both sides and checked separately against the runtime default.
+ *     replaced by a token on both sides and checked separately against the runtime default. Since
+ *     LOCALE-REVIEWS-DATE-1 (human ruling 2026-11-01, ledger row L-ALL-2) the capture is compared with exactly one
+ *     declared difference (`L_ALL_2` below): the review date of a carousel without its own non-empty `locale`
+ *     attribute, "31 octombrie 2026" (absent) or the raw date string (`""`) → "October 31, 2026".
  *  2. RO (a ro-RO tenant): every visible-text change against the EN render is one declared key of the state (EN value →
  *     RO value) or a declared formatted value, and every declared key whose RO value differs changes.
- * Plus: the reviews-carousel date cases of § 3.4 under packet hard rule 1 (EN, RO and a de-DE tenant), and the § 5.2
+ * Plus: the reviews-carousel date cases of § 3.4 under the LOCALE-REVIEWS-DATE-1 ruling (en-US, ro-RO, en-GB and de-DE
+ * tenants; the non-string attribute cases), and the § 5.2
  * preservation cases at one direct reader of every block (absent → language default, "" → empty, "X" → X), EN and RO —
  * with the two iframe names as the named pattern-F exceptions ("" → the language default; ruling LOCALE1C-IFRAME-NAMES).
  * Mocked: `fetch`, the clipboard, the element heights jsdom does not compute, and `swiper/react` (pass-through
@@ -110,6 +114,28 @@ const runtimePostDate = () => new Date(DATE).toLocaleDateString();
 const runtimeReviewDate = () => new Date(DATE).toLocaleDateString(undefined, REVIEW_OPTS);
 /** Replaces the text `text` (a whole text node) by `token`. */
 const tokenise = (html: string, text: string, token: string) => html.split(`>${text}<`).join(`>${token}<`);
+/** The review date of the carousel in a tenant's locale (the formatter's own options). */
+const reviewDate = (locale: string) => new Date(DATE).toLocaleDateString(locale, REVIEW_OPTS);
+
+// ── LOCALE-REVIEWS-DATE-1: the one declared en-US difference to the 0c0dbc8 capture (ledger row L-ALL-2) ───────────────
+/** Per state and step: the review-date text the capture holds, which an en-US tenant now renders as
+ *  `reviewDate("en-US")` ("October 31, 2026"). Absent attribute: "31 octombrie 2026" (the old `"ro-RO"` default);
+ *  `""` (step 6 of reviews-dates): the raw date string (the caught RangeError). Every other step: no difference. */
+const L_ALL_2: Record<string, Record<number, string>> = {
+    "reviews-toggle": { 0: "31 octombrie 2026", 1: "31 octombrie 2026" },
+    "reviews-dates": { 0: "31 octombrie 2026", 6: DATE },
+};
+const REVIEW_DATE_P = (text: string) => `<p class="text-xs text-muted-foreground">${text}</p>`;
+/** The capture of one state with the declared L-ALL-2 differences applied; each declared text must occur exactly once. */
+function withLedger(name: string, states: string[]): string[] {
+    const steps = L_ALL_2[name] ?? {};
+    return states.map((html, step) => {
+        if (!Object.hasOwn(steps, step)) return html;
+        const from = REVIEW_DATE_P(steps[step]);
+        if (html.split(from).length !== 2) throw new Error(`${name} step ${step}: the declared date ${steps[step]} does not occur exactly once in the capture`);
+        return html.replace(from, REVIEW_DATE_P(reviewDate("en-US")));
+    });
+}
 
 // ── The states ───────────────────────────────────────────────────────────────────────────────────────────────────
 /** A declared change: a key of the language table (filled with `values`), or a formatted value. */
@@ -259,17 +285,19 @@ const STATES: Record<string, State> = {
                 else delete (HTMLElement.prototype as any).scrollHeight;
             }
         },
-        keys: keys("reviewsReadMore", "reviewsShowLess"),
+        // LOCALE-REVIEWS-DATE-1: the card's date follows the tenant (no `locale` attribute): en-US → ro-RO.
+        keys: [...keys("reviewsReadMore", "reviewsShowLess"), { formatted: (lang) => reviewDate(LOCALE[lang]) }],
     },
     "reviews-dates": {
         title: "[1c-client] reviews-dates",
-        // One server render per block `locale` attribute case of § 3.4 (absent first). A ro-RO tenant renders exactly what
-        // an en-US tenant renders in every case (absent: "ro-RO" before, the tenant's ro-RO now), so no key is declared.
+        // One server render per block `locale` attribute case of § 3.4 (absent first). LOCALE-REVIEWS-DATE-1: absent and
+        // `""` follow the tenant (en-US "October 31, 2026", ro-RO "31 octombrie 2026"), the declared formatted value; the
+        // non-empty attribute cases render the same for both tenants.
         run: async (lang) => REVIEW_LOCALES.map((locale) => {
             const html = ssr(createElement(Reviews, { attrs: REVIEW(locale === undefined ? {} : { locale }), ...blockProps(lang) }));
             return locale === "xx-YY" ? tokenise(html, runtimeReviewDate(), "{runtimeReviewDate}") : html;
         }),
-        keys: [],
+        keys: [{ formatted: (lang) => reviewDate(LOCALE[lang]) }],
     },
     "posts-load-failed": {
         title: "[1c-client] posts-load-failed",
@@ -364,14 +392,14 @@ if (CAPTURE) {
     const before: { commit: string; states: Record<string, string[]> } = JSON.parse(readFileSync(BEFORE_FILE, "utf8"));
     const extract = (html: string) => extractVisibleText(html);
 
-    describe("[1c-client] the en-US markup of every block state equals the 0c0dbc8 capture (§ 16.2 item 4)", () => {
+    describe("[1c-client] the en-US markup of every block state equals the 0c0dbc8 capture (§ 16.2 item 4), except the declared L-ALL-2 review dates (LOCALE-REVIEWS-DATE-1)", () => {
         it("the capture is from the start commit and holds every state", () => {
             expect(before.commit).toBe("0c0dbc8");
             expect(Object.keys(before.states).sort()).toEqual(Object.keys(STATES).sort());
         });
         for (const [name, st] of Object.entries(STATES)) {
-            it(`${st.title}: EN markup after every step equals 0c0dbc8`, async () => {
-                expect(await st.run("en")).toEqual(before.states[name]);
+            it(`${st.title}: EN markup after every step equals 0c0dbc8${Object.hasOwn(L_ALL_2, name) ? " except the declared L-ALL-2 review dates" : ""}`, async () => {
+                expect(await st.run("en")).toEqual(withLedger(name, before.states[name]));
             });
         }
         // Rulings LOCALE1C-FALLBACK = A / LOCALE1C-REGISTRY-TYPE = A: `strings` is required by the typed contract (the
@@ -422,24 +450,49 @@ if (CAPTURE) {
         }
     });
 
-    describe("[1c-client] reviews-carousel dates (§ 3.4, packet hard rule 1): a present `locale` attribute is passed raw; without it an en-US tenant keeps ro-RO, any other tenant gets its normalised locale", () => {
+    describe("[1c-client] reviews-carousel dates (LOCALE-REVIEWS-DATE-1, human ruling 2026-11-01): a non-empty string `locale` attribute is passed raw; otherwise (absent, \"\", not a string) the tenant's normalised locale, en-US by default", () => {
         const dateOf = (html: string) => extract(html).map((i) => i.text).find((t) => /2026|٢٠٢٦/.test(t));
-        const dates = (tenantLocale: string) => REVIEW_LOCALES.map((locale) => dateOf(ssr(createElement(Reviews, {
-            attrs: REVIEW(locale === undefined ? {} : { locale }),
-            strings: shared.blockStrings(shared.resolveLocaleStrings({ locale: tenantLocale }), { catalogMode: false }),
-        }))));
-        // The present-attribute cases are the same for every tenant: the attribute raw, exactly as before (§ 12 E24).
-        const present = (absent: string) => [absent, "31 octombrie 2026", "October 31, 2026", "٣١ octombrie ٢٠٢٦", DATE, runtimeReviewDate(), DATE];
-        it("[1c-client] reviews-dates en-US tenant: absent → 31 octombrie 2026 (finding F-LOCALE-REVIEWS-DATE, unchanged)", () => {
-            expect(dates("en-US")).toEqual(present("31 octombrie 2026"));
-            expect(dates("en_US")).toEqual(present("31 octombrie 2026"));     // normalises to en-US
+        const dateWith = (tenant: Record<string, unknown>, attrs: Record<string, unknown>) => dateOf(ssr(createElement(Reviews, {
+            attrs: REVIEW(attrs),
+            strings: shared.blockStrings(shared.resolveLocaleStrings(tenant), { catalogMode: false }),
+        })));
+        const dates = (tenantLocale: string) => REVIEW_LOCALES.map((locale) => dateWith({ locale: tenantLocale }, locale === undefined ? {} : { locale }));
+        // The seven attribute cases of § 3.4, in REVIEW_LOCALES order. The non-empty strings are the block's own setting,
+        // raw, the same for every tenant (§ 12 E24); absent and "" are the site setting (`tenantDate`).
+        const cases = (tenantDate: string) => [tenantDate, "31 octombrie 2026", "October 31, 2026", "٣١ octombrie ٢٠٢٦", DATE, runtimeReviewDate(), tenantDate];
+        it("[1c-client] reviews-dates en-US tenant: absent and \"\" → October 31, 2026 (L-ALL-2; before: 31 octombrie 2026 and the raw date string)", () => {
+            expect(dates("en-US")).toEqual(cases("October 31, 2026"));
+            expect(dates("en_US")).toEqual(cases("October 31, 2026"));     // normalises to en-US
         });
-        it("[1c-client] reviews-dates ro-RO tenant: absent → its locale ro-RO (= today's output)", () => {
-            expect(dates("ro-RO")).toEqual(present("31 octombrie 2026"));
+        it("[1c-client] reviews-dates tenant without a valid locale (absent, malformed) → en-US dates", () => {
+            expect(dateWith({}, {})).toBe("October 31, 2026");
+            expect(dateWith({ locale: "xx-YY" }, {})).toBe("October 31, 2026");
+            expect(dateWith({ locale: 42 }, { locale: "" })).toBe("October 31, 2026");
+            // The en-US path is the explicit "en-US", never the runtime default (which is en-US on many machines, so the
+            // text alone cannot tell them apart): the formatter receives the literal locale.
+            const spy = vi.spyOn(Date.prototype, "toLocaleDateString");
+            try {
+                dateWith({}, {});
+                dateWith({ locale: "en-US" }, { locale: "" });
+                expect(spy.mock.calls.map((c) => c[0])).toEqual(["en-US", "en-US"]);
+            } finally {
+                spy.mockRestore();
+            }
         });
-        it("[1c-client] reviews-dates de-DE tenant: absent → its locale de-DE; a present attribute still wins", () => {
-            expect(dates("de-DE")).toEqual(present(new Date(DATE).toLocaleDateString("de-DE", REVIEW_OPTS)));
-            expect(dates("de-DE")[0]).toBe("31. Oktober 2026");
+        it("[1c-client] reviews-dates ro-RO tenant: absent and \"\" → its locale ro-RO (absent: unchanged; \"\": the raw date string before, so a RO date change too)", () => {
+            expect(dates("ro-RO")).toEqual(cases("31 octombrie 2026"));
+        });
+        it("[1c-client] reviews-dates en-GB tenant: absent and \"\" → 31 October 2026", () => {
+            expect(dates("en-GB")).toEqual(cases("31 October 2026"));
+        });
+        it("[1c-client] reviews-dates de-DE tenant: absent and \"\" → its locale de-DE; a non-empty attribute still wins", () => {
+            expect(dates("de-DE")).toEqual(cases("31. Oktober 2026"));
+        });
+        it("[1c-client] reviews-dates a non-string attribute is no setting: the tenant's locale (before: null → the raw string; 42, true, {} → the runtime default; [\"de-DE\"] → German)", () => {
+            for (const locale of [null, 42, true, {}, ["de-DE"]]) {
+                expect(dateWith({ locale: "en-US" }, { locale }), JSON.stringify(locale)).toBe("October 31, 2026");
+                expect(dateWith({ locale: "ro-RO" }, { locale }), JSON.stringify(locale)).toBe("31 octombrie 2026");
+            }
         });
     });
 
