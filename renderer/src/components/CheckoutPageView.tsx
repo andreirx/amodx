@@ -7,7 +7,24 @@ import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { trackFBEvent } from "@/lib/fbpixel";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
-import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
+import { fillTemplate, type LocaleStrings } from "@amodx/shared";
+
+/**
+ * LOCALE-1D (docs/slices/locale-1.md § 5.2, § 5.3): the texts this view renders, resolved by `SitePage` (the 14 F
+ * sites — billing and company labels, birthday — with the F rule there: a stored "" falls back to the language
+ * default). `errorTryAgain` is a site-part key (the generic error, shared with the contact blocks).
+ */
+export type CheckoutPageStrings = Pick<LocaleStrings["commerce"],
+    "checkout" | "billingDetails" | "firstName" | "lastName" | "email" | "phone" | "phonePlaceholder" | "birthday" | "birthdayHint"
+    | "orderAsCompany" | "companyName" | "taxId" | "taxIdPlaceholder" | "registrationNumber" | "registrationNumberPlaceholder"
+    | "vatNumber" | "vatNumberPlaceholder" | "shippingAddress" | "country" | "selectCountry" | "streetAddress" | "city" | "county"
+    | "selectCounty" | "postalCode" | "deliveryNotes" | "deliveryNotesPlaceholder" | "useSameAsShipping" | "billingAddress"
+    | "preferredDeliveryDate" | "paymentMethod" | "cashOnDelivery" | "cashOnDeliveryDesc" | "bankTransfer" | "bankTransferTo"
+    | "orderSummary" | "subtotal" | "discount" | "shipping" | "freeShipping" | "total" | "placingOrder" | "placeOrder" | "termsAgreement"
+    | "emptyCart" | "checkoutEmptyMessage" | "orderFailed" | "orderFailedStatus" | "deliveryDateSelected" | "deliveryDatesLoading"
+    | "calendarMo" | "calendarTu" | "calendarWe" | "calendarTh" | "calendarFr" | "calendarSa" | "calendarSu">
+    & Pick<LocaleStrings["site"], "errorTryAgain">;
+type DatePickerStrings = Pick<CheckoutPageStrings, "deliveryDatesLoading" | "calendarMo" | "calendarTu" | "calendarWe" | "calendarTh" | "calendarFr" | "calendarSa" | "calendarSu">;
 
 interface CheckoutProps {
     tenantId: string;
@@ -20,26 +37,38 @@ interface CheckoutProps {
     bankTransfer?: { bankName?: string; accountHolder?: string; iban?: string; swift?: string; referencePrefix?: string };
     enabledPaymentMethods?: string[];
     contentMaxWidth?: string;
-    strings?: Required<CommerceStrings>;
+    strings: CheckoutPageStrings;
     defaultCountry?: string;
     availableCountries?: string[];
     availableCounties?: string[];
     askBirthday?: boolean;
     defaultRegions?: string[];
     locale?: string;
+    /**
+     * LOCALE-1D (§ 3.4, ruling § 16.2 item 4): the tenant's normalised locale for the calendar month name, passed ONLY
+     * for a tenant whose locale is not en-US. Absent → the month name keeps the runtime default ("default"), as before.
+     */
+    formatLocale?: string;
 }
 
 // --- Inline delivery date picker ---
-function DeliveryDatePicker({
+// LOCALE-1D: exported for test/unit/locale-1d-client.test.ts only (a test seam): its loading branch is unreachable from
+// CheckoutPageView, which mounts the picker only after the dates loaded, so the `deliveryDatesLoading` text can be
+// checked only here. No other importer.
+export function DeliveryDatePicker({
     availableDates,
     selectedDate,
     onSelect,
     loading,
+    strings,
+    formatLocale,
 }: {
     availableDates: string[];
     selectedDate: string;
     onSelect: (date: string) => void;
     loading: boolean;
+    strings: DatePickerStrings;
+    formatLocale?: string;
 }) {
     const availableSet = new Set(availableDates);
 
@@ -61,7 +90,7 @@ function DeliveryDatePicker({
     }, [availableDates]);
 
     if (loading) {
-        return <div className="text-sm text-muted-foreground py-4">Loading delivery dates...</div>;
+        return <div className="text-sm text-muted-foreground py-4">{strings.deliveryDatesLoading}</div>;
     }
 
     if (availableDates.length === 0) return null;
@@ -76,7 +105,7 @@ function DeliveryDatePicker({
     for (let i = 0; i < startDow; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-    const monthLabel = firstDay.toLocaleString("default", { month: "long", year: "numeric" });
+    const monthLabel = firstDay.toLocaleString(formatLocale ?? "default", { month: "long", year: "numeric" });
 
     function toStr(day: number): string {
         return `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -115,7 +144,7 @@ function DeliveryDatePicker({
                 </button>
             </div>
             <div className="grid grid-cols-7 gap-1 text-center text-xs">
-                {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => (
+                {[strings.calendarMo, strings.calendarTu, strings.calendarWe, strings.calendarTh, strings.calendarFr, strings.calendarSa, strings.calendarSu].map(d => (
                     <div key={d} className="font-medium text-muted-foreground py-1">{d}</div>
                 ))}
                 {cells.map((day, i) => {
@@ -147,7 +176,7 @@ function DeliveryDatePicker({
     );
 }
 
-export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS, defaultCountry = "", availableCountries = [], availableCounties = [], askBirthday = true, defaultRegions = [], locale = "en-US" }: CheckoutProps) {
+export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, freeDeliveryThreshold, flatShippingCost, currency, bankTransfer, enabledPaymentMethods = ["cash_on_delivery"], contentMaxWidth = "max-w-6xl", strings, defaultCountry = "", availableCountries = [], availableCounties = [], askBirthday = true, defaultRegions = [], locale = "en-US", formatLocale }: CheckoutProps) {
     // Use configured counties, or country pack regions as fallback
     const counties = availableCounties.length > 0 ? availableCounties : defaultRegions;
     const showCountryField = availableCountries.length > 1;
@@ -234,8 +263,8 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
     if (items.length === 0) {
         return (
             <main className={`${contentMaxWidth} mx-auto py-20 px-6 text-center`}>
-                <h1 className="text-3xl font-bold mb-4">Your cart is empty</h1>
-                <p className="text-muted-foreground mb-8">Add some products before checking out.</p>
+                <h1 className="text-3xl font-bold mb-4">{strings.emptyCart}</h1>
+                <p className="text-muted-foreground mb-8">{strings.checkoutEmptyMessage}</p>
             </main>
         );
     }
@@ -330,8 +359,13 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
             });
 
             if (!res.ok) {
-                const data = await res.json().catch(() => ({ error: "Order failed" }));
-                throw new Error(data.error || `Order failed (${res.status})`);
+                // LOCALE-1D (§ 5.2, pattern D): the failure branch is chosen from the RESPONSE first — not JSON → orderFailed;
+                // a server `error` text → shown as sent; else → orderFailedStatus — and the chosen table text is shown as
+                // resolved, so an empty stored text stays empty instead of falling to another key's text.
+                const notJson = Symbol("not JSON");
+                const data = await res.json().catch(() => notJson);
+                setError(data === notJson ? strings.orderFailed : (data.error || fillTemplate(strings.orderFailedStatus, { status: res.status })));
+                return;
             }
 
             const order = await res.json();
@@ -342,7 +376,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
             clearCart();
             router.push(getUrl(`${confirmPrefix}?id=${order.id}&email=${encodeURIComponent(form.customerEmail)}`));
         } catch (err: any) {
-            setError(err.message || "Something went wrong. Please try again.");
+            setError(err.message || strings.errorTryAgain);
         } finally {
             setLoading(false);
         }
@@ -358,14 +392,14 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                     <div className="lg:col-span-2 space-y-8">
                         {/* Contact & Billing Details */}
                         <section>
-                            <h2 className="text-lg font-bold mb-4">{strings.billingDetails || "Billing Details"}</h2>
+                            <h2 className="text-lg font-bold mb-4">{strings.billingDetails}</h2>
                             <div className="grid sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">{strings.firstName || "First Name"} *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.firstName} *</label>
                                     <input required value={form.firstName} onChange={e => update("firstName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">{strings.lastName || "Last Name"} *</label>
+                                    <label className="block text-sm font-medium mb-1">{strings.lastName} *</label>
                                     <input required value={form.lastName} onChange={e => update("lastName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                 </div>
                                 <div>
@@ -378,7 +412,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 </div>
                                 {askBirthday && (
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">{strings.birthday || "Birthday"}</label>
+                                        <label className="block text-sm font-medium mb-1">{strings.birthday}</label>
                                         <input type="date" value={form.birthday} onChange={e => update("birthday", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                         {strings.birthdayHint && <p className="text-xs text-muted-foreground mt-1">{strings.birthdayHint}</p>}
                                     </div>
@@ -393,7 +427,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                             onChange={e => update("isCompany", e.target.checked)}
                                             className="rounded border-gray-300"
                                         />
-                                        <span className="text-sm font-medium">{strings.orderAsCompany || "Order as a company"}</span>
+                                        <span className="text-sm font-medium">{strings.orderAsCompany}</span>
                                     </label>
                                 </div>
 
@@ -401,20 +435,20 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 {form.isCompany && (
                                     <>
                                         <div className="sm:col-span-2">
-                                            <label className="block text-sm font-medium mb-1">{strings.companyName || "Company Name"}</label>
+                                            <label className="block text-sm font-medium mb-1">{strings.companyName}</label>
                                             <input value={form.companyName} onChange={e => update("companyName", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">{strings.taxId || "Tax ID"}</label>
-                                            <input value={form.taxId} onChange={e => update("taxId", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.taxIdPlaceholder || ""} />
+                                            <label className="block text-sm font-medium mb-1">{strings.taxId}</label>
+                                            <input value={form.taxId} onChange={e => update("taxId", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.taxIdPlaceholder} />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1">{strings.registrationNumber || "Registration No."}</label>
-                                            <input value={form.registrationNumber} onChange={e => update("registrationNumber", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.registrationNumberPlaceholder || ""} />
+                                            <label className="block text-sm font-medium mb-1">{strings.registrationNumber}</label>
+                                            <input value={form.registrationNumber} onChange={e => update("registrationNumber", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.registrationNumberPlaceholder} />
                                         </div>
                                         <div className="sm:col-span-2">
-                                            <label className="block text-sm font-medium mb-1">{strings.vatNumber || "VAT Number"}</label>
-                                            <input value={form.vatNumber} onChange={e => update("vatNumber", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.vatNumberPlaceholder || ""} />
+                                            <label className="block text-sm font-medium mb-1">{strings.vatNumber}</label>
+                                            <input value={form.vatNumber} onChange={e => update("vatNumber", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" placeholder={strings.vatNumberPlaceholder} />
                                         </div>
                                     </>
                                 )}
@@ -472,7 +506,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                             onChange={e => update("useSameAsShipping", e.target.checked)}
                                             className="rounded border-gray-300"
                                         />
-                                        <span className="text-sm font-medium">{strings.useSameAsShipping || "Use same address for billing"}</span>
+                                        <span className="text-sm font-medium">{strings.useSameAsShipping}</span>
                                     </label>
                                 </div>
 
@@ -480,7 +514,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 {!form.useSameAsShipping && (
                                     <>
                                         <div className="sm:col-span-2 pt-4">
-                                            <h3 className="text-md font-semibold mb-3">{strings.billingAddress || "Billing Address"}</h3>
+                                            <h3 className="text-md font-semibold mb-3">{strings.billingAddress}</h3>
                                         </div>
                                         <div className="sm:col-span-2">
                                             <label className="block text-sm font-medium mb-1">{strings.streetAddress} *</label>
@@ -527,10 +561,12 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                     selectedDate={form.requestedDeliveryDate}
                                     onSelect={(date) => update("requestedDeliveryDate", date)}
                                     loading={datesLoading}
+                                    strings={strings}
+                                    formatLocale={formatLocale}
                                 />
                                 {form.requestedDeliveryDate && (
                                     <p className="text-sm text-green-700 mt-2">
-                                        Selected: {new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                                        {fillTemplate(strings.deliveryDateSelected, { date: new Date(form.requestedDeliveryDate + "T00:00:00").toLocaleDateString(locale, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) })}
                                     </p>
                                 )}
                             </section>
@@ -554,7 +590,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                         <input type="radio" name="paymentMethod" value="bank_transfer" checked={form.paymentMethod === "bank_transfer"} onChange={e => update("paymentMethod", e.target.value)} className="accent-primary" />
                                         <div>
                                             <p className="font-medium text-sm">{strings.bankTransfer}</p>
-                                            <p className="text-xs text-muted-foreground">Transfer to {bankTransfer.bankName} - {bankTransfer.iban}</p>
+                                            <p className="text-xs text-muted-foreground">{fillTemplate(strings.bankTransferTo, { bank: bankTransfer.bankName ?? "", iban: bankTransfer.iban ?? "" })}</p>
                                         </div>
                                     </label>
                                 )}

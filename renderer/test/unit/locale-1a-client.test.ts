@@ -2,7 +2,9 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import React, { createElement, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { resolveLocaleStrings, RO_PACK } from "@amodx/shared";
+import { resolveLocaleStrings, RO_LANGUAGE_PACK } from "@amodx/shared";
+/** LOCALE-1D: the Romanian cookie/legal texts now live only in the RO language pack (the RO country pack holds facts only; the values are unchanged, packages/shared/test/locale-strings.test.ts). */
+const RO_SITE = RO_LANGUAGE_PACK.site;
 
 /**
  * LOCALE-1A — texts that appear only after an interaction or a client fetch, so never in the server HTML
@@ -209,7 +211,7 @@ describe("[1a-client] CookieConsent (the banner renders only in the browser, aft
             expect(host.querySelector("h3")!.textContent).toBe(s.cookieHeadline);
             expect(host.querySelector("p")!.textContent).toBe(s.cookieDescription);
             expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toEqual([s.cookieDenyAll, s.cookieNecessaryOnly, s.cookieAcceptAll]);
-            if (name === "RO") expect(s.cookieAcceptAll).toBe(RO_PACK.gdpr.acceptAll);
+            if (name === "RO") expect(s.cookieAcceptAll).toBe(RO_SITE.cookieAcceptAll);
             act(() => root!.unmount()); root = null; document.body.innerHTML = "";
         }
     });

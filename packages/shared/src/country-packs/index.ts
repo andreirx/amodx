@@ -1,4 +1,4 @@
-export type { CountryPack, CountryPackCurrency, CountryPackRegion, CountryPackAddress, CountryPackLegal, CountryPackGdpr } from "./types.js";
+export type { CountryPack, CountryPackCurrency, CountryPackRegion, CountryPackAddress } from "./types.js";
 export { EN_PACK } from "./en.js";
 export { RO_PACK } from "./ro.js";
 

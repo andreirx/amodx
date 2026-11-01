@@ -36,7 +36,7 @@ import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
-import { EN_US_REQUESTS, LOC1_DIR, PRE_1B_COUNT_TEXT, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1,
@@ -1147,7 +1147,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
-            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the cmrc-counties-1 tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1d tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
                 const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
                 // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
                 for (const r of rows) {
@@ -1802,35 +1802,35 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
-        // ── ROWS (loc1-*) — LOCALE-1 proof, slice locale-1b (docs/slices/locale-1.md § 8.5; rulings § 16.2 items 4-6).
-        // Helpers: locale-1/proof.mjs. Inputs, all in locale-1/1b/: before/ (immutable, captured from 4e98f98 with the
-        // cm1-byte-identity/README.md procedure), expected-diff.json (the reviewed byte-difference list), text-expected.json
-        // (the L-EN-CAT text changes of the two en-US catalog subjects) and ro-expected.json (the text changes of the RO
-        // copies). Each slice has its own set (§ 8.5 rule 5); locale-1a's files under locale-1/1a/ stay as its record and
-        // no row reads them any more (the strict baseline they justified was advanced by 1a and is advanced again here).
-        // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`).
-        // Text oracle per subject (packet hard rule 1): equal to before/, zero ledger rows — except the en-US catalog
-        // subjects (`catalog`, `cip1b-catalog`), whose text changes are exactly the listed L-EN-CAT items.
+        // ── ROWS (loc1-*) — LOCALE-1 proof, slice locale-1d (docs/slices/locale-1.md § 8.5; rulings § 16.2 items 4-5;
+        // docs/slices/locale-1d.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/1d/: before/ (immutable, captured
+        // from 92adbba with the cm1-byte-identity/README.md procedure — every en-US subject AND every RO copy),
+        // expected-diff.json (the reviewed byte-difference list of the en-US subjects) and ro-expected.json (the text
+        // changes of the RO copies against their own 92adbba capture). Each slice has its own set (§ 8.5 rule 5); the 1a/
+        // and 1b/ files stay as those slices' records and no row reads them any more.
+        // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`;
+        // since 1d the commerce subject's list also holds its order pages, `orderRequests`).
+        // Text oracle per subject (packet hard rule 1): equal to before/, zero ledger rows — for every subject (the
+        // L-EN-CAT change of 1b is in before/ now).
         // These rows run LAST in this block: the non-CM1 subjects are captured here, after every row that depends on
         // those tenants' cache state. The RO subjects are the copies `loc1-ro-*` (fixtures.mjs LOC1).
         let loc1Before, loc1Ro, loc1En;
-        const LOC1_SLICE = "1b";
+        const LOC1_SLICE = "1d";
         const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
         const loc1RoSet = async () => (loc1Ro ??= await captureLoc1(request, server.port));
         const isHtml = (c) => c.contentType.startsWith("text/html");
         const CM1_KEYS = new Set(Object.keys(CM1));
-        /** The en-US subjects whose text changes are L-EN-CAT (packet hard rule 1: every en-US catalog-mode fixture). */
-        const EN_CATALOG_SUBJECTS = new Set(Object.keys(EN_US_REQUESTS).filter((key) =>
-            ITEMS.some((i) => i.PK === "SYSTEM" && i.SK === `TENANT#${CM1_KEYS.has(key) ? CM1[key].id : key}` && i.catalogMode === true)));
         const EN_TABLE = resolveLocaleStrings({}).strings;
         const RO_TABLE = resolveLocaleStrings({ locale: "ro-RO" }).strings;
-        /** This run's capture set of every en-US subject: the CM1 captures of `cm1Set()` plus the other subjects, now. */
+        /** This run's capture set of every en-US subject: the CM1 captures of `cm1Set()` plus every other request of
+         *  `EN_US_REQUESTS` (the other subjects, and since 1d the commerce subject's order pages), now. */
         async function loc1EnSet() {
             if (!loc1En) {
                 const cm1 = await cm1Set();
-                const rest = await captureRequests(request, server.port, Object.entries(EN_US_REQUESTS).filter(([key]) => !CM1_KEYS.has(key)).flatMap(([, list]) => list));
-                loc1En = { buildId: cm1.buildId, clientModules: cm1.clientModules, captures: [...cm1.captures.filter((c) => Object.hasOwn(EN_US_REQUESTS, c.tenant)), ...rest] };
+                const fromCm1 = cm1.captures.filter((c) => Object.hasOwn(EN_US_REQUESTS, c.tenant) && EN_US_REQUESTS[c.tenant].some((r) => r.path === c.path));
+                const rest = await captureRequests(request, server.port, Object.values(EN_US_REQUESTS).flat().filter((r) => !fromCm1.some((c) => c.tenant === r.tenant && c.path === r.path)));
+                loc1En = { buildId: cm1.buildId, clientModules: cm1.clientModules, captures: [...fromCm1, ...rest] };
             }
             return loc1En;
         }
@@ -1840,66 +1840,28 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             for (const list of Object.values(out)) list.sort();
             return out;
         };
-        /** The text problems of one subject under ITS oracle: a plain subject must equal before/; an en-US catalog subject
-         *  must show exactly the listed L-EN-CAT changes (status, structure and every other text equal). */
-        function subjectTextProblems(subject, before, cand, textDoc) {
-            if (!EN_CATALOG_SUBJECTS.has(subject)) return textMismatches(before, cand, subject);
-            const spec = textDoc.fixtures[subject].paths;
-            const out = [];
-            for (const b of before.captures.filter((c) => c.tenant === subject)) {
-                const a = cand.captures.find((c) => c.tenant === subject && c.path === b.path);
-                if (!a) { out.push(`${b.path}: not captured`); continue; }
-                if (a.status !== b.status) { out.push(`${b.path}: status ${b.status} → ${a.status}`); continue; }
-                if (!isHtml(b)) continue;
-                let got;
-                try { got = textChanges(extractVisibleText(b.body), extractVisibleText(a.body)); } catch (e) { out.push(`${b.path}: ${e.message}`); continue; }
-                const want = (spec[b.path] ?? []).map(({ kind, from, to }) => ({ kind, from, to }));
-                if (JSON.stringify(got) !== JSON.stringify(want)) out.push(`${b.path}: visible text changed beyond the listed L-EN-CAT items`);
-            }
-            return out;
-        }
 
-        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ and expected-diff.json hold exactly their URLs; category-3 items only L-EN-CAT, only on the en-US catalog subjects", async () => {
+        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs and the RO copies' URLs; expected-diff.json lists exactly the subjects' URLs, with no category-3 (ledger) item", async () => {
             const want = Object.fromEntries(Object.entries(EN_US_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const withoutLocale = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#") && !Object.hasOwn(i, "locale")).length;
             assert.equal(Object.keys(want).length, withoutLocale, "every tenant without `locale` is a subject");
             for (const key of CM1_KEYS) assert.ok(want[key], `CM1 ${key} is a subject`);
             for (const t of Object.values(LOC1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (ro-RO) is not an en-US subject`);
-            assert.deepEqual([...EN_CATALOG_SUBJECTS].sort(), ["catalog", "cip1b-catalog"], "the en-US catalog-mode subjects (L-EN-CAT)");
-            assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), want, "before/ must hold exactly the subjects' URLs");
+            assert.ok(want.commerce.some((p) => p.startsWith("/checkout/confirmare?id=")) && want.commerce.includes("/account"), "the commerce subject's order pages are subjects (locale-1d)");
+            const ro = Object.fromEntries(Object.entries(LOC1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
+            assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), { ...want, ...ro }, "before/ must hold exactly the subjects' and the RO copies' URLs");
             const doc = await loc1Json("expected-diff.json");
             assert.deepEqual(Object.fromEntries(Object.entries(doc.fixtures).map(([key, urls]) => [key, Object.keys(urls).sort()])), want, "expected-diff.json must list exactly the subjects' URLs");
-            for (const [subject, urls] of Object.entries(doc.fixtures)) {
-                const third = Object.values(urls).flat().filter((e) => e.category === 3);
-                if (EN_CATALOG_SUBJECTS.has(subject)) assert.deepEqual([...new Set(third.map((e) => e.row))], ["L-EN-CAT"], `${subject}: category-3 items are L-EN-CAT only`);
-                else assert.deepEqual(third, [], `${subject}: an en-US non-catalog subject lists a category-3 item`);
-            }
-            const textDoc = await loc1Json("text-expected.json");
-            assert.deepEqual(Object.keys(textDoc.fixtures).sort(), [...EN_CATALOG_SUBJECTS].sort(), "text-expected.json covers the en-US catalog subjects");
-            for (const subject of EN_CATALOG_SUBJECTS) assert.deepEqual(Object.keys(textDoc.fixtures[subject].paths).sort(), want[subject], `text-expected.json lists every ${subject} URL`);
-            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs: ${Object.keys(want).join(", ")}; L-EN-CAT subjects: ${[...EN_CATALOG_SUBJECTS].join(", ")}`);
+            assert.deepEqual(Object.values(doc.fixtures).flatMap((urls) => Object.values(urls).flat()).filter((e) => e.category !== 2), [], "en-US subjects: category 2 only (zero ledger rows, § 16.2 item 4)");
+            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs`);
         });
 
         for (const subject of Object.keys(EN_US_REQUESTS)) {
-            const catalogSubject = EN_CATALOG_SUBJECTS.has(subject);
-            test(`(loc1-text-${subject}) en-US subject ${subject}: ${catalogSubject ? "the visible text of every captured URL differs from the 4e98f98 capture by exactly the listed L-EN-CAT items, each from today's Romanian text to the English catalog text" : "the visible text of every captured URL equals the 4e98f98 capture (§ 16.2 item 4)"}`, async () => {
+            test(`(loc1-text-${subject}) en-US subject ${subject}: the visible text of every captured URL equals the 92adbba capture (§ 16.2 item 4)`, async () => {
                 const before = await loc1BeforeSet();
-                const textDoc = await loc1Json("text-expected.json");
-                assert.deepEqual(subjectTextProblems(subject, before, await loc1EnSet(), textDoc), [], `${subject}: visible text`);
-                let items = 0;
-                if (catalogSubject) {
-                    for (const [urlPath, list] of Object.entries(textDoc.fixtures[subject].paths)) {
-                        for (const e of list) {
-                            assert.equal(e.row, "L-EN-CAT", `${urlPath} ${e.key}: row`);
-                            assert.equal(e.part, "catalog", `${urlPath} ${e.key}: only catalog texts change on an en-US tenant`);
-                            assert.equal(e.from, e.count !== undefined ? PRE_1B_COUNT_TEXT[e.key](e.count) : renderItem(RO_TABLE, e), `${urlPath} ${e.key}: from is today's text (the RO pack value)`);
-                            assert.equal(e.to, renderItem(EN_TABLE, e), `${urlPath} ${e.key}: to is the EN catalog text`);
-                        }
-                        items += list.length;
-                    }
-                }
+                assert.deepEqual(textMismatches(before, await loc1EnSet(), subject), [], `${subject}: visible text`);
                 const html = before.captures.filter((c) => c.tenant === subject && isHtml(c));
-                console.log(`  (loc1-text-${subject}) ${html.length} HTML URLs, ${html.reduce((n, c) => n + extractVisibleText(c.body).length, 0)} extracted items, ${catalogSubject ? `${items} L-EN-CAT changes, all listed` : "all equal"}`);
+                console.log(`  (loc1-text-${subject}) ${html.length} HTML URLs, ${html.reduce((n, c) => n + extractVisibleText(c.body).length, 0)} extracted items, all equal`);
             });
         }
 
@@ -1908,20 +1870,19 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         test("(loc1-text-mutation) for every en-US subject, a mutated visible text on one page is reported", async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
-            const textDoc = await loc1Json("text-expected.json");
             for (const subject of Object.keys(EN_US_REQUESTS)) {
                 const page = cand.captures.find((c) => c.tenant === subject && isHtml(c) && c.body.includes("</body>"));
                 assert.ok(page, `${subject} has an HTML page`);
                 const mutated = { ...cand, captures: cand.captures.map((c) => (c === page ? { ...c, body: c.body.replace("</body>", "<p>LOC1 MUTATION</p></body>") } : c)) };
-                assert.deepEqual(subjectTextProblems(subject, before, mutated, textDoc).length, 1, `${subject}: the mutation was not reported`);
+                assert.deepEqual(textMismatches(before, mutated, subject).length, 1, `${subject}: the mutation was not reported`);
             }
-            // On a catalog subject, a listed L-EN-CAT text left in Romanian is reported too.
-            const shop = cand.captures.find((c) => c.tenant === "catalog" && c.path === "/shop");
-            const reverted = { ...cand, captures: cand.captures.map((c) => (c === shop ? { ...c, body: c.body.replace(">Filters</h2>", ">Filtre</h2>") } : c)) };
-            assert.deepEqual(subjectTextProblems("catalog", before, reverted, textDoc), ["/shop: visible text changed beyond the listed L-EN-CAT items"]);
+            // A commerce text left in Romanian on an en-US order page is reported (locale-1d: the order pages are subjects).
+            const confirm = cand.captures.find((c) => c.tenant === "commerce" && c.path.startsWith("/checkout/confirmare?id=cm1-order-bank"));
+            const reverted = { ...cand, captures: cand.captures.map((c) => (c === confirm ? { ...c, body: c.body.replace(">Bank Transfer Details<", ">Detalii pentru transfer bancar<") } : c)) };
+            assert.deepEqual(textMismatches(before, reverted, "commerce"), [`${confirm.path}: visible text changed`]);
         });
 
-        test("(loc1-diff-1b) en-US subjects: every byte difference to the 4e98f98 capture is listed in 1b/expected-diff.json, and every listed one occurs", async () => {
+        test("(loc1-diff-1d) en-US subjects: every byte difference to the 92adbba capture is listed in 1d/expected-diff.json, and every listed one occurs", async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -1936,16 +1897,17 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
                     for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
-                    console.log(`  (loc1-diff-1b) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category}${e.element ? " " + e.element.split("/").pop() + "." + e.prop + (Object.hasOwn(e, "beforeValue") ? " (changed)" : "") : e.row ? " " + e.row : ""}`).join(", ")}]`);
+                    console.log(`  (loc1-diff-1d) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category} ${e.element.split("/").pop()}.${e.prop}${Object.hasOwn(e, "beforeValue") ? " (changed)" : ""}`).join(", ")}]`);
                 }
             }
             assert.deepEqual(problems, []);
             // The checker can fail (the bound mutations of this row): on commerce /category/rugs — a dropped listed entry,
-            // a listed entry that does not occur, one changed HTML byte, a changed value of a changed prop, a wrong before
-            // value; on catalog /product/oak-plank — a dropped category-3 (L-EN-CAT) entry; each must be reported.
+            // a listed entry that does not occur, one changed HTML byte, a changed value of an unlisted prop; on commerce
+            // /cart — a wrong before value of a changed prop; on an order page — one changed HTML text byte; each reported.
             const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
             const [b, a] = pick("commerce", "/category/rugs");
             const listed = expectedFor(doc, "commerce", "/category/rugs");
+            assert.ok(listed.length > 0, "precondition: commerce /category/rugs lists a difference");
             assert.deepEqual(checkExpected(before, b.body, cand, a.body, listed), [], "precondition: the listed differences hold");
             const ghost = { category: 2, element: "[project]/renderer/src/components/QuickContact.tsx#QuickContact", prop: "strings", value: {} };
             const label = '\\"searchButton\\":\\"Search\\"';
@@ -1954,23 +1916,26 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, [...listed, ghost]), [], "a listed entry that does not occur was not reported");
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace("CM1 Commerce", "CM1 C0mmerce"), listed), [], "a changed HTML byte was not reported");
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(label, '\\"searchButton\\":\\"Find\\"'), listed), [], "a changed prop value was not reported");
-            const wrongBefore = listed.map((e) => (Object.hasOwn(e, "beforeValue") ? { ...e, beforeValue: { ...e.beforeValue, searchButton: "Search" } } : e));
-            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, wrongBefore), [], "a wrong before value was not reported");
-            const [bp, ap] = pick("catalog", "/product/oak-plank");
-            const productListed = expectedFor(doc, "catalog", "/product/oak-plank");
-            assert.ok(productListed.some((e) => e.category === 3), "catalog /product/oak-plank lists its L-EN-CAT item");
-            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, productListed.filter((e) => e.category !== 3)), [], "a dropped category-3 entry was not reported");
+            const [bc, ac] = pick("commerce", "/cart");
+            const cartListed = expectedFor(doc, "commerce", "/cart");
+            assert.ok(cartListed.some((e) => Object.hasOwn(e, "beforeValue")), "precondition: commerce /cart lists a changed prop");
+            const wrongBefore = cartListed.map((e) => (Object.hasOwn(e, "beforeValue") ? { ...e, beforeValue: { ...e.beforeValue, emptyCart: "Empty" } } : e));
+            assert.notDeepEqual(checkExpected(before, bc.body, cand, ac.body, wrongBefore), [], "a wrong before value was not reported");
+            const [bo, ao] = pick("commerce", "/checkout/cm1-order-cod?email=buyer%40serving-contract.test");
+            const orderListed = expectedFor(doc, "commerce", bo.path);
+            assert.ok(ao.body.includes(">Tracking Number: <"), "mutation precondition: the tracking page shows its tracking number label");
+            assert.notDeepEqual(checkExpected(before, bo.body, cand, ao.body.replace(">Tracking Number: <", ">Tracking number: <"), orderListed), [], "a changed order-page text was not reported");
         });
 
         // LOCALE-1B: the facet ids are URL contract (§ 6.3): every filter href of every catalog page is the same as before
         // the slice, on the en-US catalog subjects and on the RO copy, and no href carries a heading in place of an id.
-        test("(loc1-facet-hrefs) the facet ids are unchanged in every href of the catalog pages (EN subjects and the RO copy)", async () => {
+        test("(loc1-facet-hrefs) the facet ids are unchanged in every href of the catalog pages (EN subjects and the RO copy, each against its own 92adbba capture)", async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const ro = await loc1RoSet();
             const filterHrefs = (body) => [...splitFlight(body).html.matchAll(/href="([^"]*[?&]f=[^"]*)"/g)].map((m) => decodeURIComponent(m[1].replace(/&amp;/g, "&")));
             let n = 0;
-            for (const [tenant, side, source] of [["catalog", cand, "catalog"], ["cip1b-catalog", cand, "cip1b-catalog"], ["roCatalog", { captures: ro }, "catalog"]]) {
+            for (const [tenant, side, source] of [["catalog", cand, "catalog"], ["cip1b-catalog", cand, "cip1b-catalog"], ["roCatalog", { captures: ro }, "roCatalog"]]) {
                 for (const a of side.captures.filter((c) => c.tenant === tenant && isHtml(c))) {
                     const b = before.captures.find((c) => c.tenant === source && c.path === a.path);
                     const got = filterHrefs(a.body);
@@ -1980,7 +1945,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 }
             }
             assert.ok(n > 0, "the captures hold filter hrefs");
-            console.log(`  (loc1-facet-hrefs) ${n} filter hrefs equal to the 4e98f98 capture`);
+            console.log(`  (loc1-facet-hrefs) ${n} filter hrefs equal to the 92adbba capture`);
         });
 
         // The bound controls of the ruled payload comparison (operator ruling LOCALE1B-ROW-CUT = A, 2026-11-01; it
@@ -2084,33 +2049,30 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (loc1-flight-controls) 3 positive controls equal; ${Object.keys(mutations).length + 1} mutations, ${Object.keys(r5).length} 1a R5 counterexamples, ${Object.keys(typed).length} typed-reference changes, ${Object.keys(review2).length} second-review controls and the real-payload productId mutation reported; 3 unknown forms and a disconnected cycle fail closed`);
         });
 
-        // RO copies (fixtures.mjs LOC1): per URL exactly the listed text changes, each the approved pack value of its key.
-        // `against: "candidate"` = the EN source tenant of this run (the 1a form); `against: "before"` (the catalog copy) =
-        // the 4e98f98 capture of the EN catalog tenant, i.e. TODAY's Romanian catalog texts: so the catalog part must not
-        // change at all, except the counts that take the Romanian plural category (L-RO-PLURAL, § 16.2 item 6).
+        // RO copies (fixtures.mjs LOC1): per URL exactly the listed text changes against THE SAME COPY in before/ (92adbba),
+        // each the EN pack value of its key → the RO pack value (locale-1d: so every listed item is a change of this slice).
+        const LOC1_RO_ROWS = new Set(["L-RO-1", "L-RO-2", "L-RO-3"]);
         for (const [fixture, rowId] of [["roContent", "loc1-ro-content"], ["roCommerce", "loc1-ro-commerce"], ["roCatalog", "loc1-ro-catalog"]]) {
-            test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes against ${fixture === "roCatalog" ? "the 4e98f98 capture of the EN catalog tenant (its catalog texts = today's; only L-RO-PLURAL counts differ)" : "its EN source"}, each the approved RO pack value`, async () => {
+            test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes against its own 92adbba capture, each from the EN pack value to the RO pack value`, async () => {
                 const spec = (await loc1Json("ro-expected.json")).fixtures[fixture];
+                assert.equal(spec.source, fixture);
+                assert.equal(spec.against, "before");
                 const ro = await loc1RoSet();
-                const ref = spec.against === "before" ? await loc1BeforeSet() : await cm1Set();
-                const sourcePaths = ref.captures.filter((c) => c.tenant === spec.source).map((c) => c.path).sort();
+                const ref = await loc1BeforeSet();
+                const sourcePaths = ref.captures.filter((c) => c.tenant === fixture).map((c) => c.path).sort();
                 assert.deepEqual(Object.keys(spec.paths).sort(), sourcePaths, "ro-expected.json must list exactly the captured URLs");
                 let changes = 0;
                 const rows = {};
                 for (const [urlPath, list] of Object.entries(spec.paths)) {
                     for (const e of list) {
-                        if (e.part === "catalog") {
-                            assert.equal(spec.against, "before", `${urlPath} ${e.key}: catalog texts change only against today's capture`);
-                            assert.equal(e.row, "L-RO-PLURAL", `${urlPath} ${e.key}: a catalog text of a RO catalog tenant keeps today's Romanian (L-RO-CAT), except a plural count`);
-                            assert.equal(e.from, PRE_1B_COUNT_TEXT[e.key](e.count), `${urlPath} ${e.key}: from is today's two-form count`);
-                        } else {
-                            assert.equal(e.from, renderItem(EN_TABLE, e), `${urlPath} ${e.key}: from is the EN pack value`);
-                        }
+                        assert.ok(e.part === "commerce" || e.part === "site", `${urlPath} ${e.key}: locale-1d changes only commerce (and site) texts`);
+                        assert.ok(LOC1_RO_ROWS.has(e.row), `${urlPath} ${e.key}: row ${e.row}`);
+                        assert.equal(e.from, renderItem(EN_TABLE, e), `${urlPath} ${e.key}: from is the EN pack value`);
                         assert.equal(e.to, renderItem(RO_TABLE, e), `${urlPath} ${e.key}: to is the RO pack value`);
                         rows[e.row] = (rows[e.row] ?? 0) + 1;
                     }
                     const r = ro.find((c) => c.tenant === fixture && c.path === urlPath);
-                    const base = ref.captures.find((c) => c.tenant === spec.source && c.path === urlPath);
+                    const base = ref.captures.find((c) => c.tenant === fixture && c.path === urlPath);
                     assert.equal(r.status, base.status, `${urlPath} status`);
                     const got = isHtml(r) ? textChanges(extractVisibleText(base.body), extractVisibleText(r.body)) : [];
                     assert.deepEqual(got, list.map(({ kind, from, to }) => ({ kind, from, to })), `${fixture} ${urlPath}`);
@@ -2120,13 +2082,37 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             });
         }
 
+        // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the
+        // text rows, which only prove "equal to 92adbba"): a bank-transfer confirmation with the bank block, a cash-on-
+        // delivery confirmation, the confirmation without an order, a tracking page with a tracking number, an "Order Not
+        // Found" page; the account page answers 200 (its texts render on the client: test/unit/locale-1d-client.test.ts).
+        test("(loc1-order-pages) en-US commerce: the order pages render their states (confirmation bank / COD / no order, tracking, not found, account)", async () => {
+            const cand = await loc1EnSet();
+            const at = (p) => { const c = cand.captures.find((x) => x.tenant === "commerce" && x.path === p); assert.ok(c, p); assert.equal(c.status, 200, p); return extractVisibleText(c.body).map((i) => i.text); };
+            const q = "email=buyer%40serving-contract.test";
+            const bank = at(`/checkout/confirmare?id=cm1-order-bank&${q}`);
+            for (const t of ["Order Confirmed!", "Bank Transfer Details", "Bank:", "IBAN:", "RO49AAAA1B31007593840000", "SWIFT:", "Reference:", "Amount:", "Qty: 2", "Free", "Shipping Address"]) assert.ok(bank.includes(t), `bank confirmation: ${t}`);
+            const cod = at(`/checkout/confirmare?id=cm1-order-cod&${q}`);
+            for (const t of ["Cash on Delivery", "You will pay", "when you receive your order.", "Estimated delivery:", "Discount", "Phone: +1 555 0100"]) assert.ok(cod.includes(t), `COD confirmation: ${t}`);
+            assert.ok(at("/checkout/confirmare").includes("Thank you for your order!"));
+            const track = at(`/checkout/cm1-order-cod?${q}`);
+            for (const t of ["Order CM1-0002", "Placed on 10/15/2026", "pending", "completed", "Tracking Number:", "AWB-CM1-0002", "Items"]) assert.ok(track.includes(t), `tracking: ${t}`);
+            assert.ok(at("/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test").includes("Order Not Found"));
+            at("/account");
+            // The RO copy's bank block: the two labels whose Romanian text equals the English one (so no RO change lists them).
+            const roBank = (await loc1RoSet()).find((c) => c.tenant === "roCommerce" && c.path === `/checkout/confirmare?id=cm1-order-bank&${q}`);
+            const roTexts = extractVisibleText(roBank.body).map((i) => i.text);
+            for (const k of ["ibanLabel", "swiftLabel", "bankLabel", "amountLabel"]) assert.ok(roTexts.includes(RO_TABLE.commerce[k]), `RO bank confirmation: ${k}`);
+            console.log("  (loc1-order-pages) bank, COD and no-order confirmations, tracking, not found and account render on the en-US commerce fixture; the RO bank block shows the RO pack labels");
+        });
+
         // ── ROW (cmrc-counties-1) — docs/slices/cmrc-counties-1.md. The checkout form's region list follows the tenant's
         // real country (mapTenant copies `countryCode`): the RO commerce copy (`countryCode: "RO"`) receives the 42 counties
         // of the RO country pack; the en-US commerce tenant (`countryCode: "EN"`) receives none, so its form shows the
         // free-text county field. The form itself renders only on the client with a cart (the server HTML is "Your cart
         // is empty"), so the field's markup is proven in renderer/test/unit/cmrc-counties-1-checkout.test.ts; here, the
-        // props the server sends. COUNTIES-TEXT-LAYER = off: the RO copy's checkout `strings` equal the en-US tenant's.
-        test("(cmrc-counties-1) /checkout: the RO commerce copy receives the 42 RO-pack counties, the en-US commerce tenant none; checkout `strings` do not follow the country", async () => {
+        // props the server sends. COUNTIES-TEXT-LAYER = off: the checkout `strings` come from the language table (locale-1d), never the country.
+        test("(cmrc-counties-1) /checkout: the RO commerce copy receives the 42 RO-pack counties, the en-US commerce tenant none; checkout `strings` follow the language, not the country", async () => {
             /** The CheckoutPageView props in a captured payload: the one props object with `tenantId` and `defaultRegions`. */
             const checkoutProps = (body) => {
                 const found = [];
@@ -2153,68 +2139,25 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(ro.availableCounties, [], "no configured counties on either fixture (the country decides)");
             assert.deepEqual(en.availableCounties, []);
             assert.ok(ro.strings !== null && typeof ro.strings === "object", "checkout strings travel inline");
-            assert.deepEqual(ro.strings, en.strings, "COUNTIES-TEXT-LAYER = off: the country pack's texts are not merged");
-            console.log(`  (cmrc-counties-1) roCommerce /checkout defaultRegions ${ro.defaultRegions.length} (RO pack); commerce /checkout defaultRegions ${en.defaultRegions.length}; strings equal (${Object.keys(ro.strings).length} keys)`);
+            // LOCALE-1D changed this expectation (docs/slices/locale-1d.md): the texts now follow the tenant's LANGUAGE
+            // (`locale`), still never its country — the RO copy's checkout texts are exactly the RO table's (resolved
+            // without any country), the en-US tenant's exactly the EN table's. (Before 1d: both equal, English.)
+            const tableValue = (table, k) => (Object.hasOwn(table.commerce, k) ? table.commerce[k] : table.site[k]);
+            assert.deepEqual(Object.keys(ro.strings), Object.keys(en.strings), "the same keys on both");
+            assert.deepEqual(ro.strings, Object.fromEntries(Object.keys(en.strings).map((k) => [k, tableValue(RO_TABLE, k)])), "RO copy: the RO table's texts (no country layer)");
+            assert.deepEqual(en.strings, Object.fromEntries(Object.keys(en.strings).map((k) => [k, tableValue(EN_TABLE, k)])), "en-US: the EN table's texts");
+            console.log(`  (cmrc-counties-1) roCommerce /checkout defaultRegions ${ro.defaultRegions.length} (RO pack); commerce /checkout defaultRegions ${en.defaultRegions.length}; strings = the language's table (${Object.keys(ro.strings).length} keys)`);
         });
 
-        // ── ROW (cmrc-counties-diff) — the cm1-byte-identity/README.md procedure for this slice's byte change (operator
-        // ruling CMRC-COUNTIES-BASELINE, 2026-11-01): cmrc-counties-1/before/ is the immutable capture of the CM1 set from
-        // the start commit 959f288; cmrc-counties-1/expected-diff.json lists the exact differences. Comparison = CM1-A1
-        // exactly (maskBody, as the cm1-identity rows), plus each listed changed prop put back to its before value in its
-        // element's payload row; every other byte must be equal. Subjects = the cm1-identity subjects, commerce (18) and
-        // content (14); the catalog captures in before/ are not compared here (CM1-A1 does not hide their render-to-render
-        // row-label variation, F-CATALOG-RSC-ORDER; the catalog is covered by loc1-diff-1b).
-        test("(cmrc-counties-diff) the commerce and content CM1 URLs differ from the 959f288 capture by exactly cmrc-counties-1/expected-diff.json (commerce /checkout defaultRegions), under CM1-A1", async () => {
-            const dir = path.join(path.dirname(LOC1_DIR), "cmrc-counties-1");
-            const before = await readCaptures(path.join(dir, "before"));
-            const cand = await cm1Set();
-            const doc = JSON.parse(await readFile(path.join(dir, "expected-diff.json"), "utf8"));
-            const MARK = "\n--- flight payload rows, sorted ---\n";
-            const parts = (set, body) => {
-                const masked = maskBody(body, set).masked;
-                const at = masked.indexOf(MARK);
-                return at < 0 ? { html: masked, rows: [] } : { html: masked.slice(0, at), rows: masked.slice(at + MARK.length).split("\n") };
-            };
-            /** Problems of one URL: listed changed props must occur once per side; then the two CM1-A1 forms must be equal. */
-            const check = (b, a, listed) => {
-                const problems = [];
-                const pb = parts(before, b.body), pa = parts(cand, a.body);
-                let rows = pa.rows;
-                for (const e of listed) {
-                    const el = `"$L${e.element}"`, now = `"${e.prop}":${JSON.stringify(e.value)}`, was = `"${e.prop}":${JSON.stringify(e.beforeValue)}`;
-                    const once = (list, text) => list.filter((r) => r.includes(el) && r.split(text).length === 2).length === 1;
-                    if (!once(pb.rows, was)) problems.push(`${e.prop}: the before value does not occur once in a ${e.element} row of before/`);
-                    if (!once(rows, now)) { problems.push(`${e.prop}: the listed value does not occur once in a ${e.element} row`); continue; }
-                    rows = rows.map((r) => (r.includes(el) && r.includes(now) ? r.replace(now, was) : r));
-                }
-                if (pa.html !== pb.html) problems.push("the HTML outside the flight payload differs");
-                if ([...rows].sort().join("\n") !== pb.rows.join("\n")) problems.push("the flight payload differs beyond the listed differences");
-                return problems;
-            };
-            const listedFor = (tenant, p) => doc.fixtures[tenant]?.[p] ?? [];
-            const problems = [];
-            assert.equal(before.captures.length, 51, "before/ holds the 51 CM1 URLs (the README capture set)");
-            const subjects = before.captures.filter((c) => c.tenant === "commerce" || c.tenant === "content");
-            assert.equal(subjects.length, 32);
-            for (const b of subjects) {
-                const a = cand.captures.find((c) => c.tenant === b.tenant && c.path === b.path);
-                if (!a) { problems.push(`${b.tenant} ${b.path}: not captured`); continue; }
-                if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${b.tenant} ${b.path}: status/Content-Type changed`); continue; }
-                for (const p of check(b, a, listedFor(b.tenant, b.path))) problems.push(`${b.tenant} ${b.path}: ${p}`);
-            }
-            for (const [tenant, urls] of Object.entries(doc.fixtures)) for (const p of Object.keys(urls)) assert.ok(before.captures.some((c) => c.tenant === tenant && c.path === p), `listed URL ${tenant} ${p} is captured`);
-            assert.deepEqual(problems, []);
-            // Bound mutations: the listed entry dropped, one changed payload byte next to it, and a wrong before value must each be reported.
-            const pick = (set) => set.captures.find((c) => c.tenant === "commerce" && c.path === "/checkout");
-            const [b, a] = [pick(before), pick(cand)];
-            const listed = listedFor("commerce", "/checkout");
-            assert.equal(listed.length, 1);
-            assert.notDeepEqual(check(b, a, []), [], "dropping the listed entry was not reported");
-            assert.ok(a.body.includes('\\"defaultRegions\\":[]'), "mutation precondition: the prop travels in the captured payload");
-            assert.notDeepEqual(check(b, { ...a, body: a.body.replace('\\"defaultRegions\\":[]', '\\"defaultRegions\\":[],\\"x\\":1') }, listed), [], "a changed payload byte was not reported");
-            assert.notDeepEqual(check(b, a, [{ ...listed[0], beforeValue: listed[0].beforeValue.slice(1) }]), [], "a wrong before value was not reported");
-            console.log(`  (cmrc-counties-diff) ${subjects.length} commerce/content URLs against the 959f288 capture: 1 listed difference (commerce /checkout ${listed[0].prop}: ${listed[0].beforeValue.length} names → ${JSON.stringify(listed[0].value)}), every other commerce/content URL byte-equal under CM1-A1; 3 mutations reported`);
-        });
+        // ── ROW (cmrc-counties-diff) — RETIRED by locale-1d (docs/slices/locale-1d.md): it compared the commerce and content
+        // URLs with the 959f288 capture `cmrc-counties-1/before/` and ONE listed difference. locale-1d changes the bytes of
+        // every commerce HTML page (the navbar's account texts, the views' strings), so that oracle cannot hold; its
+        // successor is row loc1-diff-1d, which compares the same URLs (and more) with the 92adbba capture — a capture that
+        // already contains the cmrc-counties-1 change. The comparisons differ: the retired row used CM1-A1 EXACTLY;
+        // loc1-diff-1d uses CM1-A1 PLUS the ruled resolved-tree payload comparison of locale-1b (LOCALE1B-ROW-CUT = A:
+        // payload row labels and row cuts are not compared). The CM1-A1-exact comparison of those 32 URLs continues in rows
+        // cm1-identity-* (against the baseline re-captured by locale-1d). The cmrc-counties-1 change itself stays pinned by
+        // row cmrc-counties-1 and test/unit/cmrc-counties-1-*.test.ts. Its capture set stays as that slice's record.
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

@@ -1,5 +1,3 @@
-import type { CommerceStrings } from "../index.js";
-
 export interface CountryPackCurrency {
     code: string;           // ISO 4217: "RON", "EUR", "USD"
     symbol: string;         // "lei", "€", "$"
@@ -21,28 +19,17 @@ export interface CountryPackAddress {
     phoneFormat?: string;       // "07XX XXX XXX"
 }
 
-export interface CountryPackLegal {
-    termsLabel: string;
-    privacyLabel: string;
-    consumerProtectionLabel?: string;
-    disputeResolutionLabel?: string;
-}
-
-export interface CountryPackGdpr {
-    headline: string;
-    description: string;
-    denyAll: string;
-    necessaryOnly: string;
-    acceptAll: string;
-}
-
+/**
+ * The facts of one country: currency, the default locale, regions and address formats. LOCALE-1D
+ * (docs/slices/locale-1.md § 3.2 item 2, § 10.2): the text members (the commerce default texts, the cookie banner
+ * texts and the legal link labels) were removed — visitor texts live in the language packs (`../language-packs/`),
+ * selected by the tenant's `locale`, never by its country. `address.regionLabel` / `postalCodeLabel` are not read by
+ * any renderer or admin code (kept: not named by § 10.2).
+ */
 export interface CountryPack {
     code: string;               // ISO 3166-1 alpha-2: "RO", "DE", "US"
     name: string;               // "Romania", "Germany", "United States"
     currency: CountryPackCurrency;
     locale: string;             // BCP 47: "ro-RO", "de-DE", "en-US"
     address: CountryPackAddress;
-    legal: CountryPackLegal;
-    gdpr: CountryPackGdpr;
-    defaultStrings: Partial<CommerceStrings>;
 }

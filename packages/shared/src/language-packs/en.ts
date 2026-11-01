@@ -1,17 +1,14 @@
-import { EN_PACK } from "../country-packs/en.js";
 import type { CompleteLanguagePack } from "./types.js";
 
 /**
  * LOCALE-1 — the English texts. Layer 1 of the resolver (docs/slices/locale-1.md § 5.1): complete by type.
  *
  * Every value is the text that renders today, byte for byte (§ 2.2 rule 4), so an en-US tenant sees no change:
- *  - `commerce`: the literal that was `COMMERCE_STRINGS_DEFAULTS` in index.ts (moved here unchanged; index.ts binds
- *    that compatibility name to this object). It lives here and not in index.ts because index.ts re-exports the
- *    resolver, which imports this pack: a value import back from index.ts would be read before index.ts has run
- *    (ESM cycle, `ReferenceError`).
- *  - `site`: the renderer literals of § 6.1. The nine cookie/legal values are read from the EN country pack, with
- *    the renderer's own literal fallback where that pack's type makes the label optional — the exact chain
- *    `app/[siteId]/layout.tsx` applied before this slice (`field || pack value || literal`).
+ *  - `commerce`: the 77 pre-locale defaults (moved here by `locale-1a`), the shared product-surface keys of `locale-1b`
+ *    and the commerce-only keys of `locale-1d` — each the renderer literal it replaced.
+ *  - `site`: the renderer literals of § 6.1. The nine cookie/legal values are the texts `app/[siteId]/layout.tsx`
+ *    rendered before `locale-1a` (the EN country pack's values, moved here as literals by `locale-1d`; the test compares
+ *    them with `test/fixtures/locale-1d-packs-92adbba.json`).
  */
 export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
     language: "en",
@@ -127,6 +124,90 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         searchBreadcrumb: "Search",
         searchResultCount: { one: "{n} result", other: "{n} results" },
         searchEnterTerm: "Enter a search term to find products.",
+
+        // LOCALE-1D — commerce-only surfaces (§ 6.2): the literals of the cart, checkout, account, confirmation and
+        // tracking pages, the add-to-cart controls, the commerce bar and the navbar account links. The step and history
+        // labels are today's lower-case identifiers (the pages keep CSS `capitalize`).
+        metaCartTitle: "Cart - {site}",
+        metaCheckoutTitle: "Checkout - {site}",
+        metaOrderConfirmationTitle: "Order Confirmation - {site}",
+        metaOrderTrackingTitle: "Order Tracking - {site}",
+        personalizationRequired: "Please fill in \"{label}\"",
+        variantRequired: "Please select {name}",
+        cartWidgetTotal: "Cart/{total} {currency}",
+        couponValidateFailed: "Could not validate coupon",
+        deliveryDatesLoading: "Loading delivery dates...",
+        calendarMo: "Mo",
+        calendarTu: "Tu",
+        calendarWe: "We",
+        calendarTh: "Th",
+        calendarFr: "Fr",
+        calendarSa: "Sa",
+        calendarSu: "Su",
+        checkoutEmptyMessage: "Add some products before checking out.",
+        orderFailed: "Order failed",
+        orderFailedStatus: "Order failed ({status})",
+        deliveryDateSelected: "Selected: {date}",
+        bankTransferTo: "Transfer to {bank} - {iban}",
+        orderStatusPlaced: "Placed",
+        orderStatusConfirmed: "Confirmed",
+        orderStatusPrepared: "Prepared",
+        orderStatusShipped: "Shipped",
+        orderStatusDelivered: "Delivered",
+        orderStatusCancelled: "Cancelled",
+        orderStatusAnnulled: "Annulled",
+        myAccount: "My Account",
+        accountSignInPrompt: "Sign in to view your orders and manage your account.",
+        signInWithGoogle: "Sign In with Google",
+        signOut: "Sign Out",
+        profileHeading: "Profile",
+        edit: "Edit",
+        accountName: "Name",
+        save: "Save",
+        saving: "Saving...",
+        cancel: "Cancel",
+        loyaltyPoints: "Loyalty Points",
+        defaultAddress: "Default Address",
+        orderHistory: "Order History",
+        noOrdersYet: "No orders yet.",
+        startShopping: "Start Shopping",
+        orderThankYou: "Thank you for your order!",
+        orderPlacedMessage: "Your order has been placed successfully. You will receive a confirmation email shortly.",
+        orderConfirmed: "Order Confirmed!",
+        orderNumber: "Order {number}",
+        bankTransferDetails: "Bank Transfer Details",
+        bankTransferInstruction: "Please transfer the total amount to the following account:",
+        bankLabel: "Bank:",
+        accountHolderLabel: "Account Holder:",
+        ibanLabel: "IBAN:",
+        swiftLabel: "SWIFT:",
+        referenceLabel: "Reference:",
+        amountLabel: "Amount:",
+        codPayOnDelivery: "You will pay {amount} when you receive your order.",
+        estimatedDelivery: "Estimated delivery:",
+        orderDetails: "Order Details",
+        quantityLabel: "Qty: {n}",
+        phoneLine: "Phone: {phone}",
+        orderNotFound: "Order Not Found",
+        orderNotFoundMessage: "Please check the order ID and email address.",
+        placedOn: "Placed on {date}",
+        orderStepPending: "pending",
+        orderStepConfirmed: "confirmed",
+        orderStepProcessing: "processing",
+        orderStepShipped: "shipped",
+        orderStepDelivered: "delivered",
+        orderStepCompleted: "completed",
+        statusHistory: "Status History",
+        orderHistoryPlaced: "placed",
+        orderHistoryConfirmed: "confirmed",
+        orderHistoryPrepared: "prepared",
+        orderHistoryShipped: "shipped",
+        orderHistoryDelivered: "delivered",
+        orderHistoryCancelled: "cancelled",
+        orderHistoryAnnulled: "annulled",
+        tracking: "Tracking",
+        trackingNumber: "Tracking Number:",
+        items: "Items",
     },
     // LOCALE-1B — the catalog part (§ 6.3). These English texts are NEW copy (the catalog renders Romanian literals
     // before this slice; ledger row L-EN-CAT): an English catalog tenant sees them, a Romanian one the RO pack.
@@ -179,16 +260,16 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         footerPhone: "Tel: {value}",
         footerLinksHeading: "Links",
         footerLegalHeading: "Legal",
-        legalTermsLabel: EN_PACK.legal.termsLabel,
-        legalPrivacyLabel: EN_PACK.legal.privacyLabel,
-        legalConsumerProtectionLabel: EN_PACK.legal.consumerProtectionLabel || "Consumer Protection",
-        legalDisputeResolutionLabel: EN_PACK.legal.disputeResolutionLabel || "Dispute Resolution",
+        legalTermsLabel: "Terms & Conditions",
+        legalPrivacyLabel: "Privacy Policy",
+        legalConsumerProtectionLabel: "Consumer Protection",
+        legalDisputeResolutionLabel: "Dispute Resolution",
         footerCopyright: "© {year} {name}. All rights reserved.",
-        cookieHeadline: EN_PACK.gdpr.headline,
-        cookieDescription: EN_PACK.gdpr.description,
-        cookieDenyAll: EN_PACK.gdpr.denyAll,
-        cookieNecessaryOnly: EN_PACK.gdpr.necessaryOnly,
-        cookieAcceptAll: EN_PACK.gdpr.acceptAll,
+        cookieHeadline: "We value your privacy",
+        cookieDescription: "We use cookies to enhance your browsing experience and analyze our traffic. Choose your preference below.",
+        cookieDenyAll: "Deny All",
+        cookieNecessaryOnly: "Necessary Only",
+        cookieAcceptAll: "Accept All",
         navAllOf: "{label} (All)",
         navContact: "Contact",
         navToggleMenu: "Toggle menu",
@@ -223,5 +304,6 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         formErrorShort: "Something went wrong",
         formSelectPlaceholder: "Select...",
         formSubmitting: "Submitting...",
+        errorTryAgain: "Something went wrong. Please try again.",
     },
 };

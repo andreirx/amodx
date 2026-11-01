@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import React from "react";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { COMMERCE_STRINGS_DEFAULTS, URL_PREFIX_DEFAULTS, getCountryPack } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, RO_LANGUAGE_PACK } from "@amodx/shared";
 import { extractVisibleText } from "../serving-contract/locale-1/proof.mjs";
 import { BEFORE_FILE, withFreeText, type Snapshot, type StateName } from "./cmrc-counties-1-fields";
 
@@ -10,7 +10,7 @@ import { BEFORE_FILE, withFreeText, type Snapshot, type StateName } from "./cmrc
  * CMRC-COUNTIES-1 (docs/slices/cmrc-counties-1.md) — what the server passes to the checkout form, per tenant country,
  * and the visible-text items of ledger row L-EN-COUNTIES.
  *
- * Real: `SitePage` (the checkout and cart branches, `getCommerceStrings`). Mocked: the DynamoDB reads (`@/lib/dynamo`),
+ * Real: `SitePage` (the checkout and cart branches; LOCALE-1D: their texts come from the locale table). Mocked: the DynamoDB reads (`@/lib/dynamo`),
  * Next's runtime-coupled modules, and the two commerce views, which print the props they receive (their rendering of
  * those props is checked in cmrc-counties-1-checkout.test.ts).
  */
@@ -42,6 +42,8 @@ vi.mock("@/components/CartPageView", () => ({ CartPageView: probe("cart-probe") 
 import { SitePage } from "@/components/SitePage";
 
 const RO_REGIONS = getCountryPack("RO").address.regions.map((r) => r.name);
+/** LOCALE-1D: the English commerce texts (the EN table; the former English-defaults export is gone). */
+const EN_TEXT = resolveLocaleStrings({}).strings.commerce;
 const CONFIGURED = ["Cluj", "Ilfov"];
 
 function tenant(extra: Record<string, unknown> = {}) {
@@ -85,39 +87,42 @@ describe("[cmrc-counties-1] SitePage → CheckoutPageView: the region list follo
 });
 
 describe("[cmrc-counties-1] COUNTIES-TEXT-LAYER = off: commerce texts do not follow the country", () => {
-    it("countryCode RO, no stored keys → the English defaults (checkout and cart), key order unchanged", async () => {
+    // LOCALE-1D changed this expectation (record docs/slices/locale-1d.md): the views' texts now come from the locale
+    // table, selected by `locale`; the country still selects none of them. Before 1d the oracle was "equal to the
+    // English-defaults export"; now it is "equal to the same tenant's texts without the country".
+    it("countryCode RO, no locale → the same English texts (checkout and cart) as without a country", async () => {
         for (const tag of ["checkout-probe", "cart-probe"] as const) {
             const { strings } = await propsOf(tag, tenant({ countryCode: "RO" }));
-            expect(strings, tag).toEqual(COMMERCE_STRINGS_DEFAULTS);
-            expect(Object.keys(strings), tag).toEqual(Object.keys(COMMERCE_STRINGS_DEFAULTS));
+            expect(strings, tag).toEqual((await propsOf(tag, tenant())).strings);
+            expect(strings.emptyCart, tag).toBe(EN_TEXT.emptyCart);
         }
-        // The RO pack HAS a text layer (so the check above is not vacuous): merging it would have changed this text.
-        expect(getCountryPack("RO").defaultStrings.checkout).not.toBe(COMMERCE_STRINGS_DEFAULTS.checkout);
+        // The Romanian language pack HAS other texts (so the check above is not vacuous): following the country would change this.
+        expect(RO_LANGUAGE_PACK.commerce.checkout).not.toBe(EN_TEXT.checkout);
     });
     it("a stored commerceStrings key still overrides the English default (layer order: defaults → tenant)", async () => {
         const { strings } = await propsOf("checkout-probe", tenant({ countryCode: "RO", commerceStrings: { checkout: "Finalizare" } }));
         expect(strings.checkout).toBe("Finalizare");
-        expect(strings.county).toBe(COMMERCE_STRINGS_DEFAULTS.county);
+        expect(strings.county).toBe(EN_TEXT.county);
     });
 });
 
 describe("[cmrc-counties-1] ledger row L-EN-COUNTIES — the visible-text items (§ 8.5 extraction, locale-1/proof.mjs)", () => {
     const before: { commit: string; states: Record<StateName, Snapshot> } = JSON.parse(readFileSync(BEFORE_FILE, "utf8"));
-    const lost = [COMMERCE_STRINGS_DEFAULTS.selectCounty, ...RO_REGIONS].map((text) => ({ kind: "text", text }));
+    const lost = [EN_TEXT.selectCounty, ...RO_REGIONS].map((text) => ({ kind: "text", text }));
     for (const [view, fields] of [["mounted", 1], ["billingShown", 2]] as const) {
-        it(`${view}: today's form (959f288, ro-regions) → the form with the free-text field loses exactly "${COMMERCE_STRINGS_DEFAULTS.selectCounty}" and the 42 county names at each of its ${fields} county field(s); every other item is equal and in order`, () => {
+        it(`${view}: today's form (959f288, ro-regions) → the form with the free-text field loses exactly "${EN_TEXT.selectCounty}" and the 42 county names at each of its ${fields} county field(s); every other item is equal and in order`, () => {
             expect(before.commit).toBe("959f288");
             const was = extractVisibleText(before.states["ro-regions"][view]);
             const now = extractVisibleText(withFreeText(before.states["ro-regions"][view]));
             expect(was.length - now.length).toBe(43 * fields);
             // Rebuild `was` from `now` by inserting the 43 items at each placeholder position of `was`.
-            const starts = was.flatMap((item, i) => (item.text === COMMERCE_STRINGS_DEFAULTS.selectCounty ? [i] : []));
+            const starts = was.flatMap((item, i) => (item.text === EN_TEXT.selectCounty ? [i] : []));
             expect(starts).toHaveLength(fields);
             const rebuilt = [...now];
             for (const at of starts) rebuilt.splice(at, 0, ...lost);
             expect(rebuilt).toEqual(was);
             // The label stays: one "County *" item per field, before and after.
-            for (const list of [was, now]) expect(list.filter((i) => i.text === `${COMMERCE_STRINGS_DEFAULTS.county} *`)).toHaveLength(fields);
+            for (const list of [was, now]) expect(list.filter((i) => i.text === `${EN_TEXT.county} *`)).toHaveLength(fields);
         });
     }
 });

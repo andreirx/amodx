@@ -470,8 +470,44 @@ const CIP1B_ITEMS = [
     ...cip1bProducts,
 ];
 
+// ── LOCALE-1D orders (docs/slices/locale-1.md § 16.2 item 5, coverage rule item 2) ───────────────────────────────
+// Two orders of the CM1 commerce tenant, so the server-rendered order pages are captured: the confirmation of a
+// bank-transfer order (with the tenant's `integrations.bankTransfer`, which the confirmation's bank block needs) and of
+// a cash-on-delivery order (estimated delivery, discount, shipping cost, personalization, phone), and the tracking page
+// of the second (status `shipped`, a tracking number). Exact-key items `ORDER#<id>` (`lib/dynamo.ts`
+// getOrderForCustomer, a GetItem the stub serves). No `statusHistory`: its time is formatted with the server's time
+// zone (`toLocaleString`), which an immutable capture cannot pin; the history is proven by a headless render
+// (renderer/test/unit/locale-1d-server-render.test.ts). The request list is derived by rule from these items
+// (locale-1/proof.mjs `orderRequests`). The RO commerce copy (below) copies them.
+export const CM1_ORDER_EMAIL = "buyer@serving-contract.test";
+const cm1BankTransfer = { bankName: "CM1 Bank", accountHolder: "CM1 Commerce SRL", iban: "RO49AAAA1B31007593840000", swift: "AAAARO22", referencePrefix: "" };
+function cm1Order(tenantId, order) {
+    return {
+        PK: `TENANT#${tenantId}`, SK: `ORDER#${order.id}`, Type: "Order", tenantId, customerEmail: CM1_ORDER_EMAIL,
+        customerName: "Ana Buyer", currency: "USD", createdAt: "2026-10-15T12:00:00.000Z", updatedAt: "2026-10-15T12:00:00.000Z",
+        ...order,
+    };
+}
+const cm1Orders = [
+    cm1Order(CM1.commerce.id, {
+        id: "cm1-order-bank", orderNumber: "CM1-0001", status: "placed", paymentMethod: "bank_transfer",
+        items: [{ productId: "c0000000-0000-4000-8000-000000000001", productTitle: "Sale Rug", quantity: 2, unitPrice: "80.00", totalPrice: "160.00", personalizations: [] }],
+        subtotal: "160.00", shippingCost: "0", discount: "0", total: "160.00",
+        shippingAddress: { street: "1 Test Street", city: "Testville", county: "Test County", postalCode: "100001", country: "US" },
+    }),
+    cm1Order(CM1.commerce.id, {
+        id: "cm1-order-cod", orderNumber: "CM1-0002", status: "shipped", paymentMethod: "cash_on_delivery",
+        estimatedDeliveryDate: "2026-10-20", trackingNumber: "AWB-CM1-0002", customerPhone: "+1 555 0100",
+        items: [{ productId: "c0000000-0000-4000-8000-000000000001", productTitle: "Sale Rug", quantity: 1, unitPrice: "80.00", totalPrice: "85.00",
+            personalizations: [{ label: "Monogram", value: "AB", addedCost: "5.00" }] }],
+        subtotal: "85.00", shippingCost: "10.00", discount: "5.00", total: "90.00",
+        shippingAddress: { street: "2 Test Street", city: "Testville", county: "Test County", postalCode: "100002", country: "US" },
+    }),
+];
+
 const CM1_ITEMS = [
-    cm1Tenant(CM1.commerce, "CM1 Commerce", { commerceEnabled: true, searchBar }),
+    cm1Tenant(CM1.commerce, "CM1 Commerce", { commerceEnabled: true, searchBar, integrations: { bankTransfer: cm1BankTransfer } }),
+    ...cm1Orders,
     ...cm1Pages(CM1.commerce.id, [showcase("rugs")], { staleShowcase: true }),
     cm1Category(CM1.commerce.id, "rugs", "rugs", "Rugs"),
     ...cm1CommerceProducts,

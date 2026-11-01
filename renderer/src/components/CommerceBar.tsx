@@ -5,6 +5,13 @@ import { CartWidget } from "./CartWidget";
 import Link from "next/link";
 import { useTenantUrl } from "@/lib/routing";
 import { useSession } from "next-auth/react";
+import type { LocaleStrings } from "@amodx/shared";
+
+/**
+ * LOCALE-1D (docs/slices/locale-1.md § 5.2): the commerce bar's texts, resolved by the layout. `signIn` and
+ * `accountLabel` are pattern F there (a stored "" falls back to the language default); `cartWidgetTotal` is pattern D.
+ */
+export type CommerceBarStrings = Pick<LocaleStrings["commerce"], "signIn" | "accountLabel" | "cartWidgetTotal">;
 
 interface SocialLink {
     platform: string;
@@ -22,10 +29,7 @@ interface CommerceBarProps {
     height?: string;
     fontSize?: string;
     iconSize?: string;
-    labels?: {
-        signIn?: string;
-        accountLabel?: string;
-    };
+    labels: CommerceBarStrings;
 }
 
 // Derive a smaller icon class for inline icons (phone, user) from the main iconSize
@@ -161,7 +165,7 @@ export function CommerceBar({
                                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <User className={smallIcon} />
-                                <span>{session.user?.name?.split(" ")[0] || labels?.accountLabel || "Account"}</span>
+                                <span>{session.user?.name?.split(" ")[0] || labels.accountLabel}</span>
                             </Link>
                         ) : (
                             <a
@@ -169,12 +173,12 @@ export function CommerceBar({
                                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 <User className={smallIcon} />
-                                <span>{labels?.signIn || "Sign In"}</span>
+                                <span>{labels.signIn}</span>
                             </a>
                         )}
 
                         {/* Cart with total */}
-                        <CartWidget showTotal currency={currency} iconSize={iconSize} />
+                        <CartWidget total={{ template: labels.cartWidgetTotal, currency: currency || "USD" }} iconSize={iconSize} />
 
                         {/* CTA Button */}
                         {ctaButton && (

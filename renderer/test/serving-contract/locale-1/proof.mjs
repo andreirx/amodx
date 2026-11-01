@@ -32,9 +32,36 @@ import { CM1, ITEMS, LOC1 } from "../fixtures.mjs";
 
 export const LOC1_DIR = fileURLToPath(new URL("./", import.meta.url));
 
+const fileOf = (p) => (p === "/" ? "root" : p.replace(/^\//, "").replace(/[^A-Za-z0-9.-]+/g, "_"));
+
+/**
+ * LOCALE-1D (§ 16.2 item 5, coverage rule item 2): the commerce-only pages a CM1 request list does not hold, derived by
+ * RULE from the fixture items of a `commerceEnabled` tenant (default URL prefixes; no fixture sets `urlPrefixes`):
+ * `/account`, the order confirmation without an order ("Thank you for your order!"), and per `ORDER#` item its
+ * confirmation and its tracking page with the order's e-mail, plus one tracking request of the first order with a wrong
+ * e-mail ("Order Not Found"). A tenant without commerce or without orders adds nothing. Used for the en-US subjects and,
+ * through their source, for the RO copies.
+ */
+export function orderRequests(tenantId) {
+    const t = ITEMS.find((i) => i.PK === "SYSTEM" && i.SK === `TENANT#${tenantId}`);
+    if (!t || t.commerceEnabled !== true) return [];
+    const orders = ITEMS.filter((i) => i.PK === `TENANT#${tenantId}` && String(i.SK).startsWith("ORDER#"));
+    if (orders.length === 0) return [];
+    const email = (o) => encodeURIComponent(o.customerEmail);
+    const paths = [
+        "/account", "/checkout/confirmare",
+        ...orders.flatMap((o) => [`/checkout/confirmare?id=${o.id}&email=${email(o)}`, `/checkout/${o.id}?email=${email(o)}`]),
+        `/checkout/${orders[0].id}?email=${encodeURIComponent("not-the-buyer@serving-contract.test")}`,
+    ];
+    return paths.map((p) => ({ tenant: tenantId, host: t.Domain, path: p, file: fileOf(p) }));
+}
+
+/** The full request list of a CM1 tenant key: its reviewed CM1 list plus, since locale-1d, its order pages. */
+const cm1Requests = (key) => [...CM1_REQUESTS[key], ...orderRequests(CM1[key].id).map((r) => ({ ...r, tenant: key }))];
+
 /** The RO copies answer the request list of their EN source tenant, on their own host (fixtures.mjs `LOC1`). */
 export const LOC1_REQUESTS = Object.fromEntries(Object.entries(LOC1).map(([key, t]) => [
-    key, CM1_REQUESTS[t.source].map((r) => ({ ...r, tenant: key, host: t.host })),
+    key, cm1Requests(t.source).map((r) => ({ ...r, tenant: key, host: t.host })),
 ]));
 
 /** GETs every request in `requests`, sequentially; each capture keeps the request fields (shape of `captureCm1`). */
@@ -53,13 +80,22 @@ export async function captureRequests(request, port, requests) {
 // `frame` places the key's text inside a longer extracted text (`"{text} | <site name>"` — Next's title template —, or
 // `"{text} — 80.00 USD"` on the add-to-cart button). The rows compare `from` / `to` with these renders.
 
-/** The text an expectation item names, rendered from a RESOLVED table (`resolveLocaleStrings(...).strings`). */
+/** The text an expectation item names, rendered from a RESOLVED table (`resolveLocaleStrings(...).strings`).
+ *  LOCALE-1D: `segment: <i>` names the i-th text segment of a template whose placeholder renders as its OWN element
+ *  (SitePage `interpolateNodes`: "Order <span>{number}</span>", "You will pay <strong>{amount}</strong> …"), which the
+ *  extraction sees as separate items — the segment between placeholders, whitespace collapsed and trimmed. */
 export function renderItem(table, item) {
     const value = table[item.part][item.key];
     const text = typeof value === "string"
-        ? fillTemplate(value, item.values ?? {})
+        ? (item.segment !== undefined ? segmentOf(value, item.segment) : fillTemplate(value, item.values ?? {}))
         : fillTemplate(selectPluralText(value, item.count), { n: item.count });
     return (item.frame ?? "{text}").replace("{text}", text);
+}
+
+function segmentOf(template, i) {
+    const segments = template.split(/\{[A-Za-z0-9_]+\}/);
+    if (i < 0 || i >= segments.length) throw new Error(`template "${template}" has no segment ${i}`);
+    return segments[i].replace(/\s+/g, " ").trim();
 }
 
 /** The catalog count texts BEFORE locale-1b, per count key — the `from` side of an L-EN-CAT or L-RO-PLURAL count
@@ -85,7 +121,6 @@ export function captureLoc1(request, port, tenantKeys = Object.keys(LOC1)) {
 // no fixture tenant sets `urlPrefixes`).
 const tenantItems = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#"));
 const cm1KeyOf = Object.fromEntries(Object.entries(CM1).map(([key, t]) => [t.id, key]));
-const fileOf = (p) => (p === "/" ? "root" : p.replace(/^\//, "").replace(/[^A-Za-z0-9.-]+/g, "_"));
 
 function derivedRequests(t) {
     const own = ITEMS.filter((i) => i.PK === `TENANT#${t.id}`);
@@ -93,13 +128,13 @@ function derivedRequests(t) {
     const categories = own.filter((i) => i.SK.startsWith("CATEGORY#")).map((i) => `/category/${i.slug}`);
     const products = own.filter((i) => i.SK.startsWith("PRODUCT#") && i.status === "active").map((i) => `/product/${i.slug}`);
     const paths = [...routes, ...(categories.length || products.length ? ["/shop", ...categories, ...products] : [])];
-    return paths.map((p) => ({ tenant: t.id, host: t.Domain, path: p, file: fileOf(p) }));
+    return [...paths.map((p) => ({ tenant: t.id, host: t.Domain, path: p, file: fileOf(p) })), ...orderRequests(t.id)];
 }
 
 /** `{ <subject key>: <request list> }` for every en-US subject, in fixture order. */
 export const EN_US_REQUESTS = Object.fromEntries(tenantItems
     .filter((t) => !Object.prototype.hasOwnProperty.call(t, "locale"))
-    .map((t) => (cm1KeyOf[t.id] ? [cm1KeyOf[t.id], CM1_REQUESTS[cm1KeyOf[t.id]]] : [t.id, derivedRequests(t)])));
+    .map((t) => (cm1KeyOf[t.id] ? [cm1KeyOf[t.id], cm1Requests(cm1KeyOf[t.id])] : [t.id, derivedRequests(t)])));
 
 /** Per subject, the URLs whose visible text differs between two capture sets (status, structure or text). */
 export function textMismatches(beforeSet, afterSet, key) {
@@ -114,78 +149,10 @@ export function textMismatches(beforeSet, afterSet, key) {
     return out;
 }
 
-const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-function decode(s) {
-    return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (m, e) => {
-        if (e[0] === "#") return String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10));
-        return ENTITIES[e] ?? m;
-    });
-}
-const collapse = (s) => s.replace(/\s+/g, " ").trim();
-
-function attributesOf(raw) {
-    const out = {};
-    const re = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
-    let m;
-    while ((m = re.exec(raw))) out[m[1].toLowerCase()] = decode(m[2] ?? m[3] ?? m[4] ?? "");
-    return out;
-}
-
-/** CM1-A1 canonicalisation 4 (footer year): the same regex as `maskBody`; the digits become the text `{year}` (a
- *  token the extraction reads as text, where `maskBody`'s `<year>` would parse as a tag). HTML only. */
-export function maskFooterYear(html) {
-    return html.replace(/© <!-- -->\d{4}<!-- -->/g, "© <!-- -->{year}<!-- -->");
-}
-
-/** @returns {{ kind: string, text: string }[]} the § 8.5 extraction of one HTML body, in document order. */
-export function extractVisibleText(body) {
-    const html = maskFooterYear(body)
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
-        .replace(/<!--[\s\S]*?-->/g, "");
-    const items = [];
-    let inTitle = false;
-    const re = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)/g;
-    let m;
-    while ((m = re.exec(html))) {
-        if (m[4] !== undefined) {
-            const text = collapse(decode(m[4]));
-            if (text) items.push({ kind: inTitle ? "title" : "text", text });
-            continue;
-        }
-        const closing = m[1] === "/";
-        const tag = m[2].toLowerCase();
-        if (tag === "title") { inTitle = !closing; continue; }
-        if (closing) continue;
-        const a = attributesOf(m[3]);
-        if (tag === "meta") {
-            const which = a.name === "description" ? "meta:description" : a.property === "og:title" ? "meta:og:title" : a.property === "og:description" ? "meta:og:description" : null;
-            if (which && a.content !== undefined) items.push({ kind: which, text: collapse(a.content) });
-            continue;
-        }
-        for (const name of ["alt", "title", "placeholder", "aria-label"]) {
-            if (a[name] !== undefined && collapse(a[name])) items.push({ kind: `@${name}`, text: collapse(a[name]) });
-        }
-        const isButtonInput = tag === "input" && (a.type === "submit" || a.type === "button");
-        if ((tag === "button" || isButtonInput) && a.value !== undefined && collapse(a.value)) items.push({ kind: "@value", text: collapse(a.value) });
-    }
-    return items;
-}
-
-/**
- * The item-by-item changes between two extractions of the SAME page structure: `[{ kind, from, to }]` in document
- * order. Throws when the two lists differ in length or in an item's kind (a structural change is never a text
- * change; it must fail loudly).
- */
-export function textChanges(from, to) {
-    if (from.length !== to.length) throw new Error(`extractions differ in length: ${from.length} → ${to.length}`);
-    const out = [];
-    from.forEach((item, i) => {
-        if (item.kind !== to[i].kind) throw new Error(`item ${i}: kind ${item.kind} → ${to[i].kind}`);
-        if (item.text !== to[i].text) out.push({ kind: item.kind, from: item.text, to: to[i].text });
-    });
-    return out;
-}
+// LOCALE-1D: the extraction (`maskFooterYear`, `extractVisibleText`, `textChanges`) lives in `./extract.mjs` — moved
+// there unchanged so a jsdom unit test can import it without this module's fixture graph; re-exported here.
+import { extractVisibleText, textChanges } from "./extract.mjs";
+export { maskFooterYear, extractVisibleText, textChanges } from "./extract.mjs";
 
 const FLIGHT_MARK = "\n--- flight payload rows, sorted ---\n";
 

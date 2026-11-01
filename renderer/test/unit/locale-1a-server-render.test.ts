@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { renderToStaticMarkup, renderToString } from "react-dom/server";
-import { URL_PREFIX_DEFAULTS, RO_PACK } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, RO_LANGUAGE_PACK } from "@amodx/shared";
+/** LOCALE-1D: the Romanian cookie/legal texts now live only in the RO language pack (the RO country pack holds facts only; the values are unchanged, packages/shared/test/locale-strings.test.ts). */
+const RO_SITE = RO_LANGUAGE_PACK.site;
 
 /**
  * LOCALE-1A — headless server renders of the site chrome (docs/slices/locale-1.md § 8.5 "client-only states" and the
@@ -105,8 +107,8 @@ describe("[1a-server] layout: footer, legal links, copyright, quick contact, nav
     it("[1a-server] RO tenant: the same states in Romanian (site keys of § 6.1, legal labels from the RO pack)", async () => {
         const html = decoded(await layoutHtml(tenant({ ...RO, ...FULL_FOOTER })));
         for (const text of ["CUI: RO123", "Reg. Com.: J40/1/2020", "Tel: +40 700", ">Linkuri<", ">Informații legale<",
-            `>${RO_PACK.legal.termsLabel}<`, `>${RO_PACK.legal.privacyLabel}<`, `>${RO_PACK.legal.consumerProtectionLabel}<`,
-            `>${RO_PACK.legal.disputeResolutionLabel}<`, 'title="Sună-ne"', ">Contact<", 'aria-label="Deschide sau închide meniul"']) {
+            `>${RO_SITE.legalTermsLabel}<`, `>${RO_SITE.legalPrivacyLabel}<`, `>${RO_SITE.legalConsumerProtectionLabel}<`,
+            `>${RO_SITE.legalDisputeResolutionLabel}<`, 'title="Sună-ne"', ">Contact<", 'aria-label="Deschide sau închide meniul"']) {
             expect(html, text).toContain(text);
         }
         expect(html).toMatch(/© \d{4} Atelier SRL\. Toate drepturile rezervate\./);
@@ -132,15 +134,15 @@ describe("[1a-server] layout: footer, legal links, copyright, quick contact, nav
             denyAll: "Deny All", necessaryOnly: "Necessary Only", acceptAll: "Accept All", position: "bottom", primaryColor: "#123456",
         });
         expect(cookieProps(await layoutHtml(tenant({ ...RO, gdpr: { position: "top" } })))).toEqual({
-            headline: RO_PACK.gdpr.headline, description: RO_PACK.gdpr.description, denyAll: RO_PACK.gdpr.denyAll,
-            necessaryOnly: RO_PACK.gdpr.necessaryOnly, acceptAll: RO_PACK.gdpr.acceptAll, position: "top",
+            headline: RO_SITE.cookieHeadline, description: RO_SITE.cookieDescription, denyAll: RO_SITE.cookieDenyAll,
+            necessaryOnly: RO_SITE.cookieNecessaryOnly, acceptAll: RO_SITE.cookieAcceptAll, position: "top",
         });
     });
 
     it("[1a-server] preservation (§ 5.2): cookie/legal keys are pattern F — absent → default, \"\" → default, \"X\" → X", async () => {
         for (const config of [EN, RO]) {
-            const def = config === EN ? "Accept All" : RO_PACK.gdpr.acceptAll;
-            const defTerms = config === EN ? "Terms & Conditions" : RO_PACK.legal.termsLabel;
+            const def = config === EN ? "Accept All" : RO_SITE.cookieAcceptAll;
+            const defTerms = config === EN ? "Terms & Conditions" : RO_SITE.legalTermsLabel;
             const links = { termsUrl: "/t" };
             expect(cookieProps(await layoutHtml(tenant({ ...config }))).acceptAll).toBe(def);
             expect(cookieProps(await layoutHtml(tenant({ ...config, gdpr: { acceptAll: "" } }))).acceptAll).toBe(def);

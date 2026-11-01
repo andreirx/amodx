@@ -1,0 +1,908 @@
+{
+  "slice": "locale-1d",
+  "rule": "docs/slices/locale-1.md § 8.5 RO rows and § 16.2 item 4 (docs/slices/locale-1d.md): per RO copy (fixtures.mjs LOC1) and captured URL, the exact visible-text changes against THE SAME COPY in the immutable start-commit capture before/ (92adbba) — so each item is a change made by locale-1d only. Each item names its key (`part`, `key`; `values` fills its placeholders; `frame` places it in a longer text, here Next’s title template; `segment` names one text segment of a sentence whose value renders as its own element), its ledger row (L-RO-1 a new key; L-RO-2 an existing key at a new place, a literal before; L-RO-3 an existing key the cart view read through getCommerceStrings, the English default before), `from` = the EN pack render and `to` = the RO pack render. The RO content and catalog copies change ONLY in the title of the 307 handoff bodies of /cart and /checkout (metaCartTitle, metaCheckoutTitle; not shown, the browser follows the redirect). Checked by rows loc1-ro-content, loc1-ro-commerce, loc1-ro-catalog.",
+  "fixtures": {
+    "roContent": {
+      "source": "roContent",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/mats": [],
+        "/product/plain-rug": [],
+        "/products/d0000000-0000-4000-8000-000000000001": [],
+        "/search?q=rug": [],
+        "/cart": [
+          {
+            "part": "commerce",
+            "key": "metaCartTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Content"
+            },
+            "frame": "{text} | CM1 Content",
+            "row": "L-RO-1",
+            "from": "Cart - CM1 Content | CM1 Content",
+            "to": "Coș - CM1 Content | CM1 Content"
+          }
+        ],
+        "/checkout": [
+          {
+            "part": "commerce",
+            "key": "metaCheckoutTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Content"
+            },
+            "frame": "{text} | CM1 Content",
+            "row": "L-RO-1",
+            "from": "Checkout - CM1 Content | CM1 Content",
+            "to": "Finalizare comandă - CM1 Content | CM1 Content"
+          }
+        ],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    },
+    "roCommerce": {
+      "source": "roCommerce",
+      "against": "before",
+      "paths": {
+        "/": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/about": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/stale-showcase": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/shop": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/shop?availability=in_stock": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/category/rugs": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/product/sale-rug": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/product/variant-rug": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/product/sold-out-rug": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/product/rug-care-guide": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/products/c0000000-0000-4000-8000-000000000001": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/search?q=rug": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/cart": [
+          {
+            "part": "commerce",
+            "key": "metaCartTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Cart - CM1 Commerce | CM1 Commerce",
+            "to": "Coș - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "emptyCart",
+            "kind": "text",
+            "row": "L-RO-3",
+            "from": "Your cart is empty",
+            "to": "Coșul tău este gol"
+          },
+          {
+            "part": "commerce",
+            "key": "emptyCartMessage",
+            "kind": "text",
+            "row": "L-RO-3",
+            "from": "Browse our products and add something you like.",
+            "to": "Răsfoiește produsele noastre și adaugă ceva ce îți place."
+          },
+          {
+            "part": "commerce",
+            "key": "continueShopping",
+            "kind": "text",
+            "row": "L-RO-3",
+            "from": "Continue Shopping",
+            "to": "Continuă cumpărăturile"
+          }
+        ],
+        "/checkout": [
+          {
+            "part": "commerce",
+            "key": "metaCheckoutTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Checkout - CM1 Commerce | CM1 Commerce",
+            "to": "Finalizare comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "emptyCart",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Your cart is empty",
+            "to": "Coșul tău este gol"
+          },
+          {
+            "part": "commerce",
+            "key": "checkoutEmptyMessage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Add some products before checking out.",
+            "to": "Adaugă produse înainte de a finaliza comanda."
+          }
+        ],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": [],
+        "/account": [
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          }
+        ],
+        "/checkout/confirmare": [
+          {
+            "part": "commerce",
+            "key": "metaOrderConfirmationTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Order Confirmation - CM1 Commerce | CM1 Commerce",
+            "to": "Confirmare comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderThankYou",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Thank you for your order!",
+            "to": "Îți mulțumim pentru comandă!"
+          },
+          {
+            "part": "commerce",
+            "key": "orderPlacedMessage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Your order has been placed successfully. You will receive a confirmation email shortly.",
+            "to": "Comanda ta a fost plasată. Vei primi în curând un e-mail de confirmare."
+          },
+          {
+            "part": "commerce",
+            "key": "continueShopping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Continue Shopping",
+            "to": "Continuă cumpărăturile"
+          }
+        ],
+        "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [
+          {
+            "part": "commerce",
+            "key": "metaOrderConfirmationTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Order Confirmation - CM1 Commerce | CM1 Commerce",
+            "to": "Confirmare comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderConfirmed",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Order Confirmed!",
+            "to": "Comandă confirmată!"
+          },
+          {
+            "part": "commerce",
+            "key": "orderNumber",
+            "kind": "text",
+            "segment": 0,
+            "row": "L-RO-1",
+            "from": "Order",
+            "to": "Comanda"
+          },
+          {
+            "part": "commerce",
+            "key": "bankTransferDetails",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Bank Transfer Details",
+            "to": "Detalii pentru transfer bancar"
+          },
+          {
+            "part": "commerce",
+            "key": "bankTransferInstruction",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Please transfer the total amount to the following account:",
+            "to": "Transferă suma totală în contul următor:"
+          },
+          {
+            "part": "commerce",
+            "key": "bankLabel",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Bank:",
+            "to": "Banca:"
+          },
+          {
+            "part": "commerce",
+            "key": "accountHolderLabel",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Account Holder:",
+            "to": "Titular cont:"
+          },
+          {
+            "part": "commerce",
+            "key": "referenceLabel",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Reference:",
+            "to": "Referință:"
+          },
+          {
+            "part": "commerce",
+            "key": "amountLabel",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Amount:",
+            "to": "Suma:"
+          },
+          {
+            "part": "commerce",
+            "key": "orderDetails",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Order Details",
+            "to": "Detalii comandă"
+          },
+          {
+            "part": "commerce",
+            "key": "quantityLabel",
+            "kind": "text",
+            "values": {
+              "n": "2"
+            },
+            "row": "L-RO-1",
+            "from": "Qty: 2",
+            "to": "Cant.: 2"
+          },
+          {
+            "part": "commerce",
+            "key": "shipping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Shipping",
+            "to": "Livrare"
+          },
+          {
+            "part": "commerce",
+            "key": "freeShipping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Free",
+            "to": "Gratuit"
+          },
+          {
+            "part": "commerce",
+            "key": "shippingAddress",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Shipping Address",
+            "to": "Adresa de livrare"
+          },
+          {
+            "part": "commerce",
+            "key": "continueShopping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Continue Shopping",
+            "to": "Continuă cumpărăturile"
+          }
+        ],
+        "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [
+          {
+            "part": "commerce",
+            "key": "metaOrderTrackingTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Order Tracking - CM1 Commerce | CM1 Commerce",
+            "to": "Urmărire comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderNumber",
+            "kind": "text",
+            "values": {
+              "number": "CM1-0001"
+            },
+            "row": "L-RO-1",
+            "from": "Order CM1-0001",
+            "to": "Comanda CM1-0001"
+          },
+          {
+            "part": "commerce",
+            "key": "placedOn",
+            "kind": "text",
+            "values": {
+              "date": "15.10.2026"
+            },
+            "row": "L-RO-1",
+            "from": "Placed on 15.10.2026",
+            "to": "Plasată pe 15.10.2026"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepPending",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "pending",
+            "to": "în așteptare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepConfirmed",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "confirmed",
+            "to": "confirmată"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepProcessing",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "processing",
+            "to": "în procesare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepShipped",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "shipped",
+            "to": "expediată"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepDelivered",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "delivered",
+            "to": "livrată"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepCompleted",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "completed",
+            "to": "finalizată"
+          },
+          {
+            "part": "commerce",
+            "key": "items",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Items",
+            "to": "Produse"
+          }
+        ],
+        "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [
+          {
+            "part": "commerce",
+            "key": "metaOrderConfirmationTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Order Confirmation - CM1 Commerce | CM1 Commerce",
+            "to": "Confirmare comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderConfirmed",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Order Confirmed!",
+            "to": "Comandă confirmată!"
+          },
+          {
+            "part": "commerce",
+            "key": "orderNumber",
+            "kind": "text",
+            "segment": 0,
+            "row": "L-RO-1",
+            "from": "Order",
+            "to": "Comanda"
+          },
+          {
+            "part": "commerce",
+            "key": "cashOnDelivery",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Cash on Delivery",
+            "to": "Plata la livrare (ramburs)"
+          },
+          {
+            "part": "commerce",
+            "key": "codPayOnDelivery",
+            "kind": "text",
+            "segment": 0,
+            "row": "L-RO-1",
+            "from": "You will pay",
+            "to": "Vei plăti"
+          },
+          {
+            "part": "commerce",
+            "key": "codPayOnDelivery",
+            "kind": "text",
+            "segment": 1,
+            "row": "L-RO-1",
+            "from": "when you receive your order.",
+            "to": "când primești comanda."
+          },
+          {
+            "part": "commerce",
+            "key": "estimatedDelivery",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Estimated delivery:",
+            "to": "Livrare estimată:"
+          },
+          {
+            "part": "commerce",
+            "key": "orderDetails",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Order Details",
+            "to": "Detalii comandă"
+          },
+          {
+            "part": "commerce",
+            "key": "quantityLabel",
+            "kind": "text",
+            "values": {
+              "n": "1"
+            },
+            "row": "L-RO-1",
+            "from": "Qty: 1",
+            "to": "Cant.: 1"
+          },
+          {
+            "part": "commerce",
+            "key": "shipping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Shipping",
+            "to": "Livrare"
+          },
+          {
+            "part": "commerce",
+            "key": "discount",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Discount",
+            "to": "Reducere"
+          },
+          {
+            "part": "commerce",
+            "key": "shippingAddress",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Shipping Address",
+            "to": "Adresa de livrare"
+          },
+          {
+            "part": "commerce",
+            "key": "phoneLine",
+            "kind": "text",
+            "values": {
+              "phone": "+1 555 0100"
+            },
+            "row": "L-RO-1",
+            "from": "Phone: +1 555 0100",
+            "to": "Telefon: +1 555 0100"
+          },
+          {
+            "part": "commerce",
+            "key": "continueShopping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Continue Shopping",
+            "to": "Continuă cumpărăturile"
+          }
+        ],
+        "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [
+          {
+            "part": "commerce",
+            "key": "metaOrderTrackingTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Order Tracking - CM1 Commerce | CM1 Commerce",
+            "to": "Urmărire comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderNumber",
+            "kind": "text",
+            "values": {
+              "number": "CM1-0002"
+            },
+            "row": "L-RO-1",
+            "from": "Order CM1-0002",
+            "to": "Comanda CM1-0002"
+          },
+          {
+            "part": "commerce",
+            "key": "placedOn",
+            "kind": "text",
+            "values": {
+              "date": "15.10.2026"
+            },
+            "row": "L-RO-1",
+            "from": "Placed on 15.10.2026",
+            "to": "Plasată pe 15.10.2026"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepPending",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "pending",
+            "to": "în așteptare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepConfirmed",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "confirmed",
+            "to": "confirmată"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepProcessing",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "processing",
+            "to": "în procesare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepShipped",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "shipped",
+            "to": "expediată"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepDelivered",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "delivered",
+            "to": "livrată"
+          },
+          {
+            "part": "commerce",
+            "key": "orderStepCompleted",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "completed",
+            "to": "finalizată"
+          },
+          {
+            "part": "commerce",
+            "key": "tracking",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Tracking",
+            "to": "Urmărire"
+          },
+          {
+            "part": "commerce",
+            "key": "trackingNumber",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Tracking Number:",
+            "to": "Număr AWB:"
+          },
+          {
+            "part": "commerce",
+            "key": "items",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Items",
+            "to": "Produse"
+          }
+        ],
+        "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": [
+          {
+            "part": "commerce",
+            "key": "metaOrderTrackingTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Commerce"
+            },
+            "frame": "{text} | CM1 Commerce",
+            "row": "L-RO-1",
+            "from": "Order Tracking - CM1 Commerce | CM1 Commerce",
+            "to": "Urmărire comandă - CM1 Commerce | CM1 Commerce"
+          },
+          {
+            "part": "commerce",
+            "key": "signIn",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Sign In",
+            "to": "Autentificare"
+          },
+          {
+            "part": "commerce",
+            "key": "orderNotFound",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Order Not Found",
+            "to": "Comanda nu a fost găsită"
+          },
+          {
+            "part": "commerce",
+            "key": "orderNotFoundMessage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Please check the order ID and email address.",
+            "to": "Verifică numărul comenzii și adresa de e-mail."
+          },
+          {
+            "part": "commerce",
+            "key": "continueShopping",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Continue Shopping",
+            "to": "Continuă cumpărăturile"
+          }
+        ]
+      }
+    },
+    "roCatalog": {
+      "source": "roCatalog",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/stale-showcase": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/floors": [],
+        "/product/oak-plank": [],
+        "/product/ash-plank": [],
+        "/product/legacy-plank": [],
+        "/products/e0000000-0000-4000-8000-000000000001": [],
+        "/products/e0000000-0000-4000-8000-000000000002": [],
+        "/products/e0000000-0000-4000-8000-000000000003": [],
+        "/search?q=plank": [],
+        "/cart": [
+          {
+            "part": "commerce",
+            "key": "metaCartTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Catalog"
+            },
+            "frame": "{text} | CM1 Catalog",
+            "row": "L-RO-1",
+            "from": "Cart - CM1 Catalog | CM1 Catalog",
+            "to": "Coș - CM1 Catalog | CM1 Catalog"
+          }
+        ],
+        "/checkout": [
+          {
+            "part": "commerce",
+            "key": "metaCheckoutTitle",
+            "kind": "title",
+            "values": {
+              "site": "CM1 Catalog"
+            },
+            "frame": "{text} | CM1 Catalog",
+            "row": "L-RO-1",
+            "from": "Checkout - CM1 Catalog | CM1 Catalog",
+            "to": "Finalizare comandă - CM1 Catalog | CM1 Catalog"
+          }
+        ],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    }
+  }
+}

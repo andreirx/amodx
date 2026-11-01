@@ -22,24 +22,24 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { SocialShare } from "@/components/SocialShare";
 import Script from "next/script";
-import { CartPageView } from "@/components/CartPageView";
-import { CheckoutPageView } from "@/components/CheckoutPageView";
-import { AddToCartButton } from "@/components/AddToCartButton";
+import { CartPageView, type CartPageStrings } from "@/components/CartPageView";
+import { CheckoutPageView, type CheckoutPageStrings } from "@/components/CheckoutPageView";
+import { AddToCartButton, type AddToCartStrings } from "@/components/AddToCartButton";
 import { FBPurchaseEvent } from "@/components/FBPurchaseEvent";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
-import { AccountPageView } from "@/components/AccountPageView";
+import { AccountPageView, type AccountPageStrings } from "@/components/AccountPageView";
 import { SearchBar, type SearchBarLabels } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
 import { InterestToggle, InterestListPage, type InterestListStrings, type InterestToggleStrings } from "@/components/InterestShortlist";
 import { buildFacetListing, listingHref, utf8Bytes, HREF_BUDGET, type FacetListing, type FacetValueView } from "@amodx/shared";
-import type { ReactNode } from "react";
+import { createElement, Fragment, type ReactNode } from "react";
 
 // NEW: Auth Imports — signature verification only, no cookie access from this module.
 import { decode } from "next-auth/jwt";
@@ -78,12 +78,86 @@ export function toSiteQuery(sp: Record<string, string | string[] | undefined>): 
     return out;
 }
 
-// Helper to get commerce strings with defaults: English defaults → admin overrides.
-// LOCALE-1B: read only by the commerce-only branches (account, cart, checkout); the product and search pages read the
-// resolver. Deleted with its last caller in `locale-1d` (docs/slices/locale-1.md § 10.2).
-// CMRC-COUNTIES-1: the country-pack text layer is not merged (texts by language, not by country; `locale-1d` moves these texts to the resolver).
-function getCommerceStrings(config: any): Required<CommerceStrings> {
-    return { ...COMMERCE_STRINGS_DEFAULTS, ...config.commerceStrings };
+// ── LOCALE-1D (docs/slices/locale-1.md § 5.2, § 5.3): the texts of the commerce-only views, from the tenant's locale
+// table (the resolver), each view getting only the keys it renders. Pattern F keys (§ 5.2: a stored "" falls back to the
+// language default, as the English literals did before) are resolved here, so the views render what they receive.
+
+/** `override || language default` — the F rule of § 5.2, for the listed keys of one part. */
+function withFallback<T extends Record<string, unknown>, K extends keyof T>(strings: T, defaults: T, keys: readonly K[]): Pick<T, K> {
+    const out = {} as Pick<T, K>;
+    for (const k of keys) out[k] = (strings[k] || defaults[k]) as T[K];
+    return out;
+}
+
+/** Copies the listed keys (pattern D: a stored "" renders empty). */
+function pick<T extends Record<string, unknown>, K extends keyof T>(source: T, keys: readonly K[]): Pick<T, K> {
+    const out = {} as Pick<T, K>;
+    for (const k of keys) out[k] = source[k];
+    return out;
+}
+
+function cartPageStrings({ strings }: ResolvedLocaleStrings): CartPageStrings {
+    return pick(strings.commerce, ["emptyCart", "emptyCartMessage", "continueShopping", "shoppingCart", "orderSummary", "remove", "couponCode",
+        "apply", "subtotal", "discount", "shipping", "freeShipping", "total", "freeDeliveryFrom", "addMoreForFreeDelivery", "minimumOrder",
+        "proceedToCheckout", "invalidCoupon", "couponValidateFailed"]);
+}
+
+function checkoutPageStrings({ strings, defaults }: ResolvedLocaleStrings): CheckoutPageStrings {
+    return {
+        ...pick(strings.commerce, ["checkout", "email", "phone", "phonePlaceholder", "birthdayHint", "shippingAddress", "country", "selectCountry",
+            "streetAddress", "city", "county", "selectCounty", "postalCode", "deliveryNotes", "deliveryNotesPlaceholder", "preferredDeliveryDate",
+            "paymentMethod", "cashOnDelivery", "cashOnDeliveryDesc", "bankTransfer", "bankTransferTo", "orderSummary", "subtotal", "discount",
+            "shipping", "freeShipping", "total", "placingOrder", "placeOrder", "termsAgreement", "emptyCart", "checkoutEmptyMessage", "orderFailed",
+            "orderFailedStatus", "deliveryDateSelected", "deliveryDatesLoading", "calendarMo", "calendarTu", "calendarWe", "calendarTh",
+            "calendarFr", "calendarSa", "calendarSu"]),
+        // The 14 F sites of CheckoutPageView (§ 5.2).
+        ...withFallback(strings.commerce, defaults.commerce, ["billingDetails", "firstName", "lastName", "birthday", "orderAsCompany", "companyName",
+            "taxId", "taxIdPlaceholder", "registrationNumber", "registrationNumberPlaceholder", "vatNumber", "vatNumberPlaceholder",
+            "useSameAsShipping", "billingAddress"]),
+        errorTryAgain: strings.site.errorTryAgain,
+    };
+}
+
+function accountPageStrings({ strings, defaults }: ResolvedLocaleStrings): AccountPageStrings {
+    return {
+        ...pick(strings.commerce, ["myAccount", "accountSignInPrompt", "signInWithGoogle", "signOut", "profileHeading", "edit", "accountName", "email",
+            "birthdayHint", "save", "saving", "cancel", "loyaltyPoints", "defaultAddress", "orderHistory", "noOrdersYet", "startShopping",
+            "orderStatusPlaced", "orderStatusConfirmed", "orderStatusPrepared", "orderStatusShipped", "orderStatusDelivered",
+            "orderStatusCancelled", "orderStatusAnnulled"]),
+        // The F sites of AccountPageView (§ 5.2).
+        ...withFallback(strings.commerce, defaults.commerce, ["phone", "phonePlaceholder", "birthday"]),
+    };
+}
+
+/** The add-to-cart control's texts: the five button texts are F sites (§ 5.2); the two errors and the select placeholder D. */
+function addToCartStrings({ strings, defaults }: ResolvedLocaleStrings): AddToCartStrings {
+    return {
+        ...withFallback(strings.commerce, defaults.commerce, ["addToCart", "addedToCart", "viewCart", "outOfStock", "variantUnavailable"]),
+        ...pick(strings.commerce, ["personalizationRequired", "variantRequired"]),
+        formSelectPlaceholder: strings.site.formSelectPlaceholder,
+    };
+}
+
+/** The tenant's normalised locale as `formatLocale` — ONLY when it is not en-US (§ 16.2 item 4: an en-US tenant keeps
+ *  the formatter defaults it had). A spread, so an en-US page's props stay byte-identical (no "$undefined"). */
+function formatLocaleProp(locale: string): { formatLocale?: string } {
+    return locale !== "en-US" ? { formatLocale: locale } : {};
+}
+
+/**
+ * LOCALE-1D (§ 5.1, "interpolate"): a table template split at its `{placeholders}` into React children — each text
+ * segment, and each value (a text, a number or an element) as its own child; empty segments are dropped; an unknown
+ * placeholder stays as written. Used where a sentence wraps a value in markup ("You will pay <strong>…</strong> …") or
+ * where today's JSX renders the value as its own text node ("Order {number}"): the children equal the JSX they replace,
+ * so an en-US page's HTML and payload stay byte-identical. Returned as a fragment with its children as arguments (static
+ * children: no list keys needed). Rejected: `fillTemplate` (merges the value into the text, changing the bytes, and
+ * cannot hold markup).
+ */
+function interpolateNodes(template: string, values: Record<string, ReactNode>): ReactNode {
+    const parts = template.split(/\{([A-Za-z0-9_]+)\}/)
+        .map((piece, i) => (i % 2 === 0 ? piece : Object.prototype.hasOwnProperty.call(values, piece) ? values[piece] : `{${piece}}`))
+        .filter((part) => part !== "");
+    return createElement(Fragment, null, ...parts);
 }
 
 /**
@@ -211,10 +285,11 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
                 robots: { index: false },
             };
         }
-        if (commerce.type === 'cart') return { title: `Cart - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
-        if (commerce.type === 'checkout') return { title: `Checkout - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
-        if (commerce.type === 'checkout-confirm') return { title: `Order Confirmation - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
-        if (commerce.type === 'checkout-track') return { title: `Order Tracking - ${config.name}`, metadataBase: new URL(`https://${config.domain}`) };
+        // LOCALE-1D: the four commerce-only titles (§ 6.2).
+        if (commerce.type === 'cart') return { title: fillTemplate(texts.metaCartTitle, { site: config.name }), metadataBase: new URL(`https://${config.domain}`) };
+        if (commerce.type === 'checkout') return { title: fillTemplate(texts.metaCheckoutTitle, { site: config.name }), metadataBase: new URL(`https://${config.domain}`) };
+        if (commerce.type === 'checkout-confirm') return { title: fillTemplate(texts.metaOrderConfirmationTitle, { site: config.name }), metadataBase: new URL(`https://${config.domain}`) };
+        if (commerce.type === 'checkout-track') return { title: fillTemplate(texts.metaOrderTrackingTitle, { site: config.name }), metadataBase: new URL(`https://${config.domain}`) };
     }
 
     // Content page metadata - use homePageSlug for root if configured
@@ -320,7 +395,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 categoryPaths.push({ category: cat, parents });
             }
 
-            // LOCALE-1B (§ 9 item 2): the product page reads the resolver (ProductPageView), no longer getCommerceStrings.
+            // LOCALE-1B (§ 9 item 2): the product page reads the resolver (ProductPageView), no longer the English-defaults helper (removed by LOCALE-1D).
             return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} commerceEnabled={commerceEnabled} catalog={catalog} basePath={basePath} categories={productCategories} categoryPaths={categoryPaths} rawCategoryIds={productCategoryIds} />;
         }
 
@@ -378,7 +453,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             // Phase 3.2: Account page now fetches sensitive data client-side
             // via secure API routes (/api/account/orders, /api/profile)
             // This removes direct DynamoDB access to customer/order data from SSR
-            const strings = getCommerceStrings(config);
+            const resolved = resolveLocaleStrings(config);
             return (
                 <AccountPageView
                     currency={config.currency || "USD"}
@@ -386,7 +461,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                     shopPrefix={prefixes.shop || "/shop"}
                     contentMaxWidth={config.header?.contentPageMaxWidth || "max-w-4xl"}
                     askBirthday={config.askBirthdayOnAccount ?? true}
-                    strings={strings}
+                    strings={accountPageStrings(resolved)}
+                    {...formatLocaleProp(resolved.locale)}
                 />
             );
         }
@@ -394,7 +470,6 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         if (commerce.type === 'cart') {
             const deliveryConfig = await getDeliveryConfig(config.id);
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-            const strings = getCommerceStrings(config);
             return (
                 <CartPageView
                     checkoutPrefix={prefixes.checkout || "/comanda"}
@@ -406,7 +481,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
-                    strings={strings}
+                    strings={cartPageStrings(resolveLocaleStrings(config))}
                 />
             );
         }
@@ -414,7 +489,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         if (commerce.type === 'checkout') {
             const deliveryConfig = await getDeliveryConfig(config.id);
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-            const strings = getCommerceStrings(config);
+            const resolved = resolveLocaleStrings(config);
             return (
                 <CheckoutPageView
                     tenantId={config.id}
@@ -427,13 +502,14 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                     bankTransfer={config.integrations?.bankTransfer}
                     enabledPaymentMethods={config.enabledPaymentMethods}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
-                    strings={strings}
+                    strings={checkoutPageStrings(resolved)}
                     defaultCountry={deliveryConfig?.defaultCountry || ""}
                     availableCountries={deliveryConfig?.availableCountries || []}
                     availableCounties={deliveryConfig?.availableCounties || []}
                     askBirthday={config.askBirthdayOnCheckout ?? true}
                     defaultRegions={getCountryPack(config.countryCode || "EN").address.regions.map(r => r.name)}
                     locale={config.locale || "en-US"}
+                    {...formatLocaleProp(resolved.locale)}
                 />
             );
         }
@@ -873,7 +949,7 @@ function ProductAttributes({ attributes }: { attributes: { key: string; value: s
 }
 
 function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, catalog = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [] }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; catalog?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[] }) {
-    // LOCALE-1A: site chrome; LOCALE-1B: the commerce texts of the product page (was getCommerceStrings) and the catalog texts.
+    // LOCALE-1A: site chrome; LOCALE-1B: the commerce texts of the product page and the catalog texts; LOCALE-1D: the add-to-cart texts.
     const resolved = resolveLocaleStrings(config);
     const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
@@ -1056,13 +1132,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                             variants={product.variants || []}
                             personalizations={product.personalizations || []}
                             volumePricing={product.volumePricing || []}
-                            strings={{
-                                addToCart: strings.addToCart,
-                                addedToCart: strings.addedToCart,
-                                viewCart: strings.viewCart,
-                                outOfStock: strings.outOfStock,
-                                variantUnavailable: strings.variantUnavailable,
-                            }}
+                            strings={addToCartStrings(resolved)}
                         />
                     )}
 
@@ -1386,8 +1456,8 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
 }
 
 function SearchPageView({ query, products, total, page, config, prefixes, basePath = "", catalog = false }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
-    // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the commerce texts of the search page (was getCommerceStrings,
-    // § 5.2) and the catalog texts.
+    // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the commerce texts of the search page (§ 5.2) and the catalog
+    // texts.
     const resolved = resolveLocaleStrings(config);
     const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
@@ -1439,6 +1509,8 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
 }
 
 function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { order: any; config: any; prefixes: any; basePath?: string }) {
+    // LOCALE-1D: the confirmation texts (§ 6.2), from the tenant's locale table (pattern D).
+    const t = resolveLocaleStrings(config).strings.commerce;
     const bankTransfer = config.integrations?.bankTransfer;
     const pageWidth = config.header?.contentPageMaxWidth || "max-w-4xl";
 
@@ -1446,10 +1518,10 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
         return (
             <main className={`${pageWidth} mx-auto py-20 px-6 text-center`}>
                 <div className="text-6xl mb-6">✅</div>
-                <h1 className="text-3xl font-bold mb-4">Thank you for your order!</h1>
-                <p className="text-muted-foreground mb-8">Your order has been placed successfully. You will receive a confirmation email shortly.</p>
+                <h1 className="text-3xl font-bold mb-4">{t.orderThankYou}</h1>
+                <p className="text-muted-foreground mb-8">{t.orderPlacedMessage}</p>
                 <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
-                    Continue Shopping
+                    {t.continueShopping}
                 </Link>
             </main>
         );
@@ -1466,24 +1538,24 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
             />
             <div className="text-center mb-12">
                 <div className="text-6xl mb-4">✅</div>
-                <h1 className="text-3xl font-bold mb-2">Order Confirmed!</h1>
+                <h1 className="text-3xl font-bold mb-2">{t.orderConfirmed}</h1>
                 <p className="text-lg text-muted-foreground">
-                    Order <span className="font-mono font-bold text-foreground">{order.orderNumber}</span>
+                    {interpolateNodes(t.orderNumber, { number: <span className="font-mono font-bold text-foreground">{order.orderNumber}</span> })}
                 </p>
             </div>
 
             {/* Bank Transfer Details */}
             {order.paymentMethod === "bank_transfer" && bankTransfer && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-                    <h2 className="font-bold text-lg mb-3">Bank Transfer Details</h2>
-                    <p className="text-sm text-muted-foreground mb-4">Please transfer the total amount to the following account:</p>
+                    <h2 className="font-bold text-lg mb-3">{t.bankTransferDetails}</h2>
+                    <p className="text-sm text-muted-foreground mb-4">{t.bankTransferInstruction}</p>
                     <div className="grid sm:grid-cols-2 gap-3 text-sm">
-                        <div><span className="text-muted-foreground">Bank:</span> <strong>{bankTransfer.bankName}</strong></div>
-                        <div><span className="text-muted-foreground">Account Holder:</span> <strong>{bankTransfer.accountHolder}</strong></div>
-                        <div className="sm:col-span-2"><span className="text-muted-foreground">IBAN:</span> <strong className="font-mono">{bankTransfer.iban}</strong></div>
-                        {bankTransfer.swift && <div><span className="text-muted-foreground">SWIFT:</span> <strong className="font-mono">{bankTransfer.swift}</strong></div>}
-                        <div><span className="text-muted-foreground">Reference:</span> <strong>{order.orderNumber}</strong></div>
-                        <div><span className="text-muted-foreground">Amount:</span> <strong>{order.total} {order.currency}</strong></div>
+                        <div><span className="text-muted-foreground">{t.bankLabel}</span> <strong>{bankTransfer.bankName}</strong></div>
+                        <div><span className="text-muted-foreground">{t.accountHolderLabel}</span> <strong>{bankTransfer.accountHolder}</strong></div>
+                        <div className="sm:col-span-2"><span className="text-muted-foreground">{t.ibanLabel}</span> <strong className="font-mono">{bankTransfer.iban}</strong></div>
+                        {bankTransfer.swift && <div><span className="text-muted-foreground">{t.swiftLabel}</span> <strong className="font-mono">{bankTransfer.swift}</strong></div>}
+                        <div><span className="text-muted-foreground">{t.referenceLabel}</span> <strong>{order.orderNumber}</strong></div>
+                        <div><span className="text-muted-foreground">{t.amountLabel}</span> <strong>{order.total} {order.currency}</strong></div>
                     </div>
                 </div>
             )}
@@ -1491,21 +1563,21 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
             {/* Cash on Delivery */}
             {order.paymentMethod === "cash_on_delivery" && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-8">
-                    <h2 className="font-bold text-lg mb-2">Cash on Delivery</h2>
-                    <p className="text-sm text-muted-foreground">You will pay <strong>{order.total} {order.currency}</strong> when you receive your order.</p>
-                    {order.estimatedDeliveryDate && <p className="text-sm mt-2">Estimated delivery: <strong>{order.estimatedDeliveryDate}</strong></p>}
+                    <h2 className="font-bold text-lg mb-2">{t.cashOnDelivery}</h2>
+                    <p className="text-sm text-muted-foreground">{interpolateNodes(t.codPayOnDelivery, { amount: <strong>{order.total} {order.currency}</strong> })}</p>
+                    {order.estimatedDeliveryDate && <p className="text-sm mt-2">{`${t.estimatedDelivery} `}<strong>{order.estimatedDeliveryDate}</strong></p>}
                 </div>
             )}
 
             {/* Order Items */}
             <div className="border rounded-lg p-6 mb-8">
-                <h2 className="font-bold text-lg mb-4">Order Details</h2>
+                <h2 className="font-bold text-lg mb-4">{t.orderDetails}</h2>
                 <div className="space-y-3">
                     {(order.items || []).map((item: any, i: number) => (
                         <div key={i} className="flex justify-between text-sm py-2 border-b last:border-0">
                             <div>
                                 <p className="font-medium">{item.productTitle}</p>
-                                <p className="text-muted-foreground">Qty: {item.quantity}</p>
+                                <p className="text-muted-foreground">{interpolateNodes(t.quantityLabel, { n: item.quantity })}</p>
                                 {item.personalizations?.length > 0 && (
                                     <p className="text-xs text-muted-foreground">{item.personalizations.map((p: any) => `${p.label}: ${p.value}`).join(", ")}</p>
                                 )}
@@ -1516,57 +1588,70 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
                 </div>
 
                 <div className="border-t mt-4 pt-4 space-y-1 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{order.subtotal} {order.currency}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Shipping</span><span>{order.shippingCost === "0" ? "Free" : `${order.shippingCost} ${order.currency}`}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t.subtotal}</span><span>{order.subtotal} {order.currency}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t.shipping}</span><span>{order.shippingCost === "0" ? t.freeShipping : `${order.shippingCost} ${order.currency}`}</span></div>
                     {parseFloat(order.discount || "0") > 0 && (
-                        <div className="flex justify-between text-green-600"><span>Discount</span><span>-{order.discount} {order.currency}</span></div>
+                        <div className="flex justify-between text-green-600"><span>{t.discount}</span><span>-{order.discount} {order.currency}</span></div>
                     )}
-                    <div className="flex justify-between font-bold text-base border-t pt-2"><span>Total</span><span>{order.total} {order.currency}</span></div>
+                    <div className="flex justify-between font-bold text-base border-t pt-2"><span>{t.total}</span><span>{order.total} {order.currency}</span></div>
                 </div>
             </div>
 
             {/* Shipping Address */}
             {order.shippingAddress && (
                 <div className="border rounded-lg p-6 mb-8">
-                    <h2 className="font-bold text-lg mb-3">Shipping Address</h2>
+                    <h2 className="font-bold text-lg mb-3">{t.shippingAddress}</h2>
                     <p className="text-sm">{order.customerName}</p>
                     <p className="text-sm text-muted-foreground">{order.shippingAddress.street}</p>
                     <p className="text-sm text-muted-foreground">{order.shippingAddress.city}, {order.shippingAddress.county} {order.shippingAddress.postalCode}</p>
-                    {order.customerPhone && <p className="text-sm text-muted-foreground mt-2">Phone: {order.customerPhone}</p>}
+                    {order.customerPhone && <p className="text-sm text-muted-foreground mt-2">{interpolateNodes(t.phoneLine, { phone: order.customerPhone })}</p>}
                 </div>
             )}
 
             <div className="text-center">
                 <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
-                    Continue Shopping
+                    {t.continueShopping}
                 </Link>
             </div>
         </main>
     );
 }
 
+/** LOCALE-1D (§ 6.2): each timeline step identifier → its label key. The step list itself is unchanged (F-LOCALE-STEPS). */
+const ORDER_STEP_KEYS = {
+    pending: "orderStepPending", confirmed: "orderStepConfirmed", processing: "orderStepProcessing",
+    shipped: "orderStepShipped", delivered: "orderStepDelivered", completed: "orderStepCompleted",
+} as const satisfies Record<string, keyof LocaleStrings["commerce"]>;
+/** LOCALE-1D (§ 6.2): each stored history status → its label key. A status without a key renders as stored, as before. */
+const ORDER_HISTORY_KEYS: Record<string, keyof LocaleStrings["commerce"]> = {
+    placed: "orderHistoryPlaced", confirmed: "orderHistoryConfirmed", prepared: "orderHistoryPrepared", shipped: "orderHistoryShipped",
+    delivered: "orderHistoryDelivered", cancelled: "orderHistoryCancelled", annulled: "orderHistoryAnnulled",
+};
+
 function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: any; config: any; prefixes: any; basePath?: string }) {
+    // LOCALE-1D: the tracking texts (§ 6.2), from the tenant's locale table (pattern D).
+    const t = resolveLocaleStrings(config).strings.commerce;
     const pageWidth = config.header?.contentPageMaxWidth || "max-w-4xl";
 
     if (!order) {
         return (
             <main className={`${pageWidth} mx-auto py-20 px-6 text-center`}>
-                <h1 className="text-3xl font-bold mb-4">Order Not Found</h1>
-                <p className="text-muted-foreground mb-8">Please check the order ID and email address.</p>
+                <h1 className="text-3xl font-bold mb-4">{t.orderNotFound}</h1>
+                <p className="text-muted-foreground mb-8">{t.orderNotFoundMessage}</p>
                 <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
-                    Continue Shopping
+                    {t.continueShopping}
                 </Link>
             </main>
         );
     }
 
-    const statusSteps = ["pending", "confirmed", "processing", "shipped", "delivered", "completed"];
+    const statusSteps = Object.keys(ORDER_STEP_KEYS) as (keyof typeof ORDER_STEP_KEYS)[];
     const currentStepIndex = statusSteps.indexOf(order.status);
 
     return (
         <main className={`${pageWidth} mx-auto py-12 px-6`}>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Order {order.orderNumber}</h1>
-            <p className="text-muted-foreground mb-8">Placed on {new Date(order.createdAt).toLocaleDateString(config.locale || "en-US")}</p>
+            <h1 className="text-3xl font-bold tracking-tight mb-2">{interpolateNodes(t.orderNumber, { number: order.orderNumber })}</h1>
+            <p className="text-muted-foreground mb-8">{interpolateNodes(t.placedOn, { date: new Date(order.createdAt).toLocaleDateString(config.locale || "en-US") })}</p>
 
             {/* Status Timeline */}
             <div className="mb-12">
@@ -1579,7 +1664,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
                                 {i <= currentStepIndex ? "✓" : i + 1}
                             </div>
                             <span className={`text-xs mt-1 capitalize ${i <= currentStepIndex ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                                {step}
+                                {t[ORDER_STEP_KEYS[step]]}
                             </span>
                         </div>
                     ))}
@@ -1592,12 +1677,12 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
             {/* Status History */}
             {order.statusHistory?.length > 0 && (
                 <div className="border rounded-lg p-6 mb-8">
-                    <h2 className="font-bold text-lg mb-4">Status History</h2>
+                    <h2 className="font-bold text-lg mb-4">{t.statusHistory}</h2>
                     <div className="space-y-3">
                         {order.statusHistory.map((entry: any, i: number) => (
                             <div key={i} className="flex gap-3 text-sm">
                                 <span className="text-muted-foreground whitespace-nowrap">{new Date(entry.timestamp).toLocaleString(config.locale || "en-US")}</span>
-                                <span className="capitalize font-medium">{entry.status}</span>
+                                <span className="capitalize font-medium">{Object.hasOwn(ORDER_HISTORY_KEYS, entry.status) ? t[ORDER_HISTORY_KEYS[entry.status]] : entry.status}</span>
                                 {entry.note && <span className="text-muted-foreground">- {entry.note}</span>}
                             </div>
                         ))}
@@ -1608,14 +1693,14 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
             {/* Tracking Number */}
             {order.trackingNumber && (
                 <div className="border rounded-lg p-6 mb-8">
-                    <h2 className="font-bold text-lg mb-2">Tracking</h2>
-                    <p className="text-sm">Tracking Number: <span className="font-mono font-bold">{order.trackingNumber}</span></p>
+                    <h2 className="font-bold text-lg mb-2">{t.tracking}</h2>
+                    <p className="text-sm">{`${t.trackingNumber} `}<span className="font-mono font-bold">{order.trackingNumber}</span></p>
                 </div>
             )}
 
             {/* Order Items Summary */}
             <div className="border rounded-lg p-6">
-                <h2 className="font-bold text-lg mb-4">Items</h2>
+                <h2 className="font-bold text-lg mb-4">{t.items}</h2>
                 {(order.items || []).map((item: any, i: number) => (
                     <div key={i} className="flex justify-between text-sm py-2 border-b last:border-0">
                         <span>{item.productTitle} x{item.quantity}</span>
@@ -1623,7 +1708,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
                     </div>
                 ))}
                 <div className="border-t mt-3 pt-3 flex justify-between font-bold">
-                    <span>Total</span>
+                    <span>{t.total}</span>
                     <span>{order.total} {order.currency}</span>
                 </div>
             </div>

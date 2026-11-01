@@ -103,7 +103,9 @@ export default async function SiteLayout({ children, params }: Props) {
     const showPopups = apiUrl ? await hasActivePopups(config.id) : false;
     // LOCALE-1A: the tenant's locale table, resolved once per request (docs/slices/locale-1.md § 5.3). Each client
     // component below receives only the keys it renders, as a plain prop. LOCALE-1B: `catalog` for the interest widget.
-    const { site, catalog } = resolveLocaleStrings(config).strings;
+    // LOCALE-1D: `commerce` for the commerce bar and the navbar account links (commerce sites only); `defaults` for the
+    // two pattern-F texts of the commerce bar (§ 5.2: a stored "" falls back to the language default).
+    const { strings: { site, catalog, commerce }, defaults } = resolveLocaleStrings(config);
 
     return (
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
@@ -183,8 +185,9 @@ export default async function SiteLayout({ children, params }: Props) {
                             fontSize={config.commerceBar.fontSize}
                             iconSize={config.commerceBar.iconSize}
                             labels={{
-                                signIn: config.commerceStrings?.signIn,
-                                accountLabel: config.commerceStrings?.accountLabel,
+                                signIn: commerce.signIn || defaults.commerce.signIn,
+                                accountLabel: commerce.accountLabel || defaults.commerce.accountLabel,
+                                cartWidgetTotal: commerce.cartWidgetTotal,
                             }}
                         />
                     )}
@@ -209,6 +212,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             tenantId: config.id, listPrefix: config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest,
                             strings: { interestListTitle: catalog.interestListTitle, interestWidgetLabel: catalog.interestWidgetLabel, interestStorageWarning: catalog.interestStorageWarning, interestStorageAck: catalog.interestStorageAck },
                         } } : {})}
+                        {...(commerceEnabled ? { commerceStrings: { signIn: commerce.signIn, accountLabel: commerce.accountLabel, myAccount: commerce.myAccount } } : {})}
                         strings={{ navAllOf: site.navAllOf, navContact: site.navContact, navToggleMenu: site.navToggleMenu, navViewAll: site.navViewAll, navContactUs: site.navContactUs }}
                     />
 

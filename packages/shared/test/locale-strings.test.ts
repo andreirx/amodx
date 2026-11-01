@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
-    COMMERCE_STRINGS_DEFAULTS, CommerceStringsSchema, CatalogStringsSchema, SiteStringsSchema, PluralTextsSchema, EN_PACK, RO_PACK,
+    CommerceStringsSchema, CatalogStringsSchema, SiteStringsSchema, PluralTextsSchema, EN_PACK, RO_PACK,
     EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, LANGUAGE_PACKS, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES,
     normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, type LanguagePack, type CountText,
 } from "../src/index.js";
+import * as shared from "../src/index.js";
 
 /**
  * LOCALE-1A — the shared checks of docs/slices/locale-1.md § 10 row `locale-1a`: EN pack complete, RO pack covers
@@ -13,7 +15,16 @@ import {
  * LOCALE-1B adds: the 1b allocation (39 catalog keys, 21 shared commerce keys), the count keys and their plural
  * categories (§ 16.2 item 6): EN 0/1/2, RO 0/1/2/19/20/101/119/120, per-category overrides, a throwaway third pack with
  * its own categories, the missing-category and missing-key fallbacks.
+ * LOCALE-1D adds: the 80 commerce-only keys and `site.errorTryAgain`; the RO pack holds literals (the values the RO
+ * country pack held at the start commit, from `fixtures/locale-1d-packs-92adbba.json`, unchanged); the country packs
+ * hold facts only; the compatibility export of the English commerce defaults is gone (§ 10.2).
  */
+
+/** The text members of the packs at the slice's start commit 92adbba (read from that commit's build; see the file). */
+const START = JSON.parse(readFileSync(new URL("./fixtures/locale-1d-packs-92adbba.json", import.meta.url), "utf8")) as {
+    countryPacks: Record<"EN" | "RO", { defaultStrings: Record<string, string>; gdpr: Record<string, string>; legal: Record<string, string> }>;
+    languagePacks: Record<"en" | "ro", { commerce: Record<string, unknown>; site: Record<string, string> }>;
+};
 
 const keys = (o: object) => Object.keys(o).sort();
 const SITE_KEYS = keys(SiteStringsSchema.shape);
@@ -27,6 +38,21 @@ const COMMERCE_1B_KEYS = [
     "volumePricing", "preOrder", "buyNow", "ingredients", "nutritionalValues", "reviewsHeading", "reviewsSummary",
     "categoryEmpty", "productCount", "shopEmptyInStock", "shopEmpty", "shopAllProducts", "searchBreadcrumb",
     "searchResultCount", "searchEnterTerm",
+];
+/** The 80 commerce-only keys of locale-1d (§ 6.2 "Commerce-only surfaces", the rows that are not E: rows), in order. */
+const COMMERCE_1D_KEYS = [
+    "metaCartTitle", "metaCheckoutTitle", "metaOrderConfirmationTitle", "metaOrderTrackingTitle", "personalizationRequired",
+    "variantRequired", "cartWidgetTotal", "couponValidateFailed", "deliveryDatesLoading", "calendarMo", "calendarTu", "calendarWe",
+    "calendarTh", "calendarFr", "calendarSa", "calendarSu", "checkoutEmptyMessage", "orderFailed", "orderFailedStatus",
+    "deliveryDateSelected", "bankTransferTo", "orderStatusPlaced", "orderStatusConfirmed", "orderStatusPrepared", "orderStatusShipped",
+    "orderStatusDelivered", "orderStatusCancelled", "orderStatusAnnulled", "myAccount", "accountSignInPrompt", "signInWithGoogle",
+    "signOut", "profileHeading", "edit", "accountName", "save", "saving", "cancel", "loyaltyPoints", "defaultAddress", "orderHistory",
+    "noOrdersYet", "startShopping", "orderThankYou", "orderPlacedMessage", "orderConfirmed", "orderNumber", "bankTransferDetails",
+    "bankTransferInstruction", "bankLabel", "accountHolderLabel", "ibanLabel", "swiftLabel", "referenceLabel", "amountLabel",
+    "codPayOnDelivery", "estimatedDelivery", "orderDetails", "quantityLabel", "phoneLine", "orderNotFound", "orderNotFoundMessage",
+    "placedOn", "orderStepPending", "orderStepConfirmed", "orderStepProcessing", "orderStepShipped", "orderStepDelivered",
+    "orderStepCompleted", "statusHistory", "orderHistoryPlaced", "orderHistoryConfirmed", "orderHistoryPrepared", "orderHistoryShipped",
+    "orderHistoryDelivered", "orderHistoryCancelled", "orderHistoryAnnulled", "tracking", "trackingNumber", "items",
 ];
 
 describe("the language packs", () => {
@@ -43,8 +69,13 @@ describe("the language packs", () => {
         }
     });
 
-    it("the allocation so far: 51 site keys (1a); 39 catalog keys and 21 shared commerce keys (1b); the count keys", () => {
-        expect(SITE_KEYS).toHaveLength(51);
+    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d); 39 catalog keys and 21 shared commerce keys (1b); 80 commerce-only keys (1d); the count keys", () => {
+        expect(SITE_KEYS).toHaveLength(52);
+        expect(Object.keys(SiteStringsSchema.shape).at(-1)).toBe("errorTryAgain");
+        expect(COMMERCE_1D_KEYS).toHaveLength(80);
+        expect(new Set(COMMERCE_1D_KEYS).size).toBe(80);
+        expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80);
+        expect(Object.keys(CommerceStringsSchema.shape).slice(77 + 21)).toEqual(COMMERCE_1D_KEYS);
         expect(keys(CatalogStringsSchema.shape)).toHaveLength(39);
         expect(COMMERCE_1B_KEYS.filter((k) => !Object.hasOwn(CommerceStringsSchema.shape, k))).toEqual([]);
         expect(COMMERCE_COUNT_KEYS).toEqual(["productCount", "reviewsSummary", "searchResultCount"]);
@@ -53,17 +84,26 @@ describe("the language packs", () => {
         expect(Object.keys(PluralTextsSchema.shape)).toEqual([...PLURAL_CATEGORIES]);
     });
 
-    it("COMMERCE_STRINGS_DEFAULTS is the EN pack's commerce part: the 77 keys of 1a with today's values, plus the 21 keys of 1b", () => {
-        expect(COMMERCE_STRINGS_DEFAULTS).toBe(EN_LANGUAGE_PACK.commerce);
-        expect(Object.keys(COMMERCE_STRINGS_DEFAULTS)).toHaveLength(77 + 21);
-        expect(Object.keys(COMMERCE_STRINGS_DEFAULTS).slice(77)).toEqual(COMMERCE_1B_KEYS);
-        expect(COMMERCE_STRINGS_DEFAULTS.addToCart).toBe("Add to Cart");
-        expect(COMMERCE_STRINGS_DEFAULTS.addMoreForFreeDelivery).toBe("Add {amount} more for free delivery");
-        expect(COMMERCE_STRINGS_DEFAULTS.shippingStreetAddress).toBe("");
+    it("the EN commerce part: the 98 values of the start commit unchanged (key order included), then the 80 literals of 1d; no compatibility export is left (§ 10.2)", () => {
+        const start = START.languagePacks.en.commerce;
+        expect(Object.keys(start)).toHaveLength(98);
+        expect(Object.fromEntries(Object.entries(EN_LANGUAGE_PACK.commerce).slice(0, 98))).toEqual(start);
+        expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(0, 98)).toEqual(Object.keys(start));
+        expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(98)).toEqual(COMMERCE_1D_KEYS);
+        expect(EN_LANGUAGE_PACK.commerce.personalizationRequired).toBe('Please fill in "{label}"');
+        expect(EN_LANGUAGE_PACK.commerce.orderStepPending).toBe("pending");
+        expect(Object.keys(shared).filter((name) => /COMMERCE_STRINGS_DEFAULTS|getCommerceStrings/.test(name))).toEqual([]);
+        // The EN site part: the 51 values of the start commit unchanged, then errorTryAgain (the CheckoutPageView literal).
+        expect(Object.fromEntries(Object.entries(EN_LANGUAGE_PACK.site).slice(0, 51))).toEqual(START.languagePacks.en.site);
+        expect(EN_LANGUAGE_PACK.site.errorTryAgain).toBe("Something went wrong. Please try again.");
     });
 
-    it("the EN cookie and legal values are the chain the layout rendered before 1a (field || EN country pack || literal)", () => {
-        expect(EN_LANGUAGE_PACK.site.cookieHeadline).toBe(EN_PACK.gdpr.headline);
+    it("the EN cookie and legal values are the chain the layout rendered before 1a (field || EN country pack || literal); since 1d literals equal to the start commit's EN country pack", () => {
+        const c = START.countryPacks.EN;
+        expect([EN_LANGUAGE_PACK.site.cookieHeadline, EN_LANGUAGE_PACK.site.cookieDescription, EN_LANGUAGE_PACK.site.cookieDenyAll, EN_LANGUAGE_PACK.site.cookieNecessaryOnly, EN_LANGUAGE_PACK.site.cookieAcceptAll])
+            .toEqual([c.gdpr.headline, c.gdpr.description, c.gdpr.denyAll, c.gdpr.necessaryOnly, c.gdpr.acceptAll]);
+        expect([EN_LANGUAGE_PACK.site.legalTermsLabel, EN_LANGUAGE_PACK.site.legalPrivacyLabel, EN_LANGUAGE_PACK.site.legalConsumerProtectionLabel, EN_LANGUAGE_PACK.site.legalDisputeResolutionLabel])
+            .toEqual([c.legal.termsLabel, c.legal.privacyLabel, c.legal.consumerProtectionLabel, c.legal.disputeResolutionLabel]);
         expect(EN_LANGUAGE_PACK.site.cookieHeadline).toBe("We value your privacy");
         expect(EN_LANGUAGE_PACK.site.cookieDescription).toBe("We use cookies to enhance your browsing experience and analyze our traffic. Choose your preference below.");
         expect(EN_LANGUAGE_PACK.site.cookieDenyAll).toBe("Deny All");
@@ -90,12 +130,29 @@ describe("the language packs", () => {
         expect(pluralCategoriesOf("ro")).toEqual(["one", "few", "other"]);
     });
 
-    it("the RO pack reads its commerce, cookie and legal values from the RO country pack (one copy, § 3.2 item 2)", () => {
-        for (const [k, v] of Object.entries(RO_PACK.defaultStrings)) expect((RO_LANGUAGE_PACK.commerce as Record<string, unknown>)[k], k).toBe(v);
-        // The 1b keys are the only commerce keys the language pack writes itself; none of them is in the country pack.
-        expect(keys(RO_LANGUAGE_PACK.commerce).filter((k) => !Object.hasOwn(RO_PACK.defaultStrings, k))).toEqual([...COMMERCE_1B_KEYS].sort());
-        expect(RO_LANGUAGE_PACK.site.cookieAcceptAll).toBe(RO_PACK.gdpr.acceptAll);
-        expect(RO_LANGUAGE_PACK.site.legalTermsLabel).toBe(RO_PACK.legal.termsLabel);
+    it("LOCALE-1D: the RO pack holds the start commit's RO country-pack texts as literals, unchanged; its 1b values unchanged; then the 80 keys of 1d", () => {
+        const c = START.countryPacks.RO;
+        const ro = RO_LANGUAGE_PACK.commerce as Record<string, unknown>;
+        expect(Object.keys(c.defaultStrings)).toHaveLength(75);
+        for (const [k, v] of Object.entries(c.defaultStrings)) expect(ro[k], k).toBe(v);
+        // The start commit's RO language pack (75 country-pack values + the 21 keys of 1b): every value unchanged.
+        expect(Object.keys(START.languagePacks.ro.commerce)).toHaveLength(96);
+        for (const [k, v] of Object.entries(START.languagePacks.ro.commerce)) expect(ro[k], k).toEqual(v);
+        expect(keys(ro).filter((k) => !Object.hasOwn(START.languagePacks.ro.commerce, k))).toEqual([...COMMERCE_1D_KEYS].sort());
+        const s = RO_LANGUAGE_PACK.site;
+        expect([s.cookieHeadline, s.cookieDescription, s.cookieDenyAll, s.cookieNecessaryOnly, s.cookieAcceptAll])
+            .toEqual([c.gdpr.headline, c.gdpr.description, c.gdpr.denyAll, c.gdpr.necessaryOnly, c.gdpr.acceptAll]);
+        expect([s.legalTermsLabel, s.legalPrivacyLabel, s.legalConsumerProtectionLabel, s.legalDisputeResolutionLabel])
+            .toEqual([c.legal.termsLabel, c.legal.privacyLabel, c.legal.consumerProtectionLabel, c.legal.disputeResolutionLabel]);
+        for (const [k, v] of Object.entries(START.languagePacks.ro.site)) expect((s as Record<string, string>)[k], k).toBe(v);
+        expect(s.errorTryAgain).toBe("A apărut o eroare. Încearcă din nou.");
+    });
+
+    it("LOCALE-1D: the country packs hold facts only (currency, locale, regions, address formats); the RO counties are unchanged", () => {
+        for (const pack of [EN_PACK, RO_PACK]) expect(keys(pack)).toEqual(["address", "code", "currency", "locale", "name"]);
+        expect(RO_PACK.address.regions).toHaveLength(42);
+        expect(RO_PACK.currency.code).toBe("RON");
+        expect(EN_PACK.address.regions).toEqual([]);
     });
 
     it("the registry holds en and ro, each under its own language subtag", () => {
@@ -179,10 +236,11 @@ describe("resolveLocaleStrings — layers, language, mismatch (§ 5.1, § 3.3)",
         });
         for (const k of nine) expect((r.strings.site as any)[k]).not.toBe("FROM SITE STRINGS");
         expect(r.strings.site.cookieHeadline).toBe("Cookie-uri");
-        expect(r.strings.site.cookieAcceptAll).toBe(RO_PACK.gdpr.acceptAll);                  // "" falls through (||)
+        expect(r.strings.site.cookieAcceptAll).toBe(RO_LANGUAGE_PACK.site.cookieAcceptAll);   // "" falls through (||)
+        expect(r.strings.site.cookieAcceptAll).toBe("Acceptă toate");
         expect(r.strings.site.legalTermsLabel).toBe("Termeni");
-        expect(r.strings.site.legalConsumerProtectionLabel).toBe(RO_PACK.legal.consumerProtectionLabel);
-        expect(r.strings.site.cookieDescription).toBe(RO_PACK.gdpr.description);
+        expect(r.strings.site.legalConsumerProtectionLabel).toBe("ANPC");
+        expect(r.strings.site.cookieDescription).toBe(RO_LANGUAGE_PACK.site.cookieDescription);
     });
 
     it("country and language are independent: countryCode RO + locale en-GB → English texts, en-GB dates", () => {

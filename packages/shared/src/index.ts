@@ -10,12 +10,11 @@ import { normalizeEmail } from "./normalizeEmail.js";
 export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
-// pattern as slug.ts. The EN pack is imported as a value because COMMERCE_STRINGS_DEFAULTS (below) is bound to it.
+// pattern as slug.ts.
 export { normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES } from "./locale-strings.js";
 export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
-import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
 
 // Re-export the STATIC-1 iframe sandbox contract (D-STATIC-1). Framework-agnostic
 // constant consumed by static-4's renderer shell; guarded by packages/shared/test/sandbox.test.ts.
@@ -715,6 +714,90 @@ export const CommerceStringsSchema = z.object({
     searchBreadcrumb: z.string().optional(),    // "Search"
     searchResultCount: PluralTextsSchema.optional(), // count: "{n} result" / "{n} results"
     searchEnterTerm: z.string().optional(),     // "Enter a search term to find products."
+
+    // LOCALE-1D — commerce-only surfaces (docs/slices/locale-1.md § 6.2): the cart, checkout, account, order
+    // confirmation and tracking pages (components/{CartPageView,CheckoutPageView,AccountPageView}.tsx, SitePage.tsx), the
+    // add-to-cart controls, the commerce bar and the navbar's account links. Each EN value is the literal rendered before.
+    metaCartTitle: z.string().optional(),       // "Cart - {site}"
+    metaCheckoutTitle: z.string().optional(),   // "Checkout - {site}"
+    metaOrderConfirmationTitle: z.string().optional(), // "Order Confirmation - {site}"
+    metaOrderTrackingTitle: z.string().optional(), // "Order Tracking - {site}"
+    personalizationRequired: z.string().optional(), // 'Please fill in "{label}"'
+    variantRequired: z.string().optional(),     // "Please select {name}"
+    cartWidgetTotal: z.string().optional(),     // "Cart/{total} {currency}" (commerce bar)
+    couponValidateFailed: z.string().optional(), // "Could not validate coupon"
+    deliveryDatesLoading: z.string().optional(), // "Loading delivery dates..."
+    calendarMo: z.string().optional(),          // "Mo" (delivery date picker, weekday heads Monday first)
+    calendarTu: z.string().optional(),          // "Tu"
+    calendarWe: z.string().optional(),          // "We"
+    calendarTh: z.string().optional(),          // "Th"
+    calendarFr: z.string().optional(),          // "Fr"
+    calendarSa: z.string().optional(),          // "Sa"
+    calendarSu: z.string().optional(),          // "Su"
+    checkoutEmptyMessage: z.string().optional(), // "Add some products before checking out."
+    orderFailed: z.string().optional(),         // "Order failed"
+    orderFailedStatus: z.string().optional(),   // "Order failed ({status})"
+    deliveryDateSelected: z.string().optional(), // "Selected: {date}"
+    bankTransferTo: z.string().optional(),      // "Transfer to {bank} - {iban}"
+    orderStatusPlaced: z.string().optional(),   // "Placed" (account order list badge)
+    orderStatusConfirmed: z.string().optional(), // "Confirmed"
+    orderStatusPrepared: z.string().optional(), // "Prepared"
+    orderStatusShipped: z.string().optional(),  // "Shipped"
+    orderStatusDelivered: z.string().optional(), // "Delivered"
+    orderStatusCancelled: z.string().optional(), // "Cancelled"
+    orderStatusAnnulled: z.string().optional(), // "Annulled"
+    myAccount: z.string().optional(),           // "My Account"
+    accountSignInPrompt: z.string().optional(), // "Sign in to view your orders and manage your account."
+    signInWithGoogle: z.string().optional(),    // "Sign In with Google"
+    signOut: z.string().optional(),             // "Sign Out"
+    profileHeading: z.string().optional(),      // "Profile"
+    edit: z.string().optional(),                // "Edit"
+    accountName: z.string().optional(),         // "Name"
+    save: z.string().optional(),                // "Save"
+    saving: z.string().optional(),              // "Saving..."
+    cancel: z.string().optional(),              // "Cancel"
+    loyaltyPoints: z.string().optional(),       // "Loyalty Points"
+    defaultAddress: z.string().optional(),      // "Default Address"
+    orderHistory: z.string().optional(),        // "Order History"
+    noOrdersYet: z.string().optional(),         // "No orders yet."
+    startShopping: z.string().optional(),       // "Start Shopping"
+    orderThankYou: z.string().optional(),       // "Thank you for your order!"
+    orderPlacedMessage: z.string().optional(),  // "Your order has been placed successfully. You will receive a confirmation email shortly."
+    orderConfirmed: z.string().optional(),      // "Order Confirmed!"
+    orderNumber: z.string().optional(),         // "Order {number}"
+    bankTransferDetails: z.string().optional(), // "Bank Transfer Details"
+    bankTransferInstruction: z.string().optional(), // "Please transfer the total amount to the following account:"
+    bankLabel: z.string().optional(),           // "Bank:"
+    accountHolderLabel: z.string().optional(),  // "Account Holder:"
+    ibanLabel: z.string().optional(),           // "IBAN:"
+    swiftLabel: z.string().optional(),          // "SWIFT:"
+    referenceLabel: z.string().optional(),      // "Reference:"
+    amountLabel: z.string().optional(),         // "Amount:"
+    codPayOnDelivery: z.string().optional(),    // "You will pay {amount} when you receive your order."
+    estimatedDelivery: z.string().optional(),   // "Estimated delivery:"
+    orderDetails: z.string().optional(),        // "Order Details"
+    quantityLabel: z.string().optional(),       // "Qty: {n}"
+    phoneLine: z.string().optional(),           // "Phone: {phone}"
+    orderNotFound: z.string().optional(),       // "Order Not Found"
+    orderNotFoundMessage: z.string().optional(), // "Please check the order ID and email address."
+    placedOn: z.string().optional(),            // "Placed on {date}"
+    orderStepPending: z.string().optional(),    // "pending" (tracking timeline; shown with CSS capitalize)
+    orderStepConfirmed: z.string().optional(),  // "confirmed"
+    orderStepProcessing: z.string().optional(), // "processing"
+    orderStepShipped: z.string().optional(),    // "shipped"
+    orderStepDelivered: z.string().optional(),  // "delivered"
+    orderStepCompleted: z.string().optional(),  // "completed"
+    statusHistory: z.string().optional(),       // "Status History"
+    orderHistoryPlaced: z.string().optional(),  // "placed" (tracking status history; CSS capitalize)
+    orderHistoryConfirmed: z.string().optional(), // "confirmed"
+    orderHistoryPrepared: z.string().optional(), // "prepared"
+    orderHistoryShipped: z.string().optional(), // "shipped"
+    orderHistoryDelivered: z.string().optional(), // "delivered"
+    orderHistoryCancelled: z.string().optional(), // "cancelled"
+    orderHistoryAnnulled: z.string().optional(), // "annulled"
+    tracking: z.string().optional(),            // "Tracking"
+    trackingNumber: z.string().optional(),      // "Tracking Number:"
+    items: z.string().optional(),               // "Items"
 });
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
@@ -837,6 +920,8 @@ export const SiteStringsSchema = z.object({
     formErrorShort: z.string().optional(),              // "Something went wrong"
     formSelectPlaceholder: z.string().optional(),       // "Select..."
     formSubmitting: z.string().optional(),              // "Submitting..."
+    // Generic error (components/CheckoutPageView.tsx since locale-1d; the contact and lead-magnet blocks in locale-1c)
+    errorTryAgain: z.string().optional(),               // "Something went wrong. Please try again."
 });
 export type SiteStrings = z.infer<typeof SiteStringsSchema>;
 
@@ -857,12 +942,6 @@ export type LocaleStrings = {
     catalog: ResolvedPart<CatalogStrings>;
     site: ResolvedPart<SiteStrings>;
 };
-
-// Default commerce strings (English). LOCALE-1: the literal now lives in the EN language pack
-// (`language-packs/en.ts`, the one place English texts are written); this compatibility member keeps its name and
-// its 77 pre-locale values (LOCALE-1B added the 21 shared keys, as the EN pack is complete) until its last reader moves (`locale-1d`, docs/slices/locale-1.md § 10.2). It is bound here, not
-// re-exported as `export … from`, so the name stays a declaration of this module for every existing importer.
-export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = EN_LANGUAGE_PACK.commerce;
 
 export const TenantConfigSchema = z.object({
     id: z.string(), // e.g., "client-bob"

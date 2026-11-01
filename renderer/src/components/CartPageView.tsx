@@ -6,7 +6,13 @@ import Link from "next/link";
 import { Minus, Plus, Trash2, Tag } from "lucide-react";
 import { useState } from "react";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
-import { CommerceStrings, COMMERCE_STRINGS_DEFAULTS } from "@amodx/shared";
+import type { LocaleStrings } from "@amodx/shared";
+
+/** LOCALE-1D (docs/slices/locale-1.md § 5.3): the commerce texts this view renders, resolved by `SitePage`. */
+export type CartPageStrings = Pick<LocaleStrings["commerce"],
+    "emptyCart" | "emptyCartMessage" | "continueShopping" | "shoppingCart" | "orderSummary" | "remove" | "couponCode" | "apply"
+    | "subtotal" | "discount" | "shipping" | "freeShipping" | "total" | "freeDeliveryFrom" | "addMoreForFreeDelivery" | "minimumOrder"
+    | "proceedToCheckout" | "invalidCoupon" | "couponValidateFailed">;
 
 interface CartPageProps {
     checkoutPrefix: string;
@@ -18,10 +24,10 @@ interface CartPageProps {
     tenantId: string;
     apiUrl: string;
     contentMaxWidth?: string;
-    strings?: Required<CommerceStrings>;
+    strings: CartPageStrings;
 }
 
-export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl, contentMaxWidth = "max-w-6xl", strings = COMMERCE_STRINGS_DEFAULTS }: CartPageProps) {
+export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold, flatShippingCost, minimumOrderAmount, currency, tenantId, apiUrl, contentMaxWidth = "max-w-6xl", strings }: CartPageProps) {
     const { items, removeItem, updateQuantity, subtotal, itemCount, coupon, setCoupon } = useCart();
     const { getUrl } = useTenantUrl();
 
@@ -50,11 +56,11 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
             if (data.valid) {
                 setCoupon({ code: couponCode.trim().toUpperCase(), discount: parseFloat(data.discount) });
             } else {
-                setCouponError(data.reason || "Invalid coupon");
+                setCouponError(data.reason || strings.invalidCoupon);
                 setCoupon(null);
             }
         } catch {
-            setCouponError("Could not validate coupon");
+            setCouponError(strings.couponValidateFailed);
         } finally {
             setCouponLoading(false);
         }

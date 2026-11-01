@@ -4,16 +4,21 @@ import { useCart } from "@/context/CartContext";
 import { ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { useTenantUrl } from "@/lib/routing";
+import { fillTemplate } from "@amodx/shared";
 
-export function CartWidget({ showTotal, currency, iconSize }: { showTotal?: boolean; currency?: string; iconSize?: string }) {
+/**
+ * `total` (LOCALE-1D): present only in the commerce bar — the cart total text, `template` = the tenant's
+ * `cartWidgetTotal` ("Cart/{total} {currency}"). Absent (the navbar): the icon and the badge only.
+ */
+export function CartWidget({ total, iconSize }: { total?: { template: string; currency: string }; iconSize?: string }) {
     const { itemCount, subtotal, cartPrefix } = useCart();
     const { getUrl } = useTenantUrl();
 
     return (
         <Link href={getUrl(cartPrefix)} className="relative flex items-center gap-1 p-2 text-muted-foreground hover:text-foreground transition-colors">
-            {showTotal && (
+            {total && (
                 <span className="text-sm font-medium">
-                    Cart/{subtotal.toFixed(0)} {currency || "USD"}
+                    {fillTemplate(total.template, { total: subtotal.toFixed(0), currency: total.currency })}
                 </span>
             )}
             <span className="relative">

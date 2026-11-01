@@ -1,0 +1,978 @@
+{
+  "buildId": "4U15OyNJtOKuh7TY7pa5a",
+  "captures": [
+    {
+      "tenant": "fixture-tenant",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "fixture-tenant/root.body"
+    },
+    {
+      "tenant": "fixture-tenant",
+      "path": "/published",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "fixture-tenant/published.body"
+    },
+    {
+      "tenant": "fixture-tenant",
+      "path": "/d4-page",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "fixture-tenant/d4-page.body"
+    },
+    {
+      "tenant": "wk",
+      "path": "/index.php",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "wk/index.php.body"
+    },
+    {
+      "tenant": "iso-a",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "iso-a/root.body"
+    },
+    {
+      "tenant": "iso-a",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "iso-a/about.body"
+    },
+    {
+      "tenant": "iso-a",
+      "path": "/listed-post",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "iso-a/listed-post.body"
+    },
+    {
+      "tenant": "iso-b",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "iso-b/about.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/root.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/about.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/stale-showcase",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/stale-showcase.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/shop.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/category/rugs",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/category_rugs.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/sale-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_sale-rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/variant-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_variant-rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/sold-out-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_sold-out-rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/product/rug-care-guide",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/product_rug-care-guide.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/products/c0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/products_c0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/search?q=rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/search_q_rug.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/cart",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/cart.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "commerce/sitemap.xml.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "commerce/openai-feed.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "commerce/robots.txt.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "commerce/llms.txt.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/account",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/account.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout/confirmare",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout_confirmare.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout_confirmare_id_cm1-order-bank_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout_cm1-order-bank_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout_confirmare_id_cm1-order-cod_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout/cm1-order-cod?email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout_cm1-order-cod_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "commerce",
+      "path": "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "commerce/checkout_cm1-order-bank_email_not-the-buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/root.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/about.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/shop.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/category/mats",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/category_mats.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/product/plain-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/product_plain-rug.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/products/d0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/products_d0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/search?q=rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/search_q_rug.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/cart",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/cart.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/checkout",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "content/checkout.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "content/sitemap.xml.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "content/openai-feed.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "content/robots.txt.body"
+    },
+    {
+      "tenant": "content",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "content/llms.txt.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/root.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/about.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/stale-showcase",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/stale-showcase.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/shop.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/category/floors",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/category_floors.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/product/oak-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/product_oak-plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/product/ash-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/product_ash-plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/product/legacy-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/product_legacy-plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/products_e0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000002",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/products_e0000000-0000-4000-8000-000000000002.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000003",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/products_e0000000-0000-4000-8000-000000000003.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/search?q=plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/search_q_plank.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/cart",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/cart.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/checkout",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "catalog/checkout.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "catalog/sitemap.xml.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/openai-feed",
+      "status": 404,
+      "contentType": "text/plain;charset=UTF-8",
+      "body": "catalog/openai-feed.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "catalog/robots.txt.body"
+    },
+    {
+      "tenant": "catalog",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "catalog/llms.txt.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/shop.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/category/cip1b-boen",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/category_cip1b-boen.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/category/cip1b-itc",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/category_cip1b-itc.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/category/cip1b-x",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/category_cip1b-x.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/category/cip1b-u",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/category_cip1b-u.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/stejar-mixt",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_stejar-mixt.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/frasin-mixt",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_frasin-mixt.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/nuc-fara-fisa",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_nuc-fara-fisa.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/covor-arc",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_covor-arc.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/covor-shell",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_covor-shell.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/placa-nod",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_placa-nod.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/placa-nod-doi",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_placa-nod-doi.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/lemn-x-unu",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_lemn-x-unu.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/lemn-x-doi",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_lemn-x-doi.body"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "path": "/product/lemn-x-trei",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "cip1b-catalog/product_lemn-x-trei.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/root.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/about.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/shop.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/category/mats",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/category_mats.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/product/plain-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/product_plain-rug.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/products/d0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/products_d0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/search?q=rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/search_q_rug.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/cart",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/cart.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/checkout",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/checkout.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "roContent/sitemap.xml.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "roContent/openai-feed.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "roContent/robots.txt.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "roContent/llms.txt.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/root.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/about.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/stale-showcase",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/stale-showcase.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/shop.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/category/rugs",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/category_rugs.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/product/sale-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/product_sale-rug.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/product/variant-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/product_variant-rug.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/product/sold-out-rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/product_sold-out-rug.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/product/rug-care-guide",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/product_rug-care-guide.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/products/c0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/products_c0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/search?q=rug",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/search_q_rug.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/cart",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/cart.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "roCommerce/sitemap.xml.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/openai-feed",
+      "status": 200,
+      "contentType": "application/json",
+      "body": "roCommerce/openai-feed.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "roCommerce/robots.txt.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "roCommerce/llms.txt.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/account",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/account.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout/confirmare",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout_confirmare.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout_confirmare_id_cm1-order-bank_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout_cm1-order-bank_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout_confirmare_id_cm1-order-cod_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout/cm1-order-cod?email=buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout_cm1-order-cod_email_buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "roCommerce",
+      "path": "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCommerce/checkout_cm1-order-bank_email_not-the-buyer_40serving-contract.test.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/root.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/about",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/about.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/stale-showcase",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/stale-showcase.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/shop",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/shop.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/shop_availability_in_stock.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/category/floors",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/category_floors.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/product/oak-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/product_oak-plank.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/product/ash-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/product_ash-plank.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/product/legacy-plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/product_legacy-plank.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/products_e0000000-0000-4000-8000-000000000001.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000002",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/products_e0000000-0000-4000-8000-000000000002.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/products/e0000000-0000-4000-8000-000000000003",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/products_e0000000-0000-4000-8000-000000000003.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/search?q=plank",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/search_q_plank.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/cart",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/cart.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/checkout",
+      "status": 307,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roCatalog/checkout.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "contentType": "application/xml",
+      "body": "roCatalog/sitemap.xml.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/openai-feed",
+      "status": 404,
+      "contentType": "text/plain;charset=UTF-8",
+      "body": "roCatalog/openai-feed.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/robots.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "roCatalog/robots.txt.body"
+    },
+    {
+      "tenant": "roCatalog",
+      "path": "/llms.txt",
+      "status": 200,
+      "contentType": "text/plain",
+      "body": "roCatalog/llms.txt.body"
+    }
+  ]
+}

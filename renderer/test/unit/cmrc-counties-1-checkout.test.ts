@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import React, { createElement, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { readFileSync, writeFileSync } from "node:fs";
-import { COMMERCE_STRINGS_DEFAULTS, getCountryPack } from "@amodx/shared";
+import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import { BEFORE_FILE, FREE_TEXT, withFreeText, type Snapshot, type StateName } from "./cmrc-counties-1-fields";
 
 /**
@@ -32,6 +32,10 @@ vi.mock("@/hooks/useRecaptcha", () => ({ useRecaptcha: () => ({ execute: async (
 import { CheckoutPageView } from "@/components/CheckoutPageView";
 
 const RO_REGIONS = getCountryPack("RO").address.regions.map((r) => r.name);
+/** LOCALE-1D: the English texts the view receives (the EN table; the former English-defaults export is gone). */
+const EN = resolveLocaleStrings({}).strings;
+const EN_TEXT = EN.commerce;
+const CHECKOUT_STRINGS = { ...EN.commerce, errorTryAgain: EN.site.errorTryAgain };
 const CONFIGURED = ["Cluj", "Ilfov"];
 /** The prop sets of the states; `apiUrl: ""` keeps the delivery-date fetch off. */
 const STATES: Record<StateName, { availableCounties: string[]; defaultRegions: string[] }> = {
@@ -53,14 +57,14 @@ function mountState(name: StateName) {
         root = createRoot(host);
         root.render(createElement(CheckoutPageView, {
             tenantId: "t1", apiUrl: "", confirmPrefix: "/checkout/confirm", cartPrefix: "/cart", freeDeliveryThreshold: 0, flatShippingCost: 0,
-            currency: "USD", strings: COMMERCE_STRINGS_DEFAULTS, ...STATES[name],
+            currency: "USD", strings: CHECKOUT_STRINGS, ...STATES[name],
         }));
     });
 }
-const sameAsShippingBox = () => [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((i) => i.parentElement?.textContent?.includes(COMMERCE_STRINGS_DEFAULTS.useSameAsShipping))!;
+const sameAsShippingBox = () => [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((i) => i.parentElement?.textContent?.includes(EN_TEXT.useSameAsShipping))!;
 /** The county fields of a form: the element after each `County *` label (shipping first, billing second). */
 function countyFieldsIn(el: Element) {
-    return [...el.querySelectorAll("label")].filter((l) => l.textContent === `${COMMERCE_STRINGS_DEFAULTS.county} *`).map((l) => l.nextElementSibling!);
+    return [...el.querySelectorAll("label")].filter((l) => l.textContent === `${EN_TEXT.county} *`).map((l) => l.nextElementSibling!);
 }
 
 function render(name: StateName): Snapshot {
@@ -100,7 +104,7 @@ if (CAPTURE) {
             const [shipping, billing] = countyFields(before.states["ro-regions"].billingShown);
             for (const field of [shipping, billing]) {
                 expect(field.tagName).toBe("SELECT");
-                expect([...field.querySelectorAll("option")].map((o) => o.textContent)).toEqual([COMMERCE_STRINGS_DEFAULTS.selectCounty, ...RO_REGIONS]);
+                expect([...field.querySelectorAll("option")].map((o) => o.textContent)).toEqual([EN_TEXT.selectCounty, ...RO_REGIONS]);
             }
             expect(RO_REGIONS).toHaveLength(42);
         });

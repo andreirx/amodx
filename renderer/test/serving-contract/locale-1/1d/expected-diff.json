@@ -1,0 +1,535 @@
+{
+  "slice": "locale-1d",
+  "rule": "docs/slices/locale-1.md § 8.5 rules 2-3 and § 16.2 item 4 (docs/slices/locale-1d.md): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (92adbba, which already holds the cmrc-counties-1 change), each with its category. Category 2 only — no category 1 (the commerce templates with a value render through SitePage interpolateNodes, so their HTML is byte-identical) and no category 3 (zero ledger rows on en-US subjects): the Navbar of the commerce subject receives its account texts (`commerceStrings`, added prop, every HTML page of that subject, including the new order pages); the commerce views receive only their own keys (`strings` changed: the cart, checkout and account views, from the whole 98-key commerce object of getCommerceStrings to the pick of each view; the add-to-cart control, its 5 texts + the 2 validation errors + the select placeholder). The new order pages (/account, the order confirmation and tracking pages) differ from before/ ONLY by the Navbar prop. Checked by row loc1-diff-1d (locale-1/proof.mjs checkExpected, the comparison of locale-1b unchanged: CM1-A1 plus the ruled resolved-tree payload comparison): every listed difference must occur and nothing else may differ. No URL is excluded.",
+  "propValues": {
+    "commerceStringsBefore": {
+      "description": "Description",
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "inStock": "In Stock",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable",
+      "units": "units",
+      "cart": "Cart",
+      "shoppingCart": "Shopping Cart",
+      "emptyCart": "Your cart is empty",
+      "emptyCartMessage": "Browse our products and add something you like.",
+      "continueShopping": "Continue Shopping",
+      "orderSummary": "Order Summary",
+      "subtotal": "Subtotal",
+      "shipping": "Shipping",
+      "discount": "Discount",
+      "total": "Total",
+      "freeShipping": "Free",
+      "freeDeliveryFrom": "Free delivery from",
+      "addMoreForFreeDelivery": "Add {amount} more for free delivery",
+      "minimumOrder": "Minimum order",
+      "proceedToCheckout": "Proceed to Checkout",
+      "couponCode": "Coupon code",
+      "apply": "Apply",
+      "remove": "Remove",
+      "invalidCoupon": "Invalid coupon",
+      "checkout": "Checkout",
+      "placeOrder": "Place Order",
+      "placingOrder": "Placing Order...",
+      "orderConfirmation": "Order Confirmation",
+      "contactInformation": "Contact Information",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "shippingAddress": "Shipping Address",
+      "shippingStreetAddress": "",
+      "streetAddress": "Street Address",
+      "billingStreetAddress": "",
+      "city": "City",
+      "county": "County",
+      "selectCounty": "Select county...",
+      "postalCode": "Postal Code",
+      "deliveryNotes": "Delivery Notes",
+      "deliveryNotesPlaceholder": "Apartment, floor, etc.",
+      "paymentMethod": "Payment Method",
+      "cashOnDelivery": "Cash on Delivery",
+      "cashOnDeliveryDesc": "Pay when you receive your order",
+      "bankTransfer": "Bank Transfer",
+      "termsAgreement": "By placing your order, you agree to our terms and conditions.",
+      "preferredDeliveryDate": "Preferred Delivery Date",
+      "country": "Country",
+      "selectCountry": "Select country...",
+      "birthday": "Birthday",
+      "birthdayHint": "For a birthday surprise!",
+      "billingDetails": "Billing Details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "orderAsCompany": "Order as a company",
+      "companyName": "Company Name",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "",
+      "vatNumber": "VAT Number",
+      "vatNumberPlaceholder": "",
+      "registrationNumber": "Registration No.",
+      "registrationNumberPlaceholder": "",
+      "useSameAsShipping": "Use same address for billing",
+      "billingAddress": "Billing Address",
+      "searchButton": "Search",
+      "searchNoResults": "No products found",
+      "searchSearching": "Searching...",
+      "viewAllResults": "View all results",
+      "resultsFor": "Results for",
+      "searchProducts": "Search Products",
+      "signIn": "Sign In",
+      "accountLabel": "Account",
+      "metaCategoryDescription": "Browse {category} products",
+      "metaShopTitle": "Shop - {site}",
+      "metaSearchQueryTitle": "Search: {query} - {site}",
+      "metaSearchTitle": "Search - {site}",
+      "searchPlaceholder": "Search products...",
+      "shopTitle": "Shop",
+      "volumePricing": "Volume Pricing",
+      "preOrder": "Pre-order",
+      "buyNow": "Buy Now",
+      "ingredients": "Ingredients",
+      "nutritionalValues": "Nutritional Values",
+      "reviewsHeading": "Reviews",
+      "reviewsSummary": {
+        "one": "{rating}/5 ({n} review)",
+        "other": "{rating}/5 ({n} reviews)"
+      },
+      "categoryEmpty": "No products in this category yet.",
+      "productCount": {
+        "one": "{n} product",
+        "other": "{n} products"
+      },
+      "shopEmptyInStock": "No products currently in stock.",
+      "shopEmpty": "No products available yet.",
+      "shopAllProducts": "All Products",
+      "searchBreadcrumb": "Search",
+      "searchResultCount": {
+        "one": "{n} result",
+        "other": "{n} results"
+      },
+      "searchEnterTerm": "Enter a search term to find products."
+    },
+    "cartStringsAfter": {
+      "emptyCart": "Your cart is empty",
+      "emptyCartMessage": "Browse our products and add something you like.",
+      "continueShopping": "Continue Shopping",
+      "shoppingCart": "Shopping Cart",
+      "orderSummary": "Order Summary",
+      "remove": "Remove",
+      "couponCode": "Coupon code",
+      "apply": "Apply",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "shipping": "Shipping",
+      "freeShipping": "Free",
+      "total": "Total",
+      "freeDeliveryFrom": "Free delivery from",
+      "addMoreForFreeDelivery": "Add {amount} more for free delivery",
+      "minimumOrder": "Minimum order",
+      "proceedToCheckout": "Proceed to Checkout",
+      "invalidCoupon": "Invalid coupon",
+      "couponValidateFailed": "Could not validate coupon"
+    },
+    "checkoutStringsAfter": {
+      "checkout": "Checkout",
+      "email": "Email",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "birthdayHint": "For a birthday surprise!",
+      "shippingAddress": "Shipping Address",
+      "country": "Country",
+      "selectCountry": "Select country...",
+      "streetAddress": "Street Address",
+      "city": "City",
+      "county": "County",
+      "selectCounty": "Select county...",
+      "postalCode": "Postal Code",
+      "deliveryNotes": "Delivery Notes",
+      "deliveryNotesPlaceholder": "Apartment, floor, etc.",
+      "preferredDeliveryDate": "Preferred Delivery Date",
+      "paymentMethod": "Payment Method",
+      "cashOnDelivery": "Cash on Delivery",
+      "cashOnDeliveryDesc": "Pay when you receive your order",
+      "bankTransfer": "Bank Transfer",
+      "bankTransferTo": "Transfer to {bank} - {iban}",
+      "orderSummary": "Order Summary",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "shipping": "Shipping",
+      "freeShipping": "Free",
+      "total": "Total",
+      "placingOrder": "Placing Order...",
+      "placeOrder": "Place Order",
+      "termsAgreement": "By placing your order, you agree to our terms and conditions.",
+      "emptyCart": "Your cart is empty",
+      "checkoutEmptyMessage": "Add some products before checking out.",
+      "orderFailed": "Order failed",
+      "orderFailedStatus": "Order failed ({status})",
+      "deliveryDateSelected": "Selected: {date}",
+      "deliveryDatesLoading": "Loading delivery dates...",
+      "calendarMo": "Mo",
+      "calendarTu": "Tu",
+      "calendarWe": "We",
+      "calendarTh": "Th",
+      "calendarFr": "Fr",
+      "calendarSa": "Sa",
+      "calendarSu": "Su",
+      "billingDetails": "Billing Details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "birthday": "Birthday",
+      "orderAsCompany": "Order as a company",
+      "companyName": "Company Name",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "",
+      "registrationNumber": "Registration No.",
+      "registrationNumberPlaceholder": "",
+      "vatNumber": "VAT Number",
+      "vatNumberPlaceholder": "",
+      "useSameAsShipping": "Use same address for billing",
+      "billingAddress": "Billing Address",
+      "errorTryAgain": "Something went wrong. Please try again."
+    },
+    "accountStringsAfter": {
+      "myAccount": "My Account",
+      "accountSignInPrompt": "Sign in to view your orders and manage your account.",
+      "signInWithGoogle": "Sign In with Google",
+      "signOut": "Sign Out",
+      "profileHeading": "Profile",
+      "edit": "Edit",
+      "accountName": "Name",
+      "email": "Email",
+      "birthdayHint": "For a birthday surprise!",
+      "save": "Save",
+      "saving": "Saving...",
+      "cancel": "Cancel",
+      "loyaltyPoints": "Loyalty Points",
+      "defaultAddress": "Default Address",
+      "orderHistory": "Order History",
+      "noOrdersYet": "No orders yet.",
+      "startShopping": "Start Shopping",
+      "orderStatusPlaced": "Placed",
+      "orderStatusConfirmed": "Confirmed",
+      "orderStatusPrepared": "Prepared",
+      "orderStatusShipped": "Shipped",
+      "orderStatusDelivered": "Delivered",
+      "orderStatusCancelled": "Cancelled",
+      "orderStatusAnnulled": "Annulled",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "birthday": "Birthday"
+    },
+    "addToCartStringsBefore": {
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable"
+    },
+    "addToCartStringsAfter": {
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable",
+      "personalizationRequired": "Please fill in \"{label}\"",
+      "variantRequired": "Please select {name}",
+      "formSelectPlaceholder": "Select..."
+    },
+    "navbarCommerceStrings": {
+      "signIn": "Sign In",
+      "accountLabel": "Account",
+      "myAccount": "My Account"
+    }
+  },
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [],
+      "/published": [],
+      "/d4-page": []
+    },
+    "wk": {
+      "/index.php": []
+    },
+    "iso-a": {
+      "/": [],
+      "/about": [],
+      "/listed-post": []
+    },
+    "iso-b": {
+      "/about": []
+    },
+    "commerce": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/category/rugs": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/product/sale-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/AddToCartButton.tsx#AddToCartButton",
+          "prop": "strings",
+          "valueRef": "addToCartStringsAfter",
+          "beforeValueRef": "addToCartStringsBefore"
+        }
+      ],
+      "/product/variant-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/AddToCartButton.tsx#AddToCartButton",
+          "prop": "strings",
+          "valueRef": "addToCartStringsAfter",
+          "beforeValueRef": "addToCartStringsBefore"
+        }
+      ],
+      "/product/sold-out-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/AddToCartButton.tsx#AddToCartButton",
+          "prop": "strings",
+          "valueRef": "addToCartStringsAfter",
+          "beforeValueRef": "addToCartStringsBefore"
+        }
+      ],
+      "/product/rug-care-guide": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/products/c0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/search?q=rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CartPageView.tsx#CartPageView",
+          "prop": "strings",
+          "valueRef": "cartStringsAfter",
+          "beforeValueRef": "commerceStringsBefore"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CheckoutPageView.tsx#CheckoutPageView",
+          "prop": "strings",
+          "valueRef": "checkoutStringsAfter",
+          "beforeValueRef": "commerceStringsBefore"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": [],
+      "/account": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/AccountPageView.tsx#AccountPageView",
+          "prop": "strings",
+          "valueRef": "accountStringsAfter",
+          "beforeValueRef": "commerceStringsBefore"
+        }
+      ],
+      "/checkout/confirmare": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "commerceStrings",
+          "valueRef": "navbarCommerceStrings"
+        }
+      ]
+    },
+    "content": {
+      "/": [],
+      "/about": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/mats": [],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/floors": [],
+      "/product/oak-plank": [],
+      "/product/ash-plank": [],
+      "/product/legacy-plank": [],
+      "/products/e0000000-0000-4000-8000-000000000001": [],
+      "/products/e0000000-0000-4000-8000-000000000002": [],
+      "/products/e0000000-0000-4000-8000-000000000003": [],
+      "/search?q=plank": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [],
+      "/category/cip1b-boen": [],
+      "/category/cip1b-itc": [],
+      "/category/cip1b-x": [],
+      "/category/cip1b-u": [],
+      "/product/stejar-mixt": [],
+      "/product/frasin-mixt": [],
+      "/product/nuc-fara-fisa": [],
+      "/product/covor-arc": [],
+      "/product/covor-shell": [],
+      "/product/placa-nod": [],
+      "/product/placa-nod-doi": [],
+      "/product/lemn-x-unu": [],
+      "/product/lemn-x-doi": [],
+      "/product/lemn-x-trei": []
+    }
+  }
+}

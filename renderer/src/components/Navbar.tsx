@@ -11,6 +11,8 @@ import { fillTemplate, type LocaleStrings } from "@amodx/shared";
 
 /** LOCALE-1A: the site keys this component renders, resolved by the layout (docs/slices/locale-1.md § 5.3). */
 export type NavbarStrings = Pick<LocaleStrings["site"], "navAllOf" | "navContact" | "navToggleMenu" | "navViewAll" | "navContactUs">;
+/** LOCALE-1D: the commerce keys of the account links (§ 6.2), resolved by the layout for a commerce site only. */
+export type NavbarCommerceStrings = Pick<LocaleStrings["commerce"], "signIn" | "accountLabel" | "myAccount">;
 
 interface LinkItem {
     label: string;
@@ -35,6 +37,7 @@ export function Navbar({
                            titleSizeScrolled = "text-lg",
                            contentMaxWidth = "max-w-7xl",
                            interest,
+                           commerceStrings,
                            strings,
                        }: {
     siteName: string;
@@ -58,6 +61,11 @@ export function Navbar({
      * never rendered together. LOCALE-1B: `strings` = the widget's catalog texts, resolved by the layout.
      */
     interest?: { tenantId: string; listPrefix: string; strings: InterestWidgetStrings };
+    /**
+     * LOCALE-1D: the account-link texts, present exactly when `commerceEnabled` (layout.tsx passes them by a
+     * conditional spread, so a non-commerce site's props do not change). Read only inside the `commerceEnabled` branches.
+     */
+    commerceStrings?: NavbarCommerceStrings;
     strings: NavbarStrings;
 }) {
     const { getUrl } = useTenantUrl();
@@ -159,12 +167,12 @@ export function Navbar({
                             session ? (
                                 <Link href={getUrl(accountPrefix || "/account")} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                                     <User className="h-4 w-4" />
-                                    {session.user?.name?.split(" ")[0] || "Account"}
+                                    {session.user?.name?.split(" ")[0] || commerceStrings?.accountLabel}
                                 </Link>
                             ) : (
                                 <a href="/api/auth/signin" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                                     <User className="h-4 w-4" />
-                                    Sign In
+                                    {commerceStrings?.signIn}
                                 </a>
                             )
                         )}
@@ -254,7 +262,7 @@ export function Navbar({
                                         className="block py-3 text-base font-medium text-muted-foreground hover:text-primary px-3 rounded-md transition-colors"
                                         onClick={() => setIsMobileOpen(false)}
                                     >
-                                        My Account
+                                        {commerceStrings?.myAccount}
                                     </Link>
                                 ) : (
                                     <a
@@ -262,7 +270,7 @@ export function Navbar({
                                         className="block py-3 text-base font-medium text-muted-foreground hover:text-primary px-3 rounded-md transition-colors"
                                         onClick={() => setIsMobileOpen(false)}
                                     >
-                                        Sign In
+                                        {commerceStrings?.signIn}
                                     </a>
                                 )}
                             </div>

@@ -1,0 +1,2300 @@
+{
+  "slice": "locale-1d",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule) and packet hard rule 5: every key this slice allocates — the 80 commerce-only keys of § 6.2, every existing commerce key whose reader this slice moved to the locale table (the cart, checkout and account views, the add-to-cart control, the commerce bar, the navbar account links, the order confirmation and tracking pages), `site.errorTryAgain` (new) and `site.formSelectPlaceholder` (a new reader, AddToCartButton) — maps to at least one check: a captured URL of a serving-contract row (fixture + path; ro-expected.json must list the key there) or a named unit test (file + a substring of its title): the jsdom states of locale-1d-client.test.ts (EN markup equal to the 92adbba capture; RO texts each explained by a declared key) and the headless renders of locale-1d-server-render.test.ts (props and F rule, titles, layout wiring, the tracking status history). No key of this slice is a count key. Not allocated (no visitor reader, deterministic text search of renderer/src and packages/plugins/src): orderConfirmation, contactInformation, fullName, shippingStreetAddress, billingStreetAddress. A check marked `props: true` proves only the props a mocked component receives; since iteration 1 (review-0 R2) every allocated key also needs a check at its reader (a captured URL or a rendering test). Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": [
+      "errorTryAgain",
+      "formSelectPlaceholder"
+    ],
+    "catalog": [],
+    "commerce": [
+      "addToCart",
+      "addedToCart",
+      "viewCart",
+      "outOfStock",
+      "variantUnavailable",
+      "shoppingCart",
+      "emptyCart",
+      "emptyCartMessage",
+      "continueShopping",
+      "orderSummary",
+      "subtotal",
+      "shipping",
+      "discount",
+      "total",
+      "freeShipping",
+      "freeDeliveryFrom",
+      "addMoreForFreeDelivery",
+      "minimumOrder",
+      "proceedToCheckout",
+      "couponCode",
+      "apply",
+      "remove",
+      "invalidCoupon",
+      "checkout",
+      "placeOrder",
+      "placingOrder",
+      "email",
+      "phone",
+      "phonePlaceholder",
+      "shippingAddress",
+      "streetAddress",
+      "city",
+      "county",
+      "selectCounty",
+      "postalCode",
+      "deliveryNotes",
+      "deliveryNotesPlaceholder",
+      "paymentMethod",
+      "cashOnDelivery",
+      "cashOnDeliveryDesc",
+      "bankTransfer",
+      "termsAgreement",
+      "preferredDeliveryDate",
+      "country",
+      "selectCountry",
+      "birthday",
+      "birthdayHint",
+      "billingDetails",
+      "firstName",
+      "lastName",
+      "orderAsCompany",
+      "companyName",
+      "taxId",
+      "taxIdPlaceholder",
+      "vatNumber",
+      "vatNumberPlaceholder",
+      "registrationNumber",
+      "registrationNumberPlaceholder",
+      "useSameAsShipping",
+      "billingAddress",
+      "signIn",
+      "accountLabel",
+      "metaCartTitle",
+      "metaCheckoutTitle",
+      "metaOrderConfirmationTitle",
+      "metaOrderTrackingTitle",
+      "personalizationRequired",
+      "variantRequired",
+      "cartWidgetTotal",
+      "couponValidateFailed",
+      "deliveryDatesLoading",
+      "calendarMo",
+      "calendarTu",
+      "calendarWe",
+      "calendarTh",
+      "calendarFr",
+      "calendarSa",
+      "calendarSu",
+      "checkoutEmptyMessage",
+      "orderFailed",
+      "orderFailedStatus",
+      "deliveryDateSelected",
+      "bankTransferTo",
+      "orderStatusPlaced",
+      "orderStatusConfirmed",
+      "orderStatusPrepared",
+      "orderStatusShipped",
+      "orderStatusDelivered",
+      "orderStatusCancelled",
+      "orderStatusAnnulled",
+      "myAccount",
+      "accountSignInPrompt",
+      "signInWithGoogle",
+      "signOut",
+      "profileHeading",
+      "edit",
+      "accountName",
+      "save",
+      "saving",
+      "cancel",
+      "loyaltyPoints",
+      "defaultAddress",
+      "orderHistory",
+      "noOrdersYet",
+      "startShopping",
+      "orderThankYou",
+      "orderPlacedMessage",
+      "orderConfirmed",
+      "orderNumber",
+      "bankTransferDetails",
+      "bankTransferInstruction",
+      "bankLabel",
+      "accountHolderLabel",
+      "ibanLabel",
+      "swiftLabel",
+      "referenceLabel",
+      "amountLabel",
+      "codPayOnDelivery",
+      "estimatedDelivery",
+      "orderDetails",
+      "quantityLabel",
+      "phoneLine",
+      "orderNotFound",
+      "orderNotFoundMessage",
+      "placedOn",
+      "orderStepPending",
+      "orderStepConfirmed",
+      "orderStepProcessing",
+      "orderStepShipped",
+      "orderStepDelivered",
+      "orderStepCompleted",
+      "statusHistory",
+      "orderHistoryPlaced",
+      "orderHistoryConfirmed",
+      "orderHistoryPrepared",
+      "orderHistoryShipped",
+      "orderHistoryDelivered",
+      "orderHistoryCancelled",
+      "orderHistoryAnnulled",
+      "tracking",
+      "trackingNumber",
+      "items"
+    ]
+  },
+  "checks": {
+    "commerce.emptyCart": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-empty"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-empty"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/cart"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.emptyCartMessage": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-empty"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/cart"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.continueShopping": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-empty"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/cart"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.shoppingCart": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.freeDeliveryFrom": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.addMoreForFreeDelivery": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.minimumOrder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.orderSummary": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.couponCode": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.apply": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.subtotal": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.shipping": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.total": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.proceedToCheckout": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-items"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.remove": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.discount": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.freeShipping": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.invalidCoupon": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.couponValidateFailed": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] cart-coupon-refused"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.checkoutEmptyMessage": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-empty"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.firstName": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.lastName": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.email": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.birthday": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.country": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.streetAddress": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.city": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.county": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.phonePlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.bankTransferTo": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.checkout": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.billingDetails": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.phone": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.birthdayHint": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.orderAsCompany": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.shippingAddress": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.selectCountry": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.selectCounty": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.postalCode": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.deliveryNotes": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.deliveryNotesPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.useSameAsShipping": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.paymentMethod": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.cashOnDelivery": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.cashOnDeliveryDesc": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.bankTransfer": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.placeOrder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.termsAgreement": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.companyName": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.taxId": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.registrationNumber": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.vatNumber": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.billingAddress": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.taxIdPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.registrationNumberPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.vatNumberPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-form"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.deliveryDateSelected": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.preferredDeliveryDate": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarMo": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarTu": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarWe": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarTh": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarFr": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarSa": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.calendarSu": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-dates"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.orderFailedStatus": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " checkout order errors: orderFailed, orderFailedStatus, errorTryAgain"
+      }
+    ],
+    "commerce.orderFailed": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " checkout order errors: orderFailed, orderFailedStatus, errorTryAgain"
+      }
+    ],
+    "site.errorTryAgain": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " checkout order errors: orderFailed, orderFailedStatus, errorTryAgain"
+      }
+    ],
+    "commerce.myAccount": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-signed-out"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] navbar-account"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": " layout: the commerce bar's signIn / accountLabel are F, its cart total D",
+        "props": true
+      }
+    ],
+    "commerce.accountSignInPrompt": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-signed-out"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.signInWithGoogle": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-signed-out"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.signOut": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.profileHeading": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.edit": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.accountName": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.loyaltyPoints": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.defaultAddress": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.orderHistory": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.orderStatusPlaced": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.orderStatusConfirmed": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.orderStatusPrepared": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.orderStatusShipped": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.orderStatusDelivered": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.orderStatusCancelled": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.orderStatusAnnulled": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-profile"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": " account status badges: the seven orderStatus keys"
+      }
+    ],
+    "commerce.noOrdersYet": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.startShopping": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-no-orders"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.save": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.saving": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.cancel": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] account-edit"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.addToCart": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.outOfStock": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "site.formSelectPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.addedToCart": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.viewCart": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.personalizationRequired": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.variantRequired": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      }
+    ],
+    "commerce.signIn": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] commerce-bar"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] navbar-account"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": " layout: the commerce bar's signIn / accountLabel are F, its cart total D",
+        "props": true
+      }
+    ],
+    "commerce.accountLabel": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] commerce-bar"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] navbar-account"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": " layout: the commerce bar's signIn / accountLabel are F, its cart total D",
+        "props": true
+      }
+    ],
+    "commerce.cartWidgetTotal": [
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] commerce-bar"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": " layout: the commerce bar's signIn / accountLabel are F, its cart total D",
+        "props": true
+      }
+    ],
+    "commerce.metaCartTitle": [
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/cart"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] cart, checkout, confirmation, tracking: EN today"
+      }
+    ],
+    "commerce.metaCheckoutTitle": [
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/checkout"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] cart, checkout, confirmation, tracking: EN today"
+      }
+    ],
+    "commerce.metaOrderConfirmationTitle": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] cart, checkout, confirmation, tracking: EN today"
+      }
+    ],
+    "commerce.orderThankYou": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare"
+        }
+      }
+    ],
+    "commerce.orderPlacedMessage": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare"
+        }
+      }
+    ],
+    "commerce.orderConfirmed": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.orderNumber": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.bankTransferDetails": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.bankTransferInstruction": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.bankLabel": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.accountHolderLabel": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.referenceLabel": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.amountLabel": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.orderDetails": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.quantityLabel": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.metaOrderTrackingTitle": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] cart, checkout, confirmation, tracking: EN today"
+      }
+    ],
+    "commerce.placedOn": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderStepPending": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderStepConfirmed": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderStepProcessing": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderStepShipped": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderStepDelivered": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderStepCompleted": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.items": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.codPayOnDelivery": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.estimatedDelivery": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.phoneLine": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.tracking": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-cod?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.trackingNumber": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-cod?email=buyer%40serving-contract.test"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderNotFound": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.orderNotFoundMessage": [
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test"
+        }
+      }
+    ],
+    "commerce.placingOrder": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] checkout-placing"
+      }
+    ],
+    "commerce.deliveryDatesLoading": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] date-picker-loading"
+      }
+    ],
+    "commerce.variantUnavailable": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": ": cart, checkout, account and add-to-cart props",
+        "props": true
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-client.test.ts",
+        "case": "[1d-client] add-to-cart-option-sold-out"
+      }
+    ],
+    "commerce.statusHistory": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryPlaced": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryConfirmed": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryPrepared": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryShipped": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryDelivered": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryCancelled": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.orderHistoryAnnulled": [
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: RO texts"
+      },
+      {
+        "test": "renderer/test/unit/locale-1d-server-render.test.ts",
+        "case": "[1d-server] track-history: EN bytes equal the 92adbba capture"
+      }
+    ],
+    "commerce.ibanLabel": [
+      {
+        "test": "renderer/test/serving-contract/contract.test.mjs",
+        "case": "(loc1-order-pages)"
+      }
+    ],
+    "commerce.swiftLabel": [
+      {
+        "test": "renderer/test/serving-contract/contract.test.mjs",
+        "case": "(loc1-order-pages)"
+      }
+    ]
+  }
+}

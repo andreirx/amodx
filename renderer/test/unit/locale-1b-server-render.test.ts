@@ -117,7 +117,9 @@ describe("[1b-server] product page (commerce tenant)", () => {
     it("[1b-server] the product page caller reads the resolver: AddToCartButton gets the RO pack texts on a RO tenant (ledger L-RO-3), today's English on an EN tenant", async () => {
         dynamo.getProductBySlug.mockResolvedValue({ ...PRODUCT, paymentLinkId: undefined, availability: "in_stock" });
         const [en] = probes(await siteHtml(tenant(EN), ["product", "rug"]), "cart-probe");
-        expect(en.strings).toEqual({ addToCart: "Add to Cart", addedToCart: "Added to Cart!", viewCart: "View Cart", outOfStock: "Out of Stock", variantUnavailable: "Variant Unavailable" });
+        // LOCALE-1D added the two validation errors and the personalization select placeholder (docs/slices/locale-1d.md).
+        expect(en.strings).toEqual({ addToCart: "Add to Cart", addedToCart: "Added to Cart!", viewCart: "View Cart", outOfStock: "Out of Stock", variantUnavailable: "Variant Unavailable",
+            personalizationRequired: 'Please fill in "{label}"', variantRequired: "Please select {name}", formSelectPlaceholder: "Select..." });
         const [ro] = probes(await siteHtml(tenant(RO), ["product", "rug"]), "cart-probe");
         expect(ro.strings.addToCart).toBe("Adaugă în coș");
         expect(ro.strings.outOfStock).toBe("Stoc epuizat");

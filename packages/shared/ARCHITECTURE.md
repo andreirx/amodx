@@ -18,7 +18,7 @@ src/
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
 ├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
-└── country-packs/      # Per-country facts: currency, regions, phone prefix (+ text members kept until locale-1d)
+└── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)
 ```
 
 `src/index.ts` is the single public entry point: every sibling module is re-exported from it,
@@ -118,14 +118,17 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
 > pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
 
-## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b` (PROTOTYPE)
+## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d` (PROTOTYPE)
 
-Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`. Maturity **PROTOTYPE** until
-every visitor surface reads it (end of `locale-1d`).
+Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
+`docs/slices/locale-1d.md`. Maturity **PROTOTYPE** until every visitor surface reads it: after `locale-1d` the block
+chrome (`locale-1c`) is the last surface with English literals.
 
-- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, the 77
-  existing keys plus the 21 shared product-surface keys of `1b`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in
-  `1b`: interest list and facet panel) and `siteStrings` (`SiteStringsSchema`, 51 keys in `1a`). Every key is optional (absent = no override). The nine cookie/legal site keys
+- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 178 keys:
+  the 77 existing ones, the 21 shared product-surface keys of `1b`, the 80 commerce-only keys of `1d` — cart, checkout,
+  account, order confirmation and tracking, add-to-cart, commerce bar, navbar account links), `catalogStrings`
+  (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel) and `siteStrings` (`SiteStringsSchema`, 51
+  keys in `1a` + `errorTryAgain` in `1d`). Every key is optional (absent = no override). The nine cookie/legal site keys
   are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
   in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).
 - **Count keys** (`1b`, § 16.2 item 6): `reviewsSummary`, `productCount`, `searchResultCount`, `facetsCount`,
@@ -146,10 +149,12 @@ every visitor surface reads it (end of `locale-1d`).
 - **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
   (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
   slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.
-- **`COMMERCE_STRINGS_DEFAULTS`** is now bound to `EN_LANGUAGE_PACK.commerce` (same name; the 77 values verified
-  equal to `5841a86`; since `1b` it also holds the 21 shared keys, so the commerce views' `strings` prop carries them). The literal lives in `language-packs/en.ts` because `index.ts` re-exports the resolver: a value
-  import from `index.ts` inside that module graph is read before `index.ts` has run (ESM cycle → `ReferenceError`).
-  The RO pack READS its commerce, cookie and legal values from `RO_PACK` (one copy until `locale-1d`).
+- **Values.** Every pack value is a literal in its pack file (`locale-1d`): the EN pack holds the texts the renderer
+  rendered before each slice; the RO pack holds the 75 commerce, five cookie and four legal texts that the RO country
+  pack held at `92adbba`, unchanged (`test/fixtures/locale-1d-packs-92adbba.json` and `test/locale-strings.test.ts`
+  compare them), plus the approved Romanian columns of § 6. The compatibility export of the English commerce defaults
+  and the country packs' text members are gone (§ 10.2); `country-packs/` holds country facts only (`CountryPack`:
+  `code`, `name`, `currency`, `locale`, `address`). A renderer reader takes `resolveLocaleStrings(config)` only.
 
 ## Key Patterns
 

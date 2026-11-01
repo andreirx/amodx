@@ -15,6 +15,8 @@ import { SiteStringsSchema, CatalogStringsSchema, CommerceStringsSchema, PluralT
  *     contain the substring; or
  *   { capture: { row, fixture, path } } — the slice's `ro-expected.json` must list that key at that fixture and path
  *     (the serving row then asserts the captured text).
+ * A test check may be marked `props: true` (it checks only the props a mocked component receives); an allocated key
+ * needs at least one check that is not props-only (LOCALE-1D iteration 1, review-0 R2).
  * Plus: every key of the site and catalog schemas is allocated to some slice, and no slice allocates a key the schema
  * does not have (a typo would otherwise count as covered).
  *
@@ -29,7 +31,8 @@ import { SiteStringsSchema, CatalogStringsSchema, CommerceStringsSchema, PluralT
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const LOC1 = path.join(REPO, "renderer/test/serving-contract/locale-1");
 
-type Check = { test: string; case: string } | { capture: { row: string; fixture: string; path: string } };
+/** `props: true` marks a test that checks only the props a MOCKED component receives (not the text its reader renders). */
+type Check = { test: string; case: string; props?: boolean } | { capture: { row: string; fixture: string; path: string } };
 type Part = "site" | "catalog" | "commerce";
 type Coverage = { slice: string; allocatedKeys: Record<Part, string[]>; checks: Record<string, Check[]> };
 type Expected = { fixtures: Record<string, { paths: Record<string, { key: string; part?: string; count?: number }[]> }> };
@@ -72,6 +75,8 @@ export function coverageProblems(cov: Coverage, docs: ExpectationDocs, readFile:
             for (const [entry, category] of entries) {
                 const checks = cov.checks[entry] ?? [];
                 if (checks.length === 0) { problems.push(`${entry}: no check`); continue; }
+                // LOCALE-1D iteration 1 (review-0 R2): a key is covered at its READER — a props-only check never suffices.
+                if (checks.every((c) => "test" in c && c.props === true)) problems.push(`${entry}: only props-level checks (no check at the reader)`);
                 for (const c of checks) checkOne(entry, part, key, c, category);
             }
         }
@@ -92,9 +97,10 @@ const load = (slice: string) => {
 const readRepoFile = (p: string) => (existsSync(path.join(REPO, p)) ? readFileSync(path.join(REPO, p), "utf8") : null);
 
 describe("locale-1 coverage rule (§ 16.2 item 5)", () => {
-    it("locale-1a and locale-1b have a coverage file", () => {
+    it("locale-1a, locale-1b and locale-1d have a coverage file", () => {
         expect(slices).toContain("1a");
         expect(slices).toContain("1b");
+        expect(slices).toContain("1d");
     });
 
     for (const slice of slices) {
@@ -116,10 +122,20 @@ describe("locale-1 coverage rule (§ 16.2 item 5)", () => {
         expect(catalog.filter((k) => !allocated.catalog.has(k))).toEqual([]);
         expect([...allocated.site].filter((k) => !site.includes(k))).toEqual([]);
         expect([...allocated.catalog].filter((k) => !catalog.includes(k))).toEqual([]);
-        // The commerce part is allocated only partly so far (its 77 existing keys go with locale-1d); an allocated
-        // commerce key must still exist.
+        // The commerce part: an allocated commerce key must exist; every key added by locale-1b (the 21 shared keys after
+        // the 77 pre-locale ones) and by locale-1d (the 80 commerce-only keys after those) is allocated to some slice.
+        // LOCALE-1D: of the 77 pre-locale keys, the ones whose readers 1d moved are allocated by 1d; the product and search
+        // ones 1b moved are checked by 1b's tests; five have no visitor reader (docs/slices/locale-1d.md).
         const commerce = Object.keys(CommerceStringsSchema.shape);
+        const allocatedCommerce = new Set(slices.flatMap((slice) => load(slice).cov.allocatedKeys.commerce));
         for (const slice of slices) expect(load(slice).cov.allocatedKeys.commerce.filter((k) => !commerce.includes(k))).toEqual([]);
+        expect(commerce.slice(77).filter((k) => !allocatedCommerce.has(k))).toEqual([]);
+    });
+
+    it("LOCALE-1D (review-0 R2): the check goes red for a key whose only checks are props-level", () => {
+        const { cov, docs } = load("1d");
+        const propsOnly = { ...cov, checks: { ...cov.checks, "commerce.placingOrder": [{ test: "renderer/test/unit/locale-1d-server-render.test.ts", case: ": cart, checkout, account and add-to-cart props", props: true }] } };
+        expect(coverageProblems(propsOnly, docs, readRepoFile)).toEqual(["commerce.placingOrder: only props-level checks (no check at the reader)"]);
     });
 
     it("the check goes red: a key without an entry, a missing test title, a capture path that does not list the key", () => {

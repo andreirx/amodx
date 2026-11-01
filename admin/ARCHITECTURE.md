@@ -57,7 +57,9 @@ src/
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"
     │                           #   (commerce + catalog tenants, the shared commerce keys); a count key has one input
     │                           #   per plural category of the tenant's language (countInputs / setCountText);
-    │                           #   commerce cards (commerce tenants); placeholders = language defaults; Reset per
+    │                           #   commerce cards (commerce tenants; locale-1d: one card per page — product buying,
+    │                           #   header, cart, checkout ×5, account, order confirmation, order tracking — with the
+    │                           #   80 commerce-only keys); placeholders = language defaults; Reset per
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)

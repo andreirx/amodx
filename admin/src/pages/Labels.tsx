@@ -418,6 +418,7 @@ export default function Labels() {
                         <F section="site" label="Contact button: call" field="quickContactCall" />
                         <F section="site" label="Contact button: email" field="quickContactEmail" />
                         <F section="site" label="Form: submitting" field="formSubmitting" />
+                        <F section="site" label="Error: try again" field="errorTryAgain" />
                         <F section="site" label="Form: select placeholder" field="formSelectPlaceholder" />
                         <F section="site" label="Form: submission failed" field="formSubmissionFailed" />
                         <F section="site" label="Form: other error" field="formErrorShort" />
@@ -575,12 +576,11 @@ export default function Labels() {
 
             {/* ── Commerce (commerce tenants; the existing commerce cards) ── */}
             {isCommerce && <>
-            <SectionHeader section="commerce" onReset={reset} title="Commerce" description="Cart, checkout, account and the buying controls of the shop." />
+            <SectionHeader section="commerce" onReset={reset} title="Commerce" description="Cart, checkout, account, order confirmation and tracking, and the buying controls of the shop. A cleared input uses the language default." />
 
-            {/* Product Page */}
             <Card>
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Product Page</CardTitle>
+                    <CardTitle className="text-base">Product Page — buying</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -591,11 +591,26 @@ export default function Labels() {
                         <F label="Added to Cart!" field="addedToCart" />
                         <F label="View Cart" field="viewCart" />
                         <F label="Variant Unavailable" field="variantUnavailable" />
+                        <F label="Personalization required ({label})" field="personalizationRequired" />
+                        <F label="Option required ({name})" field="variantRequired" />
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Cart */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Header — account and cart</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F label="Sign In" field="signIn" />
+                        <F label="Account (signed in, no name)" field="accountLabel" />
+                        <F label="My Account (mobile menu, account page)" field="myAccount" />
+                        <F label="Commerce bar cart total ({total}, {currency})" field="cartWidgetTotal" />
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Shopping Cart</CardTitle>
@@ -621,11 +636,12 @@ export default function Labels() {
                         <F label="Coupon code" field="couponCode" />
                         <F label="Remove (coupon)" field="remove" />
                         <F label="Invalid coupon" field="invalidCoupon" />
+                        <F label="Coupon could not be checked" field="couponValidateFailed" />
+                        <F label="Page title ({site})" field="metaCartTitle" />
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Checkout - Contact */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Checkout - Contact Information</CardTitle>
@@ -643,11 +659,12 @@ export default function Labels() {
                         <F label="Phone placeholder" field="phonePlaceholder" />
                         <F label="Birthday" field="birthday" />
                         <F label="Birthday hint" field="birthdayHint" placeholder="For a birthday surprise!" />
+                        <F label="Empty cart message (checkout)" field="checkoutEmptyMessage" />
+                        <F label="Browser tab title ({site})" field="metaCheckoutTitle" />
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Checkout - Company / B2B */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Checkout - Company / B2B</CardTitle>
@@ -667,7 +684,6 @@ export default function Labels() {
                 </CardContent>
             </Card>
 
-            {/* Checkout - Shipping Address */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Checkout - Shipping Address</CardTitle>
@@ -689,7 +705,6 @@ export default function Labels() {
                 </CardContent>
             </Card>
 
-            {/* Checkout - Billing Address */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Checkout - Billing Address</CardTitle>
@@ -703,7 +718,26 @@ export default function Labels() {
                 </CardContent>
             </Card>
 
-            {/* Checkout - Payment & Submit */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Checkout - Delivery Date</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F label="Preferred Delivery Date" field="preferredDeliveryDate" />
+                        <F label="Loading the dates" field="deliveryDatesLoading" />
+                        <F label="Selected date ({date})" field="deliveryDateSelected" />
+                        <F label="Monday (short)" field="calendarMo" />
+                        <F label="Tuesday (short)" field="calendarTu" />
+                        <F label="Wednesday (short)" field="calendarWe" />
+                        <F label="Thursday (short)" field="calendarTh" />
+                        <F label="Friday (short)" field="calendarFr" />
+                        <F label="Saturday (short)" field="calendarSa" />
+                        <F label="Sunday (short)" field="calendarSu" />
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Checkout - Payment & Submit</CardTitle>
@@ -714,28 +748,47 @@ export default function Labels() {
                         <F label="Cash on Delivery" field="cashOnDelivery" />
                         <F label="COD description" field="cashOnDeliveryDesc" />
                         <F label="Bank Transfer" field="bankTransfer" />
-                        <F label="Preferred Delivery Date" field="preferredDeliveryDate" />
+                        <F label="Bank transfer to ({bank}, {iban})" field="bankTransferTo" />
                         <F label="Place Order" field="placeOrder" />
                         <F label="Placing Order..." field="placingOrder" />
                         <F label="Terms Agreement" field="termsAgreement" />
+                        <F label="Order failed" field="orderFailed" />
+                        <F label="Order failed, with the error code ({status})" field="orderFailedStatus" />
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Account / Auth */}
             <Card>
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Account / Authentication</CardTitle>
+                    <CardTitle className="text-base">Account Page</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F label="Sign In" field="signIn" />
-                        <F label="Account" field="accountLabel" />
+                        <F label="Sign-in prompt" field="accountSignInPrompt" />
+                        <F label="Sign in with Google" field="signInWithGoogle" />
+                        <F label="Sign Out" field="signOut" />
+                        <F label="Profile (heading)" field="profileHeading" />
+                        <F label="Edit" field="edit" />
+                        <F label="Name" field="accountName" />
+                        <F label="Save" field="save" />
+                        <F label="Saving..." field="saving" />
+                        <F label="Cancel" field="cancel" />
+                        <F label="Loyalty Points" field="loyaltyPoints" />
+                        <F label="Default Address" field="defaultAddress" />
+                        <F label="Order History (heading)" field="orderHistory" />
+                        <F label="No orders yet" field="noOrdersYet" />
+                        <F label="Start Shopping" field="startShopping" />
+                        <F label="Status: placed" field="orderStatusPlaced" />
+                        <F label="Status: confirmed" field="orderStatusConfirmed" />
+                        <F label="Status: prepared" field="orderStatusPrepared" />
+                        <F label="Status: shipped" field="orderStatusShipped" />
+                        <F label="Status: delivered" field="orderStatusDelivered" />
+                        <F label="Status: cancelled" field="orderStatusCancelled" />
+                        <F label="Status: annulled" field="orderStatusAnnulled" />
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Confirmation */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Order Confirmation</CardTitle>
@@ -743,10 +796,59 @@ export default function Labels() {
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <F label="Order Confirmation" field="orderConfirmation" />
+                        <F label="Page title ({site})" field="metaOrderConfirmationTitle" />
+                        <F label="Thank you (no order shown)" field="orderThankYou" />
+                        <F label="Order placed message" field="orderPlacedMessage" />
+                        <F label="Order Confirmed!" field="orderConfirmed" />
+                        <F label="Order number ({number})" field="orderNumber" />
+                        <F label="Bank transfer: heading" field="bankTransferDetails" />
+                        <F label="Bank transfer: instruction" field="bankTransferInstruction" />
+                        <F label="Bank:" field="bankLabel" />
+                        <F label="Account Holder:" field="accountHolderLabel" />
+                        <F label="IBAN:" field="ibanLabel" />
+                        <F label="SWIFT:" field="swiftLabel" />
+                        <F label="Reference:" field="referenceLabel" />
+                        <F label="Amount:" field="amountLabel" />
+                        <F label="Cash on delivery: you will pay ({amount})" field="codPayOnDelivery" />
+                        <F label="Estimated delivery:" field="estimatedDelivery" />
+                        <F label="Order Details (heading)" field="orderDetails" />
+                        <F label="Quantity ({n})" field="quantityLabel" />
+                        <F label="Phone line ({phone})" field="phoneLine" />
                     </div>
                 </CardContent>
             </Card>
 
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Order Tracking</CardTitle>
+                    <CardDescription>The order page a customer opens from the e-mail. The step and history labels are shown with a capital first letter.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F label="Page title ({site})" field="metaOrderTrackingTitle" />
+                        <F label="Order Not Found" field="orderNotFound" />
+                        <F label="Order not found message" field="orderNotFoundMessage" />
+                        <F label="Placed on ({date})" field="placedOn" />
+                        <F label="Step: pending" field="orderStepPending" />
+                        <F label="Step: confirmed" field="orderStepConfirmed" />
+                        <F label="Step: processing" field="orderStepProcessing" />
+                        <F label="Step: shipped" field="orderStepShipped" />
+                        <F label="Step: delivered" field="orderStepDelivered" />
+                        <F label="Step: completed" field="orderStepCompleted" />
+                        <F label="Status History (heading)" field="statusHistory" />
+                        <F label="History: placed" field="orderHistoryPlaced" />
+                        <F label="History: confirmed" field="orderHistoryConfirmed" />
+                        <F label="History: prepared" field="orderHistoryPrepared" />
+                        <F label="History: shipped" field="orderHistoryShipped" />
+                        <F label="History: delivered" field="orderHistoryDelivered" />
+                        <F label="History: cancelled" field="orderHistoryCancelled" />
+                        <F label="History: annulled" field="orderHistoryAnnulled" />
+                        <F label="Tracking (heading)" field="tracking" />
+                        <F label="Tracking Number:" field="trackingNumber" />
+                        <F label="Items (heading)" field="items" />
+                    </div>
+                </CardContent>
+            </Card>
             </>}
 
             <div className="flex justify-end pb-8">

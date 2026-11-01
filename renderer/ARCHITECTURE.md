@@ -460,9 +460,10 @@ and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCa
 `CF1`) and `cip1b-*` (fixtures block `CIP1B`, a tenant of its own) in `test/serving-contract/contract.test.mjs`;
 `test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
 
-## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b` (PROTOTYPE)
+## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b`, `locale-1d` (PROTOTYPE)
 
-Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`.
+Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
+`docs/slices/locale-1d.md`.
 
 - `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
   every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
@@ -486,16 +487,28 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   as props. Counts use `selectPluralText` (Romanian `few`/`other`: "2 produse" / "20 de produse"). The header widget
   `InterestWidget` gets its four texts (`InterestWidgetStrings`, incl. the count key `interestWidgetLabel`) from
   `app/[siteId]/layout.tsx` through `Navbar.tsx`'s `interest` prop, catalog tenants only (ruling LOCALE1B-WIDGET = A).
-- Commerce-only pages keep `getCommerceStrings` / `COMMERCE_STRINGS_DEFAULTS` until `locale-1d` (§ 10.2). Since
-  `cmrc-counties-1` it is English defaults → tenant `commerceStrings` only: the country-pack text layer is not merged
-  (texts follow the language, never the country; COUNTIES-TEXT-LAYER = off).
+- `locale-1d` — commerce-only pages (§ 6.2): `SitePage.tsx` passes the cart, checkout and account views and the
+  add-to-cart control only their keys (`cartPageStrings`, `checkoutPageStrings`, `accountPageStrings`,
+  `addToCartStrings`; the Pick types `CartPageStrings`, `CheckoutPageStrings`, `AccountPageStrings`, `AddToCartStrings`
+  live in the component files), with the § 5.2 F rule applied there (`withFallback`; pattern D = `pick`); the views have
+  no English fallback any more (their `strings` prop is required). The four commerce titles, the order confirmation and
+  the tracking page (step and history labels by key; a status without a key renders as stored) read `strings.commerce`;
+  a sentence that wraps a value in markup or renders it as its own text node goes through the local `interpolateNodes`,
+  so an en-US page's bytes stay identical. `layout.tsx` gives `CommerceBar` its `labels` (`signIn`, `accountLabel` F;
+  `cartWidgetTotal` → `CartWidget`'s `total`) and `Navbar` its `commerceStrings` (commerce sites only, a spread).
+  `formatLocale` reaches `AccountPageView` (order dates, birthday, loyalty points) and `CheckoutPageView` (calendar
+  month) only for a non-en-US tenant; an en-US tenant keeps today's formatter arguments. The old English-defaults
+  helper is gone (command `L1D-NO-READER` of § 10.1 finds no reader). Texts follow the language, never the country.
 - `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
-- Proof: `test/serving-contract/locale-1/` — `proof.mjs` (visible-text extraction, byte-difference check incl. the
-  1b changed-prop form `beforeValue`, `renderItem`), per slice `<slice>/before/` (immutable start capture), `expected-diff.json`,
-  `ro-expected.json`, `coverage.json` (1b also `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT
-  slice's set (`1b`; the `1a` files are its record): `loc1-subjects`, `loc1-text-<subject>` (catalog subjects: exactly
-  L-EN-CAT), `loc1-text-mutation`, `loc1-diff-1b`, `loc1-facet-hrefs`, `loc1-flight-controls`, `loc1-ro-content`,
-  `loc1-ro-commerce`, `loc1-ro-catalog`. The byte rows compare CM1-A1 plus the ruled resolved-tree payload comparison
+- Proof: `test/serving-contract/locale-1/` — `proof.mjs` (byte-difference check incl. the 1b changed-prop form
+  `beforeValue`, `renderItem` incl. the 1d `segment` form, the request rules incl. `orderRequests`), `extract.mjs` (the
+  visible-text extraction, re-exported by `proof.mjs`; importable under jsdom), per slice `<slice>/before/` (immutable
+  start capture; since 1d also the RO copies), `expected-diff.json`, `ro-expected.json`, `coverage.json` (1b also
+  `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT slice's set (`1d`; the `1a`/`1b` files are their
+  records): `loc1-subjects`, `loc1-text-<subject>`, `loc1-text-mutation`, `loc1-diff-1d`, `loc1-facet-hrefs`,
+  `loc1-flight-controls`, `loc1-ro-content`, `loc1-ro-commerce`, `loc1-ro-catalog` (each RO copy against its own start
+  capture), `loc1-order-pages`. Client-only commerce states: `test/unit/locale-1d-client.test.ts` (en-US markup equal to a
+  92adbba capture; `CheckoutPageView`'s `DeliveryDatePicker` is exported for it only, a test seam); headless renders: `test/unit/locale-1d-server-render.test.ts`. The byte rows compare CM1-A1 plus the ruled resolved-tree payload comparison
   (`resolveFlight`, LOCALE1B-ROW-CUT = A; it replaced the 1a row renumbering, LOCALE1A-ROW-IDS = A): every outlined row
   (plain `$<id>`, or the encoder's element outline `$L<id>` to an element tuple) is resolved into its place on both sides, so
   row labels, their render-to-render order (F-LOCALE-ROW-IDS) and the size-based row cuts are ignored; every other typed
@@ -516,8 +529,11 @@ EN: none) — the tenant's real country, no Romanian fallback. `CheckoutPageView
 fields are a required free-text `<input>` (same label `strings.county`, same form fields `county` / `billingCounty`),
 else today's `<select>`. The form renders only on the client with a cart (the server HTML shows "Your cart is empty").
 Tests: `test/unit/cmrc-counties-1-{checkout,site-page}.test.ts` (959f288 markup oracle
-`test/unit/cmrc-counties-1-before.json`), serving rows `cmrc-counties-1` (the props per country) and `cmrc-counties-diff`
-(the byte change against the `959f288` capture `test/serving-contract/cmrc-counties-1/before/`, CM1-A1).
+`test/unit/cmrc-counties-1-before.json`), serving row `cmrc-counties-1` (the props per country; since `locale-1d` the
+checkout `strings` are the language's table) and, until `locale-1d` retired it, `cmrc-counties-diff` (the byte change
+against the `959f288` capture `test/serving-contract/cmrc-counties-1/before/`, CM1-A1 exactly, kept as that slice's
+record; its successor `loc1-diff-1d` compares under CM1-A1 plus the ruled resolved-tree payload comparison of locale-1b,
+and the CM1-A1-exact comparison of those URLs continues in `cm1-identity-*`).
 
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
 

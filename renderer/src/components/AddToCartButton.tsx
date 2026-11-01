@@ -5,6 +5,7 @@ import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { ShoppingCart, Check, Minus, Plus } from "lucide-react";
 import { trackFBEvent } from "@/lib/fbpixel";
+import { fillTemplate, type LocaleStrings } from "@amodx/shared";
 
 interface VariantOption {
     value: string;
@@ -34,13 +35,13 @@ interface VolumePricingTier {
     price: string;
 }
 
-interface AddToCartStrings {
-    addToCart?: string;
-    addedToCart?: string;
-    viewCart?: string;
-    outOfStock?: string;
-    variantUnavailable?: string;
-}
+/**
+ * LOCALE-1D (docs/slices/locale-1.md § 5.2, § 5.3): the texts this control renders, resolved by `SitePage` (the F
+ * rule — a stored "" falls back to the language default — is applied there for the five button texts).
+ */
+export type AddToCartStrings = Pick<LocaleStrings["commerce"],
+    "addToCart" | "addedToCart" | "viewCart" | "outOfStock" | "variantUnavailable" | "personalizationRequired" | "variantRequired">
+    & Pick<LocaleStrings["site"], "formSelectPlaceholder">;
 
 interface AddToCartProps {
     productId: string;
@@ -54,13 +55,13 @@ interface AddToCartProps {
     variants: Variant[];
     personalizations: PersonalizationOption[];
     volumePricing: VolumePricingTier[];
-    strings?: AddToCartStrings;
+    strings: AddToCartStrings;
 }
 
 export function AddToCartButton({
     productId, title, slug, imageLink, price, salePrice,
     currency, availability, variants, personalizations, volumePricing,
-    strings = {},
+    strings,
 }: AddToCartProps) {
     const { addItem, cartPrefix } = useCart();
     const { getUrl } = useTenantUrl();
@@ -117,7 +118,7 @@ export function AddToCartButton({
         // Validate required personalizations
         for (const p of personalizations) {
             if (p.required && !personalizationValues[p.id]?.trim()) {
-                setError(`Please fill in "${p.label}"`);
+                setError(fillTemplate(strings.personalizationRequired, { label: p.label }));
                 return;
             }
         }
@@ -125,7 +126,7 @@ export function AddToCartButton({
         // Validate variant selection
         for (const v of variants) {
             if (!selectedVariants[v.id]) {
-                setError(`Please select ${v.name}`);
+                setError(fillTemplate(strings.variantRequired, { name: v.name }));
                 return;
             }
         }
@@ -223,7 +224,7 @@ export function AddToCartButton({
                             onChange={e => setPersonalizationValues(prev => ({ ...prev, [p.id]: e.target.value }))}
                             className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                         >
-                            <option value="">Select...</option>
+                            <option value="">{strings.formSelectPlaceholder}</option>
                             {(p.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                     )}
@@ -262,14 +263,14 @@ export function AddToCartButton({
                     {added ? (
                         <>
                             <Check className="h-4 w-4" />
-                            {strings.addedToCart || "Added to Cart!"}
+                            {strings.addedToCart}
                         </>
                     ) : !canAdd ? (
-                        variantOutOfStock ? (strings.variantUnavailable || "Variant Unavailable") : (strings.outOfStock || "Out of Stock")
+                        variantOutOfStock ? strings.variantUnavailable : strings.outOfStock
                     ) : (
                         <>
                             <ShoppingCart className="h-4 w-4" />
-                            {strings.addToCart || "Add to Cart"} — {lineTotal.toFixed(2)} {currency}
+                            {strings.addToCart} — {lineTotal.toFixed(2)} {currency}
                         </>
                     )}
                 </button>
@@ -281,7 +282,7 @@ export function AddToCartButton({
                     href={getUrl(cartPrefix)}
                     className="block text-center text-sm text-primary hover:underline"
                 >
-                    {strings.viewCart || "View Cart"}
+                    {strings.viewCart}
                 </a>
             )}
 

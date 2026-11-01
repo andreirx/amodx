@@ -10,6 +10,8 @@ import { countInputs, draftFromSettings, labelsSaveBody, overrideCount, resetSec
  * LOCALE-1B: the catalog part (`catalogStrings`) and the "Product pages & search" section (commerce-part keys shared by
  * commerce and catalog sites) have one input per key; a count key has one input per plural category of the tenant's
  * language; their Reset works as in 1a.
+ * LOCALE-1D: the commerce section holds the 80 commerce-only keys of § 6.2 (cards per page: product buying, header,
+ * cart, checkout, account, order confirmation, order tracking); the site section holds `errorTryAgain`.
  */
 
 const LOADED = {
@@ -104,10 +106,12 @@ describe("Reset to the language defaults", () => {
         const all = [...SECTION_KEYS.site, ...SECTION_KEYS.labels, ...SECTION_KEYS.catalog, ...SECTION_KEYS.product, ...SECTION_KEYS.commerce];
         expect(new Set(all).size).toBe(all.length);
         expect(SECTION_KEYS.labels).toHaveLength(9);
-        expect(SECTION_KEYS.site).toHaveLength(42);
-        // LOCALE-1B: the commerce part's 98 keys = 28 in "Product pages & search" (21 new + 7 a catalog renders) + 70 commerce-only.
+        // LOCALE-1D: + errorTryAgain (the checkout's generic error; site part).
+        expect(SECTION_KEYS.site).toHaveLength(43);
+        // LOCALE-1B: 28 commerce-part keys in "Product pages & search" (21 new + 7 a catalog renders); the rest are
+        // commerce-only: 70 before LOCALE-1D, + its 80 keys = 150 (the commerce part has 178 keys).
         expect(SECTION_KEYS.product).toHaveLength(28);
-        expect(SECTION_KEYS.commerce).toHaveLength(70);
+        expect(SECTION_KEYS.commerce).toHaveLength(150);
         expect(SECTION_KEYS.catalog).toHaveLength(39);
     });
 
@@ -185,6 +189,20 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
         const countFields = [...source.matchAll(/<CountF\b([^>]*?)\/>/g)].map((m) => /field="([^"]+)"/.exec(m[1])![1]).sort();
         expect(countFields).toEqual(["facetsCount", "interestWidgetLabel", "productCount", "reviewsSummary", "searchResultCount"]);
         expect(SECTION_HOME.product).toBe("commerce");
+    });
+
+    it("LOCALE-1D: the commerce Reset covers the 80 commerce-only keys of 1d (each with one input) and the stored copies of an old \"apply pack\"", () => {
+        const added = ["metaCartTitle", "personalizationRequired", "cartWidgetTotal", "calendarMo", "orderStatusAnnulled", "myAccount", "codPayOnDelivery", "orderStepPending", "orderHistoryAnnulled", "items"];
+        for (const k of added) {
+            expect(SECTION_KEYS.commerce, k).toContain(k);
+            expect(inputs.commerce.filter((f) => f === k), k).toHaveLength(1);
+        }
+        expect(inputs.site).toContain("errorTryAgain");
+        // A Romanian shop that holds copies written by the removed "Overwrite All Texts" (§ 4.2): Reset removes all of them.
+        const loaded = { locale: "ro-RO", commerceEnabled: true, commerceStrings: { addToCart: "Adaugă în coș", checkout: "Finalizare comandă", signIn: "Autentificare", futureKey: "kept" } };
+        const d = draftFromSettings(loaded);
+        expect(overrideCount(d, "commerce")).toBe(3);
+        expect(labelsSaveBody(loaded, resetSection(d, "commerce"))).toEqual({ commerceStrings: { futureKey: "kept" } });
     });
 
     it("the reviewer's reproduction: an emptyCart override counts 1, has an input, and Reset removes only it", () => {
