@@ -499,7 +499,8 @@ const CM1_ITEMS = [
 
 // ── LOCALE-1 fixtures (slice locale-1a; spec docs/slices/locale-1.md § 8.5 "RO rows", § 16.2 item 5) ─────────────
 // Romanian copies of the CM1 commerce, content and catalog tenants: every item of the source tenant, deep-copied, with ONLY the
-// key fields rewritten (PK/SK, id, host, TenantSlug, tenantId) and `locale: "ro-RO"` on the tenant item. Every text
+// key fields rewritten (PK/SK, id, host, TenantSlug, tenantId) and `locale: "ro-RO"` on the tenant item (the commerce
+// copy also `countryCode: "RO"`, CMRC-COUNTIES-1; the source tenants have `countryCode: "EN"`). Every text
 // (site name, page titles, product data) stays as in the source, so the visible-text extraction of a RO copy differs
 // from its EN source only by what the locale changes (rows `loc1-ro-*` in contract.test.mjs). No en-GB copy (§ 16.2
 // item 5). The CM1 tenants keep no `locale`: they are the en-US subjects of rows `loc1-text-*` and `loc1-diff-1a`.
@@ -527,7 +528,8 @@ function localeCopy(items, from, to, fields) {
 
 const LOC1_ITEMS = [
     ...localeCopy(CM1_ITEMS, CM1.content, LOC1.roContent, { locale: "ro-RO" }),
-    ...localeCopy(CM1_ITEMS, CM1.commerce, LOC1.roCommerce, { locale: "ro-RO" }),
+    // CMRC-COUNTIES-1: the RO commerce copy is also a Romanian SHOP — its country (the checkout region list) is RO.
+    ...localeCopy(CM1_ITEMS, CM1.commerce, LOC1.roCommerce, { locale: "ro-RO", countryCode: "RO" }),
     ...localeCopy(CM1_ITEMS, CM1.catalog, LOC1.roCatalog, { locale: "ro-RO" }),
 ];
 

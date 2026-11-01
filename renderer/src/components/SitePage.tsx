@@ -78,13 +78,12 @@ export function toSiteQuery(sp: Record<string, string | string[] | undefined>): 
     return out;
 }
 
-// Helper to get commerce strings with defaults
-// 3-tier merge: English defaults → country pack language → admin overrides
+// Helper to get commerce strings with defaults: English defaults → admin overrides.
 // LOCALE-1B: read only by the commerce-only branches (account, cart, checkout); the product and search pages read the
 // resolver. Deleted with its last caller in `locale-1d` (docs/slices/locale-1.md § 10.2).
+// CMRC-COUNTIES-1: the country-pack text layer is not merged (texts by language, not by country; `locale-1d` moves these texts to the resolver).
 function getCommerceStrings(config: any): Required<CommerceStrings> {
-    const pack = getCountryPack(config.countryCode || "EN");
-    return { ...COMMERCE_STRINGS_DEFAULTS, ...pack.defaultStrings, ...config.commerceStrings };
+    return { ...COMMERCE_STRINGS_DEFAULTS, ...config.commerceStrings };
 }
 
 /**
@@ -433,7 +432,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                     availableCountries={deliveryConfig?.availableCountries || []}
                     availableCounties={deliveryConfig?.availableCounties || []}
                     askBirthday={config.askBirthdayOnCheckout ?? true}
-                    defaultRegions={getCountryPack(config.countryCode || "RO").address.regions.map(r => r.name)}
+                    defaultRegions={getCountryPack(config.countryCode || "EN").address.regions.map(r => r.name)}
                     locale={config.locale || "en-US"}
                 />
             );

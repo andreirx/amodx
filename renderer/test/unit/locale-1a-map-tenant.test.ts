@@ -54,9 +54,12 @@ describe("mapTenant passes every part of the locale table and the language", () 
         }
     });
 
-    it("countryCode stays out (F-LOCALE-COUNTIES, § 13: a commerce slice owns it)", async () => {
+    // CMRC-COUNTIES-1 replaced the locale-1a case "countryCode stays out": the commerce slice that owned it now copies it.
+    it("countryCode is copied (CMRC-COUNTIES-1); absent stays absent", async () => {
         store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T", countryCode: "RO" };
-        expect((await getTenantConfig("t1")) as any).not.toHaveProperty("countryCode");
+        expect(((await getTenantConfig("t1")) as any).countryCode).toBe("RO");
+        store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T" };
+        expect(((await getTenantConfig("t1")) as any).countryCode).toBeUndefined();
     });
 
     it("untitledSiteName: a tenant without a name gets the fallback of its language, or its override", async () => {

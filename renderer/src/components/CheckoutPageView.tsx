@@ -444,10 +444,15 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">{strings.county} *</label>
+                                    {/* CMRC-COUNTIES-1: no region list (no configured counties, country without regions) → free text */}
+                                    {counties.length > 0 ? (
                                     <select required value={form.county} onChange={e => update("county", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
                                         <option value="">{strings.selectCounty}</option>
                                         {counties.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
+                                    ) : (
+                                    <input required value={form.county} onChange={e => update("county", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">{strings.postalCode}</label>
@@ -487,10 +492,14 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{strings.county} *</label>
+                                            {counties.length > 0 ? (
                                             <select required value={form.billingCounty} onChange={e => update("billingCounty", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm">
                                                 <option value="">{strings.selectCounty}</option>
                                                 {counties.map(c => <option key={c} value={c}>{c}</option>)}
                                             </select>
+                                            ) : (
+                                            <input required value={form.billingCounty} onChange={e => update("billingCounty", e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm" />
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{strings.postalCode}</label>

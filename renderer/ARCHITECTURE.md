@@ -466,7 +466,7 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
 
 - `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
   every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
-  formatter throws on; absent/malformed → `en-US`. `countryCode` stays out (F-LOCALE-COUNTIES, `cmrc-counties-1`). A
+  formatter throws on; absent/malformed → `en-US`. `countryCode` is copied since `cmrc-counties-1` (below). A
   tenant without a name gets `site.untitledSiteName` of its language. `test/unit/locale-1a-map-tenant.test.ts` lists
   the part fields from the schema and fails when one is dropped.
 - Server components resolve once per request (`resolveLocaleStrings(config)`) and pass each client component only
@@ -486,7 +486,9 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   as props. Counts use `selectPluralText` (Romanian `few`/`other`: "2 produse" / "20 de produse"). The header widget
   `InterestWidget` gets its four texts (`InterestWidgetStrings`, incl. the count key `interestWidgetLabel`) from
   `app/[siteId]/layout.tsx` through `Navbar.tsx`'s `interest` prop, catalog tenants only (ruling LOCALE1B-WIDGET = A).
-- Commerce-only pages keep `getCommerceStrings` / `COMMERCE_STRINGS_DEFAULTS` until `locale-1d` (§ 10.2).
+- Commerce-only pages keep `getCommerceStrings` / `COMMERCE_STRINGS_DEFAULTS` until `locale-1d` (§ 10.2). Since
+  `cmrc-counties-1` it is English defaults → tenant `commerceStrings` only: the country-pack text layer is not merged
+  (texts follow the language, never the country; COUNTIES-TEXT-LAYER = off).
 - `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
 - Proof: `test/serving-contract/locale-1/` — `proof.mjs` (visible-text extraction, byte-difference check incl. the
   1b changed-prop form `beforeValue`, `renderItem`), per slice `<slice>/before/` (immutable start capture), `expected-diff.json`,
@@ -504,6 +506,18 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   `locale-1a-{server-render,client}.test.ts`, `locale-1b-{server-render,client}.test.ts`; the coverage checker
   `locale-coverage.test.ts` (named `locale-1a-coverage.test.ts` until 1b) checks every slice, and each plural category
   of each count key, per language.
+
+## Checkout region list — slice `cmrc-counties-1`
+
+Record `docs/slices/cmrc-counties-1.md`. `mapTenant` copies `countryCode` (absent stays absent). The checkout branch of
+`SitePage.tsx` passes `defaultRegions` = the regions of `getCountryPack(config.countryCode || "EN")` (RO: the 42 counties;
+EN: none) — the tenant's real country, no Romanian fallback. `CheckoutPageView.tsx` uses the delivery config's
+`availableCounties` when non-empty, else `defaultRegions`; when that list is empty, the shipping and billing county
+fields are a required free-text `<input>` (same label `strings.county`, same form fields `county` / `billingCounty`),
+else today's `<select>`. The form renders only on the client with a cart (the server HTML shows "Your cart is empty").
+Tests: `test/unit/cmrc-counties-1-{checkout,site-page}.test.ts` (959f288 markup oracle
+`test/unit/cmrc-counties-1-before.json`), serving rows `cmrc-counties-1` (the props per country) and `cmrc-counties-diff`
+(the byte change against the `959f288` capture `test/serving-contract/cmrc-counties-1/before/`, CM1-A1).
 
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
 

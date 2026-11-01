@@ -159,10 +159,12 @@ function mapTenant(item: any): TenantConfig {
         // `locale` is NORMALISED here (§ 3.3), so every reader of `config.locale` — including the commerce readers that
         // this slice does not touch (`SitePage.tsx` checkout, confirmation, tracking, review dates) — receives a value
         // no formatter throws on; an absent or malformed value is "en-US", which those readers already used.
-        // `countryCode` stays out on purpose (F-LOCALE-COUNTIES, § 13, slice cmrc-counties-1).
         catalogStrings: item.catalogStrings || undefined,
         siteStrings: item.siteStrings || undefined,
         locale: normalizeLocale(item.locale),
+        // CMRC-COUNTIES-1: the tenant's country (country facts only — the checkout region list; texts are selected by
+        // `locale`, never by country). Absent stays absent; readers apply `|| "EN"`.
+        countryCode: item.countryCode || undefined,
         currency: item.currency || undefined,
         askBirthdayOnAccount: item.askBirthdayOnAccount ?? true,
         askBirthdayOnCheckout: item.askBirthdayOnCheckout ?? true,

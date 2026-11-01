@@ -37,7 +37,7 @@ import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
 import { EN_US_REQUESTS, LOC1_DIR, PRE_1B_COUNT_TEXT, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
-import { resolveLocaleStrings } from "@amodx/shared";
+import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
@@ -1147,7 +1147,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
-            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1b tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the cmrc-counties-1 tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
                 const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
                 // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
                 for (const r of rows) {
@@ -2119,6 +2119,102 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 console.log(`  (${rowId}) ${Object.keys(spec.paths).length} URLs, ${changes} text changes, all listed and all from the RO pack: ${JSON.stringify(rows)}`);
             });
         }
+
+        // ── ROW (cmrc-counties-1) — docs/slices/cmrc-counties-1.md. The checkout form's region list follows the tenant's
+        // real country (mapTenant copies `countryCode`): the RO commerce copy (`countryCode: "RO"`) receives the 42 counties
+        // of the RO country pack; the en-US commerce tenant (`countryCode: "EN"`) receives none, so its form shows the
+        // free-text county field. The form itself renders only on the client with a cart (the server HTML is "Your cart
+        // is empty"), so the field's markup is proven in renderer/test/unit/cmrc-counties-1-checkout.test.ts; here, the
+        // props the server sends. COUNTIES-TEXT-LAYER = off: the RO copy's checkout `strings` equal the en-US tenant's.
+        test("(cmrc-counties-1) /checkout: the RO commerce copy receives the 42 RO-pack counties, the en-US commerce tenant none; checkout `strings` do not follow the country", async () => {
+            /** The CheckoutPageView props in a captured payload: the one props object with `tenantId` and `defaultRegions`. */
+            const checkoutProps = (body) => {
+                const found = [];
+                const walk = (v) => {
+                    if (Array.isArray(v)) return v.forEach(walk);
+                    if (v === null || typeof v !== "object") return;
+                    if (Object.hasOwn(v, "tenantId") && Object.hasOwn(v, "defaultRegions")) found.push(v);
+                    Object.values(v).forEach(walk);
+                };
+                for (const line of splitFlight(body).flight.split("\n")) {
+                    const m = /^[0-9a-f]+:([[{].*)$/s.exec(line);
+                    if (m) walk(JSON.parse(m[1]));
+                }
+                assert.equal(found.length, 1, "exactly one CheckoutPageView props object in the payload");
+                return found[0];
+            };
+            const page = (captures, tenant) => captures.find((c) => c.tenant === tenant && c.path === "/checkout");
+            const en = checkoutProps(page((await cm1Set()).captures, "commerce").body);
+            const ro = checkoutProps(page(await loc1RoSet(), "roCommerce").body);
+            const roRegions = getCountryPack("RO").address.regions.map((r) => r.name);
+            assert.equal(roRegions.length, 42);
+            assert.deepEqual(ro.defaultRegions, roRegions, "RO commerce copy: the 42 counties of the RO pack");
+            assert.deepEqual(en.defaultRegions, [], "en-US commerce tenant: no region list → free-text county field");
+            assert.deepEqual(ro.availableCounties, [], "no configured counties on either fixture (the country decides)");
+            assert.deepEqual(en.availableCounties, []);
+            assert.ok(ro.strings !== null && typeof ro.strings === "object", "checkout strings travel inline");
+            assert.deepEqual(ro.strings, en.strings, "COUNTIES-TEXT-LAYER = off: the country pack's texts are not merged");
+            console.log(`  (cmrc-counties-1) roCommerce /checkout defaultRegions ${ro.defaultRegions.length} (RO pack); commerce /checkout defaultRegions ${en.defaultRegions.length}; strings equal (${Object.keys(ro.strings).length} keys)`);
+        });
+
+        // ── ROW (cmrc-counties-diff) — the cm1-byte-identity/README.md procedure for this slice's byte change (operator
+        // ruling CMRC-COUNTIES-BASELINE, 2026-11-01): cmrc-counties-1/before/ is the immutable capture of the CM1 set from
+        // the start commit 959f288; cmrc-counties-1/expected-diff.json lists the exact differences. Comparison = CM1-A1
+        // exactly (maskBody, as the cm1-identity rows), plus each listed changed prop put back to its before value in its
+        // element's payload row; every other byte must be equal. Subjects = the cm1-identity subjects, commerce (18) and
+        // content (14); the catalog captures in before/ are not compared here (CM1-A1 does not hide their render-to-render
+        // row-label variation, F-CATALOG-RSC-ORDER; the catalog is covered by loc1-diff-1b).
+        test("(cmrc-counties-diff) the commerce and content CM1 URLs differ from the 959f288 capture by exactly cmrc-counties-1/expected-diff.json (commerce /checkout defaultRegions), under CM1-A1", async () => {
+            const dir = path.join(path.dirname(LOC1_DIR), "cmrc-counties-1");
+            const before = await readCaptures(path.join(dir, "before"));
+            const cand = await cm1Set();
+            const doc = JSON.parse(await readFile(path.join(dir, "expected-diff.json"), "utf8"));
+            const MARK = "\n--- flight payload rows, sorted ---\n";
+            const parts = (set, body) => {
+                const masked = maskBody(body, set).masked;
+                const at = masked.indexOf(MARK);
+                return at < 0 ? { html: masked, rows: [] } : { html: masked.slice(0, at), rows: masked.slice(at + MARK.length).split("\n") };
+            };
+            /** Problems of one URL: listed changed props must occur once per side; then the two CM1-A1 forms must be equal. */
+            const check = (b, a, listed) => {
+                const problems = [];
+                const pb = parts(before, b.body), pa = parts(cand, a.body);
+                let rows = pa.rows;
+                for (const e of listed) {
+                    const el = `"$L${e.element}"`, now = `"${e.prop}":${JSON.stringify(e.value)}`, was = `"${e.prop}":${JSON.stringify(e.beforeValue)}`;
+                    const once = (list, text) => list.filter((r) => r.includes(el) && r.split(text).length === 2).length === 1;
+                    if (!once(pb.rows, was)) problems.push(`${e.prop}: the before value does not occur once in a ${e.element} row of before/`);
+                    if (!once(rows, now)) { problems.push(`${e.prop}: the listed value does not occur once in a ${e.element} row`); continue; }
+                    rows = rows.map((r) => (r.includes(el) && r.includes(now) ? r.replace(now, was) : r));
+                }
+                if (pa.html !== pb.html) problems.push("the HTML outside the flight payload differs");
+                if ([...rows].sort().join("\n") !== pb.rows.join("\n")) problems.push("the flight payload differs beyond the listed differences");
+                return problems;
+            };
+            const listedFor = (tenant, p) => doc.fixtures[tenant]?.[p] ?? [];
+            const problems = [];
+            assert.equal(before.captures.length, 51, "before/ holds the 51 CM1 URLs (the README capture set)");
+            const subjects = before.captures.filter((c) => c.tenant === "commerce" || c.tenant === "content");
+            assert.equal(subjects.length, 32);
+            for (const b of subjects) {
+                const a = cand.captures.find((c) => c.tenant === b.tenant && c.path === b.path);
+                if (!a) { problems.push(`${b.tenant} ${b.path}: not captured`); continue; }
+                if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${b.tenant} ${b.path}: status/Content-Type changed`); continue; }
+                for (const p of check(b, a, listedFor(b.tenant, b.path))) problems.push(`${b.tenant} ${b.path}: ${p}`);
+            }
+            for (const [tenant, urls] of Object.entries(doc.fixtures)) for (const p of Object.keys(urls)) assert.ok(before.captures.some((c) => c.tenant === tenant && c.path === p), `listed URL ${tenant} ${p} is captured`);
+            assert.deepEqual(problems, []);
+            // Bound mutations: the listed entry dropped, one changed payload byte next to it, and a wrong before value must each be reported.
+            const pick = (set) => set.captures.find((c) => c.tenant === "commerce" && c.path === "/checkout");
+            const [b, a] = [pick(before), pick(cand)];
+            const listed = listedFor("commerce", "/checkout");
+            assert.equal(listed.length, 1);
+            assert.notDeepEqual(check(b, a, []), [], "dropping the listed entry was not reported");
+            assert.ok(a.body.includes('\\"defaultRegions\\":[]'), "mutation precondition: the prop travels in the captured payload");
+            assert.notDeepEqual(check(b, { ...a, body: a.body.replace('\\"defaultRegions\\":[]', '\\"defaultRegions\\":[],\\"x\\":1') }, listed), [], "a changed payload byte was not reported");
+            assert.notDeepEqual(check(b, a, [{ ...listed[0], beforeValue: listed[0].beforeValue.slice(1) }]), [], "a wrong before value was not reported");
+            console.log(`  (cmrc-counties-diff) ${subjects.length} commerce/content URLs against the 959f288 capture: 1 listed difference (commerce /checkout ${listed[0].prop}: ${listed[0].beforeValue.length} names → ${JSON.stringify(listed[0].value)}), every other commerce/content URL byte-equal under CM1-A1; 3 mutations reported`);
+        });
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

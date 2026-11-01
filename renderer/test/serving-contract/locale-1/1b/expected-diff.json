@@ -1,6 +1,6 @@
 {
   "slice": "locale-1b",
-  "rule": "docs/slices/locale-1.md § 8.5 rules 2-3 (and § 16.2 item 4): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (4e98f98), each with its category. Category 1 = a text-node consolidation (`{n} product{s}` / `{n} result{s}` became one filled count text), HTML form and payload form. Category 2 = string props a client component now receives: an added prop (`value`), or — LOCALE-1B — a prop whose value changed (`beforeValue` → `value`, both exact): the SearchBar's labels (\"$undefined\" → the resolved texts), the commerce views' `strings` (the 77 keys unchanged plus the 21 shared keys of 1b) and, on the catalog subjects, the Navbar's `interest` (the header widget's texts gain `strings`, LOCALE1B-WIDGET = A). Category 3 = an approved ledger change, here only L-EN-CAT on the two en-US catalog subjects (catalog, cip1b-catalog; packet hard rule 1). Checked by row loc1-diff-1b (locale-1/proof.mjs checkExpected): every listed difference must occur and nothing else may differ, under CM1-A1 plus the ruled resolved-tree payload comparison (operator ruling LOCALE1B-ROW-CUT = A, locale-1/proof.mjs resolveFlight; it replaces the 1a row renumbering): every outlined row resolved into the place that references it, on both sides. No URL is excluded.",
+  "rule": "docs/slices/locale-1.md § 8.5 rules 2-3 (and § 16.2 item 4): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (4e98f98), each with its category. Category 1 = a text-node consolidation (`{n} product{s}` / `{n} result{s}` became one filled count text), HTML form and payload form. Category 2 = string props a client component now receives: an added prop (`value`), or — LOCALE-1B — a prop whose value changed (`beforeValue` → `value`, both exact): the SearchBar's labels (\"$undefined\" → the resolved texts), the commerce views' `strings` (the 77 keys unchanged plus the 21 shared keys of 1b) and, on the catalog subjects, the Navbar's `interest` (the header widget's texts gain `strings`, LOCALE1B-WIDGET = A). Category 3 = an approved ledger change, here only L-EN-CAT on the two en-US catalog subjects (catalog, cip1b-catalog; packet hard rule 1). Checked by row loc1-diff-1b (locale-1/proof.mjs checkExpected): every listed difference must occur and nothing else may differ, under CM1-A1 plus the ruled resolved-tree payload comparison (operator ruling LOCALE1B-ROW-CUT = A, locale-1/proof.mjs resolveFlight; it replaces the 1a row renumbering): every outlined row resolved into the place that references it, on both sides. No URL is excluded. CMRC-COUNTIES-1 (2026-11-01, docs/slices/cmrc-counties-1.md) added ONE category-2 changed prop, on commerce /checkout: `CheckoutPageView.defaultRegions`, the 42 county names of the RO country pack (the former \"RO\" fallback) → [] (the tenant's real country, EN, has no regions); the entry carries `slice: \"cmrc-counties-1\"`. Nothing else in this file changed.",
   "propValues": {
     "searchBarLabelsUndefined": {
       "searchButton": "$undefined",
@@ -442,7 +442,51 @@
         "interestStorageWarning": "This browser cannot save the list. We keep it while this page stays open.",
         "interestStorageAck": "Got it"
       }
-    }
+    },
+    "checkoutRegionsRoPack": [
+      "Alba",
+      "Arad",
+      "Arges",
+      "Bacau",
+      "Bihor",
+      "Bistrita-Nasaud",
+      "Botosani",
+      "Brasov",
+      "Braila",
+      "Bucuresti",
+      "Buzau",
+      "Caras-Severin",
+      "Calarasi",
+      "Cluj",
+      "Constanta",
+      "Covasna",
+      "Dambovita",
+      "Dolj",
+      "Galati",
+      "Giurgiu",
+      "Gorj",
+      "Harghita",
+      "Hunedoara",
+      "Ialomita",
+      "Iasi",
+      "Ilfov",
+      "Maramures",
+      "Mehedinti",
+      "Mures",
+      "Neamt",
+      "Olt",
+      "Prahova",
+      "Satu Mare",
+      "Salaj",
+      "Sibiu",
+      "Suceava",
+      "Teleorman",
+      "Timis",
+      "Tulcea",
+      "Vaslui",
+      "Valcea",
+      "Vrancea"
+    ]
   },
   "fixtures": {
     "fixture-tenant": {
@@ -568,6 +612,14 @@
           "prop": "strings",
           "valueRef": "checkoutStringsAfter",
           "beforeValueRef": "checkoutStringsBefore"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CheckoutPageView.tsx#CheckoutPageView",
+          "prop": "defaultRegions",
+          "value": [],
+          "beforeValueRef": "checkoutRegionsRoPack",
+          "slice": "cmrc-counties-1"
         }
       ],
       "/sitemap.xml": [],

@@ -1,0 +1,60 @@
+{
+  "slice": "cmrc-counties-1",
+  "rule": "docs/slices/cmrc-counties-1.md; cm1-byte-identity/README.md \"When a cm1-identity row fails\": the exact list of byte differences between this tree and the immutable start-commit capture before/ (959f288, the README capture procedure), for the cm1-identity subjects commerce (18 URLs) and content (14). before/ holds the README capture set (also catalog, 19, not compared here: CM1-A1 does not hide its row-label variation, F-CATALOG-RSC-ORDER; the catalog is covered by loc1-diff-1b). A URL not listed here must be byte-equal to before/ under CM1-A1 exactly (maskBody; no resolved-tree comparison). A listed category-2 changed prop names the client component element (`$L<module path>#<export>` after CM1-A1), the prop, its value in before/ (`beforeValue`) and now (`value`); each must occur exactly once, on its side, in one payload row of that element. Checked by row cmrc-counties-diff (contract.test.mjs). The one difference: the checkout form's region list, the 42 county names of the RO country pack (the former \"RO\" fallback) → [] (the tenant's real country, countryCode EN, has no regions). Its rendered field (the free-text county input) is client-only — the server HTML of /checkout is the empty-cart view — and is proven by renderer/test/unit/cmrc-counties-1-checkout.test.ts.",
+  "fixtures": {
+    "commerce": {
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CheckoutPageView.tsx#CheckoutPageView",
+          "prop": "defaultRegions",
+          "beforeValue": [
+            "Alba",
+            "Arad",
+            "Arges",
+            "Bacau",
+            "Bihor",
+            "Bistrita-Nasaud",
+            "Botosani",
+            "Brasov",
+            "Braila",
+            "Bucuresti",
+            "Buzau",
+            "Caras-Severin",
+            "Calarasi",
+            "Cluj",
+            "Constanta",
+            "Covasna",
+            "Dambovita",
+            "Dolj",
+            "Galati",
+            "Giurgiu",
+            "Gorj",
+            "Harghita",
+            "Hunedoara",
+            "Ialomita",
+            "Iasi",
+            "Ilfov",
+            "Maramures",
+            "Mehedinti",
+            "Mures",
+            "Neamt",
+            "Olt",
+            "Prahova",
+            "Satu Mare",
+            "Salaj",
+            "Sibiu",
+            "Suceava",
+            "Teleorman",
+            "Timis",
+            "Tulcea",
+            "Vaslui",
+            "Valcea",
+            "Vrancea"
+          ],
+          "value": []
+        }
+      ]
+    }
+  }
+}
