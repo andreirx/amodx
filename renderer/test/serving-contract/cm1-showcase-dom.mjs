@@ -41,6 +41,9 @@ const { CategoryShowcaseRender } = await import(
     pathToFileURL(fromPlugin.resolve("@amodx/plugins/render").replace(/render\.js$/, "category-showcase/CategoryShowcaseRender.js")).href
 );
 const act = React.act;
+// LOCALE-1C (ruling LOCALE1C-FALLBACK = A): the block has no English fallback, so the probe passes what SitePage passes
+// through RenderBlocks — an en-US tenant's block texts, without the stock text on a catalog site (`blockStrings`).
+const { blockStrings, resolveLocaleStrings } = await import(pathToFileURL(fromRenderer.resolve("@amodx/shared")).href);
 
 /** A product as the public category endpoint (or a stale authored attr) would carry it: priced and out of stock. */
 const PRODUCT = {
@@ -57,7 +60,9 @@ async function render(attrs) {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
-    await act(async () => root.render(React.createElement(CategoryShowcaseRender, { attrs, tenantId: "cm1-probe" })));
+    await act(async () => root.render(React.createElement(CategoryShowcaseRender, {
+        attrs, tenantId: "cm1-probe", strings: blockStrings(resolveLocaleStrings({}), { catalogMode: attrs._catalogMode === true }),
+    })));
     for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
     const html = host.innerHTML;
     await act(async () => root.unmount());

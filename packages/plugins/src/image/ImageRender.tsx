@@ -1,6 +1,9 @@
 import React from "react";
+import type { BlockStrings } from "@amodx/shared";
 
-export function ImageRender({ attrs }: { attrs: any }) {
+/** LOCALE-1C: the alt fallback comes from `strings` (the tenant's locale table; RenderBlocks always gives it); the
+ *  block's own `alt` wins. */
+export function ImageRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     if (!attrs.src) return null;
 
     const { src, alt, caption, width } = attrs;
@@ -20,7 +23,7 @@ export function ImageRender({ attrs }: { attrs: any }) {
         <figure className={containerClass}>
             <img
                 src={src}
-                alt={alt || "Image"}
+                alt={alt || strings.imageAltFallback}
                 className="w-full h-auto object-cover"
                 loading="lazy"
             />

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
+import type { BlockStrings } from "@amodx/shared";
 
 const INITIAL_COLORS = [
     "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
@@ -50,7 +51,7 @@ function formatDate(dateStr: string, locale = "ro-RO") {
     }
 }
 
-function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, onToggle }: { item: any; showSource: boolean; showPhotos: boolean; locale?: string; maxLines: number; expanded: boolean; onToggle: () => void }) {
+function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, onToggle, strings }: { item: any; showSource: boolean; showPhotos: boolean; locale?: string; maxLines: number; expanded: boolean; onToggle: () => void; strings: BlockStrings }) {
     const initial = item.name?.charAt(0)?.toUpperCase() || "?";
     const color = getInitialColor(item.name || "");
     const textRef = useRef<HTMLParagraphElement>(null);
@@ -111,7 +112,7 @@ function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, 
                             onClick={(e) => { e.stopPropagation(); onToggle(); }}
                             className="text-xs font-medium text-primary hover:underline mt-1"
                         >
-                            {expanded ? "Show less" : "Read more"}
+                            {expanded ? strings.reviewsShowLess : strings.reviewsReadMore}
                         </button>
                     )}
                 </div>
@@ -150,8 +151,17 @@ function ReviewCard({ item, showSource, showPhotos, locale, maxLines, expanded, 
     );
 }
 
-export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
+/**
+ * LOCALE-1C: "Read more" / "Show less" come from `strings` (the tenant's locale table; RenderBlocks always
+ * gives it). The review date format (§ 3.4, packet hard rule 1): a block `locale` attribute that is PRESENT — any
+ * value, even "" — is passed raw, exactly as before (not normalised: `ro_RO` and "" keep the raw date string,
+ * `-u-nu-arab` keeps its digits). Without the attribute: the tenant's normalised locale (`strings.dateLocale`, present
+ * only for a tenant that is not en-US); an en-US tenant keeps today's `"ro-RO"` (finding F-LOCALE-REVIEWS-DATE: Romanian
+ * dates on English sites, left to the human).
+ */
+export function ReviewsCarouselRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const { headline, items = [], showSource, autoScroll, maxLines = 4, locale, scope } = attrs;
+    const dateLocale = locale !== undefined ? locale : (strings.dateLocale ?? "ro-RO");
     // Photos render ONLY in a DB-backed scope, where the server prefetch has resolved them from
     // approved System-A reviews (assetKey → raw asset URL). "manual" (and any legacy block with no
     // scope) never shows photos — see the gate note in ReviewCard.
@@ -216,10 +226,11 @@ export function ReviewsCarouselRender({ attrs }: { attrs: any }) {
                             item={item}
                             showSource={showSource}
                             showPhotos={showPhotos}
-                            locale={locale}
+                            locale={dateLocale}
                             maxLines={maxLines}
                             expanded={expandedId === item.id}
                             onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                            strings={strings}
                         />
                     ))}
                 </div>

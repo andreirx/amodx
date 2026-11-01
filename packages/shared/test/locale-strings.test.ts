@@ -4,6 +4,7 @@ import {
     CommerceStringsSchema, CatalogStringsSchema, SiteStringsSchema, PluralTextsSchema, EN_PACK, RO_PACK,
     EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, LANGUAGE_PACKS, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES,
     normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, type LanguagePack, type CountText,
+    BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings,
 } from "../src/index.js";
 import * as shared from "../src/index.js";
 
@@ -18,6 +19,8 @@ import * as shared from "../src/index.js";
  * LOCALE-1D adds: the 80 commerce-only keys and `site.errorTryAgain`; the RO pack holds literals (the values the RO
  * country pack held at the start commit, from `fixtures/locale-1d-packs-92adbba.json`, unchanged); the country packs
  * hold facts only; the compatibility export of the English commerce defaults is gone (§ 10.2).
+ * LOCALE-1C adds: the 26 block-chrome site keys and `commerce.showcaseEmpty` (EN = the literal each block renderer showed at
+ * the start commit 0c0dbc8; RO = the § 6.1 / § 6.2 column), and `blockStrings` — the `strings` prop of every block (§ 5.3).
  */
 
 /** The text members of the packs at the slice's start commit 92adbba (read from that commit's build; see the file). */
@@ -54,6 +57,37 @@ const COMMERCE_1D_KEYS = [
     "orderStepCompleted", "statusHistory", "orderHistoryPlaced", "orderHistoryConfirmed", "orderHistoryPrepared", "orderHistoryShipped",
     "orderHistoryDelivered", "orderHistoryCancelled", "orderHistoryAnnulled", "tracking", "trackingNumber", "items",
 ];
+/** LOCALE-1C: the 26 block-chrome site keys of § 6.1, in schema order, with the literal each block renderer showed at the
+ *  start commit 0c0dbc8 (`packages/plugins/src/<block>/<Block>Render.tsx`) — the EN pack value, byte for byte — and the
+ *  RO value proposed in § 6.1. */
+const SITE_1C: [string, string, string][] = [
+    ["contactSendFailed", "Failed to send message", "Mesajul nu a putut fi trimis"],
+    ["contactSent", "Message Sent!", "Mesaj trimis!"],
+    ["contactSentDetail", "We'll get back to you shortly.", "Îți răspundem în curând."],
+    ["contactName", "Name", "Nume"],
+    ["contactEmail", "Email", "Email"],
+    ["contactMessage", "Message", "Mesaj"],
+    ["contactSending", "Sending...", "Se trimite..."],
+    ["leadUnlocked", "Unlocked!", "Deblocat!"],
+    ["leadFileReady", "Your file is ready.", "Fișierul tău este gata."],
+    ["leadDownload", "Download Now", "Descarcă acum"],
+    ["leadEmail", "Email", "Email"],
+    ["leadEmailPlaceholder", "name@example.com", "nume@exemplu.ro"],
+    ["leadUnlocking", "Unlocking...", "Se deblochează..."],
+    ["heroNoImage", "No Image", "Fără imagine"],
+    ["imageAltFallback", "Image", "Imagine"],
+    ["videoTitle", "Embedded video", "Video încorporat"],
+    ["videoBackgroundTitle", "Background video", "Video de fundal"],
+    ["noImage", "No image", "Fără imagine"],
+    ["noImageCaps", "NO IMAGE", "FĂRĂ IMAGINE"],
+    ["carouselView", "View", "Vezi"],
+    ["codeCopy", "Copy", "Copiază"],
+    ["codeCopied", "Copied!", "Copiat!"],
+    ["reviewsReadMore", "Read more", "Citește mai mult"],
+    ["reviewsShowLess", "Show less", "Arată mai puțin"],
+    ["postsEmpty", "No posts found.", "Nu s-au găsit articole."],
+    ["postsLoadFailed", "API {status}", "Eroare API {status}"],
+];
 
 describe("the language packs", () => {
     it("the EN pack has exactly the schema keys of every part (completeness is also a compile-time fact)", () => {
@@ -69,13 +103,13 @@ describe("the language packs", () => {
         }
     });
 
-    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d); 39 catalog keys and 21 shared commerce keys (1b); 80 commerce-only keys (1d); the count keys", () => {
-        expect(SITE_KEYS).toHaveLength(52);
-        expect(Object.keys(SiteStringsSchema.shape).at(-1)).toBe("errorTryAgain");
+    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c); 39 catalog keys and 21 shared commerce keys (1b); 80 commerce-only keys (1d) + showcaseEmpty (1c); the count keys", () => {
+        expect(SITE_KEYS).toHaveLength(52 + 26);
+        expect(Object.keys(SiteStringsSchema.shape).slice(51)).toEqual(["errorTryAgain", ...SITE_1C.map(([k]) => k)]);
         expect(COMMERCE_1D_KEYS).toHaveLength(80);
         expect(new Set(COMMERCE_1D_KEYS).size).toBe(80);
-        expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80);
-        expect(Object.keys(CommerceStringsSchema.shape).slice(77 + 21)).toEqual(COMMERCE_1D_KEYS);
+        expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80 + 1);
+        expect(Object.keys(CommerceStringsSchema.shape).slice(77 + 21)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"]);
         expect(keys(CatalogStringsSchema.shape)).toHaveLength(39);
         expect(COMMERCE_1B_KEYS.filter((k) => !Object.hasOwn(CommerceStringsSchema.shape, k))).toEqual([]);
         expect(COMMERCE_COUNT_KEYS).toEqual(["productCount", "reviewsSummary", "searchResultCount"]);
@@ -89,7 +123,7 @@ describe("the language packs", () => {
         expect(Object.keys(start)).toHaveLength(98);
         expect(Object.fromEntries(Object.entries(EN_LANGUAGE_PACK.commerce).slice(0, 98))).toEqual(start);
         expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(0, 98)).toEqual(Object.keys(start));
-        expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(98)).toEqual(COMMERCE_1D_KEYS);
+        expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(98)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"]);
         expect(EN_LANGUAGE_PACK.commerce.personalizationRequired).toBe('Please fill in "{label}"');
         expect(EN_LANGUAGE_PACK.commerce.orderStepPending).toBe("pending");
         expect(Object.keys(shared).filter((name) => /COMMERCE_STRINGS_DEFAULTS|getCommerceStrings/.test(name))).toEqual([]);
@@ -138,7 +172,7 @@ describe("the language packs", () => {
         // The start commit's RO language pack (75 country-pack values + the 21 keys of 1b): every value unchanged.
         expect(Object.keys(START.languagePacks.ro.commerce)).toHaveLength(96);
         for (const [k, v] of Object.entries(START.languagePacks.ro.commerce)) expect(ro[k], k).toEqual(v);
-        expect(keys(ro).filter((k) => !Object.hasOwn(START.languagePacks.ro.commerce, k))).toEqual([...COMMERCE_1D_KEYS].sort());
+        expect(keys(ro).filter((k) => !Object.hasOwn(START.languagePacks.ro.commerce, k))).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"].sort());
         const s = RO_LANGUAGE_PACK.site;
         expect([s.cookieHeadline, s.cookieDescription, s.cookieDenyAll, s.cookieNecessaryOnly, s.cookieAcceptAll])
             .toEqual([c.gdpr.headline, c.gdpr.description, c.gdpr.denyAll, c.gdpr.necessaryOnly, c.gdpr.acceptAll]);
@@ -160,6 +194,74 @@ describe("the language packs", () => {
         for (const [language, pack] of Object.entries(LANGUAGE_PACKS)) expect(pack.language).toBe(language);
         expect(LANGUAGE_PACKS.ro.defaultLocale).toBe("ro-RO");
         expect(LANGUAGE_PACKS.en.defaultLocale).toBe("en-US");
+    });
+});
+
+describe("LOCALE-1C: the block-chrome keys and blockStrings (§ 5.3, § 6.1, § 6.2)", () => {
+    it("EN = the literal each block renderer showed at 0c0dbc8; RO = the § 6.1 column; showcaseEmpty likewise (§ 6.2)", () => {
+        for (const [key, en, ro] of SITE_1C) {
+            expect((EN_LANGUAGE_PACK.site as Record<string, string>)[key], key).toBe(en);
+            expect((RO_LANGUAGE_PACK.site as Record<string, string>)[key], key).toBe(ro);
+        }
+        expect(EN_LANGUAGE_PACK.commerce.showcaseEmpty).toBe("No products found in this category.");
+        expect(RO_LANGUAGE_PACK.commerce.showcaseEmpty).toBe("Nu s-au găsit produse în această categorie.");
+        // The two shared form texts the blocks also read keep their values.
+        expect([EN_LANGUAGE_PACK.site.formSubmissionFailed, EN_LANGUAGE_PACK.site.errorTryAgain]).toEqual(["Submission failed", "Something went wrong. Please try again."]);
+    });
+
+    it("blockStrings: exactly the block site keys, showcaseEmpty and outOfStock, in that order, as resolved; no locale for an en-US tenant", () => {
+        const resolved = resolveLocaleStrings({});
+        const s = blockStrings(resolved, { catalogMode: false });
+        expect(Object.keys(s)).toEqual([...BLOCK_SITE_KEYS, "showcaseEmpty", "outOfStock"]);
+        expect(BLOCK_SITE_KEYS).toEqual(["formSubmissionFailed", "errorTryAgain", ...SITE_1C.map(([k]) => k)]);
+        for (const k of BLOCK_SITE_KEYS) expect(s[k], k).toBe(resolved.strings.site[k]);
+        expect(s.outOfStock).toBe("Out of Stock");
+        expect(Object.hasOwn(s, "dateLocale")).toBe(false);
+        // A malformed or absent locale is en-US (§ 3.3): no locale either.
+        for (const locale of [undefined, "en-US", "en_US", " en-US ", "xx-YY", 42]) {
+            expect(Object.hasOwn(blockStrings(resolveLocaleStrings({ locale }), { catalogMode: false }), "dateLocale"), String(locale)).toBe(false);
+        }
+    });
+
+    it("blockStrings: a non-en-US tenant gets its normalised locale; a catalog site gets no stock text (CATALOG-MODE-1 § 3.2.6)", () => {
+        const ro = blockStrings(resolveLocaleStrings({ locale: "ro_RO" }), { catalogMode: false });
+        expect(ro.dateLocale).toBe("ro-RO");
+        expect(ro.contactName).toBe("Nume");
+        expect(ro.outOfStock).toBe("Stoc epuizat");
+        expect(blockStrings(resolveLocaleStrings({ locale: "de-DE" }), { catalogMode: false }).dateLocale).toBe("de-DE");
+        expect(blockStrings(resolveLocaleStrings({ locale: "en-GB" }), { catalogMode: false }).dateLocale).toBe("en-GB");
+        for (const locale of ["en-US", "ro-RO"]) {
+            const catalog = blockStrings(resolveLocaleStrings({ locale }), { catalogMode: true });
+            expect(Object.hasOwn(catalog, "outOfStock"), locale).toBe(false);
+            expect(Object.keys(catalog).slice(0, BLOCK_SITE_KEYS.length + 1)).toEqual([...BLOCK_SITE_KEYS, "showcaseEmpty"]);
+        }
+    });
+
+    it("LOCALE1C-IFRAME-NAMES = A: the two iframe-name keys are pattern F — \"\" → the language default (EN and RO), \"X\" wins; every registered pack's default is non-empty", () => {
+        expect(BLOCK_FALLBACK_KEYS).toEqual(["videoTitle", "videoBackgroundTitle"]);
+        for (const locale of ["en-US", "ro-RO"]) {
+            const defaults = resolveLocaleStrings({ locale }).defaults.site;
+            const empty = blockStrings(resolveLocaleStrings({ locale, siteStrings: { videoTitle: "", videoBackgroundTitle: "", codeCopy: "" } }), { catalogMode: false });
+            expect([empty.videoTitle, empty.videoBackgroundTitle], locale).toEqual([defaults.videoTitle, defaults.videoBackgroundTitle]);
+            expect(empty.codeCopy, `${locale}: every other block key stays pattern D`).toBe("");
+            const own = blockStrings(resolveLocaleStrings({ locale, siteStrings: { videoTitle: "Tur", videoBackgroundTitle: "Fundal" } }), { catalogMode: false });
+            expect([own.videoTitle, own.videoBackgroundTitle], locale).toEqual(["Tur", "Fundal"]);
+        }
+        expect(blockStrings(resolveLocaleStrings({ locale: "ro-RO", siteStrings: { videoTitle: "" } }), { catalogMode: false }).videoTitle).toBe("Video încorporat");
+        for (const language of Object.keys(LANGUAGE_PACKS)) {
+            const d = resolveLocaleStrings({ locale: LANGUAGE_PACKS[language].defaultLocale }).defaults.site;
+            for (const key of BLOCK_FALLBACK_KEYS) expect(d[key].length, `${language}.${key}`).toBeGreaterThan(0);
+        }
+    });
+
+    it("blockStrings: tenant overrides as resolved — \"\" stays \"\" (pattern D, § 5.2), \"X\" wins, in both parts", () => {
+        const s = blockStrings(resolveLocaleStrings({
+            locale: "ro-RO",
+            siteStrings: { contactName: "", codeCopy: "Copie", postsLoadFailed: "" },
+            commerceStrings: { outOfStock: "", showcaseEmpty: "Gol" },
+        }), { catalogMode: false });
+        expect([s.contactName, s.codeCopy, s.postsLoadFailed, s.outOfStock, s.showcaseEmpty]).toEqual(["", "Copie", "", "", "Gol"]);
+        expect(s.contactEmail).toBe("Email");
     });
 });
 

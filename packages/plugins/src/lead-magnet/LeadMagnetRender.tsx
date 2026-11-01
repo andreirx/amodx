@@ -1,8 +1,10 @@
 "use client";
 import React, { useState } from "react";
 import { Lock, Unlock, Download, Loader2 } from "lucide-react";
+import type { BlockStrings } from "@amodx/shared";
 
-export function LeadMagnetRender({ attrs }: { attrs: any }) {
+/** LOCALE-1C: the fixed texts come from `strings` (the tenant's locale table; RenderBlocks always gives it). */
+export function LeadMagnetRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
     const [downloadUrl, setDownloadUrl] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
@@ -40,6 +42,9 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
         // Get reCAPTCHA token (null if not configured)
         const recaptchaToken = await getRecaptchaToken();
 
+        // LOCALE-1C (§ 5.2 pattern D): as in the contact block — an error answer without a text shows `formSubmissionFailed`
+        // exactly as resolved; the branch is chosen by the server's answer, never by testing a table text.
+        let failedWithoutText = false;
         try {
             const res = await fetch('/api/leads', {
                 method: 'POST',
@@ -57,7 +62,8 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || "Submission failed");
+                failedWithoutText = !err.error;
+                throw new Error(err.error || strings.formSubmissionFailed);
             }
 
             const data = await res.json();
@@ -70,7 +76,7 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
             }
         } catch (err: any) {
             console.error(err);
-            setErrorMessage(err.message || "Something went wrong. Please try again.");
+            setErrorMessage(failedWithoutText ? strings.formSubmissionFailed : err.message || strings.errorTryAgain);
             setStatus("error");
         }
     };
@@ -81,15 +87,15 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                 <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Unlock className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-green-900 mb-2">Unlocked!</h3>
-                <p className="text-sm text-green-700 mb-6">Your file is ready.</p>
+                <h3 className="text-xl font-bold text-green-900 mb-2">{strings.leadUnlocked}</h3>
+                <p className="text-sm text-green-700 mb-6">{strings.leadFileReady}</p>
                 <a
                     href={downloadUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center justify-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-sm"
                 >
-                    <Download className="w-4 h-4" /> Download Now
+                    <Download className="w-4 h-4" /> {strings.leadDownload}
                 </a>
             </div>
         );
@@ -108,12 +114,12 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4 bg-background">
                 <div>
-                    <label className="sr-only">Email</label>
+                    <label className="sr-only">{strings.leadEmail}</label>
                     <input
                         name="email"
                         type="email"
                         required
-                        placeholder="name@example.com"
+                        placeholder={strings.leadEmailPlaceholder}
                         className="w-full px-4 py-2.5 rounded-lg border border-input bg-background focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all placeholder:text-muted-foreground"
                     />
                 </div>
@@ -126,7 +132,7 @@ export function LeadMagnetRender({ attrs }: { attrs: any }) {
                     className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                     {status === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {status === "loading" ? "Unlocking..." : attrs.buttonText}
+                    {status === "loading" ? strings.leadUnlocking : attrs.buttonText}
                 </button>
             </form>
         </div>

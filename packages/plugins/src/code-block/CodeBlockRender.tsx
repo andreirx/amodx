@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import hljs from "highlight.js/lib/common";
+import type { BlockStrings } from "@amodx/shared";
 
 // Inline highlight.js theme — Catppuccin Mocha palette (matches markdown plugin)
 const CODE_HIGHLIGHT_STYLES = `
@@ -24,7 +25,8 @@ const CODE_HIGHLIGHT_STYLES = `
 .amodx-code .hljs-attribute { color: #89b4fa; }
 `;
 
-export function CodeBlockRender({ attrs }: { attrs: any }) {
+/** LOCALE-1C: the fixed text comes from `strings` (the tenant's locale table; RenderBlocks always gives it). */
+export function CodeBlockRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const { code, language, filename, showLineNumbers } = attrs;
     const [copied, setCopied] = useState(false);
 
@@ -77,7 +79,7 @@ export function CodeBlockRender({ attrs }: { attrs: any }) {
                         onClick={handleCopy}
                         className="absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity bg-[#313244] text-[#cdd6f4] hover:bg-[#45475a]"
                     >
-                        {copied ? "Copied!" : "Copy"}
+                        {copied ? strings.codeCopied : strings.codeCopy}
                     </button>
 
                     <pre className="overflow-x-auto p-4">

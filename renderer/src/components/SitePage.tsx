@@ -22,7 +22,7 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -624,7 +624,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
     }
 
     // LOCALE-1A: the tenant's locale table for this page's chrome (docs/slices/locale-1.md § 5.3).
-    const { locale, strings: { site } } = resolveLocaleStrings(config);
+    const resolved = resolveLocaleStrings(config);
+    const { locale, strings: { site } } = resolved;
 
     // --- RENDER: ACCESS DENIED ---
     if (!hasAccess) {
@@ -787,7 +788,9 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 </div>
             )}
 
-            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} siteMaxWidth={sw} basePath={basePath} />
+            {/* LOCALE-1C: the block texts (§ 5.3) — on a catalog site without the stock text (CATALOG-MODE-1 § 3.2.6). */}
+            <RenderBlocks blocks={content.blocks} tenantId={config.id} contentMaxWidth={cw} siteMaxWidth={sw} basePath={basePath}
+                strings={blockStrings(resolved, { catalogMode: isCatalogMode(config) })} />
 
             {/* LOCALE-1A: `dateLocale` only for a non-en-US tenant — an en-US tenant keeps the runtime default (§ 16.2
                 item 4). A spread, not `dateLocale={undefined}`: an undefined prop would still be serialised into the

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolveLocaleStrings } from "@amodx/shared";
-import { countInputs, draftFromSettings, labelsSaveBody, overrideCount, resetSection, setCountText, setText, SECTION_HOME, SECTION_KEYS } from "./Labels";
+import { countInputs, draftFromSettings, labelsSaveBody, overrideCount, resetSection, setCountText, setText, visibleSections, SECTION_HOME, SECTION_KEYS } from "./Labels";
 
 /**
  * LOCALE-1A — the Labels page's save rules (docs/slices/locale-1.md § 7.1; admin unit checks of § 10 row `locale-1a`):
@@ -12,6 +12,10 @@ import { countInputs, draftFromSettings, labelsSaveBody, overrideCount, resetSec
  * language; their Reset works as in 1a.
  * LOCALE-1D: the commerce section holds the 80 commerce-only keys of § 6.2 (cards per page: product buying, header,
  * cart, checkout, account, order confirmation, order tracking); the site section holds `errorTryAgain`.
+ * LOCALE-1C: the site section holds the 26 block-chrome keys (card "Content Blocks"); the product section holds
+ * `showcaseEmpty`; each has one input and is covered by its section's Reset. Operator ruling R4 (2026-11-01): a
+ * content-only tenant gets the "Product showcase block" section (`showcaseEmpty`, `outOfStock`, stored in
+ * `commerceStrings`); for every tenant kind each key has at most one input on the page (`visibleSections`).
  */
 
 const LOADED = {
@@ -103,14 +107,17 @@ describe("Reset to the language defaults", () => {
     });
 
     it("the sections do not overlap, and the site section never holds a cookie/legal key", () => {
+        // The showcase section repeats two keys of "product" / "commerce"; it is never shown together with them (below).
         const all = [...SECTION_KEYS.site, ...SECTION_KEYS.labels, ...SECTION_KEYS.catalog, ...SECTION_KEYS.product, ...SECTION_KEYS.commerce];
         expect(new Set(all).size).toBe(all.length);
+        expect(SECTION_KEYS.showcase).toEqual(["showcaseEmpty", "outOfStock"]);
+        expect(SECTION_HOME.showcase).toBe("commerce");
         expect(SECTION_KEYS.labels).toHaveLength(9);
-        // LOCALE-1D: + errorTryAgain (the checkout's generic error; site part).
-        expect(SECTION_KEYS.site).toHaveLength(43);
-        // LOCALE-1B: 28 commerce-part keys in "Product pages & search" (21 new + 7 a catalog renders); the rest are
-        // commerce-only: 70 before LOCALE-1D, + its 80 keys = 150 (the commerce part has 178 keys).
-        expect(SECTION_KEYS.product).toHaveLength(28);
+        // LOCALE-1D: + errorTryAgain (the checkout's generic error; site part). LOCALE-1C: + the 26 block-chrome keys.
+        expect(SECTION_KEYS.site).toHaveLength(43 + 26);
+        // LOCALE-1B: 28 commerce-part keys in "Product pages & search" (21 new + 7 a catalog renders), LOCALE-1C + showcaseEmpty;
+        // the rest are commerce-only: 70 before LOCALE-1D, + its 80 keys = 150 (the commerce part has 179 keys).
+        expect(SECTION_KEYS.product).toHaveLength(29);
         expect(SECTION_KEYS.commerce).toHaveLength(150);
         expect(SECTION_KEYS.catalog).toHaveLength(39);
     });
@@ -171,14 +178,14 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
     // (section defaults to "commerce") — a deterministic read of the JSX, so a key added to a Reset scope without an
     // input (or the reverse) fails here.
     const source = readFileSync(new URL("./Labels.tsx", import.meta.url), "utf8");
-    const inputs: Record<string, string[]> = { commerce: [], site: [], labels: [], catalog: [], product: [] };
+    const inputs: Record<string, string[]> = { commerce: [], site: [], labels: [], catalog: [], product: [], showcase: [] };
     for (const m of source.matchAll(/<(?:F|CountF)\b([^>]*?)\/>/g)) {
         const field = /field="([^"]+)"/.exec(m[1])?.[1];
         const section = /section="([^"]+)"/.exec(m[1])?.[1] ?? "commerce";
         if (field) inputs[section].push(field);
     }
 
-    for (const section of ["commerce", "site", "labels", "catalog", "product"] as const) {
+    for (const section of ["commerce", "site", "labels", "catalog", "product", "showcase"] as const) {
         it(`${section}: every key the Reset covers has exactly one input, and every input is a key it covers`, () => {
             expect(inputs[section].length).toBe(new Set(inputs[section]).size);
             expect([...inputs[section]].sort()).toEqual([...SECTION_KEYS[section]].sort());
@@ -203,6 +210,53 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
         const d = draftFromSettings(loaded);
         expect(overrideCount(d, "commerce")).toBe(3);
         expect(labelsSaveBody(loaded, resetSection(d, "commerce"))).toEqual({ commerceStrings: { futureKey: "kept" } });
+    });
+
+    it("LOCALE-1C: the site Reset covers the 26 block-chrome keys and the product Reset covers showcaseEmpty, each with one input; Reset removes only them", () => {
+        const blockKeys = ["contactSendFailed", "contactSent", "contactSentDetail", "contactName", "contactEmail", "contactMessage", "contactSending",
+            "leadUnlocked", "leadFileReady", "leadDownload", "leadEmail", "leadEmailPlaceholder", "leadUnlocking", "heroNoImage", "imageAltFallback",
+            "videoTitle", "videoBackgroundTitle", "noImage", "noImageCaps", "carouselView", "codeCopy", "codeCopied", "reviewsReadMore",
+            "reviewsShowLess", "postsEmpty", "postsLoadFailed"];
+        for (const k of blockKeys) {
+            expect(SECTION_KEYS.site, k).toContain(k);
+            expect(inputs.site.filter((f) => f === k), k).toHaveLength(1);
+        }
+        expect(inputs.product.filter((f) => f === "showcaseEmpty")).toHaveLength(1);
+        const loaded = { locale: "ro-RO", catalogMode: true, siteStrings: { codeCopy: "Copie", postsEmpty: "", navContact: "Scrie-ne", futureKey: "kept" }, commerceStrings: { showcaseEmpty: "Gol", addToCart: "Pune în coș" } };
+        const d = draftFromSettings(loaded);
+        expect(overrideCount(d, "site")).toBe(3);
+        expect(labelsSaveBody(loaded, resetSection(d, "site"))).toEqual({ siteStrings: { futureKey: "kept" } });
+        expect(overrideCount(d, "product")).toBe(1);
+        expect(labelsSaveBody(loaded, resetSection(d, "product"))).toEqual({ commerceStrings: { addToCart: "Pune în coș" } });
+    });
+
+    it("LOCALE-1C R4: visibility per tenant kind — the showcase texts reach content-only tenants, and no key has two inputs for any kind", () => {
+        const kinds: [string, Record<string, unknown>, string[]][] = [
+            ["content-only", { commerceEnabled: false }, ["site", "labels", "showcase"]],
+            ["commerce", { commerceEnabled: true }, ["site", "labels", "product", "commerce"]],
+            ["catalog", { catalogMode: true }, ["site", "labels", "catalog", "product"]],
+            ["commerce + catalog", { commerceEnabled: true, catalogMode: true }, ["site", "labels", "catalog", "product", "commerce"]],
+        ];
+        for (const [kind, settings, sections] of kinds) {
+            expect(visibleSections(settings), kind).toEqual(sections);
+            const shown = sections.flatMap((section) => inputs[section]);
+            expect(shown.length, `${kind}: one input per key`).toBe(new Set(shown).size);
+            expect(shown.filter((k) => k === "showcaseEmpty"), `${kind}: showcaseEmpty`).toHaveLength(1);
+        }
+        // The stock overlay text: shown wherever the showcase can show it (never on a catalog-only site, CATALOG-MODE-1).
+        expect(visibleSections({}).flatMap((s) => inputs[s]).filter((k) => k === "outOfStock")).toHaveLength(1);
+        expect(visibleSections({ commerceEnabled: true }).flatMap((s) => inputs[s]).filter((k) => k === "outOfStock")).toHaveLength(1);
+        expect(visibleSections(null)).toEqual(["site", "labels", "showcase"]);
+    });
+
+    it("LOCALE-1C R4: a content-only tenant's showcase texts save into commerceStrings, and the section's Reset removes only them", () => {
+        const loaded = { commerceEnabled: false, commerceStrings: { showcaseEmpty: "Gol", outOfStock: "Lipsă", futureKey: "kept" }, siteStrings: { codeCopy: "Copie" } };
+        const d = draftFromSettings(loaded);
+        expect(overrideCount(d, "showcase")).toBe(2);
+        expect(labelsSaveBody(loaded, resetSection(d, "showcase"))).toEqual({ commerceStrings: { futureKey: "kept" } });
+        const edited = setText(draftFromSettings({ commerceEnabled: false }), SECTION_HOME.showcase, "showcaseEmpty", "Nimic aici");
+        expect(labelsSaveBody({ commerceEnabled: false }, edited)).toEqual({ commerceStrings: { showcaseEmpty: "Nimic aici" } });
+        expect(labelsSaveBody(loaded, setText(d, SECTION_HOME.showcase, "outOfStock", ""))).toEqual({ commerceStrings: { showcaseEmpty: "Gol", futureKey: "kept" } });
     });
 
     it("the reviewer's reproduction: an emptyCart override counts 1, has an input, and Reset removes only it", () => {

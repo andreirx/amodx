@@ -2,14 +2,35 @@
 
 import React, { useEffect, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
+import type { BlockStrings } from "@amodx/shared";
 
-export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: string }) {
+/**
+ * Why the browser fetch of the posts failed (LOCALE-1C). An HTTP error answer shows the `postsLoadFailed` text with its
+ * status, exactly as resolved (a stored "" renders an empty error box, § 5.2 pattern D); a thrown error shows its own
+ * message, as before. The error box is chosen by the failure, never by testing a translated text.
+ */
+type PostsLoadFailure = { kind: "status"; status: number } | { kind: "thrown"; message: string };
+
+function failureText(failure: PostsLoadFailure, template: string): string {
+    switch (failure.kind) {
+        // The only placeholder of `postsLoadFailed`; every occurrence is filled, as `fillTemplate` of @amodx/shared does.
+        case "status": return template.split("{status}").join(String(failure.status));
+        case "thrown": return failure.message;
+    }
+}
+
+/**
+ * LOCALE-1C: the fixed texts come from `strings` (the tenant's locale table; RenderBlocks always gives it).
+ * Post dates use `strings.dateLocale` — present only for a tenant that is not en-US, so an en-US tenant keeps the runtime
+ * default (§ 3.4, § 16.2 item 4).
+ */
+export function PostGridRender({ attrs, tenantId, strings }: { attrs: any, tenantId?: string, strings: BlockStrings }) {
     const { headline, filterTag, limit, showImages, columns, layout, prefetchedPosts, serverDomain } = attrs;
 
     // Initialize state with PRE-FETCHED data if available
     const [posts, setPosts] = useState<any[]>(prefetchedPosts || []);
     const [loading, setLoading] = useState(!prefetchedPosts); // Only load if no data
-    const [error, setError] = useState("");
+    const [failure, setFailure] = useState<PostsLoadFailure | null>(null);
     const [host, setHost] = useState(serverDomain || ""); // Use server domain if available
 
     useEffect(() => {
@@ -40,10 +61,11 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
                 const data = await res.json();
                 setPosts(data.items || []);
             } else {
-                setError(`API ${res.status}`);
+                setFailure({ kind: "status", status: res.status });
             }
         } catch (e: any) {
-            setError(e.message);
+            // As before: a thrown error with an empty message shows no error box (and clears an earlier one).
+            setFailure(e.message ? { kind: "thrown", message: String(e.message) } : null);
         } finally {
             setLoading(false);
         }
@@ -60,10 +82,10 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
         );
     }
 
-    if (error) {
+    if (failure) {
         return (
             <div className="py-8 text-center text-red-500 bg-red-50 rounded-lg mx-4">
-                <p className="text-sm">{error}</p>
+                <p className="text-sm">{failureText(failure, strings.postsLoadFailed)}</p>
             </div>
         );
     }
@@ -71,7 +93,7 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
     if (posts.length === 0) {
         return (
             <div className="py-12 text-center border-2 border-dashed border-muted rounded-xl mx-4">
-                <p className="text-muted-foreground text-sm">No posts found.</p>
+                <p className="text-muted-foreground text-sm">{strings.postsEmpty}</p>
             </div>
         );
     }
@@ -107,7 +129,7 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
                                     </p>
                                 )}
                                 <div className="mt-1 text-xs text-muted-foreground">
-                                    {new Date(post.createdAt).toLocaleDateString()}
+                                    {new Date(post.createdAt).toLocaleDateString(strings.dateLocale)}
                                 </div>
                             </div>
                         </a>
@@ -130,7 +152,7 @@ export function PostGridRender({ attrs, tenantId }: { attrs: any, tenantId?: str
                                 {post.seoDescription && <p className="text-muted-foreground text-sm line-clamp-3">{post.seoDescription}</p>}
                             </div>
                             <div className="mt-4 pt-4 border-t border-border/50 flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>{new Date(post.createdAt).toLocaleDateString()}</span>
+                                <span>{new Date(post.createdAt).toLocaleDateString(strings.dateLocale)}</span>
                                 {post.tags && post.tags.slice(0, 2).map((t: string) => (
                                     <span key={t} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full uppercase tracking-wider text-[10px] font-medium">{t}</span>
                                 ))}

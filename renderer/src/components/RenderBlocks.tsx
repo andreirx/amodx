@@ -3,7 +3,7 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import { RENDER_LOADERS } from "@amodx/plugins/render";
-import { FULL_BLEED_DEFAULTS } from "@amodx/shared";
+import { FULL_BLEED_DEFAULTS, type BlockStrings } from "@amodx/shared";
 import { useTenantUrl } from "@/lib/routing"; // Import
 import Link from "next/link"; // Use Next Link for prefetching
 
@@ -19,9 +19,10 @@ const PLUGIN_COMPONENTS: Record<string, React.ComponentType<any>> = Object.fromE
 );
 
 // --- RECURSIVE HELPER ---
-const RenderChildren = ({ content }: { content: any[] }) => {
+// LOCALE-1C: `strings` goes down with the children, so a block nested in a list or a quote gets the same texts.
+const RenderChildren = ({ content, strings }: { content: any[], strings: BlockStrings }) => {
     if (!content) return null;
-    return <RenderBlocks blocks={content} />;
+    return <RenderBlocks blocks={content} strings={strings} />;
 };
 
 // --- CORE COMPONENTS ---
@@ -68,10 +69,10 @@ const Heading = ({ content, attrs }: any) => {
 };
 
 // NEW: Lists & Quotes
-const BulletList = ({ content }: any) => <ul className="my-6 ml-6 list-disc [&>li]:mt-2"><RenderChildren content={content} /></ul>;
-const OrderedList = ({ content }: any) => <ol className="my-6 ml-6 list-decimal [&>li]:mt-2"><RenderChildren content={content} /></ol>;
-const ListItem = ({ content }: any) => <li><RenderChildren content={content} /></li>;
-const Blockquote = ({ content }: any) => <blockquote className="mt-6 border-l-2 border-primary pl-6 italic text-muted-foreground"><RenderChildren content={content} /></blockquote>;
+const BulletList = ({ content, strings }: any) => <ul className="my-6 ml-6 list-disc [&>li]:mt-2"><RenderChildren content={content} strings={strings} /></ul>;
+const OrderedList = ({ content, strings }: any) => <ol className="my-6 ml-6 list-decimal [&>li]:mt-2"><RenderChildren content={content} strings={strings} /></ol>;
+const ListItem = ({ content, strings }: any) => <li><RenderChildren content={content} strings={strings} /></li>;
+const Blockquote = ({ content, strings }: any) => <blockquote className="mt-6 border-l-2 border-primary pl-6 italic text-muted-foreground"><RenderChildren content={content} strings={strings} /></blockquote>;
 const HorizontalRule = () => <hr className="my-8 border-border" />;
 
 const CORE_COMPONENTS: Record<string, React.FC<any>> = {
@@ -86,7 +87,10 @@ const CORE_COMPONENTS: Record<string, React.FC<any>> = {
 };
 
 // Accept tenantId + contentMaxWidth (prose width) + siteMaxWidth (shell width)
-export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth, basePath }: { blocks: any[], tenantId?: string, contentMaxWidth?: string, siteMaxWidth?: string, basePath?: string }) {
+// LOCALE-1C (docs/slices/locale-1.md § 5.3): `strings` = the block texts of the tenant's locale table (`blockStrings`,
+// resolved by the server page) — given to every block, plugin or core, as its `strings` prop. Required, so no caller can
+// leave a Romanian site's blocks on the plugins' English fallback.
+export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth, basePath, strings }: { blocks: any[], tenantId?: string, contentMaxWidth?: string, siteMaxWidth?: string, basePath?: string, strings: BlockStrings }) {
     const { getUrl: clientGetUrl } = useTenantUrl();
 
     // Prefer server-provided basePath (SSR-correct) over client-side hook detection.
@@ -135,7 +139,7 @@ export function RenderBlocks({ blocks, tenantId, contentMaxWidth, siteMaxWidth, 
                 // correctly on both server and client, including /_site/ preview paths.
                 newAttrs._getUrl = getUrl;
 
-                const rendered = <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} />;
+                const rendered = <FinalComponent key={index} {...block} attrs={newAttrs} tenantId={tenantId} strings={strings} />;
 
                 // Width wrapping (only at top-level — recursive RenderChildren calls don't pass contentMaxWidth)
                 if (contentMaxWidth) {

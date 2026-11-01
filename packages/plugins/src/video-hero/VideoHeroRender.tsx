@@ -2,6 +2,7 @@ import React from "react";
 import { InlineRichTextRenderer } from "../common/InlineRichTextRenderer";
 import { resolveOverlayStyle, resolveTextClass } from "../common/resolveCoverColorTokens";
 import { buildBackgroundEmbedUrl, parseVideoSource } from "../common/videoSource";
+import type { BlockStrings } from "@amodx/shared";
 
 /**
  * Cover geometry for a background `<iframe>` — slice `vid-3`.
@@ -128,7 +129,9 @@ function SubheadlineText({ rich, plain, className }: { rich?: any[]; plain?: str
  * and it reaches `<img src>`/`<video poster>` exactly as it did before this slice. Unchanged
  * pre-existing surface, recorded in `docs/TECH-DEBT.md` § *vid-3 residuals*.
  */
-export function VideoHeroRender({ attrs }: { attrs: any }) {
+export function VideoHeroRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
+    // LOCALE-1C: the iframe title fallback comes from `strings` (the tenant's locale table; RenderBlocks always
+    // gives it); the block's own headline wins.
     const {
         headline = "",
         subheadline = "",
@@ -188,8 +191,11 @@ export function VideoHeroRender({ attrs }: { attrs: any }) {
                     style={IFRAME_COVER_SIZER}
                     // a11y: an iframe with no accessible name is announced as "frame" and
                     // nothing more. The headline is the author's own description of the hero
-                    // when present; the fallback keeps the name non-empty in every case.
-                    title={headline || "Background video"}
+                    // when present; the fallback keeps the name non-empty in every case:
+                    // `videoBackgroundTitle` is pattern F (LOCALE-1C, ruling LOCALE1C-IFRAME-NAMES = A) —
+                    // `blockStrings` turns a stored "" into the language default, and every registered pack's
+                    // value is non-empty (tested).
+                    title={headline || strings.videoBackgroundTitle}
                     // Cross-origin autoplay is gated by Permissions Policy — without
                     // `autoplay` here the provider's own `autoplay=1` is ignored.
                     allow="autoplay; encrypted-media; picture-in-picture"

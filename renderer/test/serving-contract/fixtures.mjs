@@ -199,7 +199,8 @@ function siteContentItem(tenantId, nodeId, slug, title, { blocks = [], createdAt
 //  - commerce (`commerceEnabled: true`, NO `catalogMode` key): products covering every branch of the § 3.2 surface
 //    table — sale price + volume tiers, variants with priceOverride/availability + personalizations + preorder,
 //    out_of_stock, a Paddle `paymentLinkId` — a `categoryShowcase` block on its home page and the search bar on.
-//  - content (`commerceEnabled: false`, NO `catalogMode` key): one product, one category.
+//  - content (`commerceEnabled: false`, NO `catalogMode` key): one product, one category; since locale-1c its home page
+//    holds the block-chrome blocks (`blockChromeBlocks`).
 //  - catalog (`catalogMode: true`): products as the catalog write boundary stores them (no monetary key; the
 //    schema defaults `currency`/`availability` are stored — F-6), one imported product with a 3-option variant
 //    group and attributes, one imageless product whose stored availability is `out_of_stock`, and one LEGACY product
@@ -288,6 +289,30 @@ const staleShowcaseBlock = {
 };
 
 const showcase = (slug) => ({ type: "categoryShowcase", attrs: { categorySlug: slug, categoryName: "Featured", limit: 4, columns: "4", showPrice: true, ctaText: "See all" } });
+
+/**
+ * LOCALE-1C (docs/slices/locale-1.md § 10 row `locale-1c`, "loc1-ro-content blocks in Romanian"): the content home
+ * carries one block of each kind whose fixed chrome renders on the SERVER — the form labels of the contact and lead
+ * blocks, the image alt and the two iframe titles that fall back when the author field is empty, the hero and carousel
+ * placeholders without an image, the code block's copy button, and a manual reviews carousel (its date). The code block
+ * is also nested in a blockquote, so the strings reach a block inside another block (`RenderBlocks` recursion). None of
+ * these blocks has a server prefetch (no stub query is added). The review date is midday UTC, so the immutable capture
+ * does not depend on the server's time zone. The client-only states of the same blocks are checked in jsdom
+ * (renderer/test/unit/locale-1c-blocks-client.test.ts).
+ */
+const blockChromeBlocks = [
+    { type: "contact", attrs: { headline: "Write to us", description: "We answer every message.", buttonText: "Send", tags: "cm1" } },
+    { type: "leadMagnet", attrs: { headline: "Rug care guide", description: "Free download.", buttonText: "Get the guide", resourceId: "cm1-guide" } },
+    { type: "image", attrs: { src: IMG("block-image"), alt: "", caption: "", width: "centered" } },
+    { type: "video", attrs: { url: "https://www.youtube.com/watch?v=cm1video001", caption: "", width: "centered", autoplay: false } },
+    { type: "videoHero", attrs: { videoSrc: "https://vimeo.com/123456789", headline: "", subheadline: "Woven by hand." } },
+    { type: "hero", attrs: { style: "split", headline: "Mats", subheadline: "For every room.", ctaText: "", imageSrc: "" } },
+    { type: "carousel", attrs: { headline: "Gallery", style: "standard", items: [{ id: "g1", title: "Blank card", description: "", image: "", link: "#" }] } },
+    { type: "carousel", attrs: { headline: "", style: "coverflow", items: [{ id: "f1", title: "Blank slide", description: "", image: "", link: "/about" }] } },
+    { type: "codeBlock", attrs: { code: "mats = 1", language: "plaintext", filename: "", showLineNumbers: false } },
+    { type: "blockquote", content: [{ type: "codeBlock", attrs: { code: "nested = 1", language: "plaintext", filename: "", showLineNumbers: false } }] },
+    { type: "reviewsCarousel", attrs: { headline: "Reviews", scope: "manual", showSource: false, items: [{ id: "r1", name: "Ana", date: "2026-10-31T12:00:00.000Z", rating: 5, text: "Soft.", source: "manual" }] } },
+];
 const searchBar = { enabled: true, placeholder: "Search products..." };
 
 const cm1CommerceProducts = [
@@ -515,7 +540,7 @@ const CM1_ITEMS = [
     cig1CommerceHidden,
 
     cm1Tenant(CM1.content, "CM1 Content", { commerceEnabled: false }),
-    ...cm1Pages(CM1.content.id, []),
+    ...cm1Pages(CM1.content.id, blockChromeBlocks),
     cm1Category(CM1.content.id, "mats", "mats", "Mats"),
     ...cm1ContentProducts,
     ...cm1ContentProducts.map((p) => cm1CatProd(CM1.content.id, "mats", p)),

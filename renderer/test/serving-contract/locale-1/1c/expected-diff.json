@@ -1,0 +1,280 @@
+{
+  "slice": "locale-1c",
+  "rule": "docs/slices/locale-1.md § 8.5 rules 2-3 and § 16.2 item 4 (docs/slices/locale-1c.md): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (0c0dbc8, served with this tree's fixtures.mjs: the content home holds the block-chrome blocks), each with its category. Category 2 only: every page that renders content blocks (SitePage's content branch, the only RenderBlocks caller) gives RenderBlocks one more prop, `strings` — the block texts of the tenant's locale table (shared `blockStrings`: 28 site keys, `showcaseEmpty`, `outOfStock` except on a catalog site, no `dateLocale` for an en-US tenant). Value `blockStrings` on the non-catalog subjects, `blockStringsCatalog` (no `outOfStock`, CATALOG-MODE-1 § 3.2.6) on the catalog subjects. No category 1 (every block text is one whole text node, as before) and no category 3 (zero ledger rows on en-US subjects). Every other URL: [] (byte-equal under the comparison). Checked by row loc1-diff-1c (locale-1/proof.mjs checkExpected, the comparison of locale-1b unchanged: CM1-A1 plus the ruled resolved-tree payload comparison): every listed difference must occur and nothing else may differ. No URL is excluded.",
+  "propValues": {
+    "blockStrings": {
+      "formSubmissionFailed": "Submission failed",
+      "errorTryAgain": "Something went wrong. Please try again.",
+      "contactSendFailed": "Failed to send message",
+      "contactSent": "Message Sent!",
+      "contactSentDetail": "We'll get back to you shortly.",
+      "contactName": "Name",
+      "contactEmail": "Email",
+      "contactMessage": "Message",
+      "contactSending": "Sending...",
+      "leadUnlocked": "Unlocked!",
+      "leadFileReady": "Your file is ready.",
+      "leadDownload": "Download Now",
+      "leadEmail": "Email",
+      "leadEmailPlaceholder": "name@example.com",
+      "leadUnlocking": "Unlocking...",
+      "heroNoImage": "No Image",
+      "imageAltFallback": "Image",
+      "videoTitle": "Embedded video",
+      "videoBackgroundTitle": "Background video",
+      "noImage": "No image",
+      "noImageCaps": "NO IMAGE",
+      "carouselView": "View",
+      "codeCopy": "Copy",
+      "codeCopied": "Copied!",
+      "reviewsReadMore": "Read more",
+      "reviewsShowLess": "Show less",
+      "postsEmpty": "No posts found.",
+      "postsLoadFailed": "API {status}",
+      "showcaseEmpty": "No products found in this category.",
+      "outOfStock": "Out of Stock"
+    },
+    "blockStringsCatalog": {
+      "formSubmissionFailed": "Submission failed",
+      "errorTryAgain": "Something went wrong. Please try again.",
+      "contactSendFailed": "Failed to send message",
+      "contactSent": "Message Sent!",
+      "contactSentDetail": "We'll get back to you shortly.",
+      "contactName": "Name",
+      "contactEmail": "Email",
+      "contactMessage": "Message",
+      "contactSending": "Sending...",
+      "leadUnlocked": "Unlocked!",
+      "leadFileReady": "Your file is ready.",
+      "leadDownload": "Download Now",
+      "leadEmail": "Email",
+      "leadEmailPlaceholder": "name@example.com",
+      "leadUnlocking": "Unlocking...",
+      "heroNoImage": "No Image",
+      "imageAltFallback": "Image",
+      "videoTitle": "Embedded video",
+      "videoBackgroundTitle": "Background video",
+      "noImage": "No image",
+      "noImageCaps": "NO IMAGE",
+      "carouselView": "View",
+      "codeCopy": "Copy",
+      "codeCopied": "Copied!",
+      "reviewsReadMore": "Read more",
+      "reviewsShowLess": "Show less",
+      "postsEmpty": "No posts found.",
+      "postsLoadFailed": "API {status}",
+      "showcaseEmpty": "No products found in this category."
+    }
+  },
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/published": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/d4-page": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ]
+    },
+    "wk": {
+      "/index.php": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ]
+    },
+    "iso-a": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/listed-post": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ]
+    },
+    "iso-b": {
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ]
+    },
+    "commerce": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/rugs": [],
+      "/product/sale-rug": [],
+      "/product/variant-rug": [],
+      "/product/sold-out-rug": [],
+      "/product/rug-care-guide": [],
+      "/products/c0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": [],
+      "/account": [],
+      "/checkout/confirmare": [],
+      "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+      "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": []
+    },
+    "content": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStrings"
+        }
+      ],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/mats": [],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStringsCatalog"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStringsCatalog"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/RenderBlocks.tsx#RenderBlocks",
+          "prop": "strings",
+          "valueRef": "blockStringsCatalog"
+        }
+      ],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/floors": [],
+      "/product/oak-plank": [],
+      "/product/ash-plank": [],
+      "/product/legacy-plank": [],
+      "/products/e0000000-0000-4000-8000-000000000001": [],
+      "/products/e0000000-0000-4000-8000-000000000002": [],
+      "/products/e0000000-0000-4000-8000-000000000003": [],
+      "/search?q=plank": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [],
+      "/category/cip1b-boen": [],
+      "/category/cip1b-itc": [],
+      "/category/cip1b-x": [],
+      "/category/cip1b-u": [],
+      "/product/stejar-mixt": [],
+      "/product/frasin-mixt": [],
+      "/product/nuc-fara-fisa": [],
+      "/product/covor-arc": [],
+      "/product/covor-shell": [],
+      "/product/placa-nod": [],
+      "/product/placa-nod-doi": [],
+      "/product/lemn-x-unu": [],
+      "/product/lemn-x-doi": [],
+      "/product/lemn-x-trei": []
+    }
+  }
+}

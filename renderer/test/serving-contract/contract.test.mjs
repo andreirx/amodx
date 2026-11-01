@@ -1147,7 +1147,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
-            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1d tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1c tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
                 const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
                 // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
                 for (const r of rows) {
@@ -1802,12 +1802,13 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
-        // ── ROWS (loc1-*) — LOCALE-1 proof, slice locale-1d (docs/slices/locale-1.md § 8.5; rulings § 16.2 items 4-5;
-        // docs/slices/locale-1d.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/1d/: before/ (immutable, captured
-        // from 92adbba with the cm1-byte-identity/README.md procedure — every en-US subject AND every RO copy),
-        // expected-diff.json (the reviewed byte-difference list of the en-US subjects) and ro-expected.json (the text
-        // changes of the RO copies against their own 92adbba capture). Each slice has its own set (§ 8.5 rule 5); the 1a/
-        // and 1b/ files stay as those slices' records and no row reads them any more.
+        // ── ROWS (loc1-*) — LOCALE-1 proof, slice locale-1c (docs/slices/locale-1.md § 8.5; rulings § 16.2 items 4-5;
+        // docs/slices/locale-1c.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/1c/: before/ (immutable, captured
+        // from 0c0dbc8 with the cm1-byte-identity/README.md procedure — every en-US subject AND every RO copy, served with
+        // this tree's fixtures.mjs, whose content home holds the block-chrome blocks since 1c), expected-diff.json (the
+        // reviewed byte-difference list of the en-US subjects) and ro-expected.json (the text changes of the RO copies
+        // against their own 0c0dbc8 capture). Each slice has its own set (§ 8.5 rule 5); the 1a/, 1b/ and 1d/ files stay
+        // as those slices' records and no row reads them any more.
         // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`;
         // since 1d the commerce subject's list also holds its order pages, `orderRequests`).
         // Text oracle per subject (packet hard rule 1): equal to before/, zero ledger rows — for every subject (the
@@ -1815,7 +1816,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // These rows run LAST in this block: the non-CM1 subjects are captured here, after every row that depends on
         // those tenants' cache state. The RO subjects are the copies `loc1-ro-*` (fixtures.mjs LOC1).
         let loc1Before, loc1Ro, loc1En;
-        const LOC1_SLICE = "1d";
+        const LOC1_SLICE = "1c";
         const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
         const loc1RoSet = async () => (loc1Ro ??= await captureLoc1(request, server.port));
@@ -1857,7 +1858,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         });
 
         for (const subject of Object.keys(EN_US_REQUESTS)) {
-            test(`(loc1-text-${subject}) en-US subject ${subject}: the visible text of every captured URL equals the 92adbba capture (§ 16.2 item 4)`, async () => {
+            test(`(loc1-text-${subject}) en-US subject ${subject}: the visible text of every captured URL equals the 0c0dbc8 capture (§ 16.2 item 4)`, async () => {
                 const before = await loc1BeforeSet();
                 assert.deepEqual(textMismatches(before, await loc1EnSet(), subject), [], `${subject}: visible text`);
                 const html = before.captures.filter((c) => c.tenant === subject && isHtml(c));
@@ -1882,7 +1883,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(textMismatches(before, reverted, "commerce"), [`${confirm.path}: visible text changed`]);
         });
 
-        test("(loc1-diff-1d) en-US subjects: every byte difference to the 92adbba capture is listed in 1d/expected-diff.json, and every listed one occurs", async () => {
+        test("(loc1-diff-1c) en-US subjects: every byte difference to the 0c0dbc8 capture is listed in 1c/expected-diff.json, and every listed one occurs", async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -1897,30 +1898,37 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
                     for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
-                    console.log(`  (loc1-diff-1d) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category} ${e.element.split("/").pop()}.${e.prop}${Object.hasOwn(e, "beforeValue") ? " (changed)" : ""}`).join(", ")}]`);
+                    console.log(`  (loc1-diff-1c) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category} ${e.element.split("/").pop()}.${e.prop}${Object.hasOwn(e, "beforeValue") ? " (changed)" : ""}`).join(", ")}]`);
                 }
             }
             assert.deepEqual(problems, []);
-            // The checker can fail (the bound mutations of this row): on commerce /category/rugs — a dropped listed entry,
-            // a listed entry that does not occur, one changed HTML byte, a changed value of an unlisted prop; on commerce
-            // /cart — a wrong before value of a changed prop; on an order page — one changed HTML text byte; each reported.
+            // The checker can fail (the bound mutations of this row): on the content home (the block-chrome blocks) — a
+            // dropped listed entry, a listed entry that does not occur, one changed HTML byte, a changed block text in the
+            // listed prop, a block text left in Romanian in the HTML; on the catalog home — the non-catalog value (with the
+            // stock text, CATALOG-MODE-1 § 3.2.6) listed instead of the catalog one; on a commerce product page (no blocks)
+            // — the prop listed where it does not occur; on an order page — one changed HTML text byte; each reported.
             const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
-            const [b, a] = pick("commerce", "/category/rugs");
-            const listed = expectedFor(doc, "commerce", "/category/rugs");
-            assert.ok(listed.length > 0, "precondition: commerce /category/rugs lists a difference");
+            const [b, a] = pick("content", "/");
+            const listed = expectedFor(doc, "content", "/");
+            assert.ok(listed.length > 0, "precondition: content / lists a difference");
             assert.deepEqual(checkExpected(before, b.body, cand, a.body, listed), [], "precondition: the listed differences hold");
             const ghost = { category: 2, element: "[project]/renderer/src/components/QuickContact.tsx#QuickContact", prop: "strings", value: {} };
-            const label = '\\"searchButton\\":\\"Search\\"';
-            assert.ok(a.body.includes(label), "mutation precondition: the SearchBar labels travel in the captured payload");
+            const label = '\\"contactName\\":\\"Name\\"';
+            assert.ok(a.body.includes(label), "mutation precondition: the block texts travel in the captured payload");
             for (const cut of listed.keys()) assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, listed.filter((_, i) => i !== cut)), [], `dropping listed entry ${cut} was not reported`);
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, [...listed, ghost]), [], "a listed entry that does not occur was not reported");
-            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace("CM1 Commerce", "CM1 C0mmerce"), listed), [], "a changed HTML byte was not reported");
-            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(label, '\\"searchButton\\":\\"Find\\"'), listed), [], "a changed prop value was not reported");
-            const [bc, ac] = pick("commerce", "/cart");
-            const cartListed = expectedFor(doc, "commerce", "/cart");
-            assert.ok(cartListed.some((e) => Object.hasOwn(e, "beforeValue")), "precondition: commerce /cart lists a changed prop");
-            const wrongBefore = cartListed.map((e) => (Object.hasOwn(e, "beforeValue") ? { ...e, beforeValue: { ...e.beforeValue, emptyCart: "Empty" } } : e));
-            assert.notDeepEqual(checkExpected(before, bc.body, cand, ac.body, wrongBefore), [], "a wrong before value was not reported");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace("CM1 Content", "CM1 C0ntent"), listed), [], "a changed HTML byte was not reported");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(label, '\\"contactName\\":\\"Nume\\"'), listed), [], "a changed block text in the prop was not reported");
+            assert.ok(a.body.includes(">Name</label>"), "mutation precondition: the contact block's label is server-rendered");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(">Name</label>", ">Nume</label>"), listed), [], "a block text left in Romanian was not reported");
+            const [bk, ak] = pick("catalog", "/");
+            const catalogListed = expectedFor(doc, "catalog", "/");
+            assert.equal(catalogListed[0]?.valueRef, "blockStringsCatalog", "precondition: the catalog home lists the catalog value");
+            assert.ok(!Object.hasOwn(doc.propValues.blockStringsCatalog, "outOfStock") && Object.hasOwn(doc.propValues.blockStrings, "outOfStock"), "the catalog value carries no stock text");
+            assert.notDeepEqual(checkExpected(before, bk.body, cand, ak.body, catalogListed.map((e) => ({ ...e, value: doc.propValues.blockStrings }))), [], "the non-catalog value on a catalog page was not reported");
+            const [bp, ap] = pick("commerce", "/product/sale-rug");
+            assert.deepEqual(expectedFor(doc, "commerce", "/product/sale-rug"), [], "precondition: a product page renders no blocks");
+            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, listed), [], "the prop listed on a page without blocks was not reported");
             const [bo, ao] = pick("commerce", "/checkout/cm1-order-cod?email=buyer%40serving-contract.test");
             const orderListed = expectedFor(doc, "commerce", bo.path);
             assert.ok(ao.body.includes(">Tracking Number: <"), "mutation precondition: the tracking page shows its tracking number label");
@@ -1929,7 +1937,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         // LOCALE-1B: the facet ids are URL contract (§ 6.3): every filter href of every catalog page is the same as before
         // the slice, on the en-US catalog subjects and on the RO copy, and no href carries a heading in place of an id.
-        test("(loc1-facet-hrefs) the facet ids are unchanged in every href of the catalog pages (EN subjects and the RO copy, each against its own 92adbba capture)", async () => {
+        test("(loc1-facet-hrefs) the facet ids are unchanged in every href of the catalog pages (EN subjects and the RO copy, each against its own 0c0dbc8 capture)", async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const ro = await loc1RoSet();
@@ -1945,7 +1953,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 }
             }
             assert.ok(n > 0, "the captures hold filter hrefs");
-            console.log(`  (loc1-facet-hrefs) ${n} filter hrefs equal to the 92adbba capture`);
+            console.log(`  (loc1-facet-hrefs) ${n} filter hrefs equal to the 0c0dbc8 capture`);
         });
 
         // The bound controls of the ruled payload comparison (operator ruling LOCALE1B-ROW-CUT = A, 2026-11-01; it
@@ -2049,11 +2057,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (loc1-flight-controls) 3 positive controls equal; ${Object.keys(mutations).length + 1} mutations, ${Object.keys(r5).length} 1a R5 counterexamples, ${Object.keys(typed).length} typed-reference changes, ${Object.keys(review2).length} second-review controls and the real-payload productId mutation reported; 3 unknown forms and a disconnected cycle fail closed`);
         });
 
-        // RO copies (fixtures.mjs LOC1): per URL exactly the listed text changes against THE SAME COPY in before/ (92adbba),
-        // each the EN pack value of its key → the RO pack value (locale-1d: so every listed item is a change of this slice).
+        // RO copies (fixtures.mjs LOC1): per URL exactly the listed text changes against THE SAME COPY in before/ (0c0dbc8),
+        // each the EN pack value of its key → the RO pack value (since locale-1d: so every listed item is a change of this
+        // slice; locale-1c: the block chrome of the content home, the showcase's stock text and missing-image text).
         const LOC1_RO_ROWS = new Set(["L-RO-1", "L-RO-2", "L-RO-3"]);
         for (const [fixture, rowId] of [["roContent", "loc1-ro-content"], ["roCommerce", "loc1-ro-commerce"], ["roCatalog", "loc1-ro-catalog"]]) {
-            test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes against its own 92adbba capture, each from the EN pack value to the RO pack value`, async () => {
+            test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes against its own 0c0dbc8 capture, each from the EN pack value to the RO pack value`, async () => {
                 const spec = (await loc1Json("ro-expected.json")).fixtures[fixture];
                 assert.equal(spec.source, fixture);
                 assert.equal(spec.against, "before");
@@ -2065,7 +2074,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const rows = {};
                 for (const [urlPath, list] of Object.entries(spec.paths)) {
                     for (const e of list) {
-                        assert.ok(e.part === "commerce" || e.part === "site", `${urlPath} ${e.key}: locale-1d changes only commerce (and site) texts`);
+                        assert.ok(e.part === "commerce" || e.part === "site", `${urlPath} ${e.key}: locale-1c changes only site (and commerce) texts`);
                         assert.ok(LOC1_RO_ROWS.has(e.row), `${urlPath} ${e.key}: row ${e.row}`);
                         assert.equal(e.from, renderItem(EN_TABLE, e), `${urlPath} ${e.key}: from is the EN pack value`);
                         assert.equal(e.to, renderItem(RO_TABLE, e), `${urlPath} ${e.key}: to is the RO pack value`);
@@ -2158,6 +2167,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // payload row labels and row cuts are not compared). The CM1-A1-exact comparison of those 32 URLs continues in rows
         // cm1-identity-* (against the baseline re-captured by locale-1d). The cmrc-counties-1 change itself stays pinned by
         // row cmrc-counties-1 and test/unit/cmrc-counties-1-*.test.ts. Its capture set stays as that slice's record.
+        // Since locale-1c the locale byte row is loc1-diff-1c (the 0c0dbc8 capture, the same comparison as loc1-diff-1d).
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

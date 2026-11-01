@@ -16,7 +16,7 @@ src/
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
 ├── facets.ts           # Catalog storefront filter rules: buildFacetListing (required `labels`, locale-1b), the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
-├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b)
+├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)
 ```
@@ -118,17 +118,18 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
 > pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
 
-## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d` (PROTOTYPE)
+## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c` (PROTOTYPE)
 
 Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
-`docs/slices/locale-1d.md`. Maturity **PROTOTYPE** until every visitor surface reads it: after `locale-1d` the block
-chrome (`locale-1c`) is the last surface with English literals.
+`docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`. Maturity **PROTOTYPE**: since `locale-1c` every visitor text
+surface reads the table (the block chrome was the last); promotion is the operator's decision at closeout (open: `1e`
+`<html lang>`, finding F-LOCALE-REVIEWS-DATE, money formatting out of scope).
 
-- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 178 keys:
+- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 179 keys:
   the 77 existing ones, the 21 shared product-surface keys of `1b`, the 80 commerce-only keys of `1d` — cart, checkout,
-  account, order confirmation and tracking, add-to-cart, commerce bar, navbar account links), `catalogStrings`
-  (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel) and `siteStrings` (`SiteStringsSchema`, 51
-  keys in `1a` + `errorTryAgain` in `1d`). Every key is optional (absent = no override). The nine cookie/legal site keys
+  account, order confirmation and tracking, add-to-cart, commerce bar, navbar account links — and `showcaseEmpty` of
+  `1c`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel) and `siteStrings`
+  (`SiteStringsSchema`, 51 keys in `1a` + `errorTryAgain` in `1d` + the 26 block-chrome keys of `1c`). Every key is optional (absent = no override). The nine cookie/legal site keys
   are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
   in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).
 - **Count keys** (`1b`, § 16.2 item 6): `reviewsSummary`, `productCount`, `searchResultCount`, `facetsCount`,
@@ -146,6 +147,13 @@ chrome (`locale-1c`) is the last surface with English literals.
   language pack < tenant override (an own string property; for the nine cookie/legal keys a non-empty string — the old
   `||` rule). Non-string and unknown stored values are ignored. `defaults` = without the override (admin placeholders,
   the fallback reader sites of § 5.2). `fillTemplate` fills `{name}` placeholders; an unknown one stays visible.
+- **Block texts** (`1c`, § 5.3; ruling LOCALE1-BLOCK-TEXTS = A). `blockStrings(resolved, { catalogMode })` → the DTO
+  `BlockStrings` that `RenderBlocks` gives every block renderer: the 28 site keys of `BLOCK_SITE_KEYS` (26 block-chrome
+  keys + `formSubmissionFailed`, `errorTryAgain`), `showcaseEmpty`, `outOfStock` (absent on a catalog site: no stock
+  text in a catalog page's payload, CATALOG-MODE-1 § 3.2.6) and `dateLocale` (the normalised locale, present only for a
+  tenant that is not en-US, § 16.2 item 4). Every text as resolved (pattern D), except `BLOCK_FALLBACK_KEYS`
+  (`videoTitle`, `videoBackgroundTitle`): pattern F — a stored `""` gives the language default, so an iframe name is
+  never empty (ruling LOCALE1C-IFRAME-NAMES = A). The block renderers import only its TYPE (`packages/plugins/ARCHITECTURE.md`).
 - **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
   (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
   slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.

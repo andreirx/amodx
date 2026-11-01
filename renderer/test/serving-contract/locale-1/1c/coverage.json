@@ -1,0 +1,393 @@
+{
+  "slice": "locale-1c",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule) and packet hard rule 3: every key this slice allocates — the 26 block-chrome site keys of § 6.1, `site.formSubmissionFailed` and `site.errorTryAgain` at their new readers (the lead-magnet and contact blocks), `commerce.showcaseEmpty` (new, § 6.2) and `commerce.outOfStock` at its new reader (the category-showcase block) — maps to at least one check at its reader: a named state of the jsdom block test (renderer/test/unit/locale-1c-blocks-client.test.ts; per state EN markup equal to the 0c0dbc8 capture and every RO change a declared key; the title substring names the state; the § 5.2 preservation cases at one reader per block, with the two iframe names as pattern F) and, where the text is server-rendered on a fixture, a captured URL of a loc1-ro-* row that ro-expected.json lists. No 1c key is a count key; no check is props-only.",
+  "allocatedKeys": {
+    "site": [
+      "contactName",
+      "contactEmail",
+      "contactMessage",
+      "contactSending",
+      "contactSent",
+      "contactSentDetail",
+      "contactSendFailed",
+      "errorTryAgain",
+      "leadEmail",
+      "leadEmailPlaceholder",
+      "leadUnlocking",
+      "leadUnlocked",
+      "leadFileReady",
+      "leadDownload",
+      "formSubmissionFailed",
+      "heroNoImage",
+      "imageAltFallback",
+      "videoTitle",
+      "videoBackgroundTitle",
+      "noImage",
+      "noImageCaps",
+      "carouselView",
+      "codeCopy",
+      "codeCopied",
+      "reviewsReadMore",
+      "reviewsShowLess",
+      "postsLoadFailed",
+      "postsEmpty"
+    ],
+    "catalog": [],
+    "commerce": [
+      "outOfStock",
+      "showcaseEmpty"
+    ]
+  },
+  "checks": {
+    "site.contactName": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-form"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "site.contactEmail": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-form"
+      }
+    ],
+    "site.contactMessage": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-form"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      }
+    ],
+    "site.contactSending": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-form"
+      }
+    ],
+    "site.contactSent": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-sent"
+      }
+    ],
+    "site.contactSentDetail": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-sent"
+      }
+    ],
+    "site.contactSendFailed": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " contact and lead errors: contactSendFailed"
+      }
+    ],
+    "site.errorTryAgain": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] contact-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " contact and lead errors: contactSendFailed"
+      }
+    ],
+    "site.leadEmail": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-form"
+      }
+    ],
+    "site.leadEmailPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-form"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      }
+    ],
+    "site.leadUnlocking": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-form"
+      }
+    ],
+    "site.leadUnlocked": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-unlocked"
+      }
+    ],
+    "site.leadFileReady": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-unlocked"
+      }
+    ],
+    "site.leadDownload": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-unlocked"
+      }
+    ],
+    "site.formSubmissionFailed": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] lead-errors"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " contact and lead errors: contactSendFailed"
+      }
+    ],
+    "site.heroNoImage": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "site.imageAltFallback": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "site.videoTitle": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " iframe names (pattern F): videoTitle and videoBackgroundTitle"
+      }
+    ],
+    "site.videoBackgroundTitle": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " iframe names (pattern F): videoTitle and videoBackgroundTitle"
+      }
+    ],
+    "site.noImage": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] showcase"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "site.noImageCaps": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      }
+    ],
+    "site.carouselView": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] server-rendered-blocks"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      }
+    ],
+    "site.codeCopy": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] code-copy"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-content",
+          "fixture": "roContent",
+          "path": "/"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "site.codeCopied": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] code-copy"
+      }
+    ],
+    "site.reviewsReadMore": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] reviews-toggle"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "site.reviewsShowLess": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] reviews-toggle"
+      }
+    ],
+    "site.postsLoadFailed": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] posts-load-failed"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " post grid: postsLoadFailed \"\" still shows"
+      }
+    ],
+    "site.postsEmpty": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] posts-thrown"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] posts-empty"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "commerce.outOfStock": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] showcase"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/stale-showcase"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ],
+    "commerce.showcaseEmpty": [
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": "[1c-client] showcase"
+      },
+      {
+        "test": "renderer/test/unit/locale-1c-blocks-client.test.ts",
+        "case": " direct texts: contactName, codeCopy"
+      }
+    ]
+  }
+}

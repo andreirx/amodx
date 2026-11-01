@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import type { BlockStrings } from "@amodx/shared";
 
 interface Product {
     id: string;
@@ -19,7 +20,7 @@ interface Product {
  * whatever the product data holds and wherever it came from (server prefetch, stale authored attrs, or the browser
  * fallback fetch below) — not emitted, not hidden by CSS. It overrides the block's own `showPrice`.
  */
-function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl }: { product: Product; showPrice: boolean; catalogMode: boolean; productPrefix: string; getUrl: (s: string) => string }) {
+function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, strings }: { product: Product; showPrice: boolean; catalogMode: boolean; productPrefix: string; getUrl: (s: string) => string; strings: BlockStrings }) {
     const outOfStock = !catalogMode && product.availability === "out_of_stock";
     const hasSale = product.salePrice && product.salePrice !== product.price;
     const hasVolume = product.volumePricing && product.volumePricing.length > 0;
@@ -46,11 +47,11 @@ function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl }:
                         loading="lazy"
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">No image</div>
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">{strings.noImage}</div>
                 )}
                 {outOfStock && (
                     <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                        <span className="bg-background border border-border px-4 py-2 text-sm font-semibold uppercase tracking-wide">Out of Stock</span>
+                        <span className="bg-background border border-border px-4 py-2 text-sm font-semibold uppercase tracking-wide">{strings.outOfStock}</span>
                     </div>
                 )}
             </div>
@@ -65,7 +66,12 @@ function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl }:
     );
 }
 
-export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenantId?: string }) {
+/**
+ * LOCALE-1C (§ 6.2): the fixed texts come from `strings` (the tenant's locale table; RenderBlocks always
+ * gives it) — `noImage`, the commerce texts `outOfStock` (absent on a catalog site, where the overlay never shows) and
+ * `showcaseEmpty`.
+ */
+export function CategoryShowcaseRender({ attrs, tenantId, strings }: { attrs: any; tenantId?: string; strings: BlockStrings }) {
     const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, prefetchedProducts, _getUrl, _productPrefix, _categoryPrefix, _catalogMode } = attrs;
     // Injected by the renderer (`SitePage.tsx`) only for a catalog tenant, on every block of this type; absent otherwise.
     const catalogMode = _catalogMode === true;
@@ -138,11 +144,12 @@ export function CategoryShowcaseRender({ attrs, tenantId }: { attrs: any; tenant
                             catalogMode={catalogMode}
                             productPrefix={productPrefix}
                             getUrl={getUrl}
+                            strings={strings}
                         />
                     ))}
                 </div>
             ) : (
-                <p className="text-center text-muted-foreground py-8">No products found in this category.</p>
+                <p className="text-center text-muted-foreground py-8">{strings.showcaseEmpty}</p>
             )}
 
             {ctaText && categorySlug && (

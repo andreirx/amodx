@@ -6,6 +6,7 @@ import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
 import { InlineRichTextRenderer } from "../common/InlineRichTextRenderer";
 import { resolveOverlayStyle, resolveTextClass } from "../common/resolveCoverColorTokens";
+import type { BlockStrings } from "@amodx/shared";
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -42,7 +43,8 @@ function SubheadlineText({ rich, plain, className }: { rich?: any[]; plain?: str
     return null;
 }
 
-export function HeroRender({ attrs }: { attrs: any }) {
+/** LOCALE-1C: the fixed text comes from `strings` (the tenant's locale table; RenderBlocks always gives it). */
+export function HeroRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const {
         headline = "Welcome to AMODX",
         subheadline = "The operating system for modern agencies.",
@@ -87,7 +89,7 @@ export function HeroRender({ attrs }: { attrs: any }) {
                     {imageSrc ? (
                         <img src={imageSrc} alt={headline} className="w-full h-full object-cover" />
                     ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground/30">No Image</div>
+                        <div className="flex items-center justify-center h-full text-muted-foreground/30">{strings.heroNoImage}</div>
                     )}
                 </div>
                 {/* Text — shows second on mobile, left on desktop */}

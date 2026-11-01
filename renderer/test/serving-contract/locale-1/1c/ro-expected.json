@@ -1,0 +1,206 @@
+{
+  "slice": "locale-1c",
+  "rule": "docs/slices/locale-1.md § 8.5 RO rows and § 16.2 item 4 (docs/slices/locale-1c.md): per RO copy (fixtures.mjs LOC1) and captured URL, the exact visible-text changes against THE SAME COPY in the immutable start-commit capture before/ (0c0dbc8, served with this tree's fixtures.mjs) — so each item is a change made by locale-1c only. Each item names its key (`part`, `key`), its ledger row (L-RO-1 a new key of § 6.1 / § 6.2; L-RO-2 an existing key at a new place, a literal before: `commerce.outOfStock` in the category-showcase block), the item kind of the § 8.5 extraction and the two texts: `from` = the EN pack value (the literal the block rendered before), `to` = the RO pack value. The reviews-carousel date of the content home does not change (ro-RO before, the tenant's ro-RO now). Every other URL: [].",
+  "fixtures": {
+    "roContent": {
+      "source": "roContent",
+      "against": "before",
+      "paths": {
+        "/": [
+          {
+            "part": "site",
+            "key": "contactName",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Name",
+            "to": "Nume"
+          },
+          {
+            "part": "site",
+            "key": "contactMessage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Message",
+            "to": "Mesaj"
+          },
+          {
+            "part": "site",
+            "key": "leadEmailPlaceholder",
+            "kind": "@placeholder",
+            "row": "L-RO-1",
+            "from": "name@example.com",
+            "to": "nume@exemplu.ro"
+          },
+          {
+            "part": "site",
+            "key": "imageAltFallback",
+            "kind": "@alt",
+            "row": "L-RO-1",
+            "from": "Image",
+            "to": "Imagine"
+          },
+          {
+            "part": "site",
+            "key": "videoTitle",
+            "kind": "@title",
+            "row": "L-RO-1",
+            "from": "Embedded video",
+            "to": "Video încorporat"
+          },
+          {
+            "part": "site",
+            "key": "videoBackgroundTitle",
+            "kind": "@title",
+            "row": "L-RO-1",
+            "from": "Background video",
+            "to": "Video de fundal"
+          },
+          {
+            "part": "site",
+            "key": "heroNoImage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "No Image",
+            "to": "Fără imagine"
+          },
+          {
+            "part": "site",
+            "key": "noImage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "No image",
+            "to": "Fără imagine"
+          },
+          {
+            "part": "site",
+            "key": "noImageCaps",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "NO IMAGE",
+            "to": "FĂRĂ IMAGINE"
+          },
+          {
+            "part": "site",
+            "key": "carouselView",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "View",
+            "to": "Vezi"
+          },
+          {
+            "part": "site",
+            "key": "codeCopy",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Copy",
+            "to": "Copiază"
+          },
+          {
+            "part": "site",
+            "key": "codeCopy",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "Copy",
+            "to": "Copiază"
+          }
+        ],
+        "/about": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/mats": [],
+        "/product/plain-rug": [],
+        "/products/d0000000-0000-4000-8000-000000000001": [],
+        "/search?q=rug": [],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    },
+    "roCommerce": {
+      "source": "roCommerce",
+      "against": "before",
+      "paths": {
+        "/": [
+          {
+            "part": "commerce",
+            "key": "outOfStock",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Out of Stock",
+            "to": "Stoc epuizat"
+          }
+        ],
+        "/about": [],
+        "/stale-showcase": [
+          {
+            "part": "commerce",
+            "key": "outOfStock",
+            "kind": "text",
+            "row": "L-RO-2",
+            "from": "Out of Stock",
+            "to": "Stoc epuizat"
+          }
+        ],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/rugs": [],
+        "/product/sale-rug": [],
+        "/product/variant-rug": [],
+        "/product/sold-out-rug": [],
+        "/product/rug-care-guide": [],
+        "/products/c0000000-0000-4000-8000-000000000001": [],
+        "/search?q=rug": [],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": [],
+        "/account": [],
+        "/checkout/confirmare": [],
+        "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+        "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": []
+      }
+    },
+    "roCatalog": {
+      "source": "roCatalog",
+      "against": "before",
+      "paths": {
+        "/": [
+          {
+            "part": "site",
+            "key": "noImage",
+            "kind": "text",
+            "row": "L-RO-1",
+            "from": "No image",
+            "to": "Fără imagine"
+          }
+        ],
+        "/about": [],
+        "/stale-showcase": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/floors": [],
+        "/product/oak-plank": [],
+        "/product/ash-plank": [],
+        "/product/legacy-plank": [],
+        "/products/e0000000-0000-4000-8000-000000000001": [],
+        "/products/e0000000-0000-4000-8000-000000000002": [],
+        "/products/e0000000-0000-4000-8000-000000000003": [],
+        "/search?q=plank": [],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    }
+  }
+}

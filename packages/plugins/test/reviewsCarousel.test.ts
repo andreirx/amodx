@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RENDER_LOADERS } from "../src/render";
+// LOCALE-1C (ruling LOCALE1C-FALLBACK = A): every block renderer takes a required `strings` prop, which RenderBlocks
+// always passes; a test that renders a block alone passes what an en-US tenant without overrides gets (the English pack).
+import { blockStrings, resolveLocaleStrings } from "@amodx/shared";
+const STRINGS = blockStrings(resolveLocaleStrings({}), { catalogMode: false });
 import { ReviewsCarouselEditor } from "../src/reviews-carousel/ReviewsCarouselEditor";
 
 /**
@@ -27,7 +31,7 @@ import { ReviewsCarouselEditor } from "../src/reviews-carousel/ReviewsCarouselEd
 const ReviewsCarousel = (await RENDER_LOADERS["reviewsCarousel"]()).default;
 
 function markup(attrs: any): string {
-    return renderToStaticMarkup(React.createElement(ReviewsCarousel, { attrs }));
+    return renderToStaticMarkup(React.createElement(ReviewsCarousel, { attrs, strings: STRINGS }));
 }
 
 describe("reviewsCarousel render — review photos (rev-4)", () => {

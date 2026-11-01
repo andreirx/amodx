@@ -72,20 +72,30 @@ export function setCountText(draft: LabelsDraft, part: LabelsPart, key: string, 
 /**
  * LOCALE-1B (§ 7.1, § 2.1 note): the commerce-part keys that render on the product, category, shop and search pages —
  * shared by commerce AND catalog sites, so the page shows them in their own section ("Product pages & search") to both.
- * The 21 keys of `locale-1b` and the seven existing ones a catalog site renders (`description` and the six search texts).
+ * The 21 keys of `locale-1b` and the seven existing ones a catalog site renders (`description` and the six search texts);
+ * LOCALE-1C: + `showcaseEmpty`, the category-showcase block's empty text (a product listing on shops and catalogs).
  */
 const PRODUCT_PAGE_KEYS = [
     "description", "volumePricing", "preOrder", "buyNow", "ingredients", "nutritionalValues", "reviewsHeading", "reviewsSummary",
     "shopTitle", "categoryEmpty", "productCount", "shopEmpty", "shopEmptyInStock", "shopAllProducts", "metaCategoryDescription", "metaShopTitle",
+    "showcaseEmpty",
     "searchPlaceholder", "searchButton", "searchNoResults", "searchSearching", "viewAllResults", "resultsFor", "searchProducts",
     "searchBreadcrumb", "searchResultCount", "searchEnterTerm", "metaSearchTitle", "metaSearchQueryTitle",
 ];
 
 /** A section of the page: one heading, one Reset. Each section edits exactly one stored home. */
-export type LabelsSection = "site" | "labels" | "catalog" | "product" | "commerce";
+export type LabelsSection = "site" | "labels" | "catalog" | "product" | "commerce" | "showcase";
 export const SECTION_HOME = {
-    site: "site", labels: "labels", catalog: "catalog", product: "commerce", commerce: "commerce",
+    site: "site", labels: "labels", catalog: "catalog", product: "commerce", commerce: "commerce", showcase: "commerce",
 } as const satisfies Record<LabelsSection, LabelsPart>;
+
+/**
+ * LOCALE-1C (operator ruling R4, 2026-11-01): the two texts of the category-showcase block a content-only tenant can
+ * render (`showcaseEmpty`, `outOfStock`; stored in `commerceStrings`). A commerce or catalog tenant edits them in
+ * "Product pages & search" / "Commerce"; a content-only tenant gets this section instead — so each key has ONE input
+ * on the page for every tenant kind (`visibleSections`).
+ */
+const SHOWCASE_KEYS = ["showcaseEmpty", "outOfStock"];
 
 /** The keys each Reset button covers: every key of its section that has an input. */
 export const SECTION_KEYS = {
@@ -94,7 +104,21 @@ export const SECTION_KEYS = {
     catalog: Object.keys(CatalogStringsSchema.shape),
     product: PRODUCT_PAGE_KEYS,
     commerce: Object.keys(CommerceStringsSchema.shape).filter((k) => !PRODUCT_PAGE_KEYS.includes(k)),
+    showcase: SHOWCASE_KEYS,
 } satisfies Record<LabelsSection, string[]>;
+
+/** The sections the page shows a tenant, in page order: site and cookie/legal for everyone; Catalog for a catalog site;
+ *  Product pages & search for a shop or a catalog; Commerce for a shop; the showcase section for a content-only site. */
+export function visibleSections(settings: Record<string, unknown> | null): LabelsSection[] {
+    const isCommerce = settings?.commerceEnabled === true;
+    const isCatalog = isCatalogMode(settings);
+    const out: LabelsSection[] = ["site", "labels"];
+    if (isCatalog) out.push("catalog");
+    if (isCommerce || isCatalog) out.push("product");
+    if (isCommerce) out.push("commerce");
+    if (!isCommerce && !isCatalog) out.push("showcase");
+    return out;
+}
 
 /** How many overrides a Reset of `section` removes. */
 export function overrideCount(draft: LabelsDraft, section: LabelsSection): number {
@@ -309,8 +333,7 @@ export default function Labels() {
 
     const resolved = settings ? resolveLocaleStrings(settings) : null;
     const defaults = resolved ? resolved.defaults : null;
-    const isCommerce = settings?.commerceEnabled === true;
-    const isCatalog = isCatalogMode(settings);
+    const visible = visibleSections(settings);
 
     return (
         <LabelsCtx.Provider value={{ draft, defaults, language: resolved?.language ?? "en", update, updateCount }}>
@@ -330,7 +353,7 @@ export default function Labels() {
             {error && <p className="text-sm text-destructive">{error}</p>}
 
             {/* ── Site (every tenant) ── */}
-            <SectionHeader section="site" onReset={reset} title="Site" description="Header, footer, page navigation, comments, sharing and forms — on every page of the site. A cleared input uses the language default." />
+            <SectionHeader section="site" onReset={reset} title="Site" description="Header, footer, page navigation, comments, sharing, forms and the fixed texts of content blocks — on every page of the site. A cleared input uses the language default." />
 
             <Card>
                 <CardHeader className="pb-3">
@@ -426,6 +449,47 @@ export default function Labels() {
                 </CardContent>
             </Card>
 
+            {/* LOCALE-1C (ruling LOCALE1-BLOCK-TEXTS = A): the fixed texts of the content blocks — the same in every block
+                instance. A text the author writes in a block (headline, button text, success message, image alt, video
+                caption) stays in the block and wins over these. The contact and lead blocks also use "Error: try again"
+                and "Form: submission failed" above. */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Content Blocks</CardTitle>
+                    <CardDescription>The fixed texts of the blocks in your pages. A text you write in a block itself (for example its success message or image description) is shown instead.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="site" label="Contact form: Name" field="contactName" />
+                        <F section="site" label="Contact form: Email" field="contactEmail" />
+                        <F section="site" label="Contact form: Message" field="contactMessage" />
+                        <F section="site" label="Contact form: sending" field="contactSending" />
+                        <F section="site" label="Contact form: sent (heading)" field="contactSent" />
+                        <F section="site" label="Contact form: sent (text, when the block has none)" field="contactSentDetail" />
+                        <F section="site" label="Contact form: sending failed" field="contactSendFailed" />
+                        <F section="site" label="Lead magnet: Email (screen readers)" field="leadEmail" />
+                        <F section="site" label="Lead magnet: email placeholder" field="leadEmailPlaceholder" />
+                        <F section="site" label="Lead magnet: unlocking" field="leadUnlocking" />
+                        <F section="site" label="Lead magnet: unlocked (heading)" field="leadUnlocked" />
+                        <F section="site" label="Lead magnet: file ready" field="leadFileReady" />
+                        <F section="site" label="Lead magnet: download button" field="leadDownload" />
+                        <F section="site" label="Hero: no image" field="heroNoImage" />
+                        <F section="site" label="Image: description, when the block has none" field="imageAltFallback" />
+                        <F section="site" label="Video: title, when the block has no caption" field="videoTitle" />
+                        <F section="site" label="Video hero: title, when the block has no headline" field="videoBackgroundTitle" />
+                        <F section="site" label="Carousel and product showcase: no image" field="noImage" />
+                        <F section="site" label="Carousel (coverflow): NO IMAGE" field="noImageCaps" />
+                        <F section="site" label="Carousel (coverflow): View" field="carouselView" />
+                        <F section="site" label="Code block: Copy" field="codeCopy" />
+                        <F section="site" label="Code block: Copied" field="codeCopied" />
+                        <F section="site" label="Reviews: Read more" field="reviewsReadMore" />
+                        <F section="site" label="Reviews: Show less" field="reviewsShowLess" />
+                        <F section="site" label="Post grid: no posts" field="postsEmpty" />
+                        <F section="site" label="Post grid: loading failed ({status})" field="postsLoadFailed" />
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* ── Cookie banner & legal links (every tenant; stored in gdpr / legalLinks, § 4.1) ── */}
             <SectionHeader section="labels" onReset={reset} title="Cookie banner & legal links" description="The cookie banner and the legal link texts in the footer. The banner on/off, its position and the link addresses stay in Settings." />
 
@@ -446,7 +510,7 @@ export default function Labels() {
             </Card>
 
             {/* ── Catalog (catalog tenants; LOCALE-1B, § 7.1) ── */}
-            {isCatalog && <>
+            {visible.includes("catalog") && <>
             <SectionHeader section="catalog" onReset={reset} title="Catalog" description="The interest list and the product filters of the catalog. A saved text shows as written, so do not save an empty text: clear the input to use the language default." />
 
             <Card>
@@ -512,7 +576,7 @@ export default function Labels() {
             </>}
 
             {/* ── Product pages & search (commerce and catalog tenants; LOCALE-1B, § 7.1) ── */}
-            {(isCommerce || isCatalog) && <>
+            {visible.includes("product") && <>
             <SectionHeader section="product" onReset={reset} title="Product pages & search" description="Product, category, shop and search pages — on shops and on catalogs. Texts saved here are stored with the commerce texts. A saved text shows as written; clear an input to use the language default." />
 
             <Card>
@@ -544,6 +608,7 @@ export default function Labels() {
                         <F section="product" label="Shop: no products" field="shopEmpty" />
                         <F section="product" label="Shop: none in stock" field="shopEmptyInStock" />
                         <F section="product" label="Category: no products" field="categoryEmpty" />
+                        <F section="product" label="Product showcase block: no products" field="showcaseEmpty" />
                         <F section="product" label="Shop page title ({site})" field="metaShopTitle" />
                         <F section="product" label="Category description for search engines ({category})" field="metaCategoryDescription" />
                         <CountF section="product" label="Category product count ({n})" field="productCount" example="{n} products" />
@@ -575,7 +640,21 @@ export default function Labels() {
             </>}
 
             {/* ── Commerce (commerce tenants; the existing commerce cards) ── */}
-            {isCommerce && <>
+            {/* ── Product showcase block (content-only tenants; LOCALE-1C ruling R4) ── */}
+            {visible.includes("showcase") && <>
+            <SectionHeader section="showcase" onReset={reset} title="Product showcase block" description="The texts of the product showcase block in your pages. Texts saved here are stored with the commerce texts. A cleared input uses the language default." />
+
+            <Card>
+                <CardContent className="pt-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="showcase" label="No products in the category" field="showcaseEmpty" />
+                        <F section="showcase" label="Out of Stock (on a product image)" field="outOfStock" />
+                    </div>
+                </CardContent>
+            </Card>
+            </>}
+
+            {visible.includes("commerce") && <>
             <SectionHeader section="commerce" onReset={reset} title="Commerce" description="Cart, checkout, account, order confirmation and tracking, and the buying controls of the shop. A cleared input uses the language default." />
 
             <Card>

@@ -2,8 +2,13 @@
 import React, { useState } from "react";
 import { ButtonEffectWrap } from "../common/ButtonEffectWrap";
 import { resolveButtonEffect } from "../common/resolveButtonEffect";
+import type { BlockStrings } from "@amodx/shared";
 
-export function ContactRender({ attrs }: { attrs: any }) {
+/**
+ * LOCALE-1C: the form's fixed texts come from `strings` (the tenant's locale table; RenderBlocks always gives it). The
+ * block's own `successMessage` wins over `contactSentDetail`.
+ */
+export function ContactRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const [status, setStatus] = useState("idle");
     const [errorMessage, setErrorMessage] = useState("");
     const buttonEffect = resolveButtonEffect(attrs);
@@ -42,6 +47,9 @@ export function ContactRender({ attrs }: { attrs: any }) {
         // Get reCAPTCHA token (null if not configured)
         const recaptchaToken = await getRecaptchaToken();
 
+        // LOCALE-1C (§ 5.2 pattern D): the shown text is chosen by what the SERVER answered, never by testing a table
+        // text — an error answer without a text shows `contactSendFailed` exactly as resolved (a stored "" stays empty).
+        let failedWithoutText = false;
         try {
             const response = await fetch('/api/contact', {
                 method: 'POST',
@@ -54,12 +62,13 @@ export function ContactRender({ attrs }: { attrs: any }) {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || "Failed to send message");
+                failedWithoutText = !err.error;
+                throw new Error(err.error || strings.contactSendFailed);
             }
             setStatus("success");
         } catch (err: any) {
             console.error(err);
-            setErrorMessage(err.message || "Something went wrong. Please try again.");
+            setErrorMessage(failedWithoutText ? strings.contactSendFailed : err.message || strings.errorTryAgain);
             setStatus("error");
         }
     };
@@ -67,8 +76,8 @@ export function ContactRender({ attrs }: { attrs: any }) {
     if (status === "success") {
         return (
             <div className="p-6 bg-green-50 text-green-800 rounded-xl border border-green-200 text-center animate-in fade-in">
-                <h3 className="font-semibold text-lg mb-1">Message Sent!</h3>
-                <p className="text-sm opacity-80">{attrs.successMessage || "We'll get back to you shortly."}</p>
+                <h3 className="font-semibold text-lg mb-1">{strings.contactSent}</h3>
+                <p className="text-sm opacity-80">{attrs.successMessage || strings.contactSentDetail}</p>
             </div>
         );
     }
@@ -82,7 +91,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
 
             <div className="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium mb-1.5 text-foreground">Name</label>
+                    <label className="block text-sm font-medium mb-1.5 text-foreground">{strings.contactName}</label>
                     <input
                         name="name"
                         type="text"
@@ -92,7 +101,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1.5 text-foreground">Email</label>
+                    <label className="block text-sm font-medium mb-1.5 text-foreground">{strings.contactEmail}</label>
                     <input
                         name="email"
                         type="email"
@@ -102,7 +111,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1.5 text-foreground">Message</label>
+                    <label className="block text-sm font-medium mb-1.5 text-foreground">{strings.contactMessage}</label>
                     <textarea
                         name="message"
                         required
@@ -122,7 +131,7 @@ export function ContactRender({ attrs }: { attrs: any }) {
                     disabled={status === "loading"}
                     className="w-full py-3 rounded-lg font-semibold text-primary-foreground bg-primary hover:opacity-90 transition-opacity disabled:opacity-50 shadow-sm"
                 >
-                    {status === "loading" ? "Sending..." : attrs.buttonText}
+                    {status === "loading" ? strings.contactSending : attrs.buttonText}
                 </button>
             </ButtonEffectWrap>
         </form>

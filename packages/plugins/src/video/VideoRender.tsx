@@ -1,5 +1,6 @@
 import React from "react";
 import { buildEmbedUrl, parseVideoSource } from "../common/videoSource";
+import type { BlockStrings } from "@amodx/shared";
 
 /**
  * Public-site render for the `video` block — slice `vid-2`.
@@ -44,7 +45,9 @@ import { buildEmbedUrl, parseVideoSource } from "../common/videoSource";
  *      goes through a JSX attribute, which React escapes — this file uses no
  *      `dangerouslySetInnerHTML`.
  */
-export function VideoRender({ attrs }: { attrs: any }) {
+export function VideoRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
+    // LOCALE-1C: the iframe title fallback comes from `strings` (the tenant's locale table; RenderBlocks always
+    // gives it); the block's own caption wins.
     const { url, width, caption, autoplay } = attrs;
 
     const source = parseVideoSource(typeof url === "string" ? url : "");
@@ -105,8 +108,10 @@ export function VideoRender({ attrs }: { attrs: any }) {
                         }
                         // a11y: an iframe with no accessible name is announced as "frame" and
                         // nothing else. The caption is the author's own description when
-                        // present; the fallback keeps the name non-empty in every case.
-                        title={caption || "Embedded video"}
+                        // present; the fallback keeps the name non-empty in every case: `videoTitle` is
+                        // pattern F (LOCALE-1C, ruling LOCALE1C-IFRAME-NAMES = A) — `blockStrings` turns a stored
+                        // "" into the language default, and every registered pack's value is non-empty (tested).
+                        title={caption || strings.videoTitle}
                         // Below-the-fold by nature (this is an inline content block, unlike
                         // `video-hero`), so defer the provider's player bundle. Deliberately
                         // NOT set on the native <video> above — there the browser's own

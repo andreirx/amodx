@@ -11,8 +11,8 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts.
-export { normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES } from "./locale-strings.js";
-export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory } from "./locale-strings.js";
+export { normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings } from "./locale-strings.js";
+export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
 
@@ -798,6 +798,9 @@ export const CommerceStringsSchema = z.object({
     tracking: z.string().optional(),            // "Tracking"
     trackingNumber: z.string().optional(),      // "Tracking Number:"
     items: z.string().optional(),               // "Items"
+    // LOCALE-1C: the category-showcase block (packages/plugins/src/category-showcase/CategoryShowcaseRender.tsx), a
+    // product surface on shops, catalogs and content sites (with `outOfStock`, an existing key above, at a new reader)
+    showcaseEmpty: z.string().optional(),       // "No products found in this category."
 });
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
@@ -922,6 +925,35 @@ export const SiteStringsSchema = z.object({
     formSubmitting: z.string().optional(),              // "Submitting..."
     // Generic error (components/CheckoutPageView.tsx since locale-1d; the contact and lead-magnet blocks in locale-1c)
     errorTryAgain: z.string().optional(),               // "Something went wrong. Please try again."
+    // LOCALE-1C: block chrome (packages/plugins/src/*/…Render.tsx; ruling LOCALE1-BLOCK-TEXTS = A). Fixed UI texts that are
+    // the same in every block instance; a block's own author field, where one exists, wins over its key. The contact and
+    // lead-magnet blocks also read `formSubmissionFailed` and `errorTryAgain` (above).
+    contactSendFailed: z.string().optional(),           // "Failed to send message"
+    contactSent: z.string().optional(),                 // "Message Sent!"
+    contactSentDetail: z.string().optional(),           // "We'll get back to you shortly." (block field successMessage wins)
+    contactName: z.string().optional(),                 // "Name"
+    contactEmail: z.string().optional(),                // "Email"
+    contactMessage: z.string().optional(),              // "Message"
+    contactSending: z.string().optional(),              // "Sending..."
+    leadUnlocked: z.string().optional(),                // "Unlocked!"
+    leadFileReady: z.string().optional(),               // "Your file is ready."
+    leadDownload: z.string().optional(),                // "Download Now"
+    leadEmail: z.string().optional(),                   // "Email" (label for screen readers)
+    leadEmailPlaceholder: z.string().optional(),        // "name@example.com"
+    leadUnlocking: z.string().optional(),               // "Unlocking..."
+    heroNoImage: z.string().optional(),                 // "No Image"
+    imageAltFallback: z.string().optional(),            // "Image" (block field alt wins)
+    videoTitle: z.string().optional(),                  // "Embedded video" (iframe title; block field caption wins)
+    videoBackgroundTitle: z.string().optional(),        // "Background video" (iframe title; block field headline wins)
+    noImage: z.string().optional(),                     // "No image" (carousel card, category showcase)
+    noImageCaps: z.string().optional(),                 // "NO IMAGE" (coverflow carousel)
+    carouselView: z.string().optional(),                // "View"
+    codeCopy: z.string().optional(),                    // "Copy"
+    codeCopied: z.string().optional(),                  // "Copied!"
+    reviewsReadMore: z.string().optional(),             // "Read more"
+    reviewsShowLess: z.string().optional(),             // "Show less"
+    postsEmpty: z.string().optional(),                  // "No posts found."
+    postsLoadFailed: z.string().optional(),             // "API {status}" (the browser fetch answered an HTTP error)
 });
 export type SiteStrings = z.infer<typeof SiteStringsSchema>;
 

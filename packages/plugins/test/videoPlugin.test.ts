@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RENDER_LOADERS } from "../src/render";
+// LOCALE-1C (ruling LOCALE1C-FALLBACK = A): every block renderer takes a required `strings` prop, which RenderBlocks
+// always passes; a test that renders a block alone passes what an en-US tenant without overrides gets (the English pack).
+import { blockStrings, resolveLocaleStrings } from "@amodx/shared";
+const STRINGS = blockStrings(resolveLocaleStrings({}), { catalogMode: false });
 import { VideoEditor } from "../src/video/VideoEditor";
 import type { VideoSourceKind } from "../src/common/videoSource";
 
@@ -56,6 +60,7 @@ function render(attrs: Partial<VideoAttrs> & { url: string }): string {
     return renderToStaticMarkup(
         React.createElement(VideoRender, {
             attrs: { caption: null, width: "centered", autoplay: false, ...attrs },
+            strings: STRINGS,
         }),
     );
 }

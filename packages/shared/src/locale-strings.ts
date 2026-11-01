@@ -187,6 +187,55 @@ export function resolveLocaleStrings(input: LocaleStringsInput): ResolvedLocaleS
 }
 
 /**
+ * LOCALE-1C (§ 5.3, § 6.1; ruling LOCALE1-BLOCK-TEXTS = A) — the site keys a block renderer reads (`packages/plugins`
+ * `*Render.tsx`): the fixed chrome of § 6.1 that is the same in every block instance, plus the two form texts the lead
+ * and contact blocks share with `DynamicForm` / the checkout (`formSubmissionFailed`, `errorTryAgain`). Order = the
+ * order of the `strings` prop in the RSC payload.
+ */
+export const BLOCK_SITE_KEYS = [
+    "formSubmissionFailed", "errorTryAgain",
+    "contactSendFailed", "contactSent", "contactSentDetail", "contactName", "contactEmail", "contactMessage", "contactSending",
+    "leadUnlocked", "leadFileReady", "leadDownload", "leadEmail", "leadEmailPlaceholder", "leadUnlocking",
+    "heroNoImage", "imageAltFallback", "videoTitle", "videoBackgroundTitle", "noImage", "noImageCaps", "carouselView",
+    "codeCopy", "codeCopied", "reviewsReadMore", "reviewsShowLess", "postsEmpty", "postsLoadFailed",
+] as const satisfies readonly (keyof SiteStrings)[];
+
+/**
+ * What `RenderBlocks` gives every block renderer as its `strings` prop (§ 5.3): a plain DTO of resolved texts — the
+ * block keys of the site part, the category showcase's texts of the commerce part, and the tenant's locale for the two
+ * date formatters of § 3.4. Every text is shown exactly as resolved (§ 5.2 pattern D: a stored "" renders empty),
+ * except the two keys of `BLOCK_FALLBACK_KEYS`.
+ */
+export type BlockStrings = { [K in (typeof BLOCK_SITE_KEYS)[number]]: string } & {
+    showcaseEmpty: string;
+    /** The showcase's stock overlay text. ABSENT on a catalog site: CATALOG-MODE-1 (§ 3.2.6) lets no stock text reach
+     *  a catalog page, its RSC payload included (the plugin never shows the overlay there). */
+    outOfStock?: string;
+    /** The tenant's normalised locale, present ONLY for a tenant that is not en-US (§ 16.2 item 4): an en-US tenant keeps
+     *  today's date formats — the runtime default in the post grid, `"ro-RO"` in a reviews carousel without a `locale`
+     *  attribute (finding F-LOCALE-REVIEWS-DATE, a decision of the human). */
+    dateLocale?: string;
+};
+
+/**
+ * LOCALE-1C (operator ruling LOCALE1C-IFRAME-NAMES = A, 2026-11-01): the named exceptions to the direct-render rule of
+ * § 5.2 among the block keys — pattern F, as `signIn` / `accountLabel` in `locale-1d`: a stored "" gives the language
+ * default. They are the accessible names of the video and video-hero iframes (the vid-2 / vid-3 contract: the name is
+ * never empty), so an empty override must not remove the name.
+ */
+export const BLOCK_FALLBACK_KEYS = ["videoTitle", "videoBackgroundTitle"] as const satisfies readonly (typeof BLOCK_SITE_KEYS)[number][];
+
+/** The `strings` of every block on a page of this tenant (§ 5.3). `catalogMode`: the tenant is a catalog site. */
+export function blockStrings(resolved: ResolvedLocaleStrings, { catalogMode }: { catalogMode: boolean }): BlockStrings {
+    const out = Object.fromEntries(BLOCK_SITE_KEYS.map((key) => [key, resolved.strings.site[key]])) as BlockStrings;
+    for (const key of BLOCK_FALLBACK_KEYS) out[key] = resolved.strings.site[key] || resolved.defaults.site[key];
+    out.showcaseEmpty = resolved.strings.commerce.showcaseEmpty;
+    if (!catalogMode) out.outOfStock = resolved.strings.commerce.outOfStock;
+    if (resolved.locale !== FALLBACK_LOCALE) out.dateLocale = resolved.locale;
+    return out;
+}
+
+/**
  * Replaces each `{name}` of `template` with `String(values[name])` (§ 5.1). A placeholder without a value stays as
  * written, so a missing value is visible instead of silently empty.
  */

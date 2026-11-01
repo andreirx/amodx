@@ -97,9 +97,10 @@ const load = (slice: string) => {
 const readRepoFile = (p: string) => (existsSync(path.join(REPO, p)) ? readFileSync(path.join(REPO, p), "utf8") : null);
 
 describe("locale-1 coverage rule (§ 16.2 item 5)", () => {
-    it("locale-1a, locale-1b and locale-1d have a coverage file", () => {
+    it("locale-1a, locale-1b, locale-1c and locale-1d have a coverage file", () => {
         expect(slices).toContain("1a");
         expect(slices).toContain("1b");
+        expect(slices).toContain("1c");
         expect(slices).toContain("1d");
     });
 
@@ -125,7 +126,8 @@ describe("locale-1 coverage rule (§ 16.2 item 5)", () => {
         // The commerce part: an allocated commerce key must exist; every key added by locale-1b (the 21 shared keys after
         // the 77 pre-locale ones) and by locale-1d (the 80 commerce-only keys after those) is allocated to some slice.
         // LOCALE-1D: of the 77 pre-locale keys, the ones whose readers 1d moved are allocated by 1d; the product and search
-        // ones 1b moved are checked by 1b's tests; five have no visitor reader (docs/slices/locale-1d.md).
+        // ones 1b moved are checked by 1b's tests; five have no visitor reader (docs/slices/locale-1d.md). LOCALE-1C adds
+        // `showcaseEmpty` after the 80 keys of 1d (allocated by 1c).
         const commerce = Object.keys(CommerceStringsSchema.shape);
         const allocatedCommerce = new Set(slices.flatMap((slice) => load(slice).cov.allocatedKeys.commerce));
         for (const slice of slices) expect(load(slice).cov.allocatedKeys.commerce.filter((k) => !commerce.includes(k))).toEqual([]);

@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RENDER_LOADERS } from "../src/render";
+// LOCALE-1C (ruling LOCALE1C-FALLBACK = A): every block renderer takes a required `strings` prop, which RenderBlocks
+// always passes; a test that renders a block alone passes what an en-US tenant without overrides gets (the English pack).
+import { blockStrings, resolveLocaleStrings } from "@amodx/shared";
+const STRINGS = blockStrings(resolveLocaleStrings({}), { catalogMode: false });
 import { VideoHeroEditor } from "../src/video-hero/VideoHeroEditor";
 import { VideoHeroSchema } from "../src/video-hero/schema";
 import type { VideoSourceKind } from "../src/common/videoSource";
@@ -65,7 +69,7 @@ const DEFAULTS = {
 
 function render(attrs: Partial<typeof DEFAULTS>): string {
     return renderToStaticMarkup(
-        React.createElement(VideoHeroRender, { attrs: { ...DEFAULTS, ...attrs } }),
+        React.createElement(VideoHeroRender, { attrs: { ...DEFAULTS, ...attrs }, strings: STRINGS }),
     );
 }
 
@@ -338,6 +342,7 @@ describe("VideoHeroRender — above-the-fold loading (DoD 6)", () => {
         const inline = renderToStaticMarkup(
             React.createElement(VideoRender, {
                 attrs: { url: "https://youtu.be/dQw4w9WgXcQ", width: "centered" },
+                strings: STRINGS,
             }),
         );
         expect(inline).toContain('loading="lazy"');

@@ -4,6 +4,7 @@ import React from "react";
 import { ArrowRight } from "lucide-react";
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCoverflow, Pagination, Navigation } from 'swiper/modules';
+import type { BlockStrings } from "@amodx/shared";
 
 import 'swiper/css';
 import 'swiper/css/effect-coverflow';
@@ -16,7 +17,8 @@ const ASPECT_CLASSES: Record<string, string> = {
     square: "aspect-square",
 };
 
-export function CarouselRender({ attrs }: { attrs: any }) {
+/** LOCALE-1C: the fixed text comes from `strings` (the tenant's locale table; RenderBlocks always gives it). */
+export function CarouselRender({ attrs, strings }: { attrs: any; strings: BlockStrings }) {
     const { headline, items, style, cardFormat = "vertical" } = attrs;
     const safeItems = items || [];
 
@@ -75,7 +77,7 @@ export function CarouselRender({ attrs }: { attrs: any }) {
                     >
                         {safeItems.map((item: any) => (
                             <SwiperSlide key={item.id}>
-                                <CoverflowCard item={item} />
+                                <CoverflowCard item={item} strings={strings} />
                             </SwiperSlide>
                         ))}
                     </Swiper>
@@ -96,7 +98,7 @@ export function CarouselRender({ attrs }: { attrs: any }) {
                     >
                         {safeItems.map((item: any) => (
                             <SwiperSlide key={item.id}>
-                                <StandardCard item={item} aspectClass={ASPECT_CLASSES[cardFormat] || ASPECT_CLASSES.vertical} />
+                                <StandardCard item={item} aspectClass={ASPECT_CLASSES[cardFormat] || ASPECT_CLASSES.vertical} strings={strings} />
                             </SwiperSlide>
                         ))}
                     </Swiper>
@@ -107,7 +109,7 @@ export function CarouselRender({ attrs }: { attrs: any }) {
 }
 
 /** Standard card — clean, no shadow, image zoom on hover, text below. */
-function StandardCard({ item, aspectClass }: { item: any; aspectClass: string }) {
+function StandardCard({ item, aspectClass, strings }: { item: any; aspectClass: string; strings: BlockStrings }) {
     const Wrapper = item.link && item.link !== "#" ? "a" : "div";
     const wrapperProps = item.link && item.link !== "#" ? { href: item.link } : {};
 
@@ -123,7 +125,7 @@ function StandardCard({ item, aspectClass }: { item: any; aspectClass: string })
                     />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                        No image
+                        {strings.noImage}
                     </div>
                 )}
             </div>
@@ -139,7 +141,7 @@ function StandardCard({ item, aspectClass }: { item: any; aspectClass: string })
 }
 
 /** Coverflow card — existing cinematic style with overlay text and shadow. */
-function CoverflowCard({ item }: { item: any }) {
+function CoverflowCard({ item, strings }: { item: any; strings: BlockStrings }) {
     return (
         <a href={item.link} className="block group h-full bg-card border border-border rounded-xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300">
             <div className="aspect-video bg-muted overflow-hidden relative">
@@ -147,7 +149,7 @@ function CoverflowCard({ item }: { item: any }) {
                     <img src={item.image} alt={item.title} className="w-full h-full object-cover select-none" />
                 ) : (
                     <div className="w-full h-full bg-secondary/30 flex items-center justify-center text-muted-foreground font-mono text-xs select-none">
-                        NO IMAGE
+                        {strings.noImageCaps}
                     </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-90" />
@@ -157,7 +159,7 @@ function CoverflowCard({ item }: { item: any }) {
                 </div>
             </div>
             <div className="bg-card p-3 flex justify-between items-center border-t border-border/50">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">View</span>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{strings.carouselView}</span>
                 <span className="text-primary group-hover:translate-x-1 transition-transform">
                     <ArrowRight className="w-4 h-4" />
                 </span>

@@ -87,7 +87,28 @@ These are injected by the admin's BlockEditor component before the editor mounts
 
 ## Render Component Contract
 
-All render components receive: `{ attrs: <schema type>, tenantId?: string }`
+All render components receive: `{ attrs: <schema type>, tenantId?: string, strings: BlockStrings }` — the type of
+`PluginDefinition.renderComponent` (`src/types.ts`, ruling LOCALE1C-REGISTRY-TYPE = A), so the compiler checks every
+registration. `strings` is required; the eleven text-bearing renderers of `locale-1c` read it, the nine others ignore it.
+
+**Block texts (slice `locale-1c`, ruling LOCALE1-BLOCK-TEXTS = A).** `strings` is the `BlockStrings` DTO of
+`@amodx/shared` (`blockStrings`): the fixed chrome texts of the tenant's locale table — form labels and status texts,
+"Copy", "Read more", "No posts found.", missing-image placeholders, iframe-title fallbacks — plus `dateLocale` for the
+two date formatters. The renderer's `RenderBlocks` always passes it. A text the author writes in the block (headline,
+button text, `successMessage`, image `alt`, video `caption`) stays an attribute and wins over its key. Every text is
+shown exactly as resolved (a stored `""` stays empty, docs/slices/locale-1.md § 5.2 pattern D), except the two iframe
+names `videoTitle` / `videoBackgroundTitle`: pattern F in `blockStrings` (a stored `""` → the language default), so an
+iframe's accessible name is never empty (ruling LOCALE1C-IFRAME-NAMES = A). A branch (which error text, whether an
+error box shows) is chosen by the server's answer or the fetch outcome, never by testing a table text.
+Dates: the post grid uses `strings.dateLocale` (absent for an en-US tenant → the runtime default, as before); the reviews
+carousel passes a PRESENT block `locale` attribute raw (any value, even `""`), and without it uses `strings.dateLocale`
+or, for an en-US tenant, `"ro-RO"` as before (finding F-LOCALE-REVIEWS-DATE, the human's decision).
+The render files import `BlockStrings` as a TYPE only: a runtime import of `@amodx/shared` in a render module makes the
+renderer's bundler split the shared package into an extra client chunk on every page (EXECUTED, docs/slices/locale-1c.md
+D3). There is no English fallback (ruling LOCALE1C-FALLBACK = A): `strings` is required by the typed contract and
+omitting it is unsupported; there is no runtime validation (a render branch that reads a text throws a `TypeError`, a
+branch that reads none renders). This package's
+tests that render a block pass an en-US tenant's `blockStrings` (`videoPlugin`, `videoHeroPlugin`, `reviewsCarousel`).
 
 Client-side components (contact form, lead magnet, post grid) use `window.AMODX_TENANT_ID` for API calls and submit to `/api/contact`, `/api/leads`, or `/api/posts`.
 
@@ -221,6 +242,7 @@ only for `product-reviews-by-id`); in the two DB scopes the manual item editor i
 | `test/videoPlugin.test.ts` (`vid-2`) | What each classification **emits** — `RENDER_LOADERS["video"]` markup per kind, plus `VideoEditor`'s indicator/warning output |
 | `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_LOADERS["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
 | `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_LOADERS["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
+| `renderer/test/unit/locale-1c-blocks-client.test.ts` (`locale-1c`; in the RENDERER suite — this package has no DOM harness and no jsdom dependency) | The block texts of every state of the eleven text-bearing blocks (forms sending/sent/failed, copy, read more, post grid loading/failed/empty/dates, showcase): en-US markup equal to a `0c0dbc8` capture, every Romanian change a declared key, the reviews-carousel date cases, the § 5.2 preservation cases at one reader per block (the iframe names pattern F) |
 | `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 20, so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin

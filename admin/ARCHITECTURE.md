@@ -59,7 +59,11 @@ src/
     │                           #   per plural category of the tenant's language (countInputs / setCountText);
     │                           #   commerce cards (commerce tenants; locale-1d: one card per page — product buying,
     │                           #   header, cart, checkout ×5, account, order confirmation, order tracking — with the
-    │                           #   80 commerce-only keys); placeholders = language defaults; Reset per
+    │                           #   80 commerce-only keys); locale-1c: Site group card "Content Blocks" (the 26
+    │                           #   block-chrome keys) and `showcaseEmpty` in "Product pages & search"; content-only
+    │                           #   tenants get "Product showcase block" (showcaseEmpty, outOfStock; ruling R4);
+    │                           #   visibleSections() decides the sections per tenant kind (one input per key);
+    │                           #   placeholders = language defaults; Reset per
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)

@@ -12,8 +12,9 @@ import type { LanguagePack } from "./types.js";
  * "use the street address label").
  *
  * The other values are the approved Romanian columns of § 6 (`locale-1a` record § 10, `locale-1b` record § 11) and,
- * for the keys of `locale-1d`, the "RO" column of § 6.2, pending the operator's approval before the prod deploy
- * (§ 16.2 item 4; `docs/slices/locale-1d.md`). A changed value is edited here only.
+ * for the keys of `locale-1d`, the "RO" column of § 6.2 as approved (`locale-1d` record § 13). The keys of `locale-1c`
+ * (block chrome, `commerce.showcaseEmpty`) hold the "RO" columns of § 6.1 / § 6.2, pending the operator's approval
+ * before the prod deploy (§ 16.2 item 4; `docs/slices/locale-1c.md`). A changed value is edited here only.
  *
  * Count texts take the Romanian plural category (§ 16.2 item 6): `one` (1), `few` (0, 2-19, 101-119, …), `other`
  * (20-100, 120, …: "20 de produse").
@@ -200,6 +201,8 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         tracking: "Urmărire",
         trackingNumber: "Număr AWB:",
         items: "Produse",
+        // LOCALE-1C: the category-showcase block (§ 6.2, proposed)
+        showcaseEmpty: "Nu s-au găsit produse în această categorie.",
     },
     catalog: {
         interestListFull: "Lista are deja 50 de produse. Scoateți un produs ca să adăugați altul.",
@@ -295,5 +298,32 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         formSelectPlaceholder: "Selectează...",
         formSubmitting: "Se trimite...",
         errorTryAgain: "A apărut o eroare. Încearcă din nou.",
+        // LOCALE-1C: block chrome (§ 6.1 RO column, proposed; pending the operator's approval, docs/slices/locale-1c.md)
+        contactSendFailed: "Mesajul nu a putut fi trimis",
+        contactSent: "Mesaj trimis!",
+        contactSentDetail: "Îți răspundem în curând.",
+        contactName: "Nume",
+        contactEmail: "Email",
+        contactMessage: "Mesaj",
+        contactSending: "Se trimite...",
+        leadUnlocked: "Deblocat!",
+        leadFileReady: "Fișierul tău este gata.",
+        leadDownload: "Descarcă acum",
+        leadEmail: "Email",
+        leadEmailPlaceholder: "nume@exemplu.ro",
+        leadUnlocking: "Se deblochează...",
+        heroNoImage: "Fără imagine",
+        imageAltFallback: "Imagine",
+        videoTitle: "Video încorporat",
+        videoBackgroundTitle: "Video de fundal",
+        noImage: "Fără imagine",
+        noImageCaps: "FĂRĂ IMAGINE",
+        carouselView: "Vezi",
+        codeCopy: "Copiază",
+        codeCopied: "Copiat!",
+        reviewsReadMore: "Citește mai mult",
+        reviewsShowLess: "Arată mai puțin",
+        postsEmpty: "Nu s-au găsit articole.",
+        postsLoadFailed: "Eroare API {status}",
     },
 };
