@@ -22,7 +22,7 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, type LocaleStrings } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, COMMERCE_STRINGS_DEFAULTS, CommerceStrings, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -34,10 +34,10 @@ import { AddToCartButton } from "@/components/AddToCartButton";
 import { FBPurchaseEvent } from "@/components/FBPurchaseEvent";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { AccountPageView } from "@/components/AccountPageView";
-import { SearchBar } from "@/components/SearchBar";
+import { SearchBar, type SearchBarLabels } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
-import { InterestToggle, InterestListPage } from "@/components/InterestShortlist";
+import { InterestToggle, InterestListPage, type InterestListStrings, type InterestToggleStrings } from "@/components/InterestShortlist";
 import { buildFacetListing, listingHref, utf8Bytes, HREF_BUDGET, type FacetListing, type FacetValueView } from "@amodx/shared";
 import type { ReactNode } from "react";
 
@@ -80,18 +80,51 @@ export function toSiteQuery(sp: Record<string, string | string[] | undefined>): 
 
 // Helper to get commerce strings with defaults
 // 3-tier merge: English defaults → country pack language → admin overrides
+// LOCALE-1B: read only by the commerce-only branches (account, cart, checkout); the product and search pages read the
+// resolver. Deleted with its last caller in `locale-1d` (docs/slices/locale-1.md § 10.2).
 function getCommerceStrings(config: any): Required<CommerceStrings> {
     const pack = getCountryPack(config.countryCode || "EN");
     return { ...COMMERCE_STRINGS_DEFAULTS, ...pack.defaultStrings, ...config.commerceStrings };
 }
 
-function getSearchLabels(config: any) {
-    const s = config.commerceStrings || {};
+/**
+ * LOCALE-1B (docs/slices/locale-1.md § 5.2 row F): the SearchBar's four texts — the tenant override when it is a
+ * non-empty text, else the language default (a stored "" falls back, as the English literals did before).
+ * Key order = the order these four had before LOCALE-1B (the RSC payload carries the object).
+ */
+function searchBarLabels({ strings, defaults }: ResolvedLocaleStrings): SearchBarLabels {
+    const s = strings.commerce, d = defaults.commerce;
     return {
-        searchButton: s.searchButton,
-        searchNoResults: s.searchNoResults,
-        searchSearching: s.searchSearching,
-        viewAllResults: s.viewAllResults,
+        searchButton: s.searchButton || d.searchButton,
+        searchNoResults: s.searchNoResults || d.searchNoResults,
+        searchSearching: s.searchSearching || d.searchSearching,
+        viewAllResults: s.viewAllResults || d.viewAllResults,
+    };
+}
+
+/** LOCALE-1B (§ 6.3): the headings of the two fixed facets, from the tenant's catalog texts. */
+function facetLabelsOf(catalog: LocaleStrings["catalog"]): FacetLabels {
+    return { producer: catalog.facetProducer, variantDefault: catalog.facetVariantDefault };
+}
+
+/** LOCALE-1B: a fresh object per toggle (the RSC encoder outlines an object it meets twice; one per element keeps each
+ *  toggle's props inline, as before). */
+function interestToggleStrings(catalog: LocaleStrings["catalog"]): InterestToggleStrings {
+    return { interestAdd: catalog.interestAdd, interestAdded: catalog.interestAdded, interestListFull: catalog.interestListFull };
+}
+
+/** LOCALE-1B: the list page's texts (only the keys it uses, § 5.3). */
+function interestListStrings(c: LocaleStrings["catalog"]): InterestListStrings {
+    return {
+        interestListTitle: c.interestListTitle, interestBrowse: c.interestBrowse, interestSentTitle: c.interestSentTitle,
+        interestSentBody: c.interestSentBody, interestExcludedIntro: c.interestExcludedIntro, interestEmpty: c.interestEmpty,
+        interestAdd: c.interestAdd, interestErrorNoneAvailable: c.interestErrorNoneAvailable, interestErrorInvalid: c.interestErrorInvalid,
+        interestErrorCheck: c.interestErrorCheck, interestErrorAllGone: c.interestErrorAllGone, interestErrorSend: c.interestErrorSend,
+        interestErrorNetwork: c.interestErrorNetwork, interestPreviouslySent: c.interestPreviouslySent,
+        interestContactHeading: c.interestContactHeading, interestName: c.interestName, interestEmail: c.interestEmail,
+        interestPhone: c.interestPhone, interestMessage: c.interestMessage, interestSubmit: c.interestSubmit,
+        interestRowExpired: c.interestRowExpired, interestRowUnavailable: c.interestRowUnavailable,
+        interestRowOptionGone: c.interestRowOptionGone, interestCollection: c.interestCollection, interestRemove: c.interestRemove,
     };
 }
 
@@ -132,9 +165,12 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
     const slugPath = slug ? "/" + slug.join("/") : "/";
     const canonicalUrl = `https://${config.domain}${slugPath === '/' ? '' : slugPath}`;
 
+    // LOCALE-1B: the tenant's locale table for the titles below (docs/slices/locale-1.md § 6.2, § 6.3).
+    const { commerce: texts, catalog: catalogTexts } = resolveLocaleStrings(config).strings;
+
     // CAT-INTEREST-1: the interest-list page of a catalog site (personal, client-rendered: not indexed).
     if (isCatalogMode(config) && slugPath === interestPrefix(config)) {
-        return { title: "Lista mea", robots: { index: false } };
+        return { title: catalogTexts.interestListTitle, robots: { index: false } };
     }
 
     // Check commerce routes first
@@ -155,14 +191,14 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
             const category = await getCategoryBySlug(config.id, commerce.itemSlug);
             if (category) return {
                 title: category.seoTitle || category.name,
-                description: category.seoDescription || `Browse ${category.name} products`,
+                description: category.seoDescription || fillTemplate(texts.metaCategoryDescription, { category: category.name }),
                 metadataBase: new URL(`https://${config.domain}`),
                 openGraph: { title: category.name, description: category.seoDescription, images: category.imageLink ? [{ url: category.imageLink }] : [], url: canonicalUrl, siteName: config.name },
                 alternates: { canonical: canonicalUrl }
             };
         }
         if (commerce.type === 'shop') return {
-            title: `Shop - ${config.name}`,
+            title: fillTemplate(texts.metaShopTitle, { site: config.name }),
             metadataBase: new URL(`https://${config.domain}`),
             alternates: { canonical: canonicalUrl }
         };
@@ -171,7 +207,7 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
             // carry a query string and are served by the dynamic twin.
             const q = query.q || '';
             return {
-                title: q ? `Search: ${q} - ${config.name}` : `Search - ${config.name}`,
+                title: q ? fillTemplate(texts.metaSearchQueryTitle, { query: q, site: config.name }) : fillTemplate(texts.metaSearchTitle, { site: config.name }),
                 metadataBase: new URL(`https://${config.domain}`),
                 robots: { index: false },
             };
@@ -237,6 +273,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 productPrefix={prefixes.product || URL_PREFIX_DEFAULTS.product}
                 shopPrefix={prefixes.shop || URL_PREFIX_DEFAULTS.shop}
                 contentMaxWidth={config.header?.contentMaxWidth || "max-w-4xl"}
+                strings={interestListStrings(resolveLocaleStrings(config).strings.catalog)}
             />
         );
     }
@@ -284,8 +321,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 categoryPaths.push({ category: cat, parents });
             }
 
-            const strings = getCommerceStrings(config);
-            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} commerceEnabled={commerceEnabled} catalog={catalog} basePath={basePath} categories={productCategories} categoryPaths={categoryPaths} rawCategoryIds={productCategoryIds} strings={strings} />;
+            // LOCALE-1B (§ 9 item 2): the product page reads the resolver (ProductPageView), no longer getCommerceStrings.
+            return <ProductPageView product={product as any} config={config} prefixes={prefixes} reviews={reviews} commerceEnabled={commerceEnabled} catalog={catalog} basePath={basePath} categories={productCategories} categoryPaths={categoryPaths} rawCategoryIds={productCategoryIds} />;
         }
 
         if (commerce.type === 'category' && commerce.itemSlug) {
@@ -295,7 +332,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             // CAT-FACETS-1: a catalog site lists the category from its `PRODUCT#` items and filters it (`?f=`).
             if (catalog) {
                 const path = catalogListingPath(prefixes, category.slug);
-                const listing = buildFacetListing(await getCatalogListing(config.id, category.id), query.f, `${basePath}${path}`);
+                const listing = buildFacetListing(await getCatalogListing(config.id, category.id), query.f, `${basePath}${path}`, facetLabelsOf(resolveLocaleStrings(config).strings.catalog));
                 const start = (page - 1) * 24;
                 return <CategoryPageView category={category} products={listing.items.slice(start, start + 24)} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(path, listing.selection) }} />;
             }
@@ -309,7 +346,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             if (catalog) {
                 const shopUrl = catalogListingPath(prefixes, undefined);
                 const [base, categories] = await Promise.all([getCatalogListing(config.id), getAllCategories(config.id)]);
-                const listing = buildFacetListing(base, query.f, `${basePath}${shopUrl}`);
+                const listing = buildFacetListing(base, query.f, `${basePath}${shopUrl}`, facetLabelsOf(resolveLocaleStrings(config).strings.catalog));
                 const start = (page - 1) * 24;
                 return <ShopPageView products={listing.items.slice(start, start + 24)} categories={categories} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(shopUrl, listing.selection) }} />;
             }
@@ -692,9 +729,10 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 /**
  * `catalog` (CATALOG-MODE-1): no price line and no availability badge — not emitted, not hidden by CSS.
  * CAT-INTEREST-1: on a catalog site the card is followed by the "Mă interesează" toggle (a button may not sit inside
- * the card's link); any other site renders the link alone, exactly as before.
+ * the card's link); any other site renders the link alone, exactly as before. LOCALE-1B: `catalogStrings` = the
+ * tenant's catalog texts (the toggle's three texts are taken from it per card).
  */
-function ProductCard({ product, productPrefix, basePath = "", catalog = false, tenantId }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean; tenantId: string }) {
+function ProductCard({ product, productPrefix, basePath = "", catalog = false, tenantId, catalogStrings }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean; tenantId: string; catalogStrings: LocaleStrings["catalog"] }) {
     const card = (
         <Link href={`${basePath}${productPrefix}/${product.slug}`} className="group block">
             <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-3">
@@ -724,7 +762,7 @@ function ProductCard({ product, productPrefix, basePath = "", catalog = false, t
     return (
         <div>
             {card}
-            <InterestToggle tenantId={tenantId} productId={product.id} title={product.title} slug={product.slug} {...(product.imageLink ? { imageLink: product.imageLink } : {})} />
+            <InterestToggle tenantId={tenantId} productId={product.id} title={product.title} slug={product.slug} {...(product.imageLink ? { imageLink: product.imageLink } : {})} strings={interestToggleStrings(catalogStrings)} />
         </div>
     );
 }
@@ -835,8 +873,10 @@ function ProductAttributes({ attributes }: { attributes: { key: string; value: s
     );
 }
 
-function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, catalog = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [], strings }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; catalog?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[]; strings: Required<CommerceStrings> }) {
-    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
+function ProductPageView({ product, config, prefixes, reviews, commerceEnabled = false, catalog = false, basePath = "", categories = [], categoryPaths = [], rawCategoryIds = [] }: { product: any; config: any; prefixes: any; reviews?: { items: any[]; averageRating: number; totalReviews: number }; commerceEnabled?: boolean; catalog?: boolean; basePath?: string; categories?: any[]; categoryPaths?: { category: any; parents: any[] }[]; rawCategoryIds?: string[] }) {
+    // LOCALE-1A: site chrome; LOCALE-1B: the commerce texts of the product page (was getCommerceStrings) and the catalog texts.
+    const resolved = resolveLocaleStrings(config);
+    const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const jsonLd: any = {
@@ -867,13 +907,13 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
         <>
             {config.searchBar?.enabled && (
                 <SearchBar
-                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    placeholder={config.searchBar?.placeholder || strings.searchPlaceholder}
                     searchPrefix={prefixes.search || "/search"}
                     productPrefix={prefixes.product || "/product"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={siteWidth}
-                    labels={getSearchLabels(config)}
+                    labels={searchBarLabels(resolved)}
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
@@ -884,7 +924,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
             <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">Shop</Link>
+                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">{strings.shopTitle}</Link>
                 <span className="mx-2">/</span>
                 <span className="text-foreground">{product.title}</span>
             </nav>
@@ -916,7 +956,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     {/* Volume Pricing */}
                     {!catalog && product.volumePricing?.length > 0 && (
                         <div className="border rounded-lg p-4">
-                            <p className="text-sm font-medium mb-2">Volume Pricing</p>
+                            <p className="text-sm font-medium mb-2">{strings.volumePricing}</p>
                             <div className="space-y-1">
                                 {product.volumePricing.map((tier: any, i: number) => (
                                     <div key={i} className="flex justify-between text-sm">
@@ -935,7 +975,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                                 <span className="w-2 h-2 bg-green-500 rounded-full" /> {strings.inStock}
                             </span>
                         ) : product.availability === 'preorder' ? (
-                            <span className="text-amber-600 text-sm font-medium">Pre-order</span>
+                            <span className="text-amber-600 text-sm font-medium">{strings.preOrder}</span>
                         ) : (
                             <span className="text-red-600 text-sm font-medium">{strings.outOfStock}</span>
                         )}
@@ -990,7 +1030,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                             className="paddle_button inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-11 px-8 hover:opacity-90 transition-opacity"
                             data-product={product.paymentLinkId}
                         >
-                            Buy Now
+                            {strings.buyNow}
                         </a>
                     )}
 
@@ -1001,7 +1041,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                             {/* CAT-INTEREST-1 (review-0 F4): keyed by product, so a client navigation to another product
                                 mounts fresh radio inputs and a fresh toggle — no choice carries over between products. */}
                             <CatalogVariantPresenter key={`presenter-${product.id}`} variants={product.variants || []} />
-                            <InterestToggle key={`interest-${product.id}`} variant="page" {...interestToggleProps(config.id, product)} />
+                            <InterestToggle key={`interest-${product.id}`} variant="page" {...interestToggleProps(config.id, product)} strings={interestToggleStrings(catalogStrings)} />
                             <ProductAttributes attributes={product.attributes || []} />
                         </>
                     ) : commerceEnabled && !product.paymentLinkId && (
@@ -1055,13 +1095,13 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     )}
                     {product.ingredients && (
                         <div className="mb-12">
-                            <h2 className="text-xl font-bold mb-4">Ingredients</h2>
+                            <h2 className="text-xl font-bold mb-4">{strings.ingredients}</h2>
                             <p className="text-muted-foreground whitespace-pre-wrap">{product.ingredients}</p>
                         </div>
                     )}
                     {product.nutritionalValues?.length > 0 && (
                         <div>
-                            <h2 className="text-xl font-bold mb-4">Nutritional Values</h2>
+                            <h2 className="text-xl font-bold mb-4">{strings.nutritionalValues}</h2>
                             <div className="border rounded-lg overflow-hidden">
                                 {product.nutritionalValues.map((nv: any, i: number) => (
                                     <div key={i} className={`flex justify-between px-4 py-2.5 text-sm ${i % 2 === 0 ? 'bg-muted/50' : ''}`}>
@@ -1082,10 +1122,10 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
             {reviews && reviews.totalReviews > 0 && (
                 <div className="mt-16 border-t pt-12">
                     <div className="flex items-center gap-3 mb-8">
-                        <h2 className="text-xl font-bold">Reviews</h2>
+                        <h2 className="text-xl font-bold">{strings.reviewsHeading}</h2>
                         <div className="flex items-center gap-1.5">
                             <span className="text-amber-500 text-lg">{"★".repeat(Math.round(reviews.averageRating))}</span>
-                            <span className="text-sm text-muted-foreground">{reviews.averageRating}/5 ({reviews.totalReviews} review{reviews.totalReviews !== 1 ? "s" : ""})</span>
+                            <span className="text-sm text-muted-foreground">{fillTemplate(selectPluralText(strings.reviewsSummary, reviews.totalReviews), { rating: reviews.averageRating, n: reviews.totalReviews })}</span>
                         </div>
                     </div>
                     <div className="space-y-6">
@@ -1131,14 +1171,13 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
 // Server-rendered, no JavaScript. Every value is a plain `<a>` to the URL with that value added or removed: no form,
 // no client state, no prefetch (a plain anchor is never prefetched — load reduction, § 5.3), `rel="nofollow"` (§ 5.4).
 // The model — which facets, which values, every href already measured against the URL budget — comes from
-// `@amodx/shared` (`facets.ts`); these components only lay it out. Copy is fixed Romanian (§ 6), like the catalog controls.
+// `@amodx/shared` (`facets.ts`); these components only lay it out. LOCALE-1B: the copy is the tenant's catalog texts
+// (`strings`, docs/slices/locale-1.md § 6.3); the facet ids in every href never change.
 
 /** The catalog listing's filter state, passed to the shop and category views only on a catalog site. */
 type CatalogFacets = { listing: FacetListing<any>; pagerBase: string };
 
-const FACET_HINT = "Prea multe filtre selectate — eliminați unul";
-
-function FacetValueRow({ v }: { v: FacetValueView }) {
+function FacetValueRow({ v, strings }: { v: FacetValueView; strings: LocaleStrings["catalog"] }) {
     switch (v.state) {
         case "link":
             return <a href={v.href} rel="nofollow" className="hover:text-primary" data-facet-value="link">{v.value} ({v.count})</a>;
@@ -1151,7 +1190,7 @@ function FacetValueRow({ v }: { v: FacetValueView }) {
         case "zero":
             return <span aria-disabled="true" className="text-muted-foreground opacity-60" data-facet-value="zero">{v.value} (0)</span>;
         case "too-long":
-            return <span aria-disabled="true" title={FACET_HINT} className="text-muted-foreground opacity-60" data-facet-value="too-long">{v.value} ({v.count})</span>;
+            return <span aria-disabled="true" title={strings.facetsTooMany} className="text-muted-foreground opacity-60" data-facet-value="too-long">{v.value} ({v.count})</span>;
         default: {
             const unreachable: never = v;
             return unreachable;
@@ -1159,32 +1198,32 @@ function FacetValueRow({ v }: { v: FacetValueView }) {
     }
 }
 
-function FacetPanel({ listing }: { listing: FacetListing<any> }) {
+function FacetPanel({ listing, strings }: { listing: FacetListing<any>; strings: LocaleStrings["catalog"] }) {
     const n = listing.items.length;
     return (
         <div className="space-y-4 text-sm">
-            <p className="text-muted-foreground" data-facet-total={n}>{n === 1 ? "1 produs" : `${n} produse`}</p>
-            {listing.tooLong && <p role="status" className="text-muted-foreground" data-facet-notice>Filtrele din adresă sunt prea lungi și nu au fost aplicate.</p>}
+            <p className="text-muted-foreground" data-facet-total={n}>{fillTemplate(selectPluralText(strings.facetsCount, n), { n })}</p>
+            {listing.tooLong && <p role="status" className="text-muted-foreground" data-facet-notice>{strings.facetsUrlTooLong}</p>}
             {listing.chips.length > 0 && (
                 <ul className="flex flex-wrap gap-2" data-facet-chips>
                     {listing.chips.map((c) => (
                         <li key={`${c.facetLabel}\u0000${c.value}`}>
                             {c.href
-                                ? <a href={c.href} rel="nofollow" aria-label={`Elimină filtrul ${c.facetLabel}: ${c.value}`} className="inline-block rounded-full border px-3 py-1 hover:bg-muted">{c.facetLabel}: {c.value} <span aria-hidden="true">×</span></a>
+                                ? <a href={c.href} rel="nofollow" aria-label={fillTemplate(strings.facetsRemove, { facet: c.facetLabel, value: c.value })} className="inline-block rounded-full border px-3 py-1 hover:bg-muted">{c.facetLabel}: {c.value} <span aria-hidden="true">×</span></a>
                                 : <span className="inline-block rounded-full border px-3 py-1">{c.facetLabel}: {c.value}</span>}
                         </li>
                     ))}
                 </ul>
             )}
             {(listing.chips.length > 0 || listing.tooLong) && listing.clearHref && (
-                <a href={listing.clearHref} rel="nofollow" className="inline-block underline hover:text-primary" data-facet-clear>Șterge filtrele</a>
+                <a href={listing.clearHref} rel="nofollow" className="inline-block underline hover:text-primary" data-facet-clear>{strings.facetsClear}</a>
             )}
-            {listing.budgetHint && <p className="text-muted-foreground" data-facet-hint>{FACET_HINT}</p>}
+            {listing.budgetHint && <p className="text-muted-foreground" data-facet-hint>{strings.facetsTooMany}</p>}
             {listing.facets.map((f) => (
                 <details key={f.id} open={f.values.some((v) => v.state === "selected") || f.values.length <= 10} className="border-t pt-3" data-facet={f.id}>
                     <summary className="cursor-pointer font-medium">{f.label}</summary>
                     <ul className="mt-2 space-y-1">
-                        {f.values.map((v) => <li key={v.value}><FacetValueRow v={v} /></li>)}
+                        {f.values.map((v) => <li key={v.value}><FacetValueRow v={v} strings={strings} /></li>)}
                     </ul>
                 </details>
             ))}
@@ -1198,25 +1237,25 @@ function FacetPanel({ listing }: { listing: FacetListing<any> }) {
  * panel has nothing to show (no facet narrows, no selection, no notice) the grid renders alone, as before.
  * A selection that matches nothing replaces the grid with the § 4.3 empty result.
  */
-function FacetedListing({ listing, grid }: { listing: FacetListing<any>; grid: ReactNode }) {
+function FacetedListing({ listing, grid, strings }: { listing: FacetListing<any>; grid: ReactNode; strings: LocaleStrings["catalog"] }) {
     if (listing.facets.length === 0 && listing.chips.length === 0 && !listing.tooLong) return grid;
     const active = listing.chips.length;
     const body = listing.items.length === 0 && listing.selection.size > 0 ? (
         <div className="py-12 text-center space-y-3" data-facet-empty>
-            <p className="text-muted-foreground">Niciun produs nu corespunde filtrelor alese.</p>
-            {listing.clearHref && <a href={listing.clearHref} rel="nofollow" className="underline hover:text-primary">Șterge filtrele</a>}
+            <p className="text-muted-foreground">{strings.facetsNoMatch}</p>
+            {listing.clearHref && <a href={listing.clearHref} rel="nofollow" className="underline hover:text-primary">{strings.facetsClear}</a>}
         </div>
     ) : grid;
     return (
         <div className="lg:flex lg:gap-8 lg:items-start">
-            <aside className="mb-6 lg:mb-0 lg:w-64 lg:shrink-0" aria-label="Filtre" data-facet-panel>
+            <aside className="mb-6 lg:mb-0 lg:w-64 lg:shrink-0" aria-label={strings.facetsTitle} data-facet-panel>
                 <input type="checkbox" id="facet-panel-toggle" className="peer sr-only lg:hidden" />
                 <label htmlFor="facet-panel-toggle" className="lg:hidden flex items-center justify-between rounded-lg border px-4 py-3 font-medium cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-primary">
-                    Filtre{active > 0 ? ` (${active})` : ""}
+                    {strings.facetsTitle}{active > 0 ? ` (${active})` : ""}
                 </label>
-                <h2 className="hidden lg:block font-semibold mb-3">Filtre</h2>
+                <h2 className="hidden lg:block font-semibold mb-3">{strings.facetsTitle}</h2>
                 <div className="hidden peer-checked:block lg:block mt-4 lg:mt-0">
-                    <FacetPanel listing={listing} />
+                    <FacetPanel listing={listing} strings={strings} />
                 </div>
             </aside>
             <div className="flex-1 min-w-0">{body}</div>
@@ -1225,14 +1264,16 @@ function FacetedListing({ listing, grid }: { listing: FacetListing<any>; grid: R
 }
 
 function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false, facets }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean; facets?: CatalogFacets }) {
-    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
+    // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the shared product texts and the catalog texts.
+    const resolved = resolveLocaleStrings(config);
+    const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const grid = products.length === 0 ? (
-                <p className="text-muted-foreground py-12 text-center">No products in this category yet.</p>
+                <p className="text-muted-foreground py-12 text-center">{strings.categoryEmpty}</p>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} />
                     ))}
                 </div>
             );
@@ -1240,13 +1281,13 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
         <>
             {config.searchBar?.enabled && (
                 <SearchBar
-                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    placeholder={config.searchBar?.placeholder || strings.searchPlaceholder}
                     searchPrefix={prefixes.search || "/search"}
                     productPrefix={prefixes.product || "/product"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
-                    labels={getSearchLabels(config)}
+                    labels={searchBarLabels(resolved)}
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
@@ -1255,7 +1296,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                 <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">Shop</Link>
+                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">{strings.shopTitle}</Link>
                 <span className="mx-2">/</span>
                 <span className="text-foreground">{category.name}</span>
             </nav>
@@ -1265,10 +1306,10 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                 {category.description && (
                     <p className="text-muted-foreground mt-2">{category.description}</p>
                 )}
-                <p className="text-sm text-muted-foreground mt-1">{total} product{total !== 1 ? 's' : ''}</p>
+                <p className="text-sm text-muted-foreground mt-1">{fillTemplate(selectPluralText(strings.productCount, total), { n: total })}</p>
             </div>
 
-            {facets ? <FacetedListing listing={facets.listing} grid={grid} /> : grid}
+            {facets ? <FacetedListing listing={facets.listing} grid={grid} strings={catalogStrings} /> : grid}
 
                 <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : `${prefixes.category}/${category.slug}`} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} strings={site} />
             </main>
@@ -1277,17 +1318,19 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
 }
 
 function ShopPageView({ products, categories, total, page, config, prefixes, basePath = "", availability, catalog = false, facets }: { products: any[]; categories: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; availability?: string; catalog?: boolean; facets?: CatalogFacets }) {
-    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
+    // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the shared product texts and the catalog texts.
+    const resolved = resolveLocaleStrings(config);
+    const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
     const shopUrl = prefixes.shop || "/magazin";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const grid = products.length === 0 ? (
                 <p className="text-muted-foreground py-12 text-center">
-                    {availability === 'in_stock' ? 'No products currently in stock.' : 'No products available yet.'}
+                    {availability === 'in_stock' ? strings.shopEmptyInStock : strings.shopEmpty}
                 </p>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} />
                     ))}
                 </div>
             );
@@ -1295,18 +1338,18 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
         <>
             {config.searchBar?.enabled && (
                 <SearchBar
-                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    placeholder={config.searchBar?.placeholder || strings.searchPlaceholder}
                     searchPrefix={prefixes.search || "/search"}
                     productPrefix={prefixes.product || "/product"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={config.header?.contentMaxWidth || "max-w-6xl"}
-                    labels={getSearchLabels(config)}
+                    labels={searchBarLabels(resolved)}
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
             <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
-                <h1 className="text-3xl font-bold tracking-tight mb-4">Shop</h1>
+                <h1 className="text-3xl font-bold tracking-tight mb-4">{strings.shopTitle}</h1>
 
             {/* Availability Filter (none on a catalog site) */}
             {!catalog && <div className="flex flex-wrap gap-2 mb-4">
@@ -1314,13 +1357,13 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                     href={`${basePath}${shopUrl}`}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!availability ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
                 >
-                    All Products
+                    {strings.shopAllProducts}
                 </Link>
                 <Link
                     href={`${basePath}${shopUrl}?availability=in_stock`}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${availability === 'in_stock' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
                 >
-                    In Stock
+                    {strings.inStock}
                 </Link>
             </div>}
 
@@ -1335,7 +1378,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                 </div>
             )}
 
-            {facets ? <FacetedListing listing={facets.listing} grid={grid} /> : grid}
+            {facets ? <FacetedListing listing={facets.listing} grid={grid} strings={catalogStrings} /> : grid}
 
             <Pagination page={page} total={total} limit={24} baseUrl={facets ? facets.pagerBase : availability ? `${shopUrl}?availability=${availability}` : shopUrl} basePath={basePath} maxHrefBytes={facets ? HREF_BUDGET : undefined} strings={site} />
             </main>
@@ -1344,21 +1387,23 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
 }
 
 function SearchPageView({ query, products, total, page, config, prefixes, basePath = "", catalog = false }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
-    const site = resolveLocaleStrings(config).strings.site; // LOCALE-1A: breadcrumb Home, pagination
+    // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the commerce texts of the search page (was getCommerceStrings,
+    // § 5.2) and the catalog texts.
+    const resolved = resolveLocaleStrings(config);
+    const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
     const siteWidth = config.header?.contentMaxWidth || "max-w-6xl";
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const strings = getCommerceStrings(config);
     return (
         <>
             {config.searchBar?.enabled && (
                 <SearchBar
-                    placeholder={config.searchBar?.placeholder || "Search products..."}
+                    placeholder={config.searchBar?.placeholder || strings.searchPlaceholder}
                     searchPrefix={prefixes.search || "/search"}
                     productPrefix={prefixes.product || "/product"}
                     tenantId={config.id}
                     apiUrl={apiUrl}
                     contentMaxWidth={siteWidth}
-                    labels={getSearchLabels(config)}
+                    labels={searchBarLabels(resolved)}
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
@@ -1366,24 +1411,24 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
                 <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
-                <Link href={`${basePath}${prefixes.shop || "/shop"}`} className="hover:text-primary">Shop</Link>
+                <Link href={`${basePath}${prefixes.shop || "/shop"}`} className="hover:text-primary">{strings.shopTitle}</Link>
                 <span className="mx-2">/</span>
-                <span className="text-foreground">Search</span>
+                <span className="text-foreground">{strings.searchBreadcrumb}</span>
             </nav>
 
             <h1 className="text-3xl font-bold tracking-tight mb-2">
                 {query ? `${strings.resultsFor} "${query}"` : strings.searchProducts}
             </h1>
-            {query && <p className="text-sm text-muted-foreground mb-8">{total} result{total !== 1 ? 's' : ''}</p>}
+            {query && <p className="text-sm text-muted-foreground mb-8">{fillTemplate(selectPluralText(strings.searchResultCount, total), { n: total })}</p>}
 
             {!query ? (
-                <p className="text-muted-foreground py-12 text-center">Enter a search term to find products.</p>
+                <p className="text-muted-foreground py-12 text-center">{strings.searchEnterTerm}</p>
             ) : products.length === 0 ? (
                 <p className="text-muted-foreground py-12 text-center">{strings.searchNoResults} &ldquo;{query}&rdquo;.</p>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} tenantId={config.id} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} />
                     ))}
                 </div>
             )}

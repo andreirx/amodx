@@ -498,7 +498,7 @@ const CM1_ITEMS = [
 ];
 
 // ── LOCALE-1 fixtures (slice locale-1a; spec docs/slices/locale-1.md § 8.5 "RO rows", § 16.2 item 5) ─────────────
-// Romanian copies of the CM1 commerce and content tenants: every item of the source tenant, deep-copied, with ONLY the
+// Romanian copies of the CM1 commerce, content and catalog tenants: every item of the source tenant, deep-copied, with ONLY the
 // key fields rewritten (PK/SK, id, host, TenantSlug, tenantId) and `locale: "ro-RO"` on the tenant item. Every text
 // (site name, page titles, product data) stays as in the source, so the visible-text extraction of a RO copy differs
 // from its EN source only by what the locale changes (rows `loc1-ro-*` in contract.test.mjs). No en-GB copy (§ 16.2
@@ -506,6 +506,8 @@ const CM1_ITEMS = [
 export const LOC1 = {
     roContent: { id: "loc1-ro-content", host: "loc1-ro-content.serving-contract.test", source: "content" },
     roCommerce: { id: "loc1-ro-commerce", host: "loc1-ro-commerce.serving-contract.test", source: "commerce" },
+    // locale-1b: the Romanian catalog tenant (§ 8.4, ledger L-RO-CAT) — a copy of the CM1 catalog tenant.
+    roCatalog: { id: "loc1-ro-catalog", host: "loc1-ro-catalog.serving-contract.test", source: "catalog" },
 };
 
 function localeCopy(items, from, to, fields) {
@@ -526,6 +528,7 @@ function localeCopy(items, from, to, fields) {
 const LOC1_ITEMS = [
     ...localeCopy(CM1_ITEMS, CM1.content, LOC1.roContent, { locale: "ro-RO" }),
     ...localeCopy(CM1_ITEMS, CM1.commerce, LOC1.roCommerce, { locale: "ro-RO" }),
+    ...localeCopy(CM1_ITEMS, CM1.catalog, LOC1.roCatalog, { locale: "ro-RO" }),
 ];
 
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */

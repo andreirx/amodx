@@ -38,8 +38,12 @@ const DRAFTS: PreviewItem[] = [
     draft("boen-ash", ["cat-boen", "new:boen-nordic"], { attributes: [{ key: "Esență", value: "Ash" }] }),
 ];
 const REPORT = { drafts: DRAFTS, siteProducts: SITE };
+/** LOCALE-1B (docs/slices/locale-1.md § 6.3): the facet headings these rows ran with before `buildFacetListing` took
+ *  `labels` — today's Romanian headings. A test constant; the same value is on both sides of every equality below. */
+const RO_FACET_LABELS = { producer: "Producător", variantDefault: "Variantă" };
 const CONTEXT: SiteContext = {
     prefixes: URL_PREFIX_DEFAULTS,
+    facetLabels: RO_FACET_LABELS,
     categories: [{ id: "cat-boen", slug: "boen", name: "BOEN" }, { id: "cat-boen-classic", slug: "boen-classic", name: "Classic" }],
 };
 
@@ -90,7 +94,7 @@ describe("base sets over siteProducts ∪ drafts (§ 5.5)", () => {
         ];
         for (const [scope, categoryId, slug] of cases) {
             for (const sel of ["", f]) {
-                const direct = buildFacetListing(catalogListing([...SITE, ...DRAFTS], categoryId, TODAY), sel, catalogListingPath(URL_PREFIX_DEFAULTS, slug));
+                const direct = buildFacetListing(catalogListing([...SITE, ...DRAFTS], categoryId, TODAY), sel, catalogListingPath(URL_PREFIX_DEFAULTS, slug), RO_FACET_LABELS);
                 expect(panelOf(scope, sel).listing).toEqual(direct);
             }
         }
@@ -124,7 +128,7 @@ describe("near the URL budget: the path is an input (§ 5.5)", () => {
     ];
     const drafts = [draft("long-b", ["cat-long"], { attributes: [{ key: "Finisaj", value: vB }] })];
     const report = { drafts, siteProducts: site };
-    const context: SiteContext = { prefixes: custom, categories: [{ id: "cat-long", slug, name: "Long" }] };
+    const context: SiteContext = { prefixes: custom, categories: [{ id: "cat-long", slug, name: "Long" }], facetLabels: RO_FACET_LABELS };
     const f = formatSelection(select(vA));
     const valueB = (facets: { id: string; values: FacetValueView[] }[]) => facets.find((x) => x.id === "a.Finisaj")!.values.find((v) => v.value === vB)!;
 
@@ -135,13 +139,13 @@ describe("near the URL budget: the path is an input (§ 5.5)", () => {
     it("(1) the assembled panel on the public path deep-equals buildFacetListing for the same base, f and path — value states included", () => {
         const p = panelOf({ kind: "category", id: "cat-long" }, f, context, report);
         const base = catalogListing([...site, ...drafts], "cat-long", TODAY);
-        expect(p.listing).toEqual(buildFacetListing(base, f, path));
+        expect(p.listing).toEqual(buildFacetListing(base, f, path, RO_FACET_LABELS));
         expect(valueB(p.listing.facets).state).toBe("link");
     });
 
     it("(2) the same value is too-long on the preview path /_site/<id> + that path — the stated limit (§ 5.3), pinned", () => {
         const base = catalogListing([...site, ...drafts], "cat-long", TODAY);
-        const onPreviewPath = buildFacetListing(base, f, `/_site/cm1-catalog${path}`);
+        const onPreviewPath = buildFacetListing(base, f, `/_site/cm1-catalog${path}`, RO_FACET_LABELS);
         expect(valueB(onPreviewPath.facets).state).toBe("too-long");
         expect(onPreviewPath.budgetHint).toBe(true);
     });
@@ -303,5 +307,26 @@ describe("CAT-IMAGE-GATE-1 — publication in the preview", () => {
         expect(PUBLICATION_NOTICE).toMatch(/nu poate ști care adrese de imagine vor funcționa/);
         expect(PUBLICATION_NOTICE).toMatch(/„imagine de copiat”/);
         expect([PENDING_COPY_LABEL, PENDING_COPY_TITLE]).toEqual(["imagine de copiat", "ascuns până la copierea imaginilor"]);
+    });
+});
+
+// ── LOCALE-1B (docs/slices/locale-1.md § 6.3): the previewed visitor panel shows the tenant's facet headings ─────────
+
+describe("LOCALE-1B — the preview's two fixed facet headings are the tenant's visitor texts, as on the site", () => {
+    it("siteContextOf resolves them from the GET /settings answer with the site's resolver: RO → today's Romanian, EN → the EN catalog texts, an override wins", () => {
+        expect(siteContextOf({ locale: "ro-RO" }, []).facetLabels).toEqual(RO_FACET_LABELS);
+        expect(siteContextOf({}, []).facetLabels).toEqual({ producer: "Brand", variantDefault: "Option" });
+        expect(siteContextOf({ locale: "ro-RO", catalogStrings: { facetProducer: "Marcă" } }, []).facetLabels)
+            .toEqual({ producer: "Marcă", variantDefault: "Variantă" });
+    });
+
+    it("the panel carries the context's headings; facet ids, values and hrefs are the same for every heading language", () => {
+        const scope = { kind: "category" as const, id: producerCategoryId(DRAFTS)! };
+        const ro = panelOf(scope, "", CONTEXT);
+        const en = panelOf(scope, "", { ...CONTEXT, facetLabels: siteContextOf({}, []).facetLabels });
+        expect(ro.listing.facets.find((x) => x.id === "producator")!.label).toBe("Producător");
+        expect(en.listing.facets.find((x) => x.id === "producator")!.label).toBe("Brand");
+        const strip = (l: typeof ro.listing) => l.facets.map(({ label: _l, ...rest }) => rest);
+        expect(strip(en.listing)).toEqual(strip(ro.listing));
     });
 });

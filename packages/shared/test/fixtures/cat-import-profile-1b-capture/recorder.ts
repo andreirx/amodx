@@ -3,7 +3,7 @@
 // specifier to this module. Every export of the REAL base module is re-exported unchanged; `buildFacetListing` and
 // `facetValuesOf` call the real function and record (input, output). The base code itself is not edited.
 import * as real from "@capture/facets-real";
-import { recorded, serialiseListing, serialiseSelection, type FacetCall, type ValuesCall } from "./golden";
+import { RO_FACET_LABELS, recorded, serialiseListing, serialiseSelection, type FacetCall, type ValuesCall } from "./golden";
 import { isDeepStrictEqual } from "node:util";
 
 export * from "@capture/facets-real";
@@ -20,8 +20,10 @@ function jsonFaithful<T>(v: T): T {
     return copy;
 }
 
+// LOCALE-1B: the recorded call keeps the base signature (base, f, path); the real call passes the headings the golden
+// was recorded with (`RO_FACET_LABELS`), so a later re-capture records the same headings (docs/slices/locale-1.md § 6.3).
 export function buildFacetListing(base: any[], f: string | undefined, path: string) {
-    const out = real.buildFacetListing(base, f, path);
+    const out = real.buildFacetListing(base, f, path, RO_FACET_LABELS);
     const key = JSON.stringify(jsonFaithful(base));
     let i = baseIndex.get(key);
     if (i === undefined) { i = bases.length; bases.push(JSON.parse(key)); baseIndex.set(key, i); }

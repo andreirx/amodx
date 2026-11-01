@@ -1,5 +1,6 @@
 import {
-    URL_PREFIX_DEFAULTS, buildFacetListing, catalogListing, catalogListingPath, type FacetListing,
+    URL_PREFIX_DEFAULTS, buildFacetListing, catalogListing, catalogListingPath, resolveLocaleStrings, type FacetLabels,
+    type FacetListing, type LocaleStringsInput,
 } from "@amodx/shared";
 
 /**
@@ -35,12 +36,24 @@ export interface SiteContext {
     prefixes: { shop?: string; category?: string };
     /** id → slug of every existing category (the dry run names a found category by id only). */
     categories: { id: string; slug: string; name: string }[];
+    /**
+     * LOCALE-1B (docs/slices/locale-1.md § 6.3): the two fixed facet headings the public site shows this tenant's
+     * visitors — its catalog texts `facetProducer` / `facetVariantDefault`, resolved from the same `GET /settings` answer
+     * with the site's own resolver. The admin controls around the preview stay as they are; only the previewed visitor
+     * panel shows visitor texts, exactly as the site will.
+     */
+    facetLabels: FacetLabels;
 }
 
-/** `GET /settings` and `GET /categories` answers → the context. `urlPrefixes || URL_PREFIX_DEFAULTS`, as `SitePage.tsx`. */
-export function siteContextOf(settings: { urlPrefixes?: { shop?: string; category?: string } }, categories: { id?: unknown; slug?: unknown; name?: unknown }[]): SiteContext {
+/**
+ * `GET /settings` and `GET /categories` answers → the context. `urlPrefixes || URL_PREFIX_DEFAULTS`, as `SitePage.tsx`;
+ * the facet headings as `SitePage.tsx` passes them: `resolveLocaleStrings(settings).strings.catalog`.
+ */
+export function siteContextOf(settings: { urlPrefixes?: { shop?: string; category?: string } } & LocaleStringsInput, categories: { id?: unknown; slug?: unknown; name?: unknown }[]): SiteContext {
+    const catalog = resolveLocaleStrings(settings).strings.catalog;
     return {
         prefixes: settings.urlPrefixes || URL_PREFIX_DEFAULTS,
+        facetLabels: { producer: catalog.facetProducer, variantDefault: catalog.facetVariantDefault },
         categories: categories
             .filter((c) => typeof c.id === "string" && typeof c.slug === "string")
             .map((c) => ({ id: c.id as string, slug: c.slug as string, name: typeof c.name === "string" ? c.name : (c.slug as string) })),
@@ -264,7 +277,7 @@ export function previewPanel(
     const path = catalogListingPath(context.prefixes, slug);
     // CAT-IMAGE-GATE-1: the drafts as published after a copy in which every link works (see the header).
     const base = catalogListing([...report.siteProducts, ...publishedDrafts(report.drafts)], categoryId, today);
-    return { kind: "panel", path, baseCount: base.length, listing: buildFacetListing(base, f, path) };
+    return { kind: "panel", path, baseCount: base.length, listing: buildFacetListing(base, f, path, context.facetLabels) };
 }
 
 /**

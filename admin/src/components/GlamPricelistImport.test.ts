@@ -630,7 +630,10 @@ describe("1c — every answer that reports the stored state refreshes the editor
 
 describe("1c — copy states only what the mechanism guarantees (review-0 R4, review-1)", () => {
     // Each restated rule is checked by the module that owns it: `buildFacetListing` from @amodx/shared.
-    const shown = (base: any[], f = "") => buildFacetListing(base, f, "/c").facets;
+    // LOCALE-1B (docs/slices/locale-1.md § 6.3): `labels` is required; these rows pass today's Romanian headings (a test
+    // constant) and assert no heading.
+    const RO_FACET_LABELS = { producer: "Producător", variantDefault: "Variantă" };
+    const shown = (base: any[], f = "") => buildFacetListing(base, f, "/c", RO_FACET_LABELS).facets;
     const facet = (base: any[], id: string, f = "") => shown(base, f).find((x) => x.id === id);
     const values = (base: any[], id: string, f = "") => facet(base, id, f)?.values.map((v) => [v.value, v.count]);
     const p = (id: string, attributes: { key: string; value: string }[], over: Record<string, unknown> = {}) => ({ id, brand: "B", attributes, ...over });
@@ -676,7 +679,7 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
         const silent = { facetModes: { variant: "never", attributes: [] } };
         const base = [p("a", [], { ...v("120"), ...silent }), p("b", [], v("90")), p("c", [], v("60"))];
         expect(values(base, "varianta")).toEqual([["60", 1], ["90", 1]]);
-        expect(buildFacetListing(base, "varianta=120", "/c").items.map((x) => x.id)).toEqual(["a"]);
+        expect(buildFacetListing(base, "varianta=120", "/c", RO_FACET_LABELS).items.map((x) => x.id)).toEqual(["a"]);
     });
 
     it("visibility: a selected facet stays shown even when its value covers the whole page; an unselected one does not", () => {

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { createElement, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { resolveLocaleStrings } from "@amodx/shared";
 import { InterestToggle } from "@/components/InterestShortlist";
 
 /**
@@ -11,7 +12,12 @@ import { InterestToggle } from "@/components/InterestShortlist";
  * that keeps the component does) — before the fix it still showed and saved "red" for B.
  * (SitePage also keys the presenter and the toggle by product, so a real navigation remounts both; this row pins the
  * component's own rule, independent of that key.)
+ * LOCALE-1B: the toggle's texts are a `strings` prop; these rows pass a Romanian tenant's catalog texts (the RO pack,
+ * whose toggle texts are the literals the component held before), so the expectations below are unchanged.
  */
+
+const RO = resolveLocaleStrings({ locale: "ro-RO" }).strings.catalog;
+const RO_TOGGLE = { interestAdd: RO.interestAdd, interestAdded: RO.interestAdded, interestListFull: RO.interestListFull };
 
 let root: Root | null = null;
 let host: HTMLDivElement;
@@ -42,7 +48,7 @@ function presenter(values: string[], checked?: string) {
 
 const props = (productId: string) => ({
     tenantId: `t-f4-${productId}`, productId, title: `Product ${productId}`, slug: productId,
-    optionGroupName: "catalog-option-format", options: [], variant: "page" as const,
+    optionGroupName: "catalog-option-format", options: [], variant: "page" as const, strings: RO_TOGGLE,
 });
 const button = () => host.querySelector("button")!;
 const saved = (tenantId: string) => JSON.parse(localStorage.getItem(`amodx:interest:${tenantId}`) ?? "{\"items\":[]}").items;

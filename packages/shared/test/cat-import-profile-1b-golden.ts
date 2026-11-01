@@ -29,6 +29,15 @@ type ListingLike = {
 
 export const FULL_OUTPUT_LIMIT = 4096;
 
+/**
+ * LOCALE-1B (docs/slices/locale-1.md § 6.3) — the two fixed facet headings every recorded call ran with: the Romanian
+ * headings the facet module held before `buildFacetListing` took them as its required `labels` parameter. A TEST
+ * constant (not an export of `facets.ts`, which holds no language): the golden comparison, the shared facet tests and
+ * the capture tool (`cat-import-profile-1b-capture/`, which imports this file as `./golden`) pass it, so the golden
+ * stays byte-equal and is never re-recorded for this change.
+ */
+export const RO_FACET_LABELS = { producer: "Producător", variantDefault: "Variantă" } as const;
+
 /** The digest the golden records for a serialised output, and the output itself when it is small enough. */
 export function recorded(serialised: unknown): { digest: string; out?: unknown } {
     const json = JSON.stringify(serialised);

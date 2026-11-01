@@ -1,0 +1,889 @@
+{
+  "slice": "locale-1b",
+  "rule": "docs/slices/locale-1.md § 16.2 items 5-6 and packet rule 5: every key this slice allocates (39 catalog keys, 21 shared commerce keys) maps to at least one check, and every plural category of every count key, per registered language (`<part>.<key>@<language>.<category>`), too — a captured URL of a serving-contract row (fixture + path; the expectation file of that row — ro-expected.json (ro) or text-expected.json (en) — must list the key there, with a count of that category for a category entry) or a named unit test (file + a substring of its title). Checked by renderer/test/unit/locale-coverage.test.ts (the checker of locale-1a, extended and renamed by 1b), which also fails when a schema key is allocated to no slice.",
+  "allocatedKeys": {
+    "site": [],
+    "catalog": [
+      "interestListFull",
+      "interestAdd",
+      "interestAdded",
+      "interestListTitle",
+      "interestBrowse",
+      "interestSentTitle",
+      "interestSentBody",
+      "interestExcludedIntro",
+      "interestEmpty",
+      "interestErrorNoneAvailable",
+      "interestErrorInvalid",
+      "interestErrorCheck",
+      "interestErrorAllGone",
+      "interestErrorSend",
+      "interestErrorNetwork",
+      "interestPreviouslySent",
+      "interestContactHeading",
+      "interestName",
+      "interestEmail",
+      "interestPhone",
+      "interestMessage",
+      "interestSubmit",
+      "interestRowExpired",
+      "interestRowUnavailable",
+      "interestRowOptionGone",
+      "interestCollection",
+      "interestRemove",
+      "facetsTooMany",
+      "facetsCount",
+      "facetsUrlTooLong",
+      "facetsRemove",
+      "facetsClear",
+      "facetsNoMatch",
+      "facetsTitle",
+      "facetProducer",
+      "facetVariantDefault",
+      "interestWidgetLabel",
+      "interestStorageWarning",
+      "interestStorageAck"
+    ],
+    "commerce": [
+      "metaCategoryDescription",
+      "metaShopTitle",
+      "metaSearchQueryTitle",
+      "metaSearchTitle",
+      "searchPlaceholder",
+      "shopTitle",
+      "volumePricing",
+      "preOrder",
+      "buyNow",
+      "ingredients",
+      "nutritionalValues",
+      "reviewsHeading",
+      "reviewsSummary",
+      "categoryEmpty",
+      "productCount",
+      "shopEmptyInStock",
+      "shopEmpty",
+      "shopAllProducts",
+      "searchBreadcrumb",
+      "searchResultCount",
+      "searchEnterTerm"
+    ]
+  },
+  "checks": {
+    "catalog.interestListFull": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "toggle: a full list (50 items) shows interestListFull"
+      }
+    ],
+    "catalog.interestAdd": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "toggle: interestAdd, then interestAdded after a click"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/shop"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/product/oak-plank"
+        }
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "interest toggles (cards and product page) and the list page get the tenant's catalog texts"
+      }
+    ],
+    "catalog.interestAdded": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "toggle: interestAdd, then interestAdded after a click"
+      }
+    ],
+    "catalog.interestListTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page empty: interestListTitle, interestEmpty with {action} = interestAdd, interestBrowse"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "metadata: metaCategoryDescription, metaShopTitle, metaSearchTitle, metaSearchQueryTitle, interestListTitle"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "catalog tenant: both widget mounts (desktop, mobile) get interestListTitle, interestWidgetLabel, interestStorageWarning, interestStorageAck"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/"
+        }
+      }
+    ],
+    "catalog.interestBrowse": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page empty: interestListTitle, interestEmpty with {action} = interestAdd, interestBrowse"
+      }
+    ],
+    "catalog.interestSentTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page sent: interestSentTitle, interestSentBody, interestExcludedIntro"
+      }
+    ],
+    "catalog.interestSentBody": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page sent: interestSentTitle, interestSentBody, interestExcludedIntro"
+      }
+    ],
+    "catalog.interestExcludedIntro": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page sent: interestSentTitle, interestSentBody, interestExcludedIntro"
+      }
+    ],
+    "catalog.interestEmpty": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page empty: interestListTitle, interestEmpty with {action} = interestAdd, interestBrowse"
+      }
+    ],
+    "catalog.interestErrorNoneAvailable": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page errors: interestErrorNoneAvailable (nothing sendable), interestErrorInvalid (bad e-mail)"
+      }
+    ],
+    "catalog.interestErrorInvalid": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page errors: interestErrorNoneAvailable (nothing sendable), interestErrorInvalid (bad e-mail)"
+      }
+    ],
+    "catalog.interestErrorCheck": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "503 → interestErrorCheck"
+      }
+    ],
+    "catalog.interestErrorAllGone": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "400 with dropped → interestErrorAllGone"
+      }
+    ],
+    "catalog.interestErrorSend": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "500 → interestErrorSend"
+      }
+    ],
+    "catalog.interestErrorNetwork": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "a network failure → interestErrorNetwork"
+      }
+    ],
+    "catalog.interestPreviouslySent": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestContactHeading": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestName": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestEmail": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestPhone": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestMessage": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestSubmit": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestRowExpired": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestRowUnavailable": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestRowOptionGone": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestCollection": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.interestRemove": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "list page rows: interestRowExpired, interestRowUnavailable, interestRowOptionGone, interestCollection, interestRemove, interestPreviouslySent, the form labels and interestSubmit"
+      }
+    ],
+    "catalog.facetsTooMany": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      }
+    ],
+    "catalog.facetsCount": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/shop"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/shop"
+        }
+      }
+    ],
+    "catalog.facetsCount@en.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "catalog.facetsCount@en.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/shop"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/category/floors"
+        }
+      }
+    ],
+    "catalog.facetsCount@ro.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "catalog.facetsCount@ro.few": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "catalog.facetsCount@ro.other": [
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/shop"
+        }
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "catalog.facetsUrlTooLong": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsNoMatch (a selection that matches nothing), facetsUrlTooLong (filters too long)"
+      }
+    ],
+    "catalog.facetsRemove": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      }
+    ],
+    "catalog.facetsClear": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      }
+    ],
+    "catalog.facetsNoMatch": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsNoMatch (a selection that matches nothing), facetsUrlTooLong (filters too long)"
+      }
+    ],
+    "catalog.facetsTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/shop"
+        }
+      },
+      {
+        "capture": {
+          "row": "loc1-text-cip1b-catalog",
+          "fixture": "cip1b-catalog",
+          "path": "/category/cip1b-boen"
+        }
+      }
+    ],
+    "catalog.facetProducer": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/shop"
+        }
+      }
+    ],
+    "catalog.facetVariantDefault": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "facet panel: facetsTitle, facetProducer, facetVariantDefault, facetsCount, facetsRemove, facetsClear, facetsTooMany"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-cip1b-catalog",
+          "fixture": "cip1b-catalog",
+          "path": "/shop"
+        }
+      }
+    ],
+    "commerce.metaCategoryDescription": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "metadata: metaCategoryDescription, metaShopTitle, metaSearchTitle, metaSearchQueryTitle, interestListTitle"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/category/rugs"
+        }
+      }
+    ],
+    "commerce.metaShopTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "metadata: metaCategoryDescription, metaShopTitle, metaSearchTitle, metaSearchQueryTitle, interestListTitle"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/shop"
+        }
+      }
+    ],
+    "commerce.metaSearchQueryTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "metadata: metaCategoryDescription, metaShopTitle, metaSearchTitle, metaSearchQueryTitle, interestListTitle"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/search?q=rug"
+        }
+      }
+    ],
+    "commerce.metaSearchTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "metadata: metaCategoryDescription, metaShopTitle, metaSearchTitle, metaSearchQueryTitle, interestListTitle"
+      }
+    ],
+    "commerce.searchPlaceholder": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "searchPlaceholder when the tenant's searchBar.placeholder is empty; the tenant's placeholder otherwise"
+      }
+    ],
+    "commerce.shopTitle": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "shop page: shopTitle, shopAllProducts, inStock filter, shopEmpty / shopEmptyInStock"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/shop"
+        }
+      }
+    ],
+    "commerce.volumePricing": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/product/sale-rug"
+        }
+      }
+    ],
+    "commerce.preOrder": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "by-id page: buyNow, preOrder, outOfStock"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/product/variant-rug"
+        }
+      }
+    ],
+    "commerce.buyNow": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "by-id page: buyNow, preOrder, outOfStock"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/product/rug-care-guide"
+        }
+      }
+    ],
+    "commerce.ingredients": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      }
+    ],
+    "commerce.nutritionalValues": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      }
+    ],
+    "commerce.reviewsHeading": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      }
+    ],
+    "commerce.reviewsSummary": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      }
+    ],
+    "commerce.categoryEmpty": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      }
+    ],
+    "commerce.productCount": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/category/rugs"
+        }
+      }
+    ],
+    "commerce.shopEmptyInStock": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "shop page: shopTitle, shopAllProducts, inStock filter, shopEmpty / shopEmptyInStock"
+      }
+    ],
+    "commerce.shopEmpty": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "shop page: shopTitle, shopAllProducts, inStock filter, shopEmpty / shopEmptyInStock"
+      }
+    ],
+    "commerce.shopAllProducts": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "shop page: shopTitle, shopAllProducts, inStock filter, shopEmpty / shopEmptyInStock"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/shop"
+        }
+      }
+    ],
+    "commerce.searchBreadcrumb": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/search?q=rug"
+        }
+      }
+    ],
+    "commerce.searchResultCount": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/search?q=rug"
+        }
+      }
+    ],
+    "commerce.searchEnterTerm": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      }
+    ],
+    "commerce.reviewsSummary@en.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "commerce.reviewsSummary@en.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "commerce.reviewsSummary@ro.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.reviewsSummary@ro.few": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.reviewsSummary@ro.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "product page: shopTitle, volumePricing, preOrder, buyNow, ingredients, nutritionalValues, reviewsHeading, reviewsSummary 1/2/20, description"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.productCount@en.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "commerce.productCount@en.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "commerce.productCount@ro.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.productCount@ro.few": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-commerce",
+          "fixture": "roCommerce",
+          "path": "/category/rugs"
+        }
+      }
+    ],
+    "commerce.productCount@ro.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "category page: productCount 1/2/20, categoryEmpty, shopTitle breadcrumb"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.searchResultCount@en.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "commerce.searchResultCount@en.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "commerce.searchResultCount@ro.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.searchResultCount@ro.few": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.searchResultCount@ro.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "search page: searchResultCount 1/2/20, searchBreadcrumb, searchEnterTerm, resultsFor, searchProducts, searchNoResults (L-RO-3)"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "catalog.interestWidgetLabel": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "catalog tenant: both widget mounts (desktop, mobile) get interestListTitle, interestWidgetLabel, interestStorageWarning, interestStorageAck"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/"
+        }
+      }
+    ],
+    "catalog.interestWidgetLabel@en.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "English: 0 → other, 1 → one, 2 → other"
+      }
+    ],
+    "catalog.interestWidgetLabel@en.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      },
+      {
+        "capture": {
+          "row": "loc1-text-catalog",
+          "fixture": "catalog",
+          "path": "/"
+        }
+      }
+    ],
+    "catalog.interestWidgetLabel@ro.one": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      },
+      {
+        "test": "packages/shared/test/locale-strings.test.ts",
+        "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "catalog.interestWidgetLabel@ro.few": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      }
+    ],
+    "catalog.interestWidgetLabel@ro.other": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      }
+    ],
+    "catalog.interestStorageWarning": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: storage fails → interestStorageWarning with the interestStorageAck button, which hides the notice"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "catalog tenant: both widget mounts (desktop, mobile) get interestListTitle, interestWidgetLabel, interestStorageWarning, interestStorageAck"
+      }
+    ],
+    "catalog.interestStorageAck": [
+      {
+        "test": "renderer/test/unit/locale-1b-client.test.ts",
+        "case": "widget: storage fails → interestStorageWarning with the interestStorageAck button, which hides the notice"
+      },
+      {
+        "test": "renderer/test/unit/locale-1b-server-render.test.ts",
+        "case": "catalog tenant: both widget mounts (desktop, mobile) get interestListTitle, interestWidgetLabel, interestStorageWarning, interestStorageAck"
+      }
+    ]
+  }
+}

@@ -3,20 +3,24 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useTenantUrl } from "@/lib/routing";
+import type { LocaleStrings } from "@amodx/shared";
+
+/**
+ * LOCALE-1B (docs/slices/locale-1.md § 5.2 row F, § 6.2): the four texts of the bar, already resolved by the server
+ * caller (`SitePage.tsx`) with the fallback rule `tenant override || language default` — so a stored "" shows the
+ * language default, as the English literal fallback did before.
+ */
+export type SearchBarLabels = Pick<LocaleStrings["commerce"], "searchButton" | "searchNoResults" | "searchSearching" | "viewAllResults">;
 
 interface SearchBarProps {
-    placeholder?: string;
+    /** The tenant's `searchBar.placeholder`, else its `searchPlaceholder` text (the server caller decides). */
+    placeholder: string;
     searchPrefix?: string;
     productPrefix?: string;
     tenantId?: string;
     apiUrl?: string;
     contentMaxWidth?: string;
-    labels?: {
-        searchButton?: string;
-        searchNoResults?: string;
-        searchSearching?: string;
-        viewAllResults?: string;
-    };
+    labels: SearchBarLabels;
     /** CATALOG-MODE-1: false on a catalog site — the dropdown prints no price. Passed only when false, so a
      *  non-catalog page's RSC payload is unchanged. */
     showPrices?: boolean;
@@ -33,7 +37,7 @@ interface SearchResult {
 }
 
 export function SearchBar({
-    placeholder = "Search products...",
+    placeholder,
     searchPrefix = "/search",
     productPrefix = "/product",
     tenantId,
@@ -160,7 +164,7 @@ export function SearchBar({
                             type="submit"
                             className="bg-background text-foreground px-6 py-3 rounded-full text-sm font-semibold hover:bg-background/90 transition-opacity shrink-0 shadow-sm"
                         >
-                            {labels?.searchButton || "Search"}
+                            {labels.searchButton}
                         </button>
                     </form>
 
@@ -170,11 +174,11 @@ export function SearchBar({
                             {loading ? (
                                 <div className="p-4 text-center text-sm text-muted-foreground">
                                     <div className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
-                                    {labels?.searchSearching || "Searching..."}
+                                    {labels.searchSearching}
                                 </div>
                             ) : results.length === 0 ? (
                                 <div className="p-4 text-center text-sm text-muted-foreground">
-                                    {labels?.searchNoResults || "No products found"}
+                                    {labels.searchNoResults}
                                 </div>
                             ) : (
                                 <>
@@ -214,7 +218,7 @@ export function SearchBar({
                                         }}
                                         className="w-full px-4 py-2.5 text-center text-sm text-primary font-medium border-t hover:bg-muted transition-colors"
                                     >
-                                        {labels?.viewAllResults || "View all results"}
+                                        {labels.viewAllResults}
                                     </button>
                                 </>
                             )}

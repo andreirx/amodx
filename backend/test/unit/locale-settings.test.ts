@@ -4,7 +4,8 @@ import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/li
 /**
  * LOCALE-1A — the PUT /settings limits of docs/slices/locale-1.md § 4.4 (backend unit checks of § 10 row `locale-1a`):
  * each limit → 400 with nothing written; a body without the new attributes is never refused by them;
- * `commerceStrings` (and `gdpr`, `legalLinks`) are never validated. Same style as catalog-mode.test.ts: the real
+ * `commerceStrings` (and `gdpr`, `legalLinks`) are never validated. LOCALE-1B: a count text (an object of texts per
+ * plural category, § 16.2 item 6) is accepted; its keys and texts are bounded. Same style as catalog-mode.test.ts: the real
  * handler, `requireRole` and `withInvalidation`; only `db.js` (`send`) and `events.js` (`publishAudit`) are mocked.
  * Credential-free.
  */
@@ -82,6 +83,22 @@ describe("PUT /settings — siteStrings / catalogStrings limits (§ 4.4)", () =>
             it("serialised size: within every other limit but over 32 768 UTF-8 bytes → 400", async () => {
                 // 100 × 200 "ș" (1 UTF-16 unit, 2 UTF-8 bytes each) ≈ 40 KB of JSON; each value is under 500 units.
                 await expectRefused({ [attribute]: many(100, "ș".repeat(200)) }, new RegExp(`^${attribute} is \\d+ bytes as JSON; at most 32768`));
+            });
+            it("LOCALE-1B: a count text (texts per plural category) is accepted and written as sent", async () => {
+                const value = { facetsCount: { one: "{n} produs", few: "{n} produse", other: "{n} de produse" }, interestAdd: "x", empty: {} };
+                const res = await put({ [attribute]: value });
+                expect(res.statusCode).toBe(200);
+                expect(tenantPuts()[0].input.Item[attribute]).toEqual(value);
+            });
+            it("LOCALE-1B: a count text with a non-category key, a non-text category value or an array → 400; each category text is length-bounded", async () => {
+                for (const bad of [{ one: "x", plural: "y" }, { one: 1 }, { other: null }, ["x"], { other: { nested: "x" } }]) {
+                    ddbSend.mockClear();
+                    await expectRefused({ [attribute]: { facetsCount: bad } }, new RegExp(`^${attribute}\\.facetsCount must be a text, or an object of texts per plural category`));
+                }
+                ddbSend.mockClear();
+                expect((await put({ [attribute]: { facetsCount: { few: "a".repeat(500) } } })).statusCode).toBe(200);
+                ddbSend.mockClear();
+                await expectRefused({ [attribute]: { facetsCount: { few: "a".repeat(501) } } }, new RegExp(`^${attribute}\\.facetsCount\\.few is 501 characters`));
             });
             it("a valid attribute is written as sent, unknown keys kept (§ 2.4)", async () => {
                 const value = { navContact: "Scrie-ne", futureKey: "kept", empty: "" };

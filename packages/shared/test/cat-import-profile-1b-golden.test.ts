@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { buildFacetListing, facetValuesOf } from "../src/facets";
 import { catalogListing, utcDay } from "../src/catalog-listing";
-import { recorded, serialiseListing, serialiseSelection, type Golden1b } from "./cat-import-profile-1b-golden";
+import { RO_FACET_LABELS, recorded, serialiseListing, serialiseSelection, type Golden1b } from "./cat-import-profile-1b-golden";
 
 const golden: Golden1b = JSON.parse(readFileSync(new URL("./fixtures/cat-import-profile-1b-baseline.json", import.meta.url), "utf8"));
 
@@ -36,7 +36,7 @@ describe("1b golden (1) — every buildFacetListing / facetValuesOf call of the 
         expect(golden.facetsTest.facetCalls.length).toBe(2138);
         golden.facetsTest.facetCalls.forEach((c, i) => {
             const base = golden.facetsTest.bases[c.base] as any[];
-            same(c, serialiseListing(base, buildFacetListing(base, c.f ?? undefined, c.path)), `call ${i}`);
+            same(c, serialiseListing(base, buildFacetListing(base, c.f ?? undefined, c.path, RO_FACET_LABELS)), `call ${i}`);
         });
     });
     it("facetValuesOf calls reproduce the base outputs", () => {
@@ -62,7 +62,7 @@ describe("1b golden (3) — the serving catalog tenant's panels", () => {
         expect(golden.servingFacets.calls.length).toBe(198);
         golden.servingFacets.calls.forEach((c, i) => {
             const base = golden.listing.calls[c.listingCall].out;
-            same(c, serialiseListing(base, buildFacetListing(base, c.f ?? undefined, c.path)), `serving call ${i} ${c.path}`);
+            same(c, serialiseListing(base, buildFacetListing(base, c.f ?? undefined, c.path, RO_FACET_LABELS)), `serving call ${i} ${c.path}`);
         });
     });
 });

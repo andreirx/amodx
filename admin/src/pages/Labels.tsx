@@ -7,21 +7,23 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RotateCcw, Save } from "lucide-react";
 import {
-    COOKIE_AND_LEGAL_LABEL_LOCATIONS, CommerceStringsSchema, SiteStringsSchema, resolveLocaleStrings,
-    type CookieOrLegalLabelKey, type LocaleStrings,
+    COOKIE_AND_LEGAL_LABEL_LOCATIONS, CatalogStringsSchema, CommerceStringsSchema, SiteStringsSchema, isCatalogMode,
+    pluralCategoriesOf, resolveLocaleStrings, type CookieOrLegalLabelKey, type CountText, type LocaleStrings, type PluralCategory,
 } from "@amodx/shared";
 
 // ── LOCALE-1A (docs/slices/locale-1.md § 7.1): the Labels page edits the tenant's locale table ─────────────────────
-// Three stored homes, one input per key: `commerceStrings` (commerce part), `siteStrings` (site part, without the
-// nine cookie/legal keys) and the label fields of `gdpr` / `legalLinks` (the nine, § 4.1). The pure helpers below
-// build what a save sends; `Labels.test.ts` pins them.
+// Four stored homes, one input per key: `commerceStrings` (commerce part), `catalogStrings` (catalog part, LOCALE-1B),
+// `siteStrings` (site part, without the nine cookie/legal keys) and the label fields of `gdpr` / `legalLinks` (the
+// nine, § 4.1). The page shows them in SECTIONS (each with its Reset); a section edits exactly one home. The pure
+// helpers below build what a save sends; `Labels.test.ts` pins them.
 
 /** Which stored home an input edits. `labels` = the nine cookie/legal keys, stored in gdpr/legalLinks fields. */
-export type LabelsPart = "commerce" | "site" | "labels";
+export type LabelsPart = "commerce" | "catalog" | "site" | "labels";
 
 /** What the page edits: copies of the loaded objects (unknown and non-string stored keys are kept, § 2.4). */
 export type LabelsDraft = {
     commerce: Record<string, unknown>;
+    catalog: Record<string, unknown>;
     site: Record<string, unknown>;
     labels: Partial<Record<CookieOrLegalLabelKey, string>>;
 };
@@ -38,7 +40,10 @@ export function draftFromSettings(settings: Record<string, unknown>): LabelsDraf
         const stored = asObject(settings[attribute])[field];
         if (nonEmpty(stored)) labels[key] = stored;
     }
-    return { commerce: { ...asObject(settings.commerceStrings) }, site: { ...asObject(settings.siteStrings) }, labels };
+    return {
+        commerce: { ...asObject(settings.commerceStrings) }, catalog: { ...asObject(settings.catalogStrings) },
+        site: { ...asObject(settings.siteStrings) }, labels,
+    };
 }
 
 /** One input changed. An empty input removes the override (the page never writes ""). */
@@ -49,22 +54,59 @@ export function setText(draft: LabelsDraft, part: LabelsPart, key: string, value
     return { ...draft, [part]: next };
 }
 
+/**
+ * LOCALE-1B: one plural category of a count key changed (§ 16.2 item 6). The stored value is an object of texts per
+ * category; an empty input removes that category, and the key goes when no category is left. Other stored
+ * categories (for example those of another language) are kept.
+ */
+export function setCountText(draft: LabelsDraft, part: LabelsPart, key: string, category: PluralCategory, value: string): LabelsDraft {
+    const forms = { ...asObject((draft[part] as Record<string, unknown>)[key]) };
+    if (value) forms[category] = value;
+    else delete forms[category];
+    const next = { ...draft[part] } as Record<string, unknown>;
+    if (Object.keys(forms).length > 0) next[key] = forms;
+    else delete next[key];
+    return { ...draft, [part]: next };
+}
+
+/**
+ * LOCALE-1B (§ 7.1, § 2.1 note): the commerce-part keys that render on the product, category, shop and search pages —
+ * shared by commerce AND catalog sites, so the page shows them in their own section ("Product pages & search") to both.
+ * The 21 keys of `locale-1b` and the seven existing ones a catalog site renders (`description` and the six search texts).
+ */
+const PRODUCT_PAGE_KEYS = [
+    "description", "volumePricing", "preOrder", "buyNow", "ingredients", "nutritionalValues", "reviewsHeading", "reviewsSummary",
+    "shopTitle", "categoryEmpty", "productCount", "shopEmpty", "shopEmptyInStock", "shopAllProducts", "metaCategoryDescription", "metaShopTitle",
+    "searchPlaceholder", "searchButton", "searchNoResults", "searchSearching", "viewAllResults", "resultsFor", "searchProducts",
+    "searchBreadcrumb", "searchResultCount", "searchEnterTerm", "metaSearchTitle", "metaSearchQueryTitle",
+];
+
+/** A section of the page: one heading, one Reset. Each section edits exactly one stored home. */
+export type LabelsSection = "site" | "labels" | "catalog" | "product" | "commerce";
+export const SECTION_HOME = {
+    site: "site", labels: "labels", catalog: "catalog", product: "commerce", commerce: "commerce",
+} as const satisfies Record<LabelsSection, LabelsPart>;
+
 /** The keys each Reset button covers: every key of its section that has an input. */
 export const SECTION_KEYS = {
     site: Object.keys(SiteStringsSchema.shape).filter((k) => !NINE.includes(k as CookieOrLegalLabelKey)),
     labels: NINE as string[],
-    commerce: Object.keys(CommerceStringsSchema.shape),
-} satisfies Record<LabelsPart, string[]>;
+    catalog: Object.keys(CatalogStringsSchema.shape),
+    product: PRODUCT_PAGE_KEYS,
+    commerce: Object.keys(CommerceStringsSchema.shape).filter((k) => !PRODUCT_PAGE_KEYS.includes(k)),
+} satisfies Record<LabelsSection, string[]>;
 
-/** How many overrides a Reset of `part` removes. */
-export function overrideCount(draft: LabelsDraft, part: LabelsPart): number {
-    return SECTION_KEYS[part].filter((k) => Object.prototype.hasOwnProperty.call(draft[part], k)).length;
+/** How many overrides a Reset of `section` removes. */
+export function overrideCount(draft: LabelsDraft, section: LabelsSection): number {
+    const home = draft[SECTION_HOME[section]];
+    return SECTION_KEYS[section].filter((k) => Object.prototype.hasOwnProperty.call(home, k)).length;
 }
 
 /** "Reset to the language defaults": removes every override of the section's keys; nothing else (§ 7.1). */
-export function resetSection(draft: LabelsDraft, part: LabelsPart): LabelsDraft {
+export function resetSection(draft: LabelsDraft, section: LabelsSection): LabelsDraft {
+    const part = SECTION_HOME[section];
     const next = { ...draft[part] } as Record<string, unknown>;
-    for (const key of SECTION_KEYS[part]) delete next[key];
+    for (const key of SECTION_KEYS[section]) delete next[key];
     return { ...draft, [part]: next };
 }
 
@@ -82,6 +124,7 @@ function sameEntries(a: Record<string, unknown>, b: Record<string, unknown>): bo
 export function labelsSaveBody(settings: Record<string, unknown>, draft: LabelsDraft): Record<string, unknown> {
     const body: Record<string, unknown> = {};
     if (!sameEntries(asObject(settings.commerceStrings), draft.commerce)) body.commerceStrings = draft.commerce;
+    if (!sameEntries(asObject(settings.catalogStrings), draft.catalog)) body.catalogStrings = draft.catalog;
     if (!sameEntries(asObject(settings.siteStrings), draft.site)) body.siteStrings = draft.site;
     for (const attribute of ["gdpr", "legalLinks"] as const) {
         const loaded = asObject(settings[attribute]);
@@ -102,17 +145,28 @@ export function labelsSaveBody(settings: Record<string, unknown>, draft: LabelsD
 const LabelsCtx = createContext<{
     draft: LabelsDraft;
     defaults: LocaleStrings | null;
+    /** The tenant's text language (the resolver's `language`): which plural categories a count key offers. */
+    language: string;
     update: (part: LabelsPart, key: string, value: string) => void;
-}>({ draft: { commerce: {}, site: {}, labels: {} }, defaults: null, update: () => {} });
+    updateCount: (part: LabelsPart, key: string, category: PluralCategory, value: string) => void;
+}>({ draft: { commerce: {}, catalog: {}, site: {}, labels: {} }, defaults: null, language: "en", update: () => {}, updateCount: () => {} });
+
+/** The language default of one key of a stored home (the nine cookie/legal keys are site keys). */
+function defaultOf(defaults: LocaleStrings | null, part: LabelsPart, field: string): unknown {
+    if (!defaults) return undefined;
+    return (defaults[part === "labels" ? "site" : part] as Record<string, unknown>)[field];
+}
 
 /**
  * One input. The value is the tenant's stored override; the placeholder is the default of the tenant's site language
  * (layers 1 + 2 of the resolver), so an owner sees what visitors get when the input is blank.
  */
-function F({ label, field, part = "commerce", placeholder }: { label: string; field: string; part?: LabelsPart; placeholder?: string }) {
+function F({ label, field, section = "commerce", placeholder }: { label: string; field: string; section?: LabelsSection; placeholder?: string }) {
     const { draft, defaults, update } = useContext(LabelsCtx);
+    const part = SECTION_HOME[section];
     const stored = (draft[part] as Record<string, unknown>)[field];
-    const languageDefault = defaults ? (part === "commerce" ? (defaults.commerce as Record<string, string>)[field] : (defaults.site as Record<string, string>)[field]) : "";
+    const found = defaultOf(defaults, part, field);
+    const languageDefault = typeof found === "string" ? found : "";
     return (
         <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">{label}</Label>
@@ -126,17 +180,54 @@ function F({ label, field, part = "commerce", placeholder }: { label: string; fi
     );
 }
 
+/**
+ * LOCALE-1B: the inputs of a count key (§ 16.2 item 6) — one per plural category of the tenant's text language
+ * (English: one, other; Romanian: one, few, other), each with the stored text of that category and, as placeholder,
+ * the language default of that category (else its `other`). Stored categories of another language are not shown and
+ * are kept on save.
+ */
+export function countInputs(draft: LabelsDraft, defaults: LocaleStrings | null, language: string, part: LabelsPart, field: string): { category: PluralCategory; value: string; placeholder: string }[] {
+    const stored = asObject((draft[part] as Record<string, unknown>)[field]);
+    const languageDefault = defaultOf(defaults, part, field) as CountText | undefined;
+    return pluralCategoriesOf(language).map((category) => ({
+        category,
+        value: typeof stored[category] === "string" ? stored[category] as string : "",
+        // The language's form, else its `other`, else English `other` (the chain of `selectPluralText`; for a registered
+        // complete pack — en, ro — always the language's own form).
+        placeholder: languageDefault ? (languageDefault.forms[category] ?? languageDefault.forms.other ?? languageDefault.english.other) : "",
+    }));
+}
+
+/** LOCALE-1B: a count key's inputs (`countInputs`), under one label. */
+function CountF({ label, field, section, example }: { label: string; field: string; section: LabelsSection; example: string }) {
+    const { draft, defaults, language, updateCount } = useContext(LabelsCtx);
+    const part = SECTION_HOME[section];
+    return (
+        <div className="space-y-1.5 col-span-2">
+            <Label className="text-xs text-muted-foreground">{label} — one text per plural form ({example})</Label>
+            <div className="grid grid-cols-3 gap-2">
+                {countInputs(draft, defaults, language, part, field).map(({ category, value, placeholder }) => (
+                    <div key={category} className="space-y-0.5">
+                        <span className="text-[11px] text-muted-foreground">{category}</span>
+                        <Input value={value} onChange={e => updateCount(part, field, category, e.target.value)} placeholder={placeholder} className="h-9" />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 /** A group heading with its one-line description and its Reset button. */
-function SectionHeader({ title, description, part, onReset }: { title: string; description: string; part: LabelsPart; onReset: (part: LabelsPart, title: string) => void }) {
+function SectionHeader({ title, description, section, onReset }: { title: string; description: string; section: LabelsSection; onReset: (section: LabelsSection, title: string) => void }) {
     const { draft } = useContext(LabelsCtx);
-    const count = overrideCount(draft, part);
+    const count = overrideCount(draft, section);
     return (
         <div className="flex items-end justify-between gap-4 pt-2">
             <div>
                 <h2 className="text-lg font-semibold">{title}</h2>
                 <p className="text-muted-foreground text-sm">{description}</p>
             </div>
-            <Button variant="outline" size="sm" disabled={count === 0} onClick={() => onReset(part, title)}>
+            <Button variant="outline" size="sm" disabled={count === 0} onClick={() => onReset(section, title)}>
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Reset to the language defaults
             </Button>
@@ -147,7 +238,7 @@ function SectionHeader({ title, description, part, onReset }: { title: string; d
 export default function Labels() {
     const { currentTenant } = useTenant();
     const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
-    const [draft, setDraft] = useState<LabelsDraft>({ commerce: {}, site: {}, labels: {} });
+    const [draft, setDraft] = useState<LabelsDraft>({ commerce: {}, catalog: {}, site: {}, labels: {} });
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -177,12 +268,15 @@ export default function Labels() {
     const update = (part: LabelsPart, key: string, value: string) => {
         setDraft(prev => setText(prev, part, key, value));
     };
+    const updateCount = (part: LabelsPart, key: string, category: PluralCategory, value: string) => {
+        setDraft(prev => setCountText(prev, part, key, category, value));
+    };
 
-    const reset = (part: LabelsPart, title: string) => {
-        const count = overrideCount(draft, part);
+    const reset = (section: LabelsSection, title: string) => {
+        const count = overrideCount(draft, section);
         if (count === 0) return;
         if (!confirm(`Reset ${count} text${count === 1 ? "" : "s"} in "${title}" to the language defaults? Click Save Changes to apply.`)) return;
-        setDraft(prev => resetSection(prev, part));
+        setDraft(prev => resetSection(prev, section));
     };
 
     const handleSave = async () => {
@@ -213,11 +307,13 @@ export default function Labels() {
         );
     }
 
-    const defaults = settings ? resolveLocaleStrings(settings).defaults : null;
+    const resolved = settings ? resolveLocaleStrings(settings) : null;
+    const defaults = resolved ? resolved.defaults : null;
     const isCommerce = settings?.commerceEnabled === true;
+    const isCatalog = isCatalogMode(settings);
 
     return (
-        <LabelsCtx.Provider value={{ draft, defaults, update }}>
+        <LabelsCtx.Provider value={{ draft, defaults, language: resolved?.language ?? "en", update, updateCount }}>
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
@@ -234,7 +330,7 @@ export default function Labels() {
             {error && <p className="text-sm text-destructive">{error}</p>}
 
             {/* ── Site (every tenant) ── */}
-            <SectionHeader part="site" onReset={reset} title="Site" description="Header, footer, page navigation, comments, sharing and forms — on every page of the site. A cleared input uses the language default." />
+            <SectionHeader section="site" onReset={reset} title="Site" description="Header, footer, page navigation, comments, sharing and forms — on every page of the site. A cleared input uses the language default." />
 
             <Card>
                 <CardHeader className="pb-3">
@@ -242,14 +338,14 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F part="site" label="Contact button" field="navContact" />
-                        <F part="site" label="Contact button (mobile menu)" field="navContactUs" />
-                        <F part="site" label="Menu button (screen readers)" field="navToggleMenu" />
-                        <F part="site" label="Dropdown: all of {label}" field="navAllOf" />
-                        <F part="site" label="Dropdown: View All (mobile)" field="navViewAll" />
-                        <F part="site" label="Breadcrumb: Home" field="breadcrumbHome" />
-                        <F part="site" label="Site name, when none is set" field="untitledSiteName" />
-                        <F part="site" label="Search engine description, when none is set ({name})" field="metaSiteDescription" />
+                        <F section="site" label="Contact button" field="navContact" />
+                        <F section="site" label="Contact button (mobile menu)" field="navContactUs" />
+                        <F section="site" label="Menu button (screen readers)" field="navToggleMenu" />
+                        <F section="site" label="Dropdown: all of {label}" field="navAllOf" />
+                        <F section="site" label="Dropdown: View All (mobile)" field="navViewAll" />
+                        <F section="site" label="Breadcrumb: Home" field="breadcrumbHome" />
+                        <F section="site" label="Site name, when none is set" field="untitledSiteName" />
+                        <F section="site" label="Search engine description, when none is set ({name})" field="metaSiteDescription" />
                     </div>
                 </CardContent>
             </Card>
@@ -260,12 +356,12 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F part="site" label="Tax ID line ({value})" field="footerTaxId" />
-                        <F part="site" label="Trade register line ({value})" field="footerTradeRegister" />
-                        <F part="site" label="Phone line ({value})" field="footerPhone" />
-                        <F part="site" label="Links heading" field="footerLinksHeading" />
-                        <F part="site" label="Legal heading" field="footerLegalHeading" />
-                        <F part="site" label="Copyright ({year}, {name})" field="footerCopyright" />
+                        <F section="site" label="Tax ID line ({value})" field="footerTaxId" />
+                        <F section="site" label="Trade register line ({value})" field="footerTradeRegister" />
+                        <F section="site" label="Phone line ({value})" field="footerPhone" />
+                        <F section="site" label="Links heading" field="footerLinksHeading" />
+                        <F section="site" label="Legal heading" field="footerLegalHeading" />
+                        <F section="site" label="Copyright ({year}, {name})" field="footerCopyright" />
                     </div>
                 </CardContent>
             </Card>
@@ -277,14 +373,14 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F part="site" label="Previous page" field="paginationPrevious" />
-                        <F part="site" label="Page {page} of {total}" field="paginationPageOf" />
-                        <F part="site" label="Next page" field="paginationNext" />
-                        <F part="site" label="Restricted: title" field="restrictedTitle" />
-                        <F part="site" label="Restricted: sign-in needed" field="restrictedLoginRequired" />
-                        <F part="site" label="Restricted: subscription ({currency} {price})" field="restrictedSubscription" />
-                        <F part="site" label="Restricted: sign-in button" field="restrictedLogIn" />
-                        <F part="site" label="Restricted: purchase button" field="restrictedPurchase" />
+                        <F section="site" label="Previous page" field="paginationPrevious" />
+                        <F section="site" label="Page {page} of {total}" field="paginationPageOf" />
+                        <F section="site" label="Next page" field="paginationNext" />
+                        <F section="site" label="Restricted: title" field="restrictedTitle" />
+                        <F section="site" label="Restricted: sign-in needed" field="restrictedLoginRequired" />
+                        <F section="site" label="Restricted: subscription ({currency} {price})" field="restrictedSubscription" />
+                        <F section="site" label="Restricted: sign-in button" field="restrictedLogIn" />
+                        <F section="site" label="Restricted: purchase button" field="restrictedPurchase" />
                     </div>
                 </CardContent>
             </Card>
@@ -295,14 +391,14 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F part="site" label="Heading ({count})" field="commentsHeading" />
-                        <F part="site" label="No comments" field="commentsEmpty" />
-                        <F part="site" label="Comments closed" field="commentsClosed" />
-                        <F part="site" label="Comment placeholder" field="commentsPlaceholder" />
-                        <F part="site" label="Post button" field="commentsPost" />
-                        <F part="site" label="Post failed" field="commentsPostFailed" />
-                        <F part="site" label="Join heading" field="commentsJoin" />
-                        <F part="site" label="Sign-in button" field="commentsSignIn" />
+                        <F section="site" label="Heading ({count})" field="commentsHeading" />
+                        <F section="site" label="No comments" field="commentsEmpty" />
+                        <F section="site" label="Comments closed" field="commentsClosed" />
+                        <F section="site" label="Comment placeholder" field="commentsPlaceholder" />
+                        <F section="site" label="Post button" field="commentsPost" />
+                        <F section="site" label="Post failed" field="commentsPostFailed" />
+                        <F section="site" label="Join heading" field="commentsJoin" />
+                        <F section="site" label="Sign-in button" field="commentsSignIn" />
                     </div>
                 </CardContent>
             </Card>
@@ -313,44 +409,173 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F part="site" label="Share label" field="shareLabel" />
-                        <F part="site" label="Share on X" field="shareOnX" />
-                        <F part="site" label="Share on LinkedIn" field="shareOnLinkedIn" />
-                        <F part="site" label="Share on Facebook" field="shareOnFacebook" />
-                        <F part="site" label="Share by email" field="shareByEmail" />
-                        <F part="site" label="Copy link" field="shareCopyLink" />
-                        <F part="site" label="Contact button: call" field="quickContactCall" />
-                        <F part="site" label="Contact button: email" field="quickContactEmail" />
-                        <F part="site" label="Form: submitting" field="formSubmitting" />
-                        <F part="site" label="Form: select placeholder" field="formSelectPlaceholder" />
-                        <F part="site" label="Form: submission failed" field="formSubmissionFailed" />
-                        <F part="site" label="Form: other error" field="formErrorShort" />
+                        <F section="site" label="Share label" field="shareLabel" />
+                        <F section="site" label="Share on X" field="shareOnX" />
+                        <F section="site" label="Share on LinkedIn" field="shareOnLinkedIn" />
+                        <F section="site" label="Share on Facebook" field="shareOnFacebook" />
+                        <F section="site" label="Share by email" field="shareByEmail" />
+                        <F section="site" label="Copy link" field="shareCopyLink" />
+                        <F section="site" label="Contact button: call" field="quickContactCall" />
+                        <F section="site" label="Contact button: email" field="quickContactEmail" />
+                        <F section="site" label="Form: submitting" field="formSubmitting" />
+                        <F section="site" label="Form: select placeholder" field="formSelectPlaceholder" />
+                        <F section="site" label="Form: submission failed" field="formSubmissionFailed" />
+                        <F section="site" label="Form: other error" field="formErrorShort" />
                     </div>
                 </CardContent>
             </Card>
 
             {/* ── Cookie banner & legal links (every tenant; stored in gdpr / legalLinks, § 4.1) ── */}
-            <SectionHeader part="labels" onReset={reset} title="Cookie banner & legal links" description="The cookie banner and the legal link texts in the footer. The banner on/off, its position and the link addresses stay in Settings." />
+            <SectionHeader section="labels" onReset={reset} title="Cookie banner & legal links" description="The cookie banner and the legal link texts in the footer. The banner on/off, its position and the link addresses stay in Settings." />
 
             <Card>
                 <CardContent className="pt-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F part="labels" label="Banner headline" field="cookieHeadline" />
-                        <F part="labels" label="Banner text" field="cookieDescription" />
-                        <F part="labels" label="Deny All button" field="cookieDenyAll" />
-                        <F part="labels" label="Necessary Only button" field="cookieNecessaryOnly" />
-                        <F part="labels" label="Accept All button" field="cookieAcceptAll" />
-                        <F part="labels" label="Terms link" field="legalTermsLabel" />
-                        <F part="labels" label="Privacy link" field="legalPrivacyLabel" />
-                        <F part="labels" label="Consumer protection link" field="legalConsumerProtectionLabel" />
-                        <F part="labels" label="Dispute resolution link" field="legalDisputeResolutionLabel" />
+                        <F section="labels" label="Banner headline" field="cookieHeadline" />
+                        <F section="labels" label="Banner text" field="cookieDescription" />
+                        <F section="labels" label="Deny All button" field="cookieDenyAll" />
+                        <F section="labels" label="Necessary Only button" field="cookieNecessaryOnly" />
+                        <F section="labels" label="Accept All button" field="cookieAcceptAll" />
+                        <F section="labels" label="Terms link" field="legalTermsLabel" />
+                        <F section="labels" label="Privacy link" field="legalPrivacyLabel" />
+                        <F section="labels" label="Consumer protection link" field="legalConsumerProtectionLabel" />
+                        <F section="labels" label="Dispute resolution link" field="legalDisputeResolutionLabel" />
                     </div>
                 </CardContent>
             </Card>
 
+            {/* ── Catalog (catalog tenants; LOCALE-1B, § 7.1) ── */}
+            {isCatalog && <>
+            <SectionHeader section="catalog" onReset={reset} title="Catalog" description="The interest list and the product filters of the catalog. A saved text shows as written, so do not save an empty text: clear the input to use the language default." />
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Interest list</CardTitle>
+                    <CardDescription>The “I'm interested” button on products, the list link in the header and the list page with its form</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="catalog" label="Button" field="interestAdd" />
+                        <F section="catalog" label="Button, product in the list" field="interestAdded" />
+                        <F section="catalog" label="List full" field="interestListFull" />
+                        <F section="catalog" label="List title" field="interestListTitle" />
+                        <F section="catalog" label="Empty list ({action} = the button)" field="interestEmpty" />
+                        <F section="catalog" label="Link to the products" field="interestBrowse" />
+                        <F section="catalog" label="Earlier list received" field="interestPreviouslySent" />
+                        <F section="catalog" label="Row: collection" field="interestCollection" />
+                        <F section="catalog" label="Row: remove ({title}, screen readers)" field="interestRemove" />
+                        <F section="catalog" label="Row: no longer in the catalog" field="interestRowExpired" />
+                        <F section="catalog" label="Row: not available" field="interestRowUnavailable" />
+                        <F section="catalog" label="Row: option no longer offered" field="interestRowOptionGone" />
+                        <F section="catalog" label="Form heading" field="interestContactHeading" />
+                        <F section="catalog" label="Form: name" field="interestName" />
+                        <F section="catalog" label="Form: e-mail" field="interestEmail" />
+                        <F section="catalog" label="Form: phone" field="interestPhone" />
+                        <F section="catalog" label="Form: message" field="interestMessage" />
+                        <F section="catalog" label="Form: send button" field="interestSubmit" />
+                        <F section="catalog" label="Sent: title" field="interestSentTitle" />
+                        <F section="catalog" label="Sent: thank you" field="interestSentBody" />
+                        <F section="catalog" label="Sent: products not included" field="interestExcludedIntro" />
+                        <F section="catalog" label="Error: no available product" field="interestErrorNoneAvailable" />
+                        <F section="catalog" label="Error: invalid details" field="interestErrorInvalid" />
+                        <F section="catalog" label="Error: list check failed" field="interestErrorCheck" />
+                        <F section="catalog" label="Error: products gone" field="interestErrorAllGone" />
+                        <F section="catalog" label="Error: send failed" field="interestErrorSend" />
+                        <F section="catalog" label="Error: no connection" field="interestErrorNetwork" />
+                        <F section="catalog" label="Header: storage notice" field="interestStorageWarning" />
+                        <F section="catalog" label="Header: storage notice button" field="interestStorageAck" />
+                        <CountF section="catalog" label="Header: list link for screen readers ({n})" field="interestWidgetLabel" example="My list: {n} products" />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Filters</CardTitle>
+                    <CardDescription>The filter panel of the shop and category pages</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="catalog" label="Panel title" field="facetsTitle" />
+                        <F section="catalog" label="Producer filter heading" field="facetProducer" />
+                        <F section="catalog" label="Option filter heading (mixed option names)" field="facetVariantDefault" />
+                        <F section="catalog" label="Clear filters" field="facetsClear" />
+                        <F section="catalog" label="Remove a filter ({facet}, {value}; screen readers)" field="facetsRemove" />
+                        <F section="catalog" label="No match" field="facetsNoMatch" />
+                        <F section="catalog" label="Too many filters" field="facetsTooMany" />
+                        <F section="catalog" label="Filters in the address too long" field="facetsUrlTooLong" />
+                        <CountF section="catalog" label="Product count ({n})" field="facetsCount" example="{n} products" />
+                    </div>
+                </CardContent>
+            </Card>
+            </>}
+
+            {/* ── Product pages & search (commerce and catalog tenants; LOCALE-1B, § 7.1) ── */}
+            {(isCommerce || isCatalog) && <>
+            <SectionHeader section="product" onReset={reset} title="Product pages & search" description="Product, category, shop and search pages — on shops and on catalogs. Texts saved here are stored with the commerce texts. A saved text shows as written; clear an input to use the language default." />
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Product page</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="product" label="Description" field="description" />
+                        <F section="product" label="Volume pricing" field="volumePricing" />
+                        <F section="product" label="Pre-order" field="preOrder" />
+                        <F section="product" label="Buy now" field="buyNow" />
+                        <F section="product" label="Ingredients" field="ingredients" />
+                        <F section="product" label="Nutritional values" field="nutritionalValues" />
+                        <F section="product" label="Reviews heading" field="reviewsHeading" />
+                        <CountF section="product" label="Reviews summary ({rating}, {n})" field="reviewsSummary" example="{rating}/5 ({n} reviews)" />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Category & shop pages</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="product" label="Shop (title and breadcrumb)" field="shopTitle" />
+                        <F section="product" label="Shop: all products" field="shopAllProducts" />
+                        <F section="product" label="Shop: no products" field="shopEmpty" />
+                        <F section="product" label="Shop: none in stock" field="shopEmptyInStock" />
+                        <F section="product" label="Category: no products" field="categoryEmpty" />
+                        <F section="product" label="Shop page title ({site})" field="metaShopTitle" />
+                        <F section="product" label="Category description for search engines ({category})" field="metaCategoryDescription" />
+                        <CountF section="product" label="Category product count ({n})" field="productCount" example="{n} products" />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Search</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="product" label="Search bar placeholder (when Settings has none)" field="searchPlaceholder" />
+                        <F section="product" label="Search Button" field="searchButton" />
+                        <F section="product" label="No Results" field="searchNoResults" />
+                        <F section="product" label="Searching..." field="searchSearching" />
+                        <F section="product" label="View All Results" field="viewAllResults" />
+                        <F section="product" label="Results For (heading)" field="resultsFor" />
+                        <F section="product" label="Search Products (heading)" field="searchProducts" />
+                        <F section="product" label="Breadcrumb: Search" field="searchBreadcrumb" />
+                        <F section="product" label="No search term" field="searchEnterTerm" />
+                        <F section="product" label="Page title ({site})" field="metaSearchTitle" />
+                        <F section="product" label="Page title with a query ({query}, {site})" field="metaSearchQueryTitle" />
+                        <CountF section="product" label="Result count ({n})" field="searchResultCount" example="{n} results" />
+                    </div>
+                </CardContent>
+            </Card>
+            </>}
+
             {/* ── Commerce (commerce tenants; the existing commerce cards) ── */}
             {isCommerce && <>
-            <SectionHeader part="commerce" onReset={reset} title="Commerce" description="Product pages, cart, checkout, search and account texts of the shop." />
+            <SectionHeader section="commerce" onReset={reset} title="Commerce" description="Cart, checkout, account and the buying controls of the shop." />
 
             {/* Product Page */}
             <Card>
@@ -359,7 +584,6 @@ export default function Labels() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F label="Description" field="description" />
                         <F label="Add to Cart" field="addToCart" />
                         <F label="In Stock" field="inStock" />
                         <F label="Out of Stock" field="outOfStock" />
@@ -494,23 +718,6 @@ export default function Labels() {
                         <F label="Place Order" field="placeOrder" />
                         <F label="Placing Order..." field="placingOrder" />
                         <F label="Terms Agreement" field="termsAgreement" />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Search */}
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Search</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <F label="Search Button" field="searchButton" />
-                        <F label="No Results" field="searchNoResults" />
-                        <F label="Searching..." field="searchSearching" />
-                        <F label="View All Results" field="viewAllResults" />
-                        <F label="Results For (heading)" field="resultsFor" />
-                        <F label="Search Products (heading)" field="searchProducts" />
                     </div>
                 </CardContent>
             </Card>

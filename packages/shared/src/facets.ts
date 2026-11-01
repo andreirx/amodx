@@ -51,8 +51,19 @@ export const MAX_ATTRIBUTE_VALUES = 40;
 /** § 13 repeat rule (i) and (ii): the minimum number of products that hold the key, and its most frequent value. */
 export const MIN_HOLDERS = 2;
 
-const PRODUCER_LABEL = "Producător";
-const DEFAULT_VARIANT_LABEL = "Variantă";
+/**
+ * LOCALE-1B (docs/slices/locale-1.md § 6.3) — the two fixed facet headings, in the visitor's language. The caller
+ * passes them (the renderer: the tenant's catalog texts `facetProducer` / `facetVariantDefault`; the admin import
+ * preview: the same tenant texts), so this module holds no language. Required on purpose: no caller gets a heading
+ * language it did not choose. A variant heading taken from the products' shared option-group name and every attribute
+ * heading are author data and are never replaced.
+ */
+export type FacetLabels = {
+    /** The heading of the producer facet (`producator`). */
+    producer: string;
+    /** The heading of the variant facet when the products' option groups do not share one name (§ 4.5). */
+    variantDefault: string;
+};
 
 /** The fields of a product item this module reads. Anything else on the item is passed through untouched. */
 export type FacetProduct = {
@@ -215,12 +226,12 @@ function isSilent(modes: Modes, id: string): boolean {
 
 // ── the facet set (§ 13) ───────────────────────────────────────────────────────────────────────────────────────
 
-/** § 4.5: the variant heading — the one group name every product with options shares, else "Variantă". */
-function variantLabel(base: FacetProduct[]): string {
+/** § 4.5: the variant heading — the one group name every product with options shares, else `fallback`. */
+function variantLabel(base: FacetProduct[], fallback: string): string {
     const names = new Set<unknown>();
     for (const p of base) for (const g of optionGroupsOf(p)) names.add(g.name);
     const [only] = names;
-    return names.size === 1 && nonEmptyString(only) ? only : DEFAULT_VARIANT_LABEL;
+    return names.size === 1 && nonEmptyString(only) ? only : fallback;
 }
 
 /**
@@ -245,7 +256,7 @@ type FacetDef = { id: string; label: string; offered: boolean };
  * counts) is computed over every product, as before. With no `facetModes` on any product, every holder is non-silent
  * and nothing is "always": the pre-1b rule.
  */
-function facetDefs(base: FacetProduct[], valuesOf: Map<string, Set<string>>[], modes: Modes[], selection: Selection): FacetDef[] {
+function facetDefs(base: FacetProduct[], valuesOf: Map<string, Set<string>>[], modes: Modes[], selection: Selection, labels: FacetLabels): FacetDef[] {
     const holders = new Map<string, number>();              // every holder: the § 13 order
     const offerHolders = new Map<string, number>();         // non-silent holders: the offer
     const valueHolders = new Map<string, Map<string, number>>();   // non-silent holders per value: the offer
@@ -276,8 +287,8 @@ function facetDefs(base: FacetProduct[], valuesOf: Map<string, Set<string>>[], m
     for (const id of selection.keys()) if (attributeKeyOf(id) !== null) ids.add(id);
     const attributeIds = [...ids].sort((a, b) => (holders.get(b) ?? 0) - (holders.get(a) ?? 0) || compareValues(attributeKeyOf(a)!, attributeKeyOf(b)!));
     return [
-        { id: PRODUCER_FACET, label: PRODUCER_LABEL, offered: true },
-        { id: VARIANT_FACET, label: variantLabel(base), offered: true },
+        { id: PRODUCER_FACET, label: labels.producer, offered: true },
+        { id: VARIANT_FACET, label: variantLabel(base, labels.variantDefault), offered: true },
         ...attributeIds.map((id) => ({ id, label: attributeKeyOf(id)!, offered: isOffered(id) })),
     ];
 }
@@ -383,8 +394,11 @@ function matches(values: Map<string, Set<string>>, sel: Selection, exceptId: str
  * Filter modes (cat-import-profile-1 § 2.6, N2): an offered facet lists the values of its NON-SILENT holders (plus the
  * selected values); a silent holder's values are not listed, but every product — silent or not — matches a selection
  * and counts in the listed values' counts. So a selected value lists every product that shows it on its page.
+ *
+ * `labels` (LOCALE-1B): the headings of the two fixed facets, in the visitor's language (`FacetLabels`). They name the
+ * facet heading and chip label only; the facet ids in every href (`producator`, `varianta`) never change.
  */
-export function buildFacetListing<P extends FacetProduct>(base: P[], f: string | undefined, path: string): FacetListing<P> {
+export function buildFacetListing<P extends FacetProduct>(base: P[], f: string | undefined, path: string, labels: FacetLabels): FacetListing<P> {
     const valuesOf = base.map(facetValuesOf);
     const modes = base.map(modesOf);
 
@@ -397,7 +411,7 @@ export function buildFacetListing<P extends FacetProduct>(base: P[], f: string |
     const items: P[] = [];
     base.forEach((p, i) => { if (matches(valuesOf[i], selection, null)) items.push(p); });
 
-    const defs = facetDefs(base, valuesOf, modes, selection);
+    const defs = facetDefs(base, valuesOf, modes, selection, labels);
     const labelOf = new Map(defs.map((d) => [d.id, d.label]));
     let budgetHint = false;
     const facets: FacetView[] = [];

@@ -1,9 +1,10 @@
-import type { CatalogStrings, CommerceStrings, SiteStrings } from "../index.js";
+import type { CatalogStrings, CommerceStrings, PluralTexts, SiteStrings } from "../index.js";
 
 /**
  * LOCALE-1 (docs/slices/locale-1.md § 2.3, § 3.2) — the texts of one language, per part of the locale table.
  * A pack holds texts only; country facts (currency, regions, phone prefix) stay in `country-packs/`.
  * A pack may lack a key: the resolver then uses the English value (§ 3.3, ruling LOCALE1-LANGUAGE = A).
+ * A count key holds the texts of the pack language's plural categories (`pluralCategoriesOf`), `other` included.
  */
 export interface LanguagePack {
     /** The primary language subtag this pack serves (`"en"`, `"ro"`): the key of `LANGUAGE_PACKS`. */
@@ -17,9 +18,12 @@ export interface LanguagePack {
     site: Partial<SiteStrings>;
 }
 
+/** A complete part: every text key holds a string; every count key its texts with `other` present (§ 16.2 item 6). */
+export type CompletePart<T> = { [K in keyof T]-?: NonNullable<T[K]> extends string ? string : PluralTexts & { other: string } };
+
 /** The English pack: complete by type, so the compiler refuses a key without an English value (§ 2.3). */
 export interface CompleteLanguagePack extends LanguagePack {
-    commerce: Required<CommerceStrings>;
-    catalog: Required<CatalogStrings>;
-    site: Required<SiteStrings>;
+    commerce: CompletePart<CommerceStrings>;
+    catalog: CompletePart<CatalogStrings>;
+    site: CompletePart<SiteStrings>;
 }

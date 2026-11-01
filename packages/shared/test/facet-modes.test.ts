@@ -6,6 +6,7 @@
 // The no-modes row of the table ("identical") is the 1b golden (`cat-import-profile-1b-golden.test.ts`).
 import { describe, expect, it } from "vitest";
 import { VARIANT_FACET, attributeFacetId, buildFacetListing, formatSelection, type FacetListing, type Selection } from "../src/facets";
+import { RO_FACET_LABELS } from "./cat-import-profile-1b-golden";
 
 type Mode = { key: string; mode: string };
 type P = {
@@ -20,7 +21,7 @@ const kv = (pairs: [string, string][]) => pairs.map(([key, value]) => ({ key, va
 const opts = (values: string[], name = "Format") => [{ id: "g", name, options: values.map((value) => ({ value })) }];
 const modes = (attributes: Mode[], variant?: string) => ({ ...(variant !== undefined ? { variant } : {}), attributes });
 const sel = (o: Record<string, string[]>): Selection => new Map(Object.entries(o).map(([k, v]) => [k, new Set(v)]));
-const listing = (base: P[], o?: Record<string, string[]>, path = SHOP) => buildFacetListing(base, o ? formatSelection(sel(o)) : undefined, path);
+const listing = (base: P[], o?: Record<string, string[]>, path = SHOP) => buildFacetListing(base, o ? formatSelection(sel(o)) : undefined, path, RO_FACET_LABELS);
 const facet = (l: FacetListing<P>, id: string) => l.facets.find((f) => f.id === id);
 const rows = (l: FacetListing<P>, id: string) => facet(l, id)?.values.map((v) => ({ state: v.state, value: v.value, count: v.count }));
 const ids = (l: FacetListing<P>) => l.items.map((p) => p.id);

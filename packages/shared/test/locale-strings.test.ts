@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-    COMMERCE_STRINGS_DEFAULTS, CommerceStringsSchema, CatalogStringsSchema, SiteStringsSchema, EN_PACK, RO_PACK,
-    EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, LANGUAGE_PACKS, COOKIE_AND_LEGAL_LABEL_LOCATIONS,
-    normalizeLocale, resolveLocaleStrings, fillTemplate, type LanguagePack,
+    COMMERCE_STRINGS_DEFAULTS, CommerceStringsSchema, CatalogStringsSchema, SiteStringsSchema, PluralTextsSchema, EN_PACK, RO_PACK,
+    EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, LANGUAGE_PACKS, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES,
+    normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, type LanguagePack, type CountText,
 } from "../src/index.js";
 
 /**
@@ -10,27 +10,53 @@ import {
  * every shipped key, layer order, the § 3.3 locale cases, non-string values ignored, the nine cookie/legal keys never
  * read from `siteStrings`, `fillTemplate`; plus § 16.2 item 3 (a new language = one pack + its registration).
  * Imports the TS source (`../src/index.js`), as schemas.test.ts does. Pure: no clock, no I/O.
+ * LOCALE-1B adds: the 1b allocation (39 catalog keys, 21 shared commerce keys), the count keys and their plural
+ * categories (§ 16.2 item 6): EN 0/1/2, RO 0/1/2/19/20/101/119/120, per-category overrides, a throwaway third pack with
+ * its own categories, the missing-category and missing-key fallbacks.
  */
 
 const keys = (o: object) => Object.keys(o).sort();
 const SITE_KEYS = keys(SiteStringsSchema.shape);
+/** The count keys of a part schema (LOCALE-1B): the keys whose type is the plural-texts object. */
+const countKeys = (shape: Record<string, { unwrap: () => unknown }>) => Object.keys(shape).filter((k) => shape[k].unwrap() === PluralTextsSchema).sort();
+const COMMERCE_COUNT_KEYS = countKeys(CommerceStringsSchema.shape);
+const CATALOG_COUNT_KEYS = countKeys(CatalogStringsSchema.shape);
+/** The 21 shared product-surface keys of locale-1b (§ 6.2, without the two CategoryShowcaseRender rows of 1c). */
+const COMMERCE_1B_KEYS = [
+    "metaCategoryDescription", "metaShopTitle", "metaSearchQueryTitle", "metaSearchTitle", "searchPlaceholder", "shopTitle",
+    "volumePricing", "preOrder", "buyNow", "ingredients", "nutritionalValues", "reviewsHeading", "reviewsSummary",
+    "categoryEmpty", "productCount", "shopEmptyInStock", "shopEmpty", "shopAllProducts", "searchBreadcrumb",
+    "searchResultCount", "searchEnterTerm",
+];
 
 describe("the language packs", () => {
     it("the EN pack has exactly the schema keys of every part (completeness is also a compile-time fact)", () => {
         expect(keys(EN_LANGUAGE_PACK.commerce)).toEqual(keys(CommerceStringsSchema.shape));
         expect(keys(EN_LANGUAGE_PACK.catalog)).toEqual(keys(CatalogStringsSchema.shape));
         expect(keys(EN_LANGUAGE_PACK.site)).toEqual(SITE_KEYS);
-        for (const v of [...Object.values(EN_LANGUAGE_PACK.site), ...Object.values(EN_LANGUAGE_PACK.commerce)]) expect(typeof v).toBe("string");
+        // A text key holds a string; a count key (LOCALE-1B) the English categories `one` and `other`, and only those.
+        for (const part of [EN_LANGUAGE_PACK.site, EN_LANGUAGE_PACK.commerce, EN_LANGUAGE_PACK.catalog] as Record<string, unknown>[]) {
+            for (const [k, v] of Object.entries(part)) {
+                if ([...COMMERCE_COUNT_KEYS, ...CATALOG_COUNT_KEYS].includes(k)) expect(keys(v as object), k).toEqual(["one", "other"]);
+                else expect(typeof v, k).toBe("string");
+            }
+        }
     });
 
-    it("locale-1a ships 51 site keys and no catalog key (the 1a allocation; 1b adds the catalog keys)", () => {
+    it("the allocation so far: 51 site keys (1a); 39 catalog keys and 21 shared commerce keys (1b); the count keys", () => {
         expect(SITE_KEYS).toHaveLength(51);
-        expect(keys(CatalogStringsSchema.shape)).toEqual([]);
+        expect(keys(CatalogStringsSchema.shape)).toHaveLength(39);
+        expect(COMMERCE_1B_KEYS.filter((k) => !Object.hasOwn(CommerceStringsSchema.shape, k))).toEqual([]);
+        expect(COMMERCE_COUNT_KEYS).toEqual(["productCount", "reviewsSummary", "searchResultCount"]);
+        expect(CATALOG_COUNT_KEYS).toEqual(["facetsCount", "interestWidgetLabel"]);
+        expect(countKeys(SiteStringsSchema.shape)).toEqual([]);
+        expect(Object.keys(PluralTextsSchema.shape)).toEqual([...PLURAL_CATEGORIES]);
     });
 
-    it("COMMERCE_STRINGS_DEFAULTS is the EN pack's commerce part: 77 keys, today's values", () => {
+    it("COMMERCE_STRINGS_DEFAULTS is the EN pack's commerce part: the 77 keys of 1a with today's values, plus the 21 keys of 1b", () => {
         expect(COMMERCE_STRINGS_DEFAULTS).toBe(EN_LANGUAGE_PACK.commerce);
-        expect(Object.keys(COMMERCE_STRINGS_DEFAULTS)).toHaveLength(77);
+        expect(Object.keys(COMMERCE_STRINGS_DEFAULTS)).toHaveLength(77 + 21);
+        expect(Object.keys(COMMERCE_STRINGS_DEFAULTS).slice(77)).toEqual(COMMERCE_1B_KEYS);
         expect(COMMERCE_STRINGS_DEFAULTS.addToCart).toBe("Add to Cart");
         expect(COMMERCE_STRINGS_DEFAULTS.addMoreForFreeDelivery).toBe("Add {amount} more for free delivery");
         expect(COMMERCE_STRINGS_DEFAULTS.shippingStreetAddress).toBe("");
@@ -49,15 +75,25 @@ describe("the language packs", () => {
         expect(EN_LANGUAGE_PACK.site.legalDisputeResolutionLabel).toBe("Dispute Resolution");
     });
 
-    it("the RO pack covers every site key, and every commerce key except the two whose English value is the empty fallback", () => {
+    it("the RO pack covers every site and catalog key, and every commerce key except the two whose English value is the empty fallback; each count key has every Romanian plural category", () => {
         expect(keys(RO_LANGUAGE_PACK.site)).toEqual(SITE_KEYS);
         for (const v of Object.values(RO_LANGUAGE_PACK.site)) expect(typeof v === "string" && v.length > 0).toBe(true);
-        const missing = keys(CommerceStringsSchema.shape).filter((k) => typeof (RO_LANGUAGE_PACK.commerce as any)[k] !== "string");
+        expect(keys(RO_LANGUAGE_PACK.catalog)).toEqual(keys(CatalogStringsSchema.shape));
+        const isCount = (k: string) => [...COMMERCE_COUNT_KEYS, ...CATALOG_COUNT_KEYS].includes(k);
+        const present = (part: Record<string, unknown>, k: string) => (isCount(k)
+            ? typeof part[k] === "object" && part[k] !== null && keys(part[k] as object).join() === pluralCategoriesOf("ro").sort().join()
+                && Object.values(part[k] as object).every((t) => typeof t === "string" && t.length > 0)
+            : typeof part[k] === "string");
+        const missing = keys(CommerceStringsSchema.shape).filter((k) => !present(RO_LANGUAGE_PACK.commerce as Record<string, unknown>, k));
         expect(missing).toEqual(["billingStreetAddress", "shippingStreetAddress"]);
+        expect(keys(CatalogStringsSchema.shape).filter((k) => !present(RO_LANGUAGE_PACK.catalog as Record<string, unknown>, k))).toEqual([]);
+        expect(pluralCategoriesOf("ro")).toEqual(["one", "few", "other"]);
     });
 
     it("the RO pack reads its commerce, cookie and legal values from the RO country pack (one copy, § 3.2 item 2)", () => {
-        expect(RO_LANGUAGE_PACK.commerce).toBe(RO_PACK.defaultStrings);
+        for (const [k, v] of Object.entries(RO_PACK.defaultStrings)) expect((RO_LANGUAGE_PACK.commerce as Record<string, unknown>)[k], k).toBe(v);
+        // The 1b keys are the only commerce keys the language pack writes itself; none of them is in the country pack.
+        expect(keys(RO_LANGUAGE_PACK.commerce).filter((k) => !Object.hasOwn(RO_PACK.defaultStrings, k))).toEqual([...COMMERCE_1B_KEYS].sort());
         expect(RO_LANGUAGE_PACK.site.cookieAcceptAll).toBe(RO_PACK.gdpr.acceptAll);
         expect(RO_LANGUAGE_PACK.site.legalTermsLabel).toBe(RO_PACK.legal.termsLabel);
     });
@@ -208,6 +244,109 @@ describe("a new language is one pack file + its registration (§ 16.2 item 3)", 
             delete LANGUAGE_PACKS.fr;
         }
         expect(resolveLocaleStrings({ locale: "fr-FR" }).strings.site.breadcrumbHome).toBe("Home");
+    });
+});
+
+// ── LOCALE-1B: count keys and plural categories (§ 16.2 item 6; packet rule 3) ───────────────────────────────────────
+const count = (value: CountText, n: number) => fillTemplate(selectPluralText(value, n), { n });
+
+describe("count keys: one text per plural category, selected by Intl.PluralRules(<language>) (§ 16.2 item 6)", () => {
+    it("English: 0 → other, 1 → one, 2 → other — exactly today's `n === 1 ? … : …s` (the EN forms reproduce today's text)", () => {
+        const { strings } = resolveLocaleStrings({});
+        expect([0, 1, 2].map((n) => count(strings.commerce.productCount, n))).toEqual(["0 products", "1 product", "2 products"]);
+        expect([0, 1, 2].map((n) => count(strings.commerce.searchResultCount, n))).toEqual(["0 results", "1 result", "2 results"]);
+        expect([0, 1, 2].map((n) => fillTemplate(selectPluralText(strings.commerce.reviewsSummary, n), { n, rating: 4.5 })))
+            .toEqual(["4.5/5 (0 reviews)", "4.5/5 (1 review)", "4.5/5 (2 reviews)"]);
+        expect([0, 1, 2].map((n) => count(strings.catalog.facetsCount, n))).toEqual(["0 products", "1 product", "2 products"]);
+        expect([0, 1, 2].map((n) => count(strings.catalog.interestWidgetLabel, n))).toEqual(["My list: 0 products", "My list: 1 product", "My list: 2 products"]);
+        // Today's English rule, for every count the pages can show (0 … 1000): the EN forms give the same text.
+        for (let n = 0; n <= 1000; n++) expect(count(strings.commerce.productCount, n)).toBe(`${n} product${n !== 1 ? "s" : ""}`);
+    });
+
+    it("Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other (the operator's executed table)", () => {
+        const { strings } = resolveLocaleStrings({ locale: "ro-RO" });
+        const ns = [0, 1, 2, 19, 20, 101, 119, 120];
+        expect(ns.map((n) => new Intl.PluralRules("ro").select(n))).toEqual(["few", "one", "few", "few", "other", "few", "few", "other"]);
+        expect(ns.map((n) => count(strings.catalog.facetsCount, n)))
+            .toEqual(["0 produse", "1 produs", "2 produse", "19 produse", "20 de produse", "101 produse", "119 produse", "120 de produse"]);
+        expect(ns.map((n) => count(strings.commerce.productCount, n)))
+            .toEqual(["0 produse", "1 produs", "2 produse", "19 produse", "20 de produse", "101 produse", "119 produse", "120 de produse"]);
+        expect(ns.map((n) => count(strings.commerce.searchResultCount, n)))
+            .toEqual(["0 rezultate", "1 rezultat", "2 rezultate", "19 rezultate", "20 de rezultate", "101 rezultate", "119 rezultate", "120 de rezultate"]);
+        expect([1, 2, 20].map((n) => fillTemplate(selectPluralText(strings.commerce.reviewsSummary, n), { n, rating: 5 })))
+            .toEqual(["5/5 (1 recenzie)", "5/5 (2 recenzii)", "5/5 (20 de recenzii)"]);
+        // The header widget's aria-label (L-RO-PLURAL: "Lista mea: 1 produse" before 1b).
+        expect(ns.map((n) => count(strings.catalog.interestWidgetLabel, n))).toEqual([
+            "Lista mea: 0 produse", "Lista mea: 1 produs", "Lista mea: 2 produse", "Lista mea: 19 produse", "Lista mea: 20 de produse",
+            "Lista mea: 101 produse", "Lista mea: 119 produse", "Lista mea: 120 de produse",
+        ]);
+    });
+
+    it("a tenant override replaces single categories; the others keep the language default; non-string or non-object values are ignored", () => {
+        const { strings, defaults } = resolveLocaleStrings({
+            locale: "ro-RO",
+            catalogStrings: { facetsCount: { other: "{n} de articole", few: 7, bogus: "x" } },
+            commerceStrings: { productCount: "{n} items", searchResultCount: ["x"] },
+        });
+        expect([1, 2, 20].map((n) => count(strings.catalog.facetsCount, n))).toEqual(["1 produs", "2 produse", "20 de articole"]);
+        expect(strings.catalog.facetsCount.forms).not.toHaveProperty("bogus");
+        expect(strings.commerce.productCount).toEqual(defaults.commerce.productCount);       // a string is not a count value
+        expect(strings.commerce.searchResultCount).toEqual(defaults.commerce.searchResultCount);
+        expect(defaults.catalog.facetsCount).toEqual({ language: "ro", forms: RO_LANGUAGE_PACK.catalog.facetsCount, english: EN_LANGUAGE_PACK.catalog.facetsCount });
+    });
+
+    it("an English tenant's override uses the English categories; a stored \"\" is an override (renders empty)", () => {
+        const { strings } = resolveLocaleStrings({ catalogStrings: { facetsCount: { one: "one item", other: "" } } });
+        expect([1, 2].map((n) => count(strings.catalog.facetsCount, n))).toEqual(["one item", ""]);
+    });
+});
+
+describe("a new language adds its plural categories in its pack file only (packet rule 3)", () => {
+    it("a throwaway Polish pack (one / few / many / other): its own categories select; a missing category falls back to its `other`, then to English by English rules; every available form is kept", () => {
+        const PL: LanguagePack = {
+            language: "pl", name: "Polish (test only)", defaultLocale: "pl-PL", site: {}, commerce: {
+                productCount: { one: "{n} produkt", few: "{n} produkty", many: "{n} produktów", other: "{n} produktu" },
+                searchResultCount: { one: "{n} wynik", few: "{n} wyniki", other: "{n} wyniku" },     // no `many`
+            },
+            catalog: { facetsCount: { one: "{n} sztuka", few: "{n} sztuki" } },                     // no `other`
+        };
+        expect(pluralCategoriesOf("pl")).toEqual(["one", "few", "many", "other"]);
+        LANGUAGE_PACKS.pl = PL;
+        try {
+            const { strings, language } = resolveLocaleStrings({ locale: "pl-PL" });
+            expect(language).toBe("pl");
+            expect([1, 2, 5, 22].map((n) => count(strings.commerce.productCount, n))).toEqual(["1 produkt", "2 produkty", "5 produktów", "22 produkty"]);
+            expect([1, 2, 5].map((n) => count(strings.commerce.searchResultCount, n))).toEqual(["1 wynik", "2 wyniki", "5 wyniku"]);
+            // facetsCount has `one` and `few` but no `other`: those two forms are kept (review-0 R3); a `many` count (5) has
+            // neither its form nor the language's `other`, so it falls back to English, selected by English rules.
+            expect(strings.catalog.facetsCount.language).toBe("pl");
+            expect([1, 2, 22, 5].map((n) => count(strings.catalog.facetsCount, n))).toEqual(["1 sztuka", "2 sztuki", "22 sztuki", "5 products"]);
+            // No reviewsSummary in the pack: every count is English, by English rules (1 → one, 5 → other).
+            expect(strings.commerce.reviewsSummary).toEqual({ language: "pl", forms: {}, english: EN_LANGUAGE_PACK.commerce.reviewsSummary });
+            expect([1, 5].map((n) => fillTemplate(selectPluralText(strings.commerce.reviewsSummary, n), { n, rating: 5 }))).toEqual(["5/5 (1 review)", "5/5 (5 reviews)"]);
+            // A complete tenant override is used in the tenant's language.
+            const withOther = resolveLocaleStrings({ locale: "pl-PL", commerceStrings: { reviewsSummary: { one: "{n} opinia", few: "{n} opinie", other: "{n} opinii" } } });
+            expect(withOther.strings.commerce.reviewsSummary.language).toBe("pl");
+            expect([1, 2, 5].map((n) => count(withOther.strings.commerce.reviewsSummary, n))).toEqual(["1 opinia", "2 opinie", "5 opinii"]);
+            // A partial tenant override is kept per form: `one` from the tenant, every other count from English.
+            const partial = resolveLocaleStrings({ locale: "pl-PL", commerceStrings: { reviewsSummary: { one: "{n} opinia" } } });
+            expect(partial.strings.commerce.reviewsSummary.forms).toEqual({ one: "{n} opinia" });
+            expect([1, 2, 5].map((n) => fillTemplate(selectPluralText(partial.strings.commerce.reviewsSummary, n), { n, rating: 5 })))
+                .toEqual(["1 opinia", "5/5 (2 reviews)", "5/5 (5 reviews)"]);
+        } finally {
+            delete LANGUAGE_PACKS.pl;
+        }
+    });
+
+    it("a registered pack without count keys (French: 0 → one) gets the English texts with English rules — never \"0 product\"", () => {
+        LANGUAGE_PACKS.fr = { language: "fr", name: "French (test only)", defaultLocale: "fr-FR", commerce: {}, catalog: {}, site: {} };
+        try {
+            expect(new Intl.PluralRules("fr").select(0)).toBe("one");
+            const { strings } = resolveLocaleStrings({ locale: "fr-FR" });
+            expect([0, 1, 2].map((n) => count(strings.commerce.productCount, n))).toEqual(["0 products", "1 product", "2 products"]);
+        } finally {
+            delete LANGUAGE_PACKS.fr;
+        }
     });
 });
 

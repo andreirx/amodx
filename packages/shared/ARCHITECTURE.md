@@ -14,9 +14,9 @@ src/
 ├── normalizeEmail.ts   # normalizeEmail() — the canonical email identity primitive (PD-001, slice fnd-1)
 ├── slug.ts             # normalizeSlug(), needsSlugReview() — the content-slug rule (backend-contract-1 D3; moved here by import-policy-1)
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
-├── facets.ts           # Catalog storefront filter rules: buildFacetListing, the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
+├── facets.ts           # Catalog storefront filter rules: buildFacetListing (required `labels`, locale-1b), the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
-├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a)
+├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts: currency, regions, phone prefix (+ text members kept until locale-1d)
 ```
@@ -89,7 +89,7 @@ shape** — a function with its own contract and its own test file.
 | `normalizeEmail(raw)` | `NFKC → trim → lowercase`. Pure, deterministic, idempotent, no locale/env/IO. Its output IS the `CUSTOMER#<email>` sort key and the pre-image of the Cognito username hash (PD-001) | **Nothing yet** — slice `fnd-1` added the primitive and migrated zero call sites by design; `fnd-2` migrates the 14 inline sites (inventory in `docs/slices/fnd-1-normalize-email.md`) |
 | `normalizeSlug(raw)` | Pure. lowercase + trim → `[\s_]+`→`-` → strip `[^a-z0-9-/]` → collapse `-+` → strip trailing `-` → ensure leading `/`. Applied to a slug supplied to create and to a changed slug on update; NOT applied by the WordPress importer, which stores `/<wp:post_name>` raw by human decision (slice `import-policy-1`). Full contract in the module header | `backend/src/content/create.ts`, `backend/src/content/update.ts`, `admin/src/pages/ContentEditor.tsx` ("saved as" text) |
 | `needsSlugReview(slug)` | Pure. `slug !== normalizeSlug(slug)` — a text rule only: it says the slug breaks the slug rules, it knows nothing of where the slug came from | `admin/src/pages/ContentList.tsx` (REVIEW SLUG badge), `admin/src/pages/ContentEditor.tsx` (red URL line) |
-| `buildFacetListing(base, f, path)` (+ `parseSelection`, `formatSelection`, `listingHref`, `selectionFits`, `facetValuesOf`, `compareValues`, …) | Pure. The catalog filter panel model: from a base set, the raw `f` and the page path — the filtered items, the shown facets with disjunctive counts, chips, and every href measured against the 6,144-byte budget. Facet set = producer, variant values, then every attribute key that is offered. Filter modes (`facetModes` on a product, design `cat-import-profile-1` § 2.6, ruling S-A with N2): a product marking a facet `never` is a silent holder — its values neither count toward the offer nor are listed, but still match a selection and count in the listed values; `always` offers a key whatever the repeat rule gives; unknown or malformed modes = automatic. Moved from `renderer/src/lib/facets.ts` by `cat-import-profile-1b` (ruling CIP1-PREVIEW = A). Full contract in the module header | `renderer/src/components/SitePage.tsx` (catalog shop and category); admin import preview (slice `cat-import-profile-1c`, not built yet) |
+| `buildFacetListing(base, f, path, labels)` (+ `parseSelection`, `formatSelection`, `listingHref`, `selectionFits`, `facetValuesOf`, `compareValues`, …) | Pure. The catalog filter panel model: from a base set, the raw `f` and the page path — the filtered items, the shown facets with disjunctive counts, chips, and every href measured against the 6,144-byte budget. Facet set = producer, variant values, then every attribute key that is offered. Filter modes (`facetModes` on a product, design `cat-import-profile-1` § 2.6, ruling S-A with N2): a product marking a facet `never` is a silent holder — its values neither count toward the offer nor are listed, but still match a selection and count in the listed values; `always` offers a key whatever the repeat rule gives; unknown or malformed modes = automatic. Moved from `renderer/src/lib/facets.ts` by `cat-import-profile-1b` (ruling CIP1-PREVIEW = A). `labels: FacetLabels` (`{ producer, variantDefault }`, REQUIRED, `locale-1b`): the two fixed facet headings in the visitor's language — the module holds no language; ids and hrefs never depend on them. Full contract in the module header | `renderer/src/components/SitePage.tsx` (catalog shop and category; the tenant's `catalog.facetProducer` / `facetVariantDefault`); `admin/src/components/glamPreview.ts` (the same tenant texts, `siteContextOf`); shared tests pass the test constant `RO_FACET_LABELS` (`test/cat-import-profile-1b-golden.ts`) |
 | `catalogListing(items, categoryId \| undefined, today)` | Pure. Which products a catalog page lists, in which order: shop `status === "active"`; category `!status \|\| status === "active"` and `categoryIds` holds the id; then `isProductAvailable(p, today)`; then `sortOrder` (absent = 0), ties by `id`. `today` = `utcDay(now)` (UTC `YYYY-MM-DD`; injected — the module reads no clock). Behaviour of the renderer's former inline rule, pinned by the 1b golden | `renderer/src/lib/dynamo.ts` (`getCatalogListing`; its other availability checks call `isProductAvailable`); admin import preview (1c) |
 | `catalogListingPath(prefixes, categorySlug \| undefined)` | Pure. The public path of a catalog page without `basePath`: shop `prefixes.shop \|\| "/magazin"` (the renderer's literal fallback, kept), category `` `${prefixes.category}/${slug}` ``. The path is an input of the URL budget, so both callers must pass the same string | `renderer/src/components/SitePage.tsx`; admin import preview (1c) |
 | `deriveEmailDnsValue(kind, domain)` | Pure. Computes a recipe value that depends on the tenant domain. Only variant today: `"m365-mx"` → `<domain dots→dashes>.mail.protection.outlook.com`. Exhaustive `switch` with an `assertNever` default — a new `EmailDnsDerivation` variant breaks the compile until handled. Consumed on BOTH sides of the admin↔backend boundary (slice `email-2`) | `backend/src/email/dns-check.ts` (server-authoritative `expected` for the M365 MX check) and `admin/src/pages/Email.tsx` (mirrors the same target for display/copy) |
@@ -118,16 +118,24 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
 > pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
 
-## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slice `locale-1a` (PROTOTYPE)
+## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b` (PROTOTYPE)
 
-Design: `docs/slices/locale-1.md` (§ 16 rulings win); record `docs/slices/locale-1a.md`. Maturity **PROTOTYPE** until
+Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`. Maturity **PROTOTYPE** until
 every visitor surface reads it (end of `locale-1d`).
 
-- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 77 keys,
-  unchanged), `catalogStrings` (`CatalogStringsSchema`, no keys until `locale-1b`) and `siteStrings`
-  (`SiteStringsSchema`, 51 keys in `1a`). Every key is optional (absent = no override). The nine cookie/legal site keys
+- **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, the 77
+  existing keys plus the 21 shared product-surface keys of `1b`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in
+  `1b`: interest list and facet panel) and `siteStrings` (`SiteStringsSchema`, 51 keys in `1a`). Every key is optional (absent = no override). The nine cookie/legal site keys
   are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
-  in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string).
+  in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).
+- **Count keys** (`1b`, § 16.2 item 6): `reviewsSummary`, `productCount`, `searchResultCount`, `facetsCount`,
+  `interestWidgetLabel` hold one text per plural category of the language (`PluralTextsSchema`, the six CLDR categories
+  `PLURAL_CATEGORIES`; EN `one`/`other`, RO `one`/`few`/`other`). Resolved per category, every form kept: `CountText =
+  { language, forms, english }` — `forms` = the pack's texts, then the tenant's (a partial override included),
+  `english` = the English texts. `selectPluralText(value, n)`: the form `Intl.PluralRules(language).select(n)` names,
+  else the language's `other`, else English by English rules (`Intl.PluralRules("en")`), else the English `other`
+  (always present). A new language adds its categories in its pack only;
+  `pluralCategoriesOf(language)` lists them (admin Labels inputs, the RO pack test, the coverage rule).
 - **Language.** `normalizeLocale(raw)` (never throws: not a string, malformed or unsupported → `en-US`; Unicode
   extensions dropped; idempotent) gives the date/number locale; its language subtag selects the pack in
   `LANGUAGE_PACKS` (none → English). `countryCode` never selects texts.
@@ -138,8 +146,8 @@ every visitor surface reads it (end of `locale-1d`).
 - **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
   (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
   slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.
-- **`COMMERCE_STRINGS_DEFAULTS`** is now bound to `EN_LANGUAGE_PACK.commerce` (same name, same 77 values, verified
-  equal to `5841a86`). The literal lives in `language-packs/en.ts` because `index.ts` re-exports the resolver: a value
+- **`COMMERCE_STRINGS_DEFAULTS`** is now bound to `EN_LANGUAGE_PACK.commerce` (same name; the 77 values verified
+  equal to `5841a86`; since `1b` it also holds the 21 shared keys, so the commerce views' `strings` prop carries them). The literal lives in `language-packs/en.ts` because `index.ts` re-exports the resolver: a value
   import from `index.ts` inside that module graph is read before `index.ts` has run (ESM cycle → `ReferenceError`).
   The RO pack READS its commerce, cookie and legal values from `RO_PACK` (one copy until `locale-1d`).
 

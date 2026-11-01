@@ -1,0 +1,1804 @@
+{
+  "slice": "locale-1b",
+  "rule": "docs/slices/locale-1.md § 8.5 rules 2-3 (and § 16.2 item 4): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (4e98f98), each with its category. Category 1 = a text-node consolidation (`{n} product{s}` / `{n} result{s}` became one filled count text), HTML form and payload form. Category 2 = string props a client component now receives: an added prop (`value`), or — LOCALE-1B — a prop whose value changed (`beforeValue` → `value`, both exact): the SearchBar's labels (\"$undefined\" → the resolved texts), the commerce views' `strings` (the 77 keys unchanged plus the 21 shared keys of 1b) and, on the catalog subjects, the Navbar's `interest` (the header widget's texts gain `strings`, LOCALE1B-WIDGET = A). Category 3 = an approved ledger change, here only L-EN-CAT on the two en-US catalog subjects (catalog, cip1b-catalog; packet hard rule 1). Checked by row loc1-diff-1b (locale-1/proof.mjs checkExpected): every listed difference must occur and nothing else may differ, under CM1-A1 plus the ruled resolved-tree payload comparison (operator ruling LOCALE1B-ROW-CUT = A, locale-1/proof.mjs resolveFlight; it replaces the 1a row renumbering): every outlined row resolved into the place that references it, on both sides. No URL is excluded.",
+  "propValues": {
+    "searchBarLabelsUndefined": {
+      "searchButton": "$undefined",
+      "searchNoResults": "$undefined",
+      "searchSearching": "$undefined",
+      "viewAllResults": "$undefined"
+    },
+    "searchBarLabelsEn": {
+      "searchButton": "Search",
+      "searchNoResults": "No products found",
+      "searchSearching": "Searching...",
+      "viewAllResults": "View all results"
+    },
+    "cartStringsBefore": {
+      "description": "Description",
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "inStock": "In Stock",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable",
+      "units": "units",
+      "cart": "Cart",
+      "shoppingCart": "Shopping Cart",
+      "emptyCart": "Your cart is empty",
+      "emptyCartMessage": "Browse our products and add something you like.",
+      "continueShopping": "Continue Shopping",
+      "orderSummary": "Order Summary",
+      "subtotal": "Subtotal",
+      "shipping": "Shipping",
+      "discount": "Discount",
+      "total": "Total",
+      "freeShipping": "Free",
+      "freeDeliveryFrom": "Free delivery from",
+      "addMoreForFreeDelivery": "Add {amount} more for free delivery",
+      "minimumOrder": "Minimum order",
+      "proceedToCheckout": "Proceed to Checkout",
+      "couponCode": "Coupon code",
+      "apply": "Apply",
+      "remove": "Remove",
+      "invalidCoupon": "Invalid coupon",
+      "checkout": "Checkout",
+      "placeOrder": "Place Order",
+      "placingOrder": "Placing Order...",
+      "orderConfirmation": "Order Confirmation",
+      "contactInformation": "Contact Information",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "shippingAddress": "Shipping Address",
+      "shippingStreetAddress": "",
+      "streetAddress": "Street Address",
+      "billingStreetAddress": "",
+      "city": "City",
+      "county": "County",
+      "selectCounty": "Select county...",
+      "postalCode": "Postal Code",
+      "deliveryNotes": "Delivery Notes",
+      "deliveryNotesPlaceholder": "Apartment, floor, etc.",
+      "paymentMethod": "Payment Method",
+      "cashOnDelivery": "Cash on Delivery",
+      "cashOnDeliveryDesc": "Pay when you receive your order",
+      "bankTransfer": "Bank Transfer",
+      "termsAgreement": "By placing your order, you agree to our terms and conditions.",
+      "preferredDeliveryDate": "Preferred Delivery Date",
+      "country": "Country",
+      "selectCountry": "Select country...",
+      "birthday": "Birthday",
+      "birthdayHint": "For a birthday surprise!",
+      "billingDetails": "Billing Details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "orderAsCompany": "Order as a company",
+      "companyName": "Company Name",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "",
+      "vatNumber": "VAT Number",
+      "vatNumberPlaceholder": "",
+      "registrationNumber": "Registration No.",
+      "registrationNumberPlaceholder": "",
+      "useSameAsShipping": "Use same address for billing",
+      "billingAddress": "Billing Address",
+      "searchButton": "Search",
+      "searchNoResults": "No products found",
+      "searchSearching": "Searching...",
+      "viewAllResults": "View all results",
+      "resultsFor": "Results for",
+      "searchProducts": "Search Products",
+      "signIn": "Sign In",
+      "accountLabel": "Account"
+    },
+    "cartStringsAfter": {
+      "description": "Description",
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "inStock": "In Stock",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable",
+      "units": "units",
+      "cart": "Cart",
+      "shoppingCart": "Shopping Cart",
+      "emptyCart": "Your cart is empty",
+      "emptyCartMessage": "Browse our products and add something you like.",
+      "continueShopping": "Continue Shopping",
+      "orderSummary": "Order Summary",
+      "subtotal": "Subtotal",
+      "shipping": "Shipping",
+      "discount": "Discount",
+      "total": "Total",
+      "freeShipping": "Free",
+      "freeDeliveryFrom": "Free delivery from",
+      "addMoreForFreeDelivery": "Add {amount} more for free delivery",
+      "minimumOrder": "Minimum order",
+      "proceedToCheckout": "Proceed to Checkout",
+      "couponCode": "Coupon code",
+      "apply": "Apply",
+      "remove": "Remove",
+      "invalidCoupon": "Invalid coupon",
+      "checkout": "Checkout",
+      "placeOrder": "Place Order",
+      "placingOrder": "Placing Order...",
+      "orderConfirmation": "Order Confirmation",
+      "contactInformation": "Contact Information",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "shippingAddress": "Shipping Address",
+      "shippingStreetAddress": "",
+      "streetAddress": "Street Address",
+      "billingStreetAddress": "",
+      "city": "City",
+      "county": "County",
+      "selectCounty": "Select county...",
+      "postalCode": "Postal Code",
+      "deliveryNotes": "Delivery Notes",
+      "deliveryNotesPlaceholder": "Apartment, floor, etc.",
+      "paymentMethod": "Payment Method",
+      "cashOnDelivery": "Cash on Delivery",
+      "cashOnDeliveryDesc": "Pay when you receive your order",
+      "bankTransfer": "Bank Transfer",
+      "termsAgreement": "By placing your order, you agree to our terms and conditions.",
+      "preferredDeliveryDate": "Preferred Delivery Date",
+      "country": "Country",
+      "selectCountry": "Select country...",
+      "birthday": "Birthday",
+      "birthdayHint": "For a birthday surprise!",
+      "billingDetails": "Billing Details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "orderAsCompany": "Order as a company",
+      "companyName": "Company Name",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "",
+      "vatNumber": "VAT Number",
+      "vatNumberPlaceholder": "",
+      "registrationNumber": "Registration No.",
+      "registrationNumberPlaceholder": "",
+      "useSameAsShipping": "Use same address for billing",
+      "billingAddress": "Billing Address",
+      "searchButton": "Search",
+      "searchNoResults": "No products found",
+      "searchSearching": "Searching...",
+      "viewAllResults": "View all results",
+      "resultsFor": "Results for",
+      "searchProducts": "Search Products",
+      "signIn": "Sign In",
+      "accountLabel": "Account",
+      "metaCategoryDescription": "Browse {category} products",
+      "metaShopTitle": "Shop - {site}",
+      "metaSearchQueryTitle": "Search: {query} - {site}",
+      "metaSearchTitle": "Search - {site}",
+      "searchPlaceholder": "Search products...",
+      "shopTitle": "Shop",
+      "volumePricing": "Volume Pricing",
+      "preOrder": "Pre-order",
+      "buyNow": "Buy Now",
+      "ingredients": "Ingredients",
+      "nutritionalValues": "Nutritional Values",
+      "reviewsHeading": "Reviews",
+      "reviewsSummary": {
+        "one": "{rating}/5 ({n} review)",
+        "other": "{rating}/5 ({n} reviews)"
+      },
+      "categoryEmpty": "No products in this category yet.",
+      "productCount": {
+        "one": "{n} product",
+        "other": "{n} products"
+      },
+      "shopEmptyInStock": "No products currently in stock.",
+      "shopEmpty": "No products available yet.",
+      "shopAllProducts": "All Products",
+      "searchBreadcrumb": "Search",
+      "searchResultCount": {
+        "one": "{n} result",
+        "other": "{n} results"
+      },
+      "searchEnterTerm": "Enter a search term to find products."
+    },
+    "checkoutStringsBefore": {
+      "description": "Description",
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "inStock": "In Stock",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable",
+      "units": "units",
+      "cart": "Cart",
+      "shoppingCart": "Shopping Cart",
+      "emptyCart": "Your cart is empty",
+      "emptyCartMessage": "Browse our products and add something you like.",
+      "continueShopping": "Continue Shopping",
+      "orderSummary": "Order Summary",
+      "subtotal": "Subtotal",
+      "shipping": "Shipping",
+      "discount": "Discount",
+      "total": "Total",
+      "freeShipping": "Free",
+      "freeDeliveryFrom": "Free delivery from",
+      "addMoreForFreeDelivery": "Add {amount} more for free delivery",
+      "minimumOrder": "Minimum order",
+      "proceedToCheckout": "Proceed to Checkout",
+      "couponCode": "Coupon code",
+      "apply": "Apply",
+      "remove": "Remove",
+      "invalidCoupon": "Invalid coupon",
+      "checkout": "Checkout",
+      "placeOrder": "Place Order",
+      "placingOrder": "Placing Order...",
+      "orderConfirmation": "Order Confirmation",
+      "contactInformation": "Contact Information",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "shippingAddress": "Shipping Address",
+      "shippingStreetAddress": "",
+      "streetAddress": "Street Address",
+      "billingStreetAddress": "",
+      "city": "City",
+      "county": "County",
+      "selectCounty": "Select county...",
+      "postalCode": "Postal Code",
+      "deliveryNotes": "Delivery Notes",
+      "deliveryNotesPlaceholder": "Apartment, floor, etc.",
+      "paymentMethod": "Payment Method",
+      "cashOnDelivery": "Cash on Delivery",
+      "cashOnDeliveryDesc": "Pay when you receive your order",
+      "bankTransfer": "Bank Transfer",
+      "termsAgreement": "By placing your order, you agree to our terms and conditions.",
+      "preferredDeliveryDate": "Preferred Delivery Date",
+      "country": "Country",
+      "selectCountry": "Select country...",
+      "birthday": "Birthday",
+      "birthdayHint": "For a birthday surprise!",
+      "billingDetails": "Billing Details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "orderAsCompany": "Order as a company",
+      "companyName": "Company Name",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "",
+      "vatNumber": "VAT Number",
+      "vatNumberPlaceholder": "",
+      "registrationNumber": "Registration No.",
+      "registrationNumberPlaceholder": "",
+      "useSameAsShipping": "Use same address for billing",
+      "billingAddress": "Billing Address",
+      "searchButton": "Search",
+      "searchNoResults": "No products found",
+      "searchSearching": "Searching...",
+      "viewAllResults": "View all results",
+      "resultsFor": "Results for",
+      "searchProducts": "Search Products",
+      "signIn": "Sign In",
+      "accountLabel": "Account"
+    },
+    "checkoutStringsAfter": {
+      "description": "Description",
+      "addToCart": "Add to Cart",
+      "addedToCart": "Added to Cart!",
+      "viewCart": "View Cart",
+      "inStock": "In Stock",
+      "outOfStock": "Out of Stock",
+      "variantUnavailable": "Variant Unavailable",
+      "units": "units",
+      "cart": "Cart",
+      "shoppingCart": "Shopping Cart",
+      "emptyCart": "Your cart is empty",
+      "emptyCartMessage": "Browse our products and add something you like.",
+      "continueShopping": "Continue Shopping",
+      "orderSummary": "Order Summary",
+      "subtotal": "Subtotal",
+      "shipping": "Shipping",
+      "discount": "Discount",
+      "total": "Total",
+      "freeShipping": "Free",
+      "freeDeliveryFrom": "Free delivery from",
+      "addMoreForFreeDelivery": "Add {amount} more for free delivery",
+      "minimumOrder": "Minimum order",
+      "proceedToCheckout": "Proceed to Checkout",
+      "couponCode": "Coupon code",
+      "apply": "Apply",
+      "remove": "Remove",
+      "invalidCoupon": "Invalid coupon",
+      "checkout": "Checkout",
+      "placeOrder": "Place Order",
+      "placingOrder": "Placing Order...",
+      "orderConfirmation": "Order Confirmation",
+      "contactInformation": "Contact Information",
+      "fullName": "Full Name",
+      "email": "Email",
+      "phone": "Phone",
+      "phonePlaceholder": "",
+      "shippingAddress": "Shipping Address",
+      "shippingStreetAddress": "",
+      "streetAddress": "Street Address",
+      "billingStreetAddress": "",
+      "city": "City",
+      "county": "County",
+      "selectCounty": "Select county...",
+      "postalCode": "Postal Code",
+      "deliveryNotes": "Delivery Notes",
+      "deliveryNotesPlaceholder": "Apartment, floor, etc.",
+      "paymentMethod": "Payment Method",
+      "cashOnDelivery": "Cash on Delivery",
+      "cashOnDeliveryDesc": "Pay when you receive your order",
+      "bankTransfer": "Bank Transfer",
+      "termsAgreement": "By placing your order, you agree to our terms and conditions.",
+      "preferredDeliveryDate": "Preferred Delivery Date",
+      "country": "Country",
+      "selectCountry": "Select country...",
+      "birthday": "Birthday",
+      "birthdayHint": "For a birthday surprise!",
+      "billingDetails": "Billing Details",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "orderAsCompany": "Order as a company",
+      "companyName": "Company Name",
+      "taxId": "Tax ID",
+      "taxIdPlaceholder": "",
+      "vatNumber": "VAT Number",
+      "vatNumberPlaceholder": "",
+      "registrationNumber": "Registration No.",
+      "registrationNumberPlaceholder": "",
+      "useSameAsShipping": "Use same address for billing",
+      "billingAddress": "Billing Address",
+      "searchButton": "Search",
+      "searchNoResults": "No products found",
+      "searchSearching": "Searching...",
+      "viewAllResults": "View all results",
+      "resultsFor": "Results for",
+      "searchProducts": "Search Products",
+      "signIn": "Sign In",
+      "accountLabel": "Account",
+      "metaCategoryDescription": "Browse {category} products",
+      "metaShopTitle": "Shop - {site}",
+      "metaSearchQueryTitle": "Search: {query} - {site}",
+      "metaSearchTitle": "Search - {site}",
+      "searchPlaceholder": "Search products...",
+      "shopTitle": "Shop",
+      "volumePricing": "Volume Pricing",
+      "preOrder": "Pre-order",
+      "buyNow": "Buy Now",
+      "ingredients": "Ingredients",
+      "nutritionalValues": "Nutritional Values",
+      "reviewsHeading": "Reviews",
+      "reviewsSummary": {
+        "one": "{rating}/5 ({n} review)",
+        "other": "{rating}/5 ({n} reviews)"
+      },
+      "categoryEmpty": "No products in this category yet.",
+      "productCount": {
+        "one": "{n} product",
+        "other": "{n} products"
+      },
+      "shopEmptyInStock": "No products currently in stock.",
+      "shopEmpty": "No products available yet.",
+      "shopAllProducts": "All Products",
+      "searchBreadcrumb": "Search",
+      "searchResultCount": {
+        "one": "{n} result",
+        "other": "{n} results"
+      },
+      "searchEnterTerm": "Enter a search term to find products."
+    },
+    "interestToggleStringsEn": {
+      "interestAdd": "I'm interested",
+      "interestAdded": "In my list",
+      "interestListFull": "Your list already has 50 products. Remove one to add another."
+    },
+    "catalogInterestBefore": {
+      "tenantId": "cm1-catalog",
+      "listPrefix": "/lista-mea"
+    },
+    "catalogInterestAfter": {
+      "tenantId": "cm1-catalog",
+      "listPrefix": "/lista-mea",
+      "strings": {
+        "interestListTitle": "My list",
+        "interestWidgetLabel": {
+          "language": "en",
+          "forms": {
+            "one": "My list: {n} product",
+            "other": "My list: {n} products"
+          },
+          "english": {
+            "one": "My list: {n} product",
+            "other": "My list: {n} products"
+          }
+        },
+        "interestStorageWarning": "This browser cannot save the list. We keep it while this page stays open.",
+        "interestStorageAck": "Got it"
+      }
+    },
+    "cip1bInterestBefore": {
+      "tenantId": "cip1b-catalog",
+      "listPrefix": "/lista-mea"
+    },
+    "cip1bInterestAfter": {
+      "tenantId": "cip1b-catalog",
+      "listPrefix": "/lista-mea",
+      "strings": {
+        "interestListTitle": "My list",
+        "interestWidgetLabel": {
+          "language": "en",
+          "forms": {
+            "one": "My list: {n} product",
+            "other": "My list: {n} products"
+          },
+          "english": {
+            "one": "My list: {n} product",
+            "other": "My list: {n} products"
+          }
+        },
+        "interestStorageWarning": "This browser cannot save the list. We keep it while this page stays open.",
+        "interestStorageAck": "Got it"
+      }
+    }
+  },
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [],
+      "/published": [],
+      "/d4-page": []
+    },
+    "wk": {
+      "/index.php": []
+    },
+    "iso-a": {
+      "/": [],
+      "/about": [],
+      "/listed-post": []
+    },
+    "iso-b": {
+      "/about": []
+    },
+    "commerce": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/category/rugs": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">3<!-- --> product<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">3 products</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[3,\" product\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/product/sale-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/product/variant-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/product/sold-out-rug": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/product/rug-care-guide": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/products/c0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mb-8\">4<!-- --> result<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mb-8\">4 results</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mb-8\",\"children\":[4,\" result\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mb-8\",\"children\":\"4 results\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CartPageView.tsx#CartPageView",
+          "prop": "strings",
+          "valueRef": "cartStringsAfter",
+          "beforeValueRef": "cartStringsBefore"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/CheckoutPageView.tsx#CheckoutPageView",
+          "prop": "strings",
+          "valueRef": "checkoutStringsAfter",
+          "beforeValueRef": "checkoutStringsBefore"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "content": {
+      "/": [],
+      "/about": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/mats": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">1<!-- --> product</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">1 product</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[1,\" product\",\"\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"1 product\""
+        }
+      ],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mb-8\">1<!-- --> result</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mb-8\">1 result</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mb-8\",\"children\":[1,\" result\",\"\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mb-8\",\"children\":\"1 result\""
+        }
+      ],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/about": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Filtre\" data-facet-panel",
+          "after": "aria-label=\"Filters\" data-facet-panel",
+          "flightBefore": "\"aria-label\":\"Filtre\",\"data-facet-panel\"",
+          "flightAfter": "\"aria-label\":\"Filters\",\"data-facet-panel\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "peer-focus-visible:ring-primary\">Filtre</label>",
+          "after": "peer-focus-visible:ring-primary\">Filters</label>",
+          "flightBefore": "\"children\":[\"Filtre\",\"\"]",
+          "flightAfter": "\"children\":[\"Filters\",\"\"]"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "font-semibold mb-3\">Filtre</h2>",
+          "after": "font-semibold mb-3\">Filters</h2>",
+          "flightBefore": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filtre\"",
+          "flightAfter": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filters\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<summary class=\"cursor-pointer font-medium\">Producător</summary>",
+          "after": "<summary class=\"cursor-pointer font-medium\">Brand</summary>",
+          "flightBefore": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Producător\"",
+          "flightAfter": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Brand\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "data-facet-total=\"42\">42 produse<",
+          "after": "data-facet-total=\"42\">42 products<",
+          "flightBefore": "\"data-facet-total\":42,\"children\":\"42 produse\"",
+          "flightAfter": "\"data-facet-total\":42,\"children\":\"42 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Filtre\" data-facet-panel",
+          "after": "aria-label=\"Filters\" data-facet-panel",
+          "flightBefore": "\"aria-label\":\"Filtre\",\"data-facet-panel\"",
+          "flightAfter": "\"aria-label\":\"Filters\",\"data-facet-panel\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "peer-focus-visible:ring-primary\">Filtre</label>",
+          "after": "peer-focus-visible:ring-primary\">Filters</label>",
+          "flightBefore": "\"children\":[\"Filtre\",\"\"]",
+          "flightAfter": "\"children\":[\"Filters\",\"\"]"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "font-semibold mb-3\">Filtre</h2>",
+          "after": "font-semibold mb-3\">Filters</h2>",
+          "flightBefore": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filtre\"",
+          "flightAfter": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filters\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<summary class=\"cursor-pointer font-medium\">Producător</summary>",
+          "after": "<summary class=\"cursor-pointer font-medium\">Brand</summary>",
+          "flightBefore": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Producător\"",
+          "flightAfter": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Brand\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "data-facet-total=\"42\">42 produse<",
+          "after": "data-facet-total=\"42\">42 products<",
+          "flightBefore": "\"data-facet-total\":42,\"children\":\"42 produse\"",
+          "flightAfter": "\"data-facet-total\":42,\"children\":\"42 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/category/floors": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">3<!-- --> product<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">3 products</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[3,\" product\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Filtre\" data-facet-panel",
+          "after": "aria-label=\"Filters\" data-facet-panel",
+          "flightBefore": "\"aria-label\":\"Filtre\",\"data-facet-panel\"",
+          "flightAfter": "\"aria-label\":\"Filters\",\"data-facet-panel\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "peer-focus-visible:ring-primary\">Filtre</label>",
+          "after": "peer-focus-visible:ring-primary\">Filters</label>",
+          "flightBefore": "\"children\":[\"Filtre\",\"\"]",
+          "flightAfter": "\"children\":[\"Filters\",\"\"]"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "font-semibold mb-3\">Filtre</h2>",
+          "after": "font-semibold mb-3\">Filters</h2>",
+          "flightBefore": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filtre\"",
+          "flightAfter": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filters\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "data-facet-total=\"3\">3 produse<",
+          "after": "data-facet-total=\"3\">3 products<",
+          "flightBefore": "\"data-facet-total\":3,\"children\":\"3 produse\"",
+          "flightAfter": "\"data-facet-total\":3,\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/oak-plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/ash-plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/legacy-plank": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000002": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000003": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/search?q=plank": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mb-8\">3<!-- --> result<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mb-8\">3 results</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mb-8\",\"children\":[3,\" result\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mb-8\",\"children\":\"3 results\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/SearchBar.tsx#SearchBar",
+          "prop": "labels",
+          "valueRef": "searchBarLabelsEn",
+          "beforeValueRef": "searchBarLabelsUndefined"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "catalogInterestAfter",
+          "beforeValueRef": "catalogInterestBefore"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Filtre\" data-facet-panel",
+          "after": "aria-label=\"Filters\" data-facet-panel",
+          "flightBefore": "\"aria-label\":\"Filtre\",\"data-facet-panel\"",
+          "flightAfter": "\"aria-label\":\"Filters\",\"data-facet-panel\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "peer-focus-visible:ring-primary\">Filtre</label>",
+          "after": "peer-focus-visible:ring-primary\">Filters</label>",
+          "flightBefore": "\"children\":[\"Filtre\",\"\"]",
+          "flightAfter": "\"children\":[\"Filters\",\"\"]"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "font-semibold mb-3\">Filtre</h2>",
+          "after": "font-semibold mb-3\">Filters</h2>",
+          "flightBefore": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filtre\"",
+          "flightAfter": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filters\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<summary class=\"cursor-pointer font-medium\">Producător</summary>",
+          "after": "<summary class=\"cursor-pointer font-medium\">Brand</summary>",
+          "flightBefore": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Producător\"",
+          "flightAfter": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Brand\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<summary class=\"cursor-pointer font-medium\">Variantă</summary>",
+          "after": "<summary class=\"cursor-pointer font-medium\">Option</summary>",
+          "flightBefore": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Variantă\"",
+          "flightAfter": "\"className\":\"cursor-pointer font-medium\",\"children\":\"Option\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "data-facet-total=\"10\">10 produse<",
+          "after": "data-facet-total=\"10\">10 products<",
+          "flightBefore": "\"data-facet-total\":10,\"children\":\"10 produse\"",
+          "flightAfter": "\"data-facet-total\":10,\"children\":\"10 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/category/cip1b-boen": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">3<!-- --> product<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">3 products</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[3,\" product\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Filtre\" data-facet-panel",
+          "after": "aria-label=\"Filters\" data-facet-panel",
+          "flightBefore": "\"aria-label\":\"Filtre\",\"data-facet-panel\"",
+          "flightAfter": "\"aria-label\":\"Filters\",\"data-facet-panel\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "peer-focus-visible:ring-primary\">Filtre</label>",
+          "after": "peer-focus-visible:ring-primary\">Filters</label>",
+          "flightBefore": "\"children\":[\"Filtre\",\"\"]",
+          "flightAfter": "\"children\":[\"Filters\",\"\"]"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "font-semibold mb-3\">Filtre</h2>",
+          "after": "font-semibold mb-3\">Filters</h2>",
+          "flightBefore": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filtre\"",
+          "flightAfter": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filters\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "data-facet-total=\"3\">3 produse<",
+          "after": "data-facet-total=\"3\">3 products<",
+          "flightBefore": "\"data-facet-total\":3,\"children\":\"3 produse\"",
+          "flightAfter": "\"data-facet-total\":3,\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/category/cip1b-itc": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">2<!-- --> product<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">2 products</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[2,\" product\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"2 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/category/cip1b-x": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">3<!-- --> product<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">3 products</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[3,\" product\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Filtre\" data-facet-panel",
+          "after": "aria-label=\"Filters\" data-facet-panel",
+          "flightBefore": "\"aria-label\":\"Filtre\",\"data-facet-panel\"",
+          "flightAfter": "\"aria-label\":\"Filters\",\"data-facet-panel\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "peer-focus-visible:ring-primary\">Filtre</label>",
+          "after": "peer-focus-visible:ring-primary\">Filters</label>",
+          "flightBefore": "\"children\":[\"Filtre\",\"\"]",
+          "flightAfter": "\"children\":[\"Filters\",\"\"]"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "font-semibold mb-3\">Filtre</h2>",
+          "after": "font-semibold mb-3\">Filters</h2>",
+          "flightBefore": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filtre\"",
+          "flightAfter": "\"className\":\"hidden lg:block font-semibold mb-3\",\"children\":\"Filters\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "data-facet-total=\"3\">3 produse<",
+          "after": "data-facet-total=\"3\">3 products<",
+          "flightBefore": "\"data-facet-total\":3,\"children\":\"3 produse\"",
+          "flightAfter": "\"data-facet-total\":3,\"children\":\"3 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/category/cip1b-u": [
+        {
+          "category": 1,
+          "before": "<p class=\"text-sm text-muted-foreground mt-1\">2<!-- --> product<!-- -->s</p>",
+          "after": "<p class=\"text-sm text-muted-foreground mt-1\">2 products</p>",
+          "flightBefore": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":[2,\" product\",\"s\"]",
+          "flightAfter": "\"className\":\"text-sm text-muted-foreground mt-1\",\"children\":\"2 products\""
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/stejar-mixt": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/frasin-mixt": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/nuc-fara-fisa": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/covor-arc": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/covor-shell": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/placa-nod": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/placa-nod-doi": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/lemn-x-unu": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/lemn-x-doi": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ],
+      "/product/lemn-x-trei": [
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "strings",
+          "valueRef": "interestToggleStringsEn"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "</svg>Mă interesează</button>",
+          "after": "</svg>I&#x27;m interested</button>"
+        },
+        {
+          "category": 2,
+          "element": "[project]/renderer/src/components/Navbar.tsx#Navbar",
+          "prop": "interest",
+          "valueRef": "cip1bInterestAfter",
+          "beforeValueRef": "cip1bInterestBefore"
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "aria-label=\"Lista mea: 0 produse\"",
+          "after": "aria-label=\"My list: 0 products\""
+        },
+        {
+          "category": 3,
+          "row": "L-EN-CAT",
+          "before": "<span class=\"text-sm font-medium hidden lg:inline\">Lista mea</span>",
+          "after": "<span class=\"text-sm font-medium hidden lg:inline\">My list</span>"
+        }
+      ]
+    }
+  }
+}

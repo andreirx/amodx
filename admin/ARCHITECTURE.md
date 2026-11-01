@@ -26,7 +26,7 @@ src/
 │   │   └── Toolbar.tsx         # Formatting toolbar + plugin insert buttons
 │   ├── GlamPricelistImport.tsx # Products → Import → glam pricelist: form reducer (dry run bound to its input + profile choice), image copy loop (CAT-IMPORT-1, CAT-IMAGES-1, CAT-IMPORT-PROFILE-1C)
 │   ├── GlamProfileEditor.tsx   # The producer's import profile: dry-run DTO types, ProfileEditor state + pure transitions, proposeProfile, hints; layout of the editor and the preview (CAT-IMPORT-PROFILE-1C)
-│   ├── glamPreview.ts          # PURE preview assembly: cards, product page, 3 filter panels via @amodx/shared catalogListing / catalogListingPath / buildFacetListing (CAT-IMPORT-PROFILE-1C)
+│   ├── glamPreview.ts          # PURE preview assembly: cards, product page, 3 filter panels via @amodx/shared catalogListing / catalogListingPath / buildFacetListing (CAT-IMPORT-PROFILE-1C; facet headings = the tenant's catalog texts, siteContextOf.facetLabels, LOCALE-1B)
 │   ├── MediaPicker.tsx         # Modal for selecting uploaded assets
 │   ├── SmartLinkInput.tsx      # Autocomplete input for internal page links
 │   └── TagInput.tsx            # Multi-tag input with suggestion autocomplete
@@ -54,6 +54,9 @@ src/
     │                           #   pure helpers localeStatus / withSiteLanguage / withCountry (Settings.test.ts)
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
+    │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"
+    │                           #   (commerce + catalog tenants, the shared commerce keys); a count key has one input
+    │                           #   per plural category of the tenant's language (countInputs / setCountText);
     │                           #   commerce cards (commerce tenants); placeholders = language defaults; Reset per
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
@@ -114,7 +117,8 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   made `stale` are listed at once (§ 6.3).
 - **Preview** (`glamPreview.ts`, pure): base sets = `catalogListing(siteProducts ∪ publishedDrafts(drafts), scope, today)` for the
   producer category, one collection and the shop; panel = `buildFacetListing(base, f, catalogListingPath(prefixes,
-  slug))` — the renderer's own functions and inputs. `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` from
+  slug), facetLabels)` — the renderer's own functions and inputs. `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` and
+  `facetLabels` (the tenant's `catalog.facetProducer` / `facetVariantDefault`, `resolveLocaleStrings`, locale-1b) from
   `GET /settings`; found category slugs from `GET /categories` (the dry run names them by id). A value click follows
   the panel's own href (`selectionOfHref`). The chosen product and collection are checked against the report they are
   shown with (`effectivePreviewChoice`). The look is approximate: the ruled notice and every § 5.3 limit

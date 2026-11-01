@@ -1,13 +1,42 @@
-import type { LocaleStrings } from "./index.js";
+import type { CatalogStrings, CommerceStrings, CountText, LocaleStrings, PluralTexts, ResolvedPart, SiteStrings } from "./index.js";
 import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
 import { LANGUAGE_PACKS } from "./language-packs/index.js";
-import type { LanguagePack } from "./language-packs/types.js";
+import type { CompletePart, LanguagePack } from "./language-packs/types.js";
 
 /**
  * LOCALE-1 — the one resolution of the tenant locale table (docs/slices/locale-1.md § 3.3, § 5).
  * Pure: no I/O, no clock, no environment. Users: the renderer (layout, SitePage, mapTenant), the admin Labels and
- * Settings pages, and the backend PUT /settings validation (the cookie/legal key list).
+ * Settings pages, and the backend PUT /settings validation (the cookie/legal key list, the plural categories).
  */
+
+/**
+ * LOCALE-1B (§ 16.2 item 6) — the six plural categories of Unicode CLDR, the closed set `Intl.PluralRules.select`
+ * returns. A count key's texts are keyed by these; a language uses a subset (`pluralCategoriesOf`). A new language
+ * adds its categories in its pack file only: no code names a language's categories.
+ */
+export const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"] as const satisfies readonly Intl.LDMLPluralRule[];
+export type PluralCategory = (typeof PLURAL_CATEGORIES)[number];
+
+/** The plural categories `language` uses, in CLDR order (`Intl.PluralRules`): English `one`, `other`; Romanian `one`,
+ *  `few`, `other`. The admin Labels page offers one input per category; the RO pack test requires each. */
+export function pluralCategoriesOf(language: string): PluralCategory[] {
+    const used = new Set<string>(new Intl.PluralRules(language).resolvedOptions().pluralCategories);
+    return PLURAL_CATEGORIES.filter((category) => used.has(category));
+}
+
+/**
+ * The text of a count key for the count `n` (§ 16.2 item 6, packet rule 3), in this order: the form of the category
+ * `Intl.PluralRules(language)` selects for `n`; else the language's `other`; else English — the English form of the
+ * category `Intl.PluralRules("en")` selects for `n` (English rules, because English supplies the text), else the
+ * English `other` (always present). Returns the template; the caller fills `{n}` and the other placeholders with
+ * `fillTemplate`.
+ */
+export function selectPluralText(value: CountText, n: number): string {
+    return value.forms[new Intl.PluralRules(value.language).select(n)]
+        ?? value.forms.other
+        ?? value.english[new Intl.PluralRules("en").select(n)]
+        ?? value.english.other;
+}
 
 /**
  * The nine site keys whose ONLY stored location is a field of `gdpr` or `legalLinks` (§ 4.1). The resolver reads
@@ -84,42 +113,67 @@ function ownString(obj: unknown, key: string): string | undefined {
     return typeof value === "string" ? value : undefined;
 }
 
-/** Layers 1 + 2 for one part: every key of the English part, the pack's string where it has one. */
-function languageDefaults<T extends object>(english: T, pack: Partial<NoInfer<T>>): T {
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(english)) {
-        const own = ownString(pack, key);
-        out[key] = own !== undefined ? own : (value as string);
+/** The own string texts of a stored or packed count value, per plural category; anything else is ignored. */
+function ownPluralTexts(obj: unknown, key: string): PluralTexts {
+    if (obj === null || typeof obj !== "object" || Array.isArray(obj) || !Object.prototype.hasOwnProperty.call(obj, key)) return {};
+    const value = (obj as Record<string, unknown>)[key];
+    const out: PluralTexts = {};
+    for (const category of PLURAL_CATEGORIES) {
+        const text = ownString(value, category);
+        if (text !== undefined) out[category] = text;
     }
-    return out as T;
+    return out;
 }
 
-/** Layer 3 for one part: the tenant's own string value of a key wins (a stored `""` included, § 4.1). */
-function withOverrides<T extends object>(defaults: T, overrides: unknown): T {
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(defaults)) {
-        const own = ownString(overrides, key);
-        out[key] = own !== undefined ? own : (value as string);
+/**
+ * One count key (§ 16.2 item 6, § 3.3). `forms` = the texts of the text language: the pack's, then the tenant's, per
+ * category — every form either has is kept (a partial tenant override included). `english` = the English texts, the
+ * last fallback. Which form a count gets is decided at selection (`selectPluralText`).
+ */
+function countText(english: PluralTexts & { other: string }, pack: PluralTexts, tenant: PluralTexts, language: string): CountText {
+    return { language, forms: { ...pack, ...tenant }, english: { ...english } };
+}
+
+/**
+ * Layers 1-3 for one part. A text key: the English string, the pack's string where it has one (`defaults`), the
+ * tenant's own string where it has one, a stored `""` included (`strings`, § 4.1). A count key: `countText`.
+ * Only the keys of the English part are read; unknown stored keys are ignored (§ 2.4).
+ */
+function resolvePart<T extends object>(english: CompletePart<T>, pack: Partial<T>, overrides: unknown, language: string): { defaults: ResolvedPart<T>; strings: ResolvedPart<T> } {
+    const defaults: Record<string, string | CountText> = {};
+    const strings: Record<string, string | CountText> = {};
+    for (const [key, value] of Object.entries(english)) {
+        if (typeof value === "string") {
+            const packed = ownString(pack, key);
+            const languageDefault = packed !== undefined ? packed : value;
+            const own = ownString(overrides, key);
+            defaults[key] = languageDefault;
+            strings[key] = own !== undefined ? own : languageDefault;
+        } else {
+            const englishForms = value as PluralTexts & { other: string };
+            const packForms = ownPluralTexts(pack, key);
+            defaults[key] = countText(englishForms, packForms, {}, language);
+            strings[key] = countText(englishForms, packForms, ownPluralTexts(overrides, key), language);
+        }
     }
-    return out as T;
+    return { defaults: defaults as ResolvedPart<T>, strings: strings as ResolvedPart<T> };
 }
 
 /**
  * The tenant's locale table (§ 5.1). Per key, lowest layer first: the EN pack (complete by type); the pack of the
  * text language, where it has the key; the tenant override — an own string property of `commerceStrings` /
  * `catalogStrings` / `siteStrings`, or for the nine cookie/legal keys a NON-EMPTY string of their `gdpr` /
- * `legalLinks` field (never `siteStrings`). Non-string and unknown stored values are ignored. Never throws.
- * `countryCode` is not an input: country facts do not select texts (§ 3.2 item 3).
+ * `legalLinks` field (never `siteStrings`). A count key resolves per plural category (`countText`). Non-string and
+ * unknown stored values are ignored. Never throws. `countryCode` is not an input: country facts do not select texts
+ * (§ 3.2 item 3).
  */
 export function resolveLocaleStrings(input: LocaleStringsInput): ResolvedLocaleStrings {
     const locale = normalizeLocale(input.locale);
     const pack = packFor(locale);
-    const defaults: LocaleStrings = {
-        commerce: languageDefaults(EN_LANGUAGE_PACK.commerce, pack.commerce),
-        catalog: languageDefaults(EN_LANGUAGE_PACK.catalog, pack.catalog),
-        site: languageDefaults(EN_LANGUAGE_PACK.site, pack.site),
-    };
-    const site = withOverrides(defaults.site, input.siteStrings);
+    const commerce = resolvePart<CommerceStrings>(EN_LANGUAGE_PACK.commerce, pack.commerce, input.commerceStrings, pack.language);
+    const catalog = resolvePart<CatalogStrings>(EN_LANGUAGE_PACK.catalog, pack.catalog, input.catalogStrings, pack.language);
+    const { defaults: siteDefaults, strings: site } = resolvePart<SiteStrings>(EN_LANGUAGE_PACK.site, pack.site, input.siteStrings, pack.language);
+    const defaults: LocaleStrings = { commerce: commerce.defaults, catalog: catalog.defaults, site: siteDefaults };
     for (const [key, location] of Object.entries(COOKIE_AND_LEGAL_LABEL_LOCATIONS)) {
         const stored = ownString(input[location.attribute], location.field);
         site[key as CookieOrLegalLabelKey] = stored ? stored : defaults.site[key as CookieOrLegalLabelKey];
@@ -127,11 +181,7 @@ export function resolveLocaleStrings(input: LocaleStringsInput): ResolvedLocaleS
     return {
         locale,
         language: pack.language,
-        strings: {
-            commerce: withOverrides(defaults.commerce, input.commerceStrings),
-            catalog: withOverrides(defaults.catalog, input.catalogStrings),
-            site,
-        },
+        strings: { commerce: commerce.strings, catalog: catalog.strings, site },
         defaults,
     };
 }

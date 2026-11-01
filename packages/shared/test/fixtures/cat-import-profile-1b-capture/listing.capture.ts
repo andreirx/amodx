@@ -12,7 +12,7 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import { memoryDocClient, type MemoryDocClient } from "./memory-dynamo";
-import { recorded, serialiseListing, type ListingCall, type ServingFacetCall } from "./golden";
+import { RO_FACET_LABELS, recorded, serialiseListing, type ListingCall, type ServingFacetCall } from "./golden";
 
 const store = vi.hoisted(() => ({ client: null as null | { send: (c: any) => Promise<any> } }));
 vi.mock("@aws-sdk/lib-dynamodb", async (importOriginal) => {
@@ -102,7 +102,7 @@ describe("CAT-IMPORT-PROFILE-1B golden capture — base getCatalogListing and se
                 const listingCall = listingCalls.length - 1;
                 const path = scope === undefined ? "/shop" : `/category/${scope}`;
                 for (const f of SERVING_F) {
-                    const res = buildFacetListing(out, f, path);
+                    const res = buildFacetListing(out, f, path, RO_FACET_LABELS);  // LOCALE-1B: the recorded headings
                     servingCalls.push({ listingCall, f: f === undefined ? null : f, path, ...(recorded(serialiseListing(out, res)) as { digest: string }) });
                 }
             }

@@ -10,7 +10,7 @@ import { getTenantConfig, getProductById } from "@/lib/dynamo";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import Script from "next/script";
 import { Metadata } from "next";
-import { isCatalogMode } from "@amodx/shared";
+import { isCatalogMode, resolveLocaleStrings } from "@amodx/shared";
 
 export type ProductByIdInput = {
     siteId: string;
@@ -61,6 +61,8 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
 
     // CATALOG-MODE-1: a catalog site shows no price, no availability and no buy control (spec § 3.2.1).
     const catalog = isCatalogMode(config);
+    // LOCALE-1B (docs/slices/locale-1.md § 6.2): the shared product texts of the tenant's locale table.
+    const commerce = resolveLocaleStrings(config).strings.commerce;
     // CM-D7: an absent main image (the key is absent; a catalog product may have none) is left out of every reader.
     const images = product.imageLink !== undefined
         ? [product.imageLink, ...(product.additionalImageLinks || [])]
@@ -138,12 +140,12 @@ export async function ProductByIdPage({ siteId, productId, preview, cacheable }:
                                 className="paddle_button block w-full text-center bg-primary text-primary-foreground px-8 py-4 rounded-lg font-bold hover:opacity-90 transition-opacity"
                                 data-product={product.paymentLinkId}
                             >
-                                Buy Now
+                                {commerce.buyNow}
                             </a>
                         )
                     ) : (
                         <button disabled className="w-full bg-muted text-muted-foreground px-8 py-4 rounded-lg font-bold cursor-not-allowed">
-                            {product.availability === 'preorder' ? "Pre-order" : "Out of Stock"}
+                            {product.availability === 'preorder' ? commerce.preOrder : commerce.outOfStock}
                         </button>
                     ))}
                 </div>

@@ -6,7 +6,7 @@ import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -48,12 +48,28 @@ const ModeFlagsSchema = z.object({
  * `gdpr` and `legalLinks` stay unvalidated, so no live tenant's next save can be refused for data it already has.
  * Unknown keys are kept (§ 2.4) and count toward every limit. What this bounds: the serialised size of these two
  * attributes (2 × 32 768 bytes); it does not bound the whole tenant item.
+ *
+ * LOCALE-1B (§ 16.2 item 6): a value is a text, or a COUNT text — a JSON object whose keys are plural categories
+ * (`PLURAL_CATEGORIES`: zero, one, two, few, many, other) and whose values are texts; the length limit applies to each
+ * of its texts, and it counts as one entry.
  */
 const LOCALE_STRING_ATTRIBUTES = ["siteStrings", "catalogStrings"] as const;
 const LOCALE_KEY_FORM = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
 const LOCALE_MAX_ENTRIES = 200;
 const LOCALE_MAX_VALUE_UNITS = 500;      // UTF-16 code units (String.length)
 const LOCALE_MAX_BYTES = 32_768;         // UTF-8 bytes of JSON.stringify(attribute)
+
+/** The texts of `value` with the name each is reported under, or null when `value` is neither a text nor a count text. */
+function textsOf(name: string, value: unknown): [string, string][] | null {
+    if (typeof value === "string") return [[name, value]];
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const out: [string, string][] = [];
+    for (const [category, text] of Object.entries(value)) {
+        if (!(PLURAL_CATEGORIES as readonly string[]).includes(category) || typeof text !== "string") return null;
+        out.push([`${name}.${category}`, text]);
+    }
+    return out;
+}
 
 /** The first limit `value` breaks, as a message that names the attribute and the limit; null when it breaks none. */
 function localeStringsLimitError(attribute: (typeof LOCALE_STRING_ATTRIBUTES)[number], value: unknown): string | null {
@@ -64,8 +80,11 @@ function localeStringsLimitError(attribute: (typeof LOCALE_STRING_ATTRIBUTES)[nu
     if (entries.length > LOCALE_MAX_ENTRIES) return `${attribute} has ${entries.length} entries; at most ${LOCALE_MAX_ENTRIES} are allowed.`;
     for (const [key, text] of entries) {
         if (!LOCALE_KEY_FORM.test(key)) return `${attribute} key "${key.slice(0, 80)}" is not a valid key (a letter, then letters or digits, at most 64 characters).`;
-        if (typeof text !== "string") return `${attribute}.${key} must be a text.`;
-        if (text.length > LOCALE_MAX_VALUE_UNITS) return `${attribute}.${key} is ${text.length} characters long; at most ${LOCALE_MAX_VALUE_UNITS} are allowed.`;
+        const texts = textsOf(`${attribute}.${key}`, text);
+        if (texts === null) return `${attribute}.${key} must be a text, or an object of texts per plural category (${PLURAL_CATEGORIES.join(", ")}).`;
+        for (const [name, t] of texts) {
+            if (t.length > LOCALE_MAX_VALUE_UNITS) return `${name} is ${t.length} characters long; at most ${LOCALE_MAX_VALUE_UNITS} are allowed.`;
+        }
         if (attribute === "siteStrings" && Object.hasOwn(COOKIE_AND_LEGAL_LABEL_LOCATIONS, key)) {
             const { attribute: home, field } = COOKIE_AND_LEGAL_LABEL_LOCATIONS[key as CookieOrLegalLabelKey];
             return `siteStrings must not contain "${key}": that text is stored only in ${home}.${field}.`;

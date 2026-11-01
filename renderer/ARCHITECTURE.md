@@ -400,8 +400,9 @@ other availability check of `dynamo.ts` calls the same shared `isProductAvailabl
 whole tenant per UNCACHED render — what the shop page of every tenant already reads; a bare page is still ISR + edge
 cached.
 
-**Filter rules (`packages/shared/src/facets.ts`, pure, no I/O).** `buildFacetListing(base, f, path)` returns the
-filtered items, the shown facets with counts, and every href the panel may emit:
+**Filter rules (`packages/shared/src/facets.ts`, pure, no I/O).** `buildFacetListing(base, f, path, labels)` returns the
+filtered items, the shown facets with counts, and every href the panel may emit (`labels` = the tenant's two fixed
+facet headings, `catalog.facetProducer` / `facetVariantDefault`, locale-1b; the URL keys never change):
 - facet set, rebuilt per base set (§ 13): the producer (`brand`, URL key `producator`), the variant option values
   (URL key `varianta`; `#<digits>` labels excluded), then every `attributes` key with ≥ 2 holders, a most frequent
   value on ≥ 2 products and ≤ 40 distinct values — ordered by holders, ties by the value order; label = the key as
@@ -459,9 +460,9 @@ and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCa
 `CF1`) and `cip1b-*` (fixtures block `CIP1B`, a tenant of its own) in `test/serving-contract/contract.test.mjs`;
 `test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
 
-## Tenant locale table in the renderer — slice `locale-1a` (PROTOTYPE)
+## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b` (PROTOTYPE)
 
-Design `docs/slices/locale-1.md` (§ 16 rulings win); record `docs/slices/locale-1a.md`.
+Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`.
 
 - `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
   every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
@@ -476,17 +477,33 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); record `docs/slices/locale
   `dateLocale` only for a non-en-US tenant (a spread — an `undefined` prop would be serialised into the RSC payload);
   the footer copyright is split by a local `interpolate` into the same children as before, so its HTML/RSC bytes and
   the CM1-A1 footer-year canonicalisation are unchanged.
+- `locale-1b` — shared product surfaces and the catalog: `SitePage.tsx` product, category, shop and search views and
+  their metadata read `strings.commerce` (the product page caller and the search page no longer call
+  `getCommerceStrings`; `getSearchLabels` is gone); the facet panel and `buildFacetListing` read `strings.catalog`;
+  `ProductByIdPage.tsx` reads `buyNow` / `preOrder` / `outOfStock`. `SearchBar` gets `labels` resolved on the server
+  under the § 5.2 F rule (`override || language default`) and a required `placeholder` (`searchBar.placeholder ||
+  searchPlaceholder`). `InterestToggle` (fresh `strings` object per card) and `InterestListPage` get their catalog texts
+  as props. Counts use `selectPluralText` (Romanian `few`/`other`: "2 produse" / "20 de produse"). The header widget
+  `InterestWidget` gets its four texts (`InterestWidgetStrings`, incl. the count key `interestWidgetLabel`) from
+  `app/[siteId]/layout.tsx` through `Navbar.tsx`'s `interest` prop, catalog tenants only (ruling LOCALE1B-WIDGET = A).
 - Commerce-only pages keep `getCommerceStrings` / `COMMERCE_STRINGS_DEFAULTS` until `locale-1d` (§ 10.2).
 - `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
-- Proof: `test/serving-contract/locale-1/` — `proof.mjs` (visible-text extraction, byte-difference check),
-  `1a/before/` (immutable capture of `5841a86`), `1a/expected-diff.json`, `1a/ro-expected.json`, `1a/coverage.json`;
-  rows `loc1-subjects`, `loc1-text-<subject>`, `loc1-text-mutation`, `loc1-diff-1a`, `loc1-renumber-controls`,
-  `loc1-ro-content`, `loc1-ro-commerce`. The byte rows compare CM1-A1 plus a ruled row renumbering (`renumberRows`, row
-  labels only; LOCALE1A-ROW-IDS = A): catalog-mode category pages number their RSC rows differently between renders
-  (follow-up F-CATALOG-RSC-ORDER removes that at the source).
+- Proof: `test/serving-contract/locale-1/` — `proof.mjs` (visible-text extraction, byte-difference check incl. the
+  1b changed-prop form `beforeValue`, `renderItem`), per slice `<slice>/before/` (immutable start capture), `expected-diff.json`,
+  `ro-expected.json`, `coverage.json` (1b also `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT
+  slice's set (`1b`; the `1a` files are its record): `loc1-subjects`, `loc1-text-<subject>` (catalog subjects: exactly
+  L-EN-CAT), `loc1-text-mutation`, `loc1-diff-1b`, `loc1-facet-hrefs`, `loc1-flight-controls`, `loc1-ro-content`,
+  `loc1-ro-commerce`, `loc1-ro-catalog`. The byte rows compare CM1-A1 plus the ruled resolved-tree payload comparison
+  (`resolveFlight`, LOCALE1B-ROW-CUT = A; it replaced the 1a row renumbering, LOCALE1A-ROW-IDS = A): every outlined row
+  (plain `$<id>`, or the encoder's element outline `$L<id>` to an element tuple) is resolved into its place on both sides, so
+  row labels, their render-to-render order (F-LOCALE-ROW-IDS) and the size-based row cuts are ignored; every other typed
+  reference stays a typed leaf; an unknown form fails closed; no URL is excluded.
   The en-US subjects are, by rule, every `fixtures.mjs` tenant without `locale` (`proof.mjs` `EN_US_REQUESTS`), so a new
-  locale-less fixture joins the gate; fixtures `LOC1` are the RO copies of the CM1 commerce/content tenants. The strict `cm1-byte-identity/baseline/` was advanced from
-  this tree; `cm1-control` reads the preserved `control-de4ad52/`. Unit: `locale-1a-{server-render,client,coverage}.test.ts`.
+  locale-less fixture joins the gate; fixtures `LOC1` are the RO copies of the CM1 commerce/content/catalog tenants. The strict `cm1-byte-identity/baseline/` was advanced from
+  the 1a and again from the 1b tree; `cm1-control` reads the preserved `control-de4ad52/`. Unit:
+  `locale-1a-{server-render,client}.test.ts`, `locale-1b-{server-render,client}.test.ts`; the coverage checker
+  `locale-coverage.test.ts` (named `locale-1a-coverage.test.ts` until 1b) checks every slice, and each plural category
+  of each count key, per language.
 
 ## Review images (`lib/review-images.ts`) — slice `rev-4`
 

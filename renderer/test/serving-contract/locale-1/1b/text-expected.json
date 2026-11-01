@@ -1,0 +1,2118 @@
+{
+  "rule": "Packet hard rule 1 / docs/slices/locale-1.md § 16.2 item 4 (L-EN-CAT): on the en-US catalog subjects, per captured URL the exact list of visible-text changes (§ 8.5 extraction, document order) against the immutable start-commit capture before/ (4e98f98). Each item names its key: `from` = today's text (the RO pack value, which is today's literal; a count: the pre-1b two-form rule), `to` = the EN catalog text. Row loc1-text-<subject> asserts the list exactly and renders both sides (locale-1/proof.mjs renderItem). Every other en-US subject has no text change.",
+  "fixtures": {
+    "catalog": {
+      "paths": {
+        "/": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          }
+        ],
+        "/about": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          }
+        ],
+        "/stale-showcase": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          }
+        ],
+        "/shop": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "@aria-label",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsCount",
+            "kind": "text",
+            "count": 42,
+            "row": "L-EN-CAT",
+            "from": "42 produse",
+            "to": "42 products"
+          },
+          {
+            "part": "catalog",
+            "key": "facetProducer",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Producător",
+            "to": "Brand"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/shop?availability=in_stock": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "@aria-label",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsCount",
+            "kind": "text",
+            "count": 42,
+            "row": "L-EN-CAT",
+            "from": "42 produse",
+            "to": "42 products"
+          },
+          {
+            "part": "catalog",
+            "key": "facetProducer",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Producător",
+            "to": "Brand"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/category/floors": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "@aria-label",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsCount",
+            "kind": "text",
+            "count": 3,
+            "row": "L-EN-CAT",
+            "from": "3 produse",
+            "to": "3 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/oak-plank": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/ash-plank": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/legacy-plank": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/products/e0000000-0000-4000-8000-000000000001": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          }
+        ],
+        "/products/e0000000-0000-4000-8000-000000000002": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          }
+        ],
+        "/products/e0000000-0000-4000-8000-000000000003": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          }
+        ],
+        "/search?q=plank": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    },
+    "cip1b-catalog": {
+      "paths": {
+        "/shop": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "@aria-label",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsCount",
+            "kind": "text",
+            "count": 10,
+            "row": "L-EN-CAT",
+            "from": "10 produse",
+            "to": "10 products"
+          },
+          {
+            "part": "catalog",
+            "key": "facetProducer",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Producător",
+            "to": "Brand"
+          },
+          {
+            "part": "catalog",
+            "key": "facetVariantDefault",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Variantă",
+            "to": "Option"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/category/cip1b-boen": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "@aria-label",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsCount",
+            "kind": "text",
+            "count": 3,
+            "row": "L-EN-CAT",
+            "from": "3 produse",
+            "to": "3 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/category/cip1b-itc": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/category/cip1b-x": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "@aria-label",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Filtre",
+            "to": "Filters"
+          },
+          {
+            "part": "catalog",
+            "key": "facetsCount",
+            "kind": "text",
+            "count": 3,
+            "row": "L-EN-CAT",
+            "from": "3 produse",
+            "to": "3 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/category/cip1b-u": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/stejar-mixt": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/frasin-mixt": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/nuc-fara-fisa": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/covor-arc": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/covor-shell": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/placa-nod": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/placa-nod-doi": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/lemn-x-unu": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/lemn-x-doi": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ],
+        "/product/lemn-x-trei": [
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestWidgetLabel",
+            "kind": "@aria-label",
+            "count": 0,
+            "row": "L-EN-CAT",
+            "from": "Lista mea: 0 produse",
+            "to": "My list: 0 products"
+          },
+          {
+            "part": "catalog",
+            "key": "interestListTitle",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Lista mea",
+            "to": "My list"
+          },
+          {
+            "part": "catalog",
+            "key": "interestAdd",
+            "kind": "text",
+            "values": {},
+            "row": "L-EN-CAT",
+            "from": "Mă interesează",
+            "to": "I'm interested"
+          }
+        ]
+      }
+    }
+  }
+}

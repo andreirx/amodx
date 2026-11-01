@@ -14,6 +14,7 @@ import {
     attributeFacetId, buildFacetListing, compareValues, facetValuesOf, formatSelection, isFacetId, listingHref,
     matchesGeneratedLabelForm, parseSelection, selectionFits, utf8Bytes, type FacetListing, type Selection,
 } from "../src/facets";
+import { RO_FACET_LABELS } from "./cat-import-profile-1b-golden";
 
 const MEASURED_COLLECTIONS: string[] = [
     "AURORA - Accessories / Skirtings",
@@ -176,7 +177,7 @@ const A = attributeFacetId;
  *  The collision rows below, where an attribute is literally named `producator` / `varianta`, build ids explicitly. */
 const fid = (name: string) => (name === PRODUCER_FACET || name === VARIANT_FACET ? name : A(name));
 const sel = (o: Record<string, string[]>): Selection => new Map(Object.entries(o).map(([k, v]) => [fid(k), new Set(v)]));
-const listing = (base: P[], o?: Record<string, string[]>, path = PATH) => buildFacetListing(base, o ? formatSelection(sel(o)) : undefined, path);
+const listing = (base: P[], o?: Record<string, string[]>, path = PATH) => buildFacetListing(base, o ? formatSelection(sel(o)) : undefined, path, RO_FACET_LABELS);
 const ids = (l: FacetListing<P>) => l.items.map((p) => p.id);
 const facet = (l: FacetListing<P>, name: string) => l.facets.find((x) => x.id === fid(name));
 const counts = (l: FacetListing<P>, id: string) => Object.fromEntries(facet(l, id)!.values.map((v) => [v.value, v.count]));
@@ -272,7 +273,7 @@ describe("§ 4.1 — OR within a facet, AND across facets; disjunctive counts", 
         expect(ids(stale)).toEqual([]);
         expect(facet(stale, PRODUCER_FACET)!.values).toContainEqual({ state: "selected", value: "Gone", count: 0, href: PATH });
         expect(stale.chips).toEqual([{ facetLabel: "Producător", value: "Gone", href: PATH }]);
-        const unknown = buildFacetListing(base, "zzz=1", PATH);
+        const unknown = buildFacetListing(base, "zzz=1", PATH, RO_FACET_LABELS);
         expect(ids(unknown)).toEqual(["p1", "p2"]);
         expect(unknown.selection.size).toBe(0);
         expect(unknown.chips).toEqual([]);
@@ -372,13 +373,13 @@ describe("§ 4.4 / § 5.1 — parseSelection and formatSelection", () => {
 describe("§ 13 — the repeat rule, the facet order and the labels", () => {
     const many = (n: number, make: (i: number) => P) => Array.from({ length: n }, (_, i) => make(i));
     /** The shown facets of a base set with no selection, by name (attribute facets by their key). */
-    const offeredIds = (base: P[]) => buildFacetListing(base, undefined, PATH).facets.map((f) => (f.id.startsWith("a.") ? f.id.slice(2) : f.id));
+    const offeredIds = (base: P[]) => buildFacetListing(base, undefined, PATH, RO_FACET_LABELS).facets.map((f) => (f.id.startsWith("a.") ? f.id.slice(2) : f.id));
 
     it("a spec key held by ≥ 2 products, top value held by ≥ 2, ≤ 40 values → offered (label = key as stored)", () => {
         const base: P[] = [
             { id: "p1", attributes: attrs({ Wood: "Oak" }) }, { id: "p2", attributes: attrs({ Wood: "Oak" }) }, { id: "p3", attributes: attrs({ Wood: "Ash" }) },
         ];
-        expect(buildFacetListing(base, undefined, PATH).facets).toEqual([{ id: "a.Wood", label: "Wood", values: [
+        expect(buildFacetListing(base, undefined, PATH, RO_FACET_LABELS).facets).toEqual([{ id: "a.Wood", label: "Wood", values: [
             { state: "link", value: "Ash", count: 1, href: listingHref(PATH, sel({ Wood: ["Ash"] })) },
             { state: "link", value: "Oak", count: 2, href: listingHref(PATH, sel({ Wood: ["Oak"] })) },
         ] }]);
@@ -415,12 +416,32 @@ describe("§ 13 — the repeat rule, the facet order and the labels", () => {
             { id: "p5", attributes: attrs({ colecție: "X" }) },
         ];
         expect(offeredIds(base)).toEqual([PRODUCER_FACET, VARIANT_FACET, "colecție", "Pile weight", "Wood", "Treatment"]);
-        const labels = buildFacetListing(base, undefined, PATH).facets.map((f) => f.label);
+        const labels = buildFacetListing(base, undefined, PATH, RO_FACET_LABELS).facets.map((f) => f.label);
         expect(labels).toEqual(["Producător", "Format", "colecție", "Pile weight", "Wood", "Treatment"]);
     });
     it("§ 4.5 variant heading: the shared group name, else Variantă", () => {
         const mixed: P[] = [{ id: "p1", variants: opts(["A"], "Format") }, { id: "p2", variants: opts(["B"], "Culoare") }];
         expect(facet(listing(mixed), VARIANT_FACET)!.label).toBe("Variantă");
+    });
+    it("LOCALE-1B: the two fixed headings come from the `labels` input (EN labels → Brand / Option); author headings, ids and hrefs do not change", () => {
+        const EN_LABELS = { producer: "Brand", variantDefault: "Option" };
+        const mixed: P[] = [
+            { id: "p1", brand: "BOEN", variants: opts(["A"], "Format"), attributes: attrs({ Wood: "Oak" }) },
+            { id: "p2", brand: "ITC", variants: opts(["B"], "Culoare"), attributes: attrs({ Wood: "Oak" }) },
+            { id: "p3", brand: "ITC", variants: opts(["A"], "Culoare"), attributes: attrs({ Wood: "Ash" }) },
+        ];
+        const f = formatSelection(sel({ [PRODUCER_FACET]: ["ITC"], [VARIANT_FACET]: ["A"] }));
+        const en = buildFacetListing(mixed, f, PATH, EN_LABELS);
+        const ro = buildFacetListing(mixed, f, PATH, RO_FACET_LABELS);
+        expect(en.facets.map((x) => x.label)).toEqual(["Brand", "Option", "Wood"]);
+        expect(ro.facets.map((x) => x.label)).toEqual(["Producător", "Variantă", "Wood"]);
+        expect(en.chips.map((c) => c.facetLabel)).toEqual(["Brand", "Option"]);
+        // Only the headings differ: ids, values, counts, states, items and every href are the same for both labels.
+        const strip = (l: FacetListing<P>) => ({ ...l, facets: l.facets.map(({ label: _l, ...rest }) => rest), chips: l.chips.map(({ facetLabel: _c, ...rest }) => rest) });
+        expect(strip(en)).toEqual(strip(ro));
+        expect(en.facets.map((x) => x.id)).toEqual([PRODUCER_FACET, VARIANT_FACET, A("Wood")]);
+        // A shared option-group name is author data: it is the heading whatever the labels say.
+        expect(facet(buildFacetListing([{ id: "p1", variants: opts(["A"], "Format") }, { id: "p2", variants: opts(["B"], "Format") }], undefined, PATH, EN_LABELS), VARIANT_FACET)!.label).toBe("Format");
     });
 });
 
@@ -434,7 +455,7 @@ describe("ruling 2 — fixed facets and attribute facets have separate identitie
         { id: "p2", brand: "A", variants: opts(["V2"]), attributes: attrs({ producator: "Z", varianta: "Lucios" }) },
         { id: "p3", brand: "B", variants: opts(["V1"]), attributes: attrs({ producator: "Y", varianta: "Mat" }) },
     ];
-    const raw = (pairs: [string, string][]) => buildFacetListing(base, new URLSearchParams(pairs).toString(), PATH);
+    const raw = (pairs: [string, string][]) => buildFacetListing(base, new URLSearchParams(pairs).toString(), PATH, RO_FACET_LABELS);
     const byId = (l: FacetListing<P>, id: string) => Object.fromEntries(l.facets.find((x) => x.id === id)!.values.map((v) => [v.value, v.count]));
 
     it("both attributes are offered, labelled with the key as stored, next to the fixed facets", () => {
@@ -537,7 +558,7 @@ describe("§ 5.1 — every emitted href is ≤ HREF_BUDGET; add-links only when 
         let f: string | undefined;
         let steps = 0;
         for (;;) {
-            const l = buildFacetListing(base, f, PATH);
+            const l = buildFacetListing(base, f, PATH, RO_FACET_LABELS);
             expect(l.tooLong).toBe(false);
             checkInvariants(l);
             const links = facet(l, facetId)!.values.filter((v): v is Extract<typeof v, { state: "link" }> => v.state === "link");
@@ -573,14 +594,14 @@ describe("§ 5.1 — every emitted href is ≤ HREF_BUDGET; add-links only when 
         const f = `a.colectie=${x}A&a.colectie=${x}B`;     // what the page receives after Next decodes the outer level
         expect(utf8Bytes(listingHref(PATH, parseSelection(f)))).toBe(20039);
         const witnessBase: P[] = [{ id: "p1", attributes: attrs({ colectie: "Q" }) }, { id: "p2", attributes: attrs({ colectie: "Q" }) }, { id: "p3" }];
-        const l = buildFacetListing(witnessBase, f, PATH);
+        const l = buildFacetListing(witnessBase, f, PATH, RO_FACET_LABELS);
         expect(l.tooLong).toBe(true);
         expect(l.selection.size).toBe(0);
         expect(ids(l)).toEqual(["p1", "p2", "p3"]);
         expect(l.chips).toEqual([]);
         for (const href of emittedHrefs(l)) expect(utf8Bytes(href)).toBeLessThanOrEqual(HREF_BUDGET);
         // The witness on the bare name: not a facet id → dropped at the parse; nothing applied, no notice.
-        const literal = buildFacetListing(witnessBase, `colectie=${x}A&colectie=${x}B`, PATH);
+        const literal = buildFacetListing(witnessBase, `colectie=${x}A&colectie=${x}B`, PATH, RO_FACET_LABELS);
         expect([literal.tooLong, literal.selection.size, ids(literal).length]).toEqual([false, 0, 3]);
     });
 
@@ -594,7 +615,7 @@ describe("§ 5.1 — every emitted href is ≤ HREF_BUDGET; add-links only when 
             const runBase: P[] = keys.flatMap((k) => values[k].flatMap((v, i) => [{ id: `${k}${i}a`, attributes: attrs({ [k]: v }) }, { id: `${k}${i}b`, attributes: attrs({ [k]: v }) }]));
             const chosen: Record<string, string[]> = {};
             for (const k of keys) chosen[k] = values[k].filter(() => next() < 0.5);
-            const l = buildFacetListing(runBase, formatSelection(sel(chosen)), PATH);
+            const l = buildFacetListing(runBase, formatSelection(sel(chosen)), PATH, RO_FACET_LABELS);
             if (l.tooLong) continue;
             const current = utf8Bytes(listingHref(PATH, l.selection));
             for (const chip of l.chips) expect(utf8Bytes(chip.href!)).toBeLessThanOrEqual(current);

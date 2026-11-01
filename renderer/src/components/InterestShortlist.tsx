@@ -10,12 +10,16 @@
  *   - the stored ids resolved BY ID, `POST /public/interest/resolve` (`resolveShortlist`) — expired, unavailable,
  *     option gone, the live collection; a failed or incomplete read marks nothing;
  *   - the submission, `POST /public/interest`, called by the browser directly as DynamicForm does for forms.
+ *
+ * LOCALE-1B (docs/slices/locale-1.md § 6.3, § 5.3): the toggle, the list page and the header widget show the tenant's
+ * catalog texts, passed by the server as a `strings` prop with only the keys each uses — the toggle and the list page by
+ * `SitePage.tsx`, the widget by `app/[siteId]/layout.tsx` through `Navbar.tsx` (operator ruling LOCALE1B-WIDGET = A).
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Heart, Check, Loader2, X } from "lucide-react";
-import { InterestSubmissionSchema, type InterestResolution, type InterestSubmissionPayload, type InterestSubmitResult } from "@amodx/shared";
+import { InterestSubmissionSchema, fillTemplate, selectPluralText, type InterestResolution, type InterestSubmissionPayload, type InterestSubmitResult, type LocaleStrings } from "@amodx/shared";
 import {
     createShortlistStore, listRows, resolveShortlist, sameItem, sendableItems,
     type ListRow, type ShortlistItem, type ShortlistState, type ShortlistStore, type StoragePort,
@@ -48,7 +52,19 @@ function useShortlist(tenantId: string) {
     return { state, store };
 }
 
-const FULL_MESSAGE = "Lista are deja 50 de produse. Scoateți un produs ca să adăugați altul.";
+/** The catalog texts of the toggle (LOCALE-1B). */
+export type InterestToggleStrings = Pick<LocaleStrings["catalog"], "interestAdd" | "interestAdded" | "interestListFull">;
+
+/** The catalog texts of the header widget (LOCALE-1B). `interestWidgetLabel` is a count key (the list's item count). */
+export type InterestWidgetStrings = Pick<LocaleStrings["catalog"], "interestListTitle" | "interestWidgetLabel" | "interestStorageWarning" | "interestStorageAck">;
+
+/** The catalog texts of the list page and its rows (LOCALE-1B). `interestAdd` fills `{action}` of `interestEmpty`. */
+export type InterestListStrings = Pick<LocaleStrings["catalog"],
+    | "interestListTitle" | "interestBrowse" | "interestSentTitle" | "interestSentBody" | "interestExcludedIntro"
+    | "interestEmpty" | "interestAdd" | "interestErrorNoneAvailable" | "interestErrorInvalid" | "interestErrorCheck"
+    | "interestErrorAllGone" | "interestErrorSend" | "interestErrorNetwork" | "interestPreviouslySent"
+    | "interestContactHeading" | "interestName" | "interestEmail" | "interestPhone" | "interestMessage" | "interestSubmit"
+    | "interestRowExpired" | "interestRowUnavailable" | "interestRowOptionGone" | "interestCollection" | "interestRemove">;
 
 /**
  * The "Mă interesează" toggle. On a card it marks the product; on the product page it marks the product with the
@@ -57,7 +73,7 @@ const FULL_MESSAGE = "Lista are deja 50 de produse. Scoateți un produs ca să a
  * to the CURRENT product: when `productId` (or the group) changes, it is read again from the presenter and is empty
  * when nothing is checked (review-0 F4) — an option chosen for another product is never carried over.
  */
-export function InterestToggle({ tenantId, productId, title, slug, imageLink, optionGroupName, options = [], variant = "card" }: {
+export function InterestToggle({ tenantId, productId, title, slug, imageLink, optionGroupName, options = [], variant = "card", strings }: {
     tenantId: string;
     productId: string;
     title: string;
@@ -66,6 +82,7 @@ export function InterestToggle({ tenantId, productId, title, slug, imageLink, op
     optionGroupName?: string;
     options?: { value: string; imageLink?: string }[];
     variant?: "card" | "page";
+    strings: InterestToggleStrings;
 }) {
     const { state, store } = useShortlist(tenantId);
     const [optionValue, setOptionValue] = useState<string | undefined>(undefined);
@@ -96,10 +113,10 @@ export function InterestToggle({ tenantId, productId, title, slug, imageLink, op
             ...((optionImage || imageLink) ? { imageLink: optionImage || imageLink } : {}),
             ...(optionValue !== undefined ? { optionValue } : {}),
         };
-        setMessage(store.add(item) === "full" ? FULL_MESSAGE : "");
+        setMessage(store.add(item) === "full" ? strings.interestListFull : "");
     }
 
-    const label = marked ? "În lista mea" : "Mă interesează";
+    const label = marked ? strings.interestAdded : strings.interestAdd;
     const size = variant === "page" ? "h-11 px-6 text-sm" : "h-9 px-3 text-xs mt-2 w-full";
     return (
         <div>
@@ -119,13 +136,13 @@ export function InterestToggle({ tenantId, productId, title, slug, imageLink, op
 }
 
 /** The header widget: a link to the list page with the count. Says once when the list cannot be saved. */
-export function InterestWidget({ tenantId, listPrefix }: { tenantId: string; listPrefix: string }) {
+export function InterestWidget({ tenantId, listPrefix, strings }: { tenantId: string; listPrefix: string; strings: InterestWidgetStrings }) {
     const { state, store } = useShortlist(tenantId);
     const { getUrl } = useTenantUrl();
     const count = state.items.length;
     return (
         <span className="relative">
-            <Link href={getUrl(listPrefix)} data-interest-widget="" aria-label={`Lista mea: ${count} produse`} className="relative flex items-center gap-1 p-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link href={getUrl(listPrefix)} data-interest-widget="" aria-label={fillTemplate(selectPluralText(strings.interestWidgetLabel, count), { n: count })} className="relative flex items-center gap-1 p-2 text-muted-foreground hover:text-foreground transition-colors">
                 <span className="relative">
                     <Heart className="h-5 w-5" />
                     {count > 0 && (
@@ -134,12 +151,12 @@ export function InterestWidget({ tenantId, listPrefix }: { tenantId: string; lis
                         </span>
                     )}
                 </span>
-                <span className="text-sm font-medium hidden lg:inline">Lista mea</span>
+                <span className="text-sm font-medium hidden lg:inline">{strings.interestListTitle}</span>
             </Link>
             {state.notice === "page-only" && (
                 <span role="status" className="absolute right-0 top-full mt-2 w-64 rounded-md border bg-background p-3 text-xs text-foreground shadow-lg z-50">
-                    Lista nu poate fi salvată în acest browser; o păstrăm cât timp pagina rămâne deschisă.
-                    <button type="button" onClick={() => store?.acknowledgeNotice()} className="block mt-2 font-medium text-primary">Am înțeles</button>
+                    {strings.interestStorageWarning}
+                    <button type="button" onClick={() => store?.acknowledgeNotice()} className="block mt-2 font-medium text-primary">{strings.interestStorageAck}</button>
                 </span>
             )}
         </span>
@@ -150,12 +167,13 @@ const browserFetch = (url: string, init: { method: "POST"; headers: Record<strin
 const randomBytes = () => crypto.getRandomValues(new Uint8Array(16));
 
 /** The list page: the items (resolved by id, each in its state), the contact form, the confirmation after a send. */
-export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, contentMaxWidth }: {
+export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, contentMaxWidth, strings }: {
     tenantId: string;
     apiUrl: string;
     productPrefix: string;
     shopPrefix: string;
     contentMaxWidth: string;
+    strings: InterestListStrings;
 }) {
     const { state, store } = useShortlist(tenantId);
     const { getUrl } = useTenantUrl();
@@ -180,16 +198,16 @@ export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, 
         return <main className={`${contentMaxWidth} mx-auto py-12 px-6`}><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></main>;
     }
 
-    const shopLink = <Link href={getUrl(shopPrefix)} className="text-primary font-medium hover:underline">Vedeți produsele</Link>;
+    const shopLink = <Link href={getUrl(shopPrefix)} className="text-primary font-medium hover:underline">{strings.interestBrowse}</Link>;
 
     if (state.items.length === 0 && state.sent) {
         return (
             <main className={`${contentMaxWidth} mx-auto py-12 px-6 space-y-4`} data-interest-sent="">
-                <h1 className="text-3xl font-bold tracking-tight">Lista a fost trimisă</h1>
-                <p className="text-muted-foreground">Vă mulțumim! Am primit lista dumneavoastră și vă vom contacta în curând.</p>
+                <h1 className="text-3xl font-bold tracking-tight">{strings.interestSentTitle}</h1>
+                <p className="text-muted-foreground">{strings.interestSentBody}</p>
                 {state.sent.droppedTitles.length > 0 && (
                     <p className="text-sm text-muted-foreground" data-interest-not-included="">
-                        Aceste produse nu au fost incluse, pentru că nu mai sunt disponibile: {state.sent.droppedTitles.join(", ")}.
+                        {strings.interestExcludedIntro} {state.sent.droppedTitles.join(", ")}.
                     </p>
                 )}
                 <p>{shopLink}</p>
@@ -200,8 +218,8 @@ export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, 
     if (state.items.length === 0) {
         return (
             <main className={`${contentMaxWidth} mx-auto py-12 px-6 space-y-4`}>
-                <h1 className="text-3xl font-bold tracking-tight">Lista mea</h1>
-                <p className="text-muted-foreground">Lista este goală. Apăsați „Mă interesează” la produsele care vă plac.</p>
+                <h1 className="text-3xl font-bold tracking-tight">{strings.interestListTitle}</h1>
+                <p className="text-muted-foreground">{fillTemplate(strings.interestEmpty, { action: strings.interestAdd })}</p>
                 <p>{shopLink}</p>
             </main>
         );
@@ -214,7 +232,7 @@ export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, 
         e.preventDefault();
         if (!store || sending) return;
         setError("");
-        if (sendable.length === 0) { setError("Lista nu are produse disponibile. Alegeți din nou produsele dorite."); return; }
+        if (sendable.length === 0) { setError(strings.interestErrorNoneAvailable); return; }
         const payload: InterestSubmissionPayload = {
             name: form.name,
             email: form.email,
@@ -225,7 +243,7 @@ export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, 
             recaptchaToken: null,
         };
         if (!InterestSubmissionSchema.safeParse(payload).success) {
-            setError("Verificați datele: numele, o adresă de e-mail validă, telefonul (cel mult 40 de caractere) și mesajul (cel mult 2000 de caractere).");
+            setError(strings.interestErrorInvalid);
             return;
         }
         // The list's item instances NOW: the completion removes these objects only (review-0 F5, review-1 F5).
@@ -245,14 +263,14 @@ export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, 
                 const notIncluded = listAtSend.filter((i) => !result.recorded.some((r) => sameItem(r, i))).map((i) => i.title);
                 store.markSent({ submissionId: result.submissionId, droppedTitles: notIncluded }, listAtSend);
             } else if (res.status === 503) {
-                setError("Nu am putut verifica lista acum. Încercați din nou peste câteva momente.");
+                setError(strings.interestErrorCheck);
             } else if (res.status === 400 && Array.isArray(body.dropped)) {
-                setError("Produsele din listă nu mai sunt disponibile. Alegeți din nou produsele dorite.");
+                setError(strings.interestErrorAllGone);
             } else {
-                setError("Lista nu a putut fi trimisă. Încercați din nou.");
+                setError(strings.interestErrorSend);
             }
         } catch {
-            setError("Lista nu a putut fi trimisă. Verificați conexiunea și încercați din nou.");
+            setError(strings.interestErrorNetwork);
         } finally {
             setSending(false);
         }
@@ -263,53 +281,52 @@ export function InterestListPage({ tenantId, apiUrl, productPrefix, shopPrefix, 
 
     return (
         <main className={`${contentMaxWidth} mx-auto py-12 px-6 space-y-8`}>
-            <h1 className="text-3xl font-bold tracking-tight">Lista mea</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{strings.interestListTitle}</h1>
             {state.sent && (
-                <p className="text-sm text-muted-foreground" data-interest-previous-sent="">Lista trimisă anterior a fost primită. Produsele de mai jos nu au fost trimise încă.</p>
+                <p className="text-sm text-muted-foreground" data-interest-previous-sent="">{strings.interestPreviouslySent}</p>
             )}
             <ul className="divide-y border rounded-lg" data-interest-items="">
-                {rows.map((row) => <ListItem key={`${row.item.productId}\u0000${row.item.optionValue ?? ""}`} row={row} productUrl={getUrl(`${productPrefix}/${row.item.slug}`)} onRemove={() => store?.remove(row.item)} />)}
+                {rows.map((row) => <ListItem key={`${row.item.productId}\u0000${row.item.optionValue ?? ""}`} row={row} productUrl={getUrl(`${productPrefix}/${row.item.slug}`)} onRemove={() => store?.remove(row.item)} strings={strings} />)}
             </ul>
 
             <form onSubmit={send} className="space-y-4 max-w-xl">
-                <h2 className="text-xl font-semibold">Datele dumneavoastră de contact</h2>
+                <h2 className="text-xl font-semibold">{strings.interestContactHeading}</h2>
                 <div>
-                    <label className="text-sm font-medium block mb-1" htmlFor="interest-name">Nume<span className="text-destructive ml-1">*</span></label>
+                    <label className="text-sm font-medium block mb-1" htmlFor="interest-name">{strings.interestName}<span className="text-destructive ml-1">*</span></label>
                     <input id="interest-name" required value={form.name} onChange={set("name")} className={input} autoComplete="name" />
                 </div>
                 <div>
-                    <label className="text-sm font-medium block mb-1" htmlFor="interest-email">E-mail<span className="text-destructive ml-1">*</span></label>
+                    <label className="text-sm font-medium block mb-1" htmlFor="interest-email">{strings.interestEmail}<span className="text-destructive ml-1">*</span></label>
                     <input id="interest-email" type="email" required value={form.email} onChange={set("email")} className={input} autoComplete="email" />
                 </div>
                 <div>
-                    <label className="text-sm font-medium block mb-1" htmlFor="interest-phone">Telefon</label>
+                    <label className="text-sm font-medium block mb-1" htmlFor="interest-phone">{strings.interestPhone}</label>
                     <input id="interest-phone" type="tel" value={form.phone} onChange={set("phone")} className={input} autoComplete="tel" />
                 </div>
                 <div>
-                    <label className="text-sm font-medium block mb-1" htmlFor="interest-message">Mesaj</label>
+                    <label className="text-sm font-medium block mb-1" htmlFor="interest-message">{strings.interestMessage}</label>
                     <textarea id="interest-message" rows={4} value={form.message} onChange={set("message")} className={`${input} resize-y`} />
                 </div>
                 {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
                 <button type="submit" disabled={sending} className="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground h-11 px-8 text-sm font-medium hover:opacity-90 disabled:opacity-60">
                     {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Trimite lista
+                    {strings.interestSubmit}
                 </button>
             </form>
         </main>
     );
 }
 
-const ROW_NOTE: Record<Exclude<ListRow["state"]["kind"], "available" | "unchecked">, string> = {
-    "expired": "Produsul nu mai este în catalog. Alegeți-l din nou din produsele actuale.",
-    "unavailable": "Produsul nu este disponibil momentan și nu va fi trimis.",
-    "option-gone": "Varianta aleasă nu mai este oferită. Alegeți din nou varianta dorită.",
-};
-
 /** One list row in its resolved state (see `RowState` in lib/interest.ts). */
-function ListItem({ row, productUrl, onRemove }: { row: ListRow; productUrl: string; onRemove: () => void }) {
+function ListItem({ row, productUrl, onRemove, strings }: { row: ListRow; productUrl: string; onRemove: () => void; strings: InterestListStrings }) {
     const { item, state } = row;
+    const rowNote: Record<Exclude<ListRow["state"]["kind"], "available" | "unchecked">, string> = {
+        "expired": strings.interestRowExpired,
+        "unavailable": strings.interestRowUnavailable,
+        "option-gone": strings.interestRowOptionGone,
+    };
     const dimmed = state.kind === "expired" || state.kind === "unavailable";
-    const note = state.kind === "available" || state.kind === "unchecked" ? null : ROW_NOTE[state.kind];
+    const note = state.kind === "available" || state.kind === "unchecked" ? null : rowNote[state.kind];
     const collection = state.kind === "available" || state.kind === "option-gone" ? state.collection : undefined;
     return (
         <li className="flex items-center gap-4 p-4" data-interest-item={item.productId} data-row-state={state.kind}>
@@ -322,11 +339,11 @@ function ListItem({ row, productUrl, onRemove }: { row: ListRow; productUrl: str
                 ) : (
                     <Link href={productUrl} className="font-medium hover:text-primary">{item.title}</Link>
                 )}
-                {collection && <p className="text-sm text-muted-foreground" data-interest-collection="">Colecția {collection}</p>}
+                {collection && <p className="text-sm text-muted-foreground" data-interest-collection="">{strings.interestCollection} {collection}</p>}
                 {item.optionValue && <p className="text-sm text-muted-foreground">{item.optionValue}</p>}
                 {note && <p className="text-sm text-destructive">{note}</p>}
             </div>
-            <button type="button" onClick={onRemove} aria-label={`Scoateți ${item.title} din listă`} className="p-2 text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={onRemove} aria-label={fillTemplate(strings.interestRemove, { title: item.title })} className="p-2 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
             </button>
         </li>

@@ -11,8 +11,8 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts. The EN pack is imported as a value because COMMERCE_STRINGS_DEFAULTS (below) is bound to it.
-export { normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS } from "./locale-strings.js";
-export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey } from "./locale-strings.js";
+export { normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES } from "./locale-strings.js";
+export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
 import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
@@ -40,6 +40,7 @@ export {
     attributeFacetId, isFacetId, compareValues, matchesGeneratedLabelForm, facetValuesOf, parseSelection,
     formatSelection, utf8Bytes, listingHref, selectionFits, buildFacetListing,
     type FacetProduct, type Selection, type FacetValueView, type FacetView, type SelectionChip, type FacetListing,
+    type FacetLabels,
 } from "./facets.js";
 export {
     utcDay, isProductAvailable, catalogListing, catalogListingPath, type CatalogListingItem,
@@ -582,6 +583,20 @@ export const PageEffectConfigSchema = EffectConfigSchema.extend({
 });
 export type PageEffectConfig = z.infer<typeof PageEffectConfigSchema>;
 
+// LOCALE-1B (docs/slices/locale-1.md § 16.2 item 6) — a COUNT text: one text per plural category of the language
+// (`Intl.PluralRules`; the six CLDR categories, `PLURAL_CATEGORIES` in locale-strings.ts). A pack holds the categories of
+// its language (English `one`/`other`, Romanian `one`/`few`/`other`); a tenant override may hold any of them. Each text
+// keeps the placeholder `{n}` (the count) and may have others. A key of this shape is a "count key".
+export const PluralTextsSchema = z.object({
+    zero: z.string().optional(),
+    one: z.string().optional(),
+    two: z.string().optional(),
+    few: z.string().optional(),
+    many: z.string().optional(),
+    other: z.string().optional(),
+});
+export type PluralTexts = z.infer<typeof PluralTextsSchema>;
+
 // Commerce UI Strings (i18n) - all optional, defaults applied at runtime
 export const CommerceStringsSchema = z.object({
     // Product page
@@ -676,6 +691,30 @@ export const CommerceStringsSchema = z.object({
     // Account / Auth
     signIn: z.string().optional(),             // "Sign In"
     accountLabel: z.string().optional(),       // "Account"
+
+    // LOCALE-1B — shared product surfaces (commerce AND catalog sites; docs/slices/locale-1.md § 6.2): the product,
+    // category, shop and search pages of components/SitePage.tsx, ProductByIdPage.tsx and the SearchBar placeholder.
+    metaCategoryDescription: z.string().optional(), // "Browse {category} products"
+    metaShopTitle: z.string().optional(),       // "Shop - {site}"
+    metaSearchQueryTitle: z.string().optional(), // "Search: {query} - {site}"
+    metaSearchTitle: z.string().optional(),     // "Search - {site}"
+    searchPlaceholder: z.string().optional(),   // "Search products..." (when the tenant's searchBar.placeholder is empty)
+    shopTitle: z.string().optional(),           // "Shop"
+    volumePricing: z.string().optional(),       // "Volume Pricing"
+    preOrder: z.string().optional(),            // "Pre-order"
+    buyNow: z.string().optional(),              // "Buy Now"
+    ingredients: z.string().optional(),         // "Ingredients"
+    nutritionalValues: z.string().optional(),   // "Nutritional Values"
+    reviewsHeading: z.string().optional(),      // "Reviews"
+    reviewsSummary: PluralTextsSchema.optional(), // count: "{rating}/5 ({n} review)" / "{rating}/5 ({n} reviews)"
+    categoryEmpty: z.string().optional(),       // "No products in this category yet."
+    productCount: PluralTextsSchema.optional(), // count: "{n} product" / "{n} products"
+    shopEmptyInStock: z.string().optional(),    // "No products currently in stock."
+    shopEmpty: z.string().optional(),           // "No products available yet."
+    shopAllProducts: z.string().optional(),     // "All Products"
+    searchBreadcrumb: z.string().optional(),    // "Search"
+    searchResultCount: PluralTextsSchema.optional(), // count: "{n} result" / "{n} results"
+    searchEnterTerm: z.string().optional(),     // "Enter a search term to find products."
 });
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
@@ -686,9 +725,53 @@ export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
 // Adding a key: schema here → EN value in language-packs/en.ts (compile error until done) → RO value in
 // language-packs/ro.ts (test failure until done) → the reader → the Labels input (§ 2.3).
 //
-// The catalog part gets its 40 keys in `locale-1b`; until then it has none, but the attribute is already read
-// (mapTenant), validated (PUT /settings) and resolved, so `1b` only adds keys.
-export const CatalogStringsSchema = z.object({});
+// The catalog part (§ 6.3): the texts of the catalog-only features — the interest list ("Mă interesează") and its header
+// widget, and the facet panel, including the two fixed facet headings that `buildFacetListing` receives. Shipped by
+// `locale-1b`. The § 6.3 pair `facetsCountOne` / `facetsCountOther` is ONE count key, `facetsCount` (§ 16.2 item 6), and
+// `interestWidgetLabel` is a count key too.
+export const CatalogStringsSchema = z.object({
+    // Interest list (components/InterestShortlist.tsx; the list page title also in SitePage metadata)
+    interestListFull: z.string().optional(),            // "Your list already has 50 products. Remove one to add another."
+    interestAdd: z.string().optional(),                 // "I'm interested" (the toggle)
+    interestAdded: z.string().optional(),               // "In my list" (the toggle, marked)
+    interestListTitle: z.string().optional(),           // "My list" (list page heading and title; header widget)
+    interestWidgetLabel: PluralTextsSchema.optional(),  // count: "My list: {n} product" / "My list: {n} products" (widget aria-label)
+    interestStorageWarning: z.string().optional(),      // "This browser cannot save the list. …" (widget notice)
+    interestStorageAck: z.string().optional(),          // "Got it" (widget notice button)
+    interestBrowse: z.string().optional(),              // "See the products"
+    interestSentTitle: z.string().optional(),           // "Your list was sent"
+    interestSentBody: z.string().optional(),            // "Thank you! We received your list and will contact you soon."
+    interestExcludedIntro: z.string().optional(),       // "These products were not included because they are no longer available:"
+    interestEmpty: z.string().optional(),               // "Your list is empty. Press “{action}” on the products you like."
+    interestErrorNoneAvailable: z.string().optional(),  // "The list has no available products. Choose the products again."
+    interestErrorInvalid: z.string().optional(),        // "Check your details: …"
+    interestErrorCheck: z.string().optional(),          // "We could not check the list now. Try again in a few moments."
+    interestErrorAllGone: z.string().optional(),        // "The products in the list are no longer available. …"
+    interestErrorSend: z.string().optional(),           // "The list could not be sent. Try again."
+    interestErrorNetwork: z.string().optional(),        // "The list could not be sent. Check your connection and try again."
+    interestPreviouslySent: z.string().optional(),      // "Your earlier list was received. …"
+    interestContactHeading: z.string().optional(),      // "Your contact details"
+    interestName: z.string().optional(),                // "Name"
+    interestEmail: z.string().optional(),               // "E-mail"
+    interestPhone: z.string().optional(),               // "Phone"
+    interestMessage: z.string().optional(),             // "Message"
+    interestSubmit: z.string().optional(),              // "Send the list"
+    interestRowExpired: z.string().optional(),          // "This product is no longer in the catalog. …"
+    interestRowUnavailable: z.string().optional(),      // "This product is not available now and will not be sent."
+    interestRowOptionGone: z.string().optional(),       // "The chosen option is no longer offered. …"
+    interestCollection: z.string().optional(),          // "Collection" (followed by the collection name)
+    interestRemove: z.string().optional(),              // "Remove {title} from the list" (aria-label)
+    // Facet panel (components/SitePage.tsx, catalog shop and category pages)
+    facetsTooMany: z.string().optional(),               // "Too many filters selected — remove one"
+    facetsCount: PluralTextsSchema.optional(),          // count: "{n} product" / "{n} products"
+    facetsUrlTooLong: z.string().optional(),            // "The filters in the address are too long and were not applied."
+    facetsRemove: z.string().optional(),                // "Remove the filter {facet}: {value}" (aria-label)
+    facetsClear: z.string().optional(),                 // "Clear the filters"
+    facetsNoMatch: z.string().optional(),               // "No product matches the selected filters."
+    facetsTitle: z.string().optional(),                 // "Filters"
+    facetProducer: z.string().optional(),               // "Brand" (heading of the producer facet)
+    facetVariantDefault: z.string().optional(),         // "Option" (variant heading when the option groups differ)
+});
 export type CatalogStrings = z.infer<typeof CatalogStringsSchema>;
 
 // The site part: texts every tenant shows (§ 6.1). `locale-1a` ships the site chrome keys; `locale-1c` adds the block
@@ -757,16 +840,27 @@ export const SiteStringsSchema = z.object({
 });
 export type SiteStrings = z.infer<typeof SiteStringsSchema>;
 
-/** The resolved locale table (§ 2.3): every key of every part holds a string. A DTO — plain strings only. */
+/**
+ * A resolved count key (§ 16.2 item 6): `forms` = the texts of the text language per plural category (the pack's,
+ * then the tenant's; any subset), `language` = whose `Intl.PluralRules` select among them, `english` = the English
+ * texts (the last fallback, selected by English rules; `other` always present). Read it with
+ * `selectPluralText(value, n)`. A DTO — plain data only.
+ */
+export type CountText = { language: string; forms: PluralTexts; english: PluralTexts & { other: string } };
+
+/** One resolved part: a text key holds its string, a count key its `CountText`. */
+export type ResolvedPart<T> = { [K in keyof T]-?: NonNullable<T[K]> extends string ? string : CountText };
+
+/** The resolved locale table (§ 2.3): every key of every part holds a string (a count key: a `CountText`). A DTO. */
 export type LocaleStrings = {
-    commerce: Required<CommerceStrings>;
-    catalog: Required<CatalogStrings>;
-    site: Required<SiteStrings>;
+    commerce: ResolvedPart<CommerceStrings>;
+    catalog: ResolvedPart<CatalogStrings>;
+    site: ResolvedPart<SiteStrings>;
 };
 
 // Default commerce strings (English). LOCALE-1: the literal now lives in the EN language pack
 // (`language-packs/en.ts`, the one place English texts are written); this compatibility member keeps its name and
-// value until its last reader moves (`locale-1d`, docs/slices/locale-1.md § 10.2). It is bound here, not
+// its 77 pre-locale values (LOCALE-1B added the 21 shared keys, as the EN pack is complete) until its last reader moves (`locale-1d`, docs/slices/locale-1.md § 10.2). It is bound here, not
 // re-exported as `export … from`, so the name stays a declaration of this module for every existing importer.
 export const COMMERCE_STRINGS_DEFAULTS: Required<CommerceStrings> = EN_LANGUAGE_PACK.commerce;
 

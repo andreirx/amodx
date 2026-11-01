@@ -6,7 +6,7 @@ import { Menu, X, User, ChevronDown } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useTenantUrl } from "@/lib/routing";
 import { CartWidget } from "./CartWidget";
-import { InterestWidget } from "./InterestShortlist";
+import { InterestWidget, type InterestWidgetStrings } from "./InterestShortlist";
 import { fillTemplate, type LocaleStrings } from "@amodx/shared";
 
 /** LOCALE-1A: the site keys this component renders, resolved by the layout (docs/slices/locale-1.md § 5.3). */
@@ -55,9 +55,9 @@ export function Navbar({
     /**
      * CAT-INTEREST-1: present ONLY on a catalog site (layout.tsx passes it by a conditional spread, so no other site's
      * props change). Its widget takes the cart's place; a catalog site is never `commerceEnabled`, so the two are
-     * never rendered together.
+     * never rendered together. LOCALE-1B: `strings` = the widget's catalog texts, resolved by the layout.
      */
-    interest?: { tenantId: string; listPrefix: string };
+    interest?: { tenantId: string; listPrefix: string; strings: InterestWidgetStrings };
     strings: NavbarStrings;
 }) {
     const { getUrl } = useTenantUrl();
@@ -169,7 +169,7 @@ export function Navbar({
                             )
                         )}
                         {commerceEnabled && !hideContactButton && <CartWidget />}
-                        {interest && !commerceEnabled && <InterestWidget tenantId={interest.tenantId} listPrefix={interest.listPrefix} />}
+                        {interest && !commerceEnabled && <InterestWidget tenantId={interest.tenantId} listPrefix={interest.listPrefix} strings={interest.strings} />}
                         {!hideContactButton && (
                             <Link
                                 href={getUrl("/contact")}
@@ -183,7 +183,7 @@ export function Navbar({
                     {/* --- MOBILE TOGGLE + CART --- */}
                     <div className="flex items-center gap-2 md:hidden">
                         {commerceEnabled && <CartWidget />}
-                        {interest && !commerceEnabled && <InterestWidget tenantId={interest.tenantId} listPrefix={interest.listPrefix} />}
+                        {interest && !commerceEnabled && <InterestWidget tenantId={interest.tenantId} listPrefix={interest.listPrefix} strings={interest.strings} />}
                         <button
                             onClick={() => setIsMobileOpen(!isMobileOpen)}
                             className="text-foreground p-2 -mr-2"

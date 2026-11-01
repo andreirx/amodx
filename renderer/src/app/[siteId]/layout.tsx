@@ -102,8 +102,8 @@ export default async function SiteLayout({ children, params }: Props) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const showPopups = apiUrl ? await hasActivePopups(config.id) : false;
     // LOCALE-1A: the tenant's locale table, resolved once per request (docs/slices/locale-1.md § 5.3). Each client
-    // component below receives only the keys it renders, as a plain prop.
-    const site = resolveLocaleStrings(config).strings.site;
+    // component below receives only the keys it renders, as a plain prop. LOCALE-1B: `catalog` for the interest widget.
+    const { site, catalog } = resolveLocaleStrings(config).strings;
 
     return (
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
@@ -205,7 +205,10 @@ export default async function SiteLayout({ children, params }: Props) {
                         titleSize={config.header?.titleSize}
                         titleSizeScrolled={config.header?.titleSizeScrolled}
                         contentMaxWidth={config.header?.contentMaxWidth}
-                        {...(isCatalogMode(config) ? { interest: { tenantId: config.id, listPrefix: config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest } } : {})}
+                        {...(isCatalogMode(config) ? { interest: {
+                            tenantId: config.id, listPrefix: config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest,
+                            strings: { interestListTitle: catalog.interestListTitle, interestWidgetLabel: catalog.interestWidgetLabel, interestStorageWarning: catalog.interestStorageWarning, interestStorageAck: catalog.interestStorageAck },
+                        } } : {})}
                         strings={{ navAllOf: site.navAllOf, navContact: site.navContact, navToggleMenu: site.navToggleMenu, navViewAll: site.navViewAll, navContactUs: site.navContactUs }}
                     />
 
