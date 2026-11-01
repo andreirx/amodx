@@ -184,7 +184,10 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` ยง 5, ย
 `BlockEditor.tsx` wraps the Tiptap editor:
 - Loads extensions from `getExtensions()` (`@amodx/plugins/admin`)
 - Injects storage callbacks: `uploadFn`, `pickFn` (media), `fetchTagsFn` (post grid tags)
-- `Toolbar.tsx` renders formatting buttons + dynamic plugin insert buttons from `getPluginList()`
+- `Toolbar.tsx` renders formatting buttons + dynamic plugin insert buttons from `getPluginList()`, filtered by
+  `offeredPlugins()` (CAT-ADMIN-2: the site kind is "catalog" by `isCatalogMode`, else "commerce" by `commerceEnabled`,
+  else none; a block is offered when its `offeredOn` is empty or holds the kind), and `AdminLayout.tsx` loads product
+  and category link suggestions on a commerce or a catalog site
 - `MediaPicker.tsx` opens as a dialog to browse/select uploaded assets
 
 ## Auth Flow

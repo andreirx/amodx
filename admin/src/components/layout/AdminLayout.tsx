@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import { useTenant } from "@/context/TenantContext";
 import { InvalidationBanner } from "@/components/InvalidationBanner";
+import { isCatalogMode } from "@amodx/shared";
 
 interface LinkSuggestion {
     title: string;
@@ -25,7 +26,7 @@ export default function AdminLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [links, setLinks] = useState<LinkSuggestion[]>([]);
 
-    // Define fetch function - fetches pages, and products/categories if commerce is enabled
+    // Define fetch function - fetches pages, and products/categories on a commerce or a catalog site (CAT-ADMIN-2)
     const fetchLinks = useCallback(async () => {
         try {
             const allLinks: LinkSuggestion[] = [];
@@ -41,8 +42,9 @@ export default function AdminLayout() {
                 allLinks.push(...pages);
             }
 
-            // Fetch products and categories if commerce is enabled
-            if (currentTenant?.commerceEnabled) {
+            // Fetch products and categories on a commerce or a catalog site. The paths stay /product/ and /category/
+            // whatever the tenant's URL prefixes (pre-existing; docs/slices/cat-admin-2-impl.md, findings).
+            if (currentTenant?.commerceEnabled || isCatalogMode(currentTenant)) {
                 try {
                     const [productsRes, categoriesRes] = await Promise.all([
                         apiRequest("/products"),
@@ -77,7 +79,7 @@ export default function AdminLayout() {
         } catch (e) {
             console.warn("Autolink fetch failed", e);
         }
-    }, [currentTenant?.commerceEnabled]);
+    }, [currentTenant?.commerceEnabled, currentTenant?.catalogMode]);
 
     // Initial Load + Event Listener
     useEffect(() => {

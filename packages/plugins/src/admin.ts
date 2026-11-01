@@ -50,5 +50,5 @@ export const getPluginList = () => REGISTRY.map(p => ({
     key: p.key,
     label: p.label,
     icon: p.icon,
-    commerce: p.commerce ?? false,
+    offeredOn: p.offeredOn ?? [],
 }));

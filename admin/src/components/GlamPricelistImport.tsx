@@ -13,7 +13,7 @@ import {
 import { siteContextOf, type SiteContext } from "./glamPreview";
 
 /**
- * CAT-IMPORT-1 — Products → Import → "Listă de prețuri (glam)" (catalog sites only; mounted by `pages/Products.tsx`).
+ * CAT-IMPORT-1 — the pricelist import form (catalog sites only; mounted by `pages/CatalogImport.tsx` since CAT-ADMIN-1).
  * One enriched pricelist CSV per upload. The user always sees a dry run first (`?dryRun=1`: what would be replaced and
  * created, nothing written), then confirms. The backend (`POST /import/glam-pricelist`) is the authority for every
  * rule; this form collects the fields, shows the report, and guarantees that the confirmed import is EXACTLY the

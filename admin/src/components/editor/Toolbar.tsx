@@ -9,6 +9,23 @@ import {
 import { cn } from "@/lib/utils";
 import { getPluginList } from "@amodx/plugins/admin";
 import { useTenant } from "@/context/TenantContext";
+import { isCatalogMode } from "@amodx/shared";
+
+type PluginListItem = ReturnType<typeof getPluginList>[number];
+
+/**
+ * CAT-ADMIN-2 (docs/slices/cat-admin-1.md § 4.7) — the blocks the inserter offers on this tenant. The tenant's kind is
+ * "catalog" when isCatalogMode (commerceEnabled is then ignored: the backend refuses both, 400), "commerce" when
+ * commerceEnabled, otherwise none. A block with an empty offeredOn is offered on every site; any other block only
+ * when the kind is in its list. Pure, so it is tested without a tiptap editor (Toolbar.test.ts).
+ */
+export function offeredPlugins(
+    list: readonly PluginListItem[],
+    tenant: { commerceEnabled?: boolean; catalogMode?: boolean } | null,
+): PluginListItem[] {
+    const kind = isCatalogMode(tenant) ? "catalog" : tenant?.commerceEnabled ? "commerce" : null;
+    return list.filter(p => p.offeredOn.length === 0 || (kind !== null && p.offeredOn.includes(kind)));
+}
 
 interface ToolbarProps {
     editor: Editor | null;
@@ -18,8 +35,7 @@ export function Toolbar({ editor }: ToolbarProps) {
     const { currentTenant } = useTenant();
     if (!editor) return null;
 
-    const commerceEnabled = (currentTenant as any)?.commerceEnabled ?? false;
-    const plugins = getPluginList().filter(p => !p.commerce || commerceEnabled);
+    const plugins = offeredPlugins(getPluginList(), currentTenant);
 
     const [isLinking, setIsLinking] = useState(false);
     const [linkUrl, setLinkUrl] = useState("");

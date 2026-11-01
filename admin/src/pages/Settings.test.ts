@@ -153,4 +153,11 @@ describe("Settings — the cards of each site kind (§ 4.5)", () => {
     it("URL Prefixes on a non-catalog site: the seven fields, unchanged; no interest list", () => {
         expect(prefixFields(renderSettings(CONTENT)).map((f) => f.label)).toEqual(["Product", "Category", "Cart", "Checkout", "Shop", "Account", "Search"]);
     });
+    it("URL Prefixes copy on a catalog says catalog, not commerce (CAT-ADMIN-2, F-CA-IMPL-2; non-catalog: the captures above)", () => {
+        const html = renderSettings(CATALOG);
+        expect(html).toContain("Configure URL paths for catalog pages. Must start with &quot;/&quot; (e.g. &quot;/produs&quot; or &quot;/product&quot;).");
+        expect(html).toContain("Changing these will update how catalog URLs are generated and resolved. Existing links using old prefixes will stop working.");
+        expect(html).not.toContain("commerce pages");
+        expect(html).not.toContain("commerce URLs");
+    });
 });

@@ -18,7 +18,9 @@ Three separate entry points keep bundles lean:
 | `src/render.ts` | `@amodx/plugins/render` | `RENDER_LOADERS` (key → lazy render loader) | Renderer RenderBlocks |
 
 - `getExtensions()` returns an array of Tiptap Node extensions for all plugins
-- `getPluginList()` returns `{key, label, icon}[]` for the editor toolbar insert menu
+- `getPluginList()` returns `{key, label, icon, offeredOn}[]` for the editor toolbar insert menu; `offeredOn` (CAT-ADMIN-2)
+  is the list of site kinds (`"commerce"`, `"catalog"`) whose inserter offers the block, `[]` = every site
+  (`category-showcase`: both; `reviews-carousel`: commerce), and the renderer never reads it
 - `RENDER_LOADERS` is a `Record<string, () => Promise<{ default: React.FC<any> }>>` mapping block type
   keys to **dynamic `import()` thunks** (perf-1). It replaced the eager `RENDER_MAP`: because the
   renderer's `RenderBlocks` is a client component, an eager map pulled every plugin (incl.
@@ -243,6 +245,7 @@ only for `product-reviews-by-id`); in the two DB scopes the manual item editor i
 | `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_LOADERS["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
 | `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_LOADERS["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
 | `renderer/test/unit/locale-1c-blocks-client.test.ts` (`locale-1c`; in the RENDERER suite — this package has no DOM harness and no jsdom dependency) | The block texts of every state of the eleven text-bearing blocks (forms sending/sent/failed, copy, read more, post grid loading/failed/empty/dates, showcase): en-US markup equal to a `0c0dbc8` capture, every Romanian change a declared key, the reviews-carousel date cases, the § 5.2 preservation cases at one reader per block (the iframe names pattern F) |
+| `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
 | `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 20, so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin

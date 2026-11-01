@@ -10,8 +10,10 @@ export interface PluginDefinition {
     icon: LucideIcon;
     schema: z.ZodObject<any>;
 
-    // If true, only shown in the block inserter when commerceEnabled is true
-    commerce?: boolean;
+    // CAT-ADMIN-2 (docs/slices/cat-admin-1.md § 4.7): the site kinds whose block inserter offers this block. Absent or
+    // empty = offered on every site. "commerce" = a non-catalog site with commerceEnabled; "catalog" = a catalog site.
+    // Read by the admin toolbar only; the renderer renders every registered block regardless.
+    offeredOn?: readonly ("commerce" | "catalog")[];
 
     // The Admin Tiptap Extension
     editorExtension: Node;

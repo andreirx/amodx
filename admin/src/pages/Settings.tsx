@@ -1363,11 +1363,15 @@ export default function SettingsPage() {
                     </Card>
 
                     {/* URL PREFIXES (Commerce Routing) — CAT-ADMIN-1 (§ 4.5, CA-D2): a catalog has no cart, checkout or account
-                        pages; it has the interest-list page (`urlPrefixes.interest`, finding F-CA-1). A non-catalog site: unchanged. */}
+                        pages; it has the interest-list page (`urlPrefixes.interest`, finding F-CA-1). A non-catalog site: unchanged.
+                        CAT-ADMIN-2 (F-CA-IMPL-2): on a catalog the description and the footnote say "catalog"; each is one whole
+                        string per kind, so the non-catalog markup stays byte-equal. */}
                     <Card>
                         <CardHeader>
                             <CardTitle>URL Prefixes</CardTitle>
-                            <CardDescription>Configure URL paths for commerce pages. Must start with "/" (e.g. "/produs" or "/product").</CardDescription>
+                            <CardDescription>{isCatalogMode(config)
+                                ? 'Configure URL paths for catalog pages. Must start with "/" (e.g. "/produs" or "/product").'
+                                : 'Configure URL paths for commerce pages. Must start with "/" (e.g. "/produs" or "/product").'}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -1445,7 +1449,9 @@ export default function SettingsPage() {
                                 )}
                             </div>
                             <p className="text-[10px] text-muted-foreground">
-                                Changing these will update how commerce URLs are generated and resolved. Existing links using old prefixes will stop working.
+                                {isCatalogMode(config)
+                                    ? "Changing these will update how catalog URLs are generated and resolved. Existing links using old prefixes will stop working."
+                                    : "Changing these will update how commerce URLs are generated and resolved. Existing links using old prefixes will stop working."}
                             </p>
                         </CardContent>
                     </Card>
