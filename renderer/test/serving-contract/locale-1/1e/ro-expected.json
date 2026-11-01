@@ -1,0 +1,82 @@
+{
+  "slice": "locale-1e",
+  "rule": "docs/slices/locale-1e.md § 8: per RO copy (fixtures.mjs LOC1) and captured URL, the exact visible-text changes against THE SAME COPY in the immutable start-commit capture before/ (d9999d2). None: locale-1e changes the `<html lang>` attribute (en → ro), which the visible-text extraction does not read (row loc1e-html-lang pins it), and no text.",
+  "fixtures": {
+    "roContent": {
+      "source": "roContent",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/mats": [],
+        "/product/plain-rug": [],
+        "/products/d0000000-0000-4000-8000-000000000001": [],
+        "/search?q=rug": [],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    },
+    "roCommerce": {
+      "source": "roCommerce",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/stale-showcase": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/rugs": [],
+        "/product/sale-rug": [],
+        "/product/variant-rug": [],
+        "/product/sold-out-rug": [],
+        "/product/rug-care-guide": [],
+        "/products/c0000000-0000-4000-8000-000000000001": [],
+        "/search?q=rug": [],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": [],
+        "/account": [],
+        "/checkout/confirmare": [],
+        "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+        "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": []
+      }
+    },
+    "roCatalog": {
+      "source": "roCatalog",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/stale-showcase": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/category/floors": [],
+        "/product/oak-plank": [],
+        "/product/ash-plank": [],
+        "/product/legacy-plank": [],
+        "/products/e0000000-0000-4000-8000-000000000001": [],
+        "/products/e0000000-0000-4000-8000-000000000002": [],
+        "/products/e0000000-0000-4000-8000-000000000003": [],
+        "/search?q=plank": [],
+        "/cart": [],
+        "/checkout": [],
+        "/sitemap.xml": [],
+        "/openai-feed": [],
+        "/robots.txt": [],
+        "/llms.txt": []
+      }
+    }
+  }
+}

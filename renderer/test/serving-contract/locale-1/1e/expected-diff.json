@@ -1,0 +1,517 @@
+{
+  "slice": "locale-1e",
+  "rule": "docs/slices/locale-1e.md § 4 (operator rulings LOC1E-404-DOCUMENT = B, LOC1E-STRUCTURE-CATEGORY = A and LOC1E-404-SHELL-PRELOAD = A, 2026-11-01): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (d9999d2, served with this tree's fixtures.mjs). Category 4 only, row LOC1E-ROOT-LAYOUT: every page with a flight payload, lang \"en\" (`<html>`/`<body>` moved from the deleted app/layout.tsx into app/[siteId]/layout.tsx; the root 404 boundary app/not-found.tsx writes its own document). The error-shell preload is not listed per URL: the category identifies a shell by its raw `__next_error__` response (today: the four 307 handoffs of content and catalog /cart and /checkout in this set). Route-handler bodies (sitemap, robots, llms, feed): []. No ledger row, no text change.",
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/published": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/d4-page": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ]
+    },
+    "wk": {
+      "/index.php": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ]
+    },
+    "iso-a": {
+      "/": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/about": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/listed-post": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ]
+    },
+    "iso-b": {
+      "/about": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ]
+    },
+    "commerce": {
+      "/": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/about": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/rugs": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/sale-rug": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/variant-rug": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/sold-out-rug": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/rug-care-guide": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/products/c0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/search?q=rug": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": [],
+      "/account": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout/confirmare": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ]
+    },
+    "content": {
+      "/": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/about": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/mats": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/plain-rug": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/products/d0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/search?q=rug": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/about": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/shop": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/floors": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/oak-plank": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/ash-plank": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/legacy-plank": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000002": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000003": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/search?q=plank": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/cart": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/cip1b-boen": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/cip1b-itc": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/cip1b-x": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/category/cip1b-u": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/stejar-mixt": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/frasin-mixt": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/nuc-fara-fisa": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/covor-arc": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/covor-shell": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/placa-nod": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/placa-nod-doi": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/lemn-x-unu": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/lemn-x-doi": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ],
+      "/product/lemn-x-trei": [
+        {
+          "category": 4,
+          "row": "LOC1E-ROOT-LAYOUT",
+          "lang": "en"
+        }
+      ]
+    }
+  }
+}

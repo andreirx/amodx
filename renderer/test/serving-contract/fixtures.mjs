@@ -594,6 +594,21 @@ const LOC1_ITEMS = [
     ...localeCopy(CM1_ITEMS, CM1.catalog, LOC1.roCatalog, { locale: "ro-RO" }),
 ];
 
+// ── LOCALE-1E fixtures (docs/slices/locale-1e.md; `<html lang>` per tenant) ──────────────────────────────────────
+// Two tenants used only by row `loc1e-html-lang`: an en-GB tenant and a tenant whose stored `locale` is malformed
+// (`"123"`: `Intl.getCanonicalLocales` throws, so § 3.3 normalises it to en-US). Each has one published home page. Both
+// carry a `locale` attribute, so neither is an en-US subject of the `loc1-*` rows (the rule is "no `locale`").
+export const LOC1E = {
+    enGb: { id: "loc1e-en-gb", host: "loc1e-en-gb.serving-contract.test", locale: "en-GB" },
+    malformed: { id: "loc1e-malformed", host: "loc1e-malformed.serving-contract.test", locale: "123" },
+};
+
+const LOC1E_ITEMS = Object.values(LOC1E).flatMap(({ id, host, locale }) => [
+    { ...siteTenant(id, host, `LOC1E ${locale}`), description: `LOC1E fixture, stored locale ${JSON.stringify(locale)}.`, locale },
+    siteRouteItem(id, "/", `${id}-home`),
+    siteContentItem(id, `${id}-home`, "/", `LOC1E ${locale} Home`),
+]);
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -624,6 +639,8 @@ export const ITEMS = [
     ...CIP1B_ITEMS,
     // locale-1a: the Romanian copies (above).
     ...LOC1_ITEMS,
+    // locale-1e: the en-GB and malformed-locale tenants (above).
+    ...LOC1E_ITEMS,
 ];
 
 /**

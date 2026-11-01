@@ -36,10 +36,10 @@ import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
-import { EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import {
-    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1,
+    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1147,7 +1147,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const cm1Body = async (tenant, p) => (await cm1Set()).captures.find((c) => c.tenant === tenant && c.path === p);
 
         for (const tenantKey of ["commerce", "content"]) {
-            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-reviews-date-1 tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
+            test(`(cm1-identity-${tenantKey}) a tenant without catalogMode (${tenantKey}) answers every § 3.6 URL as the committed baseline/ did (captured from the locale-1e tree; history in cm1-byte-identity/README.md), under the CM1-A1 canonicalisations`, async () => {
                 const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
                 // The per-URL canonicalisation counts (CM1-A1: "each with its count reported per compared URL").
                 for (const r of rows) {
@@ -1802,26 +1802,26 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
-        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice locale-reviews-date-1 (docs/slices/locale-1.md § 8.5; rulings
-        // § 16.2 items 4-5; docs/slices/locale-reviews-date-1.md). Helpers: locale-1/proof.mjs. Inputs, all in
-        // locale-1/reviews-date-1/: before/ (immutable, captured from eba5e18 with the cm1-byte-identity/README.md
-        // procedure — every en-US subject AND every RO copy, served with this tree's fixtures.mjs, whose content home holds
-        // the block-chrome blocks since 1c), expected-diff.json (the reviewed byte-difference list of the en-US subjects)
-        // and ro-expected.json (the text changes of the RO copies against their own eba5e18 capture). Each slice has its own
-        // set (§ 8.5 rule 5); the 1a/, 1b/, 1c/ and 1d/ files stay as those slices' records and no row reads them any more.
+        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice locale-1e (docs/slices/locale-1.md § 8.5; rulings § 16.2 items
+        // 4-5; docs/slices/locale-1e.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/1e/: before/ (immutable,
+        // captured from d9999d2 with the cm1-byte-identity/README.md worktree procedure — every en-US subject AND every RO
+        // copy, served with this tree's fixtures.mjs), expected-diff.json (the reviewed byte-difference list of the en-US
+        // subjects: category 4, the root-layout move, operator ruling LOC1E-STRUCTURE-CATEGORY = A) and ro-expected.json
+        // (the text changes of the RO copies against their own d9999d2 capture: none). Each slice has its own set (§ 8.5
+        // rule 5); the 1a/, 1b/, 1c/, 1d/ and reviews-date-1/ files stay as those slices' records and no row reads them.
         // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`;
         // since 1d the commerce subject's list also holds its order pages, `orderRequests`).
-        // Text oracle per subject: equal to before/ except the `text` of the listed category-3 (ledger) entries, which
-        // must occur exactly — since locale-reviews-date-1 the L-ALL-2 review date of the content home (the human's ruling
-        // of 2026-11-01); every other URL of every subject: equal.
+        // Text oracle per subject: equal to before/ (locale-1e lists no ledger row: zero visible-text changes).
         // These rows run LAST in this block: the non-CM1 subjects are captured here, after every row that depends on
         // those tenants' cache state. The RO subjects are the copies `loc1-ro-*` (fixtures.mjs LOC1).
         let loc1Before, loc1Ro, loc1En;
-        const LOC1_SLICE = "reviews-date-1";
+        const LOC1_SLICE = "1e";
         /** The commit before/ was captured from (the slice's start commit for render output; titles cite it). */
-        const LOC1_START = "eba5e18";
-        /** The ledger rows the current slice may list for an en-US subject (category 3): L-ALL-2 only. */
-        const LOC1_EN_ROWS = new Set(["L-ALL-2"]);
+        const LOC1_START = "d9999d2";
+        /** What the current slice may list for an en-US subject: the category-4 root-layout move only, never a ledger row. */
+        const LOC1_EN_MOVE = { category: 4, row: "LOC1E-ROOT-LAYOUT", lang: "en" };
+        /** The start of a `__next_error__` shell (the 307 handoffs, the 404 landings): category 4's error-shell predicate. */
+        const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
         const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
         const loc1RoSet = async () => (loc1Ro ??= await captureLoc1(request, server.port));
@@ -1849,7 +1849,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         /** Per URL of a subject: the visible-text changes its category-3 (ledger) entries list (`textMismatches`). */
         const ledgerTexts = (doc, subject) => (urlPath) => expectedFor(doc, subject, urlPath).filter((e) => e.category === 3).map((e) => e.text);
 
-        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs and the RO copies' URLs; expected-diff.json lists exactly the subjects' URLs, each listed item an L-ALL-2 ledger change (category 3) with its visible text", async () => {
+        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs and the RO copies' URLs; expected-diff.json lists exactly the subjects' URLs: one category-4 root-layout move on every page with a payload, nothing else", async () => {
             const want = Object.fromEntries(Object.entries(EN_US_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const withoutLocale = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#") && !Object.hasOwn(i, "locale")).length;
             assert.equal(Object.keys(want).length, withoutLocale, "every tenant without `locale` is a subject");
@@ -1860,10 +1860,14 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), { ...want, ...ro }, "before/ must hold exactly the subjects' and the RO copies' URLs");
             const doc = await loc1Json("expected-diff.json");
             assert.deepEqual(Object.fromEntries(Object.entries(doc.fixtures).map(([key, urls]) => [key, Object.keys(urls).sort()])), want, "expected-diff.json must list exactly the subjects' URLs");
-            for (const e of Object.values(doc.fixtures).flatMap((urls) => Object.values(urls).flat())) {
-                assert.equal(e.category, 3, "en-US subjects: ledger changes only (locale-reviews-date-1 adds no prop and consolidates no text)");
-                assert.ok(LOC1_EN_ROWS.has(e.row), `en-US ledger row ${e.row} is not in force for this slice`);
-                assert.ok(e.text && e.text.kind && e.text.from && e.text.to && e.before.includes(e.text.from) && e.after.includes(e.text.to), "a ledger item names its visible-text change inside its HTML change");
+            const before = await loc1BeforeSet();
+            for (const [subject, urls] of Object.entries(doc.fixtures)) {
+                for (const [urlPath, list] of Object.entries(urls)) {
+                    const b = before.captures.find((c) => c.tenant === subject && c.path === urlPath);
+                    const withPayload = splitFlight(b.body).chunks > 0;
+                    const want = withPayload ? [LOC1_EN_MOVE] : [];
+                    assert.deepEqual(list, want, `${subject} ${urlPath}: exactly the root-layout move (locale-1e lists no ledger row, no prop, no text)`);
+                }
             }
             console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs`);
         });
@@ -1881,7 +1885,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         // The bound mutation of the text rows (1a review-0 R1): for EVERY subject, one visible text added to one captured
         // page must be reported under that subject's own oracle.
-        test("(loc1-text-mutation) for every en-US subject, a mutated visible text on one page is reported; a listed ledger text that does not occur, or occurs with another value, is reported", async () => {
+        test("(loc1-text-mutation) for every en-US subject, a mutated visible text on one page is reported; the content home's review date put back to Romanian, or in another format, is reported; a Romanian commerce text on an en-US order page is reported", async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -1891,21 +1895,21 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const mutated = { ...cand, captures: cand.captures.map((c) => (c === page ? { ...c, body: c.body.replace("</body>", "<p>LOC1 MUTATION</p></body>") } : c)) };
                 assert.deepEqual(textMismatches(before, mutated, subject, ledgerTexts(doc, subject)).length, 1, `${subject}: the mutation was not reported`);
             }
-            // LOCALE-REVIEWS-DATE-1: the content home's listed review date — kept Romanian (the old default), or another
-            // format — is reported; so is the same change on a URL that does not list it.
+            // The content home's review date (unchanged since d9999d2, its L-ALL-2 value): put back to Romanian, or in another
+            // format — each is reported.
             const home = cand.captures.find((c) => c.tenant === "content" && c.path === "/");
             assert.ok(home.body.includes(">October 31, 2026<"), "mutation precondition: the content home shows the en-US review date");
             const withHome = (body) => ({ ...cand, captures: cand.captures.map((c) => (c === home ? { ...c, body } : c)) });
             assert.deepEqual(textMismatches(before, withHome(home.body.replace(">October 31, 2026<", ">31 octombrie 2026<")), "content", ledgerTexts(doc, "content")), ["/: visible text changed"], "the review date left Romanian was not reported");
             assert.deepEqual(textMismatches(before, withHome(home.body.replace(">October 31, 2026<", ">10/31/2026<")), "content", ledgerTexts(doc, "content")), ["/: visible text changed"], "another date format was not reported");
-            assert.deepEqual(textMismatches(before, cand, "content", () => []), ["/: visible text changed"], "the review date change was not reported where nothing is listed");
+            assert.deepEqual(textMismatches(before, cand, "content", ledgerTexts(doc, "content")), [], "precondition: the content home's text is equal to d9999d2");
             // A commerce text left in Romanian on an en-US order page is reported (locale-1d: the order pages are subjects).
             const confirm = cand.captures.find((c) => c.tenant === "commerce" && c.path.startsWith("/checkout/confirmare?id=cm1-order-bank"));
             const reverted = { ...cand, captures: cand.captures.map((c) => (c === confirm ? { ...c, body: c.body.replace(">Bank Transfer Details<", ">Detalii pentru transfer bancar<") } : c)) };
             assert.deepEqual(textMismatches(before, reverted, "commerce"), [`${confirm.path}: visible text changed`]);
         });
 
-        test(`(loc1-diff-reviews-date-1) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
+        test(`(loc1-diff-1e) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -1920,40 +1924,109 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
                     for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
-                    console.log(`  (loc1-diff-reviews-date-1) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => (e.category === 3 ? `cat 3 ${e.row} ${JSON.stringify(e.text.from)} → ${JSON.stringify(e.text.to)}` : `cat ${e.category} ${e.element.split("/").pop()}.${e.prop}${Object.hasOwn(e, "beforeValue") ? " (changed)" : ""}`)).join(", ")}]`);
+                    console.log(`  (loc1-diff-1e) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category} ${e.row} lang=${e.lang}`).join(", ")}]`);
                 }
             }
             assert.deepEqual(problems, []);
-            // The checker can fail (the bound mutations of this row): on the content home (the reviews carousel and the
-            // block-chrome blocks) — the listed L-ALL-2 entry dropped, a listed entry that does not occur, one changed HTML
-            // byte, the review date left Romanian, the review date in another format, a changed block text in the payload,
-            // a block text left in Romanian in the HTML; on a commerce product page (no carousel) — the date entry listed
-            // where it does not occur; on an order page — one changed HTML text byte; each reported.
+            // The checker can fail (the bound mutations of this row) on the content home (the reviews carousel and the
+            // block-chrome blocks): the listed move dropped, a ghost entry, one changed HTML byte, the review date in another
+            // format, a changed block text in the payload, a block text in Romanian in the HTML; on an order page: one
+            // changed HTML text byte. Each is reported. The category's own refusals: row loc1e-category-controls.
             const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
             const [b, a] = pick("content", "/");
             const listed = expectedFor(doc, "content", "/");
-            assert.deepEqual(listed.map((e) => `${e.category} ${e.row}`), ["3 L-ALL-2"], "precondition: content / lists the review date");
+            assert.deepEqual(listed.map((e) => `${e.category} ${e.row}`), ["4 LOC1E-ROOT-LAYOUT"], "precondition: content / lists the root-layout move");
             assert.deepEqual(checkExpected(before, b.body, cand, a.body, listed), [], "precondition: the listed differences hold");
-            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, []), [], "dropping the listed L-ALL-2 entry was not reported");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, []), [], "dropping the listed root-layout move was not reported");
             const ghost = { category: 2, element: "[project]/renderer/src/components/QuickContact.tsx#QuickContact", prop: "strings", value: {} };
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, [...listed, ghost]), [], "a listed entry that does not occur was not reported");
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace("CM1 Content", "CM1 C0ntent"), listed), [], "a changed HTML byte was not reported");
-            const date = listed[0].after;
-            assert.equal(a.body.split(date).length, 2, "mutation precondition: the en-US review date occurs once in the HTML");
-            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(date, listed[0].before), listed), [], "the review date left Romanian was not reported");
-            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(date, date.replace("October 31, 2026", "10/31/2026")), listed), [], "the review date in another format was not reported");
+            assert.equal(a.body.split(">October 31, 2026<").length, 2, "mutation precondition: the review date occurs once in the HTML");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(">October 31, 2026<", ">10/31/2026<"), listed), [], "the review date in another format was not reported");
             const label = '\\"contactName\\":\\"Name\\"';
             assert.ok(a.body.includes(label), "mutation precondition: the block texts travel in the captured payload");
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(label, '\\"contactName\\":\\"Nume\\"'), listed), [], "a changed block text in the payload was not reported");
             assert.ok(a.body.includes(">Name</label>"), "mutation precondition: the contact block's label is server-rendered");
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body.replace(">Name</label>", ">Nume</label>"), listed), [], "a block text left in Romanian was not reported");
-            const [bp, ap] = pick("commerce", "/product/sale-rug");
-            assert.deepEqual(expectedFor(doc, "commerce", "/product/sale-rug"), [], "precondition: a product page renders no reviews carousel");
-            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, listed), [], "the date entry listed on a page without a carousel was not reported");
             const [bo, ao] = pick("commerce", "/checkout/cm1-order-cod?email=buyer%40serving-contract.test");
             const orderListed = expectedFor(doc, "commerce", bo.path);
             assert.ok(ao.body.includes(">Tracking Number: <"), "mutation precondition: the tracking page shows its tracking number label");
             assert.notDeepEqual(checkExpected(before, bo.body, cand, ao.body.replace(">Tracking Number: <", ">Tracking number: <"), orderListed), [], "a changed order-page text was not reported");
+        });
+
+        // LOCALE-1E — the refusals of category 4 (operator rulings LOC1E-STRUCTURE-CATEGORY = A, LOC1E-404-SHELL-PRELOAD = A,
+        // iteration-1 R1): each mutation of a REAL captured page must be reported although the move is listed.
+        // Content home (200), after side: a text inside the new wrapper; the wrapper's `lang`; every stylesheet href; a
+        // second stylesheet link; one removed script; a text inside the root 404 boundary; CHANGED URLs that CM1-A1 masks —
+        // the `[siteId]` script `src`, the payload stylesheet `href`, the head stylesheet `href`, the removed root-layout
+        // script's `src` in the head; an expected `lang` that differs; the head stylesheet removed. Before side: a style
+        // preload removed on a 200 page. Content /cart 307 shell: a missing preload with another href; two missing preloads.
+        // Positive controls: both pages exact under the listed move.
+        test("(loc1e-category-controls) category 4 accepts exactly the enumerated root-layout move: every other change on a real page is reported", async () => {
+            const before = await loc1BeforeSet();
+            const cand = await loc1EnSet();
+            const doc = await loc1Json("expected-diff.json");
+            const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
+            const [b, a] = pick("content", "/");
+            const move = expectedFor(doc, "content", "/");
+            const check = (body, list = move, beforeBody = b.body) => checkExpected(before, beforeBody, cand, body, list);
+            assert.deepEqual(check(a.body), [], "positive control: content / is exact under the listed move");
+            const once = (body, from, to) => { assert.ok(body.includes(from), `mutation precondition: ${from.slice(0, 60)}`); return body.replace(from, to); };
+            const esc = (v) => `\\"${v}\\"`;   // a JSON string as it appears inside the escaped flight chunks
+            const flightA = splitFlight(a.body).flight, flightB = splitFlight(b.body).flight;
+            const css = /"rel":"stylesheet","href":"(\/_next\/static\/[^"]+)"/.exec(flightA)?.[1];
+            assert.ok(css, "mutation precondition: a payload stylesheet href");
+            const link = new RegExp(`\\[\\\\"\\$\\\\",\\\\"link\\\\",\\\\"0\\\\",\\{[^\\]]*${css.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^\\]]*\\]`).exec(a.body)?.[0];
+            assert.ok(link, "mutation precondition: the escaped stylesheet link element");
+            const script = /,\[\\"\$\\",\\"script\\",\\"script-1\\",\{[^\]]*\}\]/.exec(a.body)?.[0];
+            assert.ok(script, "mutation precondition: an escaped script element");
+            // The `[siteId]` segment's first script: the element right after the moved stylesheet link.
+            const siteScript = /"rel":"stylesheet","href":"[^"]+","precedence":"next","crossOrigin":"\$undefined","nonce":"\$undefined"\}\],\["\$","script","script-0",\{"src":"([^"]+)"/.exec(flightA)?.[1];
+            assert.ok(siteScript, "mutation precondition: the [siteId] script src");
+            // The removed root-layout script: a payload script src of the before side that the after payload no longer has.
+            const srcs = (f) => [...f.matchAll(/"src":"(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]);
+            const rootScript = srcs(flightB).find((x) => !srcs(flightA).includes(x));
+            assert.ok(rootScript && a.body.includes(`<script src="${rootScript}" async="">`), "mutation precondition: the root-layout script stays in the after head");
+            // The tenant wrapper is the `html` element whose `body` holds a client component (`Providers`); the root 404
+            // boundary's `html` holds a list (title, 404 UI). Exactly one occurrence must change.
+            const WRAPPER = /(\[\\"\$\\",\\"html\\",null,\{\\"lang\\":\\")en(\\",\\"children\\":\[\\"\$\\",\\"body\\",null,\{\\"className\\":\\"[^\\]*\\",\\"children\\":\[\\"\$\\",\\"\$L)/g;
+            const wrapperLang = (body) => {
+                assert.equal([...body.matchAll(WRAPPER)].length, 1, "mutation precondition: exactly one tenant wrapper <html> in the payload");
+                return body.replace(WRAPPER, "$1ro$2");
+            };
+            const OTHER_CSS = "/_next/static/chunks/loc1e-other.css";
+            const refusals = {
+                "a text inside the wrapper": once(a.body, '\\"contactName\\":\\"Name\\"', '\\"contactName\\":\\"Nume\\"'),
+                "the wrapper lang": wrapperLang(a.body),
+                "every stylesheet href changed": a.body.split(css).join(OTHER_CSS),
+                "a second stylesheet link": once(a.body, link, `${link},${link}`),
+                "one removed script": once(a.body, script, ""),
+                "a text inside the root 404 boundary": once(a.body, "This page could not be found.", "This page could not be f0und."),
+                "a changed [siteId] script src (payload only)": a.body.split(`\\"src\\":${esc(siteScript)}`).join(`\\"src\\":${esc("/_next/static/chunks/loc1e-other.js")}`),
+                "a changed payload stylesheet href (the [siteId] link only)": once(a.body, `\\"href\\":${esc(css)}`, `\\"href\\":${esc(OTHER_CSS)}`),
+                "a changed head stylesheet href (HTML only)": once(a.body, `<link rel="stylesheet" href="${css}" data-precedence="next"/>`, `<link rel="stylesheet" href="${OTHER_CSS}" data-precedence="next"/>`),
+                "a changed root-layout script src in the head": once(a.body, `<script src="${rootScript}" async="">`, `<script src="/_next/static/chunks/loc1e-other.js" async="">`),
+                "a removed head stylesheet": once(a.body, `<link rel="stylesheet" href="${css}" data-precedence="next"/>`, ""),
+            };
+            for (const [name, body] of Object.entries(refusals)) {
+                assert.notEqual(body, a.body, `${name}: the mutation did not change the body`);
+                assert.notDeepEqual(check(body), [], `${name} was not reported`);
+            }
+            assert.notDeepEqual(check(a.body, [{ ...move[0], lang: "ro" }]), [], "an expected lang other than the rendered one was not reported");
+            assert.notDeepEqual(check(a.body, [{ ...move[0], shellPreload: true }]), [], "a category-4 entry with an extra field was not reported");
+            // A style preload removed on a 200 page (the before side holds one, the after side not): refused.
+            const preloaded = once(b.body, "</head>", `<link rel="preload" href="${css}" as="style"/></head>`);
+            assert.notDeepEqual(check(a.body, move, preloaded), [], "a preload removal on a 200 page was not reported");
+            // The 307 shell: exact as captured; a missing preload of another href, and two missing preloads, are refused.
+            const [bs, as] = pick("content", "/cart");
+            const shellMove = expectedFor(doc, "content", "/cart");
+            const preload = `<link rel="preload" href="${css}" as="style"/>`;
+            assert.ok(bs.body.startsWith('<!DOCTYPE html><html id="__next_error__">') && bs.body.includes(preload) && !as.body.includes(preload), "precondition: content /cart is a shell that loses the preload");
+            assert.deepEqual(checkExpected(before, bs.body, cand, as.body, shellMove), [], "positive control: the 307 shell is exact under the listed move");
+            assert.notDeepEqual(checkExpected(before, once(bs.body, preload, `<link rel="preload" href="${OTHER_CSS}" as="style"/>`), cand, as.body, shellMove), [], "a shell missing a preload of another href was not reported");
+            assert.notDeepEqual(checkExpected(before, once(bs.body, preload, `${preload}${preload}`), cand, as.body, shellMove), [], "a shell missing two preloads was not reported");
+            const extra = ["an expected lang ro", "an extra entry field", "a preload removal on a 200 page", "a shell missing another href", "a shell missing two preloads"];
+            console.log(`  (loc1e-category-controls) 2 positive controls exact; ${Object.keys(refusals).length + extra.length} refusals reported (${[...Object.keys(refusals), ...extra].join("; ")})`);
         });
 
         // LOCALE-1B: the facet ids are URL contract (§ 6.3): every filter href of every catalog page is the same as before
@@ -2080,8 +2153,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         // RO copies (fixtures.mjs LOC1): per URL exactly the listed text changes against THE SAME COPY in before/ (the start
         // commit), each the EN pack value of its key → the RO pack value (since locale-1d: so every listed item is a change
-        // of this slice). locale-reviews-date-1 lists none: the RO copies' carousel has no `locale` attribute, so its
-        // date stays ro-RO (a RO carousel with a "" or non-string attribute does change — jsdom, not a fixture).
+        // of this slice). locale-1e lists none: it changes the `<html lang>` attribute (en → ro, row loc1e-html-lang), which the
+        // visible-text extraction does not read, and no text.
         const LOC1_RO_ROWS = new Set(["L-RO-1", "L-RO-2", "L-RO-3"]);
         for (const [fixture, rowId] of [["roContent", "loc1-ro-content"], ["roCommerce", "loc1-ro-commerce"], ["roCatalog", "loc1-ro-catalog"]]) {
             test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes against its own ${LOC1_START} capture, each from the EN pack value to the RO pack value`, async () => {
@@ -2180,6 +2253,108 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (cmrc-counties-1) roCommerce /checkout defaultRegions ${ro.defaultRegions.length} (RO pack); commerce /checkout defaultRegions ${en.defaultRegions.length}; strings = the language's table (${Object.keys(ro.strings).length} keys)`);
         });
 
+        // ── ROWS (loc1e-*) — LOCALE-1E, `<html lang>` per tenant (docs/slices/locale-1e.md). `<html>` is written by
+        // `app/[siteId]/layout.tsx`, now the root layout; `lang` = the language subtag of the tenant's normalised locale.
+        // The expected values are literals, not the helper's output (an oracle is not the code under test).
+        /** The body class of d9999d2's `app/layout.tsx` (an oracle literal, not the renderer's constant). */
+        const BODY_CLASS = "antialiased min-h-screen bg-white text-gray-900";
+        /** The opening `<html …>` tag of a server-rendered page. */
+        const htmlTag = (body) => /<html[^>]*>/.exec(body)?.[0];
+        test("(loc1e-html-lang) <html lang>: ro on every page of the three RO copies, en on every en-US subject page, on the en-GB tenant and on the malformed-locale tenant", async () => {
+            const counts = {};
+            const expectAll = (captures, tenants, tag) => {
+                for (const c of captures.filter((x) => tenants.includes(x.tenant) && isHtml(x) && x.status === 200)) {
+                    assert.equal(htmlTag(c.body), tag, `${c.tenant} ${c.path}`);
+                    counts[tag] = (counts[tag] ?? 0) + 1;
+                }
+            };
+            const ro = await loc1RoSet();
+            for (const key of ["roContent", "roCatalog", "roCommerce"]) assert.ok(ro.some((c) => c.tenant === key && isHtml(c) && c.status === 200), `${key} has a 200 HTML page`);
+            expectAll(ro, ["roContent", "roCatalog", "roCommerce"], '<html lang="ro">');
+            expectAll((await loc1EnSet()).captures, Object.keys(EN_US_REQUESTS), '<html lang="en">');
+            for (const [key, t] of Object.entries(LOC1E)) {
+                const res = await request({ port: server.port, path: "/", host: t.host });
+                assert.equal(res.status, 200, `${key} home`);
+                assert.equal(htmlTag(res.body), '<html lang="en">', `${key} (stored locale ${JSON.stringify(t.locale)})`);
+                counts[`${key} <html lang="en">`] = 1;
+            }
+            console.log(`  (loc1e-html-lang) ${JSON.stringify(counts)}`);
+        });
+
+        // LOCALE-1E — the 404 DOCUMENT (operator ruling LOC1E-404-DOCUMENT = B; review-0 finding 1). A 404 landing is Next's
+        // `__next_error__` shell: its HTML outside the payload carries NO `lang` and no body class — at d9999d2 as now
+        // (EXECUTED, `1e/before-404/`) — and the browser builds the document from the payload's ROOT 404 boundary. So the
+        // row proves the document where it is defined: (1) the SSR shell outside the payload equals a d9999d2 shell except
+        // the one stylesheet preload of the category; (2) the whole payload equals d9999d2's moved by category 4 — the
+        // tenant wrapper with the tenant's `lang` (the RO copy: `ro`), the root boundary's document `<html lang="en">` + the
+        // body class + Next's 404 UI; (3) that boundary, read directly: the root layout-router's `notFound` is exactly
+        // `html{lang:"en"} > body{className} > [title, 404 UI]`. For a known en-US tenant, the RO copy and a missing tenant
+        // (the layout's missing-tenant branch, which renders `children`: unit test locale-1e-html-lang). The browser view is
+        // recorded in docs/slices/locale-1e.md § 5 (headless Chromium, not part of this suite).
+        // NOT DETERMINISTIC, and not since this slice: a known tenant's 404 shell streams its metadata either inline in
+        // <head> or later in the body (a Suspense race; EXECUTED at d9999d2: 35/25 and 21/39 of 60). So `before-404/` holds
+        // EVERY variant d9999d2 produced in 60 requests (`<file>.variant-<n>`), and each of 8 live responses must equal ONE
+        // of them exactly under category 4 — nothing is masked for the race.
+        test("(loc1e-404-document) the 404 landings of a known tenant, the RO copy and a missing tenant: a d9999d2 shell, and a payload whose root 404 boundary is the document <html lang=\"en\"><body class> + Next's 404", async () => {
+            const before = await readCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            const buildId = (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim();
+            const clientModules = (await cm1Set()).clientModules;
+            assert.deepEqual([...new Set(before.captures.map((c) => `${c.tenant} ${c.path}`))], LOC1E_404_REQUESTS.map((r) => `${r.tenant} ${r.path}`), "before-404/ holds exactly LOC1E_404_REQUESTS");
+            const lines = [];
+            for (const r of LOC1E_404_REQUESTS) {
+                const variants = before.captures.filter((c) => c.tenant === r.tenant && c.path === r.path);
+                const matched = new Set();
+                for (let i = 0; i < 8; i++) {
+                    const [a] = await captureRequests(request, server.port, [r]);
+                    const cand = { buildId, clientModules, captures: [a] };
+                    assert.equal(a.status, 404, `${r.tenant} ${r.path}`);
+                    assert.ok(a.body.startsWith(ERROR_SHELL), `${r.tenant}: the error shell`);
+                    const move = [{ ...LOC1_EN_MOVE, lang: r.lang }];
+                    const results = variants.map((b) => (b.status === a.status && b.contentType === a.contentType && b.body.startsWith(ERROR_SHELL) ? checkExpected(before, b.body, cand, a.body, move) : ["status/Content-Type/shell"]));
+                    const hit = results.findIndex((p) => p.length === 0);
+                    assert.ok(hit >= 0, `${r.tenant} ${r.path}: response ${i + 1} equals no d9999d2 variant under category 4: ${JSON.stringify(results)}`);
+                    matched.add(hit + 1);
+                    if (i === 0) {
+                        // Bound mutation: one changed text of the 404 UI in the live payload matches no variant.
+                        const bad = { ...a, body: a.body.replace("This page could not be found.", "This page could not be f0und.") };
+                        assert.notEqual(bad.body, a.body, "mutation precondition: the 404 UI text travels in the payload");
+                        assert.ok(variants.every((b) => checkExpected(before, b.body, { ...cand, captures: [bad] }, bad.body, move).length > 0), `${r.tenant}: a changed 404 text was not reported`);
+                    }
+                    const tree = resolveFlight(maskBody(a.body, cand).masked.split("\n--- flight payload rows, sorted ---\n")[1].split("\n"));
+                    const [html] = tree.root.t.t.d.r[3].children[1][3].notFound;
+                    assert.equal(html[1], "html");
+                    assert.deepEqual(Object.keys(html[3]), ["lang", "children"]);
+                    assert.equal(html[3].lang, "en", `${r.tenant}: the root 404 document says en`);
+                    const body = html[3].children;
+                    assert.equal(body[1], "body");
+                    assert.equal(body[3].className, BODY_CLASS, `${r.tenant}: the body class`);
+                    assert.deepEqual(body[3].children.map((e) => e[1]), ["title", "div"], `${r.tenant}: Next's 404 UI`);
+                }
+                lines.push(`${r.tenant} ${r.path}: 8 × 404, each = a d9999d2 variant moved (of ${variants.length}; matched ${[...matched].sort().join(",")}), tenant lang ${r.lang}, root 404 document <html lang="en"><body class>`);
+            }
+            console.log(`  (loc1e-404-document) ${lines.join("; ")}`);
+        });
+
+        // Packet § 1 item 4: status, cache-control, content-type and vary of every serving fixture URL (the en-US subjects,
+        // the RO copies, the LOC1E fixtures and the not-found probes) equal the d9999d2 answers in 1e/before-headers.json
+        // (captured with the cm1-byte-identity/README.md worktree procedure; each URL was requested twice there and both
+        // answers agreed). Runs last in this block: its requests come after every row that depends on cache state.
+        test("(loc1e-cache-headers) every fixture URL and not-found probe answers the status, cache-control, content-type and vary of d9999d2", async () => {
+            const doc = JSON.parse(await readFile(path.join(LOC1_DIR, "1e", "before-headers.json"), "utf8"));
+            const want = [...Object.values(EN_US_REQUESTS).flat(), ...Object.values(LOC1_REQUESTS).flat(), ...LOC1E_PROBE_REQUESTS];
+            assert.deepEqual(doc.requests.map((r) => `${r.host}${r.path}`), want.map((r) => `${r.host}${r.path}`), "before-headers.json lists exactly the current request list");
+            const fields = (r) => ({ status: r.status, cacheControl: r.cacheControl, contentType: r.contentType, vary: r.vary });
+            const mismatches = (expected, got) => expected.flatMap((e, i) => (JSON.stringify(fields(e)) === JSON.stringify(got[i]) ? [] : [`${e.host}${e.path}: ${JSON.stringify(fields(e))} → ${JSON.stringify(got[i])}`]));
+            const got = [];
+            for (const r of doc.requests) got.push(cacheFields(await request({ port: server.port, path: r.path, host: r.host })));
+            assert.deepEqual(mismatches(doc.requests, got), []);
+            // Bound mutation: one changed field on one URL is reported.
+            const mutated = doc.requests.map((r, i) => (i === 0 ? { ...r, cacheControl: "private, no-store" } : r));
+            assert.equal(mismatches(mutated, got).length, 1, "a changed cache-control was not reported");
+            const byStatus = got.reduce((n, g) => ({ ...n, [g.status]: (n[g.status] ?? 0) + 1 }), {});
+            console.log(`  (loc1e-cache-headers) ${got.length} URLs equal to d9999d2 on status, cache-control, content-type, vary: ${JSON.stringify(byStatus)}`);
+        });
+
         // ── ROW (cmrc-counties-diff) — RETIRED by locale-1d (docs/slices/locale-1d.md): it compared the commerce and content
         // URLs with the 959f288 capture `cmrc-counties-1/before/` and ONE listed difference. locale-1d changes the bytes of
         // every commerce HTML page (the navbar's account texts, the views' strings), so that oracle cannot hold; its
@@ -2190,7 +2365,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // cm1-identity-* (against the baseline re-captured by locale-1d). The cmrc-counties-1 change itself stays pinned by
         // row cmrc-counties-1 and test/unit/cmrc-counties-1-*.test.ts. Its capture set stays as that slice's record.
         // Since locale-1c the locale byte row was loc1-diff-1c (the 0c0dbc8 capture, the same comparison as loc1-diff-1d);
-        // since locale-reviews-date-1 it is loc1-diff-reviews-date-1 (the eba5e18 capture, the same comparison).
+        // since locale-reviews-date-1 it was loc1-diff-reviews-date-1 (the eba5e18 capture, the same comparison); since
+        // locale-1e it is loc1-diff-1e (the d9999d2 capture, the same comparison plus category 4, the root-layout move).
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

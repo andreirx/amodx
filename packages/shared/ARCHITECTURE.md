@@ -16,7 +16,7 @@ src/
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
 ├── facets.ts           # Catalog storefront filter rules: buildFacetListing (required `labels`, locale-1b), the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
-├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b)
+├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)
 ```
@@ -118,12 +118,12 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
 > pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
 
-## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c` (PROTOTYPE)
+## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c`, `locale-1e` (PROTOTYPE)
 
 Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
 `docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`. Maturity **PROTOTYPE**: since `locale-1c` every visitor text
-surface reads the table (the block chrome was the last); promotion is the operator's decision at closeout (open: `1e`
-`<html lang>`, money formatting out of scope). Finding F-LOCALE-REVIEWS-DATE is closed by `locale-reviews-date-1`
+surface reads the table (the block chrome was the last); promotion is the operator's decision at closeout (`1e`
+`<html lang>`: built, `docs/slices/locale-1e.md`; money formatting out of scope). Finding F-LOCALE-REVIEWS-DATE is closed by `locale-reviews-date-1`
 (`docs/slices/locale-reviews-date-1.md`): a reviews carousel without its own non-empty `locale` attribute formats its
 dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it is absent.
 
@@ -144,7 +144,9 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   `pluralCategoriesOf(language)` lists them (admin Labels inputs, the RO pack test, the coverage rule).
 - **Language.** `normalizeLocale(raw)` (never throws: not a string, malformed or unsupported → `en-US`; Unicode
   extensions dropped; idempotent) gives the date/number locale; its language subtag selects the pack in
-  `LANGUAGE_PACKS` (none → English). `countryCode` never selects texts.
+  `LANGUAGE_PACKS` (none → English). `countryCode` never selects texts. `localeLanguageSubtag(raw)` (`locale-1e`) =
+  the language subtag of `normalizeLocale(raw)`, the renderer's `<html lang>`: the language the content is in, NOT the
+  resolver's `language` (the selected pack's: `"en"` for a `de-DE` tenant, which has no `de` pack).
 - **Resolution.** `resolveLocaleStrings(tenantFields)` → `{ locale, language, strings, defaults }`: per key, EN pack <
   language pack < tenant override (an own string property; for the nine cookie/legal keys a non-empty string — the old
   `||` rule). Non-string and unknown stored values are ignored. `defaults` = without the override (admin placeholders,

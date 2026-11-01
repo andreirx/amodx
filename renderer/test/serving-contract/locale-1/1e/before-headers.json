@@ -1,0 +1,1355 @@
+{
+  "buildId": "yXyUCg4rE-A_VEoLuYMn_",
+  "requests": [
+    {
+      "tenant": "fixture-tenant",
+      "host": "fixture.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "fixture-tenant",
+      "host": "fixture.serving-contract.test",
+      "path": "/published",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "fixture-tenant",
+      "host": "fixture.serving-contract.test",
+      "path": "/d4-page",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "wk",
+      "host": "wk-tenant.serving-contract.test",
+      "path": "/index.php",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "iso-a",
+      "host": "a.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "iso-a",
+      "host": "a.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "iso-a",
+      "host": "a.serving-contract.test",
+      "path": "/listed-post",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "iso-b",
+      "host": "b.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/stale-showcase",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/category/rugs",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/product/sale-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/product/variant-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/product/sold-out-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/product/rug-care-guide",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/products/c0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/search?q=rug",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/cart",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "cacheControl": "public, s-maxage=3600, stale-while-revalidate=59",
+      "contentType": "application/xml",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/openai-feed",
+      "status": 200,
+      "cacheControl": "public, s-maxage=900",
+      "contentType": "application/json",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/robots.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/llms.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/account",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout/confirmare",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout/cm1-order-cod?email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "commerce",
+      "host": "cm1-commerce.serving-contract.test",
+      "path": "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/category/mats",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/product/plain-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/products/d0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/search?q=rug",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/cart",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/checkout",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "cacheControl": "public, s-maxage=3600, stale-while-revalidate=59",
+      "contentType": "application/xml",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/openai-feed",
+      "status": 200,
+      "cacheControl": "public, s-maxage=900",
+      "contentType": "application/json",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/robots.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "content",
+      "host": "cm1-content.serving-contract.test",
+      "path": "/llms.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/stale-showcase",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/category/floors",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/product/oak-plank",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/product/ash-plank",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/product/legacy-plank",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/products/e0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/products/e0000000-0000-4000-8000-000000000002",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/products/e0000000-0000-4000-8000-000000000003",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/search?q=plank",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/cart",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/checkout",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "cacheControl": "public, s-maxage=3600, stale-while-revalidate=59",
+      "contentType": "application/xml",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/openai-feed",
+      "status": 404,
+      "cacheControl": null,
+      "contentType": "text/plain;charset=UTF-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/robots.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "catalog",
+      "host": "cm1-catalog.serving-contract.test",
+      "path": "/llms.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/category/cip1b-boen",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/category/cip1b-itc",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/category/cip1b-x",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/category/cip1b-u",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/stejar-mixt",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/frasin-mixt",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/nuc-fara-fisa",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/covor-arc",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/covor-shell",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/placa-nod",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/placa-nod-doi",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/lemn-x-unu",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/lemn-x-doi",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "cip1b-catalog",
+      "host": "cip1b-catalog.serving-contract.test",
+      "path": "/product/lemn-x-trei",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/category/mats",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/product/plain-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/products/d0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/search?q=rug",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/cart",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/checkout",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "cacheControl": "public, s-maxage=3600, stale-while-revalidate=59",
+      "contentType": "application/xml",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/openai-feed",
+      "status": 200,
+      "cacheControl": "public, s-maxage=900",
+      "contentType": "application/json",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/robots.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roContent",
+      "host": "loc1-ro-content.serving-contract.test",
+      "path": "/llms.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/stale-showcase",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/category/rugs",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/product/sale-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/product/variant-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/product/sold-out-rug",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/product/rug-care-guide",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/products/c0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/search?q=rug",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/cart",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "cacheControl": "public, s-maxage=3600, stale-while-revalidate=59",
+      "contentType": "application/xml",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/openai-feed",
+      "status": 200,
+      "cacheControl": "public, s-maxage=900",
+      "contentType": "application/json",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/robots.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/llms.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/account",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout/confirmare",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout/cm1-order-bank?email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout/cm1-order-cod?email=buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCommerce",
+      "host": "loc1-ro-commerce.serving-contract.test",
+      "path": "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/about",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/stale-showcase",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/shop",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/shop?availability=in_stock",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/category/floors",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/product/oak-plank",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/product/ash-plank",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/product/legacy-plank",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/products/e0000000-0000-4000-8000-000000000001",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/products/e0000000-0000-4000-8000-000000000002",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/products/e0000000-0000-4000-8000-000000000003",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/search?q=plank",
+      "status": 200,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/cart",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/checkout",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "cacheControl": "public, s-maxage=3600, stale-while-revalidate=59",
+      "contentType": "application/xml",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/openai-feed",
+      "status": 404,
+      "cacheControl": null,
+      "contentType": "text/plain;charset=UTF-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/robots.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "roCatalog",
+      "host": "loc1-ro-catalog.serving-contract.test",
+      "path": "/llms.txt",
+      "status": 200,
+      "cacheControl": null,
+      "contentType": "text/plain",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch"
+    },
+    {
+      "tenant": "enGb",
+      "host": "loc1e-en-gb.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "malformed",
+      "host": "loc1e-malformed.serving-contract.test",
+      "path": "/",
+      "status": 200,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "fixture.serving-contract.test",
+      "path": "/no-such-page",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "fixture.serving-contract.test",
+      "path": "/no-such-page?nf=1",
+      "status": 404,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "fixture.serving-contract.test",
+      "path": "/api/loc1e-no-such-route",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "fixture.serving-contract.test",
+      "path": "/api/loc1e-no-such-route?nf=1",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "fixture.serving-contract.test",
+      "path": "/favicon.ico",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "preview.cloudfront.net",
+      "path": "/_site/loc1e-no-such-tenant",
+      "status": 404,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "preview.cloudfront.net",
+      "path": "/tenant/loc1e-no-such-tenant",
+      "status": 404,
+      "cacheControl": "private, no-cache, no-store, max-age=0, must-revalidate",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "fixture.serving-contract.test",
+      "path": "/_next/static/loc1e-missing.js",
+      "status": 307,
+      "cacheControl": "s-maxage=31536000",
+      "contentType": "text/html; charset=utf-8",
+      "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding"
+    },
+    {
+      "tenant": "not-found",
+      "host": "unknown.serving-contract.test",
+      "path": "/",
+      "status": 404,
+      "cacheControl": "private, no-store",
+      "contentType": "text/plain;charset=UTF-8",
+      "vary": "Accept-Encoding"
+    }
+  ]
+}

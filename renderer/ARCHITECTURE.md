@@ -12,9 +12,10 @@ The public-facing multi-tenant website engine. A single Next.js 16 deployment se
 middleware.ts                                  # Package root (NOT src/) — edge: domain → tenant routing, ISR/twin split, unknown-host 404
 src/
 ├── app/
-│   ├── layout.tsx                             # Root HTML wrapper
+│   ├── globals.css                            # Imported by [siteId]/layout.tsx and not-found.tsx (no top-level layout since locale-1e)
+│   ├── not-found.tsx                          # ROOT 404 boundary (locale-1e): writes its own <html lang="en"><body> + Next's built-in 404
 │   ├── [siteId]/
-│   │   ├── layout.tsx                         # Site layout: config fetch, ThemeInjector, Navbar, Footer
+│   │   ├── layout.tsx                         # ROOT layout (locale-1e): <html lang>/<body>, config fetch, ThemeInjector, Navbar, Footer
 │   │   ├── [[...slug]]/page.tsx               # CACHEABLE catch-all — thin shell over SitePage
 │   │   ├── products/[productId]/page.tsx      # CACHEABLE legacy by-ID product — shell over ProductByIdPage
 │   │   ├── %5Fdyn/[[...slug]]/page.tsx        # force-dynamic twin of the catch-all (URL segment `_dyn`)
@@ -51,6 +52,7 @@ src/
     ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing
     ├── tenant-directory.ts                    # EDGE runtime: "is this host a wired tenant?" for middleware (own client — see file header)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
+    ├── document-shell.ts                      # BODY_CLASS_NAME — the one <body> class of [siteId]/layout.tsx and not-found.tsx (locale-1e)
     ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
     ├── routing.ts                             # useTenantUrl() client hook for preview-mode URL generation
     └── routing-server.ts                      # getPreviewBase() — reads amodx_preview_base cookie (dynamic twin only)
@@ -186,7 +188,8 @@ legacy `/products/<id>` route. Steps:
    **`[siteId]/layout.tsx` must never decide this outcome itself.** It is shared by both
    routes and receives only `{ siteId }`, so it knows neither the rendering mode nor the
    requested path — it can pick neither mechanism nor build the handoff's `Location`. When
-   its own `getTenantConfig()` returns `null` it renders `{children}` bare and lets the page
+   its own `getTenantConfig()` returns `null` it renders `{children}` bare (only inside
+   `<html lang="en"><body>`, which it must emit as the root layout since `locale-1e`) and lets the page
    below, which knows both, answer. (It must actually render `children`: a layout that
    returns early never invokes the page function, which is how the old "Site Not Found"
    HTTP-200 shell suppressed the page's `notFound()`.)
@@ -460,10 +463,10 @@ and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCa
 `CF1`) and `cip1b-*` (fixtures block `CIP1B`, a tenant of its own) in `test/serving-contract/contract.test.mjs`;
 `test/interest-e2e/facets.spec.mjs` (`cf1-prefetch`).
 
-## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c`, `locale-reviews-date-1` (PROTOTYPE)
+## Tenant locale table in the renderer — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c`, `locale-reviews-date-1`, `locale-1e` (PROTOTYPE)
 
 Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
-`docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`, `docs/slices/locale-reviews-date-1.md`.
+`docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`, `docs/slices/locale-reviews-date-1.md`, `docs/slices/locale-1e.md`.
 
 - `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
   every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
@@ -512,14 +515,29 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   category 3). Romanian scope: on a RO tenant a carousel without the attribute (the fixtures; every editor-made block — the
   block schema has no `locale` field) keeps its date, but a `""` or non-string attribute now also takes the tenant's
   locale (before: the raw date string, or the runtime default).
+- `locale-1e` — `<html lang>` per tenant (operator rulings LOC1E-404-DOCUMENT = B, LOC1E-STRUCTURE-CATEGORY = A;
+  `docs/slices/locale-1e.md`): `app/[siteId]/layout.tsx` is the ROOT layout (`app/layout.tsx` deleted; its
+  `globals.css` import and `<body>` class moved unchanged; the class lives in `lib/document-shell.ts`) and writes
+  `<html lang={localeLanguageSubtag(config.locale)}>` — the language subtag of the tenant's normalised locale (`ro-RO` →
+  `ro`, `de-DE` → `de`, absent/malformed → `en`), not the resolver's pack language. The missing-tenant branch writes
+  `<html lang="en"><body>` around `children`. The layout reads only `params` and the tenant record (no request API);
+  the build's route table is unchanged. Next's default 404 boundary belongs to the top `app/` segment, which has no
+  layout now, so it would replace the subtree that holds `<html>`; `app/not-found.tsx` is that root boundary and writes
+  the document itself — `<html lang="en">`, the body class, the stylesheet, Next's built-in 404 UI — so every 404 page
+  renders as before (English, `lang="en"`, on every tenant). A 404 landing is a `__next_error__` shell whose document
+  the browser builds from the payload (also before this slice). Rows `loc1e-html-lang`, `loc1e-404-document`
+  (`locale-1/1e/before-404/`), `loc1e-category-controls`, `loc1e-cache-headers` (`locale-1/1e/before-headers.json`);
+  unit `test/unit/locale-1e-html-lang.test.ts`.
 - `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
 - Proof: `test/serving-contract/locale-1/` — `proof.mjs` (byte-difference check incl. the 1b changed-prop form
   `beforeValue`, `renderItem` incl. the 1d `segment` form, the request rules incl. `orderRequests`), `extract.mjs` (the
   visible-text extraction, re-exported by `proof.mjs`; importable under jsdom), per slice `<slice>/before/` (immutable
   start capture; since 1d also the RO copies), `expected-diff.json`, `ro-expected.json`, `coverage.json` (1b also
-  `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT slice's set (`reviews-date-1`, from `eba5e18`; the
-  `1a`/`1b`/`1c`/`1d` files are their records): `loc1-subjects`, `loc1-text-<subject>` (equal except the listed
-  category-3 ledger texts), `loc1-text-mutation`, `loc1-diff-reviews-date-1`, `loc1-facet-hrefs`,
+  `text-expected.json`: the L-EN-CAT changes); the rows read the CURRENT slice's set (`1e`, from `d9999d2`; the
+  `1a`/`1b`/`1c`/`1d`/`reviews-date-1` files are their records): `loc1-subjects`, `loc1-text-<subject>` (equal except the
+  listed category-3 ledger texts; `1e` lists none), `loc1-text-mutation`, `loc1-diff-1e` (category 4 = the `1e`
+  root-layout move, a forward transform of the before tree that validates every value; refusals in
+  `loc1e-category-controls`), `loc1-facet-hrefs`,
   `loc1-flight-controls`, `loc1-ro-content`, `loc1-ro-commerce`, `loc1-ro-catalog` (each RO copy against its own start
   capture), `loc1-order-pages`. Client-only commerce states: `test/unit/locale-1d-client.test.ts` (en-US markup equal to a
   92adbba capture; `CheckoutPageView`'s `DeliveryDatePicker` is exported for it only, a test seam); headless renders: `test/unit/locale-1d-server-render.test.ts`.
@@ -533,7 +551,7 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   reference stays a typed leaf; an unknown form fails closed; no URL is excluded.
   The en-US subjects are, by rule, every `fixtures.mjs` tenant without `locale` (`proof.mjs` `EN_US_REQUESTS`), so a new
   locale-less fixture joins the gate; fixtures `LOC1` are the RO copies of the CM1 commerce/content/catalog tenants. The strict `cm1-byte-identity/baseline/` was advanced from
-  the 1a, 1b, cmrc-counties-1, 1d, 1c and reviews-date-1 trees (history in its README); `cm1-control` reads the preserved `control-de4ad52/`. Unit:
+  the 1a, 1b, cmrc-counties-1, 1d, 1c, reviews-date-1 and 1e trees (history in its README); `cm1-control` reads the preserved `control-de4ad52/`. Unit:
   `locale-1a-{server-render,client}.test.ts`, `locale-1b-{server-render,client}.test.ts`; the coverage checker
   `locale-coverage.test.ts` (named `locale-1a-coverage.test.ts` until 1b) checks every slice, and each plural category
   of each count key, per language.

@@ -23,12 +23,17 @@
 //                                    "$undefined" → the resolved texts; the commerce views' `strings` gain the 1b keys);
 //                                    both values must occur, each on its side;
 //       3  approved ledger change  — `{ category: 3, row: "<ledger row>", before, after }` (an html substring change).
+//       4  LOCALE-1E root-layout move — `{ category: 4, row: "LOC1E-ROOT-LAYOUT", lang }` (operator ruling
+//                                    LOC1E-STRUCTURE-CATEGORY = A): `<html>`/`<body>` moved from the deleted `app/layout.tsx`
+//                                    into `app/[siteId]/layout.tsx`, and the root 404 boundary writes its own document.
+//                                    Applied as a FORWARD transform of the BEFORE tree (`moveRootLayout`, below) that
+//                                    validates every input against the d9999d2 shape; the AFTER tree must then be equal.
 //     The check removes each listed difference from the AFTER side and then demands byte equality with BEFORE; a
 //     listed difference that does not occur on that URL also fails. No canonicalisation is added or widened.
 import { fileURLToPath } from "node:url";
 import { fillTemplate, selectPluralText } from "@amodx/shared";
-import { CM1_REQUESTS, maskBody } from "../cm1-byte-identity.mjs";
-import { CM1, ITEMS, LOC1 } from "../fixtures.mjs";
+import { CM1_REQUESTS, maskBody, splitFlight } from "../cm1-byte-identity.mjs";
+import { CM1, FIXTURE_HOST, ITEMS, LOC1, LOC1E, MISSING_SLUG, UNKNOWN_HOST } from "../fixtures.mjs";
 
 export const LOC1_DIR = fileURLToPath(new URL("./", import.meta.url));
 
@@ -135,6 +140,48 @@ function derivedRequests(t) {
 export const EN_US_REQUESTS = Object.fromEntries(tenantItems
     .filter((t) => !Object.prototype.hasOwnProperty.call(t, "locale"))
     .map((t) => (cm1KeyOf[t.id] ? [cm1KeyOf[t.id], cm1Requests(cm1KeyOf[t.id])] : [t.id, derivedRequests(t)])));
+
+/**
+ * LOCALE-1E: the requests that are not in the en-US or RO capture lists but whose answer the layout move could change:
+ * the home page of each `<html lang>` fixture (`LOC1E`), and the not-found probes — a missing page on a known tenant
+ * (the cacheable `307` handoff and its `?nf=1` `404`); three paths that SKIP the middleware (its matcher excludes `api`,
+ * `_next/static` and `favicon.ico`) and therefore match `[siteId]` with `siteId` = their first segment (`"api"`,
+ * `"favicon.ico"`, `"_next"`): no tenant record, so they take the layout's missing-tenant branch on the cacheable route
+ * (OBSERVED at d9999d2 and after: `307`), plus the `?nf=1` follow-up of one; a missing tenant addressed by id on a preview
+ * host (the same branch on the twin, `/_site/` and `/tenant/`); the unknown-host gate. None of these reaches Next's
+ * prerendered `/_not-found` (OBSERVED for these probes; that no request reaches it is NOT claimed). Used with
+ * `[...EN_US_REQUESTS, ...LOC1_REQUESTS]` by row `loc1e-cache-headers`; `tenant` is a label only.
+ */
+const LOC1E_PREVIEW_HOST = "preview.cloudfront.net";   // = PREVIEW_HOST of contract.test.mjs (any `cloudfront.net` host is a preview host)
+export const LOC1E_PROBE_REQUESTS = [
+    ...Object.entries(LOC1E).map(([key, t]) => ({ tenant: key, host: t.host, path: "/" })),
+    { tenant: "not-found", host: FIXTURE_HOST, path: MISSING_SLUG },
+    { tenant: "not-found", host: FIXTURE_HOST, path: `${MISSING_SLUG}?nf=1` },
+    { tenant: "not-found", host: FIXTURE_HOST, path: "/api/loc1e-no-such-route" },
+    { tenant: "not-found", host: FIXTURE_HOST, path: "/api/loc1e-no-such-route?nf=1" },
+    { tenant: "not-found", host: FIXTURE_HOST, path: "/favicon.ico" },
+    { tenant: "not-found", host: LOC1E_PREVIEW_HOST, path: "/_site/loc1e-no-such-tenant" },
+    { tenant: "not-found", host: LOC1E_PREVIEW_HOST, path: "/tenant/loc1e-no-such-tenant" },
+    { tenant: "not-found", host: FIXTURE_HOST, path: "/_next/static/loc1e-missing.js" },
+    { tenant: "not-found", host: UNKNOWN_HOST, path: "/" },
+].map((r) => ({ ...r, file: fileOf(r.path) }));
+
+/**
+ * LOCALE-1E (operator ruling LOC1E-404-DOCUMENT = B): the 404 documents whose payload must be exactly the d9999d2 one
+ * moved by the `1e` category — a known en-US tenant's `?nf=1` landing, the RO copy's (its tenant layout says `ro`, the
+ * root 404 boundary `en`), and a missing tenant on a preview host. Captured from d9999d2 into `1e/before-404/`.
+ */
+export const LOC1E_404_REQUESTS = [
+    { tenant: "fixture-tenant", host: FIXTURE_HOST, path: `${MISSING_SLUG}?nf=1`, lang: "en" },
+    { tenant: "roContent", host: LOC1.roContent.host, path: `${MISSING_SLUG}?nf=1`, lang: "ro" },
+    { tenant: "missing-tenant", host: LOC1E_PREVIEW_HOST, path: "/_site/loc1e-no-such-tenant", lang: "en" },
+].map((r) => ({ ...r, file: fileOf(r.path) }));
+
+/** The four response fields of row `loc1e-cache-headers` (packet § 1 item 4); an absent header is `null`. */
+export function cacheFields(res) {
+    const one = (name) => { const v = res.header(name); return v === undefined ? null : String(v); };
+    return { status: res.status, cacheControl: one("cache-control"), contentType: one("content-type"), vary: one("vary") };
+}
 
 /**
  * Per subject, the URLs whose visible text differs between two capture sets (status, structure or text) beyond the
@@ -399,6 +446,131 @@ function stripProp(node, identity, prop, value, hits) {
     return node;
 }
 
+// ── Category 4: the LOCALE-1E root-layout move (docs/slices/locale-1e.md § 4; ruling LOC1E-STRUCTURE-CATEGORY = A) ─────
+// EXACTLY the enumerated rows, each value taken from the BEFORE side and its shape validated (never reset):
+//  - root segment `""`: before `fragment[[LINK, SCRIPT], html{lang:"en"} > body{className} > LR]` → after
+//    `fragment[null, LR']`, LR' = LR whose `notFound` `[NF0, []]` became `[html{lang:"en"} > body{className} > NF0, [LINK]]`
+//    (the root 404 boundary `app/not-found.tsx` writes the document and links the same stylesheet); SCRIPT (the deleted
+//    root layout's chunk) leaves the payload; the root `d.v` `null` → the stream-row reference `#row(["C","X"])`;
+//  - `[siteId]` segment: `fragment[SCRIPTS, X]` → `fragment[[LINK, ...SCRIPTS], html{lang} > body{className} > X]`; its
+//    hint `h` 1024 → 1040 (ISR) or absent → 16 (twin) — bit 16 is the root-layout hint, moved; any other `h` refuses;
+//  - `G[1]` (the global-error stylesheets) `[LINK]` → `[]`;
+//  - RAW values (CM1-A1 masks every `/_next/static` path, so the masked equality cannot see a changed URL; review 0 of
+//    iteration 1, R1): on trees resolved with the asset paths UNMASKED (`rawParts`), the after `[siteId]` resources equal
+//    `[LINK, ...SCRIPTS]` of the before side element for element (same `href`, same `src`), the after 404 boundary's
+//    `[LINK]` and the before `G[1]` equal the before root LINK, and the removed SCRIPT's `src` is in the document head on
+//    both sides; the head's `/_next/static` stylesheet hrefs are equal before/after and each equals LINK's href;
+//  - the error-shell preload (ruling LOC1E-404-SHELL-PRELOAD = A): on a page whose RAW response starts with the
+//    `__next_error__` shell — the predicate, never a URL list — exactly ONE `<link rel="preload" href="<LINK's href>"
+//    as="style"/>` may be absent after; any other preload difference, and any preload difference on a page that is not
+//    such a shell, refuses (the HTML comparison stays exact there).
+// Anything else stays a difference. `body{className}` and `LINK` are the before side's own values (equality proves them).
+const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
+const STYLE_PRELOAD = (href) => `<link rel="preload" href="${href}" as="style"/>`;
+const isElement = (n, type) => Array.isArray(n) && n[0] === "$" && n[1] === type && n[3] !== null && typeof n[3] === "object";
+const hasExactKeys = (o, keys) => canon(Object.keys(o)) === canon(keys);
+const element = (type, props) => ["$", type, null, rawObject(Object.entries(props))];
+const withProps = (el, props) => [el[0], el[1], el[2], rawObject(Object.entries({ ...el[3], ...props }))];
+const withKeys = (o, entries) => rawObject([...Object.keys(o).map((k) => [k, Object.hasOwn(entries, k) ? entries[k] : o[k]]), ...Object.keys(entries).filter((k) => !Object.hasOwn(o, k)).map((k) => [k, entries[k]])]);
+const fragmentChildren = (r) => (isElement(r, "$Sreact.fragment") && hasExactKeys(r[3], ["children"]) && Array.isArray(r[3].children) && r[3].children.length === 2 ? r[3].children : null);
+
+/** The expected AFTER tree of the root-layout move, built from the BEFORE tree; `null` (with a problem) when the before
+ *  tree is not the d9999d2 shape. `lang` = the tenant layout's expected `<html lang>`. */
+function moveRootLayout(tree, lang, problems) {
+    const fail = (why) => { problems.push(`category 4: ${why}`); return null; };
+    const R = tree.root;
+    if (R === null || typeof R !== "object" || R instanceof Generated || !R.t || !R.t.t) return fail("no root segment");
+    const G = R.G, rootSeg = R.t.t;
+    if (!Array.isArray(G) || G.length !== 2 || !Array.isArray(G[1]) || G[1].length !== 1 || !isElement(G[1][0], "link")) return fail("G[1] is not one stylesheet link");
+    const LINK = G[1][0];
+    const rootChildren = fragmentChildren(rootSeg.d?.r);
+    if (!rootChildren) return fail("the root segment is not a two-child fragment");
+    const [rootRes, html] = rootChildren;
+    if (!Array.isArray(rootRes) || rootRes.length !== 2 || canon(rootRes[0]) !== canon(LINK) || !isElement(rootRes[1], "script")) return fail("the root resources are not [the G[1] stylesheet, one script]");
+    if (!isElement(html, "html") || !hasExactKeys(html[3], ["lang", "children"]) || html[3].lang !== "en") return fail('the root layout is not <html lang="en">');
+    const body = html[3].children;
+    if (!isElement(body, "body") || !hasExactKeys(body[3], ["className", "children"]) || typeof body[3].className !== "string") return fail("the root layout's <html> holds no <body className>");
+    const LR = body[3].children, className = body[3].className;
+    if (!Array.isArray(LR) || LR[0] !== "$" || !LR[3] || !Array.isArray(LR[3].notFound) || LR[3].notFound.length !== 2 || canon(LR[3].notFound[1]) !== "[]") return fail("the root layout-router has no [404 UI, []] notFound");
+    if (rootSeg.d.v !== null) return fail("the root segment's v is not null");
+    if (!(rootSeg.c instanceof Generated) || !Array.isArray(rootSeg.c.value) || rootSeg.c.value.length !== 1 || rootSeg.c.value[0][0] !== "children") return fail("the root segment has not exactly one child segment");
+    const seg = rootSeg.c.value[0][1];
+    const segChildren = fragmentChildren(seg?.d?.r);
+    if (!segChildren || !Array.isArray(segChildren[0]) || !segChildren[0].every((x) => isElement(x, "script"))) return fail("the [siteId] segment is not fragment[[scripts], content]");
+    const h = !Object.hasOwn(seg, "h") ? 16 : seg.h === 1024 ? 1040 : undefined;
+    if (h === undefined) return fail(`the [siteId] hint h=${seg.h} is not an enumerated value`);
+    const wrap = (inner, l) => element("html", { lang: l, children: element("body", { className, children: inner }) });
+    const lrAfter = withProps(LR, { notFound: [wrap(LR[3].notFound[0], "en"), [LINK]] });
+    if (Object.keys(seg)[0] !== "s") return fail("the [siteId] segment does not start with its key s");
+    const dAfter = withKeys(seg.d, { r: [seg.d.r[0], seg.d.r[1], seg.d.r[2], rawObject([["children", [[LINK, ...segChildren[0]], wrap(segChildren[1], lang)]]])] });
+    // The before key order, with `h` right after `s` (where a twin segment gains it).
+    const segAfter = rawObject(["s", "h", ...Object.keys(seg).filter((k) => k !== "s" && k !== "h")].map((k) => [k, k === "h" ? h : k === "d" ? dAfter : seg[k]]));
+    const rootAfter = withKeys(rootSeg, {
+        d: withKeys(rootSeg.d, { r: [rootSeg.d.r[0], rootSeg.d.r[1], rootSeg.d.r[2], rawObject([["children", [null, lrAfter]]])], v: new Generated("row", ["C", "X"]) }),
+        c: new Generated(rootSeg.c.tag, [["children", segAfter]]),
+    });
+    return { ...tree, root: withKeys(R, { G: [G[0], []], t: withKeys(R.t, { t: rootAfter }) }) };
+}
+
+const RAW_STATIC = "/_next/RAW-static/";
+/** The two parts of `canonicalParts`, through the UNCHANGED CM1-A1 pipeline, with the asset paths kept: the body's
+ *  `/_next/static/` prefix is renamed first so the asset mask does not match it (`unraw` maps it back). */
+const rawParts = (set, body) => canonicalParts(set, body.split("/_next/static/").join(RAW_STATIC));
+const unraw = (v) => (typeof v === "string" ? v.split(RAW_STATIC).join("/_next/static/") : v);
+
+/** The resources category 4 moves, read from a tree by position; `null` when the tree does not have the shape. */
+function movedResources(tree, side) {
+    try {
+        const R = tree.root, rootSeg = R.t.t, seg = rootSeg.c.value[0][1];
+        const [rootFirst, rootSecond] = rootSeg.d.r[3].children;
+        const segRes = seg.d.r[3].children[0];
+        if (side === "before") return { link: rootFirst[0], script: rootFirst[1], g1: R.G[1], scripts: segRes };
+        const lr = rootSecond, notFound = lr[3].notFound;
+        return { segRes, notFoundRes: notFound[1], g1: R.G[1] };
+    } catch {
+        return null;
+    }
+}
+
+const headStylesheets = (html) => [...html.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+)"[^>]*>/g)].map((m) => m[1]);
+const headScripts = (html) => [...html.matchAll(/<script src="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]);
+const stylePreloads = (html) => [...html.matchAll(/<link rel="preload" href="(\/_next\/static\/[^"]+)" as="style"\/>/g)].map((m) => m[1]);
+
+/**
+ * Category 4, raw half (see above). Pushes a problem for every raw difference outside the enumerated move and returns
+ * the BEFORE html (masked) the after html must equal: on an error shell, without the one allowed preload.
+ */
+function moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, beforeHtml, problems) {
+    const fail = (why) => { problems.push(`category 4 (raw): ${why}`); return beforeHtml; };
+    const rb = rawParts(beforeSet, beforeBody), ra = rawParts(afterSet, afterBody);
+    const before = movedResources(resolveFlight(rb.rows), "before"), after = movedResources(resolveFlight(ra.rows), "after");
+    if (!before || !after) return fail("the payload does not have the enumerated shape");
+    const href = unraw(before.link?.[3]?.href);
+    if (typeof href !== "string" || !href.startsWith("/_next/static/")) return fail("the before root stylesheet has no /_next/static href");
+    if (canon(after.segRes) !== canon([before.link, ...before.scripts])) return fail("the [siteId] resources are not the before stylesheet and scripts, same href and src");
+    if (canon(after.notFoundRes) !== canon([before.link])) return fail("the root 404 boundary does not link the before stylesheet");
+    if (canon(before.g1) !== canon([before.link])) return fail("the before G[1] is not the root stylesheet");
+    const htmlB = splitFlight(beforeBody).html, htmlA = splitFlight(afterBody).html;
+    const rootScript = unraw(before.script?.[3]?.src);
+    if (!headScripts(htmlB).includes(rootScript) || !headScripts(htmlA).includes(rootScript)) return fail(`the removed root-layout script ${rootScript} is not in the document head on both sides`);
+    const sheetsB = headStylesheets(htmlB), sheetsA = headStylesheets(htmlA);
+    if (canon(sheetsB) !== canon(sheetsA) || sheetsA.some((h) => h !== href)) return fail(`the head stylesheets differ or are not the payload stylesheet (before ${JSON.stringify(sheetsB)}, after ${JSON.stringify(sheetsA)}, payload ${href})`);
+    // The error-shell preload: identified by the raw response, never by a URL.
+    const pb = stylePreloads(htmlB), pa = stylePreloads(htmlA);
+    const missing = [...pb];
+    for (const h of pa) { const i = missing.indexOf(h); if (i < 0) return fail(`a style preload appeared: ${h}`); missing.splice(i, 1); }
+    if (missing.length === 0) return beforeHtml;
+    const shell = htmlB.startsWith(ERROR_SHELL) && htmlA.startsWith(ERROR_SHELL);
+    if (!shell) return fail("a style preload is missing on a page that is not a __next_error__ shell");
+    if (missing.length !== 1 || missing[0] !== href) return fail(`the shell misses ${JSON.stringify(missing)}, not exactly one preload of ${href}`);
+    // Remove that preload from the masked before html: the k-th masked style preload, k = its position in the raw list.
+    const k = pb.indexOf(href);
+    const masked = STYLE_PRELOAD("/_next/static/<asset>");
+    const pieces = beforeHtml.split(masked);
+    if (pieces.length !== pb.length + 1) return fail("the masked shell's preloads do not match the raw ones");
+    return [...pieces.slice(0, k + 1).join(masked), pieces.slice(k + 1).join(masked)].join("");
+}
+
 /**
  * Checks one URL: after removing every listed difference from the AFTER side, its canonical body must equal BEFORE's.
  * @returns {string[]} problems; empty = the differences are exactly the listed ones.
@@ -407,6 +579,10 @@ export function checkExpected(beforeSet, beforeBody, afterSet, afterBody, expect
     const problems = [];
     const b = canonicalParts(beforeSet, beforeBody);
     const a = canonicalParts(afterSet, afterBody);
+    const moves = expected.filter((x) => x.category === 4);
+    if (moves.length > 1) problems.push("category 4 listed more than once");
+    if (moves.some((m) => !hasExactKeys(m, ["category", "row", "lang"]))) problems.push("a category-4 entry holds a field other than category, row, lang");
+    const beforeHtml = moves.length ? moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, b.html, problems) : b.html;
     let html = a.html;
     const textual = expected.filter((x) => x.category === 1 || x.category === 3);
     for (const e of textual) {
@@ -421,7 +597,7 @@ export function checkExpected(beforeSet, beforeBody, afterSet, afterBody, expect
         if (!replacedRows.some((row) => row.includes(e.flightAfter))) problems.push(`listed category-${e.category} payload difference does not occur: ${JSON.stringify(e.flightAfter).slice(0, 120)}`);
         replacedRows = replacedRows.map((row) => row.split(e.flightAfter).join(e.flightBefore));
     }
-    if (html !== b.html) problems.push("the HTML outside the flight payload differs beyond the listed differences");
+    if (html !== beforeHtml) problems.push("the HTML outside the flight payload differs beyond the listed differences");
     // The payload: both sides resolved (`resolveFlight`), then each listed category-2 prop removed from the AFTER tree
     // where it has exactly `value`, and a changed prop (`beforeValue`, LOCALE-1B) from the BEFORE tree where it has
     // exactly that value; then the two trees must be equal.
@@ -429,6 +605,7 @@ export function checkExpected(beforeSet, beforeBody, afterSet, afterBody, expect
     const changed = props.filter((x) => Object.hasOwn(x, "beforeValue"));
     let treeB = resolveFlight(b.rows);
     let treeA = resolveFlight(replacedRows);
+    if (moves.length) treeB = moveRootLayout(treeB, moves[0].lang, problems) ?? treeB;
     const hitsPer = props.map(() => ({ n: 0 }));
     const beforeHits = changed.map(() => ({ n: 0 }));
     props.forEach((e, i) => { treeA = stripProp(treeA, e.element, e.prop, e.value, hitsPer[i]); });

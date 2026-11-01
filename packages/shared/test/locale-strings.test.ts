@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import {
     CommerceStringsSchema, CatalogStringsSchema, SiteStringsSchema, PluralTextsSchema, EN_PACK, RO_PACK,
     EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, LANGUAGE_PACKS, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES,
-    normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, type LanguagePack, type CountText,
+    normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, type LanguagePack, type CountText,
     BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings,
 } from "../src/index.js";
 import * as shared from "../src/index.js";
@@ -283,6 +283,24 @@ describe("normalizeLocale (§ 3.3; inputs of § 12 E20)", () => {
         const d = new Date("2026-10-31T12:00:00Z");
         expect(() => d.toLocaleDateString("ro_RO")).toThrow(RangeError);
         expect(d.toLocaleDateString(normalizeLocale("ro_RO"), { timeZone: "UTC" })).toBe("31.10.2026");
+    });
+});
+
+// LOCALE-1E (operator decision 2 of the packet): the `<html lang>` value is the language subtag of the NORMALISED tenant
+// locale — the language the page content is in —, not the resolver's `language` (the language of the selected pack).
+describe("localeLanguageSubtag (locale-1e, `<html lang>`)", () => {
+    const cases: [unknown, string][] = [
+        ["en-US", "en"], ["en-GB", "en"], ["ro-RO", "ro"], ["de-DE", "de"],
+        [undefined, "en"], ["", "en"], ["123", "en"], ["xx-YY", "en"], [null, "en"], [42, "en"], [{}, "en"],
+        ["ro_RO", "ro"], [" ro-RO ", "ro"], ["ro-RO-u-nu-arab", "ro"],
+    ];
+    for (const [raw, expected] of cases) {
+        it(`${JSON.stringify(raw) ?? "undefined"} → ${expected}`, () => expect(localeLanguageSubtag(raw)).toBe(expected));
+    }
+
+    it("follows the tenant's locale, not the selected pack: de-DE → \"de\" while the resolver's pack language is \"en\"", () => {
+        expect(resolveLocaleStrings({ locale: "de-DE" }).language).toBe("en");
+        expect(localeLanguageSubtag("de-DE")).toBe("de");
     });
 });
 

@@ -1,3 +1,10 @@
+// LOCALE-1E (docs/slices/locale-1e.md): this is the ROOT layout. Next writes `<html>` only in a root layout, and a
+// root layout at `app/layout.tsx` receives no route parameters, so it could not know the tenant; `<html>`/`<body>`
+// moved here (the `app/[lang]/layout.tsx` pattern) and `app/layout.tsx` was deleted. Its stylesheet import and its
+// `<body>` class moved with it, unchanged. `lang` = the language subtag of the tenant's normalised locale. This
+// layout reads only `params` and the tenant record: a request API (`headers()`, `cookies()`) here would make every
+// page dynamic and break the ISR cache.
+import "../globals.css";
 import { Providers } from "@/components/Providers";
 import { getTenantConfig, hasActivePopups } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -12,9 +19,10 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag } from "@amodx/shared";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
+import { BODY_CLASS_NAME } from "@/lib/document-shell";
 
 export const revalidate = false;
 
@@ -93,8 +101,17 @@ export default async function SiteLayout({ children, params }: Props) {
         // evaluated) — which is how the original HTTP-200 "Site Not Found" shell
         // suppressed the page's own not-found. Nothing escapes here: the child always ends
         // in a redirect (ISR) or a 404 (twin) when the tenant is missing.
+        //
+        // LOCALE-1E: as the root layout it must still emit `<html>`/`<body>` around `children` (Next requires both in a
+        // root layout); `lang` is the § 3.3 fallback, "en", as before the move.
         console.warn(`[SiteLayout] No tenant record for "${siteId}" — deferring to the page's not-found handoff.`);
-        return <>{children}</>;
+        return (
+            <html lang={localeLanguageSubtag(undefined)}>
+            <body className={BODY_CLASS_NAME}>
+            {children}
+            </body>
+            </html>
+        );
     }
 
     const commerceEnabled = config.commerceEnabled ?? false;
@@ -108,6 +125,8 @@ export default async function SiteLayout({ children, params }: Props) {
     const { strings: { site, catalog, commerce }, defaults } = resolveLocaleStrings(config);
 
     return (
+        <html lang={localeLanguageSubtag(config.locale)}>
+        <body className={BODY_CLASS_NAME}>
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
             <div className="site-wrapper flex flex-col min-h-screen">
                 {/* Referral attribution trigger — first, so the beacon is issued during
@@ -301,5 +320,7 @@ export default async function SiteLayout({ children, params }: Props) {
                 )}
             </div>
         </Providers>
+        </body>
+        </html>
     );
 }

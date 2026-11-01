@@ -1,0 +1,40 @@
+{
+  "buildId": "E7f33E6ghOHWVrVBAMkZZ",
+  "captures": [
+    {
+      "tenant": "fixture-tenant",
+      "path": "/no-such-page?nf=1",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "body": "fixture-tenant/no-such-page_nf_1.variant-1.body"
+    },
+    {
+      "tenant": "fixture-tenant",
+      "path": "/no-such-page?nf=1",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "body": "fixture-tenant/no-such-page_nf_1.variant-2.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/no-such-page?nf=1",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/no-such-page_nf_1.variant-1.body"
+    },
+    {
+      "tenant": "roContent",
+      "path": "/no-such-page?nf=1",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "body": "roContent/no-such-page_nf_1.variant-2.body"
+    },
+    {
+      "tenant": "missing-tenant",
+      "path": "/_site/loc1e-no-such-tenant",
+      "status": 404,
+      "contentType": "text/html; charset=utf-8",
+      "body": "missing-tenant/_site_loc1e-no-such-tenant.variant-1.body"
+    }
+  ]
+}

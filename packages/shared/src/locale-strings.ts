@@ -78,6 +78,16 @@ export function normalizeLocale(raw: unknown): string {
     return Intl.DateTimeFormat.supportedLocalesOf([base]).length > 0 ? base : FALLBACK_LOCALE;
 }
 
+/**
+ * LOCALE-1E — the language subtag of the tenant's normalised locale (`"en-US"` → `"en"`, `"ro-RO"` → `"ro"`,
+ * `"de-DE"` → `"de"`; absent or malformed → `"en"`, the § 3.3 fallback). The language the page content is written in,
+ * for the `<html lang>` attribute. NOT `ResolvedLocaleStrings.language`, which is the language of the selected PACK
+ * (`"en"` for a `de-DE` tenant, because no `de` pack exists). Never throws.
+ */
+export function localeLanguageSubtag(raw: unknown): string {
+    return new Intl.Locale(normalizeLocale(raw)).language;
+}
+
 /** The registered pack for a normalised locale's language subtag; English when none is registered (§ 3.3). */
 function packFor(locale: string): LanguagePack {
     const language = new Intl.Locale(locale).language;

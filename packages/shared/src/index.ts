@@ -11,7 +11,7 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts.
-export { normalizeLocale, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings } from "./locale-strings.js";
+export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings } from "./locale-strings.js";
 export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
