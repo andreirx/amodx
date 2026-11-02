@@ -32,7 +32,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -124,6 +124,11 @@ const CATALOG = {
  * must occur exactly once:
  *   TypographyDetails (Typography card), ThemeColorDetails (Theme card, Palette), ShapeAndCards (Theme card, light tab),
  *   FooterWidthControl (Navbar & Layout card).
+ * BULK-PURGE-FOOTER-1 (Part B rule 3; procedure of cat-theme-1-impl.md § 5) adds exactly ONE group, the new controls:
+ *   FooterColorControls (Navbar & Layout card, right after the footer width; both share ONE child slot of the card — a
+ *   fragment — because React's useId width depends on the parent's child count: a new sibling re-numbered the card's
+ *   Radix Select ids, OBSERVED). The captures are NOT re-taken (they hold none of the new controls); the controls below
+ *   include one byte next to this group.
  * The three wider widths in the two width lists are Radix `SelectItem`s, which a closed Select does not render: they add
  * no byte; the lists are pinned below (`HEADER_WIDTH_OPTIONS`, `PAGE_WIDTH_OPTIONS`).
  */
@@ -132,6 +137,7 @@ const THEME_GROUPS = (config: Record<string, any>) => [
     renderToStaticMarkup(createElement(ThemeColorDetails, { theme: config.theme, onChange: () => {} })),
     renderToStaticMarkup(createElement(ShapeAndCards, { theme: config.theme, onChange: () => {} })),
     renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} })),
+    renderToStaticMarkup(createElement(FooterColorControls, { config, setConfig: () => {} })),
 ];
 function withoutCatTheme(html: string, config: Record<string, unknown>): string {
     let out = html;
@@ -157,7 +163,9 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         expect(withoutCatTheme(commerce, COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
         const footer = THEME_GROUPS(CONTENT)[3];
+        const footerColours = THEME_GROUPS(COMMERCE)[4];
         const mutations: [string, string, Record<string, unknown>][] = [
+            [once(commerce, footerColours, `${footerColours}<i></i>`), "commerce", COMMERCE],
             [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT],
             [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT],
             [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE],
@@ -278,6 +286,40 @@ describe("Settings — the theme details (CAT-THEME-1)", () => {
         let saved: any;
         elements(FooterWidthControl({ config: { footer: { contentMaxWidth: "max-w-[1440px]" } }, setConfig: (x) => { saved = x; } })).find((e) => e.type === "select").props.onChange({ target: { value: "" } });
         expect(saved.footer).toEqual({});
+    });
+});
+
+describe("Settings — the footer colours (BULK-PURGE-FOOTER-1 Part B rule 3)", () => {
+    it("the group is mounted right after the footer width, in the Navbar & Layout card, on every site kind", () => {
+        for (const config of [CONTENT, COMMERCE, CATALOG]) {
+            const html = renderSettings(config);
+            const width = html.indexOf(">Footer Width<"), colours = html.indexOf(">Footer Colours<");
+            expect(width, String(config.name)).toBeGreaterThan(-1);
+            expect(colours, String(config.name)).toBeGreaterThan(width);
+            expect(html.indexOf(renderToStaticMarkup(createElement(FooterColorControls, { config, setConfig: () => {} }))), String(config.name))
+                .toBe(html.indexOf(renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} }))) + renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} })).length);
+        }
+    });
+    it("absent: both inputs empty (theme default); stored: the values are shown", () => {
+        const none = renderToStaticMarkup(createElement(FooterColorControls, { config: {}, setConfig: () => {} }));
+        expect([...none.matchAll(/<input class="[^"]*font-mono[^"]*" value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", ""]);
+        expect(none).toContain("Empty = theme default (light and dark).");
+        const set = renderToStaticMarkup(createElement(FooterColorControls, { config: { footer: { backgroundColor: "#1f2937", textColor: "#f9fafb" } }, setConfig: () => {} }));
+        expect([...set.matchAll(/<input class="[^"]*font-mono[^"]*" value="([^"]*)"/g)].map((m) => m[1])).toEqual(["#1f2937", "#f9fafb"]);
+    });
+    it("a colour sets its key, an emptied input removes it; the width and the other colour are kept — and the width control keeps the colours", () => {
+        let saved: any;
+        const config = { footer: { contentMaxWidth: "max-w-[1440px]", textColor: "#f9fafb" } } as any;
+        const inputs = elements(FooterColorControls({ config, setConfig: (x) => { saved = x; } })).filter((e) => typeof e.props?.onChange === "function");
+        expect(inputs.length).toBe(2);                                         // the two ColorInputs (props inspected, not called)
+        inputs[0].props.onChange("#1f2937");
+        expect(saved.footer).toEqual({ contentMaxWidth: "max-w-[1440px]", textColor: "#f9fafb", backgroundColor: "#1f2937" });
+        inputs[1].props.onChange("");
+        expect(saved.footer).toEqual({ contentMaxWidth: "max-w-[1440px]" });
+        elements(FooterWidthControl({ config: { footer: { contentMaxWidth: "max-w-[1440px]", backgroundColor: "#1f2937" } }, setConfig: (x) => { saved = x; } }))
+            .find((e) => e.type === "select").props.onChange({ target: { value: "" } });
+        expect(saved.footer).toEqual({ backgroundColor: "#1f2937" });
+        expect(withFooterKey({}, "textColor", "")).toEqual({ footer: {} });
     });
 });
 

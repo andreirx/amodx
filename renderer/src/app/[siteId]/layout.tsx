@@ -19,7 +19,7 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, type TenantConfig } from "@amodx/shared";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { BODY_CLASS_NAME } from "@/lib/document-shell";
@@ -40,6 +40,31 @@ function interpolate(template: string, values: Record<string, string | number>):
     return template.split(/\{([A-Za-z0-9_]+)\}/)
         .map((piece, i) => (i % 2 === 0 ? piece : Object.prototype.hasOwnProperty.call(values, piece) ? values[piece] : `{${piece}}`))
         .filter((part) => part !== "");
+}
+
+/**
+ * BULK-PURGE-FOOTER-1 (Part B) — the `<footer>` element's inline style for `footer.backgroundColor` / `footer.textColor`
+ * (one value for the light and the dark theme); `undefined` when neither is set, and then the caller adds no `style`
+ * prop at all (a conditional spread: an RSC payload would encode `style: undefined` as `"$undefined"`), so the footer
+ * keeps today's bytes in the HTML and in the payload.
+ * - Background: `background-color`, which overrides the shape's class (`bg-muted/30`, editorial `bg-muted`).
+ * - Text: the footer's texts take their colour from Tailwind utilities that read `--color-foreground` and
+ *   `--color-muted-foreground` (`text-foreground`, `text-muted-foreground`, `hover:text-foreground`; `globals.css`
+ *   `@theme`). Re-declaring those two variables on the `<footer>` gives every text inside it — hover included — the one
+ *   colour, so a hover stays readable on the chosen background. Not `--foreground`: `@theme` declares
+ *   `--color-foreground: var(--foreground)` on `:root`, where the `var()` is resolved, so a footer-level `--foreground`
+ *   would reach nothing. The hairlines (`border-t`, `--color-border`) keep the theme's colour.
+ * A value outside the shared colour rule (`isCssColor`, the rule PUT /settings validates with) is ignored, as
+ * `ThemeInjector` ignores an invalid theme colour.
+ */
+function footerColorStyle(footer: TenantConfig["footer"]): React.CSSProperties | undefined {
+    const background = isCssColor(footer?.backgroundColor) ? footer.backgroundColor : undefined;
+    const text = isCssColor(footer?.textColor) ? footer.textColor : undefined;
+    if (!background && !text) return undefined;
+    return {
+        ...(background ? { backgroundColor: background } : {}),
+        ...(text ? { "--color-foreground": text, "--color-muted-foreground": text } : {}),
+    } as React.CSSProperties;
 }
 
 type Props = {
@@ -140,6 +165,7 @@ export default async function SiteLayout({ children, params }: Props) {
     // them renders the same props and classes. `navFont` uses the injector's own test (a valid font name).
     const editorial = config.theme?.shape === "editorial";
     const navFont = !!sanitizeFontFamily(config.theme?.fontNav as string, "");
+    const footerStyle = footerColorStyle(config.footer);
 
     return (
         <html lang={localeLanguageSubtag(config.locale)}>
@@ -267,8 +293,9 @@ export default async function SiteLayout({ children, params }: Props) {
                 </div>
 
                 {/* CAT-THEME-1: under `editorial` the footer is on the surface colour (`--muted` = the theme's surfaceColor,
-                    ThemeInjector); its width is `footer.contentMaxWidth`, absent → the header's (the rule before the slice). */}
-                <footer className={editorial ? "border-t py-12 bg-muted" : "border-t py-12 bg-muted/30"}>
+                    ThemeInjector); its width is `footer.contentMaxWidth`, absent → the header's (the rule before the slice).
+                    BULK-PURGE-FOOTER-1: `footer.backgroundColor` / `footer.textColor` override both shapes (footerColorStyle). */}
+                <footer className={editorial ? "border-t py-12 bg-muted" : "border-t py-12 bg-muted/30"} {...(footerStyle ? { style: footerStyle } : {})}>
                     <div className={`${config.footer?.contentMaxWidth || config.header?.contentMaxWidth || "max-w-7xl"} mx-auto px-6`}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">
                             {/* Column 1: Company Details */}

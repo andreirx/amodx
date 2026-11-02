@@ -1,7 +1,7 @@
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { db, TABLE_NAME } from "./db.js";
-import { purgeTargets, type PurgeKind, type TenantRouting } from "./revalidate-paths.js";
+import { purgeTargets, type PurgeKind, type PurgeTarget, type TenantRouting } from "./revalidate-paths.js";
 import { enqueueEdgeInvalidation, markCdnPending } from "./invalidate-cdn.js";
 
 /**
@@ -15,6 +15,9 @@ import { enqueueEdgeInvalidation, markCdnPending } from "./invalidate-cdn.js";
  * - `revalidatePath(tenantDomain, slug)` / `revalidateTag(tag)` remain the low-level
  *   transport. Call them directly only if you already hold the **domain** — passing a
  *   tenant id is the bug cache-2 fixed (see `revalidate-paths.ts` for why).
+ * - BULK-PURGE-FOOTER-1: after a bulk mutation (a handler wrapped by `withInvalidation()`), the
+ *   whole tenant's stored pages: `withInvalidation(handler, purgeStoredPagesOfRequestTenant)`, or
+ *   `purgeStoredPagesOfDomains([...])` when the handler holds the domain(s) itself.
  *
  * The renderer's /api/revalidate contract is unchanged: `{ domain, slug }` or `{ tag }`.
  */
@@ -154,9 +157,13 @@ export async function revalidateTag(tag: string): Promise<void> {
  *
  * Not cached across invocations on purpose: a stale domain would purge the *wrong* key
  * after a domain change, which is worse than one extra GetItem per mutation. All six
- * calling handlers already hold `grantReadWriteData` on the table (verified in
+ * ordinary handlers (`revalidateTenantPaths`) already hold `grantReadWriteData` on the table (verified in
  * `infra/lib/api.ts` and `infra/lib/api-commerce.ts`), so this adds no IAM surface —
  * the Secrets Manager grant is a different matter for `content/create.ts`, see its comment.
+ * BULK-PURGE-FOOTER-1: the bulk handlers reach it through `purgeStoredPagesOfTenant`. Three of their
+ * Lambdas held only `grantWriteData` (`CreatePopupFunc`, `CreateReviewFunc`, `DeleteReviewFunc`); since
+ * round 2 (ruling BPF1-REVIEWS-READ = A, 2026-11-02) each also holds `dynamodb:GetItem` — only that —
+ * for this one read. Every purge-enabled Lambda's grants: record `docs/slices/bulk-purge-footer-1.md` § 2.3.
  */
 async function getTenantRouting(tenantId: string): Promise<TenantRouting> {
     const res = await db.send(new GetCommand({
@@ -166,6 +173,27 @@ async function getTenantRouting(tenantId: string): Promise<TenantRouting> {
         ExpressionAttributeNames: { "#domain": "domain" },
     }));
     return { domain: res.Item?.domain, urlPrefixes: res.Item?.urlPrefixes };
+}
+
+/**
+ * Layer 2 (OpenNext ISR in S3) transport — the ONE place both purge classes reach the renderer
+ * (BULK-PURGE-FOOTER-1 extracted it from `revalidateTenantPaths`). Gated on renderer config: when
+ * `RENDERER_URL` or `REVALIDATION_SECRET_NAME` is unset it logs the DISABLED warning and does
+ * nothing. Otherwise one `revalidatePath()` call per target, in order; since CACHE-10 each call makes
+ * the renderer delete the WHOLE tenant's S3 ISR objects for that domain. Never throws:
+ * `revalidatePath()` logs and swallows every failure, and its fetch is bounded (10s abort).
+ *
+ * @param targets renderer calls to make (`{ domain, slug }`)
+ * @param what    what is purged, for the DISABLED warning
+ */
+async function purgeIsrTargets(targets: PurgeTarget[], what: string): Promise<void> {
+    if (!rendererUrl || !secretName) {
+        warnRevalidationDisabled(what);
+        return;
+    }
+    for (const target of targets) {
+        await revalidatePath(target.domain, target.slug);
+    }
 }
 
 /**
@@ -232,13 +260,7 @@ export async function revalidateTenantPaths(
 
     // Layer 2 (OpenNext ISR in S3): purge via the renderer. Gated on renderer config — if it
     // is off, Layer 1 still fires below and the nightly S3 flush is the backstop (DoD 3).
-    if (!rendererUrl || !secretName) {
-        warnRevalidationDisabled(`${kind} ${requested.join(", ")} (tenant ${tenantId})`);
-    } else {
-        for (const target of targets) {
-            await revalidatePath(target.domain, target.slug);
-        }
-    }
+    await purgeIsrTargets(targets, `${kind} ${requested.join(", ")} (tenant ${tenantId})`);
 
     // Layer 1 (CloudFront edge): enqueue the exact changed URI paths for an immediate targeted
     // invalidation. Independent of RENDERER_URL — the debounce Lambda drains this against the
@@ -255,4 +277,78 @@ export async function revalidateTenantPaths(
     // (CloudFront paths carry no host). Written LAST so a `/*` can never precede the S3 purge.
     // `markCdnPending()` never throws (logs + swallows); the nightly flush backstops a failure.
     await markCdnPending();
+}
+
+/**
+ * The slug a whole-tenant purge names: the tenant home. Since CACHE-10 every renderer call deletes
+ * ALL of the domain's S3 ISR objects, whatever the slug, so one call per domain is the whole purge.
+ * "/" is the slug the ordinary path already sends for a home-page edit (`content/*` with slug "/").
+ */
+const WHOLE_TENANT_SLUG = "/";
+
+/**
+ * BULK-PURGE-FOOTER-1: delete every stored (S3 ISR) page of each named domain — Layer 2 only. The
+ * edge (Layer 1) is NOT touched here: the caller's `withInvalidation()` wrapper writes `CDN_PENDING`
+ * AFTER the handler (and this purge) returned, which keeps the CACHE-10 order "S3 before edge".
+ *
+ * Use it when the handler holds the domain itself: `tenant/create` (the new tenant's domain — a
+ * previous owner of that host may have left stored pages under it) and `tenant/settings` (the
+ * domain before AND after the save, so a domain change also clears the old host's pages).
+ *
+ * Entries that are not a non-blank string are dropped (`tenant/settings` passes a body value, which
+ * no schema checks) and duplicates collapse, so a caller may pass the old and the new domain
+ * unconditionally. Best-effort: never throws (see `purgeIsrTargets`).
+ */
+export async function purgeStoredPagesOfDomains(domains: unknown[]): Promise<void> {
+    const unique = [...new Set(domains.flatMap((d) => (typeof d === "string" && d.trim() !== "" ? [d.trim()] : [])))];
+    if (unique.length === 0) return;
+    await purgeIsrTargets(
+        unique.map((domain) => ({ domain, slug: WHOLE_TENANT_SLUG })),
+        `all stored pages of ${unique.join(", ")}`,
+    );
+}
+
+/**
+ * BULK-PURGE-FOOTER-1: delete every stored (S3 ISR) page of one tenant — Layer 2 only, as
+ * `purgeStoredPagesOfDomains`. Resolves the tenant's domain with the same projected GetItem as
+ * `revalidateTenantPaths` (`getTenantRouting`).
+ *
+ * The renderer gate is checked BEFORE the GetItem: the bulk purge has no Layer-1 work that needs the
+ * domain (unlike `revalidateTenantPaths`), so a deployment without renderer config pays no read.
+ * No tenant id → nothing to purge, no log. Best-effort: a lookup failure or a missing domain is
+ * logged and swallowed; never throws.
+ */
+export async function purgeStoredPagesOfTenant(tenantId: string | undefined): Promise<void> {
+    if (!tenantId) return;
+    if (!rendererUrl || !secretName) {
+        warnRevalidationDisabled(`all stored pages of tenant ${tenantId}`);
+        return;
+    }
+    let routing: TenantRouting;
+    try {
+        routing = await getTenantRouting(tenantId);
+    } catch (e) {
+        console.error(`[Revalidate] Tenant routing lookup failed for ${tenantId}; skipped the purge of its stored pages`, e);
+        return;
+    }
+    if (typeof routing.domain !== "string" || !routing.domain.trim()) {
+        console.warn(
+            `[Revalidate] Tenant ${tenantId} has no 'domain' on its tenant record — skipped the purge ` +
+            `of its stored pages (no domain-keyed cache entry can exist).`,
+        );
+        return;
+    }
+    await purgeStoredPagesOfDomains([routing.domain]);
+}
+
+/**
+ * BULK-PURGE-FOOTER-1: `purgeStoredPagesOfTenant` for the tenant the request names in its
+ * `x-tenant-id` header — the tenant every tenant-scoped handler already reads. This is the function
+ * the bulk handlers pass to `withInvalidation(handler, purgeStoredPagesOfRequestTenant)`. A request
+ * without the header purges nothing. Never throws.
+ */
+export async function purgeStoredPagesOfRequestTenant(
+    event: { headers?: Record<string, string | undefined> } | undefined,
+): Promise<void> {
+    await purgeStoredPagesOfTenant(event?.headers?.["x-tenant-id"]);
 }

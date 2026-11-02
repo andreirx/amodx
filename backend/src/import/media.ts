@@ -7,6 +7,7 @@ import { publishAudit } from "../lib/events.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { writeMediaMapEntry, loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 
 const s3 = new S3Client({});
 const UPLOADS_BUCKET = process.env.UPLOADS_BUCKET!;
@@ -196,4 +197,4 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);

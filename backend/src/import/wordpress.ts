@@ -7,6 +7,7 @@ import { HTMLToTiptapConverter } from "./html-to-tiptap.js";
 import { downloadAndUploadImage } from "../lib/image-upload.js";
 import { loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 
@@ -310,4 +311,4 @@ async function processPost(
     return isUpdate;
 }
 
-export const handler = withInvalidation(_handler);
+export const handler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);

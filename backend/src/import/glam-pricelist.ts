@@ -13,6 +13,7 @@ import {
 import { readTenantMode, checkProductWrite } from "../lib/catalog-product.js";
 import { publishAudit } from "../lib/events.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { parseGlamCsv } from "./glam/parse.js";
 import { norm } from "./glam/group.js";
 import {
@@ -349,8 +350,9 @@ const _handler: Handler = async (event) => {
     }
 };
 
-// Dry runs write nothing — not even the CDN marker that `withInvalidation` writes after a 2xx answer.
-const invalidating = withInvalidation(_handler);
+// Dry runs write nothing — not even the CDN marker that `withInvalidation` writes after a 2xx answer, nor the purge of
+// the tenant's stored pages it runs before it (BULK-PURGE-FOOTER-1 rule A6).
+const invalidating = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);
 
 /** The routes this function serves (infra/lib/api.ts): the import, and the image copy of CAT-IMAGES-1 (glam-images.ts). */
 const IMPORT_ROUTE = "POST /import/glam-pricelist";

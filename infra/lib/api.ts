@@ -268,6 +268,7 @@ export class AmodxApi extends Construct {
             handler: 'updateHandler',
         });
         props.table.grantReadWriteData(updateSettingsFunc);
+        props.revalidationSecret.grantRead(updateSettingsFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         this.httpApi.addRoutes({
             path: '/settings',
@@ -391,6 +392,7 @@ export class AmodxApi extends Construct {
             handler: 'handler',
         });
         props.table.grantWriteData(createTenantFunc);
+        props.revalidationSecret.grantRead(createTenantFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         const listTenantFunc = new nodejs.NodejsFunction(this, 'ListTenantFunc', {
             ...nodeProps,

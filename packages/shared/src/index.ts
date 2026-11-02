@@ -589,8 +589,13 @@ export const HeaderConfigSchema = z.object({
 // CAT-THEME-1 (§ 3 item 3): the footer's own width, a Tailwind class like `header.contentMaxWidth`; absent → the
 // header's width (the footer used the header's width before this slice). The renderer compiles only the classes its
 // sources name literally (Tailwind 4); the three new widths are in `renderer/src/lib/widths.ts`.
+// BULK-PURGE-FOOTER-1 (Part B): the footer's own background and text colour, one value for the light and the dark
+// theme; absent → the theme's colours (the footer before this slice, byte for byte). Read by the renderer's
+// `app/[siteId]/layout.tsx` footer.
 export const FooterConfigSchema = z.object({
     contentMaxWidth: z.string().optional(),
+    backgroundColor: CssColorSchema.optional(),
+    textColor: CssColorSchema.optional(),
 }).strict();
 
 // GDPR Cookie Consent Configuration

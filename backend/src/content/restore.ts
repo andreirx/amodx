@@ -6,6 +6,7 @@ import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { ContentItem } from "@amodx/shared"; // Import the type
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -78,4 +79,4 @@ const _restoreHandler: Handler = async (event) => {
     }
 };
 
-export const restoreHandler = withInvalidation(_restoreHandler);
+export const restoreHandler = withInvalidation(_restoreHandler, purgeStoredPagesOfRequestTenant);

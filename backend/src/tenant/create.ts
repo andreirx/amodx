@@ -6,6 +6,7 @@ import { AuthorizerContext } from "../auth/context.js";
 import {publishAudit} from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -163,6 +164,12 @@ const _handler: AmodxHandler = async (event) => {
                 { Put: { TableName: TABLE_NAME, Item: contactRoute } }
             ]
         }));
+
+        // BULK-PURGE-FOOTER-1 (rule A3): the new tenant's host. Its record did not exist, so no page was stored for it
+        // by THIS tenant — but stored pages are keyed by host only, and a previous owner of the host (a tenant that
+        // moved to another domain, or whose record is gone) may have left some. Purged by the domain held here (no
+        // read: this function holds only a write grant). Never throws; the wrapper marks the CDN after it.
+        await purgeStoredPagesOfDomains([validTenant.domain]);
 
         return { statusCode: 201, body: JSON.stringify(validTenant) };
 

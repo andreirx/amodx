@@ -170,6 +170,7 @@ export class CatalogApi extends NestedStack {
             handler: 'restoreHandler',
         });
         table.grantReadWriteData(this.restoreContentFunc);
+        props.revalidationSecret.grantRead(this.restoreContentFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         // --- PRODUCTS ---
         this.createProductFunc = new nodejs.NodejsFunction(this, 'CreateProductFunc', {
@@ -180,6 +181,7 @@ export class CatalogApi extends NestedStack {
         // CATALOG-MODE-1: read-write, not write-only — create.ts reads the tenant record (ConsistentRead) to enforce
         // the catalog mode before it writes (CM-D1 note; the slug-guard regression class: grants must match reads).
         table.grantReadWriteData(this.createProductFunc);
+        props.revalidationSecret.grantRead(this.createProductFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         this.listProductsFunc = new nodejs.NodejsFunction(this, 'ListProductsFunc', {
             ...nodeProps,
@@ -227,6 +229,7 @@ export class CatalogApi extends NestedStack {
             }
         });
         table.grantReadWriteData(this.importFunc);
+        props.revalidationSecret.grantRead(this.importFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
         props.uploadsBucket.grantReadWrite(this.importFunc);
 
         // --- MEDIA IMPORT ---
@@ -243,6 +246,7 @@ export class CatalogApi extends NestedStack {
             }
         });
         table.grantReadWriteData(this.mediaImportFunc);
+        props.revalidationSecret.grantRead(this.mediaImportFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
         props.uploadsBucket.grantReadWrite(this.mediaImportFunc);
 
         // --- REVIEW IMPORT (rev-2b) ---
@@ -263,6 +267,7 @@ export class CatalogApi extends NestedStack {
             },
         });
         table.grantReadWriteData(this.reviewImportFunc);
+        props.revalidationSecret.grantRead(this.reviewImportFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
         // EXACTLY `s3:PutObject`, ONLY under the `review-staging/` quarantine prefix (rev-2b review-1
         // least-privilege finding). `grantPut()` was REFUSED: it scopes to the whole bucket AND grants
         // the wider put-family. One action, prefix-scoped. Verbatim from the pre-split api.ts.
@@ -291,6 +296,7 @@ export class CatalogApi extends NestedStack {
             },
         });
         table.grantReadWriteData(this.glamPricelistImportFunc);
+        props.revalidationSecret.grantRead(this.glamPricelistImportFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts); supersedes "No revalidation secret" above
         props.uploadsBucket.grantReadWrite(this.glamPricelistImportFunc);
 
         // Grant EventBus PutEvents to every Lambda in THIS stack (publishAudit). The parent's

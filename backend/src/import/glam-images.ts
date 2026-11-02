@@ -11,6 +11,7 @@ import { copyImageToTenantMedia } from "../lib/image-upload.js";
 import { loadMediaMap, writeMediaMapEntry } from "../lib/media-map.js";
 import { publishAudit } from "../lib/events.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { checkUpload } from "./glam/map.js";
 import {
     collectSources, hiddenWithoutImage, isProducerUrl, planProductWrite, resolveSources, remainingWork,
@@ -272,7 +273,7 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const imagesHandler = withInvalidation(_handler);
+export const imagesHandler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);
 
 /** The attributes the images route reads of a product (the set query and the re-read of CIG-R1). */
 const PRODUCT_PROJECTION = "id, slug, title, #status, imageLink, categoryIds, importSource, variants";

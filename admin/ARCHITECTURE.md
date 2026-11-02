@@ -82,6 +82,11 @@ src/
     │                           #   additions now); Settings.test.ts compares them minus exactly the four groups.
     │                           #   Round 2 (R-CT-3): every Typography-card control reads `activeConfig`, the theme
     │                           #   `updateTheme` writes (`withThemeKey`: light → theme, dark → darkTheme).
+    │                           #   BULK-PURGE-FOOTER-1: FooterColorControls (Footer Colours: Background, Text — the
+    │                           #   palette's ColorInput; empty = theme default) right after FooterWidthControl, both in
+    │                           #   ONE fragment slot of the card (useId width follows the parent's child count);
+    │                           #   withFooterKey sets/removes one footer key and keeps the others. Compared minus
+    │                           #   exactly five groups now; captures not re-taken.
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"

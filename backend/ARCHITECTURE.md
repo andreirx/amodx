@@ -50,6 +50,8 @@ src/
 │   ├── revalidate.ts      # Drives BOTH layers (cache-4a): revalidateTenantPaths() → ISR purge (Layer 2)
 │   │                      #   via the /api/revalidate transport FIRST, then the edge fast lane, then
 │   │                      #   markCdnPending() → debounced `/*` for listings (CACHE-10)
+│   │                      #   BULK-PURGE-FOOTER-1: purgeStoredPagesOf{RequestTenant,Tenant,Domains}() — whole-tenant
+│   │                      #   S3 purge for bulk handlers, passed to withInvalidation(h, purge) (purge, then marker)
 │   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
 │   └── review-media.ts     # rev-2a staged-media SPINE (no image decode; D-REV-4 SUPERSEDED): declared
 │                           #   type-AND-size STAGE to the private quarantine + PROMOTION gate

@@ -40,6 +40,7 @@ import { CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LO
 import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
+    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -2561,6 +2562,66 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(checkExpected(before, b.body, cand, a.body, [width]), [], "only the footer width changed");
             assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, []), [], "positive control: the comparison sees the footer width");
             console.log("  (ct1-footer-width) footer max-w-[1600px], header max-w-7xl; the footer width is the only byte difference to 0865ac6");
+        });
+
+        // ── ROWS (bpf1-*) — BULK-PURGE-FOOTER-1 Part B (docs/slices/bulk-purge-footer-1.md; packet rule B4). Server HTML of
+        // the running build for the BPF1 tenants (fixtures.mjs `BPF1`). "Absent → today's bytes" is proven elsewhere: the
+        // loc1-* rows (every en-US subject byte-equal to 0865ac6, nothing listed), ct1-footer-width (a footer with only the
+        // width carries no `style`, byte-equal to 0865ac6 but for the width) and the cq1-*/ct1-* rows.
+        /** Today's text classes of the footer (layout.tsx; they read `--color-foreground` / `--color-muted-foreground`). */
+        const FOOTER_TEXT_CLASSES = [
+            'class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground"',
+            'class="font-semibold text-foreground"',
+            'class="font-semibold text-foreground mb-2"',
+            'class="block hover:text-foreground"',
+            'class="mt-8 pt-4 border-t text-center text-xs text-muted-foreground"',
+        ];
+        const bpf1Footer = async (key) => {
+            const res = await request({ port: server.port, path: "/", host: BPF1[key].host });
+            assert.equal(res.status, 200, `${key} /: 200`);
+            const { html, flight } = splitFlight(res.body);
+            const footer = /<footer[^>]*>[\s\S]*?<\/footer>/.exec(html)?.[0];
+            assert.ok(footer, `${key}: a footer`);
+            return { html, flight, footer, open: footer.slice(0, footer.indexOf(">") + 1), inner: footer.slice(footer.indexOf(">") + 1) };
+        };
+        /** Every class of `footer` that names a text colour (a `text-` class other than a size or an alignment). */
+        const textColourClasses = (footer) => [...new Set([...footer.matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/))
+            .filter((c) => /^(hover:)?text-/.test(c) && !/^text-(xs|sm|base|lg|xl|\d?xl|center|left|right)$/.test(c)))].sort();
+
+        test("(bpf1-footer-colours) both footer colours set: the footer's background is the colour and both text variables are the text colour; every footer text reads one of them, hover included", async () => {
+            const { backgroundColor: bg, textColor: fg } = BPF1_FOOTER;
+            const page = await bpf1Footer("colours");
+            assert.equal(page.open, `<footer class="border-t py-12 bg-muted/30" style="background-color:${bg};--color-foreground:${fg};--color-muted-foreground:${fg}">`);
+            for (const t of ["BPF1 Legal SRL", "1 Footer Street", "office@bpf1.serving-contract.test", "Delivery", "Terms", "Privacy", "All rights reserved."]) assert.ok(page.inner.includes(t), `in the footer: ${t}`);
+            for (const c of FOOTER_TEXT_CLASSES) assert.ok(page.inner.includes(c), `today's class: ${c}`);
+            // Every text colour inside the footer comes from one of the two re-declared variables.
+            assert.deepEqual(textColourClasses(page.footer), ["hover:text-foreground", "text-foreground", "text-muted-foreground"]);
+            // The compiled rules read exactly those variables, and `@theme` resolves them from `--foreground` on :root —
+            // which is why the footer re-declares `--color-*`, not `--foreground`.
+            const css = /<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/.exec(page.html)?.[1];
+            assert.ok(css, "precondition: the page's stylesheet");
+            const sheet = (await request({ port: server.port, path: css, host: BPF1.colours.host })).body;
+            // (Tailwind groups selectors: `.text-foreground,.text-foreground\/80{color:var(--color-foreground)}`.)
+            assert.match(sheet, /[},]\.text-foreground(,[^{]*)?\{color:var\(--color-foreground\)\}/, "compiled: .text-foreground reads --color-foreground");
+            assert.match(sheet, /[},]\.text-muted-foreground(,[^{]*)?\{color:var\(--color-muted-foreground\)\}/, "compiled: .text-muted-foreground reads --color-muted-foreground");
+            for (const decl of ["--color-foreground:var(--foreground)", "--color-muted-foreground:var(--muted-foreground)"]) assert.ok(sheet.includes(decl), `compiled: ${decl}`);
+            assert.match(sheet, /\.hover\\:text-foreground:hover\{color:var\(--color-foreground\)\}/, "compiled: the hover rule reads --color-foreground");
+            // The payload carries the same style (a client navigation renders the same footer).
+            assert.ok(page.flight.includes(`"style":{"backgroundColor":"${bg}","--color-foreground":"${fg}","--color-muted-foreground":"${fg}"}`), "payload style");
+            console.log(`  (bpf1-footer-colours) footer background ${bg}, --color-foreground = --color-muted-foreground = ${fg}; text colour classes ${JSON.stringify(textColourClasses(page.footer))}; ${css} reads both variables`);
+        });
+
+        test("(bpf1-footer-background-only) only footer.backgroundColor, editorial shape: the background on the footer, no text variable; the texts keep today's classes and markup", async () => {
+            const bgOnly = await bpf1Footer("background");
+            assert.equal(bgOnly.open, `<footer class="border-t py-12 bg-muted" style="background-color:${BPF1_BACKGROUND_ONLY}">`);
+            assert.ok(!bgOnly.footer.includes("--color-"), "no text variable is re-declared");
+            for (const c of FOOTER_TEXT_CLASSES) assert.ok(bgOnly.inner.includes(c), `today's class: ${c}`);
+            assert.ok(!bgOnly.flight.includes("--color-"), "payload: no text variable");
+            // Same content, both colours set on the other tenant: everything inside the <footer> element is identical — the
+            // colours change the footer element's own attributes only.
+            const both = await bpf1Footer("colours");
+            assert.equal(bgOnly.inner, both.inner, "the footer's content is the same markup with or without the colours");
+            console.log(`  (bpf1-footer-background-only) editorial footer background ${BPF1_BACKGROUND_ONLY}; texts keep today's classes; content markup identical to the both-colours tenant`);
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

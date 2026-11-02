@@ -6,6 +6,7 @@ import { requireRole } from "../auth/policy.js";
 import { publishAudit } from "../lib/events.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfTenant } from "../lib/revalidate.js";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -192,6 +193,11 @@ const _handler: Handler = async (event) => {
             details: { percent, roundTo, applyToSalePrice, productCount: updated },
             ip: event.requestContext.http.sourceIp,
         });
+
+        // BULK-PURGE-FOOTER-1: the tenant's stored pages show the old prices. Here, not through the wrapper: the
+        // preview (`dryRun`, the default) also answers 200 and must not purge (rule A6). Never throws; the wrapper
+        // writes the CDN marker after this returns (S3 before edge).
+        await purgeStoredPagesOfTenant(tenantId);
 
         return {
             statusCode: 200,

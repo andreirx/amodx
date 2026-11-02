@@ -135,6 +135,7 @@ export class CommerceApi extends NestedStack {
             handler: 'handler',
         });
         table.grantReadWriteData(createCategoryFunc);
+        props.revalidationSecret.grantRead(createCategoryFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         const listCategoriesFunc = new nodejs.NodejsFunction(this, 'ListCategoriesFunc', {
             ...nodeProps,
@@ -401,6 +402,8 @@ export class CommerceApi extends NestedStack {
             handler: 'handler',
         });
         table.grantWriteData(createReviewFunc);
+        table.grant(createReviewFunc, 'dynamodb:GetItem');  // BULK-PURGE-FOOTER-1 (ruling BPF1-REVIEWS-READ = A, least privilege): the stored-page purge reads the tenant record once (revalidate.ts getTenantRouting) — GetItem only, not a read-write upgrade
+        props.revalidationSecret.grantRead(createReviewFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         const listReviewsFunc = new nodejs.NodejsFunction(this, 'ListReviewsFunc', {
             ...nodeProps,
@@ -431,6 +434,7 @@ export class CommerceApi extends NestedStack {
         });
         this.updateReviewFunc = updateReviewFunc;
         table.grantReadWriteData(updateReviewFunc);
+        props.revalidationSecret.grantRead(updateReviewFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
         // rev-2a LEAST-PRIVILEGE (REV2A-INFRA-SURFACE, review-2 blocking finding): the promotion
         // path (backend/src/lib/review-media.ts) touches the PUBLIC bucket with EXACTLY three object
         // operations — CopyObject writes the promoted original (`s3:PutObject`), HeadObject reads its
@@ -450,6 +454,8 @@ export class CommerceApi extends NestedStack {
             handler: 'handler',
         });
         table.grantWriteData(deleteReviewFunc);
+        table.grant(deleteReviewFunc, 'dynamodb:GetItem');  // BULK-PURGE-FOOTER-1 (ruling BPF1-REVIEWS-READ = A, least privilege): the stored-page purge reads the tenant record once (revalidate.ts getTenantRouting) — GetItem only, not a read-write upgrade
+        props.revalidationSecret.grantRead(deleteReviewFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         const publicListReviewsFunc = new nodejs.NodejsFunction(this, 'PublicListReviewsFunc', {
             ...nodeProps,
@@ -491,6 +497,7 @@ export class CommerceApi extends NestedStack {
             timeout: cdk.Duration.minutes(5),
         });
         table.grantReadWriteData(bulkPriceFunc);
+        props.revalidationSecret.grantRead(bulkPriceFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
 
         addRoute('BulkPrice', 'POST /products/bulk-price', bulkPriceFunc);
 
@@ -508,6 +515,7 @@ export class CommerceApi extends NestedStack {
             },
         });
         table.grantReadWriteData(wooImportFunc);
+        props.revalidationSecret.grantRead(wooImportFunc);  // BULK-PURGE-FOOTER-1: stored-page purge (revalidate.ts)
         props.uploadsBucket.grantReadWrite(wooImportFunc);
 
         addRoute('WooImport', 'POST /import/woocommerce', wooImportFunc);

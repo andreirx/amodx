@@ -680,6 +680,32 @@ const CT1_ITEMS = [
     ...ct1HeroPage(CT1.footerOnly.id),
 ];
 
+// ── BULK-PURGE-FOOTER-1 fixtures (docs/slices/bulk-purge-footer-1.md; packet Part B rule 4) ─────────────────────────
+// Each carries a `locale` ("en-US", written out), so none is an en-US subject of the `loc1-*` rows; neither is in any
+// `before/` capture: rows `bpf1-*` read the running build only. Both show every footer text kind (company details, a
+// link column with its heading, legal links with their heading, the copyright).
+//  - colours: the default shape with `footer.backgroundColor` AND `footer.textColor` (`BPF1_FOOTER`);
+//  - background: the editorial shape with ONLY `footer.backgroundColor` — the texts keep the theme's classes.
+export const BPF1 = {
+    colours: { id: "bpf1-footer-colours", host: "bpf1-footer-colours.serving-contract.test" },
+    background: { id: "bpf1-footer-background", host: "bpf1-footer-background.serving-contract.test" },
+};
+export const BPF1_FOOTER = { backgroundColor: "#1f2937", textColor: "#f9fafb" };
+export const BPF1_BACKGROUND_ONLY = "#0b3d2e";
+const BPF1_FOOTER_CONTENT = {
+    companyDetails: { legalName: "BPF1 Legal SRL", address: "1 Footer Street", email: "office@bpf1.serving-contract.test" },
+    footerLinks: [{ label: "Delivery", href: "/delivery" }],
+    legalLinks: { termsUrl: "/terms", privacyUrl: "/privacy" },
+};
+const BPF1_ITEMS = [
+    { ...siteTenant(BPF1.colours.id, BPF1.colours.host, "BPF1 footer colours"), description: "BPF1 fixture (both footer colours).", locale: "en-US", ...BPF1_FOOTER_CONTENT, footer: { ...BPF1_FOOTER } },
+    { ...siteTenant(BPF1.background.id, BPF1.background.host, "BPF1 footer background"), description: "BPF1 fixture (footer background only, editorial).", locale: "en-US", theme: { shape: "editorial" }, ...BPF1_FOOTER_CONTENT, footer: { backgroundColor: BPF1_BACKGROUND_ONLY } },
+    ...Object.values(BPF1).flatMap((t) => [
+        siteRouteItem(t.id, "/", `${t.id}-home`),
+        siteContentItem(t.id, `${t.id}-home`, "/", `${t.id} Home`),
+    ]),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -716,6 +742,8 @@ export const ITEMS = [
     ...CQ1_ITEMS,
     // cat-theme-1: the theme tenants (above).
     ...CT1_ITEMS,
+    // bulk-purge-footer-1: the footer-colour tenants (above).
+    ...BPF1_ITEMS,
 ];
 
 /**

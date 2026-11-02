@@ -137,3 +137,22 @@ describe("PUT /settings — footer (CAT-THEME-1 § 3 item 3)", () => {
         for (const bad of [null, "max-w-7xl", [], 3]) await expectRefused({ footer: bad }, /^footer: /);
     });
 });
+
+describe("PUT /settings — footer colours (BULK-PURGE-FOOTER-1 Part B rule 1)", () => {
+    it("valid colours are written as sent, alone or with the width", async () => {
+        const footer = { contentMaxWidth: "max-w-[1440px]", backgroundColor: "#1f2937", textColor: "rgb(249, 250, 251)" };
+        expect((await put({ footer })).statusCode).toBe(200);
+        expect(tenantPuts()[0].input.Item.footer).toEqual(footer);
+        ddbSend.mockClear();
+        expect((await put({ footer: { backgroundColor: "navy" } })).statusCode).toBe(200);
+        expect(tenantPuts()[0].input.Item.footer).toEqual({ backgroundColor: "navy" });
+    });
+
+    it("a bad colour → 400 naming the field (`footer.backgroundColor: …`), nothing read, nothing written", async () => {
+        for (const bad of ["", "#12", "red;}", "url(x)", "var(--x)", 0]) {
+            await expectRefused({ footer: { backgroundColor: bad } }, /^footer\.backgroundColor: /);
+            await expectRefused({ footer: { textColor: bad } }, /^footer\.textColor: /);
+            await expectRefused({ footer: { contentMaxWidth: "max-w-7xl", textColor: bad } }, /^footer\.textColor: /);
+        }
+    });
+});

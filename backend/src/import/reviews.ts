@@ -14,6 +14,7 @@ import { db, TABLE_NAME } from "../lib/db.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { publishAudit } from "../lib/events.js";
 import { stageReviewImage } from "../lib/review-media.js";
 import {
@@ -447,4 +448,4 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);

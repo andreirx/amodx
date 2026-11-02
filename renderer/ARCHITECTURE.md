@@ -658,6 +658,13 @@ byte-identical output (every new output is a conditional segment that is `""` / 
 - Tailwind 4 compiles only class names written in the files it scans — which is every file under `renderer/`, test
   fixtures and captured `.body` files included (EXECUTED with `@tailwindcss/oxide`'s Scanner, cat-theme-1 record § 4).
 
+**BULK-PURGE-FOOTER-1 (docs/slices/bulk-purge-footer-1.md).** `footer.backgroundColor` / `footer.textColor` (one value for
+light and dark): `layout.tsx#footerColorStyle` puts `background-color` and the re-declared `--color-foreground` /
+`--color-muted-foreground` (the variables the footer's `text-*` utilities read; `--foreground` would not reach them —
+`@theme` resolves it on `:root`) in the `<footer>`'s `style`, added by a conditional spread only when a valid colour
+(`isCssColor`) is set — absent → today's bytes (an RSC payload would encode `style: undefined` as `"$undefined"`).
+Rows `bpf1-*`.
+
 ## Block Rendering (`RenderBlocks.tsx`)
 
 Merges core block types (paragraph, heading, lists, blockquote, horizontal rule) with the plugin

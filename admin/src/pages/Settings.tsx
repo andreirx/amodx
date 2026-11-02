@@ -171,16 +171,43 @@ export function ShapeAndCards({ theme, onChange }: { theme: ThemeDraft; onChange
     );
 }
 
+/**
+ * The draft's `footer` with one key set, or removed when `value` is empty; the other footer keys are kept
+ * (BULK-PURGE-FOOTER-1: the width and the two colours share the `footer` attribute).
+ */
+export function withFooterKey(config: SettingsDraft, key: "contentMaxWidth" | "backgroundColor" | "textColor", value: string): SettingsDraft {
+    const footer = { ...config.footer };
+    if (value) footer[key] = value;
+    else delete footer[key];
+    return { ...config, footer };
+}
+
 /** Navbar & Layout card: the footer's own width (`footer.contentMaxWidth`); "Same as header" removes it. */
 export function FooterWidthControl({ config, setConfig }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void }) {
     return (
         <div className="pt-4 border-t space-y-2">
             <Label>Footer Width</Label>
             <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm" value={config.footer?.contentMaxWidth || ""}
-                    onChange={e => setConfig({ ...config, footer: e.target.value ? { contentMaxWidth: e.target.value } : {} })}>
+                    onChange={e => setConfig(withFooterKey(config, "contentMaxWidth", e.target.value))}>
                 <option value="">Same as header</option>
                 {HEADER_WIDTH_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
+        </div>
+    );
+}
+
+/**
+ * BULK-PURGE-FOOTER-1 — Navbar & Layout card, after the footer width: the footer's background and text colour
+ * (`footer.backgroundColor`, `footer.textColor`), the palette's colour input; empty = the theme's colours. One value for
+ * the light and the dark theme. The renderer applies them to the footer only (`app/[siteId]/layout.tsx`).
+ */
+export function FooterColorControls({ config, setConfig }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void }) {
+    return (
+        <div className="space-y-2">
+            <Label>Footer Colours</Label>
+            <ColorInput label="Background" value={config.footer?.backgroundColor} onChange={v => setConfig(withFooterKey(config, "backgroundColor", v))} />
+            <ColorInput label="Text" value={config.footer?.textColor} onChange={v => setConfig(withFooterKey(config, "textColor", v))} />
+            <p className="text-[10px] text-muted-foreground">Empty = theme default (light and dark).</p>
         </div>
     );
 }
@@ -834,7 +861,14 @@ export default function SettingsPage() {
                                     Map the root URL (/) to a different page. Enter the slug including the leading slash (e.g., "/home"). Leave empty to use the default / page.
                                 </p>
                             </div>
-                            <FooterWidthControl config={config} setConfig={setConfig} />
+                            {/* BULK-PURGE-FOOTER-1: one child slot for both footer groups. React's `useId` encodes a child's
+                                index in a width set by the parent's CHILD COUNT, so a new sibling here re-numbered the
+                                Radix Select ids earlier in this card (OBSERVED: `_R_962b_` → `_R_i62b_`); a fragment keeps
+                                the count, the fragment adds no element. */}
+                            <>
+                                <FooterWidthControl config={config} setConfig={setConfig} />
+                                <FooterColorControls config={config} setConfig={setConfig} />
+                            </>
                         </CardContent>
                     </Card>
 

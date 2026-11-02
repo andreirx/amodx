@@ -311,6 +311,9 @@ export class AmodxStack extends cdk.Stack {
       eventBus: amodxEvents.bus,
       sesEmail: sesEmail,
       recaptchaSecretKey, // Deployment-level reCAPTCHA
+      // BULK-PURGE-FOOTER-1 (ruling BPF1-ENGAGEMENT-INFRA = A): popups/forms purge the tenant's stored pages.
+      revalidationSecret: revalidationSecret,
+      rendererUrl: rendererBaseUrl,
     });
 
     // 4. Renderer Layer

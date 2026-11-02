@@ -7,6 +7,7 @@ import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -17,6 +18,9 @@ interface EngagementApiProps extends NestedStackProps {
     eventBus: events.IEventBus;
     sesEmail: string;
     recaptchaSecretKey?: string; // Deployment-level reCAPTCHA secret key
+    // BULK-PURGE-FOOTER-1 (ruling BPF1-ENGAGEMENT-INFRA = A): the popups/forms mutations purge the tenant's stored pages.
+    revalidationSecret: secretsmanager.ISecret;
+    rendererUrl?: string;
 }
 
 export class EngagementApi extends NestedStack {
@@ -97,6 +101,7 @@ export class EngagementApi extends NestedStack {
             handler: 'handler',
         });
         table.grantWriteData(createPopupFunc);
+        table.grant(createPopupFunc, 'dynamodb:GetItem');  // BULK-PURGE-FOOTER-1 (ruling BPF1-REVIEWS-READ = A, least privilege): the stored-page purge reads the tenant record once (revalidate.ts getTenantRouting) — GetItem only, not a read-write upgrade
 
         const listPopupsFunc = new nodejs.NodejsFunction(this, 'ListPopupsFunc', {
             ...nodeProps,
@@ -200,6 +205,15 @@ export class EngagementApi extends NestedStack {
             actions: ['ses:SendEmail', 'ses:SendRawEmail'],
             resources: [sesIdentityArn],
         }));
+
+        // BULK-PURGE-FOOTER-1 (ruling BPF1-ENGAGEMENT-INFRA = A): the six popups/forms mutations purge the tenant's stored
+        // pages through the renderer (backend/src/lib/revalidate.ts): the renderer URL, the secret's name, the secret's read.
+        // Only these six — the read and public functions of this stack get nothing new.
+        for (const fn of [createPopupFunc, updatePopupFunc, deletePopupFunc, createFormFunc, updateFormFunc, deleteFormFunc]) {
+            fn.addEnvironment('RENDERER_URL', props.rendererUrl || '');
+            fn.addEnvironment('REVALIDATION_SECRET_NAME', props.revalidationSecret.secretName);
+            props.revalidationSecret.grantRead(fn);
+        }
 
         addRoute('CreateForm', 'POST /forms', createFormFunc);
         addRoute('ListForms', 'GET /forms', listFormsFunc);

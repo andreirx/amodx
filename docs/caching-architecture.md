@@ -359,9 +359,15 @@ drain runs within ~1s of the save. Properties that make this safe:
 
 A site-wide or many-entity mutation keeps the `withInvalidation()` → debounced `/*` flow and
 shows the "GO LIVE NOW" banner, because its affected path set is unknowable or too large.
+Since `bulk-purge-footer-1` (2026-11-02) it first purges the tenant's stored pages (Layer 2), through the
+same renderer call the ordinary class uses — before the marker (S3 before edge, as `CACHE-10`). Before, a
+bulk change reached the real domain only after the nightly flush: the edge `/*` refilled from the
+stale S3 copy (root-caused on prod, tenant `glamour-floors`, 2026-11-02).
 
 ```
-Bulk mutation ──> Backend Lambda ──> withInvalidation() HOF
+Bulk mutation ──> Backend Lambda ──> withInvalidation(handler, purgeStoredPagesOfRequestTenant) HOF
+                                        ├── (2xx only) renderer POST /api/revalidate { domain, slug: "/" }
+                                        │      └── whole-tenant S3 ISR purge (awaited, best-effort)
                                         └── DDB UpdateItem: SYSTEM#CDN_PENDING { updatedAt, firstPendingAt (if_not_exists) }
                                              + SYSTEM#CDN_LAST_CHANGE { updatedAt }
                                                   └── Debounce Lambda fires /* at the earlier of 15 min quiet
@@ -423,7 +429,7 @@ by **whether the handler knows its changed paths** — which is exactly whether 
 | Class | Handlers | Layer 1 (edge) | Layer 2 (ISR) | Banner / "GO LIVE" | Time to live |
 |---|---|---|---|---|---|
 | **Ordinary** (computable public path with a possible cached entry) | `content/create`, `content/update`, `products/update`, `products/delete`, `categories/update`, `categories/delete` | **targeted** paths via `CDN_FAST_PENDING`, drained in **~1s** (CACHE-9 event-driven invoke) then every **~10s** while work remains; minute tick is the sweeper. **Plus** (`CACHE-10`) `/*` via `CDN_PENDING` for listings, due at the earlier of 15 min quiet / 15 min after the first pending change | renderer `/api/revalidate` per slug: whole-tenant S3 purge (`CACHE-10`; its `revalidatePath` call is a no-op on open-next 3.1.3), BEFORE the edge enqueue | **yes** since `CACHE-10` (listings pending) | edited page: **seconds**; listings: **≤ ~16 min after the save** (max wait: 15 min + tick + propagation), or instant via GO LIVE NOW |
-| **Bulk / global** (unknown or large path set) | `themes/manage`, `tenant/create`, `tenant/settings`, `popups/*`, `forms/*`, `products/create`, `categories/create`, `products/bulk-price`, `reviews/*`, `content/restore`, `import/{woocommerce,wordpress,media,reviews}` | `/*` via `CDN_PENDING`, due at the earlier of 15 min quiet / 15 min after the first pending change (`CACHE-10` max wait) | — (imports/settings not path-scoped) | **yes** | ≤ ~16 min (15 min + tick + propagation), or instant via GO LIVE NOW |
+| **Bulk / global** (unknown or large path set) | `themes/manage`, `tenant/create`, `tenant/settings`, `popups/*`, `forms/*`, `products/create`, `categories/create`, `products/bulk-price`, `reviews/*`, `content/restore`, `import/{woocommerce,wordpress,media,reviews,glam-pricelist,glam-images}` | `/*` via `CDN_PENDING`, due at the earlier of 15 min quiet / 15 min after the first pending change (`CACHE-10` max wait) | since `bulk-purge-footer-1` (2026-11-02): renderer `/api/revalidate` once per domain — whole-tenant S3 purge — BEFORE the marker. Tenant: the `x-tenant-id` header; `tenant/create` the new domain; `tenant/settings` the domain before and after the save. Not purged: `themes/manage` (not tenant-scoped), dry runs / the bulk-price preview. Every purge-enabled Lambda holds the renderer config, the secret read and (where the purge reads the tenant record) `dynamodb:GetItem` — verified from a synth, record `docs/slices/bulk-purge-footer-1.md` § 2.3 | **yes** | stored (S3) pages: fresh at the next origin request after the save (ruling BPF1-EDGE-ACCEPTANCE = A); edge copy unchanged: ≤ ~16 min (15 min + tick + propagation), or instant via GO LIVE NOW |
 
 Classification rationale, recorded per the slice DoD:
 
@@ -1579,6 +1585,14 @@ Properties:
 
 #### Wrapped Handlers (BULK class — cache-relevant, path set unknowable/large)
 
+Since `bulk-purge-footer-1` the wrapper takes an optional second argument, `purgeStoredPages`: after a 2xx
+answer it awaits it, then writes the markers. The bulk handlers pass `revalidate.ts#purgeStoredPagesOfRequestTenant`
+(whole-tenant S3 purge of the `x-tenant-id` tenant); `tenant/create`, `tenant/settings` and `products/bulk-price` purge
+inside the handler instead (the new domain; the old and new domain; the apply branch only — the preview also answers
+200), and `themes/manage` purges nothing. The full set is pinned from the source by
+`backend/test/unit/bulk-purge.test.ts` (23 wrapped exports in 22 files on 2026-11-02; the table below predates
+`import/reviews`, `import/glam-pricelist` and `import/glam-images`, which are wrapped too).
+
 Only bulk/global handlers are wrapped. Transactional mutations (orders, leads, contact
 submissions, customer profile updates, admin user management, signals, coupons, delivery
 config, assets, resources) are NOT wrapped — they do not affect cached page content. The six
@@ -1864,6 +1878,9 @@ tenant. If aliases (apex + www, migration domains) are ever added, the fan-out p
 `TenantRouting.domain` in `revalidate-paths.ts`.
 
 #### Handlers that purge (6)
+
+*These are the ORDINARY handlers (`revalidateTenantPaths`). Since `bulk-purge-footer-1` the BULK handlers also purge,
+whole-tenant, through the same `revalidatePath()` transport (`revalidate.ts#purgeIsrTargets`, one place) — see § 1.*
 
 | Handler | Kind | What it purges |
 |---------|------|----------------|
@@ -2516,7 +2533,7 @@ Previous design: 50-200 invalidations/day = 1,500-6,000/month. Debounce reduces 
 
 ## Known Gaps and Tech Debt
 
-1. **ISR cache staleness for non-content mutations**: Reviews, coupons, popups, themes, delivery config, settings — these mutations trigger CloudFront invalidation (Layer 1) via the debounce system, but NOT the S3 ISR cache (Layer 2). The nightly flush covers this. Fix: call `revalidateTenantPaths()` from these handlers (since `CACHE-10` it purges the tenant's S3 ISR objects). Adding bare `revalidatePath()` / `revalidateTag()` calls would NOT have worked on open-next 3.1.3 — they were no-ops for App Router pages; on `@opennextjs/aws` 4.1.9 (`opennext-1b`) they refresh the named page but no listing (§ Invalidation Mechanisms 5), so the tenant purge is still the right call.
+1. **ISR cache staleness for non-content mutations** — *closed by bulk-purge-footer-1 (2026-11-02) for the bulk handlers: every handler wrapped by `withInvalidation()` now purges the tenant's S3 ISR pages before it marks the edge (§ Invalidation Mechanisms 1). Round 2 (2026-11-02): `popups/*` and `forms/*` got the renderer config (ruling BPF1-ENGAGEMENT-INFRA = A); `popups/create`, `reviews/create`, `reviews/delete` got `dynamodb:GetItem` only (ruling BPF1-REVIEWS-READ = A). Not purged: `themes/manage` by design (a theme preset is not a tenant's page); coupons and delivery config are not wrapped (§ Not Wrapped: not in cached pages).* Historical text: Reviews, coupons, popups, themes, delivery config, settings — these mutations trigger CloudFront invalidation (Layer 1) via the debounce system, but NOT the S3 ISR cache (Layer 2). The nightly flush covers this. Fix: call `revalidateTenantPaths()` from these handlers (since `CACHE-10` it purges the tenant's S3 ISR objects). Adding bare `revalidatePath()` / `revalidateTag()` calls would NOT have worked on open-next 3.1.3 — they were no-ops for App Router pages; on `@opennextjs/aws` 4.1.9 (`opennext-1b`) they refresh the named page but no listing (§ Invalidation Mechanisms 5), so the tenant purge is still the right call.
 
 2. **Custom URL prefix ISR revalidation — CLOSED in `cache-2`** for products and categories. The purge now reads the tenant's `urlPrefixes` from the same `GetItem` that resolves the domain and builds `/<domain>/<tenant prefix>/<slug>`. *Historical (before `CACHE-10`):* nothing purged the `shop`, `cart`, `checkout`, `account` or `search` landing pages, and a product change did not purge the category/shop listings that display it. *Current:* any revalidating edit purges the whole tenant's S3 ISR objects (renderer `/api/revalidate`) and arms the debounced edge `/*` (max wait 15 min), so those pages refresh within ~16 min. The only remaining limitation is TARGETING: the edge purge is all-tenant `/*`, not path- or tenant-specific. Tag-based targeting (`opennext-1`) is the long-term fix for the ISR layer only; it does not scope the edge `/*` to a tenant — see the remedy boundary in gap 3.*
 

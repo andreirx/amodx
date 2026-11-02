@@ -10,7 +10,8 @@ import { normalizeEdgePaths } from "./edge-invalidation.js";
  *    create-of-a-new-entity) use `withInvalidation()` → `CDN_PENDING` → the debounce-flush
  *    Lambda fires a `/*` invalidation at the earlier of 15 min of quiet and (CACHE-10 max wait)
  *    15 min after the first still-pending change. They also show the admin
- *    "GO LIVE NOW" banner.
+ *    "GO LIVE NOW" banner. Since BULK-PURGE-FOOTER-1 the wrapper first purges the tenant's stored
+ *    (S3 ISR) pages through its `purgeStoredPages` parameter — before the marker (S3 before edge).
  *  - ORDINARY edits (an existing page/product/category) instead reach `enqueueEdgeInvalidation()`
  *    via `revalidate.ts#revalidateTenantPaths`, which feeds it the *exact changed URI paths*
  *    computed by `revalidate-paths.ts#purgeTargets`. Those paths accumulate for an immediate
@@ -248,22 +249,43 @@ export async function enqueueEdgeInvalidation(paths: string[]): Promise<void> {
  * A separate scheduled Lambda (debounce-flush) reads this marker and fires
  * the actual CloudFront /* invalidation after the debounce window expires.
  *
+ * BULK-PURGE-FOOTER-1 — `purgeStoredPages` (optional): the Layer-2 (S3 ISR) purge of the pages the
+ * mutation changed. After a 2xx answer the wrapper awaits it FIRST and only then writes the marker
+ * (CACHE-10 order: S3 before edge — the edge refills from S3, so the reverse order can re-cache a
+ * stale page for a year). It receives the handler's event. The bulk handlers pass
+ * `revalidate.ts#purgeStoredPagesOfRequestTenant`. It is a parameter, not an import, because
+ * `revalidate.ts` already imports this module (`markCdnPending`, `enqueueEdgeInvalidation`); an
+ * import here would make the two modules a cycle. Its contract is "never throws"; the wrapper still
+ * catches and logs a throw, so the purge can never change the handler's response (status, body).
+ * Omitted → no purge (`themes/manage`, which is not tenant-scoped; `tenant/create` and
+ * `tenant/settings`, which purge the domains they hold inside the handler).
+ *
  * Usage:
  *   const _handler: Handler = async (event) => { ... };
- *   export const handler = withInvalidation(_handler);
+ *   export const handler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);
  *
  * For multi-export files:
  *   const _updateHandler: Handler = async (event) => { ... };
- *   export const updateHandler = withInvalidation(_updateHandler);
+ *   export const updateHandler = withInvalidation(_updateHandler, purgeStoredPagesOfRequestTenant);
  */
-export function withInvalidation<T extends (...args: any[]) => any>(handler: T): T {
+export function withInvalidation<T extends (...args: any[]) => any>(
+    handler: T,
+    purgeStoredPages?: (event: Parameters<T>[0]) => Promise<void>,
+): T {
     return (async (...args: any[]) => {
         const result = await handler(...args);
 
-        // Write marker on successful responses only
+        // Purge + marker on successful responses only
         if (result && typeof result === "object" && "statusCode" in result) {
             const statusCode = result.statusCode as number;
             if (statusCode >= 200 && statusCode < 300) {
+                if (purgeStoredPages) {
+                    try {
+                        await purgeStoredPages(args[0]);
+                    } catch (error) {
+                        console.error("[CDN] Stored-page purge threw (response unchanged; nightly flush backstops):", error);
+                    }
+                }
                 await markCdnPending();
             }
         }

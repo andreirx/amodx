@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ThemeSchema, TenantConfigSchema, ContentItemSchema, CssColorSchema, isCssColor } from "../src/index.js";
+import { ThemeSchema, TenantConfigSchema, ContentItemSchema, CssColorSchema, FooterConfigSchema, isCssColor } from "../src/index.js";
 
 /**
  * CAT-THEME-1 (docs/slices/cat-theme-1.md § 3; record docs/slices/cat-theme-1-impl.md) — the new theme fields and the
@@ -82,5 +82,28 @@ describe("TenantConfig.footer — the footer width (§ 3 item 3)", () => {
         expect(TenantConfigSchema.safeParse({ ...MINIMAL_TENANT, footer: {} }).success).toBe(true);
         expect(TenantConfigSchema.safeParse({ ...MINIMAL_TENANT, footer: { contentMaxWidth: 1440 } }).success).toBe(false);
         expect(TenantConfigSchema.safeParse({ ...MINIMAL_TENANT, footer: { width: "max-w-7xl" } }).success).toBe(false);
+    });
+});
+
+describe("TenantConfig.footer — the footer colours (BULK-PURGE-FOOTER-1 Part B rule 1)", () => {
+    it("both optional with no default: absent stays absent (the footer keeps the theme's colours)", () => {
+        const parsed = FooterConfigSchema.parse({});
+        expect(Object.hasOwn(parsed, "backgroundColor")).toBe(false);
+        expect(Object.hasOwn(parsed, "textColor")).toBe(false);
+        expect(FooterConfigSchema.parse({ contentMaxWidth: "max-w-7xl" })).toEqual({ contentMaxWidth: "max-w-7xl" });
+    });
+    it("each takes a CSS colour of the one colour rule, alone or together with the width", () => {
+        expect(TenantConfigSchema.safeParse({ ...MINIMAL_TENANT, footer: { backgroundColor: "#1f2937", textColor: "rgb(249, 250, 251)" } }).success).toBe(true);
+        expect(TenantConfigSchema.safeParse({ ...MINIMAL_TENANT, footer: { backgroundColor: "navy" } }).success).toBe(true);
+        expect(TenantConfigSchema.safeParse({ ...MINIMAL_TENANT, footer: { contentMaxWidth: "max-w-[1440px]", textColor: "#fff" } }).success).toBe(true);
+    });
+    it("a value outside the colour rule is refused, naming the field", () => {
+        for (const bad of ["", "#12", "red;}", "url(x)", "var(--x)", "rgb(1,2)", 0]) {
+            for (const key of ["backgroundColor", "textColor"] as const) {
+                const r = FooterConfigSchema.safeParse({ [key]: bad });
+                expect(r.success, `${key} ${JSON.stringify(bad)}`).toBe(false);
+                if (!r.success) expect(r.error.issues[0].path).toEqual([key]);
+            }
+        }
     });
 });

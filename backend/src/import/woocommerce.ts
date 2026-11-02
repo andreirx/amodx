@@ -7,6 +7,7 @@ import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { publishAudit } from "../lib/events.js";
 import { loadMediaMap } from "../lib/media-map.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { readTenantMode } from "../lib/catalog-product.js";
 
 /** Look up existing product by slug using GSI_Slug */
@@ -550,4 +551,4 @@ const _handler: Handler = async (event) => {
     }
 };
 
-export const handler = withInvalidation(_handler);
+export const handler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);

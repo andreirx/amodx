@@ -7,6 +7,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import {
     promoteReviewImage,
     promotionAllowed,
@@ -564,7 +565,7 @@ async function viewImageUrl(event: ApiEvent): Promise<ProxyResult> {
     };
 }
 
-const _mutationHandler = withInvalidation(_handler);
+const _mutationHandler = withInvalidation(_handler, purgeStoredPagesOfRequestTenant);
 
 /**
  * Route split for the ONE reviews-update Lambda (rev-3): the GET view route bypasses

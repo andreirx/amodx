@@ -5,6 +5,7 @@ import { AuthorizerContext } from "../auth/context.js"; // <--- Added .js
 import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
+import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { z } from "zod";
 import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
@@ -357,6 +358,13 @@ const _updateHandler: AmodxHandler = async (event) => {
             },
             ip: event.requestContext.http.sourceIp
         });
+
+        // BULK-PURGE-FOOTER-1 (rules A1, A4): every stored page of the tenant shows the old settings. Both the domain
+        // before and the domain after the save: on a domain change the old host's pages would otherwise be served until
+        // the nightly flush (one purge when the domain is unchanged — duplicates collapse). The domains held here, not
+        // a re-read: an eventually consistent read just after the Put could still return the old domain. Never throws;
+        // the wrapper marks the CDN after it (S3 before edge).
+        await purgeStoredPagesOfDomains([current.domain, merged.domain]);
 
         return { statusCode: 200, body: JSON.stringify({ message: "Settings Saved" }) };
     } catch (error: any) {

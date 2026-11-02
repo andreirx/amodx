@@ -22,7 +22,11 @@ const { ddbSend, mockAudit, mockRevalidate, mockVerifyOrigin, mockResolveRecaptc
 }));
 vi.mock("../../src/lib/db.js", () => ({ db: { send: ddbSend }, TABLE_NAME: "test-table" }));
 vi.mock("../../src/lib/events.js", () => ({ publishAudit: mockAudit }));
-vi.mock("../../src/lib/revalidate.js", () => ({ revalidateTenantPaths: mockRevalidate }));
+// BULK-PURGE-FOOTER-1: products/create passes `purgeStoredPagesOfRequestTenant` to its wrapper; tenant/create and
+// tenant/settings call `purgeStoredPagesOfDomains` (no-ops here; tested in bulk-purge.test.ts).
+vi.mock("../../src/lib/revalidate.js", () => ({
+    revalidateTenantPaths: mockRevalidate, purgeStoredPagesOfRequestTenant: async () => {}, purgeStoredPagesOfDomains: async () => {},
+}));
 vi.mock("../../src/lib/tenant-verify.js", () => ({ verifyTenantFromOrigin: mockVerifyOrigin }));
 vi.mock("../../src/lib/recaptcha.js", () => ({ resolveRecaptchaConfig: mockResolveRecaptcha, verifyRecaptcha: mockVerifyRecaptcha }));
 
