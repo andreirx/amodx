@@ -591,7 +591,9 @@ const LOC1_ITEMS = [
     ...localeCopy(CM1_ITEMS, CM1.content, LOC1.roContent, { locale: "ro-RO" }),
     // CMRC-COUNTIES-1: the RO commerce copy is also a Romanian SHOP — its country (the checkout region list) is RO.
     ...localeCopy(CM1_ITEMS, CM1.commerce, LOC1.roCommerce, { locale: "ro-RO", countryCode: "RO" }),
-    ...localeCopy(CM1_ITEMS, CM1.catalog, LOC1.roCatalog, { locale: "ro-RO" }),
+    // CAT-QUOTE-1 (packet rule 7): the RO catalog copy has all three contact channels (the "Cere ofertă" dialog). The
+    // base commit's mapTenant does not copy the field, so the quote-1/before/ capture of this copy has no button.
+    ...localeCopy(CM1_ITEMS, CM1.catalog, LOC1.roCatalog, { locale: "ro-RO", contactChannels: { phone: "+40 721-000 111", whatsapp: "+40 721 000 111", email: "oferte@loc1-ro-catalog.serving-contract.test" } }),
 ];
 
 // ── LOCALE-1E fixtures (docs/slices/locale-1e.md; `<html lang>` per tenant) ──────────────────────────────────────
@@ -608,6 +610,36 @@ const LOC1E_ITEMS = Object.values(LOC1E).flatMap(({ id, host, locale }) => [
     siteRouteItem(id, "/", `${id}-home`),
     siteContentItem(id, `${id}-home`, "/", `LOC1E ${locale} Home`),
 ]);
+
+// ── CAT-QUOTE-1 fixtures (docs/slices/cat-quote-1-impl.md; packet rule 7) ─────────────────────────────────────────
+// Each carries a `locale`, so none is an en-US subject of the `loc1-*` rows; rows `cq1-*` read them, and their
+// requests (`proof.mjs` `CQ1_REQUESTS`) are captured in `locale-1/quote-1/before/` from the base commit 29a2282.
+//  - roEmail, roNone: copies of the CM1 catalog tenant in Romanian, like `loc1-ro-catalog`, with only an e-mail channel
+//    (one action) and with an EMPTY `contactChannels` object (no button);
+//  - shopFallback: a shop whose Top Bar (phone absent, e-mail ""), Commerce Bar (phone "", WhatsApp absent) and Quick
+//    contact (WhatsApp, value "") own values are empty → the layout shows the channels;
+//  - shopOwn: the same bars with their own values set, and different channels → the own values, bytes as before.
+export const CQ1 = {
+    roEmail: { id: "cq1-ro-email", host: "cq1-ro-email.serving-contract.test" },
+    roNone: { id: "cq1-ro-none", host: "cq1-ro-none.serving-contract.test" },
+    shopFallback: { id: "cq1-shop-fallback", host: "cq1-shop-fallback.serving-contract.test" },
+    shopOwn: { id: "cq1-shop-own", host: "cq1-shop-own.serving-contract.test" },
+};
+export const CQ1_CHANNELS = { phone: "+40 700 000 001", whatsapp: "+40 700 000 002", email: "canale@cq1.serving-contract.test" };
+const cq1Bars = (own) => ({
+    topBar: { show: true, content: "CQ1 announcement", ...(own ? { quickContactPhone: "+1 555 0101", quickContactEmail: "bar@cq1.serving-contract.test" } : { quickContactEmail: "" }) },
+    commerceBar: { enabled: true, socialLinks: [], height: "h-10", fontSize: "text-sm", iconSize: "h-5 w-5", ...(own ? { phone: "+1 555 0102", whatsappNumber: "+1 555 0103" } : { phone: "" }) },
+    quickContact: { type: "whatsapp", value: own ? "+1 555 0104" : "" },
+});
+const CQ1_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.catalog, CQ1.roEmail, { locale: "ro-RO", contactChannels: { email: "doar-email@cq1.serving-contract.test" } }),
+    ...localeCopy(CM1_ITEMS, CM1.catalog, CQ1.roNone, { locale: "ro-RO", contactChannels: {} }),
+    ...[["shopFallback", false], ["shopOwn", true]].flatMap(([key, own]) => [
+        { ...siteTenant(CQ1[key].id, CQ1[key].host, `CQ1 ${key}`), description: `CQ1 fixture (${key}).`, locale: "en-US", commerceEnabled: true, contactChannels: CQ1_CHANNELS, ...cq1Bars(own) },
+        siteRouteItem(CQ1[key].id, "/", `${CQ1[key].id}-home`),
+        siteContentItem(CQ1[key].id, `${CQ1[key].id}-home`, "/", `CQ1 ${key} Home`),
+    ]),
+];
 
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
@@ -641,6 +673,8 @@ export const ITEMS = [
     ...LOC1_ITEMS,
     // locale-1e: the en-GB and malformed-locale tenants (above).
     ...LOC1E_ITEMS,
+    // cat-quote-1: the contact-channel tenants (above).
+    ...CQ1_ITEMS,
 ];
 
 /**

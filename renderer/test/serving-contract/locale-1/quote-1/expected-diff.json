@@ -1,0 +1,376 @@
+{
+  "slice": "cat-quote-1",
+  "rule": "docs/slices/cat-quote-1-impl.md § 2 (packet hard rule 1): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (29a2282, served with this tree's fixtures.mjs). Only the catalog product pages differ, each by row CQ1-INTEREST-LINK: the interest toggle is the low-key link form (spec § 3 item 3) — its `variant` prop \"page\" → \"link\" (category 2) and, in the server HTML, the button's class and its icon's size class (category 3, no text change). No subject has a contact channel, so no \"Request a quote\" button. Every other URL: []. Shops and content sites: [] (zero ledger rows).",
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [],
+      "/published": [],
+      "/d4-page": []
+    },
+    "wk": {
+      "/index.php": []
+    },
+    "iso-a": {
+      "/": [],
+      "/about": [],
+      "/listed-post": []
+    },
+    "iso-b": {
+      "/about": []
+    },
+    "commerce": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/rugs": [],
+      "/product/sale-rug": [],
+      "/product/variant-rug": [],
+      "/product/sold-out-rug": [],
+      "/product/rug-care-guide": [],
+      "/products/c0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": [],
+      "/account": [],
+      "/checkout/confirmare": [],
+      "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+      "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": []
+    },
+    "content": {
+      "/": [],
+      "/about": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/mats": [],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/floors": [],
+      "/product/oak-plank": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/ash-plank": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/legacy-plank": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000001": [],
+      "/products/e0000000-0000-4000-8000-000000000002": [],
+      "/products/e0000000-0000-4000-8000-000000000003": [],
+      "/search?q=plank": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [],
+      "/category/cip1b-boen": [],
+      "/category/cip1b-itc": [],
+      "/category/cip1b-x": [],
+      "/category/cip1b-u": [],
+      "/product/stejar-mixt": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/frasin-mixt": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/nuc-fara-fisa": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/covor-arc": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/covor-shell": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/placa-nod": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/placa-nod-doi": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/lemn-x-unu": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/lemn-x-doi": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ],
+      "/product/lemn-x-trei": [
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary\"",
+          "after": "class=\"inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground\""
+        },
+        {
+          "category": 3,
+          "row": "CQ1-INTEREST-LINK",
+          "before": "class=\"lucide lucide-heart h-4 w-4\"",
+          "after": "class=\"lucide lucide-heart h-3.5 w-3.5\""
+        },
+        {
+          "category": 2,
+          "row": "CQ1-INTEREST-LINK",
+          "element": "[project]/renderer/src/components/InterestShortlist.tsx#InterestToggle",
+          "prop": "variant",
+          "beforeValue": "page",
+          "value": "link"
+        }
+      ]
+    }
+  }
+}

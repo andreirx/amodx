@@ -177,6 +177,8 @@ function mapTenant(item: any): TenantConfig {
         integrations: item.integrations || {},
         urlPrefixes: item.urlPrefixes || URL_PREFIX_DEFAULTS,
         quickContact: item.quickContact || undefined,
+        // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the visitor contact channels — the quote dialog and the bar fallbacks.
+        contactChannels: item.contactChannels || undefined,
         topBar: item.topBar || undefined,
         pageEffect: item.pageEffect || undefined,
         celebrationEnabled: item.celebrationEnabled ?? false,

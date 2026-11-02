@@ -244,6 +244,13 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         facetsTitle: "Filtre",
         facetProducer: "Producător",
         facetVariantDefault: "Variantă",
+        quoteButton: "Cere ofertă",
+        quoteTitle: "Cere-ne o ofertă",
+        quoteCall: "Sună-ne",
+        quoteWhatsApp: "WhatsApp",
+        quoteEmail: "Trimite un e-mail",
+        quoteMessage: "Bună! Aș vrea o ofertă pentru {product}[, varianta {variant}]: {url}",
+        quoteClose: "Închide",
     },
     site: {
         untitledSiteName: "Site fără nume",

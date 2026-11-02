@@ -72,6 +72,9 @@ export type InterestListStrings = Pick<LocaleStrings["catalog"],
  * server-rendered; its choice lives in the form state, SitePage.tsx `CatalogVariantPresenter`). The choice is bound
  * to the CURRENT product: when `productId` (or the group) changes, it is read again from the presenter and is empty
  * when nothing is checked (review-0 F4) — an option chosen for another product is never carried over.
+ * CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 item 3): `variant="link"` is the low-key form for the product page — a
+ * text link under the "Request a quote" button; the label shows the chosen option. It replaced the bordered `page`
+ * form, which was deleted with its last caller (SitePage.tsx).
  */
 export function InterestToggle({ tenantId, productId, title, slug, imageLink, optionGroupName, options = [], variant = "card", strings }: {
     tenantId: string;
@@ -81,7 +84,7 @@ export function InterestToggle({ tenantId, productId, title, slug, imageLink, op
     imageLink?: string;
     optionGroupName?: string;
     options?: { value: string; imageLink?: string }[];
-    variant?: "card" | "page";
+    variant?: "card" | "link";
     strings: InterestToggleStrings;
 }) {
     const { state, store } = useShortlist(tenantId);
@@ -117,7 +120,23 @@ export function InterestToggle({ tenantId, productId, title, slug, imageLink, op
     }
 
     const label = marked ? strings.interestAdded : strings.interestAdd;
-    const size = variant === "page" ? "h-11 px-6 text-sm" : "h-9 px-3 text-xs mt-2 w-full";
+    if (variant === "link") {
+        return (
+            <div>
+                <button
+                    type="button"
+                    onClick={toggle}
+                    aria-pressed={marked}
+                    data-interest-toggle={productId}
+                    className={`inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors ${marked ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                    {marked ? <Check className="h-3.5 w-3.5" /> : <Heart className="h-3.5 w-3.5" />}
+                    {optionValue && !marked ? `${label} (${optionValue})` : label}
+                </button>
+                {message && <p role="status" className="text-xs text-muted-foreground mt-1">{message}</p>}
+            </div>
+        );
+    }
     return (
         <div>
             <button
@@ -125,10 +144,10 @@ export function InterestToggle({ tenantId, productId, title, slug, imageLink, op
                 onClick={toggle}
                 aria-pressed={marked}
                 data-interest-toggle={productId}
-                className={`inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors ${size} ${marked ? "bg-primary text-primary-foreground border-primary" : "bg-background text-foreground border-border hover:border-primary"}`}
+                className={`inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-9 px-3 text-xs mt-2 w-full ${marked ? "bg-primary text-primary-foreground border-primary" : "bg-background text-foreground border-border hover:border-primary"}`}
             >
                 {marked ? <Check className="h-4 w-4" /> : <Heart className="h-4 w-4" />}
-                {variant === "page" && optionValue && !marked ? `${label} (${optionValue})` : label}
+                {label}
             </button>
             {message && <p role="status" className="text-xs text-muted-foreground mt-1">{message}</p>}
         </div>

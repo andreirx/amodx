@@ -65,6 +65,13 @@ src/
     │                           #   pure helpers localeStatus / withSiteLanguage / withCountry (Settings.test.ts);
     │                           #   CAT-ADMIN-1 § 4.5: a catalog gets a "Catalog" card (no control) instead of
     │                           #   "Commerce", Product Search, and URL prefixes product/category/shop/search/interest
+    │                           #   CAT-QUOTE-1: "Contact channels" card (every kind: phone, WhatsApp, e-mail; on a
+    │                           #   catalog only, ruling R3, "Send interest lists to" = "Visitor contact e-mail
+    │                           #   (default)" → interestListEmail: null (removes it) or a separate address);
+    │                           #   withContactForSave trims and drops empty channels; the Commerce Bar description
+    │                           #   notes the fallback; the Catalog card names the destination. Settings.test.ts
+    │                           #   compares the 3912c5d __markup__ captures minus exactly two named exclusions (the
+    │                           #   card element, the Commerce Bar note), with controls (ruling CQ-ADMIN-PRESERVATION = A)
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"
@@ -75,6 +82,7 @@ src/
     │                           #   80 commerce-only keys); locale-1c: Site group card "Content Blocks" (the 26
     │                           #   block-chrome keys) and `showcaseEmpty` in "Product pages & search"; content-only
     │                           #   tenants get "Product showcase block" (showcaseEmpty, outOfStock; ruling R4);
+    │                           #   CAT-QUOTE-1: Catalog card "Request a quote" (the 7 quote* keys);
     │                           #   visibleSections() decides the sections per tenant kind (one input per key);
     │                           #   placeholders = language defaults; Reset per
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them

@@ -103,14 +103,15 @@ describe("the language packs", () => {
         }
     });
 
-    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c); 39 catalog keys and 21 shared commerce keys (1b); 80 commerce-only keys (1d) + showcaseEmpty (1c); the count keys", () => {
+    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c); 39 catalog keys and 21 shared commerce keys (1b) + 7 quote keys (cat-quote-1); 80 commerce-only keys (1d) + showcaseEmpty (1c); the count keys", () => {
         expect(SITE_KEYS).toHaveLength(52 + 26);
         expect(Object.keys(SiteStringsSchema.shape).slice(51)).toEqual(["errorTryAgain", ...SITE_1C.map(([k]) => k)]);
         expect(COMMERCE_1D_KEYS).toHaveLength(80);
         expect(new Set(COMMERCE_1D_KEYS).size).toBe(80);
         expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80 + 1);
         expect(Object.keys(CommerceStringsSchema.shape).slice(77 + 21)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"]);
-        expect(keys(CatalogStringsSchema.shape)).toHaveLength(39);
+        expect(keys(CatalogStringsSchema.shape)).toHaveLength(39 + 7);
+        expect(Object.keys(CatalogStringsSchema.shape).slice(39)).toEqual(["quoteButton", "quoteTitle", "quoteCall", "quoteWhatsApp", "quoteEmail", "quoteMessage", "quoteClose"]);
         expect(COMMERCE_1B_KEYS.filter((k) => !Object.hasOwn(CommerceStringsSchema.shape, k))).toEqual([]);
         expect(COMMERCE_COUNT_KEYS).toEqual(["productCount", "reviewsSummary", "searchResultCount"]);
         expect(CATALOG_COUNT_KEYS).toEqual(["facetsCount", "interestWidgetLabel"]);

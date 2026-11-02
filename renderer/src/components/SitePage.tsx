@@ -38,6 +38,7 @@ import { SearchBar, type SearchBarLabels } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
 import { InterestToggle, InterestListPage, type InterestListStrings, type InterestToggleStrings } from "@/components/InterestShortlist";
+import { QuoteRequest, type QuoteRequestStrings } from "@/components/QuoteRequest";
 import { buildFacetListing, listingHref, utf8Bytes, HREF_BUDGET, type FacetListing, type FacetValueView } from "@amodx/shared";
 import { createElement, Fragment, type ReactNode } from "react";
 
@@ -184,6 +185,11 @@ function facetLabelsOf(catalog: LocaleStrings["catalog"]): FacetLabels {
  *  toggle's props inline, as before). */
 function interestToggleStrings(catalog: LocaleStrings["catalog"]): InterestToggleStrings {
     return { interestAdd: catalog.interestAdd, interestAdded: catalog.interestAdded, interestListFull: catalog.interestListFull };
+}
+
+/** CAT-QUOTE-1: the quote button's and dialog's texts (only the keys it uses, § 5.3). */
+function quoteRequestStrings(c: LocaleStrings["catalog"]): QuoteRequestStrings {
+    return { quoteButton: c.quoteButton, quoteTitle: c.quoteTitle, quoteCall: c.quoteCall, quoteWhatsApp: c.quoteWhatsApp, quoteEmail: c.quoteEmail, quoteMessage: c.quoteMessage, quoteClose: c.quoteClose };
 }
 
 /** LOCALE-1B: the list page's texts (only the keys it uses, § 5.3). */
@@ -1114,15 +1120,31 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
 
                     {/* Physical product: Add to Cart — only when commerceEnabled AND not a digital product.
                         Catalog site (never commerceEnabled): this slot holds the variant presenter and the attributes. */}
-                    {catalog ? (
-                        <>
-                            {/* CAT-INTEREST-1 (review-0 F4): keyed by product, so a client navigation to another product
-                                mounts fresh radio inputs and a fresh toggle — no choice carries over between products. */}
-                            <CatalogVariantPresenter key={`presenter-${product.id}`} variants={product.variants || []} />
-                            <InterestToggle key={`interest-${product.id}`} variant="page" {...interestToggleProps(config.id, product)} strings={interestToggleStrings(catalogStrings)} />
-                            <ProductAttributes attributes={product.attributes || []} />
-                        </>
-                    ) : commerceEnabled && !product.paymentLinkId && (
+                    {catalog ? (() => {
+                        // CAT-INTEREST-1 (review-0 F4): keyed by product, so a client navigation to another product
+                        // mounts fresh radio inputs and a fresh toggle — no choice carries over between products.
+                        // CAT-QUOTE-1 (spec § 3 items 2-3): with a contact channel, "Request a quote" above the presenter; the
+                        // interest toggle is the low-key link, under the button, in its place after the presenter (one order
+                        // for every catalog tenant). Two fragments, not a conditional child: a tenant without a channel
+                        // keeps the slot's children (and their order) as before.
+                        const presenter = <CatalogVariantPresenter key={`presenter-${product.id}`} variants={product.variants || []} />;
+                        const toggle = <InterestToggle key={`interest-${product.id}`} variant="link" {...interestToggleProps(config.id, product)} strings={interestToggleStrings(catalogStrings)} />;
+                        const attributes = <ProductAttributes attributes={product.attributes || []} />;
+                        const channels = config.contactChannels;
+                        if (!(channels && (channels.phone || channels.whatsapp || channels.email))) return <>{presenter}{toggle}{attributes}</>;
+                        const group = interestToggleProps(config.id, product).optionGroupName;
+                        const quote = (
+                            <QuoteRequest
+                                key={`quote-${product.id}`}
+                                channels={channels}
+                                productTitle={product.title}
+                                productUrl={`https://${config.domain}${prefixes.product || URL_PREFIX_DEFAULTS.product}/${product.slug}`}
+                                {...(group ? { optionGroupName: group } : {})}
+                                strings={quoteRequestStrings(catalogStrings)}
+                            />
+                        );
+                        return <>{quote}{presenter}{toggle}{attributes}</>;
+                    })() : commerceEnabled && !product.paymentLinkId && (
                         <AddToCartButton
                             productId={product.id}
                             title={product.title}

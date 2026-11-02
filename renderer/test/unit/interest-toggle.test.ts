@@ -14,6 +14,8 @@ import { InterestToggle } from "@/components/InterestShortlist";
  * component's own rule, independent of that key.)
  * LOCALE-1B: the toggle's texts are a `strings` prop; these rows pass a Romanian tenant's catalog texts (the RO pack,
  * whose toggle texts are the literals the component held before), so the expectations below are unchanged.
+ * CAT-QUOTE-1: the product page's form is now `variant="link"` (the bordered `page` form was deleted); these rows pin
+ * the F4 rule on it, with the same expectations.
  */
 
 const RO = resolveLocaleStrings({ locale: "ro-RO" }).strings.catalog;
@@ -48,7 +50,7 @@ function presenter(values: string[], checked?: string) {
 
 const props = (productId: string) => ({
     tenantId: `t-f4-${productId}`, productId, title: `Product ${productId}`, slug: productId,
-    optionGroupName: "catalog-option-format", options: [], variant: "page" as const, strings: RO_TOGGLE,
+    optionGroupName: "catalog-option-format", options: [], variant: "link" as const, strings: RO_TOGGLE,
 });
 const button = () => host.querySelector("button")!;
 const saved = (tenantId: string) => JSON.parse(localStorage.getItem(`amodx:interest:${tenantId}`) ?? "{\"items\":[]}").items;

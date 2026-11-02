@@ -6,7 +6,7 @@ import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -92,6 +92,30 @@ function localeStringsLimitError(attribute: (typeof LOCALE_STRING_ATTRIBUTES)[nu
     }
     const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
     if (bytes > LOCALE_MAX_BYTES) return `${attribute} is ${bytes} bytes as JSON; at most ${LOCALE_MAX_BYTES} are allowed.`;
+    return null;
+}
+
+/**
+ * CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 items 1 and 4; packet rule 2) — the two NEW contact attributes, checked
+ * as sent and only when the body contains them (the LOCALE-1A kind: no other attribute is validated, so no live tenant's
+ * next save is refused for data it already has). `contactChannels`: `ContactChannelsSchema` (shared — the one rule for
+ * a number and an e-mail; unknown channels refused); the object replaces the stored one whole, so `{}` clears every
+ * channel. `interestListEmail`: an e-mail, or `null` = remove the attribute (interest lists then go to
+ * `integrations.contactEmail` again); the top-level merge cannot remove an attribute that the body only omits.
+ * Returns the message of the first problem, naming the field; null when there is none.
+ */
+const InterestListEmailSchema = z.string().email();
+function contactAttributesError(body: Record<string, unknown>): string | null {
+    if (Object.hasOwn(body, "contactChannels")) {
+        const parsed = ContactChannelsSchema.safeParse(body.contactChannels);
+        if (!parsed.success) {
+            const issue = parsed.error.issues[0];
+            return `${["contactChannels", ...issue.path.map(String)].join(".")}: ${issue.message}`;
+        }
+    }
+    if (Object.hasOwn(body, "interestListEmail") && body.interestListEmail !== null && !InterestListEmailSchema.safeParse(body.interestListEmail).success) {
+        return "interestListEmail: must be an e-mail address, or null to send interest lists to the visitor contact e-mail.";
+    }
     return null;
 }
 
@@ -184,6 +208,9 @@ const _updateHandler: AmodxHandler = async (event) => {
             const limitError = localeStringsLimitError(attribute, body[attribute]);
             if (limitError) return { statusCode: 400, body: JSON.stringify({ error: limitError }) };
         }
+        // CAT-QUOTE-1: same place and kind — before any read.
+        const contactError = contactAttributesError(body);
+        if (contactError) return { statusCode: 400, body: JSON.stringify({ error: contactError }) };
 
         // CATALOG-MODE-1 (CM-D11 accepted refinement): the mode read is authoritative. Strongly consistent, and a
         // missing tenant record answers 404 with nothing written. Before, a miss became `{ name: "Unknown" }` and this
@@ -217,6 +244,8 @@ const _updateHandler: AmodxHandler = async (event) => {
         if (body.recaptcha && current.recaptcha) {
             merged.recaptcha = { ...current.recaptcha, ...body.recaptcha };
         }
+        // CAT-QUOTE-1: `null` removes the attribute (contactAttributesError).
+        if (body.interestListEmail === null) delete merged.interestListEmail;
 
         // CATALOG-MODE-1 (CM-D11): the mode is fixed when the site is created, and a catalog site never sells.
         const flags = ModeFlagsSchema.safeParse(merged);

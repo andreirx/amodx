@@ -81,6 +81,16 @@ export async function generateMetadata({ params }: { params: Promise<{ siteId: s
     };
 }
 
+/**
+ * CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 item 1, CQ-D1 = A): a bar's own contact value, or — only when that value
+ * is empty — the tenant's contact channel (`contactChannels`, Settings → Contact channels). Without a channel the own
+ * value is returned as it is (`""` stays `""`, absent stays absent), so a tenant without `contactChannels` renders the
+ * same props, hence the same bytes.
+ */
+function ownOrChannel<T extends string | undefined>(own: T, channel: string | undefined): T | string {
+    return !own && channel ? channel : own;
+}
+
 export default async function SiteLayout({ children, params }: Props) {
     const { siteId } = await params;
     const config = await getTenantConfig(siteId);
@@ -123,6 +133,7 @@ export default async function SiteLayout({ children, params }: Props) {
     // LOCALE-1D: `commerce` for the commerce bar and the navbar account links (commerce sites only); `defaults` for the
     // two pattern-F texts of the commerce bar (§ 5.2: a stored "" falls back to the language default).
     const { strings: { site, catalog, commerce }, defaults } = resolveLocaleStrings(config);
+    const channels = config.contactChannels;
 
     return (
         <html lang={localeLanguageSubtag(config.locale)}>
@@ -184,8 +195,8 @@ export default async function SiteLayout({ children, params }: Props) {
                     {config.topBar?.show && (
                         <TopBar
                             content={config.topBar.content}
-                            quickContactPhone={config.topBar.quickContactPhone}
-                            quickContactEmail={config.topBar.quickContactEmail}
+                            quickContactPhone={ownOrChannel(config.topBar.quickContactPhone, channels?.phone)}
+                            quickContactEmail={ownOrChannel(config.topBar.quickContactEmail, channels?.email)}
                             contentMaxWidth={config.header?.contentMaxWidth}
                         />
                     )}
@@ -193,8 +204,8 @@ export default async function SiteLayout({ children, params }: Props) {
                     {/* Commerce Bar (utility: phone, social, cart, CTA) */}
                     {config.commerceBar?.enabled && commerceEnabled && (
                         <CommerceBar
-                            phone={config.commerceBar.phone}
-                            whatsappNumber={config.commerceBar.whatsappNumber}
+                            phone={ownOrChannel(config.commerceBar.phone, channels?.phone)}
+                            whatsappNumber={ownOrChannel(config.commerceBar.whatsappNumber, channels?.whatsapp)}
                             socialLinks={config.commerceBar.socialLinks}
                             ctaButton={config.commerceBar.ctaButton}
                             currency={config.currency || "USD"}
@@ -304,7 +315,7 @@ export default async function SiteLayout({ children, params }: Props) {
                 {config.quickContact && (
                     <QuickContact
                         type={config.quickContact.type}
-                        value={config.quickContact.value}
+                        value={ownOrChannel(config.quickContact.value, channels?.[config.quickContact.type])}
                         label={config.quickContact.label}
                         strings={{ quickContactCall: site.quickContactCall, quickContactEmail: site.quickContactEmail }}
                     />

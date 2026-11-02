@@ -54,6 +54,16 @@ describe("mapTenant passes every part of the locale table and the language", () 
         }
     });
 
+    // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the whitelist copies the contact channels as stored; absent stays absent.
+    it("contactChannels is copied (CAT-QUOTE-1); absent stays absent", async () => {
+        const channels = { phone: "+40 721 000 111", whatsapp: "40721000111", email: "office@t.test" };
+        store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T", contactChannels: channels };
+        expect(((await getTenantConfig("t1")) as any).contactChannels).toEqual(channels);
+        store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T" };
+        expect(Object.hasOwn((await getTenantConfig("t1")) as object, "contactChannels")).toBe(true);
+        expect(((await getTenantConfig("t1")) as any).contactChannels).toBeUndefined();
+    });
+
     // CMRC-COUNTIES-1 replaced the locale-1a case "countryCode stays out": the commerce slice that owned it now copies it.
     it("countryCode is copied (CMRC-COUNTIES-1); absent stays absent", async () => {
         store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T", countryCode: "RO" };

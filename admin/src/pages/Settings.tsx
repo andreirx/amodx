@@ -65,6 +65,86 @@ export function withCountry<T extends object>(config: T, code: string): T & { co
     return { ...config, countryCode: code, currency: getCountryPack(code).currency.code };
 }
 
+// ── CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 items 1 and 4): the "Contact channels" card. ──────────────────────
+
+/** The page's config state: the loaded settings, where `interestListEmail: null` = "send to the contact e-mail" chosen. */
+export type SettingsDraft = Omit<Partial<TenantConfig>, "interestListEmail"> & { interestListEmail?: string | null };
+
+/** The Commerce Bar card's description before CAT-QUOTE-1, and the fallback note it gains (the renderer layout uses
+ *  Contact channels when the bar's own phone / WhatsApp is empty). One text node: the page's tree shape, hence the ids
+ *  React derives from it, stays as captured (Settings.test.ts). */
+export const COMMERCE_BAR_DESCRIPTION = "Utility bar above the navbar with phone, social links, cart total, and optional CTA button.";
+export const COMMERCE_BAR_FALLBACK_NOTE = "Phone and WhatsApp: defaults from Contact channels when empty.";
+
+/**
+ * The `PUT /settings` body of a save, for the two contact attributes: each channel trimmed, an empty one removed;
+ * "a separate address" left empty = the contact e-mail (`null`, which removes the stored address). An attribute the
+ * owner did not touch stays as loaded (absent stays absent), so a save without a change sends the same body as before.
+ */
+export function withContactForSave<T extends SettingsDraft>(config: T): T {
+    const next: SettingsDraft = { ...config };
+    if (config.contactChannels) {
+        const channels: Record<string, string> = {};
+        for (const [k, v] of Object.entries(config.contactChannels)) if (typeof v === "string" && v.trim()) channels[k] = v.trim();
+        next.contactChannels = channels;
+    }
+    if (typeof config.interestListEmail === "string") next.interestListEmail = config.interestListEmail.trim() || null;
+    return next as T;
+}
+
+/**
+ * Phone, WhatsApp and e-mail for visitors (every site kind); on a catalog also where interest lists are e-mailed
+ * (operator ruling R3: that control is catalog-only — interest lists exist only on catalog sites). "Visitor contact
+ * e-mail (default)" sets `interestListEmail: null`, which the route reads as "remove the stored address" (ruling
+ * CQ-INTEREST-EMAIL-CLEAR = A).
+ */
+export function ContactChannelsCard({ config, setConfig }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void }) {
+    const channels = config.contactChannels || {};
+    const setChannel = (key: "phone" | "whatsapp" | "email", value: string) => setConfig({ ...config, contactChannels: { ...channels, [key]: value } });
+    const separate = typeof config.interestListEmail === "string";
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Contact channels</CardTitle>
+                <CardDescription>How visitors reach you. A catalog product page shows them under &quot;Request a quote&quot;. Also used by the Top Bar, the Commerce Bar and the floating Quick contact when their own value is empty.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                        <Label>Phone</Label>
+                        <Input value={channels.phone || ""} onChange={e => setChannel("phone", e.target.value)} placeholder="+40 721 000 111" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>WhatsApp</Label>
+                        <Input value={channels.whatsapp || ""} onChange={e => setChannel("whatsapp", e.target.value)} placeholder="+40721000111" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>E-mail</Label>
+                        <Input value={channels.email || ""} onChange={e => setChannel("email", e.target.value)} placeholder="office@client-site.com" />
+                    </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Numbers: digits, &quot;+&quot;, spaces and dashes. An empty field is not shown to visitors.</p>
+                {isCatalogMode(config) && (
+                    <div className="space-y-2">
+                        <Label>Send interest lists to</Label>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="radio" name="interest-list-email" checked={!separate} onChange={() => setConfig({ ...config, interestListEmail: null })} />
+                            Visitor contact e-mail (default) — Notifications → Contact Email
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="radio" name="interest-list-email" checked={separate} onChange={() => setConfig({ ...config, interestListEmail: "" })} />
+                            A separate address
+                        </label>
+                        {separate && (
+                            <Input value={config.interestListEmail || ""} onChange={e => setConfig({ ...config, interestListEmail: e.target.value })} placeholder="lists@client-site.com" />
+                        )}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 // HELPER: Get Config at Runtime (Fixes the "Relative Link" bug)
 const getRendererUrl = () => {
     // @ts-ignore
@@ -75,7 +155,7 @@ const getRendererUrl = () => {
 export default function SettingsPage() {
     const { currentTenant } = useTenant();
     const { userRole } = useAuth();
-    const [config, setConfig] = useState<Partial<TenantConfig>>({});
+    const [config, setConfig] = useState<SettingsDraft>({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -162,7 +242,7 @@ export default function SettingsPage() {
         try {
             await apiRequest("/settings", {
                 method: "PUT",
-                body: JSON.stringify(config)
+                body: JSON.stringify(withContactForSave(config))
             });
             window.location.reload();
         } catch (e: any) {
@@ -677,7 +757,7 @@ export default function SettingsPage() {
                                 <ShoppingBag className="h-5 w-5 text-muted-foreground" />
                                 <CardTitle>Catalog</CardTitle>
                             </div>
-                            <CardDescription>A catalog site: products without prices, stock or ordering. Visitors collect an interest list and send it to the contact e-mail below (Notifications).</CardDescription>
+                            <CardDescription>A catalog site: products without prices, stock or ordering. Visitors collect an interest list and send it to the address chosen in Contact channels → Send interest lists to (by default the visitor contact e-mail, Notifications → Contact Email).</CardDescription>
                         </CardHeader>
                     </Card>
                     ) : (
@@ -762,7 +842,7 @@ export default function SettingsPage() {
                                 <ShoppingBag className="h-5 w-5 text-muted-foreground" />
                                 <CardTitle>Commerce Bar</CardTitle>
                             </div>
-                            <CardDescription>Utility bar above the navbar with phone, social links, cart total, and optional CTA button.</CardDescription>
+                            <CardDescription>{`${COMMERCE_BAR_DESCRIPTION} ${COMMERCE_BAR_FALLBACK_NOTE}`}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <label className="flex items-center gap-3 cursor-pointer">
@@ -1229,7 +1309,11 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* NOTIFICATIONS */}
+                    {/* CONTACT CHANNELS — CAT-QUOTE-1 (every site kind), then NOTIFICATIONS. One fragment in the place the
+                        Notifications card had: the column keeps its children, so the ids React derives from the tree
+                        (the Radix selects further down) stay as the preservation captures hold (Settings.test.ts). */}
+                    <>
+                    <ContactChannelsCard config={config} setConfig={setConfig} />
                     <Card>
                         <CardHeader>
                             <div className="flex items-center gap-2">
@@ -1262,6 +1346,7 @@ export default function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                    </>
 
                     {/* NAVIGATION */}
                     <Card>

@@ -137,7 +137,8 @@ src/
 │                          #   that record, before any catalogue read); items deduped by (productId, option), read by
 │                          #   a consistent chunked BatchGet (UnprocessedKeys ≤ 3 retries → 503, nothing written);
 │                          #   title/slug/option/image recorded from that read; conditional Puts. Mail to
-│                          #   integrations.contactEmail only (none → logged, no fallback).
+│                          #   interestListEmail, else integrations.contactEmail (CAT-QUOTE-1; neither → logged,
+│                          #   no fallback; the same mail either way).
 │                          #   POST /public/interest/resolve — the list page's identity read: the same BatchGet,
 │                          #   per id active {title, slug, imageLink, collection (attribute `colecție`), optionValues}
 │                          #   | not-available (no fields) | absent; incomplete → 503. No reCAPTCHA (public fields).
@@ -159,6 +160,12 @@ src/
 │                          #   ^[A-Za-z][A-Za-z0-9]{0,63}$; ≤ 200 entries; values ≤ 500 UTF-16 units; ≤ 32 768 UTF-8
 │                          #   bytes as JSON; `siteStrings` without the nine cookie/legal keys) → 400 before any read.
 │                          #   commerceStrings, gdpr, legalLinks stay unvalidated (test/unit/locale-settings.test.ts)
+│                          #   CAT-QUOTE-1: `contactChannels` (shared ContactChannelsSchema) and `interestListEmail`
+│                          #   (an e-mail, or null) checked as sent, same place → 400 naming the field before any
+│                          #   read (test/unit/cat-quote-settings.test.ts). BOUNDARY CONVENTION, this request field
+│                          #   only (ruling CQ-INTEREST-EMAIL-CLEAR = A): `interestListEmail: null` REMOVES the stored
+│                          #   attribute (the merge cannot remove an omitted one; no general removal mechanism exists,
+│                          #   F-CQ-5); the stored shape stays an optional e-mail string. `contactChannels: {}` clears.
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/

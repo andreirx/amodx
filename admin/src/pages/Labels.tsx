@@ -513,6 +513,25 @@ export default function Labels() {
             {visible.includes("catalog") && <>
             <SectionHeader section="catalog" onReset={reset} title="Catalog" description="The interest list and the product filters of the catalog. A saved text shows as written, so do not save an empty text: clear the input to use the language default." />
 
+            {/* CAT-QUOTE-1: the "Request a quote" button and dialog of the catalog product page (QuoteRequest.tsx). */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Request a quote</CardTitle>
+                    <CardDescription>The button on the product page and its dialog with the contact channels (Settings → Contact channels)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="catalog" label="Button" field="quoteButton" />
+                        <F section="catalog" label="Dialog title" field="quoteTitle" />
+                        <F section="catalog" label="Action: call" field="quoteCall" />
+                        <F section="catalog" label="Action: WhatsApp" field="quoteWhatsApp" />
+                        <F section="catalog" label="Action: e-mail" field="quoteEmail" />
+                        <F section="catalog" label="Message ({product}, {variant}, {url}; text in [ ] only with a variant)" field="quoteMessage" />
+                        <F section="catalog" label="Close" field="quoteClose" />
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Interest list</CardTitle>

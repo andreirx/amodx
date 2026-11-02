@@ -253,6 +253,13 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         facetsTitle: "Filters",
         facetProducer: "Brand",
         facetVariantDefault: "Option",
+        quoteButton: "Request a quote",
+        quoteTitle: "Ask us for a quote",
+        quoteCall: "Call us",
+        quoteWhatsApp: "WhatsApp",
+        quoteEmail: "Send an e-mail",
+        quoteMessage: "Hello! I would like a quote for {product}[, option {variant}]: {url}",
+        quoteClose: "Close",
     },
     site: {
         untitledSiteName: "Untitled Site",

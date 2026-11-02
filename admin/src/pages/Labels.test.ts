@@ -119,7 +119,20 @@ describe("Reset to the language defaults", () => {
         // the rest are commerce-only: 70 before LOCALE-1D, + its 80 keys = 150 (the commerce part has 179 keys).
         expect(SECTION_KEYS.product).toHaveLength(29);
         expect(SECTION_KEYS.commerce).toHaveLength(150);
-        expect(SECTION_KEYS.catalog).toHaveLength(39);
+        // CAT-QUOTE-1: + the 7 keys of the "Request a quote" card.
+        expect(SECTION_KEYS.catalog).toHaveLength(39 + 7);
+    });
+
+    it("CAT-QUOTE-1: the catalog section holds the seven quote keys, each an input of the \"Request a quote\" card; the catalog Reset removes them", () => {
+        const quote = ["quoteButton", "quoteTitle", "quoteCall", "quoteWhatsApp", "quoteEmail", "quoteMessage", "quoteClose"];
+        expect(SECTION_KEYS.catalog.slice(39)).toEqual(quote);
+        const source = readFileSync(new URL("./Labels.tsx", import.meta.url), "utf8");
+        const card = source.slice(source.indexOf(">Request a quote</CardTitle>"), source.indexOf(">Interest list</CardTitle>"));
+        expect([...card.matchAll(/field="([^"]+)"/g)].map((m) => m[1])).toEqual(quote);
+        const loaded = { catalogMode: true, catalogStrings: { quoteButton: "Cere preț", quoteMessage: "{product}: {url}" } };
+        const d = draftFromSettings(loaded);
+        expect(overrideCount(d, "catalog")).toBe(2);
+        expect(labelsSaveBody(loaded, resetSection(d, "catalog"))).toEqual({ catalogStrings: {} });
     });
 
     it("LOCALE-1B: the catalog Reset removes the catalogStrings keys only; the product-pages Reset removes only its commerce keys", () => {

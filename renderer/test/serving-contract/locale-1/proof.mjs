@@ -33,7 +33,7 @@
 import { fileURLToPath } from "node:url";
 import { fillTemplate, selectPluralText } from "@amodx/shared";
 import { CM1_REQUESTS, maskBody, splitFlight } from "../cm1-byte-identity.mjs";
-import { CM1, FIXTURE_HOST, ITEMS, LOC1, LOC1E, MISSING_SLUG, UNKNOWN_HOST } from "../fixtures.mjs";
+import { CM1, CQ1, FIXTURE_HOST, ITEMS, LOC1, LOC1E, MISSING_SLUG, UNKNOWN_HOST } from "../fixtures.mjs";
 
 export const LOC1_DIR = fileURLToPath(new URL("./", import.meta.url));
 
@@ -67,6 +67,14 @@ const cm1Requests = (key) => [...CM1_REQUESTS[key], ...orderRequests(CM1[key].id
 /** The RO copies answer the request list of their EN source tenant, on their own host (fixtures.mjs `LOC1`). */
 export const LOC1_REQUESTS = Object.fromEntries(Object.entries(LOC1).map(([key, t]) => [
     key, cm1Requests(t.source).map((r) => ({ ...r, tenant: key, host: t.host })),
+]));
+
+/**
+ * CAT-QUOTE-1: the requests of the CQ1 tenants (fixtures.mjs `CQ1`) — the two RO catalog copies' product pages (the
+ * product with the 3-option group and one without options), and the shops' home. Captured in `quote-1/before/`.
+ */
+export const CQ1_REQUESTS = Object.fromEntries(Object.entries(CQ1).map(([key, t]) => [
+    key, (key.startsWith("shop") ? ["/"] : ["/product/oak-plank", "/product/ash-plank"]).map((p) => ({ tenant: key, host: t.host, path: p, file: fileOf(p) })),
 ]));
 
 /** GETs every request in `requests`, sequentially; each capture keeps the request fields (shape of `captureCm1`). */
@@ -466,8 +474,8 @@ function stripProp(node, identity, prop, value, hits) {
 //    reference or a disagreement is a problem). (Before § 18 they had to equal the before names;
 //    Next names client files by a hash of their content, so that pinned every later client-bundle byte.) Unchanged: the
 //    before `G[1]` equals the before root LINK; the removed SCRIPT's `src` is in the document head on both sides; the
-//    head's `/_next/static` stylesheet hrefs are equal before/after, the before ones each equal the before LINK's href
-//    and the after ones each equal the live LINK's href;
+//    head's `/_next/static` stylesheets are as many before as after, the before ones each equal the before LINK's href
+//    and the after ones each equal the live LINK's href (CAT-QUOTE-1, F-CQ-3: no before/after name equality);
 //  - the error-shell preload (ruling LOC1E-404-SHELL-PRELOAD = A): on a page whose RAW response starts with the
 //    `__next_error__` shell — the predicate, never a URL list — exactly ONE `<link rel="preload" href="<LINK's href>"
 //    as="style"/>` may be absent after; any other preload difference, and any preload difference on a page that is not
@@ -616,8 +624,11 @@ function moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, beforeHtm
     if (canon(after.notFoundRes) !== canon([res[0]])) return fail("the root 404 boundary does not link the live [siteId] stylesheet");
     const rootScript = unraw(before.script?.[3]?.src);
     if (!headScripts(htmlB).includes(rootScript) || !headScripts(htmlA).includes(rootScript)) return fail(`the removed root-layout script ${rootScript} is not in the document head on both sides`);
+    // CAT-QUOTE-1 (F-CQ-3, locale-1e.md § 18 appended 2026-11-02): no before-vs-after NAME equality — Next names the
+    // stylesheet by a hash of its content, so any new class would fail every page. On EACH side every head stylesheet
+    // is that side's payload stylesheet, and both sides have the same number of them.
     const sheetsB = headStylesheets(htmlB), sheetsA = headStylesheets(htmlA);
-    if (canon(sheetsB) !== canon(sheetsA) || sheetsB.some((h) => h !== href) || sheetsA.some((h) => h !== liveHref)) return fail(`the head stylesheets differ or are not the payload stylesheet (before ${JSON.stringify(sheetsB)} vs ${href}, after ${JSON.stringify(sheetsA)} vs ${liveHref})`);
+    if (sheetsB.length !== sheetsA.length || sheetsB.some((h) => h !== href) || sheetsA.some((h) => h !== liveHref)) return fail(`the head stylesheets are not each side's payload stylesheet, or their count differs (before ${JSON.stringify(sheetsB)} vs ${href}, after ${JSON.stringify(sheetsA)} vs ${liveHref})`);
     // The error-shell preload: identified by the raw response, never by a URL.
     const pb = stylePreloads(htmlB), pa = stylePreloads(htmlA);
     const missing = [...pb];

@@ -45,6 +45,14 @@ src/
 │   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
 │   ├── CookieConsent.tsx                      # GDPR banner with accept/necessary/deny (texts = resolved site keys, from the layout)
+│   ├── QuoteRequest.tsx                       # CAT-QUOTE-1: "Request a quote" button + native <dialog> (showModal) with Call / WhatsApp / E-mail
+│   │                                          #   from contactChannels; message = catalog key quoteMessage with the product title, the presenter's option
+│   │                                          #   (read on open, followed on every change of the radio group while open) and the absolute URL. Mounted by
+│   │                                          #   SitePage's catalog slot above the presenter when a channel has a value (docs/slices/cat-quote-1-impl.md).
+│   │                                          #   InterestShortlist.tsx `InterestToggle`: variants "card" (listings) and "link" (product page, the
+│   │                                          #   low-key text form); the bordered "page" form was deleted with its last caller.
+│   │                                          #   [siteId]/layout.tsx: Top Bar phone/e-mail, Commerce Bar phone/WhatsApp and the Quick contact value fall
+│   │                                          #   back to contactChannels only when their own value is empty (`ownOrChannel`); lib/dynamo.ts mapTenant copies it
 │   ├── PaddleLoader.tsx                       # Lazy Paddle.js script loader for payments
 │   ├── ReferralCapture.tsx                    # Constant inline <script>: beacons ?ref/?utm_source to /api/ref (cache-3)
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper

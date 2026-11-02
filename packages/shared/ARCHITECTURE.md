@@ -49,7 +49,8 @@ shape** — a function with its own contract and its own test file.
 
 | Schema | Type | Purpose |
 |--------|------|---------|
-| TenantConfigSchema | TenantConfig | Complete site configuration (domain, theme, integrations, GDPR, nav, plan) |
+| TenantConfigSchema | TenantConfig | Complete site configuration (domain, theme, integrations, GDPR, nav, plan); CAT-QUOTE-1: optional `contactChannels` and `interestListEmail` |
+| ContactChannelsSchema | ContactChannels | CAT-QUOTE-1: the visitor contact channels `{ phone?, whatsapp?, email? }` (strict; a number = trimmed, digits/`+`/spaces/dashes, ≥ 1 digit — `ContactNumberSchema`); read by the quote dialog and the bar fallbacks, applied by `PUT /settings` |
 | ContentItemSchema | ContentItem | Page/post with blocks, SEO, access policy, theme overrides |
 | RouteSchema | Route | URL slug mapping to content nodes, supports redirects |
 | CommentSchema | Comment | User comment with moderation status |
@@ -130,7 +131,7 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
 - **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 179 keys:
   the 77 existing ones, the 21 shared product-surface keys of `1b`, the 80 commerce-only keys of `1d` — cart, checkout,
   account, order confirmation and tracking, add-to-cart, commerce bar, navbar account links — and `showcaseEmpty` of
-  `1c`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel) and `siteStrings`
+  `1c`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel, + the 7 `quote*` keys of CAT-QUOTE-1: the "Request a quote" button and dialog) and `siteStrings`
   (`SiteStringsSchema`, 51 keys in `1a` + `errorTryAgain` in `1d` + the 26 block-chrome keys of `1c`). Every key is optional (absent = no override). The nine cookie/legal site keys
   are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
   in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).

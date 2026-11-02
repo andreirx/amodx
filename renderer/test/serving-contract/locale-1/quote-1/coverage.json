@@ -1,0 +1,127 @@
+{
+  "slice": "cat-quote-1",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for CAT-QUOTE-1 (docs/slices/cat-quote-1-impl.md): every catalog key this slice adds — the seven quote* keys of the \"Request a quote\" button and dialog (renderer/src/components/QuoteRequest.tsx) — maps to at least one check at its reader: the jsdom rows of renderer/test/unit/quote-request.test.ts render the real component with the resolved EN and RO tables and assert each text (quoteMessage: the WhatsApp and e-mail hrefs with and without a variant). No key is a count key. Since round 2 (CQ-IMPL-MAPTENANT = A) the six visible keys also have a capture check: ro-expected.json lists each as an ADDED text (row CQ1-QUOTE) on the RO catalog copy's /product/oak-plank, asserted by row loc1-ro-catalog; quoteMessage renders inside the dialog's links, asserted by row cq1-quote-ro and the jsdom rows. Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": [],
+    "catalog": [
+      "quoteButton",
+      "quoteTitle",
+      "quoteCall",
+      "quoteWhatsApp",
+      "quoteEmail",
+      "quoteMessage",
+      "quoteClose"
+    ],
+    "commerce": []
+  },
+  "checks": {
+    "catalog.quoteButton": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "RO texts: the button, the dialog title, the three actions (WhatsApp as the brand name) and close, in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "EN texts: the English pack values"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/product/oak-plank"
+        }
+      }
+    ],
+    "catalog.quoteTitle": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "RO texts: the button, the dialog title, the three actions (WhatsApp as the brand name) and close, in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "EN texts: the English pack values"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/product/oak-plank"
+        }
+      }
+    ],
+    "catalog.quoteCall": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "RO texts: the button, the dialog title, the three actions (WhatsApp as the brand name) and close, in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "EN texts: the English pack values"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/product/oak-plank"
+        }
+      }
+    ],
+    "catalog.quoteWhatsApp": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "RO texts: the button, the dialog title, the three actions (WhatsApp as the brand name) and close, in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "EN texts: the English pack values"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/product/oak-plank"
+        }
+      }
+    ],
+    "catalog.quoteEmail": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "RO texts: the button, the dialog title, the three actions (WhatsApp as the brand name) and close, in Romanian"
+      },
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "EN texts: the English pack values"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/product/oak-plank"
+        }
+      }
+    ],
+    "catalog.quoteMessage": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "the hrefs: tel: without spaces, wa.me with the digits and the message, mailto with subject = title and body = the message — with a chosen variant"
+      },
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "the message without a variant: nothing checked, or a product without options → the variant segment is dropped"
+      }
+    ],
+    "catalog.quoteClose": [
+      {
+        "test": "renderer/test/unit/quote-request.test.ts",
+        "case": "RO texts: the button, the dialog title, the three actions (WhatsApp as the brand name) and close, in Romanian"
+      },
+      {
+        "capture": {
+          "row": "loc1-ro-catalog",
+          "fixture": "roCatalog",
+          "path": "/product/oak-plank"
+        }
+      }
+    ]
+  }
+}

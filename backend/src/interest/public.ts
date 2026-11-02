@@ -30,7 +30,8 @@ import { readTenantMode } from "../lib/catalog-product.js";
  *      option is never turned into interest in the plain product; no valid item → 400;
  *   5. the system form (created on first use) and the record, both conditional on a new key; title, slug, option and
  *      image are the ones READ in step 4, never the client's. A lost race on the record key → step 3's answer.
- * The notification goes to `integrations.contactEmail` only — none → logged, no mail (no platform fallback).
+ * The notification goes to `interestListEmail` (CAT-QUOTE-1 § 3 item 4: "Send interest lists to"), else to
+ * `integrations.contactEmail` — neither → logged, no mail (no platform fallback). Same mail either way.
  *
  * `POST /public/interest/resolve` — the list page's identity read (§ 8, F3): the stored ids resolved by id, with the
  * SAME BatchGet and retry. No reCAPTCHA (it reads public fields only). Order: origin → body → tenant mode → read.
@@ -274,7 +275,7 @@ async function submit(event: APIGatewayProxyEventV2, tenantId: string, body: any
         throw e;
     }
 
-    const contactEmail: string | undefined = tenantConfig?.integrations?.contactEmail || undefined;
+    const contactEmail: string | undefined = tenantConfig?.interestListEmail || tenantConfig?.integrations?.contactEmail || undefined;
     if (!contactEmail) {
         console.warn(`[interest] notification not sent: tenant ${tenantId} has no integrations.contactEmail (submission ${submissionId} stored)`);
     } else {

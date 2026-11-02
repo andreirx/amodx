@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
@@ -29,7 +30,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, ContactChannelsCard, COMMERCE_BAR_DESCRIPTION, COMMERCE_BAR_FALLBACK_NOTE } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -110,13 +111,95 @@ const CATALOG = {
     urlPrefixes: { ...URL_PREFIX_DEFAULTS, interest: "/my-list" }, integrations: { contactEmail: "owner@catalog.test" },
 };
 
-describe("Settings — a non-catalog site renders byte-equal to 3912c5d (rule 2)", () => {
+/**
+ * CAT-QUOTE-1 — the preservation policy (operator ruling CQ-ADMIN-PRESERVATION = A, 2026-11-02): the __markup__ captures
+ * stay the immutable 3912c5d artefacts, never regenerated; the comparison removes EXACTLY two named things and nothing
+ * else:
+ *   EXCLUSION 1 — the Contact channels card element: the markup of `ContactChannelsCard` rendered alone for the same
+ *     config (it starts `<div class="rounded-xl border bg-card text-card-foreground shadow">` and holds the title
+ *     "Contact channels"); it must occur exactly once;
+ *   EXCLUSION 2 — the sentence appended to the Commerce Bar description, " " + COMMERCE_BAR_FALLBACK_NOTE, matched with
+ *     the whole description text and its closing `</div>` (exactly once on a shop with the Commerce Bar on; never
+ *     elsewhere).
+ * Why not the base re-capture: a re-capture from 29a2282 cannot change these files (the base has no card), and a capture
+ * from the candidate is forbidden; the comparison is therefore narrowed by these two named exclusions (record D-8).
+ */
+const EXCLUSION_2 = `${COMMERCE_BAR_DESCRIPTION} ${COMMERCE_BAR_FALLBACK_NOTE}</div>`;
+function withoutCatQuote(html: string, config: Record<string, unknown>, notes: number): string {
+    const card = renderToStaticMarkup(createElement(ContactChannelsCard, { config, setConfig: () => {} }));
+    expect(card.startsWith('<div class="rounded-xl border bg-card text-card-foreground shadow">') && card.includes(">Contact channels<"), "EXCLUSION 1 is the card element").toBe(true);
+    expect(html.split(card).length - 1, "EXCLUSION 1 occurs once").toBe(1);
+    expect(html.split(EXCLUSION_2).length - 1, "EXCLUSION 2 occurrences").toBe(notes);
+    return html.replace(card, "").split(EXCLUSION_2).join(`${COMMERCE_BAR_DESCRIPTION}</div>`);
+}
+
+describe("Settings — a non-catalog site renders byte-equal to 3912c5d (rule 2), minus the CAT-QUOTE-1 additions", () => {
     // The files under __markup__/ were written by the first run of this test on the unchanged tree (3912c5d).
     it("content site", async () => {
-        await expect(renderSettings(CONTENT)).toMatchFileSnapshot("./__markup__/settings.content.html");
+        await expect(withoutCatQuote(renderSettings(CONTENT), CONTENT, 0)).toMatchFileSnapshot("./__markup__/settings.content.html");
     });
     it("commerce site", async () => {
-        await expect(renderSettings(COMMERCE)).toMatchFileSnapshot("./__markup__/settings.commerce.html");
+        await expect(withoutCatQuote(renderSettings(COMMERCE), COMMERCE, 1)).toMatchFileSnapshot("./__markup__/settings.commerce.html");
+    });
+    it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card", async () => {
+        const capture = (name: string) => readFileSync(new URL(`./__markup__/settings.${name}.html`, import.meta.url), "utf8");
+        const content = renderSettings(CONTENT), commerce = renderSettings(COMMERCE);
+        expect(withoutCatQuote(content, CONTENT, 0)).toBe(capture("content"));            // positive control
+        expect(withoutCatQuote(commerce, COMMERCE, 1)).toBe(capture("commerce"));
+        const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
+        const mutations: [string, string, Record<string, unknown>, number][] = [
+            [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT, 0],
+            [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT, 0],
+            [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE, 1],
+        ];
+        for (const [html, name, config, notes] of mutations) expect(withoutCatQuote(html, config, notes)).not.toBe(capture(name));
+    });
+});
+
+describe("Settings — Contact channels (CAT-QUOTE-1)", () => {
+    // Operator ruling R3 (2026-11-02): the card on every kind; "Send interest lists to" catalog-only (lists exist only there).
+    it("the card on every site kind, before Notifications; the interest-list destination only on a catalog (ruling R3)", () => {
+        for (const config of [CONTENT, COMMERCE, CATALOG]) {
+            const titles = cardTitles(renderSettings(config));
+            expect(titles.indexOf("Contact channels"), String(config.name)).toBeGreaterThan(-1);
+            expect(titles.indexOf("Notifications") - titles.indexOf("Contact channels"), String(config.name)).toBe(1);
+        }
+        expect(renderSettings(CATALOG)).toContain("Send interest lists to");
+        expect(renderSettings(CONTENT)).not.toContain("Send interest lists to");
+        expect(renderSettings(COMMERCE)).not.toContain("Send interest lists to");
+    });
+    it("the inputs show the stored channels; the destination radio follows interestListEmail", () => {
+        const html = renderSettings({ ...CATALOG, contactChannels: { phone: "0721 000", whatsapp: "40721", email: "office@catalog.test" } });
+        const card = html.slice(html.indexOf(">Contact channels<"), html.indexOf(">Notifications<"));
+        expect([...card.matchAll(/<input[^>]*value="([^"]*)"/g)].map((m) => m[1])).toEqual(["0721 000", "40721", "office@catalog.test"]);
+        expect(card).toMatch(/<input type="radio" name="interest-list-email" checked=""\/>Visitor contact e-mail \(default\)/);
+        const separate = renderSettings({ ...CATALOG, interestListEmail: "lists@catalog.test" });
+        const card2 = separate.slice(separate.indexOf(">Contact channels<"), separate.indexOf(">Notifications<"));
+        expect(card2).toMatch(/checked=""\/>A separate address/);
+        expect(card2).toContain('value="lists@catalog.test"');
+    });
+    it("the card names the three surfaces that fall back to it (F-CQ-1: the Top Bar and Quick contact have no Settings control)", () => {
+        expect(renderSettings(CONTENT)).toContain("Also used by the Top Bar, the Commerce Bar and the floating Quick contact when their own value is empty.");
+    });
+    it("the fallback note on the Commerce Bar card (the Top Bar and Quick contact have no Settings card)", () => {
+        expect(renderSettings(COMMERCE)).toContain(">Utility bar above the navbar with phone, social links, cart total, and optional CTA button. Phone and WhatsApp: defaults from Contact channels when empty.</div>");
+    });
+});
+
+describe("withContactForSave — the PUT body of the two contact attributes", () => {
+    it("untouched attributes stay as loaded (absent stays absent): the body of a save without a change is unchanged", () => {
+        expect(withContactForSave(CONTENT)).toEqual(CONTENT);
+        const loaded = { ...CATALOG, contactChannels: { phone: "0721" }, interestListEmail: "lists@catalog.test" };
+        expect(withContactForSave(loaded)).toEqual(loaded);
+    });
+    it("channels trimmed, an empty channel removed; {} when every channel was cleared", () => {
+        expect(withContactForSave({ contactChannels: { phone: " 0721 000 ", whatsapp: "  ", email: "a@b.test " } })).toEqual({ contactChannels: { phone: "0721 000", email: "a@b.test" } });
+        expect(withContactForSave({ contactChannels: { phone: "", email: "" } })).toEqual({ contactChannels: {} });
+    });
+    it("the destination: the contact e-mail → null (removes the stored address); a separate address trimmed; left empty → null", () => {
+        expect(withContactForSave({ interestListEmail: null })).toEqual({ interestListEmail: null });
+        expect(withContactForSave({ interestListEmail: " lists@b.test " })).toEqual({ interestListEmail: "lists@b.test" });
+        expect(withContactForSave({ interestListEmail: "  " })).toEqual({ interestListEmail: null });
     });
 });
 
@@ -125,9 +208,12 @@ describe("Settings — the cards of each site kind (§ 4.5)", () => {
         const html = renderSettings(CATALOG);
         expect(cardTitles(html)).toContain("Catalog");
         expect(cardTitles(html)).not.toContain("Commerce");
-        expect(html).toContain("A catalog site: products without prices, stock or ordering. Visitors collect an interest list and send it to the contact e-mail below (Notifications).");
+        // CAT-QUOTE-1 (ruling R4): the text names Contact channels → "Send interest lists to" and the default fallback.
+        expect(html).toContain("A catalog site: products without prices, stock or ordering. Visitors collect an interest list and send it to the address chosen in Contact channels → Send interest lists to (by default the visitor contact e-mail, Notifications → Contact Email).");
+        expect(html).not.toContain("contact e-mail below (Notifications)");
         expect(html).not.toContain("Enable Commerce");
-        // "below": the Notifications card (contact e-mail) follows the Catalog card.
+        // Both cards it names follow the Catalog card.
+        expect(cardTitles(html).indexOf("Contact channels")).toBeGreaterThan(cardTitles(html).indexOf("Catalog"));
         expect(cardTitles(html).indexOf("Notifications")).toBeGreaterThan(cardTitles(html).indexOf("Catalog"));
     });
     it("catalog: Digital Sales (Paddle) and Product Search shown; the commerce-only cards hidden", () => {

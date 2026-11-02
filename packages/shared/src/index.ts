@@ -118,6 +118,21 @@ export const QuickContactSchema = z.object({
     label: z.string().optional(),
 });
 
+// CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 item 1, CQ-D1 = A): the tenant's contact channels for visitors, one
+// place for every site kind. Read by the catalog product page's "Request a quote" dialog; the Top Bar, the Commerce Bar
+// and the Quick contact fall back to it only when their own field is empty. A number: trimmed, non-empty, only digits,
+// "+", spaces and dashes, at least one digit. Unknown keys are refused (a new attribute: no stored data predates it).
+const CONTACT_NUMBER_FORM = /^[0-9+ -]+$/;
+export const ContactNumberSchema = z.string()
+    .refine((v) => v.length > 0 && v.trim() === v, { message: "must be a non-empty text without leading or trailing spaces" })
+    .refine((v) => CONTACT_NUMBER_FORM.test(v) && /[0-9]/.test(v), { message: "may hold only digits, \"+\", spaces and dashes, and at least one digit" });
+export const ContactChannelsSchema = z.object({
+    phone: ContactNumberSchema.optional(),
+    whatsapp: ContactNumberSchema.optional(),
+    email: z.string().email().optional(),
+}).strict();
+export type ContactChannels = z.infer<typeof ContactChannelsSchema>;
+
 // Top Bar config
 export const TopBarSchema = z.object({
     show: z.boolean().default(false),
@@ -857,6 +872,14 @@ export const CatalogStringsSchema = z.object({
     facetsTitle: z.string().optional(),                 // "Filters"
     facetProducer: z.string().optional(),               // "Brand" (heading of the producer facet)
     facetVariantDefault: z.string().optional(),         // "Option" (variant heading when the option groups differ)
+    // CAT-QUOTE-1: the "Request a quote" button and dialog of the catalog product page (components/QuoteRequest.tsx)
+    quoteButton: z.string().optional(),                 // "Request a quote"
+    quoteTitle: z.string().optional(),                  // "Ask us for a quote" (dialog heading)
+    quoteCall: z.string().optional(),                   // "Call us"
+    quoteWhatsApp: z.string().optional(),               // "WhatsApp" (brand name)
+    quoteEmail: z.string().optional(),                  // "Send an e-mail"
+    quoteMessage: z.string().optional(),                // "Hello! I would like a quote for {product}[, option {variant}]: {url}" ([…] only with a variant)
+    quoteClose: z.string().optional(),                  // "Close"
 });
 export type CatalogStrings = z.infer<typeof CatalogStringsSchema>;
 
@@ -1029,6 +1052,11 @@ export const TenantConfigSchema = z.object({
 
     // Quick Contact Widget
     quickContact: QuickContactSchema.optional(),
+
+    // CAT-QUOTE-1: the visitor contact channels (Settings → Contact channels); absent = none set.
+    contactChannels: ContactChannelsSchema.optional(),
+    // CAT-QUOTE-1 § 3 item 4: where interest lists are e-mailed; absent = `integrations.contactEmail` (no platform fallback).
+    interestListEmail: z.string().email().optional(),
 
     // Top Bar (announcement bar above header)
     topBar: TopBarSchema.default({ show: false }),

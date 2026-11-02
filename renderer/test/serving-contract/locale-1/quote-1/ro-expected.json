@@ -1,0 +1,229 @@
+{
+  "slice": "cat-quote-1",
+  "rule": "docs/slices/cat-quote-1-impl.md § 2: per RO copy (fixtures.mjs LOC1) and captured URL, the exact visible-text changes against THE SAME COPY in the immutable start-commit capture before/ (29a2282). No text changes. Added (row CQ1-QUOTE, `added: true`): on the three product pages of the RO catalog copy — which now has all three contact channels — the \"Cere ofertă\" button and its dialog's texts, each the RO pack value of its catalog key (quoteMessage renders in the links, not as text: row cq1-quote-ro).",
+  "fixtures": {
+    "roContent": {
+      "source": "roContent",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/cart": [],
+        "/category/mats": [],
+        "/checkout": [],
+        "/llms.txt": [],
+        "/openai-feed": [],
+        "/product/plain-rug": [],
+        "/products/d0000000-0000-4000-8000-000000000001": [],
+        "/robots.txt": [],
+        "/search?q=rug": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/sitemap.xml": []
+      }
+    },
+    "roCommerce": {
+      "source": "roCommerce",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/account": [],
+        "/cart": [],
+        "/category/rugs": [],
+        "/checkout": [],
+        "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": [],
+        "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+        "/checkout/confirmare": [],
+        "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+        "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+        "/llms.txt": [],
+        "/openai-feed": [],
+        "/product/rug-care-guide": [],
+        "/product/sale-rug": [],
+        "/product/sold-out-rug": [],
+        "/product/variant-rug": [],
+        "/products/c0000000-0000-4000-8000-000000000001": [],
+        "/robots.txt": [],
+        "/search?q=rug": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/sitemap.xml": [],
+        "/stale-showcase": []
+      }
+    },
+    "roCatalog": {
+      "source": "roCatalog",
+      "against": "before",
+      "paths": {
+        "/": [],
+        "/about": [],
+        "/cart": [],
+        "/category/floors": [],
+        "/checkout": [],
+        "/llms.txt": [],
+        "/openai-feed": [],
+        "/product/ash-plank": [
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteButton",
+            "kind": "text",
+            "added": true,
+            "to": "Cere ofertă"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteTitle",
+            "kind": "text",
+            "added": true,
+            "to": "Cere-ne o ofertă"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteCall",
+            "kind": "text",
+            "added": true,
+            "to": "Sună-ne"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteWhatsApp",
+            "kind": "text",
+            "added": true,
+            "to": "WhatsApp"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteEmail",
+            "kind": "text",
+            "added": true,
+            "to": "Trimite un e-mail"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteClose",
+            "kind": "text",
+            "added": true,
+            "to": "Închide"
+          }
+        ],
+        "/product/legacy-plank": [
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteButton",
+            "kind": "text",
+            "added": true,
+            "to": "Cere ofertă"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteTitle",
+            "kind": "text",
+            "added": true,
+            "to": "Cere-ne o ofertă"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteCall",
+            "kind": "text",
+            "added": true,
+            "to": "Sună-ne"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteWhatsApp",
+            "kind": "text",
+            "added": true,
+            "to": "WhatsApp"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteEmail",
+            "kind": "text",
+            "added": true,
+            "to": "Trimite un e-mail"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteClose",
+            "kind": "text",
+            "added": true,
+            "to": "Închide"
+          }
+        ],
+        "/product/oak-plank": [
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteButton",
+            "kind": "text",
+            "added": true,
+            "to": "Cere ofertă"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteTitle",
+            "kind": "text",
+            "added": true,
+            "to": "Cere-ne o ofertă"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteCall",
+            "kind": "text",
+            "added": true,
+            "to": "Sună-ne"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteWhatsApp",
+            "kind": "text",
+            "added": true,
+            "to": "WhatsApp"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteEmail",
+            "kind": "text",
+            "added": true,
+            "to": "Trimite un e-mail"
+          },
+          {
+            "row": "CQ1-QUOTE",
+            "part": "catalog",
+            "key": "quoteClose",
+            "kind": "text",
+            "added": true,
+            "to": "Închide"
+          }
+        ],
+        "/products/e0000000-0000-4000-8000-000000000001": [],
+        "/products/e0000000-0000-4000-8000-000000000002": [],
+        "/products/e0000000-0000-4000-8000-000000000003": [],
+        "/robots.txt": [],
+        "/search?q=plank": [],
+        "/shop": [],
+        "/shop?availability=in_stock": [],
+        "/sitemap.xml": [],
+        "/stale-showcase": []
+      }
+    }
+  }
+}

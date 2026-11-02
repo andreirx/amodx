@@ -391,3 +391,15 @@ error-shell predicate, and changed nothing in the product code.
   Shell controls (each reported by the raw rule): a shell naming a stylesheet the reference does not, one `[siteId]`
   script fewer, a foreign `[siteId]` script, a set whose 200 pages disagree, a set without a live 200 page, a shell
   checked without a reference. EXECUTED: 65 live 200 pages agree; serving 95/95. The "Open" paragraph above is resolved.
+- **2026-11-02 (CAT-QUOTE-1, operator ruling F-CQ-3 — appended by the CAT-QUOTE-1 builder) — the head stylesheet name.**
+  The raw half of category 4 still compared the head stylesheet NAMES before vs after (`proof.mjs` `moveRootLayoutRaw`,
+  `canon(sheetsB) !== canon(sheetsA)`). Tailwind writes one stylesheet for the whole renderer and Next names it by a hash
+  of its content, so any new class anywhere in the renderer or the plugins renamed it on every page and failed rows
+  #84, #85, #87 on a correct build (EXECUTED in CAT-QUOTE-1 round 1: 92/95). The same class as the script pin above.
+  The rule now: on EACH side every head stylesheet is that side's payload stylesheet, and both sides hold the same
+  number of them; no before/after name equality. Controls (`loc1e-category-controls`): a second head stylesheet (same
+  href), a second head stylesheet (another href), a head stylesheet that is not the payload's, a removed head stylesheet
+  — each reported; the former refusal "every stylesheet href changed" (a consistent rename) is now a POSITIVE control,
+  because it is what a new client build does. The row's before-side preload is taken from the before payload. Since
+  CAT-QUOTE-1 the current locale set is `quote-1/` (29a2282, which already holds the move); this record's `1e/` files
+  are still read by `loc1e-category-controls`, `loc1e-404-document` and `loc1e-cache-headers`, unchanged.
