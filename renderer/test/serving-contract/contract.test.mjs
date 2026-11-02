@@ -36,10 +36,10 @@ import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
-import { CQ1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import {
-    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS,
+    CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1802,26 +1802,27 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
-        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice cat-quote-1 (docs/slices/locale-1.md § 8.5; rulings § 16.2 items
-        // 4-5; docs/slices/cat-quote-1-impl.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/quote-1/: before/
-        // (immutable, captured from 29a2282 with the cm1-byte-identity/README.md worktree procedure — every en-US subject,
-        // every RO copy and the CQ1 tenants, served with this tree's fixtures.mjs), expected-diff.json (the reviewed
-        // byte-difference list of the en-US subjects: row CQ1-INTEREST-LINK on the catalog product pages, nothing else) and
-        // ro-expected.json (the RO copies' text changes against their own 29a2282 capture: the quote texts ADDED on the RO
-        // catalog product pages). Each slice has its own set (§ 8.5 rule 5); the 1a/, 1b/, 1c/, 1d/ and reviews-date-1/
-        // files stay as those slices' records and no row reads them. The 1e/ files are read only by the rows that pin the
-        // locale-1e root-layout move against d9999d2 (loc1e-category-controls, loc1e-404-document, loc1e-cache-headers).
+        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice cat-theme-1 (docs/slices/locale-1.md § 8.5; rulings § 16.2 items
+        // 4-5; docs/slices/cat-theme-1-impl.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/theme-1/: before/
+        // (immutable, captured from 0865ac6 with the cm1-byte-identity/README.md worktree procedure — every en-US subject,
+        // every RO copy, the CQ1 and the CT1 tenants, served with this tree's fixtures.mjs), expected-diff.json (the
+        // reviewed byte-difference list of the en-US subjects: NOTHING on any URL — packet hard rule 1, zero ledger rows)
+        // and ro-expected.json (the RO copies' text changes against their own 0865ac6 capture: none). Each slice has its own
+        // set (§ 8.5 rule 5); the 1a/, 1b/, 1c/, 1d/ and reviews-date-1/ files stay as those slices' records and no row reads
+        // them. The 1e/ files are read only by the rows that pin the locale-1e root-layout move against d9999d2
+        // (loc1e-category-controls, loc1e-404-document, loc1e-cache-headers); the quote-1/ files (29a2282) only by the cq1-*
+        // rows, which pin cat-quote-1's own changes against its start commit.
         // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`;
         // since 1d the commerce subject's list also holds its order pages, `orderRequests`).
-        // Text oracle per subject: equal to before/ (cat-quote-1 lists no text change: CQ1-INTEREST-LINK is markup only).
+        // Text oracle per subject: equal to before/ (cat-theme-1 lists nothing).
         // These rows run LAST in this block: the non-CM1 subjects are captured here, after every row that depends on
         // those tenants' cache state. The RO subjects are the copies `loc1-ro-*` (fixtures.mjs LOC1).
         let loc1Before, loc1Ro, loc1En;
-        const LOC1_SLICE = "quote-1";
+        const LOC1_SLICE = "theme-1";
         /** The commit before/ was captured from (the slice's start commit for render output; titles cite it). */
-        const LOC1_START = "29a2282";
-        /** CAT-QUOTE-1: what the current slice may list for an en-US subject — on a catalog product page exactly these three
-         *  entries (row CQ1-INTEREST-LINK: the interest toggle's link form), elsewhere nothing (packet hard rule 1). */
+        const LOC1_START = "0865ac6";
+        /** CAT-QUOTE-1 (read by the cq1-* rows against quote-1/before/, 29a2282): what cat-quote-1 listed for a catalog
+         *  product page — row CQ1-INTEREST-LINK, the interest toggle's link form. */
         const CQ1_LINK = [
             { category: 3, row: "CQ1-INTEREST-LINK", before: 'class="inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors h-11 px-6 text-sm bg-background text-foreground border-border hover:border-primary"', after: 'class="inline-flex items-center gap-1.5 text-sm underline underline-offset-4 transition-colors text-muted-foreground hover:text-foreground"' },
             { category: 3, row: "CQ1-INTEREST-LINK", before: 'class="lucide lucide-heart h-4 w-4"', after: 'class="lucide lucide-heart h-3.5 w-3.5"' },
@@ -1833,7 +1834,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
         const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
-        let loc1eBefore, cq1Cand;
+        let loc1eBefore, cq1Cand, cq1Before, ct1Cand;
+        /** CAT-THEME-1: the cat-quote-1 record set (29a2282), read explicitly by the cq1-* rows: the current set is theme-1. */
+        const cq1BeforeSet = async () => (cq1Before ??= await readCaptures(path.join(LOC1_DIR, "quote-1", "before")));
+        /** This run's captures of the CT1 tenants (fixtures.mjs `CT1`, requests `CT1_REQUESTS`). */
+        const ct1Set = async () => (ct1Cand ??= await captureRequests(request, server.port, Object.values(CT1_REQUESTS).flat()));
         const loc1eBeforeSet = async () => (loc1eBefore ??= await readCaptures(path.join(LOC1_DIR, "1e", "before")));
         const loc1eJson = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "1e", file), "utf8"));
         /** This run's captures of the CQ1 tenants (fixtures.mjs `CQ1`, requests `CQ1_REQUESTS`). */
@@ -1864,7 +1869,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
          *  category-3 entry lists `text` only when the visible text changes (CAT-QUOTE-1: CQ1-INTEREST-LINK is markup only). */
         const ledgerTexts = (doc, subject) => (urlPath) => expectedFor(doc, subject, urlPath).filter((e) => e.category === 3 && e.text !== undefined).map((e) => e.text);
 
-        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs, the RO copies' and the CQ1 tenants' URLs; expected-diff.json lists exactly the subjects' URLs: CQ1-INTEREST-LINK on every catalog product page, nothing else", async () => {
+        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs, the RO copies', the CQ1 and the CT1 tenants' URLs; expected-diff.json lists exactly the subjects' URLs, each with nothing", async () => {
             const want = Object.fromEntries(Object.entries(EN_US_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const withoutLocale = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#") && !Object.hasOwn(i, "locale")).length;
             assert.equal(Object.keys(want).length, withoutLocale, "every tenant without `locale` is a subject");
@@ -1874,25 +1879,17 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const ro = Object.fromEntries(Object.entries(LOC1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const cq1 = Object.fromEntries(Object.entries(CQ1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             for (const t of Object.values(CQ1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (CQ1, has a locale) is not an en-US subject`);
-            assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), { ...want, ...ro, ...cq1 }, "before/ must hold exactly the subjects', the RO copies' and the CQ1 tenants' URLs");
+            const ct1 = Object.fromEntries(Object.entries(CT1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
+            for (const t of Object.values(CT1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (CT1, has a locale) is not an en-US subject`);
+            assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), { ...want, ...ro, ...cq1, ...ct1 }, "before/ must hold exactly the subjects', the RO copies', the CQ1 and the CT1 tenants' URLs");
             const doc = await loc1Json("expected-diff.json");
             assert.deepEqual(Object.fromEntries(Object.entries(doc.fixtures).map(([key, urls]) => [key, Object.keys(urls).sort()])), want, "expected-diff.json must list exactly the subjects' URLs");
-            const before = await loc1BeforeSet();
-            const catalogTenants = new Set(Object.keys(EN_US_REQUESTS).filter((key) => ITEMS.some((i) => i.PK === "SYSTEM" && i.SK === `TENANT#${CM1[key]?.id ?? key}` && i.catalogMode === true)));
-            assert.deepEqual([...catalogTenants].sort(), ["catalog", "cip1b-catalog"], "precondition: the catalog subjects");
-            let linked = 0;
+            // CAT-THEME-1 (packet hard rule 1): with every new field absent, every URL lists NOTHING — no ledger row, no
+            // prop, no text, no layout move.
             for (const [subject, urls] of Object.entries(doc.fixtures)) {
-                for (const [urlPath, list] of Object.entries(urls)) {
-                    const b = before.captures.find((c) => c.tenant === subject && c.path === urlPath);
-                    // The rule, not the list: a catalog product page that renders the toggle lists the link form; every
-                    // other URL lists nothing — in particular every shop and content URL (zero ledger rows, hard rule 1).
-                    const toggled = catalogTenants.has(subject) && urlPath.startsWith("/product/") && b.body.includes("data-interest-toggle=");
-                    assert.deepEqual(list, toggled ? CQ1_LINK : [], `${subject} ${urlPath}: ${toggled ? "exactly CQ1-INTEREST-LINK" : "nothing (no ledger row, no prop, no text)"}`);
-                    if (toggled) linked++;
-                }
+                for (const [urlPath, list] of Object.entries(urls)) assert.deepEqual(list, [], `${subject} ${urlPath}: nothing (no ledger row, no prop, no text)`);
             }
-            assert.equal(linked, 13, "the 13 catalog product pages (3 catalog, 10 cip1b-catalog) list the link form");
-            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs; CQ1 ${Object.values(cq1).flat().length} URLs; ${linked} catalog product pages list CQ1-INTEREST-LINK`);
+            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs, each listing nothing: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs; CQ1 ${Object.values(cq1).flat().length} URLs; CT1 ${Object.values(ct1).flat().length} URLs`);
         });
 
         for (const subject of Object.keys(EN_US_REQUESTS)) {
@@ -1932,7 +1929,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(textMismatches(before, reverted, "commerce"), [`${confirm.path}: visible text changed`]);
         });
 
-        test(`(loc1-diff-quote-1) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
+        test(`(loc1-diff-theme-1) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -1947,27 +1944,37 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
                     for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
-                    console.log(`  (loc1-diff-quote-1) ${subject} ${b.path}: ${expected.length} listed difference(s)${expected.length ? ` [${[...new Set(expected.map((e) => e.row))].join(", ")}]` : ""}`);
+                    console.log(`  (loc1-diff-theme-1) ${subject} ${b.path}: ${expected.length} listed difference(s)${expected.length ? ` [${[...new Set(expected.map((e) => e.row))].join(", ")}]` : ""}`);
                 }
             }
             assert.deepEqual(problems, []);
-            // The checker can fail (the bound mutations of this row). On a catalog product page: the listed link form
-            // dropped (each of its three entries in turn), a ghost entry, the toggle left in the page form in the payload,
-            // one changed HTML byte. On the content home: one changed HTML byte, the review date in another format, a
-            // changed block text in the payload, a block text in Romanian in the HTML. On an order page: one changed text.
+            // The checker can fail (the bound mutations of this row). On a catalog product page: a ghost entry, the
+            // toggle's variant changed in the payload, one changed HTML byte, and each editorial class or marker of this
+            // slice put into the page (the HTML — a theme field leaking to a tenant without it). On the content home: one
+            // changed HTML byte, the review date in another format, a changed block text in the payload, a block text in
+            // Romanian in the HTML. On an order page: one changed text.
             const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
             const [bp, ap] = pick("catalog", "/product/oak-plank");
             const link = expectedFor(doc, "catalog", "/product/oak-plank");
-            assert.deepEqual(link, CQ1_LINK, "precondition: catalog /product/oak-plank lists the link form");
-            assert.deepEqual(checkExpected(before, bp.body, cand, ap.body, link), [], "precondition: the listed differences hold");
-            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, []), [], "dropping the listed link form was not reported");
-            for (let i = 0; i < link.length; i++) assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, link.filter((_, j) => j !== i)), [], `dropping entry ${i} of the link form was not reported`);
+            assert.deepEqual(link, [], "precondition: catalog /product/oak-plank lists nothing");
+            assert.deepEqual(checkExpected(before, bp.body, cand, ap.body, link), [], "precondition: catalog /product/oak-plank is byte-equal");
             const ghost = { category: 2, element: "[project]/renderer/src/components/QuoteRequest.tsx#QuoteRequest", prop: "strings", value: {} };
-            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, [...link, ghost]), [], "a listed entry that does not occur was not reported");
+            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, [ghost]), [], "a listed entry that does not occur was not reported");
             const variantLink = '\\"variant\\":\\"link\\"';
             assert.equal(ap.body.split(variantLink).length - 1, 1, "mutation precondition: the toggle's variant travels once in the payload");
-            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace(variantLink, '\\"variant\\":\\"page\\"'), link), [], "the page form left in the payload was not reported");
+            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace(variantLink, '\\"variant\\":\\"page\\"'), link), [], "a changed toggle variant in the payload was not reported");
             assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace(">Oak Plank<", ">0ak Plank<"), link), [], "a changed HTML byte on the product page was not reported");
+            const leaks = {
+                "the editorial spec table": ['<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm border-t pt-4">', '<dl class="grid grid-cols-2 gap-x-6 text-sm border-t">'],
+                "the header's top border": ['<div class="sticky top-0 z-50">', '<div class="sticky top-0 z-50 border-t-[3px] border-primary">'],
+                "the editorial footer": ['<footer class="border-t py-12 bg-muted/30">', '<footer class="border-t py-12 bg-muted">'],
+                "an arrow marker": ['href="/contact"', 'data-theme-arrow="" href="/contact"'],
+                "the nav font": ['class="hidden md:flex items-center gap-8"', 'class="hidden md:flex items-center gap-8 font-[family-name:var(--font-nav)]"'],
+            };
+            for (const [name, [from, to]] of Object.entries(leaks)) {
+                assert.equal(ap.body.split(from).length - 1, 1, `mutation precondition (${name}): ${from}`);
+                assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace(from, to), link), [], `${name} on a tenant without the field was not reported`);
+            }
             const [b, a] = pick("content", "/");
             const listed = expectedFor(doc, "content", "/");
             assert.deepEqual(listed, [], "precondition: content / lists nothing");
@@ -1996,7 +2003,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // preload removed on a 200 page. Content /cart 307 shell: a missing preload with another href; two missing preloads.
         // Positive controls: both pages exact under the listed move.
         test("(loc1e-category-controls) category 4 accepts exactly the enumerated root-layout move: every other change on a real page is reported", async () => {
-            // CAT-QUOTE-1: the locale-1e record set (d9999d2 + its category-4 list), read explicitly: the current set is quote-1.
+            // CAT-QUOTE-1: the locale-1e record set (d9999d2 + its category-4 list), read explicitly (the current set is theme-1).
             const before = await loc1eBeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1eJson("expected-diff.json");
@@ -2248,7 +2255,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // of this slice). CAT-QUOTE-1 adds a second kind of item, `added: true` (row CQ1-QUOTE): a text that did not exist
         // at the start commit — the "Cere ofertă" button and its dialog on the RO catalog copy, which now has contact
         // channels — whose `to` is the RO pack value of its catalog key; each listed added item is removed once from the
-        // after extraction, and the rest must then be exactly the listed changes. cat-quote-1 lists no changed text.
+        // after extraction, and the rest must then be exactly the listed changes. cat-theme-1 lists no changed and no added
+        // text (its before/, 0865ac6, already holds cat-quote-1's quote texts).
         const LOC1_RO_ROWS = new Set(["L-RO-1", "L-RO-2", "L-RO-3"]);
         for (const [fixture, rowId] of [["roContent", "loc1-ro-content"], ["roCommerce", "loc1-ro-commerce"], ["roCatalog", "loc1-ro-catalog"]]) {
             test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes (each EN pack value → RO pack value) and added texts (each an RO pack value) against its own ${LOC1_START} capture`, async () => {
@@ -2297,7 +2305,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         // ── ROWS (cq1-*) — CAT-QUOTE-1 (docs/slices/cat-quote-1-impl.md; packet rule 7). Server HTML of the running build:
         // the "Cere ofertă" button and its (closed) native dialog on the RO catalog product pages, by channel set; the bar
-        // fallbacks on a shop. Before side: locale-1/quote-1/before/ (29a2282, where mapTenant drops `contactChannels`).
+        // fallbacks on a shop. Before side: locale-1/quote-1/before/ (29a2282, where mapTenant drops `contactChannels`),
+        // read explicitly through `cq1BeforeSet` since cat-theme-1 made theme-1 the current set.
         const unamp = (h) => h.replace(/&amp;/g, "&");
         /** The dialog's actions as rendered: `{ kind, href, text }`, in document order. */
         const quoteActionsOf = (html) => [...html.matchAll(/<a href="([^"]*)" data-quote-action="([a-z]+)"[^>]*>([^<]*)<\/a>/g)].map((m) => ({ kind: m[2], href: unamp(m[1]), text: m[3] }));
@@ -2340,7 +2349,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(cq1-quote-channels) e-mail only → one action (mailto); an empty contactChannels object → no button, no dialog, and the page byte-equal to 29a2282 but for the interest link", async () => {
             const cand = await cq1CandSet();
-            const before = await loc1BeforeSet();
+            const before = await cq1BeforeSet();
             for (const c of cand.captures.filter((x) => x.tenant === "roEmail")) {
                 const html = splitFlight(c.body).html;
                 const acts = quoteActionsOf(html);
@@ -2366,7 +2375,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(cq1-bars-fallback) a shop whose Top Bar, Commerce Bar and Quick contact own values are empty shows the contact channels (server HTML); 29a2282 showed none", async () => {
             const a = (await cq1Set()).find((x) => x.tenant === "shopFallback" && x.path === "/");
-            const b = (await loc1BeforeSet()).captures.find((x) => x.tenant === "shopFallback" && x.path === "/");
+            const b = (await cq1BeforeSet()).captures.find((x) => x.tenant === "shopFallback" && x.path === "/");
             const html = splitFlight(a.body).html, beforeHtml = splitFlight(b.body).html;
             const { phone, whatsapp, email } = CQ1_CHANNELS;
             const want = [
@@ -2386,7 +2395,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         test("(cq1-bars-own) a shop whose bar fields are set keeps its own values, byte-equal to 29a2282, although it has different contact channels", async () => {
             const cand = await cq1CandSet();
-            const before = await loc1BeforeSet();
+            const before = await cq1BeforeSet();
             const a = cand.captures.find((x) => x.tenant === "shopOwn" && x.path === "/");
             const b = before.captures.find((x) => x.tenant === "shopOwn" && x.path === "/");
             assert.equal(a.status, 200);
@@ -2399,6 +2408,159 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const bf = before.captures.find((x) => x.tenant === "shopFallback" && x.path === "/");
             assert.notDeepEqual(checkExpected(before, bf.body, cand, af.body, []), [], "the comparison must see the fallback values");
             console.log("  (cq1-bars-own) own bar values kept, byte-equal to 29a2282; the fallback shop's change is detected");
+        });
+
+        // ── ROWS (ct1-*) — CAT-THEME-1 (docs/slices/cat-theme-1-impl.md; packet rule 5). Server HTML of the running build
+        // for the CT1 tenants (fixtures.mjs `CT1`): the editorial catalog copy with EVERY new theme field set, and a site
+        // with ONLY `footer.contentMaxWidth`. Before side: theme-1/before/ (0865ac6, which ignores every new field) — each
+        // asserted string is also asserted ABSENT there (the positive control of the detector: the base did not render it).
+        const ct1CandSet = async () => { const en = await loc1EnSet(); return { buildId: en.buildId, clientModules: en.clientModules, captures: await ct1Set() }; };
+        const ct1Page = async (key, p) => {
+            const a = (await ct1Set()).find((x) => x.tenant === key && x.path === p);
+            const b = (await loc1BeforeSet()).captures.find((x) => x.tenant === key && x.path === p);
+            assert.equal(a.status, 200, `${key} ${p}: 200`);
+            assert.equal(b.status, 200, `${key} ${p}: 200 at 0865ac6`);
+            return { html: splitFlight(a.body).html, before: splitFlight(b.body).html, body: a.body };
+        };
+        /** Each needle occurs in `html` (at least `min` times) and never in the base capture of the same URL. */
+        const shows = (page, label, needles, min = 1) => {
+            for (const n of needles) {
+                assert.ok(page.html.split(n).length - 1 >= min, `${label}: ${n}`);
+                assert.ok(!page.before.includes(n), `${label}: 0865ac6 already rendered ${n}`);
+            }
+        };
+
+        test("(ct1-editorial) a tenant with every new theme field set renders each of them; the base commit rendered none", async () => {
+            const T = CT1_THEME;
+            assert.equal(T.shape, "editorial", "precondition: the editorial shape");
+            const home = await ct1Page("editorial", "/");
+            // Fonts: the nav font as a third family, 400;700 ∪ the listed weights, ascending (CT-D2 = B), on all three.
+            const w = "300;400;500;700";
+            // (The loader is raw HTML — dangerouslySetInnerHTML — so `&` is not escaped; OBSERVED in the 0865ac6 capture.)
+            const fontUrl = `https://fonts.googleapis.com/css2?family=Prata:wght@${w}&family=Lato:wght@${w}&family=Inter:wght@${w}&display=swap`;
+            shows(home, "font request", [`<link rel="stylesheet" href="${fontUrl}" media="print"`, `<link rel="preload" as="style" href="${fontUrl}" />`]);
+            // :root — the nav font variable, the two colours (muted text; hairline = border and input), the section gap.
+            shows(home, ":root", ["--font-nav: 'Inter', sans-serif !important;", "--muted-foreground: #6b6b6b !important;", "--border: #d4d4d4 !important;", "--input: #d4d4d4 !important;", "--section-gap: 6rem !important;"]);
+            // Rules: the heading weight; no shadows (the shadow variable forced to a transparent zero shadow); the arrows.
+            const style = [...home.html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).find((css) => css.includes("--font-heading")) ?? "";
+            assert.match(style, /h1, h2, h3, h4, h5, h6 \{\s*font-weight: 300;\s*\}/, "heading weight rule");
+            assert.match(style, /\*, ::before, ::after \{\s*--tw-shadow: 0 0 #0000 !important;\s*--tw-drop-shadow: initial !important;\s*\}/, "no-shadow rule (box and drop shadows; row ct1-no-shadows tests it against the consumers)");
+            assert.match(style, /\[data-theme-arrow\]::after, \[data-quote-request\]::after \{\s*content: " \\2197";\s*\}/, "arrow rule");
+            assert.ok(!home.before.includes("--tw-shadow") && !home.before.includes("font-weight: 300") && !home.before.includes("data-theme-arrow"), "0865ac6 emitted none of the rules");
+            // Header: the 3 px primary top border; the 1920 width on the Navbar; the nav font and the arrows on the nav.
+            shows(home, "header", ['<div class="sticky top-0 z-50 border-t-[3px] border-primary">', '<div class="hidden md:flex items-center gap-8 font-[family-name:var(--font-nav)]">']);
+            // The header width class name is NOT new: `header.contentMaxWidth` was already passed through as a string at
+            // 0865ac6 (it rendered the same class). What was missing there is the compiled rule — checked on the
+            // stylesheet below (renderer/src/lib/widths.ts names the class for Tailwind).
+            assert.ok(home.html.includes('<div class="mx-auto max-w-[1920px] px-4 sm:px-6 lg:px-8">'), "header: the 1920 width on the Navbar");
+            const marked = [...home.html.matchAll(/<a data-theme-arrow="" [^>]*>([^<]*)</g)].map((m) => m[1]);
+            assert.deepEqual(marked, ["Shop", "About", "Contact"], "the arrow marker on the two nav links and the contact button");
+            // Footer: the surface colour, the 1440 width (its own, not the header's).
+            shows(home, "footer", ['<footer class="border-t py-12 bg-muted"><div class="max-w-[1440px] mx-auto px-6">']);
+            // The content-page wrapper takes the section gap.
+            shows(await ct1Page("editorial", "/about"), "/about wrapper", ['<main class="py-[var(--section-gap)] relative">']);
+            // Listings: the wrapper's section gap; landscape cards with the first category's name under the title.
+            for (const p of ["/shop", "/category/floors"]) {
+                const page = await ct1Page("editorial", p);
+                shows(page, `${p} wrapper`, ['mx-auto py-[var(--section-gap)] px-6">']);
+                const cards = page.html.split('<div class="h-[245px] bg-muted rounded-lg overflow-hidden mb-3">').length - 1;
+                assert.ok(cards > 0, `${p}: landscape cards`);
+                assert.ok(!page.html.includes('<div class="aspect-square bg-muted rounded-lg overflow-hidden mb-3">'), `${p}: no square card left`);
+                assert.ok(!page.before.includes("h-[245px]"), `${p}: 0865ac6 had square cards`);
+                const lines = [...page.html.matchAll(/<\/h3><p class="text-xs text-muted-foreground mt-1">([^<]*)<\/p>/g)].map((m) => m[1]);
+                assert.equal(lines.length, cards, `${p}: a category line on every card (every listed product's first category exists)`);
+                assert.ok(!page.before.includes('</h3><p class="text-xs text-muted-foreground mt-1">'), `${p}: 0865ac6 had no category line`);
+                if (p === "/category/floors") assert.deepEqual([...new Set(lines)], ["Floors"], "the floors products' first category");
+                console.log(`  (ct1-editorial) ${p}: ${cards} landscape cards, category lines ${JSON.stringify([...new Set(lines)])}`);
+            }
+            // Product page: the spec table's key column at 50 % between 1 px hairlines; the quote button (its arrow is the
+            // injector's [data-quote-request] rule).
+            const product = await ct1Page("editorial", "/product/oak-plank");
+            shows(product, "spec table", ['<dl class="grid grid-cols-2 gap-x-6 text-sm border-t">', '<dt class="text-muted-foreground py-2 border-b">']);
+            assert.ok(product.html.includes("data-quote-request="), "the quote button is there for the arrow rule");
+            // The compiled stylesheet holds every new class (Tailwind 4 compiles only names written in the sources).
+            const css = /<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/.exec(home.html)?.[1];
+            assert.ok(css, "precondition: the page's stylesheet");
+            const sheet = (await request({ port: server.port, path: css, host: CT1.editorial.host })).body;
+            for (const rule of [".max-w-\\[1440px\\]{max-width:1440px}", ".max-w-\\[1600px\\]{max-width:1600px}", ".max-w-\\[1920px\\]{max-width:1920px}",
+                ".py-\\[var\\(--section-gap\\)\\]{padding-block:var(--section-gap)}", ".font-\\[family-name\\:var\\(--font-nav\\)\\]{font-family:var(--font-nav)}",
+                ".h-\\[245px\\]{height:245px}", ".grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}"]) {
+                assert.ok(sheet.includes(rule), `compiled: ${rule}`);
+            }
+            assert.match(sheet, /\.border-t-\\\[3px\\\]\{[^}]*border-top-width:3px\}/, "compiled: the 3 px top border");
+            console.log(`  (ct1-editorial) fonts ${w} + Inter; colours, section gap, heading weight, no-shadow and arrow rules; header 3 px border + 1920; footer surface + 1440; nav font; arrows ${JSON.stringify(marked)}; spec table 50 %; ${css} holds every new class`);
+        });
+
+        // Review-0 R-CT-4 — "no shadows" tested against the CONSUMERS, not against the chosen mechanism. For a served page:
+        // every class on it whose compiled rule SETS a shadow variable that the same rule PAINTS (in `box-shadow` or
+        // `filter`) is a shadow consumer; each such variable must be forced, with !important, by the injector's
+        // `*, ::before, ::after` block to a no-shadow value (`0 0 #0000` — Tailwind's initial value — or `initial`). Rings
+        // are not shadow consumers: a `ring*` rule sets `--tw-ring-shadow`, which no rule here forces, and its selector has
+        // a state (`:focus`). The page is a cover hero (`drop-shadow-lg` / `-md`, the plugin consumers) plus the site chrome
+        // (`shadow-sm` on the contact button). Discrimination: the same evaluator reports the round-1 rule text (only
+        // `--tw-shadow`) and the default-shape control tenant. The computed style in a real browser is recorded in the
+        // implementation record § 9 (EXECUTED once in Chromium; CI has no browser).
+        const NO_SHADOW_VALUES = new Set(["0 0 #0000", "initial"]);
+        function shadowConsumers(html, sheet) {
+            const classes = new Set([...html.matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/)).filter(Boolean));
+            const out = [];
+            for (const m of sheet.matchAll(/(?<=^|[{}\s])([^{}@;]+)\{([^{}]*)\}/g)) {   // lookbehind: adjacent rules share no character
+                const body = m[2];
+                const painted = new Set([...body.matchAll(/(?:^|;)(?:box-shadow|filter):([^;]*)/g)].flatMap((d) => [...d[1].matchAll(/var\((--tw-[a-z-]*shadow)\b/g)].map((v) => v[1])));
+                const set = [...body.matchAll(/(?:^|;)(--tw-[a-z-]*shadow):/g)].map((d) => d[1]).filter((v) => painted.has(v));
+                if (set.length === 0) continue;
+                for (const selector of m[1].split(",").map((x) => x.trim())) {
+                    if (!/^\.(?:\\.|[A-Za-z0-9_-])+$/.test(selector)) continue;            // a plain class selector (no state, no descendant)
+                    const name = selector.slice(1).replace(/\\(.)/g, "$1");
+                    if (classes.has(name)) for (const v of set) out.push({ name, v });
+                }
+            }
+            return out;
+        }
+        function forcedShadows(styleText) {
+            const block = /\*, ::before, ::after \{([^}]*)\}/.exec(styleText)?.[1] ?? "";
+            return new Map([...block.matchAll(/(--tw-[a-z-]*):\s*([^;!]+?)\s*!important/g)].map((d) => [d[1], d[2]]));
+        }
+        const uncovered = (consumers, forced) => consumers.filter(({ v }) => !NO_SHADOW_VALUES.has(forced.get(v))).map(({ name, v }) => `${name}:${v}`);
+
+        test("(ct1-no-shadows) editorial: every shadow consumer on a page with the cover hero is neutralised — box shadows and the hero's drop shadows; the default shape and the round-1 rule are reported", async () => {
+            const get = async (t) => (await request({ port: server.port, path: CT1_HERO_SLUG, host: t.host }));
+            const [ed, control] = [await get(CT1.editorial), await get(CT1.footerOnly)];
+            assert.equal(ed.status, 200, "editorial /hero");
+            assert.equal(control.status, 200, "control /hero");
+            const html = splitFlight(ed.body).html, controlHtml = splitFlight(control.body).html;
+            const css = /<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/.exec(html)?.[1];
+            const sheet = (await request({ port: server.port, path: css, host: CT1.editorial.host })).body;
+            const styleOf = (h) => [...h.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).find((x) => x.includes("--font-heading")) ?? "";
+            const consumers = shadowConsumers(html, sheet);
+            const vars = new Set(consumers.map((c) => c.v));
+            assert.ok(consumers.some((c) => c.name === "drop-shadow-lg" && c.v === "--tw-drop-shadow"), "precondition: the hero headline's drop-shadow-lg is a consumer on this page");
+            assert.ok(consumers.some((c) => c.name === "drop-shadow-md"), "precondition: the hero subheadline's drop-shadow-md is a consumer");
+            assert.ok(vars.has("--tw-shadow"), "precondition: a box-shadow consumer (shadow*) is on this page");
+            assert.deepEqual(uncovered(consumers, forcedShadows(styleOf(html))), [], "every shadow consumer is neutralised under editorial");
+            // Discrimination: the round-1 rule (box shadows only) leaves the hero's drop shadows; the default shape forces nothing.
+            const round1 = forcedShadows("*, ::before, ::after { --tw-shadow: 0 0 #0000 !important; }");
+            assert.deepEqual([...new Set(uncovered(consumers, round1))].sort(), ["drop-shadow-lg:--tw-drop-shadow", "drop-shadow-md:--tw-drop-shadow"], "the round-1 rule must be reported for the hero");
+            const controlConsumers = shadowConsumers(controlHtml, sheet);
+            assert.ok(controlConsumers.some((c) => c.name === "drop-shadow-lg"), "precondition: the control page has the same hero");
+            assert.ok(!styleOf(controlHtml).includes("--tw-drop-shadow") && uncovered(controlConsumers, forcedShadows(styleOf(controlHtml))).length > 0, "the default shape keeps every shadow");
+            // Rings are not touched: the focus ring rule paints --tw-ring-shadow, which the block does not force.
+            assert.ok(!forcedShadows(styleOf(html)).has("--tw-ring-shadow"), "focus rings are not neutralised");
+            console.log(`  (ct1-no-shadows) ${consumers.length} shadow consumers on the editorial /hero (${[...new Set(consumers.map((c) => c.name))].join(", ")}), all neutralised; round-1 rule leaves ${uncovered(consumers, round1).length}; control keeps them`);
+        });
+
+        test("(ct1-footer-width) a tenant with only footer.contentMaxWidth: the footer at that width, the header at its own; byte-equal to 0865ac6 but for the footer width", async () => {
+            const page = await ct1Page("footerOnly", "/");
+            shows(page, "footer", ['<footer class="border-t py-12 bg-muted/30"><div class="max-w-[1600px] mx-auto px-6">']);
+            assert.ok(page.html.includes('<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">'), "the header keeps its own (default) width");
+            assert.ok(page.before.includes('<footer class="border-t py-12 bg-muted/30"><div class="max-w-7xl mx-auto px-6">'), "precondition: 0865ac6 used the header's width");
+            // The whole page, under CM1-A1 + the resolved payload: the footer width is the ONLY difference (HTML and payload).
+            const cand = await ct1CandSet(), before = await loc1BeforeSet();
+            const a = cand.captures.find((x) => x.tenant === "footerOnly"), b = before.captures.find((x) => x.tenant === "footerOnly");
+            const width = { category: 3, row: "CT1-FOOTER-WIDTH", before: '<div class="max-w-7xl mx-auto px-6">', after: '<div class="max-w-[1600px] mx-auto px-6">', flightBefore: '"max-w-7xl mx-auto px-6"', flightAfter: '"max-w-[1600px] mx-auto px-6"' };
+            assert.deepEqual(checkExpected(before, b.body, cand, a.body, [width]), [], "only the footer width changed");
+            assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, []), [], "positive control: the comparison sees the footer width");
+            console.log("  (ct1-footer-width) footer max-w-[1600px], header max-w-7xl; the footer width is the only byte difference to 0865ac6");
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the
@@ -2586,8 +2748,9 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // Since locale-1c the locale byte row was loc1-diff-1c (the 0c0dbc8 capture, the same comparison as loc1-diff-1d);
         // since locale-reviews-date-1 it was loc1-diff-reviews-date-1 (the eba5e18 capture, the same comparison); since
         // locale-1e it was loc1-diff-1e (the d9999d2 capture, the same comparison plus category 4, the root-layout move);
-        // since cat-quote-1 it is loc1-diff-quote-1 (the 29a2282 capture, which already holds the move; the same comparison
-        // without category 4 — the move stays pinned against d9999d2 by loc1e-category-controls and loc1e-404-document).
+        // since cat-quote-1 it was loc1-diff-quote-1 (the 29a2282 capture, which already holds the move; the same comparison
+        // without category 4 — the move stays pinned against d9999d2 by loc1e-category-controls and loc1e-404-document);
+        // since cat-theme-1 it is loc1-diff-theme-1 (the 0865ac6 capture, the same comparison, nothing listed).
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

@@ -33,7 +33,7 @@
 import { fileURLToPath } from "node:url";
 import { fillTemplate, selectPluralText } from "@amodx/shared";
 import { CM1_REQUESTS, maskBody, splitFlight } from "../cm1-byte-identity.mjs";
-import { CM1, CQ1, FIXTURE_HOST, ITEMS, LOC1, LOC1E, MISSING_SLUG, UNKNOWN_HOST } from "../fixtures.mjs";
+import { CM1, CQ1, CT1, FIXTURE_HOST, ITEMS, LOC1, LOC1E, MISSING_SLUG, UNKNOWN_HOST } from "../fixtures.mjs";
 
 export const LOC1_DIR = fileURLToPath(new URL("./", import.meta.url));
 
@@ -75,6 +75,15 @@ export const LOC1_REQUESTS = Object.fromEntries(Object.entries(LOC1).map(([key, 
  */
 export const CQ1_REQUESTS = Object.fromEntries(Object.entries(CQ1).map(([key, t]) => [
     key, (key.startsWith("shop") ? ["/"] : ["/product/oak-plank", "/product/ash-plank"]).map((p) => ({ tenant: key, host: t.host, path: p, file: fileOf(p) })),
+]));
+
+/**
+ * CAT-THEME-1: the requests of the CT1 tenants (fixtures.mjs `CT1`) — the editorial catalog copy's home, about page
+ * (the content-page wrapper), shop and category listings (the cards) and the product page with attributes (the spec
+ * table, the quote button); the footer-width tenant's home. Captured in `theme-1/before/`.
+ */
+export const CT1_REQUESTS = Object.fromEntries(Object.entries(CT1).map(([key, t]) => [
+    key, (key === "editorial" ? ["/", "/about", "/shop", "/category/floors", "/product/oak-plank"] : ["/"]).map((p) => ({ tenant: key, host: t.host, path: p, file: fileOf(p) })),
 ]));
 
 /** GETs every request in `requests`, sequentially; each capture keeps the request fields (shape of `captureCm1`). */

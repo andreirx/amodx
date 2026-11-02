@@ -6,7 +6,7 @@ import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -120,6 +120,46 @@ function contactAttributesError(body: Record<string, unknown>): string | null {
 }
 
 /**
+ * CAT-THEME-1 (docs/slices/cat-theme-1.md § 3; packet rule 3) — the NEW theme fields and the new `footer` attribute,
+ * checked as sent and only when the body contains them (the LOCALE-1A kind). On `theme` and `darkTheme` only the eight
+ * fields this slice added are checked (`ThemeDetailsSchema`); the older theme fields stay unvalidated, so no live
+ * tenant's next save is refused for a theme it already has. Both representations the renderer reads are checked
+ * (review-0 R-CT-1): an object, and a theme sent as a JSON STRING (the legacy form `mapTenant` parses,
+ * `renderer/src/lib/dynamo.ts`) — parsed here for the check only; the body is stored as sent, never rewritten. A string
+ * that does not parse to an object is not checked (today's behaviour: the renderer reads it as `{}`). `footer`:
+ * `FooterConfigSchema` (unknown keys refused). Returns the message of the first problem, naming the field (e.g.
+ * `theme.fontWeights.1: …`); null when there is none.
+ */
+const ThemeDetailsSchema = ThemeSchema.pick({
+    fontNav: true, fontWeights: true, headingWeight: true, mutedColor: true, borderColor: true,
+    shape: true, cardImage: true, cardCategoryLine: true,
+});
+/** The theme as the renderer reads it: an object as is, a JSON string parsed; anything else (unparsable included) → null. */
+function themeObjectOf(value: unknown): Record<string, unknown> | null {
+    let theme = value;
+    if (typeof theme === "string") {
+        try { theme = JSON.parse(theme); } catch { return null; }
+    }
+    return theme !== null && typeof theme === "object" && !Array.isArray(theme) ? theme as Record<string, unknown> : null;
+}
+function themeAttributesError(body: Record<string, unknown>): string | null {
+    const checks: [string, unknown, typeof ThemeDetailsSchema | typeof FooterConfigSchema][] = [];
+    for (const attribute of ["theme", "darkTheme"] as const) {
+        const theme = themeObjectOf(body[attribute]);
+        if (theme) checks.push([attribute, theme, ThemeDetailsSchema]);
+    }
+    if (Object.hasOwn(body, "footer")) checks.push(["footer", body.footer, FooterConfigSchema]);
+    for (const [attribute, value, schema] of checks) {
+        const parsed = schema.safeParse(value);
+        if (!parsed.success) {
+            const issue = parsed.error.issues[0];
+            return `${[attribute, ...issue.path.map(String)].join(".")}: ${issue.message}`;
+        }
+    }
+    return null;
+}
+
+/**
  * Strips secret fields from tenant config before returning to any caller.
  * Secrets are served exclusively via GET /settings/secrets (TENANT_ADMIN/GLOBAL_ADMIN only).
  *
@@ -211,6 +251,9 @@ const _updateHandler: AmodxHandler = async (event) => {
         // CAT-QUOTE-1: same place and kind — before any read.
         const contactError = contactAttributesError(body);
         if (contactError) return { statusCode: 400, body: JSON.stringify({ error: contactError }) };
+        // CAT-THEME-1: same place and kind — before any read.
+        const themeError = themeAttributesError(body);
+        if (themeError) return { statusCode: 400, body: JSON.stringify({ error: themeError }) };
 
         // CATALOG-MODE-1 (CM-D11 accepted refinement): the mode read is authoritative. Strongly consistent, and a
         // missing tenant record answers 404 with nothing written. Before, a miss became `{ name: "Unknown" }` and this

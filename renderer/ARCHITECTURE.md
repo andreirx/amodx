@@ -61,12 +61,14 @@ src/
     ├── tenant-directory.ts                    # EDGE runtime: "is this host a wired tenant?" for middleware (own client — see file header)
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
     ├── document-shell.ts                      # BODY_CLASS_NAME — the one <body> class of [siteId]/layout.tsx and not-found.tsx (locale-1e)
+    ├── widths.ts                              # WIDTH_CLASSES (cat-theme-1): max-w-[1440px] / [1600px] / [1920px] written literally so Tailwind 4 compiles them; read by no runtime code
+    ├── sanitize.ts                            # sanitizeHtml / sanitizeCssColor (injection-safety filter, also applied to the new colours) / sanitizeFontFamily / sanitizeCssLength
     ├── api-client.ts                          # getMasterKey() from env or Secrets Manager (cached)
     ├── routing.ts                             # useTenantUrl() client hook for preview-mode URL generation
     └── routing-server.ts                      # getPreviewBase() — reads amodx_preview_base cookie (dynamic twin only)
 test/
 └── serving-contract/                          # `npm run test:serving` — see README.md there
-    ├── contract.test.mjs                      # 26 contract-row assertions + 4 harness isolation self-checks (30 tests)
+    ├── contract.test.mjs                      # the contract rows + 4 harness isolation self-checks (101 tests on `next` since cat-theme-1; README.md there)
     ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection
     ├── harness.mjs                            # next build / next start on an ephemeral port / HTTP helper
     ├── no-dotenv.cjs                          # NODE_OPTIONS preload: hides renderer/.env* from the whole child process tree; journals its own coverage
@@ -636,6 +638,25 @@ Per-tenant Google OAuth via NextAuth.js:
 - Layout: `--radius`
 - Loads Google Fonts non-blocking (preload as print, swap to all on load)
 - Sets `window.AMODX_TENANT_ID` for client-side block components
+
+**CAT-THEME-1 (docs/slices/cat-theme-1-impl.md).** Eight optional theme fields and `footer.contentMaxWidth`. Absent →
+byte-identical output (every new output is a conditional segment that is `""` / a conditional spread when absent):
+- `ThemeInjector`: `--muted-foreground` = `mutedColor` (default `#64748b`), `--border`/`--input` = `borderColor` (default
+  `#e2e8f0`); `fontNav` → a third Google family + `--font-nav`; the request weights = `400;700` ∪ `fontWeights`, ascending,
+  for every family; `headingWeight` → one `h1…h6 { font-weight }` rule; `shape: "editorial"` → `--section-gap: 6rem`, the
+  no-shadow rule (`--tw-shadow` forced to a transparent zero shadow — rings keep `--tw-ring-shadow`; `--tw-drop-shadow` reset to
+  `initial`, so the hero / video-hero `drop-shadow-*` filters lose only the shadow — row `ct1-no-shadows`) and the arrow rule
+  (`[data-theme-arrow]::after, [data-quote-request]::after { content: " ↗" }`). The `<style>` is unlayered, so it wins over
+  Tailwind's layered utilities.
+- `layout.tsx`: `editorial` → header wrapper `border-t-[3px] border-primary`, footer `bg-muted` (surface) instead of
+  `bg-muted/30`; footer width = `footer.contentMaxWidth || header.contentMaxWidth || "max-w-7xl"`; Navbar gets `navFont` /
+  `linkArrows`, CommerceBar `ctaArrow` — only when set (conditional spread). `mapTenant` copies `footer`.
+- `SitePage.tsx`: `editorial` → the content-page and listing `<main>`s use `py-[var(--section-gap)]`, the spec table is
+  `grid-cols-2` with 1 px row hairlines; `cardImage: "landscape"` → card image `h-[245px]`; `cardCategoryLine` → the first
+  category's name under the card title (sharing the title's child slot — a new child slot would change the payload of
+  every card), the category and search routes read the categories only when the line is on.
+- Tailwind 4 compiles only class names written in the files it scans — which is every file under `renderer/`, test
+  fixtures and captured `.body` files included (EXECUTED with `@tailwindcss/oxide`'s Scanner, cat-theme-1 record § 4).
 
 ## Block Rendering (`RenderBlocks.tsx`)
 

@@ -72,6 +72,16 @@ src/
     │                           #   notes the fallback; the Catalog card names the destination. Settings.test.ts
     │                           #   compares the 3912c5d __markup__ captures minus exactly two named exclusions (the
     │                           #   card element, the Commerce Bar note), with controls (ruling CQ-ADMIN-PRESERVATION = A)
+    │                           #   CAT-THEME-1: Typography gets TypographyDetails (nav font, additional weights as
+    │                           #   checkboxes 100–900 except 400/700, heading weight); the Theme card's Palette gets
+    │                           #   ThemeColorDetails (Muted Text, Hairlines), the light tab ShapeAndCards (shape preset,
+    │                           #   card image, category line); Navbar & Layout: HEADER_/PAGE_WIDTH_OPTIONS (+1440,
+    │                           #   1600, 1920) and FooterWidthControl ("Same as header" → footer {}). Every group is
+    │                           #   native/Input (no useId) and the LAST child of its parent; clearing removes the key.
+    │                           #   The two __markup__ captures were RE-TAKEN once from 0865ac6 (they hold the CQ
+    │                           #   additions now); Settings.test.ts compares them minus exactly the four groups.
+    │                           #   Round 2 (R-CT-3): every Typography-card control reads `activeConfig`, the theme
+    │                           #   `updateTheme` writes (`withThemeKey`: light → theme, dark → darkTheme).
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"

@@ -30,6 +30,9 @@ interface CommerceBarProps {
     fontSize?: string;
     iconSize?: string;
     labels: CommerceBarStrings;
+    /** CAT-THEME-1 (`editorial` shape): the CTA button carries `data-theme-arrow` ("↗" by the injector's rule). Passed
+     *  by the layout only under the shape (conditional spread), so no other site's props change. */
+    ctaArrow?: boolean;
 }
 
 // Derive a smaller icon class for inline icons (phone, user) from the main iconSize
@@ -109,6 +112,7 @@ export function CommerceBar({
     fontSize = "text-sm",
     iconSize = "h-5 w-5",
     labels,
+    ctaArrow = false,
 }: CommerceBarProps) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -183,6 +187,7 @@ export function CommerceBar({
                         {/* CTA Button */}
                         {ctaButton && (
                             <Link
+                                {...(ctaArrow ? { "data-theme-arrow": "" } : {})}
                                 href={getUrl(ctaButton.url)}
                                 className="bg-primary text-primary-foreground px-5 py-1.5 rounded-full font-semibold hover:opacity-90 transition-opacity whitespace-nowrap"
                             >

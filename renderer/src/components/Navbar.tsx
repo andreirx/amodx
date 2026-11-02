@@ -39,6 +39,8 @@ export function Navbar({
                            interest,
                            commerceStrings,
                            strings,
+                           navFont = false,
+                           linkArrows = false,
                        }: {
     siteName: string;
     logo?: string;
@@ -67,6 +69,16 @@ export function Navbar({
      */
     commerceStrings?: NavbarCommerceStrings;
     strings: NavbarStrings;
+    /**
+     * CAT-THEME-1: the nav items use the theme's nav font (`--font-nav`, ThemeInjector). Passed by the layout only when
+     * `theme.fontNav` is set (conditional spread), so no other site's props or classes change.
+     */
+    navFont?: boolean;
+    /**
+     * CAT-THEME-1 (`editorial` shape): the text links and the contact button carry `data-theme-arrow`, which the
+     * injector's editorial rule follows with "↗" (CSS generated content, not DOM text). Passed only under the shape.
+     */
+    linkArrows?: boolean;
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -74,6 +86,9 @@ export function Navbar({
     const [scrolled, setScrolled] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<number | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    // CAT-THEME-1: both are "" / {} when the theme does not ask for them, so the markup is unchanged.
+    const nf = navFont ? " font-[family-name:var(--font-nav)]" : "";
+    const arrow = linkArrows ? { "data-theme-arrow": "" } : {};
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20);
@@ -116,7 +131,7 @@ export function Navbar({
                     </div>
 
                     {/* --- DESKTOP NAV --- */}
-                    <div className="hidden md:flex items-center gap-8" ref={dropdownRef}>
+                    <div className={`hidden md:flex items-center gap-8${nf}`} ref={dropdownRef}>
                         {links.map((link, i) => (
                             link.children && link.children.length > 0 ? (
                                 // Dropdown menu
@@ -132,6 +147,7 @@ export function Navbar({
                                         <div className="absolute top-full left-0 mt-2 w-56 bg-background border rounded-lg shadow-lg py-2 z-50">
                                             {link.href && (
                                                 <Link
+                                                    {...arrow}
                                                     href={getUrl(link.href)}
                                                     className="block px-4 py-2 text-sm text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
                                                     onClick={() => setOpenDropdown(null)}
@@ -141,6 +157,7 @@ export function Navbar({
                                             )}
                                             {link.children.map((child, j) => (
                                                 <Link
+                                                    {...arrow}
                                                     key={j}
                                                     href={getUrl(child.href)}
                                                     className="block px-4 py-2 text-sm text-muted-foreground hover:text-primary hover:bg-muted transition-colors"
@@ -155,6 +172,7 @@ export function Navbar({
                             ) : (
                                 // Simple link
                                 <Link
+                                    {...arrow}
                                     key={i}
                                     href={getUrl(link.href)}
                                     className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
@@ -180,6 +198,7 @@ export function Navbar({
                         {interest && !commerceEnabled && <InterestWidget tenantId={interest.tenantId} listPrefix={interest.listPrefix} strings={interest.strings} />}
                         {!hideContactButton && (
                             <Link
+                                {...arrow}
                                 href={getUrl("/contact")}
                                 className="bg-primary text-primary-foreground px-5 py-2 rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow-sm"
                             >
@@ -207,7 +226,7 @@ export function Navbar({
             {isMobileOpen && (
                 <div
                     className={`md:hidden absolute left-0 w-full bg-background border-b shadow-xl animate-in slide-in-from-top-2 fade-in-20 ${scrolled ? navHeightScrolled.replace("h-", "top-") : navHeight.replace("h-", "top-")}`}>
-                    <div className="space-y-1 px-4 pb-6 pt-2">
+                    <div className={`space-y-1 px-4 pb-6 pt-2${nf}`}>
                         {links.map((link, i) => (
                             link.children && link.children.length > 0 ? (
                                 // Mobile dropdown
@@ -223,6 +242,7 @@ export function Navbar({
                                         <div className="ml-4 mt-1 space-y-1 border-l-2 border-muted pl-3">
                                             {link.href && (
                                                 <Link
+                                                    {...arrow}
                                                     href={getUrl(link.href)}
                                                     className="block py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
                                                     onClick={() => setIsMobileOpen(false)}
@@ -232,6 +252,7 @@ export function Navbar({
                                             )}
                                             {link.children.map((child, j) => (
                                                 <Link
+                                                    {...arrow}
                                                     key={j}
                                                     href={getUrl(child.href)}
                                                     className="block py-2 text-sm text-muted-foreground hover:text-primary transition-colors"
@@ -245,6 +266,7 @@ export function Navbar({
                                 </div>
                             ) : (
                                 <Link
+                                    {...arrow}
                                     key={i}
                                     href={getUrl(link.href)}
                                     className="block py-3 text-base font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 px-3 rounded-md transition-colors"
@@ -278,6 +300,7 @@ export function Navbar({
                         {!hideContactButton && (
                             <div className="pt-4 mt-2 border-t border-border">
                                 <Link
+                                    {...arrow}
                                     href={getUrl("/contact")}
                                     className="block w-full text-center bg-primary text-primary-foreground px-4 py-3 rounded-md text-base font-medium hover:opacity-90"
                                     onClick={() => setIsMobileOpen(false)}

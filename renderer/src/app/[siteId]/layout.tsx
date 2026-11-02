@@ -23,6 +23,7 @@ import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate,
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { BODY_CLASS_NAME } from "@/lib/document-shell";
+import { sanitizeFontFamily } from "@/lib/sanitize";
 
 export const revalidate = false;
 
@@ -134,6 +135,11 @@ export default async function SiteLayout({ children, params }: Props) {
     // two pattern-F texts of the commerce bar (§ 5.2: a stored "" falls back to the language default).
     const { strings: { site, catalog, commerce }, defaults } = resolveLocaleStrings(config);
     const channels = config.contactChannels;
+    // CAT-THEME-1 (docs/slices/cat-theme-1-impl.md § 3): the `editorial` shape and the nav font, decided once here. Each
+    // is passed to a client component by a conditional spread and switches a class only when set, so a tenant without
+    // them renders the same props and classes. `navFont` uses the injector's own test (a valid font name).
+    const editorial = config.theme?.shape === "editorial";
+    const navFont = !!sanitizeFontFamily(config.theme?.fontNav as string, "");
 
     return (
         <html lang={localeLanguageSubtag(config.locale)}>
@@ -190,7 +196,7 @@ export default async function SiteLayout({ children, params }: Props) {
                 />
 
                 {/* Sticky Header Wrapper */}
-                <div className="sticky top-0 z-50">
+                <div className={editorial ? "sticky top-0 z-50 border-t-[3px] border-primary" : "sticky top-0 z-50"}>
                     {/* Top Bar (announcement) */}
                     {config.topBar?.show && (
                         <TopBar
@@ -214,6 +220,7 @@ export default async function SiteLayout({ children, params }: Props) {
                             height={config.commerceBar.height}
                             fontSize={config.commerceBar.fontSize}
                             iconSize={config.commerceBar.iconSize}
+                            {...(editorial ? { ctaArrow: true } : {})}
                             labels={{
                                 signIn: commerce.signIn || defaults.commerce.signIn,
                                 accountLabel: commerce.accountLabel || defaults.commerce.accountLabel,
@@ -244,6 +251,8 @@ export default async function SiteLayout({ children, params }: Props) {
                         } } : {})}
                         {...(commerceEnabled ? { commerceStrings: { signIn: commerce.signIn, accountLabel: commerce.accountLabel, myAccount: commerce.myAccount } } : {})}
                         strings={{ navAllOf: site.navAllOf, navContact: site.navContact, navToggleMenu: site.navToggleMenu, navViewAll: site.navViewAll, navContactUs: site.navContactUs }}
+                        {...(navFont ? { navFont: true } : {})}
+                        {...(editorial ? { linkArrows: true } : {})}
                     />
 
                 </div>
@@ -257,8 +266,10 @@ export default async function SiteLayout({ children, params }: Props) {
                     {children}
                 </div>
 
-                <footer className="border-t py-12 bg-muted/30">
-                    <div className={`${config.header?.contentMaxWidth || "max-w-7xl"} mx-auto px-6`}>
+                {/* CAT-THEME-1: under `editorial` the footer is on the surface colour (`--muted` = the theme's surfaceColor,
+                    ThemeInjector); its width is `footer.contentMaxWidth`, absent → the header's (the rule before the slice). */}
+                <footer className={editorial ? "border-t py-12 bg-muted" : "border-t py-12 bg-muted/30"}>
+                    <div className={`${config.footer?.contentMaxWidth || config.header?.contentMaxWidth || "max-w-7xl"} mx-auto px-6`}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">
                             {/* Column 1: Company Details */}
                             {(config.companyDetails?.legalName || config.companyDetails?.address || config.companyDetails?.cui) && (

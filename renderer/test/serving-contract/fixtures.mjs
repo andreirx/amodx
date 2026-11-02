@@ -641,6 +641,45 @@ const CQ1_ITEMS = [
     ]),
 ];
 
+// ── CAT-THEME-1 fixtures (docs/slices/cat-theme-1-impl.md; packet rule 5) ──────────────────────────────────────────
+// Each carries a `locale` ("en-US", written out), so none is an en-US subject of the `loc1-*` rows (the rule is "no
+// `locale`"); rows `ct1-*` read them, and their requests (`proof.mjs` `CT1_REQUESTS`) are captured in
+// `locale-1/theme-1/before/` from the base commit 0865ac6 (which ignores every new field: its schema, injector and
+// `mapTenant` do not know them — the positive control of rows `ct1-*`).
+//  - editorial: a copy of the CM1 catalog tenant with EVERY new theme field set (`CT1_THEME`), header width 1920 px,
+//    footer width 1440 px, two nav links (the arrows) and one contact channel (the quote button's arrow);
+//  - footerOnly: a content site with ONLY `footer.contentMaxWidth` set (1600 px); the header keeps its default width.
+// Review-0 R-CT-4: both also have a `/hero` page with a cover hero (the `drop-shadow-*` consumer), the editorial one under
+// the no-shadow rule, the other as its control. `/hero` is NOT in `CT1_REQUESTS` (not captured in `before/`): only row
+// `ct1-no-shadows` requests it.
+export const CT1 = {
+    editorial: { id: "loc1-theme-editorial", host: "loc1-theme-editorial.serving-contract.test" },
+    footerOnly: { id: "loc1-theme-footer", host: "loc1-theme-footer.serving-contract.test" },
+};
+export const CT1_HERO_SLUG = "/hero";
+const ct1HeroPage = (id) => [
+    siteRouteItem(id, CT1_HERO_SLUG, `${id}-hero`),
+    siteContentItem(id, `${id}-hero`, CT1_HERO_SLUG, "CT1 hero", { blocks: [{ type: "hero", attrs: { style: "cover", headline: "CT1 Hero", subheadline: "CT1 hero subheadline", imageSrc: IMG("ct1-hero") } }] }),
+];
+export const CT1_THEME = {
+    fontNav: "Inter", fontWeights: [500, 300], headingWeight: 300, mutedColor: "#6b6b6b", borderColor: "#d4d4d4",
+    shape: "editorial", cardImage: "landscape", cardCategoryLine: true,
+};
+const CT1_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.catalog, CT1.editorial, {
+        locale: "en-US", theme: { ...CT1_THEME },
+        header: { showLogo: true, showTitle: true, contentMaxWidth: "max-w-[1920px]" },
+        footer: { contentMaxWidth: "max-w-[1440px]" },
+        navLinks: [{ label: "Shop", href: "/shop" }, { label: "About", href: "/about" }],
+        contactChannels: { email: "quote@loc1-theme-editorial.serving-contract.test" },
+    }),
+    { ...siteTenant(CT1.footerOnly.id, CT1.footerOnly.host, "CT1 footer width"), description: "CT1 fixture (footer width only).", locale: "en-US", footer: { contentMaxWidth: "max-w-[1600px]" } },
+    siteRouteItem(CT1.footerOnly.id, "/", `${CT1.footerOnly.id}-home`),
+    siteContentItem(CT1.footerOnly.id, `${CT1.footerOnly.id}-home`, "/", "CT1 footer width Home"),
+    ...ct1HeroPage(CT1.editorial.id),
+    ...ct1HeroPage(CT1.footerOnly.id),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -675,6 +714,8 @@ export const ITEMS = [
     ...LOC1E_ITEMS,
     // cat-quote-1: the contact-channel tenants (above).
     ...CQ1_ITEMS,
+    // cat-theme-1: the theme tenants (above).
+    ...CT1_ITEMS,
 ];
 
 /**

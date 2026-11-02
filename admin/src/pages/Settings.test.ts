@@ -12,11 +12,13 @@ import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
  * state is `config` (`useState<Partial<TenantConfig>>({})`); the seed starts it as the fixture config, because
  * react-dom/server never runs the effect that loads `/settings`. `seed.config = null` leaves React untouched.
  */
-const seed = vi.hoisted(() => ({ config: null as null | Record<string, unknown> }));
+// CAT-THEME-1 (review-0 R-CT-3): `seed.tab` starts the page's theme tab (its only `useState("light")`, `Settings.tsx`
+// `activeTab`) as "dark", so a connected render shows what the dark tab's controls read. `null` leaves it untouched.
+const seed = vi.hoisted(() => ({ config: null as null | Record<string, unknown>, tab: null as null | "dark" }));
 vi.mock("react", async (importOriginal) => {
     const React = await importOriginal<typeof import("react")>();
     const isEmptyObject = (v: unknown) => !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
-    const useState = ((init: unknown) => React.useState(seed.config && isEmptyObject(init) ? seed.config : init)) as typeof React.useState;
+    const useState = ((init: unknown) => React.useState(seed.config && isEmptyObject(init) ? seed.config : seed.tab && init === "light" ? seed.tab : init)) as typeof React.useState;
     return { ...React, default: { ...React, useState }, useState };
 });
 vi.mock("@/context/TenantContext", () => ({
@@ -30,7 +32,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, ContactChannelsCard, COMMERCE_BAR_DESCRIPTION, COMMERCE_BAR_FALLBACK_NOTE } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -112,47 +114,170 @@ const CATALOG = {
 };
 
 /**
- * CAT-QUOTE-1 — the preservation policy (operator ruling CQ-ADMIN-PRESERVATION = A, 2026-11-02): the __markup__ captures
- * stay the immutable 3912c5d artefacts, never regenerated; the comparison removes EXACTLY two named things and nothing
- * else:
- *   EXCLUSION 1 — the Contact channels card element: the markup of `ContactChannelsCard` rendered alone for the same
- *     config (it starts `<div class="rounded-xl border bg-card text-card-foreground shadow">` and holds the title
- *     "Contact channels"); it must occur exactly once;
- *   EXCLUSION 2 — the sentence appended to the Commerce Bar description, " " + COMMERCE_BAR_FALLBACK_NOTE, matched with
- *     the whole description text and its closing `</div>` (exactly once on a shop with the Commerce Bar on; never
- *     elsewhere).
- * Why not the base re-capture: a re-capture from 29a2282 cannot change these files (the base has no card), and a capture
- * from the candidate is forbidden; the comparison is therefore narrowed by these two named exclusions (record D-8).
+ * CAT-THEME-1 — the preservation policy (packet rule 4; record docs/slices/cat-theme-1-impl.md § 3). The two captures
+ * under __markup__/ were RE-TAKEN ONCE from the base commit 0865ac6 (the raw page render of that commit's own test setup
+ * — mocks, fixtures and `renderSettings` as in this file — in a throwaway worktree; never from the candidate). They
+ * replace the 3912c5d artefacts, which cat-quote-1 compared minus its two named exclusions: 0865ac6 holds those
+ * additions, so they are part of the capture now and are no longer excluded. The comparison removes EXACTLY the four
+ * theme-detail groups this slice added, each as its own render for the same config (each a native-element or `Input`
+ * group with no React `useId`, the LAST child of its parent, so the rest of the page and its ids are unchanged), and each
+ * must occur exactly once:
+ *   TypographyDetails (Typography card), ThemeColorDetails (Theme card, Palette), ShapeAndCards (Theme card, light tab),
+ *   FooterWidthControl (Navbar & Layout card).
+ * The three wider widths in the two width lists are Radix `SelectItem`s, which a closed Select does not render: they add
+ * no byte; the lists are pinned below (`HEADER_WIDTH_OPTIONS`, `PAGE_WIDTH_OPTIONS`).
  */
-const EXCLUSION_2 = `${COMMERCE_BAR_DESCRIPTION} ${COMMERCE_BAR_FALLBACK_NOTE}</div>`;
-function withoutCatQuote(html: string, config: Record<string, unknown>, notes: number): string {
-    const card = renderToStaticMarkup(createElement(ContactChannelsCard, { config, setConfig: () => {} }));
-    expect(card.startsWith('<div class="rounded-xl border bg-card text-card-foreground shadow">') && card.includes(">Contact channels<"), "EXCLUSION 1 is the card element").toBe(true);
-    expect(html.split(card).length - 1, "EXCLUSION 1 occurs once").toBe(1);
-    expect(html.split(EXCLUSION_2).length - 1, "EXCLUSION 2 occurrences").toBe(notes);
-    return html.replace(card, "").split(EXCLUSION_2).join(`${COMMERCE_BAR_DESCRIPTION}</div>`);
+const THEME_GROUPS = (config: Record<string, any>) => [
+    renderToStaticMarkup(createElement(TypographyDetails, { theme: config.theme, onChange: () => {} })),
+    renderToStaticMarkup(createElement(ThemeColorDetails, { theme: config.theme, onChange: () => {} })),
+    renderToStaticMarkup(createElement(ShapeAndCards, { theme: config.theme, onChange: () => {} })),
+    renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} })),
+];
+function withoutCatTheme(html: string, config: Record<string, unknown>): string {
+    let out = html;
+    for (const group of THEME_GROUPS(config)) {
+        expect(group.length, "a group renders markup").toBeGreaterThan(0);
+        expect(out.split(group).length - 1, `the group occurs once: ${group.slice(0, 80)}`).toBe(1);
+        out = out.replace(group, "");
+    }
+    return out;
 }
 
-describe("Settings — a non-catalog site renders byte-equal to 3912c5d (rule 2), minus the CAT-QUOTE-1 additions", () => {
-    // The files under __markup__/ were written by the first run of this test on the unchanged tree (3912c5d).
+describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups", () => {
     it("content site", async () => {
-        await expect(withoutCatQuote(renderSettings(CONTENT), CONTENT, 0)).toMatchFileSnapshot("./__markup__/settings.content.html");
+        await expect(withoutCatTheme(renderSettings(CONTENT), CONTENT)).toMatchFileSnapshot("./__markup__/settings.content.html");
     });
     it("commerce site", async () => {
-        await expect(withoutCatQuote(renderSettings(COMMERCE), COMMERCE, 1)).toMatchFileSnapshot("./__markup__/settings.commerce.html");
+        await expect(withoutCatTheme(renderSettings(COMMERCE), COMMERCE)).toMatchFileSnapshot("./__markup__/settings.commerce.html");
     });
-    it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card", async () => {
+    it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card, one byte next to a removed group", async () => {
         const capture = (name: string) => readFileSync(new URL(`./__markup__/settings.${name}.html`, import.meta.url), "utf8");
         const content = renderSettings(CONTENT), commerce = renderSettings(COMMERCE);
-        expect(withoutCatQuote(content, CONTENT, 0)).toBe(capture("content"));            // positive control
-        expect(withoutCatQuote(commerce, COMMERCE, 1)).toBe(capture("commerce"));
+        expect(withoutCatTheme(content, CONTENT)).toBe(capture("content"));            // positive control
+        expect(withoutCatTheme(commerce, COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
-        const mutations: [string, string, Record<string, unknown>, number][] = [
-            [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT, 0],
-            [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT, 0],
-            [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE, 1],
+        const footer = THEME_GROUPS(CONTENT)[3];
+        const mutations: [string, string, Record<string, unknown>][] = [
+            [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT],
+            [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT],
+            [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE],
+            [once(content, footer, `${footer} `), "content", CONTENT],
         ];
-        for (const [html, name, config, notes] of mutations) expect(withoutCatQuote(html, config, notes)).not.toBe(capture(name));
+        for (const [html, name, config] of mutations) expect(withoutCatTheme(html, config)).not.toBe(capture(name));
+    });
+});
+
+/** The elements of a rendered component's tree (function components are not called; props are inspected). */
+function elements(node: any): any[] {
+    if (!node || typeof node !== "object") return [];
+    if (Array.isArray(node)) return node.flatMap(elements);
+    return [node, ...elements(node.props?.children)];
+}
+const changes = () => { const calls: [string, unknown][] = []; return { calls, onChange: (k: string, v: unknown) => { calls.push([k, v]); } }; };
+
+describe("Settings — the theme details (CAT-THEME-1)", () => {
+    it("the groups are mounted where packet rule 4 places them, on every site kind", () => {
+        for (const config of [CONTENT, COMMERCE, CATALOG]) {
+            const html = renderSettings(config);
+            const at = (needle: string) => { const i = html.indexOf(needle); expect(i, needle).toBeGreaterThan(-1); return i; };
+            expect(at(">Nav Font (Google Fonts)<")).toBeGreaterThan(at(">Body Font (Google Fonts)<"));
+            expect(at(">Additional Weights<")).toBeGreaterThan(at(">Nav Font (Google Fonts)<"));
+            expect(at(">Heading Weight<")).toBeGreaterThan(at(">Additional Weights<"));
+            expect(at(">Muted Text<")).toBeGreaterThan(at(">Surface<"));
+            expect(at(">Hairlines<")).toBeGreaterThan(at(">Muted Text<"));
+            expect(at(">Shape<")).toBeGreaterThan(at(">Hairlines<"));
+            expect(at(">Cards<")).toBeGreaterThan(at(">Shape<"));
+            expect(at(">Footer Width<")).toBeGreaterThan(at(">Home Page Slug<"));
+            expect(at(">Footer Width<")).toBeLessThan(at(">Navbar &amp; Layout<") + 20000);
+        }
+    });
+    it("the width lists: today's entries kept, 1440 / 1600 / 1920 offered for the header (and the footer) and the pages", () => {
+        expect(HEADER_WIDTH_OPTIONS.map(([v]) => v)).toEqual(["max-w-5xl", "max-w-6xl", "max-w-7xl", "max-w-screen-xl", "max-w-[1440px]", "max-w-screen-2xl", "max-w-[1600px]", "max-w-[1700px]", "max-w-[1920px]", "max-w-full"]);
+        expect(PAGE_WIDTH_OPTIONS.map(([v]) => v)).toEqual(["max-w-2xl", "max-w-3xl", "max-w-4xl", "max-w-5xl", "max-w-6xl", "max-w-7xl", "max-w-[1440px]", "max-w-[1600px]", "max-w-[1920px]"]);
+        const footer = renderToStaticMarkup(createElement(FooterWidthControl, { config: {}, setConfig: () => {} }));
+        expect([...footer.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", ...HEADER_WIDTH_OPTIONS.map(([v]) => v)]);
+        expect(footer).toContain('<option value="" selected="">Same as header</option>');
+    });
+    it("the stored values are shown; absent shows the defaults (as today)", () => {
+        const set = { fontNav: "Inter", fontWeights: [300, 500], headingWeight: 300, mutedColor: "#6b6b6b", borderColor: "#d4d4d4", shape: "editorial", cardImage: "landscape", cardCategoryLine: true };
+        const typo = renderToStaticMarkup(createElement(TypographyDetails, { theme: set as any, onChange: () => {} }));
+        expect(typo).toContain('value="Inter"');
+        expect([...typo.matchAll(/<input type="checkbox" checked=""\/>(\d+)/g)].map((m) => m[1])).toEqual(["300", "500"]);
+        expect(typo).toContain('<option value="300" selected="">300</option>');
+        const colours = renderToStaticMarkup(createElement(ThemeColorDetails, { theme: set as any, onChange: () => {} }));
+        expect(colours).toContain('value="#6b6b6b"');
+        expect(colours).toContain('value="#d4d4d4"');
+        const shape = renderToStaticMarkup(createElement(ShapeAndCards, { theme: set as any, onChange: () => {} }));
+        expect(shape).toContain('<option value="editorial" selected="">');
+        expect(shape).toContain('<option value="landscape" selected="">');
+        expect(shape).toMatch(/<input type="checkbox" checked=""\/>/);
+        const none = renderToStaticMarkup(createElement(ShapeAndCards, { theme: undefined, onChange: () => {} }));
+        expect(none).toContain('<option value="default" selected="">Default</option>');
+        expect(none).toContain('<option value="square" selected="">Square image</option>');
+        expect(none).not.toContain('checked=""');
+        expect(renderToStaticMarkup(createElement(TypographyDetails, { theme: undefined, onChange: () => {} }))).toContain('<option value="" selected="">Default (as today)</option>');
+    });
+    // Review-0 R-CT-3: the Typography controls read the theme the page writes (the selected tab). A connected render of
+    // the real page with DIFFERENT light and dark values, on each tab; the write rule is `withThemeKey`, which the page's
+    // `updateTheme` calls with the same tab (react-dom/server runs no events, so the click itself is not driven here).
+    it("connected page: on each tab the Typography controls (heading, body, nav font, weights, heading weight) show THAT tab's theme", () => {
+        const light = { fontHeading: "LightHead", fontBody: "LightBody", fontNav: "LightNav", fontWeights: [500], headingWeight: 300 };
+        const dark = { fontHeading: "DarkHead", fontBody: "DarkBody", fontNav: "DarkNav", fontWeights: [800], headingWeight: 600 };
+        const config = { ...CONTENT, theme: light, darkTheme: dark };
+        const typographyOf = (html: string) => html.slice(html.indexOf(">Typography<"), html.indexOf("Light Mode"));
+        const shown = (html: string) => {
+            const card = typographyOf(html);
+            return {
+                inputs: [...card.matchAll(/<input[^>]*placeholder="[^"]*"[^>]*value="([^"]*)"/g)].map((m) => m[1]),
+                weights: [...card.matchAll(/<input type="checkbox" checked=""\/>(\d+)/g)].map((m) => m[1]),
+                heading: /<option value="(\d+)" selected="">/.exec(card)?.[1],
+            };
+        };
+        expect(shown(renderSettings(config))).toEqual({ inputs: ["LightHead", "LightBody", "LightNav"], weights: ["500"], heading: "300" });
+        seed.tab = "dark";
+        try {
+            const html = renderSettings(config);
+            expect(html).toContain(">Dark Mode Overrides<");                      // precondition: the dark tab is selected
+            expect(shown(html)).toEqual({ inputs: ["DarkHead", "DarkBody", "DarkNav"], weights: ["800"], heading: "600" });
+            expect(typographyOf(html)).toContain(renderToStaticMarkup(createElement(TypographyDetails, { theme: dark as any, onChange: () => {} })));
+        } finally {
+            seed.tab = null;
+        }
+    });
+    it("the write rule: the light tab writes theme, the dark tab writes darkTheme (a copy of theme when absent); the other is untouched", () => {
+        const config = { theme: { fontWeights: [500] }, darkTheme: { fontWeights: [800] } } as any;
+        expect(withThemeKey(config, "dark", "fontWeights", [300, 800])).toEqual({ theme: { fontWeights: [500] }, darkTheme: { fontWeights: [300, 800] } });
+        expect(withThemeKey(config, "light", "fontNav", undefined)).toEqual({ theme: { fontWeights: [500], fontNav: undefined }, darkTheme: { fontWeights: [800] } });
+        expect(withThemeKey({ theme: { fontNav: "A" } } as any, "dark", "headingWeight", 600)).toEqual({ theme: { fontNav: "A" }, darkTheme: { fontNav: "A", headingWeight: 600 } });
+    });
+    it("clearing a control removes its key (undefined); the weights are kept ascending; Same as header stores footer {}", () => {
+        const c = changes();
+        const typo = elements(TypographyDetails({ theme: { fontWeights: [500] } as any, onChange: c.onChange }));
+        const boxes = typo.filter((e) => e.type === "input" && e.props.type === "checkbox");
+        expect(boxes.length).toBe(7);
+        boxes[2].props.onChange({ target: { checked: true } });                 // 300 on
+        boxes[3].props.onChange({ target: { checked: false } });                // 500 off → empty list → removed
+        const navFont = typo.find((e) => e.props?.placeholder === "Leave empty to keep the body font");
+        navFont.props.onChange({ target: { value: "" } });
+        const heading = typo.find((e) => e.type === "select");
+        heading.props.onChange({ target: { value: "" } });
+        heading.props.onChange({ target: { value: "600" } });
+        expect(c.calls).toEqual([["fontWeights", [300, 500]], ["fontWeights", undefined], ["fontNav", undefined], ["headingWeight", undefined], ["headingWeight", 600]]);
+        const s = changes();
+        const shape = elements(ShapeAndCards({ theme: undefined, onChange: s.onChange }));
+        const [shapeSelect, cardSelect] = shape.filter((e) => e.type === "select");
+        shapeSelect.props.onChange({ target: { value: "default" } });
+        shapeSelect.props.onChange({ target: { value: "editorial" } });
+        cardSelect.props.onChange({ target: { value: "square" } });
+        shape.find((e) => e.type === "input").props.onChange({ target: { checked: false } });
+        expect(s.calls).toEqual([["shape", undefined], ["shape", "editorial"], ["cardImage", undefined], ["cardCategoryLine", undefined]]);
+        const k = changes();
+        const colours = elements(ThemeColorDetails({ theme: undefined, onChange: k.onChange }));
+        colours[1].props.onChange("");
+        expect(k.calls).toEqual([["mutedColor", undefined]]);
+        let saved: any;
+        elements(FooterWidthControl({ config: { footer: { contentMaxWidth: "max-w-[1440px]" } }, setConfig: (x) => { saved = x; } })).find((e) => e.type === "select").props.onChange({ target: { value: "" } });
+        expect(saved.footer).toEqual({});
     });
 });
 

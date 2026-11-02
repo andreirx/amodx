@@ -64,6 +64,14 @@ describe("mapTenant passes every part of the locale table and the language", () 
         expect(((await getTenantConfig("t1")) as any).contactChannels).toBeUndefined();
     });
 
+    // CAT-THEME-1: the whitelist copies the footer's own width; absent stays absent (→ the layout uses the header's width).
+    it("footer is copied (CAT-THEME-1); absent stays absent", async () => {
+        store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T", footer: { contentMaxWidth: "max-w-[1440px]" } };
+        expect(((await getTenantConfig("t1")) as any).footer).toEqual({ contentMaxWidth: "max-w-[1440px]" });
+        store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T" };
+        expect(((await getTenantConfig("t1")) as any).footer).toBeUndefined();
+    });
+
     // CMRC-COUNTIES-1 replaced the locale-1a case "countryCode stays out": the commerce slice that owned it now copies it.
     it("countryCode is copied (CMRC-COUNTIES-1); absent stays absent", async () => {
         store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T", countryCode: "RO" };

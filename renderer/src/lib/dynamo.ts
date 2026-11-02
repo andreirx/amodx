@@ -146,6 +146,8 @@ function mapTenant(item: any): TenantConfig {
         logo: item.logo || undefined,
         icon: item.icon || undefined,
         header: header,
+        // CAT-THEME-1: the footer's own width (`footer.contentMaxWidth`); absent stays absent (→ the header's width).
+        footer: item.footer || undefined,
         navLinks: item.navLinks || [],
         footerLinks: item.footerLinks || [],
 

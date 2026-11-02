@@ -414,10 +414,10 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 const path = catalogListingPath(prefixes, category.slug);
                 const listing = buildFacetListing(await getCatalogListing(config.id, category.id), query.f, `${basePath}${path}`, facetLabelsOf(resolveLocaleStrings(config).strings.catalog));
                 const start = (page - 1) * 24;
-                return <CategoryPageView category={category} products={listing.items.slice(start, start + 24)} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(path, listing.selection) }} />;
+                return <CategoryPageView category={category} products={listing.items.slice(start, start + 24)} total={listing.items.length} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} facets={{ listing, pagerBase: listingHref(path, listing.selection) }} cardCategories={await cardCategoriesOf(config)} />;
             }
             const { items: products, total } = await getProductsByCategory(config.id, category.id, page, 24);
-            return <CategoryPageView category={category} products={products} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} />;
+            return <CategoryPageView category={category} products={products} total={total} page={page} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} cardCategories={await cardCategoriesOf(config)} />;
         }
 
         if (commerce.type === 'shop') {
@@ -449,7 +449,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 products = result.items;
                 total = result.total;
             }
-            return <SearchPageView query={q} products={products} total={total} page={pg} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} />;
+            return <SearchPageView query={q} products={products} total={total} page={pg} config={config} prefixes={prefixes} basePath={basePath} catalog={catalog} cardCategories={await cardCategoriesOf(config)} />;
         }
 
         // Account, cart, checkout, confirmation, tracking require commerceEnabled
@@ -749,7 +749,7 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
     const sw = config.header?.contentMaxWidth || "max-w-7xl";
 
     return (
-        <main className="py-12 relative">
+        <main className={isEditorial(config) ? "py-[var(--section-gap)] relative" : "py-12 relative"}>
             {/* SCHEMA INJECTION */}
             <Script
                 id="json-ld-schema"
@@ -810,23 +810,51 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 
 // --- COMMERCE PAGE COMPONENTS ---
 
+/** CAT-THEME-1: the tenant theme's `editorial` shape (CT-D1 = A); absent or "default" → false (today's classes). */
+function isEditorial(config: any): boolean {
+    return config.theme?.shape === "editorial";
+}
+
+/**
+ * CAT-THEME-1 (§ 3 item 5): the tenant's categories for the card's category line — read only when the theme turns the
+ * line on, so every other tenant's category and search pages make exactly the reads they made before.
+ */
+async function cardCategoriesOf(config: any): Promise<any[] | undefined> {
+    return config.theme?.cardCategoryLine === true ? getAllCategories(config.id) : undefined;
+}
+
+/**
+ * CAT-THEME-1 (§ 3 item 5): the theme's card options for one product — `landscape` (`theme.cardImage`) and, when
+ * `theme.cardCategoryLine` is on, the name of the product's FIRST category (`categoryIds[0]`) found in `categories`; a
+ * first category that is not there gives no line. A theme that sets neither gives `{ landscape: false }` — ProductCard's
+ * own defaults, so the card renders as before.
+ */
+function cardThemeProps(config: any, categories: any[] | undefined, product: any): { landscape?: boolean; categoryName?: string } {
+    const first = Array.isArray(product.categoryIds) ? product.categoryIds[0] : undefined;
+    const categoryName = config.theme?.cardCategoryLine === true ? categories?.find((c: any) => c.id === first)?.name : undefined;
+    return { landscape: config.theme?.cardImage === "landscape", ...(categoryName ? { categoryName } : {}) };
+}
+
 /**
  * `catalog` (CATALOG-MODE-1): no price line and no availability badge — not emitted, not hidden by CSS.
  * CAT-INTEREST-1: on a catalog site the card is followed by the "Mă interesează" toggle (a button may not sit inside
  * the card's link); any other site renders the link alone, exactly as before. LOCALE-1B: `catalogStrings` = the
  * tenant's catalog texts (the toggle's three texts are taken from it per card).
  */
-function ProductCard({ product, productPrefix, basePath = "", catalog = false, tenantId, catalogStrings }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean; tenantId: string; catalogStrings: LocaleStrings["catalog"] }) {
+function ProductCard({ product, productPrefix, basePath = "", catalog = false, tenantId, catalogStrings, landscape = false, categoryName }: { product: any; productPrefix: string; basePath?: string; catalog?: boolean; tenantId: string; catalogStrings: LocaleStrings["catalog"]; landscape?: boolean; categoryName?: string }) {
+    const title = <h3 className="font-medium text-foreground group-hover:text-primary transition-colors line-clamp-2">{product.title}</h3>;
     const card = (
         <Link href={`${basePath}${productPrefix}/${product.slug}`} className="group block">
-            <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-3">
+            <div className={landscape ? "h-[245px] bg-muted rounded-lg overflow-hidden mb-3" : "aspect-square bg-muted rounded-lg overflow-hidden mb-3"}>
                 {product.imageLink ? (
                     <img src={product.imageLink} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground text-4xl">🛍</div>
                 )}
             </div>
-            <h3 className="font-medium text-foreground group-hover:text-primary transition-colors line-clamp-2">{product.title}</h3>
+            {/* CAT-THEME-1: the category line shares the title's child slot (a fragment), so a card without it has
+                exactly the children it had: the Link is a client element, and its children travel in the payload by position. */}
+            {categoryName ? <>{title}<p className="text-xs text-muted-foreground mt-1">{categoryName}</p></> : title}
             {!catalog && <div className="mt-1">
                 {product.salePrice ? (
                     <div className="flex items-center gap-2">
@@ -936,7 +964,7 @@ function interestToggleProps(tenantId: string, product: any) {
  * such a key is ONE row, at the place of its first entry, with its values in stored order joined by ", ". A product
  * whose keys are all distinct renders exactly the rows it rendered before.
  */
-function ProductAttributes({ attributes }: { attributes: { key: string; value: string }[] }) {
+function ProductAttributes({ attributes, editorial = false }: { attributes: { key: string; value: string }[]; editorial?: boolean }) {
     const rows = new Map<string, string[]>();
     for (const a of attributes) {
         if (!a.key || !a.value) continue;
@@ -945,12 +973,17 @@ function ProductAttributes({ attributes }: { attributes: { key: string; value: s
         else rows.set(a.key, [a.value]);
     }
     if (rows.size === 0) return null;
+    // CAT-THEME-1 (`editorial` shape, § 3 item 6): the key column takes half the width and every row sits between 1 px
+    // hairlines (`border` = the theme's borderColor). Otherwise the classes are the ones before the slice.
+    const [dl, dt, dd] = editorial
+        ? ["grid grid-cols-2 gap-x-6 text-sm border-t", "text-muted-foreground py-2 border-b", "font-medium py-2 border-b"]
+        : ["grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm border-t pt-4", "text-muted-foreground", "font-medium"];
     return (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm border-t pt-4">
+        <dl className={dl}>
             {[...rows].map(([key, values], i) => (
                 <div key={i} className="contents">
-                    <dt className="text-muted-foreground">{key}</dt>
-                    <dd className="font-medium">{values.join(", ")}</dd>
+                    <dt className={dt}>{key}</dt>
+                    <dd className={dd}>{values.join(", ")}</dd>
                 </div>
             ))}
         </dl>
@@ -1129,7 +1162,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                         // keeps the slot's children (and their order) as before.
                         const presenter = <CatalogVariantPresenter key={`presenter-${product.id}`} variants={product.variants || []} />;
                         const toggle = <InterestToggle key={`interest-${product.id}`} variant="link" {...interestToggleProps(config.id, product)} strings={interestToggleStrings(catalogStrings)} />;
-                        const attributes = <ProductAttributes attributes={product.attributes || []} />;
+                        const attributes = <ProductAttributes attributes={product.attributes || []} editorial={isEditorial(config)} />;
                         const channels = config.contactChannels;
                         if (!(channels && (channels.phone || channels.whatsapp || channels.email))) return <>{presenter}{toggle}{attributes}</>;
                         const group = interestToggleProps(config.id, product).optionGroupName;
@@ -1357,7 +1390,7 @@ function FacetedListing({ listing, grid, strings }: { listing: FacetListing<any>
     );
 }
 
-function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false, facets }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean; facets?: CatalogFacets }) {
+function CategoryPageView({ category, products, total, page, config, prefixes, basePath = "", catalog = false, facets, cardCategories }: { category: any; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean; facets?: CatalogFacets; cardCategories?: any[] }) {
     // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the shared product texts and the catalog texts.
     const resolved = resolveLocaleStrings(config);
     const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
@@ -1367,7 +1400,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, cardCategories, product)} />
                     ))}
                 </div>
             );
@@ -1385,7 +1418,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
-            <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
+            <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto ${isEditorial(config) ? "py-[var(--section-gap)]" : "py-12"} px-6`}>
                 {/* Breadcrumbs */}
                 <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
@@ -1424,7 +1457,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, categories, product)} />
                     ))}
                 </div>
             );
@@ -1442,7 +1475,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
-            <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto py-12 px-6`}>
+            <main className={`${config.header?.contentMaxWidth || "max-w-6xl"} mx-auto ${isEditorial(config) ? "py-[var(--section-gap)]" : "py-12"} px-6`}>
                 <h1 className="text-3xl font-bold tracking-tight mb-4">{strings.shopTitle}</h1>
 
             {/* Availability Filter (none on a catalog site) */}
@@ -1480,7 +1513,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
     );
 }
 
-function SearchPageView({ query, products, total, page, config, prefixes, basePath = "", catalog = false }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean }) {
+function SearchPageView({ query, products, total, page, config, prefixes, basePath = "", catalog = false, cardCategories }: { query: string; products: any[]; total: number; page: number; config: any; prefixes: any; basePath?: string; catalog?: boolean; cardCategories?: any[] }) {
     // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the commerce texts of the search page (§ 5.2) and the catalog
     // texts.
     const resolved = resolveLocaleStrings(config);
@@ -1501,7 +1534,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
                     {...(catalog ? { showPrices: false } : {})}
                 />
             )}
-            <main className={`${siteWidth} mx-auto py-12 px-6`}>
+            <main className={`${siteWidth} mx-auto ${isEditorial(config) ? "py-[var(--section-gap)]" : "py-12"} px-6`}>
                 <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
@@ -1522,7 +1555,7 @@ function SearchPageView({ query, products, total, page, config, prefixes, basePa
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/product"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, cardCategories, product)} />
                     ))}
                 </div>
             )}

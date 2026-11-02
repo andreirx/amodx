@@ -65,6 +65,126 @@ export function withCountry<T extends object>(config: T, code: string): T & { co
     return { ...config, countryCode: code, currency: getCountryPack(code).currency.code };
 }
 
+// ── CAT-THEME-1 (docs/slices/cat-theme-1.md § 3; record docs/slices/cat-theme-1-impl.md § 3): the theme details. ──────
+// Every control here is a native element or an `Input` (no React `useId`), and each group is the LAST child of its
+// parent in the page: the page's other markup, and the ids React derives from the tree, stay as captured
+// (Settings.test.ts removes exactly these groups' own renders). Clearing a control removes its key (`undefined`, which
+// the JSON body omits), so an untouched or cleared field is absent — the renderer's "today" for every field.
+
+/** Sets one theme key on the tab being edited; `undefined` removes it. (The page's `updateTheme`.) */
+export type ThemeKeySetter = (key: string, value: unknown) => void;
+
+/**
+ * The page's theme write, unchanged in behaviour (moved out of `updateTheme` so a test can drive it): the light tab
+ * writes `theme`; the dark tab writes `darkTheme`, which starts as a copy of `theme` when absent. Review-0 R-CT-3: every
+ * theme control READS the theme this function writes — the page's `activeConfig` (`darkTheme || theme` on the dark tab).
+ */
+export function withThemeKey<T extends Pick<SettingsDraft, "theme" | "darkTheme">>(config: T, tab: "light" | "dark", key: string, value: unknown): T {
+    if (tab === "light") return { ...config, theme: { ...(config.theme || {}), [key]: value } as any };   // Zod/TS mismatch
+    const dark = config.darkTheme || { ...(config.theme || {}) };
+    return { ...config, darkTheme: { ...dark, [key]: value } as any };
+}
+type ThemeDraft = Partial<TenantConfig["theme"]> | undefined;
+
+/** The width choices of the header and of the footer (the footer adds "Same as header"); 1440 and 1600 added by
+ *  CAT-THEME-1 (1920 was already offered). The renderer compiles the three wide classes (`renderer/src/lib/widths.ts`). */
+export const HEADER_WIDTH_OPTIONS: [string, string][] = [
+    ["max-w-5xl", "5xl (1024px)"], ["max-w-6xl", "6xl (1152px)"], ["max-w-7xl", "7xl (1280px)"],
+    ["max-w-screen-xl", "Screen XL (1280px)"], ["max-w-[1440px]", "1440px"], ["max-w-screen-2xl", "Screen 2XL (1536px)"],
+    ["max-w-[1600px]", "1600px"], ["max-w-[1700px]", "Custom 1700px"], ["max-w-[1920px]", "Full HD (1920px)"], ["max-w-full", "Full Width"],
+];
+/** The content-page width choices; 1440, 1600 and 1920 added by CAT-THEME-1. */
+export const PAGE_WIDTH_OPTIONS: [string, string][] = [
+    ["max-w-2xl", "2xl (672px)"], ["max-w-3xl", "3xl (768px)"], ["max-w-4xl", "4xl (896px)"], ["max-w-5xl", "5xl (1024px)"],
+    ["max-w-6xl", "6xl (1152px)"], ["max-w-7xl", "7xl (1280px)"], ["max-w-[1440px]", "1440px"], ["max-w-[1600px]", "1600px"], ["max-w-[1920px]", "1920px"],
+];
+/** The weights a theme may add to the always-requested 400 and 700 (CT-D2 = B). */
+export const EXTRA_FONT_WEIGHTS = [100, 200, 300, 500, 600, 800, 900] as const;
+
+/** Typography card: the nav font, the additional weights, the heading weight. */
+export function TypographyDetails({ theme, onChange }: { theme: ThemeDraft; onChange: ThemeKeySetter }) {
+    const weights = theme?.fontWeights ?? [];
+    const toggleWeight = (w: number, on: boolean) => {
+        const next = (on ? [...weights, w] : weights.filter((x) => x !== w)).sort((a, b) => a - b);
+        onChange("fontWeights", next.length ? next : undefined);
+    };
+    return (
+        <>
+            <div className="space-y-2">
+                <Label>Nav Font (Google Fonts)</Label>
+                <Input placeholder="Leave empty to keep the body font" value={theme?.fontNav || ""} onChange={e => onChange("fontNav", e.target.value || undefined)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Additional Weights</Label>
+                <div className="flex flex-wrap gap-3 text-sm">
+                    {EXTRA_FONT_WEIGHTS.map((w) => (
+                        <label key={w} className="flex items-center gap-1">
+                            <input type="checkbox" checked={weights.includes(w)} onChange={e => toggleWeight(w, e.target.checked)} />{w}
+                        </label>
+                    ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">400 and 700 are always loaded, for every theme font.</p>
+            </div>
+            <div className="space-y-2">
+                <Label>Heading Weight</Label>
+                <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm" value={theme?.headingWeight ?? ""}
+                        onChange={e => onChange("headingWeight", e.target.value ? Number(e.target.value) : undefined)}>
+                    <option value="">Default (as today)</option>
+                    {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w}>{w}</option>)}
+                </select>
+                <p className="text-[10px] text-muted-foreground">Tick the same weight above if it is not 400 or 700.</p>
+            </div>
+        </>
+    );
+}
+
+/** Theme card, Palette: the muted-text and hairline colours (absent: #64748b and #e2e8f0, as today). */
+export function ThemeColorDetails({ theme, onChange }: { theme: ThemeDraft; onChange: ThemeKeySetter }) {
+    return (
+        <>
+            <ColorInput label="Muted Text" value={theme?.mutedColor} onChange={v => onChange("mutedColor", v || undefined)} />
+            <ColorInput label="Hairlines" value={theme?.borderColor} onChange={v => onChange("borderColor", v || undefined)} />
+        </>
+    );
+}
+
+/** Theme card (light tab): the shape preset and the Cards group. */
+export function ShapeAndCards({ theme, onChange }: { theme: ThemeDraft; onChange: ThemeKeySetter }) {
+    const select = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm";
+    return (
+        <div className="space-y-2 pt-2">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase">Shape</Label>
+            <select className={select} value={theme?.shape || "default"} onChange={e => onChange("shape", e.target.value === "default" ? undefined : e.target.value)}>
+                <option value="default">Default</option>
+                <option value="editorial">Editorial: no shadows, hairlines, wider spacing, ↗ after links</option>
+            </select>
+            <Label className="text-xs font-semibold text-muted-foreground uppercase">Cards</Label>
+            <select className={select} value={theme?.cardImage || "square"} onChange={e => onChange("cardImage", e.target.value === "square" ? undefined : e.target.value)}>
+                <option value="square">Square image</option>
+                <option value="landscape">Landscape image (245px)</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={theme?.cardCategoryLine === true} onChange={e => onChange("cardCategoryLine", e.target.checked || undefined)} />
+                Show the first category under the title
+            </label>
+        </div>
+    );
+}
+
+/** Navbar & Layout card: the footer's own width (`footer.contentMaxWidth`); "Same as header" removes it. */
+export function FooterWidthControl({ config, setConfig }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void }) {
+    return (
+        <div className="pt-4 border-t space-y-2">
+            <Label>Footer Width</Label>
+            <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm" value={config.footer?.contentMaxWidth || ""}
+                    onChange={e => setConfig({ ...config, footer: e.target.value ? { contentMaxWidth: e.target.value } : {} })}>
+                <option value="">Same as header</option>
+                {HEADER_WIDTH_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+        </div>
+    );
+}
+
 // ── CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 items 1 and 4): the "Contact channels" card. ──────────────────────
 
 /** The page's config state: the loaded settings, where `interestListEmail: null` = "send to the contact e-mail" chosen. */
@@ -334,27 +454,8 @@ export default function SettingsPage() {
         setConfig({ ...config, navLinks: current });
     };
 
-// Smart Theme Updater (Targeting correct tab)
-    const updateTheme = (key: string, val: string) => {
-        if (activeTab === 'light') {
-            setConfig(prev => {
-                const currentTheme = prev.theme || {};
-                return {
-                    ...prev,
-                    theme: { ...currentTheme, [key]: val } as any // Force cast to satisfy Zod/TS mismatch
-                };
-            });
-        } else {
-            setConfig(prev => {
-                const currentTheme = prev.theme || {};
-                const currentDark = prev.darkTheme || { ...currentTheme };
-                return {
-                    ...prev,
-                    darkTheme: { ...currentDark, [key]: val } as any
-                };
-            });
-        }
-    };
+// Smart Theme Updater (Targeting correct tab) — the rule is `withThemeKey` (CAT-THEME-1, review-0 R-CT-3).
+    const updateTheme: ThemeKeySetter = (key, val) => setConfig(prev => withThemeKey(prev, activeTab, key, val));
 
     const applyPreset = (presetTheme: any) => {
         if (activeTab === 'light') {
@@ -589,14 +690,7 @@ export default function SettingsPage() {
                                     <Select value={config.header?.contentMaxWidth || "max-w-7xl"} onValueChange={v => updateHeader("contentMaxWidth", v)}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="max-w-5xl">5xl (1024px)</SelectItem>
-                                            <SelectItem value="max-w-6xl">6xl (1152px)</SelectItem>
-                                            <SelectItem value="max-w-7xl">7xl (1280px)</SelectItem>
-                                            <SelectItem value="max-w-screen-xl">Screen XL (1280px)</SelectItem>
-                                            <SelectItem value="max-w-screen-2xl">Screen 2XL (1536px)</SelectItem>
-                                            <SelectItem value="max-w-[1700px]">Custom 1700px</SelectItem>
-                                            <SelectItem value="max-w-[1920px]">Full HD (1920px)</SelectItem>
-                                            <SelectItem value="max-w-full">Full Width</SelectItem>
+                                            {HEADER_WIDTH_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                     <p className="text-[10px] text-muted-foreground">Navbar, top bar, commerce bar, footer, product/shop pages.</p>
@@ -606,12 +700,7 @@ export default function SettingsPage() {
                                     <Select value={config.header?.contentPageMaxWidth || "max-w-4xl"} onValueChange={v => updateHeader("contentPageMaxWidth", v)}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="max-w-2xl">2xl (672px)</SelectItem>
-                                            <SelectItem value="max-w-3xl">3xl (768px)</SelectItem>
-                                            <SelectItem value="max-w-4xl">4xl (896px)</SelectItem>
-                                            <SelectItem value="max-w-5xl">5xl (1024px)</SelectItem>
-                                            <SelectItem value="max-w-6xl">6xl (1152px)</SelectItem>
-                                            <SelectItem value="max-w-7xl">7xl (1280px)</SelectItem>
+                                            {PAGE_WIDTH_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                     <p className="text-[10px] text-muted-foreground">Paragraphs, headings, lists, comments. Full-bleed blocks ignore this.</p>
@@ -745,6 +834,7 @@ export default function SettingsPage() {
                                     Map the root URL (/) to a different page. Enter the slug including the leading slash (e.g., "/home"). Leave empty to use the default / page.
                                 </p>
                             </div>
+                            <FooterWidthControl config={config} setConfig={setConfig} />
                         </CardContent>
                     </Card>
 
@@ -1963,13 +2053,14 @@ export default function SettingsPage() {
                             <div className="flex-1 space-y-4">
                                 <div className="space-y-2">
                                     <Label>Heading Font (Google Fonts)</Label>
-                                    <Input placeholder="Prata" value={config.theme?.fontHeading || ""}
+                                    <Input placeholder="Prata" value={activeConfig?.fontHeading || ""}
                                            onChange={e => updateTheme("fontHeading", e.target.value)}/>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Body Font (Google Fonts)</Label>
-                                    <Input placeholder="Lato" value={config.theme?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
+                                    <Input placeholder="Lato" value={activeConfig?.fontBody || ""} onChange={e => updateTheme("fontBody", e.target.value)} />
                                 </div>
+                                <TypographyDetails theme={activeConfig} onChange={updateTheme} />
                             </div>
                         </CardContent>
                     </Card>
@@ -2057,6 +2148,7 @@ export default function SettingsPage() {
                                 <ColorInput label="Primary Text" value={activeConfig?.primaryForeground} onChange={v => updateTheme("primaryForeground", v)} />
                                 <ColorInput label="Secondary" value={activeConfig?.secondaryColor} onChange={v => updateTheme("secondaryColor", v)} />
                                 <ColorInput label="Surface" value={activeConfig?.surfaceColor} onChange={v => updateTheme("surfaceColor", v)} />
+                                <ThemeColorDetails theme={activeConfig} onChange={updateTheme} />
                             </div>
 
                             {/* FONTS (Only show on Light tab to avoid confusion, or allow override?) */}
@@ -2067,6 +2159,7 @@ export default function SettingsPage() {
                                     <Input className="h-8 text-xs" placeholder="Body (Google Font)" value={activeConfig?.fontBody} onChange={e => updateTheme("fontBody", e.target.value)} />
                                 </div>
                             )}
+                            {activeTab === 'light' && <ShapeAndCards theme={activeConfig} onChange={updateTheme} />}
                         </CardContent>
                     </Card>
 

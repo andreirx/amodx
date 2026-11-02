@@ -166,6 +166,12 @@ src/
 │                          #   only (ruling CQ-INTEREST-EMAIL-CLEAR = A): `interestListEmail: null` REMOVES the stored
 │                          #   attribute (the merge cannot remove an omitted one; no general removal mechanism exists,
 │                          #   F-CQ-5); the stored shape stays an optional e-mail string. `contactChannels: {}` clears.
+│                          #   CAT-THEME-1: `themeAttributesError` — on `theme`/`darkTheme` (an object, or a JSON string
+│                          #   parsed for the check only and stored as sent; a non-object string is not checked) the eight
+│                          #   NEW fields only (shared ThemeSchema.pick: fontNav, fontWeights 100–900, headingWeight,
+│                          #   mutedColor/borderColor = shared colour grammar isCssColor, shape, cardImage, cardCategoryLine; older
+│                          #   theme fields stay unvalidated), and `footer` (FooterConfigSchema, strict) → 400 naming
+│                          #   the field before any read (test/unit/cat-theme-settings.test.ts).
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/
