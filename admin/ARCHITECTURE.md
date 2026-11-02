@@ -165,6 +165,17 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   it; without evidence the cause is `unknown`, never an absence claim). "Copiază imaginile" resumes the outcomes
   recorded so far (`start` with `resume: true`); the copy after an import starts fresh (new products); a batch for
   another `importSource` discards the recorded outcomes.
+- **Extra images (CAT-IMPORT-GALLERY-1).** A 13-column file: the check and import reports show the backend's
+  `gallery` counts (`galleryLine`: rows, addresses, dropped non-http(s) parts). In the image section a holding is a
+  (product, option) main image or a (product, option, address) extra (`extra: true`; `holderKey`); the extras are
+  counted apart (`imageCounts(totals, "extras")`, shown only when the copy reported one) and `remainingExtras` joins
+  the progress line. An extra is not a variant's main image and never publishes: the variant failure list
+  (`imageProblems`) and the hidden causes (`hiddenProducts`) read main holdings (`mainHoldings`); lost extras have their
+  own list with URL, reason and rows (`extraImageProblems`, `extraHoldings`). Every publication / hidden statement
+  names the MAIN image ("imagine principală", column 9) — also the preview (`GlamProfileEditor.tsx` hidden list,
+  `glamPreview.ts` `PUBLICATION_NOTICE` and `draftPublication` comments; no field renamed). The product editor (`pages/ProductEditor.tsx`
+  `buildProductPayload`) sends an option's `additionalImageLinks` unchanged whenever non-empty, with or without a main
+  image (it never shows or edits them): the update replaces the variants and derives the gallery from them.
 - **Tests** (node, no DOM): `GlamPricelistImport.test.ts` (reducer, proposal over BOEN's measured `specKeys`, edits, the
   409 path), `glamPreview.test.ts` (§ 5.5 assembly rows, no-copy rows, near-budget rows). The components only lay out
   what these pure functions return.

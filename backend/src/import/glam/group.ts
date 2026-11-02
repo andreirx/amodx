@@ -8,6 +8,8 @@ import type { GlamRow } from "./parse.js";
  * - One option per row of a style; rows with an equal normalised label AND an equal (trimmed) image cell are ONE
  *   option (§ 2.4; cat-import-1 § 9 withdrew the builder's usable-image variant). The option's image is then the
  *   cell when it is a usable URL, else none.
+ * - CAT-IMPORT-GALLERY-1: an option's `additionalImageLinks` = the usable (http(s)) column-13 addresses of its rows
+ *   (`usableGallery`), in row order then cell order, each once, never the option's own `imageLink`; absent when none.
  * - Labels are then allocated collision-aware: `#<n>` for an empty label, `<label> (<n>)` for a repeated label,
  *   never a label already present in the style.
  * - Slugs: slugify of the three normalised components joined with a space; a repeated slug gets `-2`, `-3`… in file
@@ -55,6 +57,14 @@ export function foldTokens(text: string): string[] {
     return slugify(norm(text)).split("-").filter((token) => token !== "");
 }
 
+/**
+ * CAT-IMPORT-GALLERY-1: the usable column-13 addresses of one row (`GlamRow.galleryUrls` filtered by `usableImage`); a
+ * part that is not an http(s) URL is dropped here (and counted by ./map.ts). `[]` for a 12-column row.
+ */
+export function usableGallery(row: GlamRow): string[] {
+    return (row.galleryUrls ?? []).filter((url) => usableImage(url) !== undefined);
+}
+
 /** A usable option image: an absolute http(s) URL. Anything else is no image (CM-D7 (a)). */
 export function usableImage(sourceUrl: string): string | undefined {
     if (!/^https?:\/\//i.test(sourceUrl)) return undefined;
@@ -90,6 +100,8 @@ export interface GlamOptionPlan {
     /** The final label (unique in normalised form within the style). */
     readonly value: string;
     readonly imageLink?: string;
+    /** CAT-IMPORT-GALLERY-1: the option's column-13 images (see the header); present only when non-empty. */
+    readonly additionalImageLinks?: readonly string[];
     readonly rowIndexes: readonly number[];
     readonly labelOrigin: LabelOrigin;
 }
@@ -237,9 +249,14 @@ function allocateLabels(options: readonly OptionDraft[]): GlamOptionPlan[] {
         }
         present.add(norm(value));
         earlier.add(norm(value));
+        const extras: string[] = [];
+        for (const row of option.rows) {
+            for (const url of usableGallery(row)) if (url !== option.imageLink && !extras.includes(url)) extras.push(url);
+        }
         return {
             value,
             ...(option.imageLink !== undefined ? { imageLink: option.imageLink } : {}),
+            ...(extras.length > 0 ? { additionalImageLinks: extras } : {}),
             rowIndexes: option.rows.map((r) => r.index),
             labelOrigin,
         };

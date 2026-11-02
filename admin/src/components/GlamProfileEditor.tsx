@@ -884,8 +884,8 @@ function KeyRow({ keyName, fact, working, onEdit, disabled }: { keyName: string;
  * `effectivePreviewChoice(shown, wanted)` — a wanted value the report still holds is kept, one it no longer
  * holds is replaced by the report's default.
  * CAT-IMAGE-GATE-1: cards, the product page choice and the panels show only the products the site would publish
- * (`publishedDrafts`: a product waiting for its image copy is marked "imagine de copiat"); the products without any
- * image address are listed apart as hidden (`hiddenDrafts`). The categories are the import's either way.
+ * (`publishedDrafts`: a product waiting for its image copy is marked "imagine de copiat"); the products without a
+ * MAIN-image address (column 9; extras never publish) are listed apart as hidden (`hiddenDrafts`). The categories are the import's either way.
  */
 export function ImportPreview({ report, context, today }: { report: GlamDryRun; context: SiteContext | null; today: string }) {
     const producerId = producerCategoryId(report.drafts);
@@ -945,7 +945,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
             {hidden.length > 0 && (
                 <details className="text-xs">
                     <summary className="cursor-pointer font-medium">
-                        Rămân ascunse — fără adresă de imagine în fișier ({hidden.length}); se publică doar dacă adăugați imagini în fișier
+                        Rămân ascunse — fără adresă de imagine principală (coloana 9) în fișier ({hidden.length}); se publică doar dacă adăugați imagini principale în fișier
                     </summary>
                     <ul className="mt-1 space-y-0.5">
                         {hidden.map((d) => <li key={String(d.slug)}>{String(d.title)} <span className="text-muted-foreground">({String(d.slug)})</span></li>)}

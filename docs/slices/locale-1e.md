@@ -353,3 +353,41 @@ error-shell predicate, and changed nothing in the product code.
 - For the human (morning): § 13 (a tenant-language 404 in the site chrome — product question); § 12
   F-LOC1E-MATCHER-SITEID (pre-existing, a serving slice candidate) and F-LOC1E-NOT-FOUND-ARTEFACT (a `next.config`
   change outside this allocation). Prod deploy order unchanged: povesti-pe-biscuite locale `ro-RO` first, then deploy.
+
+## 18. Correction (cat-import-gallery-1) — appended 2026-11-02 by the CAT-IMPORT-GALLERY-1 builder (operator ruling CIG-IMPL-SERVING = A)
+
+- **The pin.** The raw half of category 4 (`renderer/test/serving-contract/locale-1/proof.mjs` `moveRootLayoutRaw`) required
+  the live `[siteId]` resources to EQUAL the resources recorded at `d9999d2` (`canon([before.link, ...before.scripts])`)
+  and the live root 404 boundary to link the recorded stylesheet — names taken from history (the iteration-1 wording
+  "same `src` before/after").
+- **The cause it broke.** Next names client files by a hash of their content. CAT-IMPORT-GALLERY-1 adds one optional
+  field to the shared `ProductVariantSchema`, which the client bundle contains (chunk `3h3fnk-wu-am0.js` held
+  `additionalImageLinks:sb.array(sy.string()).optional()`), so one `[siteId]` script got a new name and a correct build
+  failed tests #84, #85, #87, #94 (EXECUTED: a worktree at `656a9eb` passes 95/95; the same worktree with only that schema
+  line fails exactly those four — `docs/slices/cat-import-gallery-1-impl.md` § 5).
+- **The invariant now (self-consistency with the live document).** On trees resolved with the asset paths unmasked:
+  the live `[siteId]` resources have the BEFORE shape (exactly one stylesheet link, then as many scripts as the before
+  `[siteId]` segment); the stylesheet's `href` is a stylesheet of the live head; every script's `src` is a script the
+  live head loads; the live root 404 boundary links that same live stylesheet. Unchanged: the before `G[1]` is the before
+  root stylesheet; the removed root-layout script is in the document head on both sides; the head stylesheet hrefs are
+  equal before/after (the before ones equal the before link, the after ones the live link); the error-shell preload
+  rule; the masked structural comparison with the `d9999d2` capture.
+- **Controls** (`loc1e-category-controls`): the 16 refusals stay; five more, each required to be reported by the raw rule
+  itself — a `[siteId]` script the live head does not load (head tag renamed; payload `src` renamed), a second stylesheet
+  in the `[siteId]` resources, one `[siteId]` script more, one fewer. The precondition that finds the removed root-layout
+  script now takes the removed payload `src` that the after head still loads (exactly one).
+- **Open (decision CIG-SERVING-SHELL, cat-import-gallery-1 build report).** On a `__next_error__` shell (the 307 cart /
+  checkout handoffs, the 404 landings) the live head has NO stylesheet link (the before shell had only a style preload,
+  which LOC1E-404-SHELL-PRELOAD = A removes) and loads only the bootstrap scripts, none of the `[siteId]` scripts
+  (OBSERVED, `1e/before/catalog/checkout.body`). The invariant above cannot hold there, on any build: the shell rows and
+  the 307-shell positive control fail until the shell rule is decided. Nothing else of this record is changed.
+- **2026-11-02 (round 3, operator ruling CIG-SERVING-SHELL = A, fail closed) — the shell rule.** On a `__next_error__`
+  shell the `[siteId]` resources must equal, element for element, the `[siteId]` resources of the live 200 HTML pages of
+  the same capture set and build (`proof.mjs` `liveSiteIdReference`): every such page must itself pass the live-head
+  rule, and all must agree — the page-independence of the layout's resources is asserted on every run. Fail closed: a
+  set without such a page, a failing page, two pages that disagree, or a shell checked without a reference is a problem.
+  `checkExpected` takes the reference as a sixth input. The 404 probe set of `loc1e-404-document` holds only the 404
+  response, so its shells use the reference of the en-US set captured in the same run from the same build and server.
+  Shell controls (each reported by the raw rule): a shell naming a stylesheet the reference does not, one `[siteId]`
+  script fewer, a foreign `[siteId]` script, a set whose 200 pages disagree, a set without a live 200 page, a shell
+  checked without a reference. EXECUTED: 65 live 200 pages agree; serving 95/95. The "Open" paragraph above is resolved.

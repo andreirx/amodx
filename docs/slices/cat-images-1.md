@@ -489,3 +489,29 @@ or replaced. `cdk deploy` to `AmodxStack-staging`: `UPDATE_COMPLETE`.
 stay imageless until a new image source exists. Follow-up recorded in glamCRM (`PL-TOOLS-2` scope: BOEN's current
 image addresses). Follow-ups from the record: `CAT-IMAGES-MCP-1`, `CATPROD-CONSISTENCY-1` (card drift after a crash),
 orphan-asset cleanup (named, unscheduled).
+
+## 11. Correction (cat-import-gallery-1, 2026-11-02) — appended by the CAT-IMPORT-GALLERY-1 builder (operator ruling CIG-STALE-WRITE = A)
+
+(The ruling named this section "§ 10"; § 10 already holds the operator closeout, so it is numbered § 11. Nothing above
+is edited.)
+
+- **The condition before.** The copy's product write (`backend/src/import/glam-images.ts` `writeProduct`) replaced the
+  whole `variants` attribute under the condition `attribute_exists(PK)` — since CAT-IMAGE-GATE-1 with `AND #status =
+  :read` (or `attribute_not_exists(#status)`). § 8.3 "Overlap (§ 9 duty)" accepted that a request whose read predates
+  another's committed write "may overwrite it", relying on the next request to repair a restored producer URL.
+- **The demonstrated loss.** A repair is possible only for a RESTORED producer URL, not for a REMOVED copy. EXECUTED
+  (CAT-IMPORT-GALLERY-1, reproduced by its reviewer): R1 = main image failed, extra image copied (the product stays
+  `draft`, so R1 changes no `status`); R2 (read before R1's write) = main copied, extra failed. R2's write still met
+  the status condition, committed from its stale read and removed the extra R1 had copied; the next request had nothing
+  to copy — the image was lost until a re-import. The same class reaches a main image under `publishWithoutImages: true`.
+- **The condition now.** `attribute_exists(PK) AND #status = :read AND #variants = :readVariants` (or
+  `attribute_not_exists(#status)` / `attribute_not_exists(#variants)` when the read had none): the write also requires
+  the `variants` value it was planned from (DynamoDB compares the whole list value; no new field). A cancelled write
+  re-reads the product and is planned again with the CIG-R1 rebase, at most `WRITE_ATTEMPTS` = 3 times; a product still
+  contended is left to a later request. So a stale write never commits over another request's images.
+- **The test whose expectation changes.** `backend/test/unit/glam-images-handler.test.ts`, the § 9 overlap row, renamed
+  from "R2's stale write restores X's producer URL; R3 repairs it" to "R2's stale write is cancelled (variants changed
+  since its read) and re-planned on the fresh read — nothing to restore; R3 finds nothing": R2 now writes nothing, the
+  product stays converged after R1, and R3 fetches and writes nothing. Also changed: the CAT-IMAGE-GATE-1 row that pins
+  the condition string. Added: the stale-write row with an unchanged status (CAT-IMPORT-GALLERY-1 round 3).
+- `backend/test/unit/memory-table.ts` accepts the two new clauses (deep equality of the list, as DynamoDB compares it).

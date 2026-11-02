@@ -1,6 +1,6 @@
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
-import { isCatalogMode } from "@amodx/shared";
+import { deriveGallery, isCatalogMode } from "@amodx/shared";
 import { db, TABLE_NAME } from "./db.js";
 
 /**
@@ -103,19 +103,15 @@ function monetaryFieldOf(product: Record<string, any>): string | null {
 }
 
 /**
- * The § 3.4 derivation rule: `imageLink` = the image of the first option that has one; `additionalImageLinks` = the
- * other distinct option images, in option order. No option image → the product has no image (key absent, CM-D7).
+ * `product` with `imageLink` / `additionalImageLinks` replaced by the derivation from `options` — the one rule,
+ * `deriveGallery` of @amodx/shared (CAT-IMPORT-GALLERY-1: each option's `imageLink`, then its `additionalImageLinks`,
+ * in option order, each address once; for options without extras the § 3.4 rule). No image → the `imageLink` key is
+ * absent (CM-D7).
  */
 export function withDerivedGallery(product: Record<string, any>, options: any[]): Record<string, any> {
-    const images: string[] = [];
-    for (const option of options) {
-        if (option.imageLink !== undefined && !images.includes(option.imageLink)) images.push(option.imageLink);
-    }
     const rest = { ...product };
     delete rest.imageLink;
-    return images.length > 0
-        ? { ...rest, imageLink: images[0], additionalImageLinks: images.slice(1) }
-        : { ...rest, additionalImageLinks: [] };
+    return { ...rest, ...deriveGallery(options) };
 }
 
 function refused(error: string): ProductWriteCheck {

@@ -305,6 +305,9 @@ describe("CAT-IMAGE-GATE-1 — publication in the preview", () => {
     it("the ruled copy: the notice says hidden until the copy and that the preview cannot know which links work", () => {
         expect(PUBLICATION_NOTICE).toMatch(/ascuns până la copierea imaginilor/);
         expect(PUBLICATION_NOTICE).toMatch(/nu poate ști care adrese de imagine vor funcționa/);
+        // CAT-IMPORT-GALLERY-1 (CIG-REPORT-SCOPE): publication follows the MAIN image; extras never publish.
+        expect(PUBLICATION_NOTICE).toMatch(/imaginile lui principale se copiază/);
+        expect(PUBLICATION_NOTICE).toMatch(/imaginile suplimentare nu publică un produs/);
         expect(PUBLICATION_NOTICE).toMatch(/„imagine de copiat”/);
         expect([PENDING_COPY_LABEL, PENDING_COPY_TITLE]).toEqual(["imagine de copiat", "ascuns până la copierea imaginilor"]);
     });

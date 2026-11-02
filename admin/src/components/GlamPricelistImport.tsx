@@ -30,6 +30,13 @@ import { siteContextOf, type SiteContext } from "./glamPreview";
  * report state how many start hidden and which rows have no image address (`publication`); the image section counts
  * the products published and lists those that stay hidden for lack of an image (`hiddenProducts`).
  *
+ * CAT-IMPORT-GALLERY-1 (docs/slices/cat-import-gallery-1.md § 3 item 5) — a 13-column file: the check and the import
+ * report state the column-13 counts (`galleryLine`); the image section counts the extra images apart
+ * (`imageCounts(totals, "extras")`). An extra never publishes a product and is not a variant's main image, so the
+ * failure list of variant images (`imageProblems`) and the hidden causes (`hiddenProducts`) read main-image holdings;
+ * lost extras have their own list (`extraImageProblems`). Every publication / hidden statement names the MAIN image
+ * (R-CIG-REPORT): an extras-only product has image addresses, but none that publishes it.
+ *
  * CAT-IMPORT-PROFILE-1C — the producer's import profile (docs/slices/cat-import-profile-1.md § 5, § 6): the first
  * "Check the file" loads the stored profile (or the default) into the editor (`ProfileEditor`, a member of this
  * form's state); "Previzualizează" sends a dry run with `profileChoice` = { the edited profile, the loaded stored
@@ -242,11 +249,15 @@ export interface HiddenProductDTO {
     title: string;
 }
 
-/** One (product, option) holding of a source, as the latest request that rewrote it reported it (`mergeSources`). */
+/**
+ * One holding of a source — a (product, option) main image, or (`extra: true`, CAT-IMPORT-GALLERY-1) one extra image of
+ * the option — as the latest request that rewrote it reported it (`mergeSources`).
+ */
 export interface HolderOutcome {
     productId: string;
     slug: string;
     option: string;
+    extra?: true;
     batch: number;
     result: SourceResult;
 }
@@ -275,8 +286,10 @@ export interface ImageCopyTotals {
      * one). `null` until a batch answered.
      */
     hidden: HiddenProductDTO[] | null;
-    /** After the last batch: (product, option) holdings still on a producer URL — the measure that must fall. */
+    /** After the last batch: (product, option) holdings whose main image is still on a producer URL. */
     remainingOptions: number | null;
+    /** CAT-IMPORT-GALLERY-1, after the last batch: extra-image holdings still on a producer URL. */
+    remainingExtras: number | null;
     /** After the last batch: distinct producer URLs among them. */
     remainingSources: number | null;
     batches: number;
@@ -305,10 +318,12 @@ export const IDLE_IMAGE_COPY: ImageCopyState = { kind: "idle" };
 
 const NO_TOTALS: ImageCopyTotals = {
     sources: {}, copiedThisSession: {}, productsUpdated: 0, productsReplaced: 0, productsPublished: 0, hidden: null,
-    remainingOptions: null, remainingSources: null, batches: 0, importSource: null,
+    remainingOptions: null, remainingExtras: null, remainingSources: null, batches: 0, importSource: null,
 };
 
-const holderKey = (h: { productId: string; option: string }) => `${h.productId}\u0000${h.option}`;
+/** A holding's identity: (product, option) for a main image; (product, option, address) for an extra. */
+const holderKey = (h: { productId: string; option: string; extra?: true }, url: string) =>
+    h.extra === true ? `${h.productId}\u0000${h.option}\u0000extra\u0000${url}` : `${h.productId}\u0000${h.option}`;
 
 /**
  * Merge one batch's sources into the records, by URL (review-2 CIM-F2-OVERLAP). Rule: a holding's recorded outcome is
@@ -318,16 +333,19 @@ const holderKey = (h: { productId: string; option: string }) => `${h.productId}\
  */
 function mergeSources(records: Record<string, SourceRecord>, reported: any[], batch: number): Record<string, SourceRecord> {
     const incoming = new Set<string>();
-    for (const source of reported) for (const h of source.holders) incoming.add(holderKey(h));
+    for (const source of reported) for (const h of source.holders) incoming.add(holderKey(h, source.url));
     const next: Record<string, SourceRecord> = {};
     for (const [url, record] of Object.entries(records)) {
-        next[url] = { url, holders: record.holders.filter((h) => !incoming.has(holderKey(h))) };
+        next[url] = { url, holders: record.holders.filter((h) => !incoming.has(holderKey(h, url))) };
     }
     for (const source of reported) {
         const { url, holders, ...result } = source;
         const record = next[url] ?? { url, holders: [] };
-        const added = (holders as { productId: string; slug: string; option: string }[])
-            .map((h) => ({ productId: h.productId, slug: h.slug, option: h.option, batch, result: result as SourceResult }));
+        const added = (holders as { productId: string; slug: string; option: string; extra?: true }[])
+            .map((h): HolderOutcome => ({
+                productId: h.productId, slug: h.slug, option: h.option, ...(h.extra === true ? { extra: true as const } : {}),
+                batch, result: result as SourceResult,
+            }));
         next[url] = { url, holders: [...record.holders, ...added] };
     }
     return next;
@@ -357,6 +375,7 @@ export function imageCopyReducer(state: ImageCopyState, event: ImageCopyEvent): 
                 productsPublished: t.productsPublished + (r.products.published?.length ?? 0),
                 hidden: r.hiddenWithoutImage ?? t.hidden,
                 remainingOptions: r.progress.remainingOptions,
+                remainingExtras: r.progress.remainingExtras ?? null,
                 remainingSources: r.progress.remainingSources,
                 batches: t.batches + 1,
                 importSource: r.importSource,
@@ -397,15 +416,22 @@ export function summarizeSource(record: SourceRecord, copiedThisSession: boolean
 /**
  * Counts per kind over DISTINCT producer URLs that some product now uses or lost (≥ 1 committed holding), each counted
  * once by `summarizeSource`. A URL copied but whose products were never written (the copy stopped first, or they were
- * replaced) is not counted: no product shows it.
+ * replaced) is not counted: no product shows it. `holdings = "extras"` (CAT-IMPORT-GALLERY-1): the same over the
+ * extra-image holdings only.
  */
-export function imageCounts(totals: ImageCopyTotals): Record<SourceResultKind, number> {
+export function imageCounts(totals: ImageCopyTotals, holdings: "all" | "extras" = "all"): Record<SourceResultKind, number> {
     const counts: Record<SourceResultKind, number> = { ingested: 0, cached: 0, refused: 0, failed: 0 };
     for (const record of Object.values(totals.sources)) {
-        if (record.holders.length > 0) counts[summarizeSource(record, totals.copiedThisSession[record.url] === true).kind]++;
+        const held = holdings === "all" ? record : extraHoldings(record);
+        if (held.holders.length > 0) counts[summarizeSource(held, totals.copiedThisSession[record.url] === true).kind]++;
     }
     return counts;
 }
+
+/** The main-image holdings of a record (CAT-IMPORT-GALLERY-1: an extra is not a variant's main image, never publishes). */
+const mainHoldings = (record: SourceRecord): SourceRecord => ({ url: record.url, holders: record.holders.filter((h) => h.extra !== true) });
+/** The extra-image holdings of a record (CAT-IMPORT-GALLERY-1). */
+const extraHoldings = (record: SourceRecord): SourceRecord => ({ url: record.url, holders: record.holders.filter((h) => h.extra === true) });
 
 /** Why a source is not on the site, in plain words. */
 export function problemReason(result: SourceResult): string {
@@ -418,15 +444,29 @@ export function problemReason(result: SourceResult): string {
 }
 
 /**
- * The failure list: one entry per problem URL, with the holdings that LOST the image. With the import report of the
+ * The failure list: one entry per problem URL, with the main-image holdings that LOST the image (lost extras:
+ * `extraImageProblems`, the same shape). With the import report of the
  * same sheet in memory, a holding is shown as its file rows (product slug + option value → the report's
  * `rowIndexes`); otherwise — a copy started without an import in this session, or a holding the report does not
  * name — as the product address and the variant label.
  */
 export function imageProblems(totals: ImageCopyTotals, importReport: any | null) {
+    return problemsOf(totals, importReport, mainHoldings);
+}
+
+/**
+ * CAT-IMPORT-GALLERY-1 (R-CIG-REPORT) — the lost EXTRA images: one entry per refused/failed extra address, with its
+ * reason and the rows (or product address and variant label) of the variants that lost it — the rule of
+ * `imageProblems` over the extra-image holdings. A lost extra was removed from its variant.
+ */
+export function extraImageProblems(totals: ImageCopyTotals, importReport: any | null) {
+    return problemsOf(totals, importReport, extraHoldings);
+}
+
+function problemsOf(totals: ImageCopyTotals, importReport: any | null, holdings: (record: SourceRecord) => SourceRecord) {
     const report = importReport && totals.importSource !== null && importReport.importSource === totals.importSource ? importReport : null;
     const out: { url: string; reason: string; places: string[] }[] = [];
-    for (const record of Object.values(totals.sources)) {
+    for (const record of Object.values(totals.sources).map(holdings)) {
         if (record.holders.length === 0) continue;
         const summary = summarizeSource(record, totals.copiedThisSession[record.url] === true);
         if (!isLoss(summary.kind)) continue;
@@ -446,7 +486,8 @@ export function imageProblems(totals: ImageCopyTotals, importReport: any | null)
 /**
  * Why a product stays hidden, as far as this page knows (CIG-R3: missing evidence is never an absence claim):
  *   - `failed`: the sources it lost, with the reasons, recorded by this copy (or the resumed one before it);
- *   - `no-image-address`: the import report of the same sheet, in memory, shows no image address for it;
+ *   - `no-image-address`: the import report of the same sheet, in memory, shows no MAIN-image address (column 9) for
+ *     it — it may still have extra images (column 13), which never publish;
  *   - `unknown`: neither — e.g. a copy started without an import in this session whose failures were recorded earlier.
  */
 export type HiddenCause =
@@ -462,7 +503,7 @@ export function hiddenProducts(totals: ImageCopyTotals, importReport: any | null
     const report = importReport && totals.importSource !== null && importReport.importSource === totals.importSource ? importReport : null;
     return (totals.hidden ?? []).map((h) => {
         const failed: { url: string; reason: string }[] = [];
-        for (const record of Object.values(totals.sources)) {
+        for (const record of Object.values(totals.sources).map(mainHoldings)) {
             const lost = record.holders.filter((x) => x.productId === h.productId && isLoss(x.result.kind));
             if (lost.length > 0) failed.push({ url: record.url, reason: problemReason(lost.reduce((a, b) => (b.batch >= a.batch ? b : a)).result) });
         }
@@ -479,7 +520,7 @@ export function hiddenProducts(totals: ImageCopyTotals, importReport: any | null
 export function hiddenCauseText(cause: HiddenCause): string[] {
     switch (cause.kind) {
         case "failed": return cause.sources.map((f) => `${f.url} — ${f.reason}`);
-        case "no-image-address": return ["Fără adresă de imagine în fișier."];
+        case "no-image-address": return ["Fără adresă de imagine principală (coloana 9) în fișier."];
         case "unknown": return [HIDDEN_CAUSE_UNKNOWN];
         default: {
             const unhandled: never = cause;
@@ -488,7 +529,7 @@ export function hiddenCauseText(cause: HiddenCause): string[] {
     }
 }
 
-export const HIDDEN_CAUSE_UNKNOWN = "Cauza nu este cunoscută în această sesiune: fie rândul nu are adresă de imagine, fie imaginile lui au eșuat la o copiere anterioară. Importați lista din nou și copiați imaginile ca să vedeți adresele care eșuează.";
+export const HIDDEN_CAUSE_UNKNOWN = "Cauza nu este cunoscută în această sesiune: fie rândul nu are adresă de imagine principală, fie imaginile lui principale au eșuat la o copiere anterioară. Importați lista din nou și copiați imaginile ca să vedeți adresele care eșuează.";
 
 /** The request body; `profileChoice` only when a choice is sent (without it the backend applies the stored profile). */
 export const requestBody = (input: GlamInput, choice: ProfileChoice | null) =>
@@ -703,6 +744,7 @@ export function GlamPricelistImport({ onImported }: Props) {
                     {crossSheetLine(result.crossSheetSuffixed, false) && (
                         <div className="text-xs text-muted-foreground">{crossSheetLine(result.crossSheetSuffixed, false)}</div>
                     )}
+                    {galleryLine(result.gallery) && <div>{galleryLine(result.gallery)}</div>}
                 </div>
             )}
             {images.kind !== "idle" && <ImageCopyReport state={images} importReport={result} />}
@@ -712,16 +754,19 @@ export function GlamPricelistImport({ onImported }: Props) {
 
 /** Progress, then the image section: counts per kind and every source that is not on the site, with where it is used. */
 function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyState, { kind: "idle" }>; importReport: any }) {
-    const { remainingOptions, remainingSources, batches, productsReplaced } = state.totals;
+    const { remainingOptions, remainingExtras, remainingSources, batches, productsReplaced } = state.totals;
     const counts = imageCounts(state.totals);
+    const extras = imageCounts(state.totals, "extras");
+    const anyExtra = Object.values(state.totals.sources).some((r) => r.holders.some((h) => h.extra === true));
     const problems = imageProblems(state.totals, importReport);
+    const extraProblems = extraImageProblems(state.totals, importReport);
     const hidden = hiddenProducts(state.totals, importReport);
     return (
         <div className="text-sm p-3 rounded-md bg-muted space-y-2">
             <div className="font-medium flex items-center gap-2">
                 {state.kind === "running" && <Loader2 className="h-4 w-4 animate-spin" />}
                 Images of “{state.target.sheet}” by {state.target.producer}
-                {state.kind === "running" && <> — copying (request {batches + 1}{remainingSources !== null ? `, ${remainingSources} image(s) on ${remainingOptions} variant(s) left` : ""})</>}
+                {state.kind === "running" && <> — copying (request {batches + 1}{remainingSources !== null ? `, ${remainingSources} image(s) on ${remainingOptions} variant(s)${remainingExtras ? ` and ${remainingExtras} extra image place(s)` : ""} left` : ""})</>}
                 {state.kind === "done" && <> — done</>}
             </div>
             <ul className="list-disc pl-5 space-y-0.5">
@@ -729,15 +774,21 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
                 <li>Already on the site from an earlier copy: <b>{counts.cached}</b></li>
                 <li>Refused (address not allowed): <b>{counts.refused}</b></li>
                 <li>Failed (no image at that address): <b>{counts.failed}</b></li>
+                {anyExtra && (
+                    <li>
+                        Of which extra images (column 13): copied <b>{extras.ingested}</b>, already on the site <b>{extras.cached}</b>,
+                        refused <b>{extras.refused}</b>, failed <b>{extras.failed}</b> — a refused or failed extra image is removed from its variant
+                    </li>
+                )}
                 {productsReplaced > 0 && <li>Products replaced by another import during the copy: <b>{productsReplaced}</b></li>}
-                <li>Produse publicate acum (o imagine a lor s-a copiat): <b>{state.totals.productsPublished}</b></li>
-                {state.totals.hidden !== null && <li>Produse care rămân ascunse — nicio imagine copiată: <b>{state.totals.hidden.length}</b></li>}
+                <li>Produse publicate acum (o imagine principală a lor s-a copiat): <b>{state.totals.productsPublished}</b></li>
+                {state.totals.hidden !== null && <li>Produse care rămân ascunse — nicio imagine principală copiată: <b>{state.totals.hidden.length}</b></li>}
             </ul>
             {state.kind === "stopped" && <div className="text-sm p-2 rounded-md bg-destructive/10 text-destructive">{state.error}</div>}
             {hidden.length > 0 && (
                 <div className="space-y-1">
                     <div className="text-xs">
-                        Aceste produse rămân ascunse pe site: niciuna dintre imaginile lor nu s-a copiat. Adăugați în fișier adrese de imagine care
+                        Aceste produse rămân ascunse pe site: nicio imagine principală a lor nu s-a copiat (imaginile suplimentare nu publică un produs). Adăugați în fișier adrese de imagine principală care
                         funcționează și importați-l din nou. O imagine adăugată în editorul produsului se pierde la următorul import al listei.
                     </div>
                     <ul className="text-xs space-y-1">
@@ -753,13 +804,29 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
             {problems.length > 0 && (
                 <div className="space-y-1">
                     <div className="text-xs">
-                        These variants have no image now. Find a picture for each and add it in the product editor:
+                        These variants have no main image now. Find a picture for each and add it in the product editor:
                     </div>
                     <ul className="text-xs space-y-1">
                         {problems.map((p) => (
                             <li key={p.url}>
                                 <span className="break-all">{p.url}</span> — {p.reason}
                                 <div className="text-muted-foreground">Used by: {p.places.join(", ")}</div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+            {extraProblems.length > 0 && (
+                <div className="space-y-1">
+                    <div className="text-xs">
+                        These extra images (column 13) are not on the site: each was removed from its variant.
+                        Fix the address in the file and import it again:
+                    </div>
+                    <ul className="text-xs space-y-1">
+                        {extraProblems.map((p) => (
+                            <li key={p.url}>
+                                <span className="break-all">{p.url}</span> — {p.reason}
+                                <div className="text-muted-foreground">Extra image of: {p.places.join(", ")}</div>
                             </li>
                         ))}
                     </ul>
@@ -802,6 +869,16 @@ export function withinFileLine(list: { slug: string; rowIndex: number }[]): stri
         ` ${list.map((s) => `${s.slug} (row ${s.rowIndex})`).join(", ")}`;
 }
 
+/**
+ * CAT-IMPORT-GALLERY-1 — the report line for the backend's `gallery` (a 13-column file only; dry run and import):
+ * rows with extra image addresses, those addresses, and the column-13 parts dropped as not an http(s) address. `null`
+ * when the member is absent (a 12-column file).
+ */
+export function galleryLine(gallery: { rows: number; addresses: number; dropped: number } | undefined): string | null {
+    if (!gallery) return null;
+    return `Extra images (column 13): ${gallery.rows} rows, ${gallery.addresses} addresses; dropped (not an http(s) address): ${gallery.dropped}`;
+}
+
 /** The dry-run report in business language (spec § 3.4 "Report shape"). */
 function ImportReport({ report }: { report: any }) {
     const skipped = report.rows.filter((r: any) => r.status === "skipped");
@@ -818,6 +895,7 @@ function ImportReport({ report }: { report: any }) {
                 <li>Variants given a label by the import (no label or a repeated label in the file): <b>{report.relabelled.length}</b></li>
                 <li>New categories: <b>{report.categoriesCreated}</b></li>
                 <li>Rows skipped: <b>{report.counts.skipped}</b> of {report.totalRows}</li>
+                {galleryLine(report.gallery) && <li>{galleryLine(report.gallery)}</li>}
             </ul>
             {report.publication && <PublicationLines publication={report.publication} dryRun={true} />}
             {report.categoryConflicts?.length > 0 && (
@@ -863,8 +941,8 @@ function PublicationLines({ publication, dryRun }: { publication: { status: "act
         <details>
             <summary className="cursor-pointer text-xs">
                 {publication.status === "draft"
-                    ? `Fără adresă de imagine în fișier — rămân ascunse dacă nu adăugați imagini în fișier (${none.length})`
-                    : `Fără adresă de imagine în fișier — publicate fără imagine (${none.length})`}
+                    ? `Fără adresă de imagine principală (coloana 9) în fișier — rămân ascunse dacă nu adăugați imagini principale în fișier (${none.length})`
+                    : `Fără adresă de imagine principală (coloana 9) în fișier — publicate fără imagine principală (${none.length})`}
             </summary>
             <ul className="text-xs mt-1 space-y-0.5">
                 {none.map((p) => <li key={p.slug}>{p.title} ({p.slug}) — rândurile {p.rowIndexes.join(", ")}</li>)}
@@ -877,7 +955,7 @@ function PublicationLines({ publication, dryRun }: { publication: { status: "act
                 <div className="text-xs space-y-1">
                     <div>
                         {dryRun ? "Ar porni ascunse" : "Pornesc ascunse"}: <b>{publication.startHidden}</b> produse — fiecare devine public când una dintre imaginile
-                        lui se copiază pe site. Dacă copierea se oprește, apăsați din nou „Copiază imaginile”.
+                        lui principale se copiază pe site. Dacă copierea se oprește, apăsați din nou „Copiază imaginile”.
                     </div>
                     {list}
                 </div>
@@ -885,7 +963,7 @@ function PublicationLines({ publication, dryRun }: { publication: { status: "act
         case "active":
             return (
                 <div className="text-xs space-y-1">
-                    <div>Profilul publică și produsele fără imagine: toate produsele sunt publicate la import.</div>
+                    <div>Profilul publică și produsele fără imagine principală: toate produsele sunt publicate la import.</div>
                     {list}
                 </div>
             );

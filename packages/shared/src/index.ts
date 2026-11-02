@@ -1221,9 +1221,33 @@ export const ProductVariantSchema = z.object({
         priceOverride: z.string().optional(),
         imageLink: z.string().optional(),
         availability: Availability.optional(),
+        // CAT-IMPORT-GALLERY-1 (CIG-D1 = A): the option's other images (the glam import's column 13), after
+        // `imageLink`. Optional: every stored product stays valid; the importer stores it only when non-empty.
+        additionalImageLinks: z.array(z.string()).optional(),
     })),
 });
 export type ProductVariant = z.infer<typeof ProductVariantSchema>;
+
+/**
+ * CAT-IMPORT-GALLERY-1 (docs/slices/cat-import-gallery-1.md § 3 item 2) — the ONE product-gallery derivation of an
+ * imported product, from its variant options: walk the options in order and, for each, its `imageLink` then its
+ * `additionalImageLinks`; keep each address once (first occurrence). The first address is the product `imageLink`
+ * (absent when there is none — the key is then not written, CM-D7); the rest, in order, are `additionalImageLinks`.
+ * For options without `additionalImageLinks` this is the § 3.4 rule of CATALOG-MODE-1 unchanged. Pure.
+ * Callers: backend `lib/catalog-product.ts` `withDerivedGallery` (every product write of an imported product: create,
+ * update, the glam import), `import/glam/map.ts` (the import plan), `import/glam-images.ts` (the image copy rewrite).
+ */
+export function deriveGallery(
+    options: readonly { readonly imageLink?: string; readonly additionalImageLinks?: readonly string[] }[],
+): { imageLink?: string; additionalImageLinks: string[] } {
+    const images: string[] = [];
+    for (const option of options) {
+        for (const url of [option.imageLink, ...(option.additionalImageLinks ?? [])]) {
+            if (url !== undefined && !images.includes(url)) images.push(url);
+        }
+    }
+    return images.length > 0 ? { imageLink: images[0], additionalImageLinks: images.slice(1) } : { additionalImageLinks: [] };
+}
 
 export const NutritionalValueSchema = z.object({
     label: z.string(),          // "Calories", "Fat", "Protein"

@@ -7,10 +7,17 @@
  * prices: they are NEVER read. Columns 2 and 5 hold producer codes: they are read ONLY to remove, from the specs
  * text, every line that contains one of the row's codes as a whole token. `GlamRow` has no field for any of the four
  * columns, so no later stage can store a price or a code cell from this file.
+ *
+ * CAT-IMPORT-GALLERY-1 (docs/slices/cat-import-gallery-1.md § 3 item 1): the 13-column layout is the twelve columns
+ * plus column 13 (index 12, `link imagini suplimentare`): other image addresses of the row, `|`-separated. Column 13
+ * is read ONLY into `galleryUrls`. One layout per file: the header selects it (13 cells → 13 columns, any other
+ * header → 12 columns, as before this slice), and every data record must have that many cells.
  */
 
 /** The number of cells every record of the frozen layout has. */
 export const GLAM_COLUMN_COUNT = 12;
+/** CAT-IMPORT-GALLERY-1: the number of cells of every record of the 13-column layout (the twelve + the gallery). */
+export const GLAM_GALLERY_COLUMN_COUNT = 13;
 
 /**
  * The column indexes this parser reads into `GlamRow`. The only place these indexes are written; columns not named
@@ -25,6 +32,7 @@ const COLUMN = {
     imageUrl: 9,     // link imagine produs
     specs: 10,       // specificații tehnice
     format: 11,      // format — the variant label
+    gallery: 12,     // link imagini suplimentare — only in the 13-column layout (CAT-IMPORT-GALLERY-1)
 } as const;
 
 /** The producer-code columns. Read only by `removeCodeLines`; never copied into a row. */
@@ -49,6 +57,12 @@ export interface GlamRow {
     /** The specs text with every line that contains one of the row's producer codes removed (`removeCodeLines`). */
     readonly specs: string;
     readonly format: string;
+    /**
+     * CAT-IMPORT-GALLERY-1: present only in a 13-column file (absent = the file has no column 13). Column 13 split on
+     * `|`, each part trimmed; empty parts, parts equal to the trimmed column-9 cell and repeated parts are dropped;
+     * file order kept. The parts are addresses as written: `./map.ts` keeps only the http(s) ones.
+     */
+    readonly galleryUrls?: readonly string[];
 }
 
 export type GlamParseResult =
@@ -66,31 +80,35 @@ export type GlamParseResult =
 
 /**
  * Parse the file. Refused (the caller answers 400, nothing is written) when the CSV is malformed (an unclosed quoted
- * cell, or a quote where RFC 4180 does not allow one) or when a data record does not have exactly twelve cells: a
- * record with a different cell count is not the frozen layout, and reading it by index would put a cell of another
- * column — possibly a code or a price — in a read field. A blank line is not a record of the layout and is passed over.
+ * cell, or a quote where RFC 4180 does not allow one) or when a data record does not have exactly the layout's cell
+ * count (13 when the header has 13 cells, else 12): a record with a different cell count is not the file's layout, and
+ * reading it by index would put a cell of another column — possibly a code or a price — in a read field. So a file
+ * that mixes 12- and 13-cell records is refused, and a 12-column file with one shifted record stays refused as before.
+ * A blank line is not a record of the layout and is passed over.
  */
 export function parseGlamCsv(text: string): GlamParseResult {
     const parsed = parseCsvRecords(text);
     if (parsed.kind === "malformed") return { kind: "refused", error: `The file is not a valid CSV: ${parsed.error}` };
     const records = parsed.records;
+    // records[0] is the header: it selects the layout and is otherwise ignored.
+    const width = records.length > 0 && records[0].length === GLAM_GALLERY_COLUMN_COUNT ? GLAM_GALLERY_COLUMN_COUNT : GLAM_COLUMN_COUNT;
 
     const wrongWidth: string[] = [];
     const rows: GlamRow[] = [];
     const codeCells = new Set<string>();
-    // records[0] is the header: ignored.
     for (let r = 1; r < records.length; r++) {
         const cells = records[r];
         const index = r + 1;
         // A blank line holds no cell of the layout: it is not a row (it is neither reported nor refused).
         if (cells.length === 1 && cells[0].trim() === "") continue;
-        if (cells.length !== GLAM_COLUMN_COUNT) {
+        if (cells.length !== width) {
             wrongWidth.push(`row ${index} has ${cells.length}`);
             continue;
         }
         for (const cell of [cells[CODE_COLUMNS.codeOld], cells[CODE_COLUMNS.codeNew]]) {
             if (cell.trim() !== "") codeCells.add(cell.trim());
         }
+        const imageUrl = cells[COLUMN.imageUrl].trim();
         rows.push({
             index,
             collection: cells[COLUMN.collection].trim(),
@@ -98,9 +116,10 @@ export function parseGlamCsv(text: string): GlamParseResult {
             unit: cells[COLUMN.unit].trim(),
             packaging: cells[COLUMN.packaging].trim(),
             minimumOrder: cells[COLUMN.minimumOrder].trim(),
-            imageUrl: cells[COLUMN.imageUrl].trim(),
+            imageUrl,
             specs: removeCodeLines(cells[COLUMN.specs], [cells[CODE_COLUMNS.codeOld], cells[CODE_COLUMNS.codeNew]]).trim(),
             format: cells[COLUMN.format].trim(),
+            ...(width === GLAM_GALLERY_COLUMN_COUNT ? { galleryUrls: galleryParts(cells[COLUMN.gallery], imageUrl) } : {}),
         });
     }
     if (wrongWidth.length > 0) {
@@ -108,10 +127,20 @@ export function parseGlamCsv(text: string): GlamParseResult {
         const more = wrongWidth.length > 10 ? ` (and ${wrongWidth.length - 10} more)` : "";
         return {
             kind: "refused",
-            error: `The file is not the 12-column pricelist layout: ${shown}${more} cells.`,
+            error: `The file is not the 12- or 13-column pricelist layout: every row must have ${width} cells, as its header ${width === GLAM_GALLERY_COLUMN_COUNT ? "has" : "does not have 13"}; ${shown}${more} cells.`,
         };
     }
     return { kind: "parsed", rows, codeCells };
+}
+
+/** The `galleryUrls` rule (see `GlamRow`): split on `|`, trimmed, no empty part, no part equal to column 9, no repeat. */
+function galleryParts(cell: string, imageUrl: string): string[] {
+    const parts: string[] = [];
+    for (const raw of cell.split("|")) {
+        const part = raw.trim();
+        if (part !== "" && part !== imageUrl && !parts.includes(part)) parts.push(part);
+    }
+    return parts;
 }
 
 /**

@@ -1,7 +1,7 @@
-import type { FacetModes, GlamImportProfile } from "@amodx/shared";
+import { deriveGallery, type FacetModes, type GlamImportProfile } from "@amodx/shared";
 import type { GlamRow } from "./parse.js";
 import {
-    groupStyles, norm, slugify, KEY_SEPARATOR,
+    groupStyles, norm, slugify, usableGallery, KEY_SEPARATOR,
     type GlamOptionPlan, type GlamRowResult, type GlamStylePlan, type TakenSlugs,
 } from "./group.js";
 import {
@@ -63,10 +63,15 @@ function refused(error: string): GlamUploadCheck {
     return { kind: "refused", error };
 }
 
-/** A variant option as stored: only a label and an optional image — never `priceOverride` or `availability`. */
+/**
+ * A variant option as stored: only a label, an optional image and its optional other images — never `priceOverride`
+ * or `availability`.
+ */
 export interface GlamOptionDraft {
     readonly value: string;
     readonly imageLink?: string;
+    /** CAT-IMPORT-GALLERY-1: the option's column-13 images (`GlamOptionPlan.additionalImageLinks`); only when non-empty. */
+    readonly additionalImageLinks?: readonly string[];
 }
 
 /** The one variant group of an imported product, without its id (the id is generated where the item is written). */
@@ -141,6 +146,20 @@ export interface GlamImportPlan {
      * spec line the value guard refused (collection lines and attribute lines), by row.
      */
     readonly profile?: { readonly revision: number; readonly refused: readonly SpecLineRefusal[] };
+    /**
+     * CAT-IMPORT-GALLERY-1: present only for a 13-column file (its rows carry `galleryUrls`). Over the rows that
+     * belong to a product (skipped rows not counted): `rows` = rows with ≥ 1 usable column-13 address, `addresses` =
+     * their usable addresses (each row counted on its own, before options merge), `dropped` = column-13 parts that
+     * are not an http(s) URL — never stored.
+     */
+    readonly gallery?: GalleryCounts;
+}
+
+/** CAT-IMPORT-GALLERY-1: the column-13 counts of a plan (`GlamImportPlan.gallery`). */
+export interface GalleryCounts {
+    readonly rows: number;
+    readonly addresses: number;
+    readonly dropped: number;
 }
 
 /**
@@ -255,7 +274,21 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, app
                 refused: [...extraction.refused].sort((a, b) => a.rowIndex - b.rowIndex || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
             },
         } : {}),
+        ...(rows.some((r) => r.galleryUrls !== undefined) ? { gallery: galleryCounts(grouped.styles.flatMap((s) => s.rows)) } : {}),
     };
+}
+
+function galleryCounts(rows: readonly GlamRow[]): GalleryCounts {
+    let withImages = 0;
+    let addresses = 0;
+    let dropped = 0;
+    for (const row of rows) {
+        const usable = usableGallery(row).length;
+        if (usable > 0) withImages++;
+        addresses += usable;
+        dropped += (row.galleryUrls ?? []).length - usable;
+    }
+    return { rows: withImages, addresses, dropped };
 }
 
 /** What `mapStyle` needs on a profiled import; the refusals of every style are collected into `refused`. */
@@ -286,11 +319,9 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
         stamps = { ...(facetModes ? { facetModes } : {}), importProfileRevision: extraction.applied.revision };
     }
 
-    // The § 3.4 derivation: the first option image, then the other distinct option images in option order.
-    const images: string[] = [];
-    for (const option of style.options) {
-        if (option.imageLink !== undefined && !images.includes(option.imageLink)) images.push(option.imageLink);
-    }
+    // CAT-IMPORT-GALLERY-1: the options carry their column-13 images (./group.ts); the one derivation rule.
+    const options = style.options;
+    const gallery = deriveGallery(options);
 
     // One rule for idx 6–8 and 10: a field differs when any row's value (empty included) is not the first row's value.
     // The specs compared are the cleaned specs (code lines removed by the parser).
@@ -305,11 +336,15 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
         description: specsRow ? plainDescription(specsRow.specs) : "",
         ...(specsRow ? { longDescription: htmlParagraphs(specsRow.specs) } : {}),
         attributes,
-        ...(images.length > 0 ? { imageLink: images[0] } : {}),
-        additionalImageLinks: images.slice(1),
+        ...(gallery.imageLink !== undefined ? { imageLink: gallery.imageLink } : {}),
+        additionalImageLinks: gallery.additionalImageLinks,
         variants: [{
             name: upload.variantName,
-            options: style.options.map((o) => (o.imageLink !== undefined ? { value: o.value, imageLink: o.imageLink } : { value: o.value })),
+            options: options.map((o) => ({
+                value: o.value,
+                ...(o.imageLink !== undefined ? { imageLink: o.imageLink } : {}),
+                ...(o.additionalImageLinks !== undefined ? { additionalImageLinks: o.additionalImageLinks } : {}),
+            })),
         }],
         brand: upload.producer,
         categoryKeys,
@@ -318,7 +353,7 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
         ...(stamps ?? {}),
         rowIndexes: style.rows.map((r) => r.index),
     };
-    return { draft, options: style.options, differing };
+    return { draft, options, differing };
 }
 
 /** Whitespace collapsed; cut at the last word boundary within the limit, with "…" when cut. */

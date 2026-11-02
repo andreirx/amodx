@@ -94,7 +94,10 @@ describe("CAT-IMPORT-1 parser — RFC 4180, 12 columns by index, header ignored"
     it("garbage: a record whose cell count is not 12 refuses the whole file, naming the row (no shifted read of a code column)", () => {
         const shifted = `${HEADER}\nC,Oak, unquoted comma,${CODE_OLD},${PURCHASE},${LIST},${CODE_NEW},,,,,,x\n`;
         const result = parseGlamCsv(shifted);
-        expect(result).toEqual({ kind: "refused", error: "The file is not the 12-column pricelist layout: row 2 has 13 cells." });
+        expect(result).toEqual({
+            kind: "refused",
+            error: "The file is not the 12- or 13-column pricelist layout: every row must have 12 cells, as its header does not have 13; row 2 has 13 cells.",
+        });
         expect(parseGlamCsv(`${HEADER}\njust some text\n`)).toMatchObject({ kind: "refused" });
     });
 
@@ -117,6 +120,64 @@ describe("CAT-IMPORT-1 parser — RFC 4180, 12 columns by index, header ignored"
     it("U+001F inside a cell is kept by the parser (the grouping refuses the row)", () => {
         const rows = rowsOf(csv({ name: `Oak${KEY_SEPARATOR}Vivo` }));
         expect(rows[0].name).toBe(`Oak${KEY_SEPARATOR}Vivo`);
+    });
+});
+
+describe("CAT-IMPORT-GALLERY-1 parser — the 13-column layout (12 + column 13, one layout per file)", () => {
+    const HEADER13 = `${HEADER},link imagini suplimentare`;
+    /** One 13-cell record: the 12 cells of `line` plus column 13. */
+    const line13 = (c: Cells, gallery: string) => `${line(c)},${q(gallery)}`;
+    const csv13 = (...rows: [Cells, string][]) => [HEADER13, ...rows.map(([c, g]) => line13(c, g))].join("\n") + "\n";
+    const cells = (n: number) => Array.from({ length: n }, (_, i) => (i === 1 ? "Oak" : "C")).join(",");
+
+    it("width 12: the row has no galleryUrls member (the 12-column result is unchanged)", () => {
+        const rows = rowsOf(csv({ image: img(1) }));
+        expect("galleryUrls" in rows[0]).toBe(false);
+    });
+
+    it("width 13: the same row plus galleryUrls; columns 2–5 still have no field", () => {
+        const rows = rowsOf(csv13([{ collection: "Herringbone", name: "Oak", image: img(1), format: "120x20", ...MONEY }, `${img(2)}|${img(3)}`]));
+        expect(rows).toEqual([{
+            index: 2, collection: "Herringbone", name: "Oak", unit: "", packaging: "", minimumOrder: "",
+            imageUrl: img(1), specs: "", format: "120x20", galleryUrls: [img(2), img(3)],
+        }]);
+        const text = JSON.stringify(rows);
+        for (const leak of [CODE_OLD, PURCHASE, LIST, CODE_NEW]) expect(text).not.toContain(leak);
+    });
+
+    it("column 13: split on |, trimmed, empty parts dropped, column 9 and repeats dropped, file order kept, non-URLs kept for the mapper", () => {
+        const rows = rowsOf(csv13([{ image: img(1) }, ` ${img(3)} || ${img(1)} |${img(2)}|${img(3)}| not-a-url |`]));
+        expect(rows[0].galleryUrls).toEqual([img(3), img(2), "not-a-url"]);
+        expect(rowsOf(csv13([{ image: img(1) }, ""]))[0].galleryUrls).toEqual([]);
+    });
+
+    it("width 11 and 14 are refused under either header; a mixed file is refused naming the rows", () => {
+        for (const n of [11, 14]) {
+            for (const header of [HEADER, HEADER13]) {
+                const result = parseGlamCsv(`${header}\n${cells(n)}\n`);
+                expect(result).toMatchObject({ kind: "refused" });
+                if (result.kind === "refused") expect(result.error).toContain(`row 2 has ${n} cells.`);
+            }
+        }
+        // header 13, a 12-cell row
+        expect(parseGlamCsv(`${HEADER13}\n${line13({}, img(2))}\n${line({})}\n`)).toEqual({
+            kind: "refused",
+            error: "The file is not the 12- or 13-column pricelist layout: every row must have 13 cells, as its header has; row 3 has 12 cells.",
+        });
+        // header 12, a 13-cell row (a shifted 12-column record stays refused)
+        expect(parseGlamCsv(`${HEADER}\n${line({})}\n${line13({}, img(2))}\n`)).toEqual({
+            kind: "refused",
+            error: "The file is not the 12- or 13-column pricelist layout: every row must have 12 cells, as its header does not have 13; row 3 has 13 cells.",
+        });
+    });
+
+    it("the 13-column file gives the same rows as its first 12 columns, plus galleryUrls", () => {
+        const rows12 = rowsOf(csv({ collection: "C1", name: "Oak", image: img(1), specs: "Grosime: 10 mm", format: "A" }, { name: "Elm", format: "B" }));
+        const rows13 = rowsOf(csv13(
+            [{ collection: "C1", name: "Oak", image: img(1), specs: "Grosime: 10 mm", format: "A" }, img(5)],
+            [{ name: "Elm", format: "B" }, ""],
+        ));
+        expect(rows13.map(({ galleryUrls: _g, ...rest }) => rest)).toEqual(rows12);
     });
 });
 

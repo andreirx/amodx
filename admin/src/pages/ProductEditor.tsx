@@ -22,14 +22,17 @@ interface CategoryOption {
 }
 
 /** The editor form's variant groups (a subset of `ProductVariantSchema`, as the form holds them). */
-type FormVariantGroup = { id: string; name: string; options: { value: string; priceOverride?: string; imageLink?: string; availability?: string }[] };
+type FormVariantGroup = { id: string; name: string; options: { value: string; priceOverride?: string; imageLink?: string; availability?: string; additionalImageLinks?: string[] }[] };
 
 /**
  * The save request body, from the form (pure; exported as the test seam of `ProductEditor.test.ts`).
  * Commerce sites: the form as before, except CM-D7 image absence — never `imageLink: ""`; `null` removes a stored
  * image (the update merges over the stored item, so an omitted key would keep it). Catalog sites additionally: no
  * empty `price`/`salePrice` keys, no option `priceOverride`/`availability` keys (the write boundary refuses a present
- * monetary key even when it is ""), and no empty option images (absence is the omitted key).
+ * monetary key even when it is ""), and no empty option images (absence is the omitted key). CAT-IMPORT-GALLERY-1
+ * (R-CIG-SAVE): an option's `additionalImageLinks` (import-owned, never shown or edited here) are sent unchanged
+ * whenever non-empty — with or without a main image — because the update replaces the variants and derives the
+ * product gallery from them.
  */
 export function buildProductPayload(
     form: Record<string, any> & { imageLink?: string; variants?: FormVariantGroup[] },
@@ -46,7 +49,10 @@ export function buildProductPayload(
         payload.variants = (form.variants || []).map(group => ({
             ...group,
             options: group.options.map(({ priceOverride: _price, availability: _availability, ...option }) =>
-                option.imageLink ? option : { value: option.value }),
+                option.imageLink ? option : {
+                    value: option.value,
+                    ...(option.additionalImageLinks && option.additionalImageLinks.length > 0 ? { additionalImageLinks: option.additionalImageLinks } : {}),
+                }),
         }));
     }
     return payload;

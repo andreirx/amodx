@@ -36,7 +36,7 @@ import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
-import { EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E,
@@ -1918,12 +1918,15 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // No URL is excluded and no diagnostic is discarded (operator ruling LOCALE1B-ROW-CUT = A): the payload is
             // compared as resolved trees (locale-1/proof.mjs resolveFlight), which ignores row labels and row cuts only.
             assert.ok(!Object.hasOwn(doc, "payloadRowCutPending"), "expected-diff.json must not waive any payload comparison");
+            // locale-1e.md § 18: the live reference of the shells (the live 200 pages' [siteId] resources), fail closed.
+            const reference = liveSiteIdReference(cand);
+            console.log(`  (loc1-diff-1e) shell reference: ${reference.kind === "resources" ? `${reference.pages} live 200 pages agree on the [siteId] resources` : reference.problem}`);
             for (const subject of Object.keys(EN_US_REQUESTS)) {
                 for (const b of before.captures.filter((c) => c.tenant === subject)) {
                     const a = cand.captures.find((c) => c.tenant === subject && c.path === b.path);
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
-                    for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
+                    for (const p of checkExpected(before, b.body, cand, a.body, expected, reference)) problems.push(`${subject} ${b.path}: ${p}`);
                     console.log(`  (loc1-diff-1e) ${subject} ${b.path}: ${expected.length} listed difference(s) [${expected.map((e) => `cat ${e.category} ${e.row} lang=${e.lang}`).join(", ")}]`);
                 }
             }
@@ -1983,10 +1986,13 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // The `[siteId]` segment's first script: the element right after the moved stylesheet link.
             const siteScript = /"rel":"stylesheet","href":"[^"]+","precedence":"next","crossOrigin":"\$undefined","nonce":"\$undefined"\}\],\["\$","script","script-0",\{"src":"([^"]+)"/.exec(flightA)?.[1];
             assert.ok(siteScript, "mutation precondition: the [siteId] script src");
-            // The removed root-layout script: a payload script src of the before side that the after payload no longer has.
+            // The removed root-layout script: a payload script src of the before side that the after payload no longer has
+            // and that the after head still loads (a [siteId] script renamed by a later client-bundle change is also gone
+            // from the after payload, but not in the after head — locale-1e.md § 18).
             const srcs = (f) => [...f.matchAll(/"src":"(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]);
-            const rootScript = srcs(flightB).find((x) => !srcs(flightA).includes(x));
-            assert.ok(rootScript && a.body.includes(`<script src="${rootScript}" async="">`), "mutation precondition: the root-layout script stays in the after head");
+            const rootScripts = srcs(flightB).filter((x) => !srcs(flightA).includes(x) && a.body.includes(`<script src="${x}" async="">`));
+            assert.equal(new Set(rootScripts).size, 1, "mutation precondition: exactly one removed payload script stays in the after head");
+            const rootScript = rootScripts[0];
             // The tenant wrapper is the `html` element whose `body` holds a client component (`Providers`); the root 404
             // boundary's `html` holds a list (title, 404 UI). Exactly one occurrence must change.
             const WRAPPER = /(\[\\"\$\\",\\"html\\",null,\{\\"lang\\":\\")en(\\",\\"children\\":\[\\"\$\\",\\"body\\",null,\{\\"className\\":\\"[^\\]*\\",\\"children\\":\[\\"\$\\",\\"\$L)/g;
@@ -2012,6 +2018,25 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.notEqual(body, a.body, `${name}: the mutation did not change the body`);
                 assert.notDeepEqual(check(body), [], `${name} was not reported`);
             }
+            // locale-1e.md § 18 (CAT-IMPORT-GALLERY-1): the [siteId] resources are checked against the LIVE document. Each
+            // control must be reported by the raw rule itself ("category 4 (raw): …"), not only by the masked comparison.
+            const siteScriptEl = new RegExp(`\\[\\\\"\\$\\\\",\\\\"script\\\\",\\\\"script-0\\\\",\\{\\\\"src\\\\":\\\\"${siteScript.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\\\"[^\\]]*\\]`).exec(a.body)?.[0];
+            assert.ok(siteScriptEl, "mutation precondition: the escaped [siteId] script-0 element");
+            const siteLinkThenScript = `${link},${siteScriptEl}`;
+            const liveControls = {
+                "a [siteId] script the live head does not load (head tag renamed, HTML only)":
+                    once(a.body, `<script src="${siteScript}" async="">`, `<script src="/_next/static/chunks/loc1e-other.js" async="">`),
+                "a [siteId] script the live head does not load (payload src renamed)":
+                    a.body.split(`\\"src\\":${esc(siteScript)}`).join(`\\"src\\":${esc("/_next/static/chunks/loc1e-other.js")}`),
+                "a second stylesheet in the [siteId] resources": once(a.body, siteLinkThenScript, `${link},${siteLinkThenScript}`),
+                "one [siteId] script more than before": once(a.body, siteLinkThenScript, `${siteLinkThenScript},${siteScriptEl}`),
+                "one [siteId] script fewer than before": once(a.body, siteLinkThenScript, link),
+            };
+            for (const [name, body] of Object.entries(liveControls)) {
+                assert.notEqual(body, a.body, `${name}: the mutation did not change the body`);
+                const problems = check(body);
+                assert.ok(problems.some((p) => p.startsWith("category 4 (raw):")), `${name} was not reported by the raw rule: ${JSON.stringify(problems)}`);
+            }
             assert.notDeepEqual(check(a.body, [{ ...move[0], lang: "ro" }]), [], "an expected lang other than the rendered one was not reported");
             assert.notDeepEqual(check(a.body, [{ ...move[0], shellPreload: true }]), [], "a category-4 entry with an extra field was not reported");
             // A style preload removed on a 200 page (the before side holds one, the after side not): refused.
@@ -2022,11 +2047,37 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const shellMove = expectedFor(doc, "content", "/cart");
             const preload = `<link rel="preload" href="${css}" as="style"/>`;
             assert.ok(bs.body.startsWith('<!DOCTYPE html><html id="__next_error__">') && bs.body.includes(preload) && !as.body.includes(preload), "precondition: content /cart is a shell that loses the preload");
-            assert.deepEqual(checkExpected(before, bs.body, cand, as.body, shellMove), [], "positive control: the 307 shell is exact under the listed move");
-            assert.notDeepEqual(checkExpected(before, once(bs.body, preload, `<link rel="preload" href="${OTHER_CSS}" as="style"/>`), cand, as.body, shellMove), [], "a shell missing a preload of another href was not reported");
-            assert.notDeepEqual(checkExpected(before, once(bs.body, preload, `${preload}${preload}`), cand, as.body, shellMove), [], "a shell missing two preloads was not reported");
-            const extra = ["an expected lang ro", "an extra entry field", "a preload removal on a 200 page", "a shell missing another href", "a shell missing two preloads"];
-            console.log(`  (loc1e-category-controls) 2 positive controls exact; ${Object.keys(refusals).length + extra.length} refusals reported (${[...Object.keys(refusals), ...extra].join("; ")})`);
+            const reference = liveSiteIdReference(cand);
+            assert.equal(reference.kind, "resources", `precondition: the live 200 pages give a shell reference (${reference.problem})`);
+            assert.deepEqual(checkExpected(before, bs.body, cand, as.body, shellMove, reference), [], "positive control: the 307 shell is exact under the listed move");
+            assert.notDeepEqual(checkExpected(before, once(bs.body, preload, `<link rel="preload" href="${OTHER_CSS}" as="style"/>`), cand, as.body, shellMove, reference), [], "a shell missing a preload of another href was not reported");
+            assert.notDeepEqual(checkExpected(before, once(bs.body, preload, `${preload}${preload}`), cand, as.body, shellMove, reference), [], "a shell missing two preloads was not reported");
+            // locale-1e.md § 18 shell rule (operator ruling CIG-SERVING-SHELL = A, fail closed): each control must be
+            // reported by the raw rule itself.
+            const shellCheck = (body, ref = reference) => checkExpected(before, bs.body, cand, body, shellMove, ref);
+            const rawReported = (name, problems) => assert.ok(problems.some((p) => p.startsWith("category 4 (raw):")), `${name} was not reported by the raw rule: ${JSON.stringify(problems)}`);
+            const shellControls = {
+                "a shell naming a stylesheet the reference does not": as.body.split(css).join(OTHER_CSS),
+                "a shell with one [siteId] script fewer": once(as.body, siteLinkThenScript, link),
+                "a shell with a foreign [siteId] script": as.body.split(`\\"src\\":${esc(siteScript)}`).join(`\\"src\\":${esc("/_next/static/chunks/loc1e-other.js")}`),
+            };
+            for (const [name, body] of Object.entries(shellControls)) {
+                assert.notEqual(body, as.body, `${name}: the mutation did not change the body`);
+                rawReported(name, shellCheck(body));
+            }
+            // A set whose 200 pages disagree: the content home renamed its [siteId] script in payload AND head (itself
+            // self-consistent) — the reference must refuse, and the shell check must report it.
+            const disagreeing = a.body.split(siteScript).join("/_next/static/chunks/loc1e-other.js");
+            const split = liveSiteIdReference({ ...cand, captures: cand.captures.map((c) => (c === a ? { ...a, body: disagreeing } : c)) });
+            assert.equal(split.kind, "problem", "a set whose 200 pages disagree gave a reference");
+            rawReported("a set whose 200 pages disagree", shellCheck(as.body, split));
+            const noPage = liveSiteIdReference({ ...cand, captures: [as] });
+            assert.equal(noPage.kind, "problem", "a set without a 200 page gave a reference");
+            rawReported("a set without a live 200 page", shellCheck(as.body, noPage));
+            rawReported("a shell checked without a reference", checkExpected(before, bs.body, cand, as.body, shellMove));
+            const extra = ["an expected lang ro", "an extra entry field", "a preload removal on a 200 page", "a shell missing another href", "a shell missing two preloads",
+                ...Object.keys(shellControls), "a set whose 200 pages disagree", "a set without a live 200 page", "a shell checked without a reference"];
+            console.log(`  (loc1e-category-controls) 2 positive controls exact; ${Object.keys(refusals).length + extra.length} refusals reported (${[...Object.keys(refusals), ...extra].join("; ")}); ${Object.keys(liveControls).length} § 18 live-document controls reported by the raw rule (${Object.keys(liveControls).join("; ")})`);
         });
 
         // LOCALE-1B: the facet ids are URL contract (§ 6.3): every filter href of every catalog page is the same as before
@@ -2297,6 +2348,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // of them exactly under category 4 — nothing is masked for the race.
         test("(loc1e-404-document) the 404 landings of a known tenant, the RO copy and a missing tenant: a d9999d2 shell, and a payload whose root 404 boundary is the document <html lang=\"en\"><body class> + Next's 404", async () => {
             const before = await readCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            // locale-1e.md § 18: a 404 shell's [siteId] resources are anchored to the live 200 pages captured by this run
+            // from the same build and server (the en-US set); the 404 probe set itself holds only the 404 response.
+            const reference = liveSiteIdReference(await loc1EnSet());
+            assert.equal(reference.kind, "resources", `precondition: a live 200 reference (${reference.problem})`);
             const buildId = (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim();
             const clientModules = (await cm1Set()).clientModules;
             assert.deepEqual([...new Set(before.captures.map((c) => `${c.tenant} ${c.path}`))], LOC1E_404_REQUESTS.map((r) => `${r.tenant} ${r.path}`), "before-404/ holds exactly LOC1E_404_REQUESTS");
@@ -2310,7 +2365,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     assert.equal(a.status, 404, `${r.tenant} ${r.path}`);
                     assert.ok(a.body.startsWith(ERROR_SHELL), `${r.tenant}: the error shell`);
                     const move = [{ ...LOC1_EN_MOVE, lang: r.lang }];
-                    const results = variants.map((b) => (b.status === a.status && b.contentType === a.contentType && b.body.startsWith(ERROR_SHELL) ? checkExpected(before, b.body, cand, a.body, move) : ["status/Content-Type/shell"]));
+                    const results = variants.map((b) => (b.status === a.status && b.contentType === a.contentType && b.body.startsWith(ERROR_SHELL) ? checkExpected(before, b.body, cand, a.body, move, reference) : ["status/Content-Type/shell"]));
                     const hit = results.findIndex((p) => p.length === 0);
                     assert.ok(hit >= 0, `${r.tenant} ${r.path}: response ${i + 1} equals no d9999d2 variant under category 4: ${JSON.stringify(results)}`);
                     matched.add(hit + 1);
@@ -2318,7 +2373,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                         // Bound mutation: one changed text of the 404 UI in the live payload matches no variant.
                         const bad = { ...a, body: a.body.replace("This page could not be found.", "This page could not be f0und.") };
                         assert.notEqual(bad.body, a.body, "mutation precondition: the 404 UI text travels in the payload");
-                        assert.ok(variants.every((b) => checkExpected(before, b.body, { ...cand, captures: [bad] }, bad.body, move).length > 0), `${r.tenant}: a changed 404 text was not reported`);
+                        assert.ok(variants.every((b) => checkExpected(before, b.body, { ...cand, captures: [bad] }, bad.body, move, reference).length > 0), `${r.tenant}: a changed 404 text was not reported`);
                     }
                     const tree = resolveFlight(maskBody(a.body, cand).masked.split("\n--- flight payload rows, sorted ---\n")[1].split("\n"));
                     const [html] = tree.root.t.t.d.r[3].children[1][3].notFound;

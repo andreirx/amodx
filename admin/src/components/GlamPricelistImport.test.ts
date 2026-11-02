@@ -3,7 +3,7 @@ import {
     glamFormReducer, canCheck, confirmRequest, brandsOf, INITIAL_GLAM_FORM, type GlamFormState, type GlamFormEvent,
     imageCopyReducer, imageProblems, imageCounts, IDLE_IMAGE_COPY, type ImageCopyState,
     checkRequest, profileChangedRefusal, requestBody, incompleteImportReport, hiddenProducts, hiddenCauseText, HIDDEN_CAUSE_UNKNOWN,
-    crossSheetLine, withinFileLine,
+    crossSheetLine, withinFileLine, galleryLine, extraImageProblems,
 } from "./GlamPricelistImport";
 import {
     proposeProfile, keyHints, applyProfileEdit, keyActionOf, attributeModeOf, nameNumberHint, collectionHint,
@@ -777,9 +777,9 @@ describe("CAT-IMAGE-GATE-1 — the image section: published count and the produc
         expect(hiddenProducts(totalsOf(other), null)[0].cause).toEqual({ kind: "unknown" });
     });
 
-    it("hiddenCauseText: one line per lost source; the confirmed empty cell in words", () => {
+    it("hiddenCauseText: one line per lost source; the confirmed empty MAIN-image cell in words (CAT-IMPORT-GALLERY-1: column 9)", () => {
         expect(hiddenCauseText(FAILED_U1 as any)).toEqual([`${U1} — HTTP 404, text/html, 10 bytes — error status`]);
-        expect(hiddenCauseText({ kind: "no-image-address" })).toEqual(["Fără adresă de imagine în fișier."]);
+        expect(hiddenCauseText({ kind: "no-image-address" })).toEqual(["Fără adresă de imagine principală (coloana 9) în fișier."]);
     });
 });
 
@@ -824,5 +824,67 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet and within-file address lines (r
         expect(line).toBe("2 product address(es) got a number (-2, -3…) because products of this file had the same address; final address: " +
             "boen-coll-oak-2-pl-2 (row 3), boen-coll-ash-2 (row 5)");
         expect(line).not.toMatch(/at the end/);
+    });
+});
+
+// ── CAT-IMPORT-GALLERY-1 — extra images (column 13) in the report and the image section ──────────────────────────────
+
+describe("CAT-IMPORT-GALLERY-1 — the gallery line and the extra-image holdings", () => {
+    const AX = { ...A, extra: true as const };
+    const U3 = "https://img.test/3.jpg";
+
+    it("galleryLine: the counts of a 13-column file; null for a 12-column report (no member)", () => {
+        expect(galleryLine({ rows: 10, addresses: 23, dropped: 2 }))
+            .toBe("Extra images (column 13): 10 rows, 23 addresses; dropped (not an http(s) address): 2");
+        expect(galleryLine(undefined)).toBeNull();
+    });
+
+    it("a main holding and an extra holding of one option are two holdings; each extra address is its own holding", () => {
+        const t = totalsOf(run2(
+            batch([{ kind: "ingested", url: U1, cdnUrl: "c1", holders: [A] }, { kind: "ingested", url: U2, cdnUrl: "c2", holders: [AX] }]),
+            batch([{ ...http404, url: U3, holders: [AX] }], done),
+        ));
+        expect(t.sources[U1].holders.map((h) => h.extra)).toEqual([undefined]);
+        expect(t.sources[U2].holders.map((h) => [h.extra, h.result.kind])).toEqual([[true, "ingested"]]);
+        expect(t.sources[U3].holders.map((h) => [h.extra, h.result.kind])).toEqual([[true, "failed"]]);
+        expect(imageCounts(t)).toEqual({ ingested: 2, cached: 0, refused: 0, failed: 1 });
+        expect(imageCounts(t, "extras")).toEqual({ ingested: 1, cached: 0, refused: 0, failed: 1 });
+    });
+
+    it("a re-reported extra holding supersedes only itself (same option, same address)", () => {
+        const t = totalsOf(run2(
+            batch([{ ...http404, url: U2, holders: [AX] }, { ...http404, url: U3, holders: [AX] }]),
+            batch([{ kind: "ingested", url: U2, cdnUrl: "c2", holders: [AX] }], done),
+        ));
+        expect(t.sources[U2].holders.map((h) => h.result.kind)).toEqual(["ingested"]);
+        expect(t.sources[U3].holders.map((h) => h.result.kind)).toEqual(["failed"]);
+    });
+
+    it("a lost extra is listed apart (URL, reason, rows), not as a variant without a main image, and is not why a product is hidden", () => {
+        const report = { importSource: "glam:boen/pl", products: [{ slug: "boen-oak", rowIndexes: [3], options: [{ value: "120", imageLink: U1, additionalImageLinks: [U3], rowIndexes: [3] }] }] };
+        const refused = { kind: "refused", rule: "destination not allowed" };
+        const t = totalsOf(run2(batch(
+            [{ ...http404, url: U1, holders: [A] }, { ...refused, url: U3, holders: [AX] }],
+            { ...done, hiddenWithoutImage: [{ productId: "pA", slug: "boen-oak", title: "Oak" }] },
+        )));
+        expect(imageProblems(t, report)).toEqual([{ url: U1, reason: "HTTP 404, text/html, 10 bytes — error status", places: ["row 3"] }]);
+        expect(extraImageProblems(t, report)).toEqual([{ url: U3, reason: "refused: destination not allowed", places: ["row 3"] }]);
+        expect(extraImageProblems(t, null)).toEqual([{ url: U3, reason: "refused: destination not allowed", places: ["boen-oak — 120"] }]);
+        expect(hiddenProducts(t, report)[0].cause).toEqual({ kind: "failed", sources: [{ url: U1, reason: "HTTP 404, text/html, 10 bytes — error status" }] });
+    });
+
+    it("an extras-only product (no column-9 address) is hidden for lack of a MAIN-image address — the words say so", () => {
+        const report = { importSource: "glam:boen/pl", products: [{ slug: "boen-elm", rowIndexes: [9], options: [{ value: "60", additionalImageLinks: [U2], rowIndexes: [9] }] }] };
+        const t = totalsOf(run2(batch([{ kind: "ingested", url: U2, cdnUrl: "c2", holders: [{ ...C, extra: true }] }], { ...done, hiddenWithoutImage: [{ productId: "pC", slug: "boen-elm", title: "Elm" }] })));
+        const [hidden] = hiddenProducts(t, report);
+        expect(hidden.cause).toEqual({ kind: "no-image-address" });
+        expect(hiddenCauseText(hidden.cause)).toEqual(["Fără adresă de imagine principală (coloana 9) în fișier."]);
+        expect(extraImageProblems(t, report)).toEqual([]);
+    });
+
+    it("remainingExtras is kept from the answer; null when the answer has none", () => {
+        const s = run2(batch([], { progress: { sourcesAtStart: 3, resolved: 1, remainingOptions: 1, remainingExtras: 2, remainingSources: 3 } }));
+        expect(totalsOf(s)).toMatchObject({ remainingOptions: 1, remainingExtras: 2 });
+        expect(totalsOf(run2(batch([], done))).remainingExtras).toBeNull();
     });
 });

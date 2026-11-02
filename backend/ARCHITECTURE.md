@@ -29,7 +29,10 @@ src/
 │   │                      #   price + imageLink required; importSource products → one variant group, unique
 │   │                      #   labels, derived imageLink/additionalImageLinks). Users: products/create, update,
 │   │                      #   import/woocommerce (mode read only), import/glam-pricelist (both);
-│   │                      #   withDerivedGallery() (the § 3.4 rule) exported for import/glam-images (CAT-IMAGES-1)
+│   │                      #   withDerivedGallery() = the product with the gallery of @amodx/shared deriveGallery
+│   │                      #   (CAT-IMPORT-GALLERY-1: each option's imageLink then its additionalImageLinks, in
+│   │                      #   option order, each once — the one rule; also called by import/glam/map.ts and,
+│   │                      #   through the core's `derive` port, by import/glam-images)
 │   ├── catprod.ts         # CATPROD#<categoryId>#<productId> projections (the card fields). writeCatProductItems /
 │   │                      #   deleteCatProductItems (BatchWrite, responses discarded) and queryCatProducts (one
 │   │                      #   page) as before; CAT-IMPORT-1 adds listCatProductIds (complete, ConsistentRead) and
@@ -240,15 +243,35 @@ src/
     │                      #   a success is never undone, so a copy-published product keeps a copied image).
     │                      #   Holdings reported = options the committed write changed. Answer adds
     │                      #   `products.published[]` and `hiddenWithoutImage[]` (draft, no copied image, no
-    │                      #   producer URL left); audit `productsPublished`
+    │                      #   producer URL left); audit `productsPublished`. CAT-IMPORT-GALLERY-1: an option's
+    │                      #   additionalImageLinks (extras) are sources too, holder `{ …, extra: true }`, one
+    │                      #   holding per (option, address); a failed/refused extra is removed (key removed when
+    │                      #   none is left), rebased from the read like the main image and merged by the ORIGINAL
+    │                      #   holding (read order; when every stored copy is identified by its MEDIAMAP# entry, read
+    │                      #   on the re-plan (`storedCopies`), one stored image per holding, no second copy; a copy
+    │                      #   whose entry a later copy overwrote can be matched to the wrong holding — misorder,
+    │                      #   suppressed copy, second copy: residual frozen for CAT-IMAGES-OVERLAP-1);
+    │                      #   CIG-STALE-WRITE: the write condition also names the `variants` read (`AND #variants =
+    │                      #   :readVariants`), so a stale write is cancelled and re-planned (cat-images-1.md § 11);
+    │                      #   an extra holding is reported
+    │                      #   when the committed write applied this request's result to it (`committedHolding`);
+    │                      #   `counts.extras`, `progress.remainingExtras`; `complete` needs main and extra
+    │                      #   holdings at 0; an extra NEVER publishes (holdsCopiedImage ignores extras; the hidden
+    │                      #   list is about MAIN images)
     ├── glam/              # CAT-IMPORT-1 PURE core (no I/O): parse.ts (RFC 4180, misplaced quotes refused; 12
-    │                      #   columns by index, a non-12-cell record refuses the file; the row type has NO field
+    │                      #   columns by index, a non-12-cell record refuses the file — CAT-IMPORT-GALLERY-1: or
+    │                      #   13 when the header has 13 cells, column 13 read ONLY into `galleryUrls` (split on
+    │                      #   |, trimmed, no empty / column-9 / repeated part), one width per file; the row type has NO field
     │                      #   for columns 2–5; columns 3–4 = prices never read; columns 2/5 = producer codes read
     │                      #   only to drop every specs line holding one as a whole token), group.ts (key
     │                      #   normalisation trim→collapse→lower→NFC, U+001F rule, styles, options merged on equal
-    │                      #   label + equal image cell, collision-aware labels and slugs; with TakenSlugs the
+    │                      #   label + equal image cell — CAT-IMPORT-GALLERY-1: GlamOptionPlan.additionalImageLinks
+    │                      #   = the http(s) column-13 addresses of the option's rows (`usableGallery`), each once —,
+    │                      #   collision-aware labels and slugs; with TakenSlugs the
     │                      #   cross-sheet pass `avoidTakenSlugs`), map.ts (upload identifier rule, importSource,
-    │                      #   GlamStyleDraft DTO, report counts; `takenSlugsOf` = the slugs of products outside
+    │                      #   GlamStyleDraft DTO, report counts; CAT-IMPORT-GALLERY-1: plan `gallery` (rows,
+    │                      #   addresses, non-http(s) parts dropped) only for a 13-column file, the options' extras
+    │                      #   stored on the draft, product gallery by deriveGallery; `takenSlugsOf` = the slugs of products outside
     │                      #   the previous set; with an AppliedProfile: the profile's row rules, extracted
     │                      #   attributes, stamps, refusals);
     │                      #   profile.ts (CAT-IMPORT-PROFILE-1A: checkProfile, parseProfileChoice,
@@ -259,7 +282,7 @@ src/
     │                      #   each fragment it can feed), analyseSpecKeys; never sees a raw record — it gets the
     │                      #   file's code cells as parse.ts `codeCells`); images.ts
     │                      #   (CAT-IMAGES-1: sources + holders, decision per source, per-product rewrite with the
-    │                      #   § 3.4 rule injected, termination measure)
+    │                      #   derivation rule injected, termination measure; CAT-IMPORT-GALLERY-1: extras)
     ├── media.ts           # POST /import/media — bulk media import (copies under the image destination policy;
     │                      #   a refused/failed source → errors[])
     ├── reviews.ts         # POST /import/reviews (rev-2b) — attestation-gated bulk review import.

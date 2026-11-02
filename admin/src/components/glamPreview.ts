@@ -23,9 +23,10 @@ import {
  * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 item 6): the one deliberate departure from "the renderer's
  * input". An import without `publishWithoutImages` writes every product `draft`, and the image copy — which runs AFTER
  * the import — publishes each one whose image copies. The preview cannot know which image links will work, so it shows
- * the state after a copy in which every link works: a `draft` product with an image address is shown as published and
- * marked "imagine de copiat" (`draftPublication` = `after-copy`); a `draft` product without any image address stays
- * hidden and is listed apart (`hidden`). `previewCards` and `previewPanel` read the drafts through this rule.
+ * the state after a copy in which every link works: a `draft` product with a MAIN-image address (an option `imageLink`,
+ * column 9) is shown as published and marked "imagine de copiat" (`draftPublication` = `after-copy`); a `draft` product
+ * without one stays hidden and is listed apart (`hidden`) — also when it has extra images (column 13, CAT-IMPORT-GALLERY-1),
+ * which never publish a product. `previewCards` and `previewPanel` read the drafts through this rule.
  */
 
 /** A product item of the dry run (`drafts[]` or `siteProducts[]`): raw, as the API sent it. */
@@ -97,8 +98,10 @@ const optionsOf = (d: PreviewItem): VariantOption[] => {
 /**
  * What the site does with one draft (backend `productItem` writes `status` by `importStatus`):
  *   - `published`: `active` — the profile publishes products without images;
- *   - `after-copy`: `draft` with at least one option image address — published when the copy copies one of them;
- *   - `hidden`: anything else — `draft` without any image address stays hidden after the copy.
+ *   - `after-copy`: `draft` with at least one option MAIN-image address (`imageLink`) — published when the copy copies
+ *     one of them;
+ *   - `hidden`: anything else — `draft` without a main-image address stays hidden after the copy (extra images,
+ *     `additionalImageLinks`, never publish).
  */
 export type DraftPublication = "published" | "after-copy" | "hidden";
 
@@ -121,13 +124,13 @@ export function publishedDrafts(drafts: readonly PreviewItem[]): PreviewItem[] {
     });
 }
 
-/** The drafts that stay hidden whatever the copy does (no image address in the file). */
+/** The drafts that stay hidden whatever the copy does (no main-image address in the file; extras do not publish). */
 export function hiddenDrafts(drafts: readonly PreviewItem[]): PreviewItem[] {
     return drafts.filter((d) => draftPublication(d) === "hidden");
 }
 
 /** Shown on the preview when some product starts hidden (the ruled copy of § 3 item 6). */
-export const PUBLICATION_NOTICE = "Opțiunea „Publică și produsele fără imagine” este oprită: fiecare produs importat este ascuns până la copierea imaginilor și devine public când una dintre imaginile lui se copiază pe site. Previzualizarea nu poate ști care adrese de imagine vor funcționa: arată toate produsele care au o imagine în fișier, marcate „imagine de copiat”. Un produs ale cărui imagini nu se pot copia rămâne ascuns.";
+export const PUBLICATION_NOTICE = "Opțiunea „Publică și produsele fără imagine” este oprită: fiecare produs importat este ascuns până la copierea imaginilor și devine public când una dintre imaginile lui principale se copiază pe site. Previzualizarea nu poate ști care adrese de imagine vor funcționa: arată toate produsele care au o imagine principală în fișier, marcate „imagine de copiat”. Un produs ale cărui imagini principale nu se pot copia rămâne ascuns (imaginile suplimentare nu publică un produs).";
 export const PENDING_COPY_LABEL = "imagine de copiat";
 export const PENDING_COPY_TITLE = "ascuns până la copierea imaginilor";
 

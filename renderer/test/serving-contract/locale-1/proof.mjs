@@ -456,10 +456,18 @@ function stripProp(node, identity, prop, value, hits) {
 //    hint `h` 1024 → 1040 (ISR) or absent → 16 (twin) — bit 16 is the root-layout hint, moved; any other `h` refuses;
 //  - `G[1]` (the global-error stylesheets) `[LINK]` → `[]`;
 //  - RAW values (CM1-A1 masks every `/_next/static` path, so the masked equality cannot see a changed URL; review 0 of
-//    iteration 1, R1): on trees resolved with the asset paths UNMASKED (`rawParts`), the after `[siteId]` resources equal
-//    `[LINK, ...SCRIPTS]` of the before side element for element (same `href`, same `src`), the after 404 boundary's
-//    `[LINK]` and the before `G[1]` equal the before root LINK, and the removed SCRIPT's `src` is in the document head on
-//    both sides; the head's `/_next/static` stylesheet hrefs are equal before/after and each equals LINK's href;
+//    iteration 1, R1): on trees resolved with the asset paths UNMASKED (`rawParts`), the after `[siteId]` resources are
+//    SELF-CONSISTENT with the live (after) document — CAT-IMPORT-GALLERY-1 correction, docs/slices/locale-1e.md § 18:
+//    their shape is the before shape (exactly one stylesheet LINK, then as many scripts as the before SCRIPTS), the
+//    stylesheet's `href` is a stylesheet of the live head and every script's `src` is a script the live head loads, and
+//    the after 404 boundary's resources are `[that same live LINK]`. On a `__next_error__` shell (whose head loads no
+//    stylesheet and none of the [siteId] scripts) the resources must instead equal those of the live 200 pages of the same
+//    build (`liveSiteIdReference`: all such pages pass the live-head rule and agree; fail closed — no reference, a failing
+//    reference or a disagreement is a problem). (Before § 18 they had to equal the before names;
+//    Next names client files by a hash of their content, so that pinned every later client-bundle byte.) Unchanged: the
+//    before `G[1]` equals the before root LINK; the removed SCRIPT's `src` is in the document head on both sides; the
+//    head's `/_next/static` stylesheet hrefs are equal before/after, the before ones each equal the before LINK's href
+//    and the after ones each equal the live LINK's href;
 //  - the error-shell preload (ruling LOC1E-404-SHELL-PRELOAD = A): on a page whose RAW response starts with the
 //    `__next_error__` shell — the predicate, never a URL list — exactly ONE `<link rel="preload" href="<LINK's href>"
 //    as="style"/>` may be absent after; any other preload difference, and any preload difference on a page that is not
@@ -536,25 +544,80 @@ const headStylesheets = (html) => [...html.matchAll(/<link rel="stylesheet" href
 const headScripts = (html) => [...html.matchAll(/<script src="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]);
 const stylePreloads = (html) => [...html.matchAll(/<link rel="preload" href="(\/_next\/static\/[^"]+)" as="style"\/>/g)].map((m) => m[1]);
 
+/** § 18: why live `[siteId]` resources (raw) are not self-consistent with their live document's head; `null` = they are:
+ *  one stylesheet link, then scripts; the link's `href` is a head stylesheet; every script's `src` is a head script. */
+function liveHeadProblem(res, html) {
+    if (!Array.isArray(res) || res.length < 1 || !isElement(res[0], "link") || !res.slice(1).every((x) => isElement(x, "script"))) {
+        return "the [siteId] resources are not one stylesheet then scripts";
+    }
+    const liveHref = unraw(res[0][3].href);
+    if (typeof liveHref !== "string" || !headStylesheets(html).includes(liveHref)) return `the [siteId] stylesheet ${liveHref} is not a stylesheet of the live head`;
+    for (const s of res.slice(1)) {
+        const src = unraw(s[3].src);
+        if (typeof src !== "string" || !headScripts(html).includes(src)) return `the [siteId] script ${src} is not a script the live head loads`;
+    }
+    return null;
+}
+
+/**
+ * § 18 (shell rule, operator ruling CIG-SERVING-SHELL = A, fail closed) — the live reference a `__next_error__` shell's
+ * `[siteId]` resources are compared with: the `[siteId]` resources of the live 200 HTML pages of `set` (non-shell, with the
+ * category-4 payload shape), each of which must itself pass the live-head rule, and which must all be EQUAL (the
+ * page-independence of the layout's resources is asserted on every run, never assumed). Returns `{ kind: "resources",
+ * resources, pages }`, or `{ kind: "problem", problem }` when the set has no such page, a page fails the live-head rule,
+ * or two pages disagree.
+ */
+export function liveSiteIdReference(set) {
+    const refs = [];
+    for (const c of set.captures) {
+        if (c.status !== 200 || !String(c.contentType ?? "").startsWith("text/html") || c.body.startsWith(ERROR_SHELL)) continue;
+        const after = movedResources(resolveFlight(rawParts(set, c.body).rows), "after");
+        if (!after || !Array.isArray(after.segRes)) continue;
+        const why = liveHeadProblem(after.segRes, splitFlight(c.body).html);
+        if (why) return { kind: "problem", problem: `the 200 reference page ${c.tenant} ${c.path}: ${why}` };
+        refs.push({ where: `${c.tenant} ${c.path}`, resources: after.segRes });
+    }
+    if (refs.length === 0) return { kind: "problem", problem: "no live 200 HTML page in the capture set anchors a shell's [siteId] resources" };
+    const other = refs.find((r) => canon(r.resources) !== canon(refs[0].resources));
+    if (other) return { kind: "problem", problem: `two live 200 pages disagree on the [siteId] resources (${refs[0].where}, ${other.where})` };
+    return { kind: "resources", resources: refs[0].resources, pages: refs.length };
+}
+
 /**
  * Category 4, raw half (see above). Pushes a problem for every raw difference outside the enumerated move and returns
  * the BEFORE html (masked) the after html must equal: on an error shell, without the one allowed preload.
  */
-function moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, beforeHtml, problems) {
+function moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, beforeHtml, problems, liveReference) {
     const fail = (why) => { problems.push(`category 4 (raw): ${why}`); return beforeHtml; };
     const rb = rawParts(beforeSet, beforeBody), ra = rawParts(afterSet, afterBody);
     const before = movedResources(resolveFlight(rb.rows), "before"), after = movedResources(resolveFlight(ra.rows), "after");
     if (!before || !after) return fail("the payload does not have the enumerated shape");
     const href = unraw(before.link?.[3]?.href);
     if (typeof href !== "string" || !href.startsWith("/_next/static/")) return fail("the before root stylesheet has no /_next/static href");
-    if (canon(after.segRes) !== canon([before.link, ...before.scripts])) return fail("the [siteId] resources are not the before stylesheet and scripts, same href and src");
-    if (canon(after.notFoundRes) !== canon([before.link])) return fail("the root 404 boundary does not link the before stylesheet");
     if (canon(before.g1) !== canon([before.link])) return fail("the before G[1] is not the root stylesheet");
     const htmlB = splitFlight(beforeBody).html, htmlA = splitFlight(afterBody).html;
+    // § 18: the [siteId] resources against the LIVE document (shape from the before side, names from the after side).
+    const res = after.segRes;
+    if (!Array.isArray(res) || !Array.isArray(before.scripts) || res.length !== 1 + before.scripts.length
+        || !isElement(res[0], "link") || !res.slice(1).every((x) => isElement(x, "script"))) {
+        return fail(`the [siteId] resources are not one stylesheet and ${before.scripts?.length} script(s), the before shape`);
+    }
+    const liveHref = unraw(res[0][3].href);
+    if (htmlA.startsWith(ERROR_SHELL)) {
+        // A shell's head loads no stylesheet and none of the [siteId] scripts: its resources must equal, element for
+        // element, those of the live 200 pages of the same build (`liveSiteIdReference`), fail closed.
+        if (!liveReference) return fail("a __next_error__ shell is checked without a live 200 reference");
+        if (liveReference.kind !== "resources") return fail(liveReference.problem);
+        if (canon(res) !== canon(liveReference.resources)) return fail("the shell's [siteId] resources are not the live 200 pages' [siteId] resources");
+    } else {
+        const why = liveHeadProblem(res, htmlA);
+        if (why) return fail(why);
+    }
+    if (canon(after.notFoundRes) !== canon([res[0]])) return fail("the root 404 boundary does not link the live [siteId] stylesheet");
     const rootScript = unraw(before.script?.[3]?.src);
     if (!headScripts(htmlB).includes(rootScript) || !headScripts(htmlA).includes(rootScript)) return fail(`the removed root-layout script ${rootScript} is not in the document head on both sides`);
     const sheetsB = headStylesheets(htmlB), sheetsA = headStylesheets(htmlA);
-    if (canon(sheetsB) !== canon(sheetsA) || sheetsA.some((h) => h !== href)) return fail(`the head stylesheets differ or are not the payload stylesheet (before ${JSON.stringify(sheetsB)}, after ${JSON.stringify(sheetsA)}, payload ${href})`);
+    if (canon(sheetsB) !== canon(sheetsA) || sheetsB.some((h) => h !== href) || sheetsA.some((h) => h !== liveHref)) return fail(`the head stylesheets differ or are not the payload stylesheet (before ${JSON.stringify(sheetsB)} vs ${href}, after ${JSON.stringify(sheetsA)} vs ${liveHref})`);
     // The error-shell preload: identified by the raw response, never by a URL.
     const pb = stylePreloads(htmlB), pa = stylePreloads(htmlA);
     const missing = [...pb];
@@ -575,14 +638,14 @@ function moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, beforeHtm
  * Checks one URL: after removing every listed difference from the AFTER side, its canonical body must equal BEFORE's.
  * @returns {string[]} problems; empty = the differences are exactly the listed ones.
  */
-export function checkExpected(beforeSet, beforeBody, afterSet, afterBody, expected = []) {
+export function checkExpected(beforeSet, beforeBody, afterSet, afterBody, expected = [], liveReference = undefined) {
     const problems = [];
     const b = canonicalParts(beforeSet, beforeBody);
     const a = canonicalParts(afterSet, afterBody);
     const moves = expected.filter((x) => x.category === 4);
     if (moves.length > 1) problems.push("category 4 listed more than once");
     if (moves.some((m) => !hasExactKeys(m, ["category", "row", "lang"]))) problems.push("a category-4 entry holds a field other than category, row, lang");
-    const beforeHtml = moves.length ? moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, b.html, problems) : b.html;
+    const beforeHtml = moves.length ? moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, b.html, problems, liveReference) : b.html;
     let html = a.html;
     const textual = expected.filter((x) => x.category === 1 || x.category === 3);
     for (const e of textual) {

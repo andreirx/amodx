@@ -53,6 +53,9 @@ import { imagesHandler } from "./glam-images.js";
  * by the sheet's slug and/or a number (`avoidTakenSlugs`, ./glam/group.ts) — listed in `crossSheetSuffixed`. When no
  * such product holds a planned slug, the writes are unchanged (the golden covers only this case). The dry run reads
  * the taken slugs without the lock, so its list can differ from the execution's.
+ * CAT-IMPORT-GALLERY-1 (docs/slices/cat-import-gallery-1.md): a 13-column file gives each option its column-13 images
+ * (`additionalImageLinks`, stored on the option only when non-empty) and the report the member `gallery` (counts) and
+ * the options' `additionalImageLinks`; a 12-column file gives neither, so its writes and report are unchanged.
  * The pure core (`./glam/`) decides what to write; this file only reads and writes. The same function also serves
  * `POST /import/glam-pricelist/images` (CAT-IMAGES-1, `./glam-images.ts`): `handler` dispatches on `routeKey`.
  */
@@ -597,7 +600,12 @@ function productItem(tenantId: string, id: string, draft: GlamStyleDraft, catego
         variants: [{
             id: randomUUID(),
             name: draft.variants[0].name,
-            options: draft.variants[0].options.map((o) => (o.imageLink !== undefined ? { value: o.value, imageLink: o.imageLink } : { value: o.value })),
+            options: draft.variants[0].options.map((o) => ({
+                value: o.value,
+                ...(o.imageLink !== undefined ? { imageLink: o.imageLink } : {}),
+                // CAT-IMPORT-GALLERY-1: the option's column-13 images, only when it has some.
+                ...(o.additionalImageLinks !== undefined && o.additionalImageLinks.length > 0 ? { additionalImageLinks: [...o.additionalImageLinks] } : {}),
+            })),
         }],
         nutritionalValues: [],
         ...(draft.imageLink !== undefined ? { imageLink: draft.imageLink } : {}),
@@ -713,7 +721,12 @@ function report(
             slug: draft.slug,
             title: draft.title,
             rowIndexes: draft.rowIndexes,
-            options: options.map((o) => ({ value: o.value, ...(o.imageLink !== undefined ? { imageLink: o.imageLink } : {}), rowIndexes: o.rowIndexes })),
+            options: options.map((o) => ({
+                value: o.value,
+                ...(o.imageLink !== undefined ? { imageLink: o.imageLink } : {}),
+                ...(o.additionalImageLinks !== undefined && o.additionalImageLinks.length > 0 ? { additionalImageLinks: o.additionalImageLinks } : {}),
+                rowIndexes: o.rowIndexes,
+            })),
             differing,
         })),
         relabelled: plan.relabelled,
@@ -722,6 +735,8 @@ function report(
         // product rows" body, whose plan was not checked (it has no product).
         ...(plan.crossSheetSuffixed ? { crossSheetSuffixed: plan.crossSheetSuffixed } : {}),
         categoryConflicts,
+        // CAT-IMPORT-GALLERY-1: only for a 13-column file (`GlamImportPlan.gallery`).
+        ...(plan.gallery ? { gallery: plan.gallery } : {}),
     };
 }
 
@@ -954,9 +969,10 @@ function siteProductOf(product: StoredProductRef): Record<string, unknown> {
 /**
  * CAT-IMAGE-GATE-1 § 3 items 2, 4 — the response member `publication` (dry run and execution): the `status` every
  * product of this import is (or would be) written with, how many products start hidden (all of them with `draft`,
- * none with `active`), and the products whose rows hold no usable image address (an empty or invalid image cell):
- * with `draft` they stay hidden after the image copy unless an image is added to the file; with `active` they are
- * published without an image. A separate member, so the 1a golden's `counts` and `products[]` keep their shape.
+ * none with `active`), and the products whose rows hold no usable MAIN-image address (an empty or invalid column-9
+ * cell; CAT-IMPORT-GALLERY-1: column-13 extras do not count — they never publish a product): with `draft` they stay
+ * hidden after the image copy unless a main image is added to the file; with `active` they are published without a
+ * main image. The member name `withoutImageAddress` is kept (a response field). A separate member, so the 1a golden's `counts` and `products[]` keep their shape.
  */
 function publicationOf(plan: GlamImportPlan, status: "active" | "draft") {
     return {

@@ -59,3 +59,29 @@ describe("buildProductPayload — catalog site: no monetary key", () => {
         expect(p.variants).toBe(FORM.variants);
     });
 });
+
+describe("buildProductPayload — CAT-IMPORT-GALLERY-1 R-CIG-SAVE: an option's extras survive a catalog save", () => {
+    const EXTRAS = ["https://img.test/e1.jpg", "https://img.test/e2.jpg"];
+    const imported = (options: Record<string, unknown>[]) => ({ ...FORM, imageLink: "https://img.test/1.jpg", variants: [{ id: "g", name: "Format", options }] });
+    const save = (form: any) => buildProductPayload(form, { isNew: false, storedImageLink: "https://img.test/1.jpg", catalog: true }).variants[0].options;
+
+    it("an unchanged save keeps every option's extras (with a main image, and without one)", () => {
+        expect(save(imported([
+            { value: "A", imageLink: "https://img.test/1.jpg", additionalImageLinks: EXTRAS },
+            { value: "B", additionalImageLinks: ["https://img.test/e3.jpg"] },
+        ]))).toEqual([
+            { value: "A", imageLink: "https://img.test/1.jpg", additionalImageLinks: EXTRAS },
+            { value: "B", additionalImageLinks: ["https://img.test/e3.jpg"] },
+        ]);
+    });
+
+    it("a main image that failed to copy (option without imageLink, extras present) keeps the extras", () => {
+        expect(save(imported([{ value: "A", additionalImageLinks: EXTRAS }]))).toEqual([{ value: "A", additionalImageLinks: EXTRAS }]);
+    });
+
+    it("a main image cleared in the editor keeps the extras; no empty extras key is sent", () => {
+        expect(save(imported([{ value: "A", priceOverride: "", imageLink: "", availability: "in_stock", additionalImageLinks: EXTRAS }])))
+            .toEqual([{ value: "A", additionalImageLinks: EXTRAS }]);
+        expect(save(imported([{ value: "A", imageLink: "", additionalImageLinks: [] }]))).toEqual([{ value: "A" }]);
+    });
+});

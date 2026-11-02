@@ -14,7 +14,7 @@ import {
     type IngestProduct, type SourceResult,
 } from "../../src/import/glam/images.js";
 import type { CopyResult } from "../../src/lib/image-upload.js";
-import { withDerivedGallery } from "../../src/lib/catalog-product.js";
+import { checkProductWrite, withDerivedGallery } from "../../src/lib/catalog-product.js";
 
 const derive = (options: any[]) => withDerivedGallery({}, options) as { imageLink?: string; additionalImageLinks: string[] };
 
@@ -159,15 +159,15 @@ describe("rewriteProduct — successes rewritten, failures removed, derived fiel
 describe("remainingWork — the termination measure", () => {
     it("counts holdings (product, option) on a producer URL, and the distinct URLs among them; CDN URLs and removed images do not count", () => {
         const set = [product("a", [src(1), src(2)]), product("b", [src(2), src(5)])];
-        expect(remainingWork(set, new Map(), CDN)).toEqual({ options: 4, sources: 3 });
+        expect(remainingWork(set, new Map(), CDN)).toEqual({ options: 4, extras: 0, sources: 3 });
         const stored = new Map([["a", [{ value: "o1" }, { value: "o2", imageLink: cdn(2) }]]]);
-        expect(remainingWork(set, stored, CDN)).toEqual({ options: 2, sources: 2 }); // b still holds src(2) and src(5)
+        expect(remainingWork(set, stored, CDN)).toEqual({ options: 2, extras: 0, sources: 2 }); // b still holds src(2) and src(5)
     });
 
     it("review-0 CIM-F2 witness: a source shared by two products, only the first written → holdings 2 → 1 while distinct URLs stay 1 → 1", () => {
         const set = [product("a", [src(7)]), product("b", [src(7)])];
-        expect(remainingWork(set, new Map(), CDN)).toEqual({ options: 2, sources: 1 });
-        expect(remainingWork(set, new Map([["a", [{ value: "o1", imageLink: cdn(7) }]]]), CDN)).toEqual({ options: 1, sources: 1 });
+        expect(remainingWork(set, new Map(), CDN)).toEqual({ options: 2, extras: 0, sources: 1 });
+        expect(remainingWork(set, new Map([["a", [{ value: "o1", imageLink: cdn(7) }]]]), CDN)).toEqual({ options: 1, extras: 0, sources: 1 });
     });
 });
 
@@ -226,5 +226,169 @@ describe("CAT-IMAGE-GATE-1 — publication rules (docs/slices/cat-image-gate-1.m
         expect(hiddenWithoutImage("draft", [{ value: "a", imageLink: producer }], producer, CDN)).toBe(false); // still to copy
         expect(hiddenWithoutImage("draft", [{ value: "a", imageLink: cdn }], cdn, CDN)).toBe(false); // hidden by hand, has an image
         expect(hiddenWithoutImage("active", [{ value: "a" }], undefined, CDN)).toBe(false); // published without images
+    });
+});
+
+// ── CAT-IMPORT-GALLERY-1: an option's extras (docs/slices/cat-import-gallery-1.md § 3 item 3) ──────────────────────
+
+describe("CAT-IMPORT-GALLERY-1 — extras are sources; a failed extra is removed; an extra never publishes", () => {
+    const withExtras = (id: string, options: { value: string; imageLink?: string; additionalImageLinks?: string[] }[]): IngestProduct =>
+        ({ id, slug: `slug-${id}`, options });
+    const ok = (n: number): SourceResult => ({ kind: "ingested", url: src(n), cdnUrl: cdn(n) });
+    const dead = (n: number): SourceResult => ({ kind: "failed", url: src(n), failure: { kind: "error", code: "ENOTFOUND" } });
+
+    it("collectSources: per option the main image, then its extras (holder `extra: true`); CDN extras skipped; one URL many holders", () => {
+        const sources = collectSources([
+            withExtras("a", [{ value: "o1", imageLink: src(1), additionalImageLinks: [src(2), cdn(9), src(3)] }]),
+            withExtras("b", [{ value: "o1", imageLink: src(2) }]),
+        ], CDN);
+        expect(sources).toEqual([
+            { url: src(1), holders: [{ productId: "a", slug: "slug-a", option: "o1" }] },
+            { url: src(2), holders: [{ productId: "a", slug: "slug-a", option: "o1", extra: true }, { productId: "b", slug: "slug-b", option: "o1" }] },
+            { url: src(3), holders: [{ productId: "a", slug: "slug-a", option: "o1", extra: true }] },
+        ]);
+    });
+
+    it("rewriteProduct: a copied extra becomes its CDN URL, a failed one is removed, an unresolved one is kept; the gallery is derived again", () => {
+        const p = withExtras("a", [
+            { value: "o1", imageLink: src(1), additionalImageLinks: [src(2), src(3), src(4)] },
+            { value: "o2", imageLink: src(5) },
+        ]);
+        const rewrite = rewriteProduct(p, new Map([[src(1), ok(1)], [src(2), ok(2)], [src(3), dead(3)]]), derive);
+        expect(rewrite).toEqual({
+            kind: "rewritten",
+            options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [cdn(2), src(4)] }, { value: "o2", imageLink: src(5) }],
+            imageLink: cdn(1),
+            additionalImageLinks: [cdn(2), src(4), src(5)],
+        });
+    });
+
+    it("rewriteProduct: when every extra fails, the key is removed (never stored empty); only extras resolved → still a rewrite", () => {
+        const p = withExtras("a", [{ value: "o1", imageLink: src(1), additionalImageLinks: [src(2)] }]);
+        const rewrite = rewriteProduct(p, new Map([[src(2), dead(2)]]), derive);
+        expect(rewrite).toEqual({ kind: "rewritten", options: [{ value: "o1", imageLink: src(1) }], imageLink: src(1), additionalImageLinks: [] });
+        expect("additionalImageLinks" in (rewrite as any).options[0]).toBe(false);
+        expect(rewriteProduct(p, new Map(), derive)).toEqual({ kind: "unchanged" });
+    });
+
+    it("remainingWork counts extra holdings apart from main holdings; both form the measure", () => {
+        const set = [withExtras("a", [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [src(2), cdn(3), src(4)] }])];
+        expect(remainingWork(set, new Map(), CDN)).toEqual({ options: 0, extras: 2, sources: 2 });
+        expect(remainingWork(set, new Map([["a", [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [cdn(2)] }]]]), CDN))
+            .toEqual({ options: 0, extras: 0, sources: 0 });
+    });
+
+    it("an extra never publishes: a draft whose only copied image is an extra stays draft and is listed hidden", () => {
+        // The option has no main image, so the derived product imageLink IS the copied extra.
+        const current = { options: [{ value: "o1", additionalImageLinks: [src(2)] }], status: "draft" };
+        const plan = planProductWrite(current, current.options, new Map([[src(2), ok(2)]]), derive, CDN);
+        expect(plan).toEqual({
+            kind: "write",
+            images: { kind: "rewritten", options: [{ value: "o1", additionalImageLinks: [cdn(2)] }], imageLink: cdn(2), additionalImageLinks: [] },
+            publish: false,
+        });
+        expect(holdsCopiedImage([{ value: "o1", additionalImageLinks: [cdn(2)] }], cdn(2), CDN)).toBe(false);
+        expect(hiddenWithoutImage("draft", [{ value: "o1", additionalImageLinks: [cdn(2)] }], cdn(2), CDN)).toBe(true);
+    });
+
+    it("a copied main image publishes even when the option's extra fails (the extra is removed in the same write)", () => {
+        const current = { options: [{ value: "o1", imageLink: src(1), additionalImageLinks: [src(2)] }], status: "draft" };
+        const plan = planProductWrite(current, current.options, new Map([[src(1), ok(1)], [src(2), dead(2)]]), derive, CDN);
+        expect(plan).toMatchObject({ kind: "write", publish: true, images: { options: [{ value: "o1", imageLink: cdn(1) }] } });
+    });
+});
+
+describe("CAT-IMPORT-GALLERY-1 — the write boundary (every product write: create, update — the admin save —, the import)", () => {
+    const imported = (options: any[], extra: Record<string, unknown> = {}) => ({
+        importSource: "glam:alpod/her", title: "T", variants: [{ id: "g", name: "Format", options }], imageLink: "https://stale.test/x.jpg",
+        additionalImageLinks: ["https://stale.test/y.jpg"], ...extra,
+    });
+
+    it("an option's additionalImageLinks is accepted (not a monetary key) and the gallery is derived by the one rule", () => {
+        const check = checkProductWrite(imported([
+            { value: "A", imageLink: src(1), additionalImageLinks: [src(2), src(3)] },
+            { value: "B", imageLink: src(4), additionalImageLinks: [src(3)] },
+        ]), true);
+        expect(check).toMatchObject({ kind: "accepted", item: { imageLink: src(1), additionalImageLinks: [src(2), src(3), src(4)] } });
+        if (check.kind === "accepted") expect(check.item.variants[0].options[0].additionalImageLinks).toEqual([src(2), src(3)]);
+    });
+
+    it("a monetary key is still refused next to extras", () => {
+        expect(checkProductWrite(imported([{ value: "A", imageLink: src(1), additionalImageLinks: [src(2)], priceOverride: "1" }]), true))
+            .toEqual({ kind: "refused", error: "A catalog site stores no prices: remove the variant option priceOverride." });
+    });
+});
+
+describe("CAT-IMPORT-GALLERY-1 R-CIG-REBASE — extras follow the CIG-R1 rebase of the main image", () => {
+    const ok = (n: number): SourceResult => ({ kind: "ingested", url: src(n), cdnUrl: cdn(n) });
+    const dead = (n: number): SourceResult => ({ kind: "refused", url: src(n), rule: "destination not allowed" });
+
+    // Round 3 (operator ruling R-CIG-REBASE): merge by the ORIGINAL holding — the read's order is the order, one stored
+    // image per holding. (The round-2 row here expected `cdn(2), src(4), cdn(3)` under a name claiming read order.)
+    it("a copied extra that a concurrent request removed is restored IN ITS READ POSITION; another request's copy (known by MEDIAMAP#) keeps its holding", () => {
+        // read: main 1, extras 2, 3, 4; now (another request): main copied, 2 removed after a failure, 3 copied, 4 untouched
+        const read = [{ value: "o1", imageLink: src(1), additionalImageLinks: [src(2), src(3), src(4)] }];
+        const now = { id: "a", slug: "slug-a", options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [cdn(3), src(4)] }] };
+        const stored = new Map([[src(3), cdn(3)]]); // the other request's MEDIAMAP# entry for source 3
+        const rewrite = rewriteProduct(now, new Map([[src(1), dead(1)], [src(2), ok(2)], [src(3), dead(3)]]), derive, read, stored);
+        expect(rewrite).toEqual({
+            kind: "rewritten",
+            options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [cdn(2), cdn(3), src(4)] }],
+            imageLink: cdn(1),
+            additionalImageLinks: [cdn(2), cdn(3), src(4)],
+        });
+    });
+
+    it("mixed outcomes over five holdings: every image in read order — restored copies, kept foreign copies, kept sources", () => {
+        const read = [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [src(2), src(3), src(4), src(5), src(6)] }];
+        // another request: 2 and 5 failed (removed), 3 and 6 copied (its own random names), 4 untouched
+        const foreign = (n: number) => `${CDN}/t1/other-${n}.jpg`;
+        const now = { id: "a", slug: "slug-a", options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [foreign(3), src(4), foreign(6)] }] };
+        const stored = new Map([[src(3), foreign(3)], [src(6), foreign(6)], [src(2), cdn(2)], [src(4), cdn(4)], [src(5), cdn(5)]]);
+        const results = new Map([[src(2), ok(2)], [src(3), dead(3)], [src(4), ok(4)], [src(5), ok(5)], [src(6), dead(6)]]);
+        expect(rewriteProduct(now, results, derive, read, stored)).toMatchObject({
+            kind: "rewritten",
+            options: [{ value: "o1", additionalImageLinks: [cdn(2), foreign(3), cdn(4), cdn(5), foreign(6)] }],
+        });
+    });
+
+    it("two overlapping SUCCESSFUL copies of one source (different CDN URLs): the stored copy is kept, the second is never appended — whichever MEDIAMAP# write came last", () => {
+        const read = [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [src(5)] }];
+        const theirs = `${CDN}/t1/first-copy-5.jpg`;
+        const now = { id: "a", slug: "slug-a", options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [theirs] }] };
+        const results = new Map([[src(5), ok(5)]]); // this request's copy: cdn(5) ≠ theirs
+        expect(rewriteProduct(now, results, derive, read, new Map([[src(5), theirs]]))).toEqual({ kind: "unchanged" }); // their entry last
+        expect(rewriteProduct(now, results, derive, read, new Map([[src(5), cdn(5)]]))).toEqual({ kind: "unchanged" }); // ours last
+    });
+
+    it("without any identity (no MEDIAMAP# entry for the source): the unknown copy is kept after the holdings — misordered, never dropped, and this request's copy is restored", () => {
+        const read = [{ value: "o1", imageLink: src(1), additionalImageLinks: [src(2), src(3), src(4)] }];
+        const now = { id: "a", slug: "slug-a", options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [cdn(3), src(4)] }] };
+        const rewrite = rewriteProduct(now, new Map([[src(1), dead(1)], [src(2), ok(2)], [src(3), dead(3)]]), derive, read);
+        expect(rewrite).toMatchObject({ kind: "rewritten", options: [{ value: "o1", additionalImageLinks: [cdn(2), src(4), cdn(3)] }] });
+    });
+
+    it("a failure never removes what another request stored; nothing to do → unchanged", () => {
+        const read = [{ value: "o1", imageLink: src(1), additionalImageLinks: [src(2)] }];
+        const now = { id: "a", slug: "slug-a", options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [cdn(2)] }] };
+        expect(rewriteProduct(now, new Map([[src(1), dead(1)], [src(2), dead(2)]]), derive, read)).toEqual({ kind: "unchanged" });
+    });
+});
+
+// ── RESIDUAL CAT-IMAGES-OVERLAP-1 (frozen by operator ruling 2026-11-02 ~03:20Z) ─────────────────────────────────────
+// CHARACTERIZATION of the current behaviour — NOT a conformity oracle. It pins a known defect so the follow-up sees it
+// change; the follow-up's fix must REPLACE this expectation (the correct result is `A-r2, B-r1`).
+describe("RESIDUAL CAT-IMAGES-OVERLAP-1 (characterization, not a conformity oracle) — the holding fallback when a stored copy has no identity", () => {
+    it("holdings A, B; stored B-r1 (another request's copy, its MEDIAMAP# entry since overwritten); this request copied A and B: B-r1 is matched to holding A — A's copy is SUPPRESSED and B is stored TWICE", () => {
+        const A = src(41), B = src(42);
+        const Ar2 = `${CDN}/t1/r2-41.jpg`, Br1 = `${CDN}/t1/r1-42.jpg`, Br2 = `${CDN}/t1/r2-42.jpg`;
+        const read = [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [A, B] }];
+        const now = { id: "a", slug: "slug-a", options: [{ value: "o1", imageLink: cdn(1), additionalImageLinks: [Br1] }] };
+        const results = new Map<string, SourceResult>([[A, { kind: "ingested", url: A, cdnUrl: Ar2 }], [B, { kind: "ingested", url: B, cdnUrl: Br2 }]]);
+        const stored = new Map([[A, Ar2], [B, Br2]]); // MEDIAMAP# now holds THIS request's copies
+        expect(rewriteProduct(now, results, derive, read, stored)).toMatchObject({
+            kind: "rewritten",
+            options: [{ value: "o1", additionalImageLinks: [Br1, Br2] }], // defect: A-r2 missing, B twice
+        });
     });
 });

@@ -1,4 +1,5 @@
 import { expect } from "vitest";
+import { isDeepStrictEqual } from "node:util";
 import {
     BatchGetCommand, BatchWriteCommand, DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
@@ -8,7 +9,9 @@ import {
  * implements exactly the behaviour those handlers use: Get / Put / Delete with the condition forms they send
  * (`attribute_not_exists(SK)`, `expiresAt = :observed`, `#revision = :observed` — the import-profile write of
  * CAT-IMPORT-PROFILE-1 —, `#owner = :me`), Update with `attribute_exists(PK)` — alone, or with
- * `AND #status = :read` / `AND attribute_not_exists(#status)` (the image copy's write rule, CAT-IMAGE-GATE-1) — and a
+ * `AND #status = :read` / `AND attribute_not_exists(#status)` (the image copy's write rule, CAT-IMAGE-GATE-1), each
+ * optionally followed by `AND #variants = :readVariants` (deep equality of the whole list, as DynamoDB compares a list
+ * value) / `AND attribute_not_exists(#variants)` (CAT-IMPORT-GALLERY-1, CIG-STALE-WRITE) — and a
  * `SET … [REMOVE …]` expression (`ReturnValues: ALL_NEW`), Query on the base table (begins_with, page size,
  * `LastEvaluatedKey`) and on `GSI_Slug`, BatchWrite / BatchGet with injectable `Unprocessed*`, projections, and
  * removal of undefined attributes (the document client's `removeUndefinedValues`). Any other condition throws.
@@ -83,16 +86,21 @@ export class MemoryTable {
         }
         if (cmd instanceof UpdateCommand) {
             const existing = this.get(input.Key.PK, input.Key.SK);
-            const productUpdate = [
-                "attribute_exists(PK)", "attribute_exists(PK) AND #status = :read", "attribute_exists(PK) AND attribute_not_exists(#status)",
-            ].includes(input.ConditionExpression);
+            const clauses = String(input.ConditionExpression ?? "").split(" AND ");
+            const PRODUCT_CLAUSES = ["#status = :read", "attribute_not_exists(#status)", "#variants = :readVariants", "attribute_not_exists(#variants)"];
+            const productUpdate = clauses[0] === "attribute_exists(PK)" && clauses.slice(1).every((c) => PRODUCT_CLAUSES.includes(c));
             if (productUpdate) {
                 if (!existing) throw new ConditionalCheckFailed();
                 const statusName = input.ExpressionAttributeNames?.["#status"];
-                if (input.ConditionExpression.endsWith("#status = :read") && existing[statusName] !== input.ExpressionAttributeValues[":read"]) {
+                const variantsName = input.ExpressionAttributeNames?.["#variants"];
+                if (clauses.includes("#status = :read") && existing[statusName] !== input.ExpressionAttributeValues[":read"]) {
                     throw new ConditionalCheckFailed();
                 }
-                if (input.ConditionExpression.endsWith("attribute_not_exists(#status)") && statusName in existing) throw new ConditionalCheckFailed();
+                if (clauses.includes("attribute_not_exists(#status)") && statusName in existing) throw new ConditionalCheckFailed();
+                if (clauses.includes("#variants = :readVariants") && !isDeepStrictEqual(existing[variantsName], input.ExpressionAttributeValues[":readVariants"])) {
+                    throw new ConditionalCheckFailed();
+                }
+                if (clauses.includes("attribute_not_exists(#variants)") && variantsName in existing) throw new ConditionalCheckFailed();
                 // The product image update (CAT-IMAGES-1): `SET #a = :x, …` and an optional `REMOVE #b`, applied.
                 const names = input.ExpressionAttributeNames ?? {};
                 const [setPart, removePart] = String(input.UpdateExpression).replace(/^SET /, "").split(" REMOVE ");

@@ -1,18 +1,20 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
+import { createHash } from "crypto";
 import { GetCommand, QueryCommand, UpdateCommand, type QueryCommandOutput } from "@aws-sdk/lib-dynamodb";
+import { deriveGallery } from "@amodx/shared";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
-import { readTenantMode, withDerivedGallery } from "../lib/catalog-product.js";
+import { readTenantMode } from "../lib/catalog-product.js";
 import { copyImageToTenantMedia } from "../lib/image-upload.js";
 import { loadMediaMap, writeMediaMapEntry } from "../lib/media-map.js";
 import { publishAudit } from "../lib/events.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { checkUpload } from "./glam/map.js";
 import {
-    collectSources, hiddenWithoutImage, planProductWrite, resolveSources, remainingWork,
-    type DeriveGallery, type IngestOption, type IngestProduct, type ProductWrite, type SourceResult,
+    collectSources, hiddenWithoutImage, isProducerUrl, planProductWrite, resolveSources, remainingWork,
+    type IngestOption, type IngestProduct, type ProductWrite, type SourceHolder, type SourceResult,
 } from "./glam/images.js";
 
 /**
@@ -38,10 +40,12 @@ import {
  * commits only if the `status` it was planned from is still stored (`attribute_exists(PK) AND #status = :read`). A
  * cancelled write re-reads the product (consistent): absent → replaced (as before); present → planned again from
  * that read, with the source results of this request (`rewriteProduct` `read`), at most WRITE_ATTEMPTS times; a
- * product still contended after that is left to a later request. While the status is unchanged, a stale write still
- * commits exactly as in CAT-IMAGES-1 § 9 (a later request repairs a restored producer URL); once a request has
- * published a product, no stale write of another request can commit over it, and a re-planned write never removes a
- * stored copied image — so a product the copy published always holds a copied image.
+ * product still contended after that is left to a later request. Once a request has published a product, no stale
+ * write of another request can commit over it, and a re-planned write never removes a stored copied image — so a
+ * product the copy published always holds a copied image. CIG-STALE-WRITE (CAT-IMPORT-GALLERY-1, docs/slices/
+ * cat-images-1.md § 11): the condition also names the `variants` value read (`AND #variants = :readVariants`, or
+ * `attribute_not_exists(#variants)`), so a stale write is cancelled and re-planned also when the status is unchanged
+ * (before § 11 it committed, CAT-IMAGES-1 § 9, and could remove an image another request had copied).
  *
  * Report rule (review-0 CIM-F2): a source is reported with the holders whose product write COMMITTED in this request,
  * and only then. A resolved source whose products were deferred by the update budget is not reported: it is resolved
@@ -49,6 +53,17 @@ import {
  * (product, option) holding is reported by each request that rewrites it — normally once; again when an overlapping
  * stale write restored its producer URL (slice § 9) and a later request rewrote it. The admin page keeps the latest
  * outcome per holding (`mergeSources`).
+ * CAT-IMPORT-GALLERY-1: an option's extras are holdings too (`extra: true`), one per (option, extra address); an extra
+ * holding is reported when the committed write applied this request's result to it (`committedHolding`): copied → the
+ * CDN URL is in the option's extras after the write and was not before (also a copy recovered by the CIG-R1 rebase);
+ * refused/failed → the address was there before and is not after. Extras are rebased like the main image (CIG-R1), by
+ * their original holding (`storedCopies` gives the copies other requests stored; the guarantee scope and the frozen
+ * residual are stated at `rewriteExtras`). CIG-STALE-WRITE (cat-images-1.md
+ * § 11): the write also requires the `variants` value it was planned from, so a stale write never commits over another
+ * request's images — it is cancelled, re-read and re-planned (≤ WRITE_ATTEMPTS).
+ * `counts.extras` counts, per kind, the reported sources with ≥ 1 extra holding; `progress.remainingExtras` the extra
+ * holdings still on a producer URL; `complete` needs both remaining measures at 0. Publication is unchanged: only a
+ * copied main image publishes (`holdsCopiedImage`).
  * Copy provenance is reported separately (review-1 CIM-F2): `copied` lists EVERY source this request fetched and
  * stored, committed holders or not, so a source copied here and written from `MEDIAMAP#` by a later request still
  * counts as copied in this session. A refused/failed source with no committed holder is not reported (its deferred
@@ -75,9 +90,6 @@ export const WRITE_ATTEMPTS = 3;
 const UPLOADED_BY = "glam-pricelist-images";
 
 const json = (statusCode: number, body: unknown) => ({ statusCode, body: JSON.stringify(body) });
-
-/** The § 3.4 derivation rule for the core: the one implementation, `withDerivedGallery`, over the options alone. */
-const deriveGallery: DeriveGallery = (options) => withDerivedGallery({}, options) as ReturnType<DeriveGallery>;
 
 const isConditionFailure = (e: unknown) => e instanceof Error && e.name === "ConditionalCheckFailedException";
 
@@ -160,8 +172,8 @@ const _handler: Handler = async (event) => {
         const written = new Set<string>();
         /** The latest stored state this request knows per product: its committed write's item, or a re-read. */
         const latest = new Map<string, StoredProduct>();
-        /** Per written product, the option values its committed write changed (the holdings it may report). */
-        const changedOptions = new Map<string, Set<string>>();
+        /** Per written product, its options before (the state the committed write was planned from) and after it. */
+        const commits = new Map<string, { before: readonly IngestOption[]; after: readonly IngestOption[] }>();
         const replaced: { productId: string; slug: string }[] = [];
         const published: { productId: string; slug: string }[] = [];
         let attempted = 0;
@@ -178,7 +190,7 @@ const _handler: Handler = async (event) => {
                 if (newItem !== null) {
                     written.add(product.id);
                     latest.set(product.id, newItem as StoredProduct);
-                    changedOptions.set(product.id, changedValues(optionsOf(state), optionsOf(newItem as StoredProduct)));
+                    commits.set(product.id, { before: optionsOf(state), after: optionsOf(newItem as StoredProduct) });
                     if (plan.publish) published.push({ productId: product.id, slug: product.slug });
                     await deleteCatProductItems(tenantId, product.id, state.categoryIds ?? []);
                     await writeCatProductItems(tenantId, cardOf(newItem));
@@ -192,7 +204,10 @@ const _handler: Handler = async (event) => {
                 }
                 state = fresh;
                 latest.set(product.id, fresh);
-                plan = planProductWrite(stateOf(fresh), read, results, deriveGallery, cdnUrl);
+                // CAT-IMPORT-GALLERY-1 (R-CIG-REBASE): the copies other requests stored for the read's extras, read
+                // after `fresh`, so the rebase can match them to their holdings (one stored image per holding in read
+                // order when every stored copy is identified; residual otherwise — glam/images.ts `rewriteExtras`).
+                plan = planProductWrite(stateOf(fresh), read, results, deriveGallery, cdnUrl, await storedCopies(tenantId, read, cdnUrl));
             }
         }
 
@@ -205,12 +220,12 @@ const _handler: Handler = async (event) => {
                 return hiddenWithoutImage(now.status, optionsOf(now), now.imageLink, cdnUrl);
             })
             .map((p) => ({ productId: p.id, slug: p.slug, title: p.title ?? "" }));
-        // Only committed holdings: a holding is reported when this request's committed write changed that option.
+        // Only committed holdings: a holding is reported when this request's committed write changed that holding.
         const sourceResults = sources
             .filter((s) => results.has(s.url))
-            .map((s) => ({ ...results.get(s.url)!, holders: s.holders.filter((h) => changedOptions.get(h.productId)?.has(h.option) === true) }))
+            .map((s) => ({ ...results.get(s.url)!, holders: s.holders.filter((h) => committedHolding(commits.get(h.productId), h, s.url, results.get(s.url)!)) }))
             .filter((s) => s.holders.length > 0);
-        const counts = countKinds(sourceResults);
+        const counts = { ...countKinds(sourceResults), extras: countKinds(sourceResults.filter((s) => s.holders.some((h) => h.extra === true))) };
         // Provenance, independent of commits: the sources this request copied (fetched + stored + MEDIAMAP# written).
         const copied = [...results.values()].flatMap((r) => (r.kind === "ingested" ? [{ url: r.url, cdnUrl: r.cdnUrl }] : []));
 
@@ -223,7 +238,7 @@ const _handler: Handler = async (event) => {
                 target: { title: `Imagini ${producer} / ${sheet}`, id: importSource },
                 details: {
                     ...counts, productsUpdated: written.size, productsReplaced: replaced.length, productsPublished: published.length,
-                    remainingOptions: remaining.options, remainingSources: remaining.sources,
+                    remainingOptions: remaining.options, remainingExtras: remaining.extras, remainingSources: remaining.sources,
                 },
                 ip: event.requestContext.http.sourceIp,
             });
@@ -242,9 +257,10 @@ const _handler: Handler = async (event) => {
                 sourcesAtStart: sources.length,
                 resolved: results.size,
                 remainingOptions: remaining.options,
+                remainingExtras: remaining.extras,
                 remainingSources: remaining.sources,
             },
-            complete: remaining.options === 0,
+            complete: remaining.options === 0 && remaining.extras === 0,
         });
     } catch (e: unknown) {
         console.error(`[glam-images] failed at step ${step}:`, e);
@@ -264,11 +280,57 @@ const PRODUCT_PROJECTION = "id, slug, title, #status, imageLink, categoryIds, im
 const optionsOf = (p: StoredProduct): readonly IngestOption[] => p.variants?.[0]?.options ?? [];
 const stateOf = (p: StoredProduct) => ({ options: optionsOf(p), imageLink: p.imageLink, status: p.status });
 
-/** The option values whose image differs between two states of one product (options matched by value). */
-function changedValues(before: readonly IngestOption[], after: readonly IngestOption[]): Set<string> {
-    const out = new Set<string>();
-    for (const option of after) if (before.find((b) => b.value === option.value)?.imageLink !== option.imageLink) out.add(option.value);
-    return out;
+/**
+ * Whether this request's committed write of the holder's product changed that holding (the report rule above); options
+ * matched by value. A main holding: the option's `imageLink` differs before/after (CAT-IMAGES-1, unchanged). An extra
+ * holding of `url`: copied → its CDN URL is among the option's extras after the write and was not before; refused or
+ * failed → `url` was among them before and is not after. No committed write → false.
+ */
+function committedHolding(
+    commit: { before: readonly IngestOption[]; after: readonly IngestOption[] } | undefined,
+    holder: SourceHolder,
+    url: string,
+    result: SourceResult,
+): boolean {
+    if (commit === undefined) return false;
+    const before = commit.before.find((o) => o.value === holder.option);
+    const after = commit.after.find((o) => o.value === holder.option);
+    if (holder.extra !== true) return before?.imageLink !== after?.imageLink;
+    const was = before?.additionalImageLinks ?? [];
+    const is = after?.additionalImageLinks ?? [];
+    switch (result.kind) {
+        case "ingested":
+        case "cached":
+            return !was.includes(result.cdnUrl) && is.includes(result.cdnUrl);
+        case "refused":
+        case "failed":
+            return was.includes(url) && !is.includes(url);
+        default: {
+            const unhandled: never = result;
+            throw new Error(`Unhandled source result ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/**
+ * CAT-IMPORT-GALLERY-1 (R-CIG-REBASE) — the `MEDIAMAP#` CDN URL of every producer extra of `read`, each read strongly
+ * consistent: the identity by which the rebase (`rewriteExtras`, ./glam/images.ts) matches a copy another request
+ * stored to its holding (each copy is recorded in `MEDIAMAP#` before its product write). Only on a re-plan after a
+ * cancelled write. The key is lib/media-map.ts's rule (`MEDIAMAP#<md5(url)>`; its `hashUrl` is not exported).
+ */
+async function storedCopies(tenantId: string, read: readonly IngestOption[], cdnUrl: string): Promise<Map<string, string>> {
+    const stored = new Map<string, string>();
+    for (const url of new Set(read.flatMap((o) => o.additionalImageLinks ?? []))) {
+        if (!isProducerUrl(url, cdnUrl)) continue;
+        const result = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: `TENANT#${tenantId}`, SK: `MEDIAMAP#${createHash("md5").update(url).digest("hex")}` },
+            ConsistentRead: true,
+            ProjectionExpression: "newUrl",
+        }));
+        if (typeof result.Item?.newUrl === "string") stored.set(url, result.Item.newUrl);
+    }
+    return stored;
 }
 
 /** One product, strongly consistent; `null` when it no longer exists. */
@@ -319,13 +381,12 @@ async function writeProduct(
     plan: Extract<ProductWrite, { kind: "write" }>,
 ): Promise<Record<string, any> | null> {
     // DynamoDB refuses an unused name or value: each is added only with the clause that uses it.
-    const names: Record<string, string> = { "#updatedAt": "updatedAt", "#status": "status" };
+    const names: Record<string, string> = { "#updatedAt": "updatedAt", "#status": "status", "#variants": "variants" };
     const values: Record<string, unknown> = { ":now": new Date().toISOString() };
     const set = ["#updatedAt = :now"];
     let remove = "";
     const images = plan.images;
     if (images !== null) {
-        names["#variants"] = "variants";
         names["#additional"] = "additionalImageLinks";
         names["#imageLink"] = "imageLink";
         values[":variants"] = [{ ...(state.variants?.[0] ?? {}), options: images.options }, ...(state.variants ?? []).slice(1)];
@@ -346,6 +407,14 @@ async function writeProduct(
     if (state.status !== undefined) {
         values[":read"] = state.status;
         condition = "attribute_exists(PK) AND #status = :read";
+    }
+    // CIG-STALE-WRITE (CAT-IMPORT-GALLERY-1, docs/slices/cat-images-1.md § 11): the write replaces `variants`, so it also
+    // requires the `variants` value it was planned from (DynamoDB compares the whole list value).
+    if (state.variants !== undefined) {
+        values[":readVariants"] = state.variants;
+        condition += " AND #variants = :readVariants";
+    } else {
+        condition += " AND attribute_not_exists(#variants)";
     }
     try {
         const result = await db.send(new UpdateCommand({
