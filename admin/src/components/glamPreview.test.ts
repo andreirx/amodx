@@ -75,7 +75,7 @@ describe("base sets over siteProducts ∪ drafts (§ 5.5)", () => {
         expect([existing.path, ids(existing.listing.items)]).toEqual(["/category/boen-classic", ["preview:boen-oak"]]);
         const created = panelOf({ kind: "category", id: "new:boen-nordic" });
         expect([created.path, ids(created.listing.items)]).toEqual(["/category/boen-nordic", ["preview:boen-ash"]]);
-        expect(categoryLabel("new:boen-nordic", CONTEXT)).toBe("boen-nordic (nouă)");
+        expect(categoryLabel("new:boen-nordic", CONTEXT)).toBe("boen-nordic (new)");
         expect(categoryLabel("cat-boen-classic", CONTEXT)).toBe("Classic");
     });
 
@@ -105,7 +105,7 @@ describe("a panel that cannot be built says why", () => {
     it("no site context; a found category missing from the list; an occupied address", () => {
         expect(previewPanel(REPORT, null, { kind: "shop" }, "", TODAY)).toMatchObject({ kind: "unavailable" });
         expect(previewPanel(REPORT, { ...CONTEXT, categories: [] }, { kind: "category", id: "cat-boen" }, "", TODAY))
-            .toEqual({ kind: "unavailable", reason: "Categoria cat-boen nu este în lista de categorii a site-ului." });
+            .toEqual({ kind: "unavailable", reason: "Category cat-boen is not in the site's category list." });
         expect(previewPanel(REPORT, CONTEXT, { kind: "category", id: "occupied:boen-x" }, "", TODAY)).toMatchObject({ kind: "unavailable" });
     });
 });
@@ -206,7 +206,7 @@ describe("cards and the product page (§ 5.1 items 1, 2)", () => {
     });
 
     it("the fidelity notice is the ruled copy (§ 5.3, CIP1-PREVIEW)", () => {
-        expect(FIDELITY_NOTICE).toBe("aspect aproximativ — datele și filtrele sunt exacte pentru adresa publică a site-ului");
+        expect(FIDELITY_NOTICE).toBe("approximate look — the data and the filters are exact for the site's public address");
     });
 });
 
@@ -239,12 +239,12 @@ describe("preview choices are checked against the report they are shown with (re
 describe("the stated fidelity limits (§ 5.3, review-0 R3)", () => {
     it("theme/layout, snapshot (products, prefixes), UTC date window, the /_site/ budget limit, images", () => {
         const text = FIDELITY_LIMITS.join("\n");
-        expect(text).toContain("tema, fonturile și așezarea paginilor nu sunt aplicate");
-        expect(text).toContain("prefixele de adresă schimbate după verificare");
-        expect(text).toContain("ziua UTC");
+        expect(text).toContain("the theme, the fonts and the page layout are not applied");
+        expect(text).toContain("address prefixes changed after the check");
+        expect(text).toContain("the UTC day");
         expect(text).toContain("/_site/<id>/…");
-        expect(text).toContain("poate fi activă aici și inactivă acolo");
-        expect(text).toContain("Imaginile sunt adresele producătorului");
+        expect(text).toContain("can be active here and inactive there");
+        expect(text).toContain("The images are the producer's addresses");
     });
 });
 
@@ -303,13 +303,13 @@ describe("CAT-IMAGE-GATE-1 — publication in the preview", () => {
     });
 
     it("the ruled copy: the notice says hidden until the copy and that the preview cannot know which links work", () => {
-        expect(PUBLICATION_NOTICE).toMatch(/ascuns până la copierea imaginilor/);
-        expect(PUBLICATION_NOTICE).toMatch(/nu poate ști care adrese de imagine vor funcționa/);
+        expect(PUBLICATION_NOTICE).toMatch(/hidden until the images are copied/);
+        expect(PUBLICATION_NOTICE).toMatch(/cannot know which image addresses will work/);
         // CAT-IMPORT-GALLERY-1 (CIG-REPORT-SCOPE): publication follows the MAIN image; extras never publish.
-        expect(PUBLICATION_NOTICE).toMatch(/imaginile lui principale se copiază/);
-        expect(PUBLICATION_NOTICE).toMatch(/imaginile suplimentare nu publică un produs/);
-        expect(PUBLICATION_NOTICE).toMatch(/„imagine de copiat”/);
-        expect([PENDING_COPY_LABEL, PENDING_COPY_TITLE]).toEqual(["imagine de copiat", "ascuns până la copierea imaginilor"]);
+        expect(PUBLICATION_NOTICE).toMatch(/one of its main images is copied/);
+        expect(PUBLICATION_NOTICE).toMatch(/extra images do not publish a product/);
+        expect(PUBLICATION_NOTICE).toMatch(/“image to copy”/);
+        expect([PENDING_COPY_LABEL, PENDING_COPY_TITLE]).toEqual(["image to copy", "hidden until the images are copied"]);
     });
 });
 

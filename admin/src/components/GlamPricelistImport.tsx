@@ -21,12 +21,12 @@ import { siteContextOf, type SiteContext } from "./glamPreview";
  *
  * CAT-IMAGES-1 — after a successful import the form copies the sheet's producer images into the site's media by
  * itself: `POST /import/glam-pricelist/images` `{ producer, sheet }`, one bounded batch per request, called again
- * until `complete` (`imageCopyReducer`). "Copiază imaginile" starts the same copy for a producer/sheet without an
+ * until `complete` (`imageCopyReducer`). "Copy images" starts the same copy for a producer/sheet without an
  * import in this session. The image section lists every refused or failed source with the rows that hold it
  * (`imageProblems`).
  *
- * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 items 4, 6) — an import without "Publică și produsele fără
- * imagine" writes every product hidden; the copy publishes each product whose image copies. The check and the import
+ * CAT-IMAGE-GATE-1 (docs/slices/cat-image-gate-1.md § 3 items 4, 6) — an import without "Also publish products without
+ * an image" writes every product hidden; the copy publishes each product whose image copies. The check and the import
  * report state how many start hidden and which rows have no image address (`publication`); the image section counts
  * the products published and lists those that stay hidden for lack of an image (`hiddenProducts`).
  *
@@ -39,7 +39,7 @@ import { siteContextOf, type SiteContext } from "./glamPreview";
  *
  * CAT-IMPORT-PROFILE-1C — the producer's import profile (docs/slices/cat-import-profile-1.md § 5, § 6): the first
  * "Check the file" loads the stored profile (or the default) into the editor (`ProfileEditor`, a member of this
- * form's state); "Previzualizează" sends a dry run with `profileChoice` = { the edited profile, the loaded stored
+ * form's state); "Preview" sends a dry run with `profileChoice` = { the edited profile, the loaded stored
  * revision }; "Confirm the import" sends the snapshot the shown preview was made for. A 409 "changed by another
  * import" reloads the stored profile and asks for a new preview (§ 6.6). Editor and preview: GlamProfileEditor.tsx,
  * glamPreview.ts.
@@ -306,7 +306,7 @@ export type ImageCopyState =
 
 export type ImageCopyEvent =
     /**
-     * `resume` (CIG-R3): keep the outcomes recorded so far ("Copiază imaginile" again on the same sheet). `false`: start
+     * `resume` (CIG-R3): keep the outcomes recorded so far ("Copy images" again on the same sheet). `false`: start
      * from nothing — the copy that follows an import (its products are new). Either way, a batch answered for another
      * `importSource` than the recorded one discards the recorded outcomes first (`imageCopyReducer`).
      */
@@ -384,7 +384,7 @@ export function imageCopyReducer(state: ImageCopyState, event: ImageCopyEvent): 
             if (r.products.updated === 0 && r.products.replaced.length === 0) {
                 return {
                     kind: "stopped", target: state.target, totals,
-                    error: `The site changed no product in the last request and ${r.progress.remainingSources} image(s) are left. Try "Copiază imaginile" again later.`,
+                    error: `The site changed no product in the last request and ${r.progress.remainingSources} image(s) are left. Try “Copy images” again later.`,
                 };
             }
             return { kind: "running", target: state.target, totals };
@@ -516,11 +516,11 @@ export function hiddenProducts(totals: ImageCopyTotals, importReport: any | null
     });
 }
 
-/** The cause in words (Romanian, § 3 item 4). */
+/** The cause in words (§ 3 item 4; English since ADMIN-ENGLISH-1). */
 export function hiddenCauseText(cause: HiddenCause): string[] {
     switch (cause.kind) {
         case "failed": return cause.sources.map((f) => `${f.url} — ${f.reason}`);
-        case "no-image-address": return ["Fără adresă de imagine principală (coloana 9) în fișier."];
+        case "no-image-address": return ["No main image address (column 9) in the file."];
         case "unknown": return [HIDDEN_CAUSE_UNKNOWN];
         default: {
             const unhandled: never = cause;
@@ -529,7 +529,7 @@ export function hiddenCauseText(cause: HiddenCause): string[] {
     }
 }
 
-export const HIDDEN_CAUSE_UNKNOWN = "Cauza nu este cunoscută în această sesiune: fie rândul nu are adresă de imagine principală, fie imaginile lui principale au eșuat la o copiere anterioară. Importați lista din nou și copiați imaginile ca să vedeți adresele care eșuează.";
+export const HIDDEN_CAUSE_UNKNOWN = "The cause is not known in this session: either the row has no main image address, or its main images failed in an earlier copy. Import the sheet again and copy the images to see the addresses that fail.";
 
 /** The request body; `profileChoice` only when a choice is sent (without it the backend applies the stored profile). */
 export const requestBody = (input: GlamInput, choice: ProfileChoice | null) =>
@@ -618,7 +618,7 @@ export function GlamPricelistImport({ onImported }: Props) {
                 // § 6.6: nothing was written; reload the stored profile (a dry run without a choice), then the user previews again.
                 dispatch({
                     type: "import-profile-changed", storedRevision: changed.storedRevision,
-                    message: `Profilul producătorului a fost schimbat de alt import (revizia ${changed.storedRevision ?? "—"}) după ce l-ați încărcat. Nimic nu a fost schimbat. Profilul salvat se reîncarcă; alegeți profilul și previzualizați din nou.`,
+                    message: `The producer's profile was changed by another import (revision ${changed.storedRevision ?? "—"}) after you loaded it. Nothing was changed. The saved profile is reloading; choose the profile and preview again.`,
                 });
                 await sendCheck(state.revision, request.input, null);
                 return;
@@ -661,14 +661,14 @@ export function GlamPricelistImport({ onImported }: Props) {
     const moved = preview ? storedMoved(state.profile, preview.report) : null;
     const checkButton = (
         <Button variant="outline" onClick={check} disabled={checkRequest(state) === null}>
-            {state.pending === "check" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} {loaded ? "Previzualizează" : "Check the file"}
+            {state.pending === "check" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} {loaded ? "Preview" : "Check the file"}
         </Button>
     );
 
     return (
         <div className="space-y-3">
             <div>
-                <h3 className="font-medium text-sm">Listă de prețuri (glam)</h3>
+                <h3 className="font-medium text-sm">Pricelist (glam)</h3>
                 <p className="text-xs text-muted-foreground">
                     Upload one enriched pricelist sheet (.csv). Each product of the sheet becomes one product on the site, its
                     sizes or colours become its variants. Prices are never read; lines of the specifications that name the
@@ -715,7 +715,7 @@ export function GlamPricelistImport({ onImported }: Props) {
                 <Button variant="outline" onClick={() => copyImages({ producer: input.producer, sheet: input.sheet }, true)}
                     disabled={busy || input.producer.trim() === "" || input.sheet.trim() === ""}
                     title="Copy the producer images of this producer and sheet into the site's media">
-                    {images.kind === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Copiază imaginile
+                    {images.kind === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Copy images
                 </Button>
             </div>
 
@@ -723,7 +723,7 @@ export function GlamPricelistImport({ onImported }: Props) {
             {preview && <ImportReport report={preview.report} />}
             {preview && preview.choice === null && (
                 <div className="text-sm p-3 rounded-md bg-destructive/10 text-destructive">
-                    Acest raport nu poate fi importat: profilul salvat nu poate fi aplicat. Folosiți propunerea de mai jos și previzualizați.
+                    This report cannot be imported: the saved profile cannot be applied. Use the proposal below and preview.
                 </div>
             )}
             {moved && (
@@ -781,20 +781,20 @@ function ImageCopyReport({ state, importReport }: { state: Exclude<ImageCopyStat
                     </li>
                 )}
                 {productsReplaced > 0 && <li>Products replaced by another import during the copy: <b>{productsReplaced}</b></li>}
-                <li>Produse publicate acum (o imagine principală a lor s-a copiat): <b>{state.totals.productsPublished}</b></li>
-                {state.totals.hidden !== null && <li>Produse care rămân ascunse — nicio imagine principală copiată: <b>{state.totals.hidden.length}</b></li>}
+                <li>Products published now (one of their main images was copied): <b>{state.totals.productsPublished}</b></li>
+                {state.totals.hidden !== null && <li>Products that stay hidden — no main image copied: <b>{state.totals.hidden.length}</b></li>}
             </ul>
             {state.kind === "stopped" && <div className="text-sm p-2 rounded-md bg-destructive/10 text-destructive">{state.error}</div>}
             {hidden.length > 0 && (
                 <div className="space-y-1">
                     <div className="text-xs">
-                        Aceste produse rămân ascunse pe site: nicio imagine principală a lor nu s-a copiat (imaginile suplimentare nu publică un produs). Adăugați în fișier adrese de imagine principală care
-                        funcționează și importați-l din nou. O imagine adăugată în editorul produsului se pierde la următorul import al listei.
+                        These products stay hidden on the site: none of their main images was copied (extra images do not publish a product). Add main image
+                        addresses that work to the file and import it again. An image added in the product editor is lost at the next import of the sheet.
                     </div>
                     <ul className="text-xs space-y-1">
                         {hidden.map((h) => (
                             <li key={h.slug}>
-                                <b>{h.title}</b> <span className="text-muted-foreground">({h.slug}{h.rows.length > 0 ? `, rândurile ${h.rows.join(", ")}` : ""})</span>
+                                <b>{h.title}</b> <span className="text-muted-foreground">({h.slug}{h.rows.length > 0 ? `, rows ${h.rows.join(", ")}` : ""})</span>
                                 {hiddenCauseText(h.cause).map((line) => <div key={line} className="text-muted-foreground break-all">{line}</div>)}
                             </li>
                         ))}
@@ -850,11 +850,11 @@ export function crossSheetLine(
 ): string | null {
     if (!list || list.length === 0) return null;
     const items = list.map((c) =>
-        `${c.previousSlug} → ${c.slug} (rândul ${c.rowIndex}; adresa este a unui produs ${c.heldBy === null ? "fără sursă de import" : `din ${c.heldBy}`})`);
-    const rule = "adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr";
+        `${c.previousSlug} → ${c.slug} (row ${c.rowIndex}; the address belongs to a product ${c.heldBy === null ? "without an import source" : `from ${c.heldBy}`})`);
+    const rule = "the new address is the taken address, followed by the sheet's name and/or a number";
     return dryRun
-        ? `Adrese de produs schimbate, pentru că sunt deja ale altor produse de pe site — ${rule} (${list.length}): ${items.join(", ")}. La import lista poate diferi dacă produsele altor foi se schimbă între timp.`
-        : `Adrese de produs schimbate, pentru că erau deja ale altor produse de pe site — ${rule} (${list.length}): ${items.join(", ")}.`;
+        ? `Product addresses changed because they already belong to other products on the site — ${rule} (${list.length}): ${items.join(", ")}. At the import the list can differ if the products of other sheets change in the meantime.`
+        : `Product addresses changed because they already belonged to other products on the site — ${rule} (${list.length}): ${items.join(", ")}.`;
 }
 
 /**
@@ -941,11 +941,11 @@ function PublicationLines({ publication, dryRun }: { publication: { status: "act
         <details>
             <summary className="cursor-pointer text-xs">
                 {publication.status === "draft"
-                    ? `Fără adresă de imagine principală (coloana 9) în fișier — rămân ascunse dacă nu adăugați imagini principale în fișier (${none.length})`
-                    : `Fără adresă de imagine principală (coloana 9) în fișier — publicate fără imagine principală (${none.length})`}
+                    ? `No main image address (column 9) in the file — these stay hidden unless you add main images to the file (${none.length})`
+                    : `No main image address (column 9) in the file — published without a main image (${none.length})`}
             </summary>
             <ul className="text-xs mt-1 space-y-0.5">
-                {none.map((p) => <li key={p.slug}>{p.title} ({p.slug}) — rândurile {p.rowIndexes.join(", ")}</li>)}
+                {none.map((p) => <li key={p.slug}>{p.title} ({p.slug}) — rows {p.rowIndexes.join(", ")}</li>)}
             </ul>
         </details>
     );
@@ -954,8 +954,8 @@ function PublicationLines({ publication, dryRun }: { publication: { status: "act
             return (
                 <div className="text-xs space-y-1">
                     <div>
-                        {dryRun ? "Ar porni ascunse" : "Pornesc ascunse"}: <b>{publication.startHidden}</b> produse — fiecare devine public când una dintre imaginile
-                        lui principale se copiază pe site. Dacă copierea se oprește, apăsați din nou „Copiază imaginile”.
+                        {dryRun ? "Products that would start hidden" : "Products that start hidden"}: <b>{publication.startHidden}</b> — each becomes public when one of its
+                        main images is copied to the site. If the copy stops, press “Copy images” again.
                     </div>
                     {list}
                 </div>
@@ -963,7 +963,7 @@ function PublicationLines({ publication, dryRun }: { publication: { status: "act
         case "active":
             return (
                 <div className="text-xs space-y-1">
-                    <div>Profilul publică și produsele fără imagine principală: toate produsele sunt publicate la import.</div>
+                    <div>The profile also publishes products without a main image: all products are published at the import.</div>
                     {list}
                 </div>
             );

@@ -24,7 +24,7 @@ import {
  * input". An import without `publishWithoutImages` writes every product `draft`, and the image copy — which runs AFTER
  * the import — publishes each one whose image copies. The preview cannot know which image links will work, so it shows
  * the state after a copy in which every link works: a `draft` product with a MAIN-image address (an option `imageLink`,
- * column 9) is shown as published and marked "imagine de copiat" (`draftPublication` = `after-copy`); a `draft` product
+ * column 9) is shown as published and marked "image to copy" (`draftPublication` = `after-copy`); a `draft` product
  * without one stays hidden and is listed apart (`hidden`) — also when it has extra images (column 13, CAT-IMPORT-GALLERY-1),
  * which never publish a product. `previewCards` and `previewPanel` read the drafts through this rule.
  */
@@ -69,7 +69,7 @@ export interface PreviewCard {
     slug: string;
     title: string;
     imageLink: string | null;
-    /** CAT-IMAGE-GATE-1: published only once one of its images is copied ("imagine de copiat"). */
+    /** CAT-IMAGE-GATE-1: published only once one of its images is copied ("image to copy"). */
     pendingCopy: boolean;
 }
 
@@ -130,9 +130,9 @@ export function hiddenDrafts(drafts: readonly PreviewItem[]): PreviewItem[] {
 }
 
 /** Shown on the preview when some product starts hidden (the ruled copy of § 3 item 6). */
-export const PUBLICATION_NOTICE = "Opțiunea „Publică și produsele fără imagine” este oprită: fiecare produs importat este ascuns până la copierea imaginilor și devine public când una dintre imaginile lui principale se copiază pe site. Previzualizarea nu poate ști care adrese de imagine vor funcționa: arată toate produsele care au o imagine principală în fișier, marcate „imagine de copiat”. Un produs ale cărui imagini principale nu se pot copia rămâne ascuns (imaginile suplimentare nu publică un produs).";
-export const PENDING_COPY_LABEL = "imagine de copiat";
-export const PENDING_COPY_TITLE = "ascuns până la copierea imaginilor";
+export const PUBLICATION_NOTICE = "The option “Also publish products without an image” is off: each imported product is hidden until the images are copied, and becomes public when one of its main images is copied to the site. The preview cannot know which image addresses will work: it shows all products that have a main image in the file, marked “image to copy”. A product whose main images cannot be copied stays hidden (extra images do not publish a product).";
+export const PENDING_COPY_LABEL = "image to copy";
+export const PENDING_COPY_TITLE = "hidden until the images are copied";
 
 /** § 5.1 item 2 default: the draft with the most options; ties → the first in file order. `null` when there is none. */
 export function defaultProductSlug(drafts: readonly PreviewItem[]): string | null {
@@ -224,8 +224,8 @@ export function categoryLabel(id: string, context: SiteContext | null): string {
     const ref = draftCategoryRef(id);
     switch (ref.kind) {
         case "found": return context?.categories.find((c) => c.id === ref.id)?.name ?? ref.id;
-        case "new": return `${ref.slug} (nouă)`;
-        case "occupied": return `${ref.slug} (adresă ocupată)`;
+        case "new": return `${ref.slug} (new)`;
+        case "occupied": return `${ref.slug} (address taken)`;
         default: return assertNever(ref);
     }
 }
@@ -248,7 +248,7 @@ export function previewPanel(
     f: string,
     today: string,
 ): PreviewPanel {
-    if (context === null) return { kind: "unavailable", reason: "Setările sau categoriile site-ului nu au putut fi citite." };
+    if (context === null) return { kind: "unavailable", reason: "The site's settings or categories could not be read." };
     let categoryId: string | undefined;
     let slug: string | undefined;
     switch (scope.kind) {
@@ -259,7 +259,7 @@ export function previewPanel(
             switch (ref.kind) {
                 case "found": {
                     const found = context.categories.find((c) => c.id === ref.id);
-                    if (!found) return { kind: "unavailable", reason: `Categoria ${ref.id} nu este în lista de categorii a site-ului.` };
+                    if (!found) return { kind: "unavailable", reason: `Category ${ref.id} is not in the site's category list.` };
                     slug = found.slug;
                     break;
                 }
@@ -267,7 +267,7 @@ export function previewPanel(
                     slug = ref.slug;
                     break;
                 case "occupied":
-                    return { kind: "unavailable", reason: `Adresa categoriei „${ref.slug}” este ocupată de altă categorie; importul nu poate rula.` };
+                    return { kind: "unavailable", reason: `The category address “${ref.slug}” is taken by another category; the import cannot run.` };
                 default:
                     return assertNever(ref);
             }
@@ -285,25 +285,25 @@ export function previewPanel(
 
 /**
  * The selection a panel link leads to: the `f` of its href (the canonical `formatSelection` form the site's links
- * carry), `""` for a link without one (the bare path: "Șterge filtrele", or the last value removed).
+ * carry), `""` for a link without one (the bare path: "Clear filters", or the last value removed).
  */
 export function selectionOfHref(href: string): string {
     return new URL(href, "https://preview.invalid").searchParams.get("f") ?? "";
 }
 
 /** § 5.3 / CIP1-PREVIEW: the stated fidelity limit, shown on the preview (the ruled copy). */
-export const FIDELITY_NOTICE = "aspect aproximativ — datele și filtrele sunt exacte pentru adresa publică a site-ului";
+export const FIDELITY_NOTICE = "approximate look — the data and the filters are exact for the site's public address";
 
 /**
  * § 5.3, every stated limit, shown under the notice. Each sentence states only what the mechanism above guarantees:
  * the same functions on the same inputs, for the snapshot of the dry run and the public-domain path.
  */
 export const FIDELITY_LIMITS: readonly string[] = [
-    "Aspectul nu este al site-ului: tema, fonturile și așezarea paginilor nu sunt aplicate aici. Valorile, numerele, ordinea și vizibilitatea filtrelor sunt cele pe care site-ul le calculează pentru aceleași date, pe adresa publică.",
-    "Datele sunt cele de la momentul verificării. Produsele schimbate între timp de alți utilizatori sau de alt import și prefixele de adresă schimbate după verificare nu apar aici; importul citește din nou produsele, categoriile și profilul salvat.",
-    "Data de disponibilitate se compară cu ziua UTC, ca pe site. O perioadă care începe sau se termină între verificare și vizita pe site nu este reflectată aici.",
-    "Limita de lungime a adresei este exactă pentru adresa publică a site-ului. Pe adresele de previzualizare (/_site/<id>/…) adresele sunt mai lungi, așa că o valoare aproape de limită poate fi activă aici și inactivă acolo.",
-    "Imaginile sunt adresele producătorului: copierea lor pe site vine după import, iar unele pot apărea aici rupte.",
+    "The look is not the site's: the theme, the fonts and the page layout are not applied here. The values, the counts, the order and the visibility of the filters are those the site calculates for the same data, at the public address.",
+    "The data is from the time of the check. Products changed since then by other users or by another import, and address prefixes changed after the check, do not show here; the import reads the products, the categories and the saved profile again.",
+    "The availability date is compared with the UTC day, as on the site. A period that starts or ends between the check and the visit to the site is not shown here.",
+    "The address length limit is exact for the site's public address. On the preview addresses (/_site/<id>/…) the addresses are longer, so a value near the limit can be active here and inactive there.",
+    "The images are the producer's addresses: they are copied to the site after the import, and some can show as broken here.",
 ];
 
 /**

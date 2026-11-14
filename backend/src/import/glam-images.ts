@@ -236,7 +236,7 @@ const _handler: Handler = async (event) => {
                 tenantId,
                 actor: { id: auth.sub, email: auth.email },
                 action: "GLAM_PRICELIST_IMAGES",
-                target: { title: `Imagini ${producer} / ${sheet}`, id: importSource },
+                target: { title: `Images ${producer} / ${sheet}`, id: importSource },
                 details: {
                     ...counts, productsUpdated: written.size, productsReplaced: replaced.length, productsPublished: published.length,
                     remainingOptions: remaining.options, remainingExtras: remaining.extras, remainingSources: remaining.sources,

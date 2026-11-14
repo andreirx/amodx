@@ -1144,7 +1144,7 @@ server.tool("import_glam_pricelist",
         csv_path: z.string().describe("Local path of the enriched CSV, e.g. pl-tools/out/boen/enriched/PL.csv"),
         producer: z.string().describe("Producer name (becomes the brand and the parent category); no '/'"),
         sheet: z.string().optional().describe("Sheet name (default: the file name without .csv); no '/'"),
-        variant_name: z.string().optional().describe("What the variants are, e.g. Format, Culoare (default: Variantă)"),
+        variant_name: z.string().optional().describe("What the variants are, e.g. Format, Color (default: 'Variantă')"),
         dry_run: z.boolean().optional().describe("Preview only (default true)"),
     },
     async ({ tenant_id, csv_path, producer, sheet, variant_name, dry_run }) => {

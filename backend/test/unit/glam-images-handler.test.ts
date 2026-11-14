@@ -118,7 +118,7 @@ describe("CAT-IMAGES-1 integration (in-memory store)", () => {
         expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
             action: "GLAM_PRICELIST_IMAGES",
             actor: { id: "u1", email: "admin@t1.test" },
-            target: { title: "Imagini BOEN / PL", id: "glam:boen/pl" },
+            target: { title: "Images BOEN / PL", id: "glam:boen/pl" },
         }));
     });
 

@@ -369,7 +369,7 @@ describe("1c — loading the profile (§ 6.1, § 6.2, § 3.3)", () => {
         const s = answer(loadedFile, storedReport(3, STORED));
         expect(editing(s).working).toEqual(STORED);
         expect(confirmRequest(s)!.choice).toEqual({ profile: STORED, baseRevision: 3 });
-        expect(checkRequest(s)!.choice).toEqual({ profile: STORED, baseRevision: 3 }); // "Previzualizează" sends the same
+        expect(checkRequest(s)!.choice).toEqual({ profile: STORED, baseRevision: 3 }); // "Preview" sends the same
     });
 
     it("unsupported stored profile: nothing loaded, not importable, no preview until the proposal is taken; then baseRevision = the stored revision", () => {
@@ -511,15 +511,15 @@ describe("1c — proposeProfile over BOEN's measured specKeys (§ 6.1 step 3)", 
 
     it("hints name the measured facts: comma lists, variant-level values, equality with the variant label, one value", () => {
         const hints = Object.fromEntries(BOEN_KEYS.map((k) => [k.key, keyHints(k)]));
-        expect(hints["Style"]).toEqual(["listă cu virgule în 201 rânduri"]);
-        expect(hints["Surface"]).toEqual(["listă cu virgule în 310 rânduri", "diferă între opțiuni în 7 produse"]);
-        expect(hints["Dimensions (mm)"]).toEqual(["diferă între opțiuni în 7 produse", "egal cu eticheta variantei (fără spații și „mm”) în 258/310 rânduri"]);
-        expect(hints["Format"]).toEqual(["diferă între opțiuni în 7 produse"]);
-        expect(hints["Certificates"]).toEqual(["o singură valoare"]);
+        expect(hints["Style"]).toEqual(["comma-separated list (rows: 201)"]);
+        expect(hints["Surface"]).toEqual(["comma-separated list (rows: 310)", "differs between options (products: 7)"]);
+        expect(hints["Dimensions (mm)"]).toEqual(["differs between options (products: 7)", "equal to the variant label (without spaces and “mm”) in 258/310 rows"]);
+        expect(hints["Format"]).toEqual(["differs between options (products: 7)"]);
+        expect(hints["Certificates"]).toEqual(["only one value"]);
         expect(hints["Wood"]).toEqual([]);
         // design § 2.7 ALPOD `dimensions`: 82 values under the union rule
-        expect(keyHints(fact("dimensions", { distinctValues: 82, repeatRule: "not-offered" }))).toEqual(["regula repetării nu l-ar oferi ca filtru pentru produsele acestui fișier (82 valori)"]);
-        expect(keyHints(fact("Price", { refused: [{ rowIndex: 3, reason: "money" }] }))).toContain("1 linii refuzate de filtrul de valori (cod sau preț)");
+        expect(keyHints(fact("dimensions", { distinctValues: 82, repeatRule: "not-offered" }))).toEqual(["the repeat rule would not offer it as a filter for the products of this file (values: 82)"]);
+        expect(keyHints(fact("Price", { refused: [{ rowIndex: 3, reason: "money" }] }))).toContain("lines refused by the value guard (code or price): 1");
     });
 
     it("grouping and collection hints come from the dry run that grouped as-is / took the column", () => {
@@ -638,10 +638,10 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
     const values = (base: any[], id: string, f = "") => facet(base, id, f)?.values.map((v) => [v.value, v.count]);
     const p = (id: string, attributes: { key: string; value: string }[], over: Record<string, unknown> = {}) => ({ id, brand: "B", attributes, ...over });
 
-    it("moved stored revision: the notice is bounded ('poate'), it does not restate the backend's acceptance rule", () => {
+    it("moved stored revision: the notice is bounded ('may'), it does not restate the backend's acceptance rule", () => {
         for (const text of [movedNotice(2), movedNotice(null)]) {
-            expect(text).toContain("Importul poate fi refuzat; dacă este refuzat, nu se schimbă nimic");
-            expect(text).not.toMatch(/va fi refuzat|acceptat numai/);
+            expect(text).toContain("The import may be refused; if it is refused, nothing changes");
+            expect(text).not.toMatch(/will be refused|accepted only/);
         }
         // the backend decides (accepted: same revision, or equal content, or the explicit default while none is stored —
         // backend glam-profile.test.ts "acceptance…" / "…equal to DEFAULT_PROFILE…"); the admin does not block the import
@@ -651,12 +651,12 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
         expect(confirmRequest(s)).not.toBeNull();
     });
 
-    it("attribute offer: automat = the repeat rule over non-silent holders; a universal value is listed beside others", () => {
-        expect(FILTER_MODE_HELP).toContain("fără produsele marcate „niciodată”, cel puțin 2 produse ale paginii au cheia");
+    it("attribute offer: auto = the repeat rule over non-silent holders; a universal value is listed beside others", () => {
+        expect(FILTER_MODE_HELP).toContain("without the products marked “never”, at least 2 products of the page have the key");
         // reviewer's witness: A holds Oak, Ash; B holds Oak → offered, BOTH values listed (Oak is held by every product)
         expect(values([p("a", [{ key: "Esență", value: "Oak" }, { key: "Esență", value: "Ash" }]), p("b", [{ key: "Esență", value: "Oak" }])], "a.Esență"))
             .toEqual([["Ash", 1], ["Oak", 2]]);
-        expect(FILTER_MODE_HELP).not.toMatch(/o valoare pe care o au toate produsele nu apare/);
+        expect(FILTER_MODE_HELP).not.toMatch(/a value (that )?all (the )?products have (does not appear|is not shown)/);
         // two silent holders + one automatic → not offered (the rule runs over the non-silent holders)
         const never = { attributes: [{ key: "Esență", mode: "never" }] };
         const base = [p("a", [{ key: "Esență", value: "Oak" }], { facetModes: never }), p("b", [{ key: "Esență", value: "Oak" }], { facetModes: never }), p("c", [{ key: "Esență", value: "Ash" }]), p("d", [])];
@@ -665,14 +665,14 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
         expect(values(base, "a.Esență", "a.Esență=Oak")).toEqual([["Oak", 2]]);
     });
 
-    it("attribute offer: mereu overrides the repeat rule — one holder of three is offered and shown", () => {
-        expect(FILTER_MODE_HELP).toContain("mereu: este oferit pe orice pagină unde un produs importat cu acest profil are cheia");
+    it("attribute offer: always overrides the repeat rule — one holder of three is offered and shown", () => {
+        expect(FILTER_MODE_HELP).toContain("always: it is offered on any page where a product imported with this profile has the key");
         const always = { attributes: [{ key: "Esență", mode: "always" }] };
         expect(values([p("a", [{ key: "Esență", value: "Oak" }], { facetModes: always }), p("b", []), p("c", [])], "a.Esență")).toEqual([["Oak", 1]]);
     });
 
     it("variant offer: no repeat rule — two distinct, non-repeating values are offered", () => {
-        expect(VARIANT_MODE_HELP).toContain("automat: este oferit pe orice pagină, fără regula repetării");
+        expect(VARIANT_MODE_HELP).toContain("auto: it is offered on any page, without the repeat rule");
         const v = (value: string) => ({ variants: [{ name: "Format", options: [{ value }] }] });
         expect(values([p("a", [], v("120")), p("b", [], v("90"))], "varianta")).toEqual([["90", 1], ["120", 1]]);
         // variant never: those products' values are not proposed, but they match a chosen variant
@@ -683,16 +683,16 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
     });
 
     it("visibility: a selected facet stays shown even when its value covers the whole page; an unselected one does not", () => {
-        expect(FACET_VISIBILITY_HELP).toBe("Pe pagină, un filtru este afișat dacă are deja o valoare aleasă, sau dacă este oferit și cel puțin una dintre valorile propuse nu este la toate produsele paginii.");
+        expect(FACET_VISIBILITY_HELP).toBe("On a page, a filter is shown if it already has a chosen value, or if it is offered and at least one of the proposed values is not on all products of the page.");
         const always = { attributes: [{ key: "Esență", mode: "always" }] };
         const all = ["a", "b", "c"].map((id) => p(id, [{ key: "Esență", value: "Oak" }], { facetModes: always }));
-        expect(facet(all, "a.Esență")).toBeUndefined(); // offered (mereu), but no proposed value narrows
+        expect(facet(all, "a.Esență")).toBeUndefined(); // offered (always), but no proposed value narrows
         expect(values(all, "a.Esență", "a.Esență=Oak")).toEqual([["Oak", 3]]); // selected → shown
     });
 
     it("saving: an ACCEPTED import saves the previewed profile only when it differs; the unprofiled default is never saved", () => {
-        expect(SAVE_RULE).toContain("un import acceptat salvează profilul previzualizat dacă diferă de cel salvat");
-        expect(SAVE_RULE).toContain("profilul implicit nu se salvează");
+        expect(SAVE_RULE).toContain("an accepted import saves the previewed profile if it differs from the saved one");
+        expect(SAVE_RULE).toContain("the default profile is not saved");
         // what is sent for that case: the default with no stored revision (backend resolveProfile → unprofiled, no write)
         expect(confirmRequest(answer(loadedFile, dryRun()))!.choice).toEqual({ profile: DEFAULT, baseRevision: null });
     });
@@ -710,9 +710,9 @@ describe("CAT-IMAGE-GATE-1 — the profile checkbox", () => {
         expect("publishWithoutImages" in off).toBe(false);
         expect(applyProfileEdit({ ...DEFAULT, publishWithoutImages: false }, { kind: "publish-without-images", value: false })).toEqual(DEFAULT);
     });
-    it("the help text states both settings (Romanian)", () => {
-        expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/Oprit \(implicit\): fiecare produs importat rămâne ascuns/);
-        expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/Pornit: toate produsele sunt publicate la import/);
+    it("the help text states both settings (English)", () => {
+        expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/Off \(default\): each imported product stays hidden/);
+        expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/On: all products are published at the import/);
     });
 });
 
@@ -748,7 +748,7 @@ describe("CAT-IMAGE-GATE-1 — the image section: published count and the produc
         expect(hiddenProducts(t, { ...REPORT, importSource: "glam:alpod/x" }).map((h) => h.cause.kind)).toEqual(["failed", "unknown"]);
     });
 
-    it("CIG-R3 same-sheet retry: \"Copiază imaginile\" again resumes the recorded outcomes — the failure seen before stays the cause", () => {
+    it("CIG-R3 same-sheet retry: \"Copy images\" again resumes the recorded outcomes — the failure seen before stays the cause", () => {
         let s = run2(batch([{ ...http404, url: U1, holders: [A] }], { ...done, hiddenWithoutImage: [H(A, "Oak")] }));
         s = imageCopyReducer(s, { type: "start", target: TARGET, resume: true });
         // the backend's repeat: the failed URL was removed, so it reports no source, only the hidden product
@@ -762,7 +762,7 @@ describe("CAT-IMAGE-GATE-1 — the image section: published count and the produc
         const [h] = hiddenProducts(t, null);
         expect(h.cause).toEqual({ kind: "unknown" });
         expect(hiddenCauseText(h.cause)).toEqual([HIDDEN_CAUSE_UNKNOWN]);
-        expect(HIDDEN_CAUSE_UNKNOWN).not.toMatch(/^Fără adresă/);
+        expect(HIDDEN_CAUSE_UNKNOWN).not.toMatch(/^No main image address/);
         // a report that shows an image address for it does not make it "no address" either
         expect(hiddenProducts({ ...t, importSource: "glam:boen/pl" }, REPORT)[0].cause).toEqual({ kind: "unknown" });
     });
@@ -779,7 +779,7 @@ describe("CAT-IMAGE-GATE-1 — the image section: published count and the produc
 
     it("hiddenCauseText: one line per lost source; the confirmed empty MAIN-image cell in words (CAT-IMPORT-GALLERY-1: column 9)", () => {
         expect(hiddenCauseText(FAILED_U1 as any)).toEqual([`${U1} — HTTP 404, text/html, 10 bytes — error status`]);
-        expect(hiddenCauseText({ kind: "no-image-address" })).toEqual(["Fără adresă de imagine principală (coloana 9) în fișier."]);
+        expect(hiddenCauseText({ kind: "no-image-address" })).toEqual(["No main image address (column 9) in the file."]);
     });
 });
 
@@ -791,7 +791,7 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet and within-file address lines (r
         emptySheet: { slug: "boen-coll-oak-2", previousSlug: "boen-coll-oak", rowIndex: 2, heldBy: null },
         withinFileThenSheet: { slug: "boen-coll-oak-2-pl-2", previousSlug: "boen-coll-oak-2", rowIndex: 3, heldBy: null },
     };
-    const RULE = "adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr";
+    const RULE = "the new address is the taken address, followed by the sheet's name and/or a number";
 
     it("absent or empty list → no line", () => {
         expect(crossSheetLine(undefined, true)).toBeNull();
@@ -801,19 +801,19 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet and within-file address lines (r
 
     it("dry run: the cause, the rule true on every path, each old → new address with its row and holder, and that the import can differ", () => {
         expect(crossSheetLine([paths.ordinary, paths.emptySheet], true)).toBe(
-            `Adrese de produs schimbate, pentru că sunt deja ale altor produse de pe site — ${RULE} (2): ` +
-            "boen-coll-oak → boen-coll-oak-pl-2 (rândul 2; adresa este a unui produs din glam:boen/pl 1), " +
-            "boen-coll-oak → boen-coll-oak-2 (rândul 2; adresa este a unui produs fără sursă de import). " +
-            "La import lista poate diferi dacă produsele altor foi se schimbă între timp.");
+            `Product addresses changed because they already belong to other products on the site — ${RULE} (2): ` +
+            "boen-coll-oak → boen-coll-oak-pl-2 (row 2; the address belongs to a product from glam:boen/pl 1), " +
+            "boen-coll-oak → boen-coll-oak-2 (row 2; the address belongs to a product without an import source). " +
+            "At the import the list can differ if the products of other sheets change in the meantime.");
     });
 
     it("every path: the line shows the exact new address and never promises what the address ends with", () => {
         for (const [name, entry] of Object.entries(paths)) {
             const line = crossSheetLine([entry], false)!;
-            expect(line, name).toContain(`${entry.previousSlug} → ${entry.slug} (rândul ${entry.rowIndex};`);
+            expect(line, name).toContain(`${entry.previousSlug} → ${entry.slug} (row ${entry.rowIndex};`);
             expect(line, name).toContain(RULE);
             expect(line, name).not.toMatch(/la sfârșit|at the end/);
-            expect(line, name).not.toContain("poate diferi");
+            expect(line, name).not.toContain("can differ");
             // the rule the copy states holds for the entry: the occupied address, then more
             expect(entry.slug.startsWith(`${entry.previousSlug}-`), name).toBe(true);
         }
@@ -878,7 +878,7 @@ describe("CAT-IMPORT-GALLERY-1 — the gallery line and the extra-image holdings
         const t = totalsOf(run2(batch([{ kind: "ingested", url: U2, cdnUrl: "c2", holders: [{ ...C, extra: true }] }], { ...done, hiddenWithoutImage: [{ productId: "pC", slug: "boen-elm", title: "Elm" }] })));
         const [hidden] = hiddenProducts(t, report);
         expect(hidden.cause).toEqual({ kind: "no-image-address" });
-        expect(hiddenCauseText(hidden.cause)).toEqual(["Fără adresă de imagine principală (coloana 9) în fișier."]);
+        expect(hiddenCauseText(hidden.cause)).toEqual(["No main image address (column 9) in the file."]);
         expect(extraImageProblems(t, report)).toEqual([]);
     });
 

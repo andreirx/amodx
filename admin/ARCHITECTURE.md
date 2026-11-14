@@ -155,7 +155,7 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   `profile` = the editor (`ProfileEditor`, a sum: `not-loaded` | `unsupported` | `editing { base, working, facts,
   otherImport }`). The file or the producer changing resets the editor (a profile is per producer).
 - **Requests.** `checkRequest`: first check WITHOUT `profileChoice` (loads the stored profile, or the default); then
-  "Previzualizează" with `profileChoice = { working, baseRevision }` (`baseRevision` = the stored revision the editor
+  "Preview" with `profileChoice = { working, baseRevision }` (`baseRevision` = the stored revision the editor
   loaded, `null` = none). `confirmRequest`: the preview's input and choice — for the first check, the profile that check
   was planned with (`confirmChoiceOf`); none when the stored profile is `unsupported` (§ 3.3: take the proposal first).
 - **409 "changed by another import"** (`profileChangedRefusal` reads `ApiError.body.storedRevision`): the report is
@@ -175,17 +175,17 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   escape format), never injected as HTML. Copy that restates a rule owned elsewhere (`FILTER_MODE_HELP`,
   `VARIANT_MODE_HELP`, `FACET_VISIBILITY_HELP`, `SAVE_RULE`) is an exported constant scoped to the step it restates and
   pinned by units next to counterexamples computed by the owning module (`buildFacetListing`); the backend's acceptance
-  rule is not restated (`movedNotice` is bounded: the import "poate fi refuzat").
-- **Publication (CAT-IMAGE-GATE-1).** The editor's checkbox "Publică și produsele fără imagine" sets
+  rule is not restated (`movedNotice` is bounded: the import "may be refused").
+- **Publication (CAT-IMAGE-GATE-1).** The editor's checkbox "Also publish products without an image" sets
   `publishWithoutImages: true` (unchecked = the member removed, so the default stays the default). The backend writes
   each draft's `status`; the preview reads it through `draftPublication` (`active` → published; `draft` with an option
-  image address → shown as published after the copy, card marked "imagine de copiat"; `draft` without one → hidden,
+  image address → shown as published after the copy, card marked "image to copy"; `draft` without one → hidden,
   listed apart) — the one place the preview's input departs from the renderer's, because the copy runs after the
   import and no preview can know which links work (`PUBLICATION_NOTICE`). The check and import reports show the
   backend's `publication` (`PublicationLines`); the image section counts `productsPublished` and lists the products
   that stay hidden (`hiddenProducts`: the latest batch's `hiddenWithoutImage`, rows from the import report, and a
   cause sum `failed | no-image-address | unknown` — "no image address" only when the same sheet's import report shows
-  it; without evidence the cause is `unknown`, never an absence claim). "Copiază imaginile" resumes the outcomes
+  it; without evidence the cause is `unknown`, never an absence claim). "Copy images" resumes the outcomes
   recorded so far (`start` with `resume: true`); the copy after an import starts fresh (new products); a batch for
   another `importSource` discards the recorded outcomes.
 - **Extra images (CAT-IMPORT-GALLERY-1).** A 13-column file: the check and import reports show the backend's
@@ -195,7 +195,7 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   the progress line. An extra is not a variant's main image and never publishes: the variant failure list
   (`imageProblems`) and the hidden causes (`hiddenProducts`) read main holdings (`mainHoldings`); lost extras have their
   own list with URL, reason and rows (`extraImageProblems`, `extraHoldings`). Every publication / hidden statement
-  names the MAIN image ("imagine principală", column 9) — also the preview (`GlamProfileEditor.tsx` hidden list,
+  names the MAIN image ("main image", column 9) — also the preview (`GlamProfileEditor.tsx` hidden list,
   `glamPreview.ts` `PUBLICATION_NOTICE` and `draftPublication` comments; no field renamed). The product editor (`pages/ProductEditor.tsx`
   `buildProductPayload`) sends an option's `additionalImageLinks` unchanged whenever non-empty, with or without a main
   image (it never shows or edits them): the update replaces the variants and derives the gallery from them.

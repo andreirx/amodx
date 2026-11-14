@@ -95,7 +95,7 @@ export function glamPricelistSummary(report: {
     ];
     if (report.profile) {
         // The tool cannot change a profile: it applies the producer's stored one (§ 6.4).
-        lines.push(`Profil: ${report.profile.source}, ${report.profile.revision === null ? "fără revizie" : `revizia ${report.profile.revision}`}` +
+        lines.push(`Profile: ${report.profile.source}, ${report.profile.revision === null ? "no revision" : `revision ${report.profile.revision}`}` +
             (report.profile.reason ? ` — ${report.profile.reason}` : ""));
     }
     const notCurrent = (report.sheets ?? []).filter((x) => x.state !== "current");
@@ -107,18 +107,18 @@ export function glamPricelistSummary(report: {
     }
     if (report.publication) {
         // CAT-IMAGE-GATE-1 § 3 item 7: this tool does not copy images (follow-up CAT-IMAGES-MCP-1), so hidden products
-        // stay hidden until someone runs the copy ("Copiază imaginile" in admin, or POST /import/glam-pricelist/images).
+        // stay hidden until someone runs the copy ("Copy images" in admin, or POST /import/glam-pricelist/images).
         const pub = report.publication;
-        const listed = pub.withoutImageAddress.slice(0, 10).map((x) => `${x.slug} (rândurile ${x.rowIndexes.join(", ")})`).join(", ") +
-            (pub.withoutImageAddress.length > 10 ? `, și încă ${pub.withoutImageAddress.length - 10}` : "");
+        const listed = pub.withoutImageAddress.slice(0, 10).map((x) => `${x.slug} (rows ${x.rowIndexes.join(", ")})`).join(", ") +
+            (pub.withoutImageAddress.length > 10 ? `, and ${pub.withoutImageAddress.length - 10} more` : "");
         switch (pub.status) {
             case "draft":
-                lines.push(`${report.dryRun ? "Ar porni ascunse" : "Pornesc ascunse"}: ${pub.startHidden} produse — fiecare devine public când copierea imaginilor („Copiază imaginile” în admin) copiază una dintre imaginile lui. Acest instrument nu copiază imagini: fără copiere, produsele rămân ascunse.`);
-                if (pub.withoutImageAddress.length) lines.push(`Fără adresă de imagine în fișier (rămân ascunse dacă nu adăugați imagini în fișier): ${pub.withoutImageAddress.length} — ${listed}`);
+                lines.push(`${report.dryRun ? "Products that would start hidden" : "Products that start hidden"}: ${pub.startHidden} — each becomes public when the image copy (“Copy images” in admin) copies one of its images. This tool does not copy images: without a copy, the products stay hidden.`);
+                if (pub.withoutImageAddress.length) lines.push(`No image address in the file (these stay hidden unless you add images to the file): ${pub.withoutImageAddress.length} — ${listed}`);
                 break;
             case "active":
-                lines.push(`Profilul publică și produsele fără imagine: niciun produs nu pornește ascuns.`);
-                if (pub.withoutImageAddress.length) lines.push(`Publicate fără adresă de imagine în fișier: ${pub.withoutImageAddress.length} — ${listed}`);
+                lines.push(`The profile also publishes products without an image: no product starts hidden.`);
+                if (pub.withoutImageAddress.length) lines.push(`Published without an image address in the file: ${pub.withoutImageAddress.length} — ${listed}`);
                 break;
             default: {
                 const unhandled: never = pub.status;
@@ -128,7 +128,7 @@ export function glamPricelistSummary(report: {
     }
     if (report.crossSheetSuffixed?.length) {
         // Only what is true on every allocation path: never what the new address ends with.
-        lines.push(`Adrese ${report.dryRun ? "care ar fi schimbate" : "schimbate"} (adresa era deja a altui produs; adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr): ${report.crossSheetSuffixed.length} ${report.crossSheetSuffixed.length === 1 ? "produs" : "produse"}`);
+        lines.push(`Addresses ${report.dryRun ? "that would be changed" : "changed"} (the address already belonged to another product; the new address is the taken address, followed by the sheet's name and/or a number): ${report.crossSheetSuffixed.length} ${report.crossSheetSuffixed.length === 1 ? "product" : "products"}`);
     }
     if (report.categoryConflicts?.length) {
         lines.push(`BLOCKED — renamed categories hold keys this import needs: ${report.categoryConflicts.map((x) => `${x.slug} (now ${x.storedSlug})`).join(", ")}; the import would answer 409`);

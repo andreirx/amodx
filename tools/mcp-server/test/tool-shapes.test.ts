@@ -93,12 +93,12 @@ test("import_glam_pricelist summary (CAT-IMPORT-PROFILE-1): the profile used, th
         ],
         specLineRefusals: [{ key: "Price", rowIndex: 4, reason: "money" }],
     });
-    assert.ok(text.includes("Profil: stored, revizia 3"));
+    assert.ok(text.includes("Profile: stored, revision 3"));
     assert.ok(text.includes("Sheets not current (import them again): glam:boen/a stale [2], glam:boen/b no-profile"));
     assert.ok(!text.includes("glam:boen/pl current"));
     assert.ok(text.includes("Spec lines refused by the value guard: row 4 Price (money)"));
     const plain = glamPricelistSummary({ ...base, profile: { source: "default", revision: null }, sheets: [], specLineRefusals: undefined });
-    assert.ok(plain.includes("Profil: default, fără revizie"));
+    assert.ok(plain.includes("Profile: default, no revision"));
     assert.ok(!plain.includes("Sheets not current") && !plain.includes("refused"));
 });
 
@@ -112,19 +112,19 @@ test("import_glam_pricelist summary (CAT-IMAGE-GATE-1): how many start hidden, t
         ...base,
         publication: { status: "draft", startHidden: 3, withoutImageAddress: [{ slug: "boen-pl-ash", rowIndexes: [4, 5] }] },
     });
-    assert.ok(hidden.includes("Pornesc ascunse: 3 produse"));
-    assert.ok(hidden.includes("Acest instrument nu copiază imagini: fără copiere, produsele rămân ascunse."));
-    assert.ok(hidden.includes("Fără adresă de imagine în fișier (rămân ascunse dacă nu adăugați imagini în fișier): 1 — boen-pl-ash (rândurile 4, 5)"));
+    assert.ok(hidden.includes("Products that start hidden: 3"));
+    assert.ok(hidden.includes("This tool does not copy images: without a copy, the products stay hidden."));
+    assert.ok(hidden.includes("No image address in the file (these stay hidden unless you add images to the file): 1 — boen-pl-ash (rows 4, 5)"));
     const dry = glamPricelistSummary({ ...base, dryRun: true, publication: { status: "draft", startHidden: 3, withoutImageAddress: [] } });
-    assert.ok(dry.includes("Ar porni ascunse: 3 produse") && !dry.includes("Fără adresă"));
+    assert.ok(dry.includes("Products that would start hidden: 3") && !dry.includes("No image address"));
     const many = glamPricelistSummary({
         ...base,
         publication: { status: "draft", startHidden: 12, withoutImageAddress: Array.from({ length: 12 }, (_, i) => ({ slug: `p${i}`, rowIndexes: [i + 2] })) },
     });
-    assert.ok(many.includes("p9 (rândurile 11), și încă 2") && !many.includes("p10 ("));
+    assert.ok(many.includes("p9 (rows 11), and 2 more") && !many.includes("p10 ("));
     const published = glamPricelistSummary({ ...base, publication: { status: "active", startHidden: 0, withoutImageAddress: [{ slug: "boen-pl-ash", rowIndexes: [4] }] } });
-    assert.ok(published.includes("niciun produs nu pornește ascuns") && published.includes("Publicate fără adresă de imagine în fișier: 1"));
-    assert.ok(!glamPricelistSummary(base).includes("ascuns")); // an answer without the member (an older backend) prints nothing about it
+    assert.ok(published.includes("no product starts hidden") && published.includes("Published without an image address in the file: 1"));
+    assert.ok(!glamPricelistSummary(base).includes("hidden")); // an answer without the member (an older backend) prints nothing about it
 });
 
 test("import_glam_pricelist summary (CAT-SLUG-UNIQUE-1): the count of products whose address another product held", () => {
@@ -134,14 +134,14 @@ test("import_glam_pricelist summary (CAT-SLUG-UNIQUE-1): the count of products w
         previousSet: { count: 0, firstTitles: [] }, rows: [],
     };
     const eight = Array.from({ length: 8 }, (_, i) => ({ slug: `s${i}-orc-wood`, previousSlug: `s${i}` }));
-    const rule = "(adresa era deja a altui produs; adresa nouă este adresa ocupată, urmată de numele foii și/sau de un număr)";
+    const rule = "(the address already belonged to another product; the new address is the taken address, followed by the sheet's name and/or a number)";
     const done = glamPricelistSummary({ ...base, crossSheetSuffixed: eight });
-    assert.ok(done.includes(`Adrese schimbate ${rule}: 8 produse`));
-    assert.ok(glamPricelistSummary({ ...base, dryRun: true, crossSheetSuffixed: eight }).includes(`Adrese care ar fi schimbate ${rule}: 8 produse`));
+    assert.ok(done.includes(`Addresses changed ${rule}: 8 products`));
+    assert.ok(glamPricelistSummary({ ...base, dryRun: true, crossSheetSuffixed: eight }).includes(`Addresses that would be changed ${rule}: 8 products`));
     // review-0 R2: true on every allocation path — an empty sheet slug gives a number only, so no "at the end" promise
     const emptySheet = glamPricelistSummary({ ...base, crossSheetSuffixed: [{ slug: "s0-2", previousSlug: "s0" }] });
-    assert.ok(emptySheet.includes(`Adrese schimbate ${rule}: 1 produs`) && !emptySheet.includes("1 produse") && !/sfârșit/.test(emptySheet));
+    assert.ok(emptySheet.includes(`Addresses changed ${rule}: 1 product`) && !emptySheet.includes("1 products") && !/at the end/.test(emptySheet));
     // an empty list, or an answer without the member (an older backend), prints nothing about it
-    assert.ok(!glamPricelistSummary({ ...base, crossSheetSuffixed: [] }).includes("numele foii"));
-    assert.ok(!glamPricelistSummary(base).includes("numele foii"));
+    assert.ok(!glamPricelistSummary({ ...base, crossSheetSuffixed: [] }).includes("sheet's name"));
+    assert.ok(!glamPricelistSummary(base).includes("sheet's name"));
 });

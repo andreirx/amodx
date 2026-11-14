@@ -19,7 +19,7 @@ import {
  *   - the layout: the editor (grouping, collection, key table, filter modes, sheet states) and the preview (cards,
  *     one product page, three filter panels — assembled in `glamPreview.ts`).
  * The backend is the authority for every rule (`checkProfile` answers 400 for a profile it refuses); this file
- * collects the choices and shows facts. Copy is Romanian.
+ * collects the choices and shows facts. Copy is English (ADMIN-ENGLISH-1).
  */
 
 // ── The dry run's profile members (DTOs) ───────────────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ export function loadEditor(editor: ProfileEditor, report: GlamDryRun): ProfileEd
 }
 
 /**
- * What "Importă" may send for the report of a dry run WITHOUT a choice: the profile that report was planned with, and
+ * What "Import" may send for the report of a dry run WITHOUT a choice: the profile that report was planned with, and
  * its stored revision (§ 6.2 "the execution is sent with the stored profile as profileChoice and baseRevision = its
  * revision"; the default with `null`). `null` when the stored profile is unsupported: that report is not importable.
  */
@@ -284,7 +284,7 @@ export function storedMoved(editor: ProfileEditor, report: GlamDryRun): { stored
 //
 // Rule (review-1 R4): a sentence that restates a rule owned elsewhere is scoped to the part of the rule it restates
 // (which facet kind; the OFFER or the VISIBILITY step) and names every exception of that part. A rule the admin
-// cannot execute (the backend's acceptance rule) is not restated: the sentence is bounded ("poate") instead.
+// cannot execute (the backend's acceptance rule) is not restated: the sentence is bounded ("may") instead.
 
 /**
  * A moved stored revision. Whether the import is accepted is the backend's acceptance rule (§ 3.5: same revision, or
@@ -292,38 +292,38 @@ export function storedMoved(editor: ProfileEditor, report: GlamDryRun): { stored
  * backend units (`glam-profile.test.ts`, `glam-import-handler.test.ts`), not restated here.
  */
 export function movedNotice(storedRevision: number | null): string {
-    return `Profilul salvat s-a schimbat de când l-ați încărcat (acum: ${storedRevision === null ? "niciun profil" : `revizia ${storedRevision}`}). `
-        + "Importul poate fi refuzat; dacă este refuzat, nu se schimbă nimic și profilul salvat se reîncarcă pentru a alege între cele două.";
+    return `The saved profile changed since you loaded it (now: ${storedRevision === null ? "no profile" : `revision ${storedRevision}`}). `
+        + "The import may be refused; if it is refused, nothing changes and the saved profile is reloaded so you can choose between the two.";
 }
 
 /**
  * When an accepted import stores the profile (§ 2.8, § 3.1, B-4): only a profiled import writes it; the default sent
  * while nothing is stored is unprofiled (nothing saved, no stamp); a profile equal to the stored one keeps its revision.
  */
-export const SAVE_RULE = "Profilul se salvează doar printr-un import: un import acceptat salvează profilul previzualizat dacă diferă de cel salvat "
-    + "(revizia crește cu 1); dacă este identic, revizia rămâne. Cât timp nu este salvat niciun profil, profilul implicit nu se salvează: "
-    + "importul rămâne fără profil. Celelalte liste ale producătorului se schimbă doar când sunt importate din nou.";
+export const SAVE_RULE = "The profile is saved only by an import: an accepted import saves the previewed profile if it differs from the saved one "
+    + "(the revision goes up by 1); if it is identical, the revision stays. While no profile is saved, the default profile is not saved: "
+    + "the import stays without a profile. The producer's other sheets change only when they are imported again.";
 
 /**
  * Attribute facets, the OFFER step (§ 2.6, ruling S-A with N2; `packages/shared/src/facets.ts` `facetDefs`): the
  * repeat rule over the non-silent holders; `always` on a holder overrides it; `never` makes a holder silent.
  */
-export const FILTER_MODE_HELP = "Filtrele de atribute — automat: filtrul este oferit pe o pagină când, fără produsele marcate „niciodată”, cel puțin "
-    + "2 produse ale paginii au cheia, cea mai frecventă valoare este la cel puțin 2 dintre ele și sunt cel mult 40 de valori; mereu: este oferit "
-    + "pe orice pagină unde un produs importat cu acest profil are cheia, chiar dacă aceste condiții nu sunt îndeplinite; niciodată: produsele "
-    + "importate cu acest profil nu contribuie la oferirea filtrului și valorile lor nu sunt propuse, dar ele rămân găsite și numărate când o "
-    + "valoare este aleasă.";
+export const FILTER_MODE_HELP = "Attribute filters — auto: the filter is offered on a page when, without the products marked “never”, at least "
+    + "2 products of the page have the key, the most frequent value is on at least 2 of them and there are at most 40 values; always: it is offered "
+    + "on any page where a product imported with this profile has the key, even if these conditions are not met; never: the products "
+    + "imported with this profile do not count toward offering the filter and their values are not proposed, but they are still found and "
+    + "counted when a value is chosen.";
 
 /** The variant facet, the OFFER step: always offered (no repeat rule); `variant: never` makes a holder silent. */
-export const VARIANT_MODE_HELP = "Filtrul variantelor — automat: este oferit pe orice pagină, fără regula repetării; niciodată: variantele produselor "
-    + "importate cu acest profil nu sunt propuse, dar aceste produse rămân găsite și numărate când o variantă este aleasă.";
+export const VARIANT_MODE_HELP = "Variant filter — auto: it is offered on any page, without the repeat rule; never: the variants of the products "
+    + "imported with this profile are not proposed, but these products are still found and counted when a variant is chosen.";
 
 /** The VISIBILITY step, every facet (`buildFacetListing`): a selection, or some proposed value not held by every product. */
 /** CAT-IMAGE-GATE-1 § 3 item 6: what the checkbox does (saved with the profile by an accepted import, like every setting). */
-export const PUBLISH_WITHOUT_IMAGES_HELP = "Oprit (implicit): fiecare produs importat rămâne ascuns până când una dintre imaginile lui se copiază pe site; produsele fără nicio imagine copiată rămân ascunse și apar în raportul imaginilor. Pornit: toate produsele sunt publicate la import, cu sau fără imagine.";
+export const PUBLISH_WITHOUT_IMAGES_HELP = "Off (default): each imported product stays hidden until one of its images is copied to the site; the products with no copied image stay hidden and show in the image report. On: all products are published at the import, with or without an image.";
 
-export const FACET_VISIBILITY_HELP = "Pe pagină, un filtru este afișat dacă are deja o valoare aleasă, sau dacă este oferit și cel puțin una dintre "
-    + "valorile propuse nu este la toate produsele paginii.";
+export const FACET_VISIBILITY_HELP = "On a page, a filter is shown if it already has a chosen value, or if it is offered and at least one of the "
+    + "proposed values is not on all products of the page.";
 
 // ── Editing a profile (pure) ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -347,7 +347,7 @@ export type ProfileEdit =
     | { kind: "key-split"; key: string; split: "none" | "comma" }
     | { kind: "attribute-mode"; attributeKey: string; mode: FilterMode }
     | { kind: "variant-mode"; mode: "auto" | "never" }
-    /** CAT-IMAGE-GATE-1: the checkbox "Publică și produsele fără imagine". */
+    /** CAT-IMAGE-GATE-1: the checkbox "Also publish products without an image". */
     | { kind: "publish-without-images"; value: boolean };
 
 /** § 6.1 step 3: every key → `attribute`, label = the key as written, `split: "none"`, no mode; grouping and collection at the default. */
@@ -517,13 +517,13 @@ export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit):
 /** The hints shown next to one key: only the facts that call for a decision. */
 export function keyHints(k: SpecKeyFact): string[] {
     const hints: string[] = [];
-    if (k.commaRows > 0) hints.push(`listă cu virgule în ${k.commaRows} rânduri`);
-    if (k.variantLevelProducts > 0) hints.push(`diferă între opțiuni în ${k.variantLevelProducts} produse`);
-    if (k.equalToFormat > 0) hints.push(`egal cu eticheta variantei (fără spații și „mm”) în ${k.equalToFormat}/${k.rows} rânduri`);
-    if (k.equalToCollection > 0) hints.push(`egal cu colecția din coloana 0 (fără spații și „mm”) în ${k.equalToCollection}/${k.rows} rânduri`);
-    if (k.distinctValues === 1) hints.push("o singură valoare");
-    if (k.repeatRule === "not-offered") hints.push(`regula repetării nu l-ar oferi ca filtru pentru produsele acestui fișier (${k.distinctValues} valori)`);
-    if (k.refused.length > 0) hints.push(`${k.refused.length} linii refuzate de filtrul de valori (cod sau preț)`);
+    if (k.commaRows > 0) hints.push(`comma-separated list (rows: ${k.commaRows})`);
+    if (k.variantLevelProducts > 0) hints.push(`differs between options (products: ${k.variantLevelProducts})`);
+    if (k.equalToFormat > 0) hints.push(`equal to the variant label (without spaces and “mm”) in ${k.equalToFormat}/${k.rows} rows`);
+    if (k.equalToCollection > 0) hints.push(`equal to the collection in column 0 (without spaces and “mm”) in ${k.equalToCollection}/${k.rows} rows`);
+    if (k.distinctValues === 1) hints.push("only one value");
+    if (k.repeatRule === "not-offered") hints.push(`the repeat rule would not offer it as a filter for the products of this file (values: ${k.distinctValues})`);
+    if (k.refused.length > 0) hints.push(`lines refused by the value guard (code or price): ${k.refused.length}`);
     return hints;
 }
 
@@ -585,10 +585,10 @@ export function sheetId(importSource: string): string {
 
 export function sheetStateText(s: SheetReportDTO): string {
     switch (s.state) {
-        case "no-profile": return "importată fără profil";
-        case "current": return `importată cu profilul salvat (revizia ${s.revisions.join(", ")})`;
-        case "stale": return `importată cu un profil mai vechi (revizia ${s.revisions.join(", ")})`;
-        case "mixed": return `amestecată (revizii: ${s.revisions.join(", ") || "—"}; ${s.unstamped} produse fără profil)`;
+        case "no-profile": return "imported without a profile";
+        case "current": return `imported with the saved profile (revision ${s.revisions.join(", ")})`;
+        case "stale": return `imported with an older profile (revision ${s.revisions.join(", ")})`;
+        case "mixed": return `mixed (revisions: ${s.revisions.join(", ") || "—"}; products without a profile: ${s.unstamped})`;
         default: return assertNever(s.state);
     }
 }
@@ -621,9 +621,9 @@ const SELECT = "border rounded-md px-2 py-1 text-xs bg-background";
 const NOTICE = "text-xs p-2 rounded-md bg-destructive/10 text-destructive";
 
 const GROUPINGS: { id: string; text: string; value: GlamImportProfile["grouping"] }[] = [
-    { id: "as-is", text: "Fiecare nume din fișier este un produs", value: { kind: "as-is" } },
-    { id: "trailing-number/removed-token", text: "Numărul de la sfârșitul numelui, când există, devine eticheta variantei", value: { kind: "trailing-number", label: "removed-token" } },
-    { id: "trailing-number/format-column", text: "Numele fără numărul final; varianta din coloana format", value: { kind: "trailing-number", label: "format-column" } },
+    { id: "as-is", text: "Each name in the file is a product", value: { kind: "as-is" } },
+    { id: "trailing-number/removed-token", text: "The number at the end of the name, when there is one, becomes the variant label", value: { kind: "trailing-number", label: "removed-token" } },
+    { id: "trailing-number/format-column", text: "The name without the final number; the variant from the format column", value: { kind: "trailing-number", label: "format-column" } },
 ];
 
 function groupingId(g: GlamImportProfile["grouping"]): string {
@@ -645,9 +645,9 @@ function collectionId(c: GlamImportProfile["collection"]): string {
 function ModeSelect({ value, onChange, disabled, allowAlways = true }: { value: FilterMode; onChange: (m: FilterMode) => void; disabled: boolean; allowAlways?: boolean }) {
     return (
         <select className={SELECT} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as FilterMode)}>
-            <option value="auto">automat</option>
-            {allowAlways && <option value="always">mereu</option>}
-            <option value="never">niciodată</option>
+            <option value="auto">auto</option>
+            {allowAlways && <option value="always">always</option>}
+            <option value="never">never</option>
         </select>
     );
 }
@@ -659,13 +659,13 @@ export function ProfileEditorPanel({ editor, onEdit, disabled }: { editor: Profi
         case "unsupported":
             return (
                 <div className="text-sm p-3 rounded-md border space-y-2">
-                    <div className="font-medium">Profilul de import al producătorului {editor.facts.producer}</div>
+                    <div className="font-medium">Import profile of producer {editor.facts.producer}</div>
                     <div className={NOTICE}>
-                        Profilul salvat (revizia {editor.revision}) folosește setări pe care acest importator nu le poate aplica: {editor.reason}.
-                        Nu poate fi deschis aici. Porniți de la propunere; un import cu profilul ales aici îl înlocuiește, dacă între timp alt import nu a salvat alt profil.
+                        The saved profile (revision {editor.revision}) uses settings that this importer cannot apply: {editor.reason}.
+                        It cannot be opened here. Start from the proposal; an import with the profile chosen here replaces it, if no other import saved another profile in the meantime.
                     </div>
                     <Button size="sm" variant="outline" disabled={disabled} onClick={() => onEdit({ kind: "replace", profile: proposeProfile(editor.facts.specKeys) })}>
-                        Folosește propunerea
+                        Use the proposal
                     </Button>
                 </div>
             );
@@ -687,24 +687,24 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
     return (
         <div className="text-sm p-3 rounded-md border space-y-3">
             <div className="space-y-1">
-                <div className="font-medium">Profilul de import al producătorului {facts.producer}</div>
+                <div className="font-medium">Import profile of producer {facts.producer}</div>
                 <div className="text-xs text-muted-foreground">
                     <BaseLine base={base} /> {SAVE_RULE}
                 </div>
                 {editor.otherImport && (
                     <div className={NOTICE}>
-                        Profilul a fost schimbat de alt import (revizia {editor.otherImport.storedRevision ?? "—"}). Mai jos este profilul dvs.;
-                        alegeți profilul salvat sau păstrați-l pe al dvs., apoi apăsați „Previzualizează” din nou.
+                        The profile was changed by another import (revision {editor.otherImport.storedRevision ?? "—"}). Below is your profile;
+                        choose the saved profile or keep yours, then press “Preview” again.
                     </div>
                 )}
                 <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" disabled={disabled} onClick={() => onEdit({ kind: "replace", profile: proposeProfile(facts.specKeys) })}
-                        title="Fiecare cheie devine atribut, cu eticheta egală cu cheia; gruparea și colecția rămân implicite">
-                        Folosește propunerea
+                        title="Each key becomes an attribute, with the label equal to the key; the grouping and the collection stay at the default">
+                        Use the proposal
                     </Button>
                     {stored && (
                         <Button size="sm" variant="outline" disabled={disabled} onClick={() => onEdit({ kind: "replace", profile: stored.value })}>
-                            Folosește profilul salvat (revizia {stored.revision})
+                            Use the saved profile (revision {stored.revision})
                         </Button>
                     )}
                 </div>
@@ -712,23 +712,23 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
 
             <div className="grid gap-2 sm:grid-cols-2">
                 <label className="space-y-1 text-xs">
-                    <span className="font-medium">Ce este un produs</span>
+                    <span className="font-medium">What a product is</span>
                     <select className={`${SELECT} w-full`} disabled={disabled} value={groupingId(working.grouping)}
                         onChange={(e) => onEdit({ kind: "grouping", grouping: GROUPINGS.find((g) => g.id === e.target.value)!.value })}>
                         {GROUPINGS.map((g) => <option key={g.id} value={g.id}>{g.text}</option>)}
                     </select>
-                    {names && <span className="block text-muted-foreground">{names.endsInNumber} din {names.products} produse au numele terminat într-un număr.</span>}
+                    {names && <span className="block text-muted-foreground">Products whose name ends in a number: {names.endsInNumber} of {names.products}.</span>}
                 </label>
                 <label className="space-y-1 text-xs">
-                    <span className="font-medium">De unde vine colecția</span>
+                    <span className="font-medium">Where the collection comes from</span>
                     <select className={`${SELECT} w-full`} disabled={disabled} value={collectionKey}
                         onChange={(e) => onEdit({ kind: "collection", collection: e.target.value === "" ? { kind: "column" } : { kind: "spec", key: e.target.value } })}>
-                        <option value="">Coloana colecției din fișier</option>
-                        {facts.specKeys.map((k) => <option key={k.key} value={k.key}>Cheia „{k.key}” ({k.distinctValues} valori, {k.rows} rânduri)</option>)}
-                        {collectionKey !== "" && !keysByName.has(collectionKey) && <option value={collectionKey}>Cheia „{collectionKey}”</option>}
+                        <option value="">The collection column of the file</option>
+                        {facts.specKeys.map((k) => <option key={k.key} value={k.key}>Key “{k.key}” (values: {k.distinctValues}, rows: {k.rows})</option>)}
+                        {collectionKey !== "" && !keysByName.has(collectionKey) && <option value={collectionKey}>Key “{collectionKey}”</option>}
                     </select>
-                    {collections && <span className="block text-muted-foreground">Coloana colecției are {collections.values} valori.</span>}
-                    {collectionKey !== "" && <span className="block text-muted-foreground">Un rând fără această cheie, sau cu o valoare refuzată de filtrul de valori, primește ca colecție numele listei.</span>}
+                    {collections && <span className="block text-muted-foreground">Values in the collection column: {collections.values}.</span>}
+                    {collectionKey !== "" && <span className="block text-muted-foreground">A row without this key, or with a value refused by the value guard, gets the sheet's name as its collection.</span>}
                 </label>
             </div>
 
@@ -736,7 +736,7 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
                 <input type="checkbox" className="mt-0.5" checked={working.publishWithoutImages === true} disabled={disabled}
                     onChange={(e) => onEdit({ kind: "publish-without-images", value: e.target.checked })} />
                 <span>
-                    <span className="font-medium">Publică și produsele fără imagine</span>
+                    <span className="font-medium">Also publish products without an image</span>
                     <span className="block text-muted-foreground">{PUBLISH_WITHOUT_IMAGES_HELP}</span>
                 </span>
             </label>
@@ -744,7 +744,7 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
             <KeyTable facts={facts.specKeys} working={working} onEdit={onEdit} disabled={disabled} />
 
             <div className="space-y-1">
-                <div className="text-xs font-medium">Filtrele coloanelor</div>
+                <div className="text-xs font-medium">Column filters</div>
                 <div className="flex flex-wrap gap-3 text-xs">
                     {COLUMN_ATTRIBUTE_KEYS.map((key) => (
                         <label key={key} className="flex items-center gap-1">
@@ -753,7 +753,7 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
                         </label>
                     ))}
                     <label className="flex items-center gap-1">
-                        variantele
+                        variants
                         <ModeSelect value={working.facetModes.variant === "never" ? "never" : "auto"} disabled={disabled} allowAlways={false}
                             onChange={(mode) => onEdit({ kind: "variant-mode", mode: mode === "never" ? "never" : "auto" })} />
                     </label>
@@ -767,17 +767,17 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
 
             {facts.sheets.length > 0 && (
                 <div className="space-y-1 text-xs">
-                    <div className="font-medium">Listele producătorului pe site</div>
+                    <div className="font-medium">The producer's sheets on the site</div>
                     <ul className="space-y-0.5">
                         {facts.sheets.map((s) => (
                             <li key={s.importSource} title={s.importSource}>
-                                {sheetId(s.importSource)}{s.importSource === facts.importSource ? " (această listă)" : ""} — {s.products} produse, {sheetStateText(s)}
+                                {sheetId(s.importSource)}{s.importSource === facts.importSource ? " (this sheet)" : ""} — products: {s.products}, {sheetStateText(s)}
                             </li>
                         ))}
                     </ul>
                     {reimport.length > 0 && (
                         <div className="text-muted-foreground">
-                            Aceste liste au fost importate cu un profil mai vechi sau fără profil: {reimport.map((s) => sheetId(s.importSource)).join(", ")} — importați-le din nou.
+                            These sheets were imported with an older profile or without a profile: {reimport.map((s) => sheetId(s.importSource)).join(", ")} — import them again.
                         </div>
                     )}
                 </div>
@@ -799,10 +799,10 @@ function storedProfileOf(base: StoredBase): { revision: number; value: GlamImpor
 
 function BaseLine({ base }: { base: StoredBase }) {
     switch (base.kind) {
-        case "none": return <>Niciun profil salvat pentru acest producător.</>;
-        case "stored": return <>Profil salvat: revizia {base.revision}.</>;
+        case "none": return <>No saved profile for this producer.</>;
+        case "stored": return <>Saved profile: revision {base.revision}.</>;
         case "unsupported":
-            return <>Profilul salvat (revizia {base.revision}) folosește setări pe care acest importator nu le poate aplica: {base.reason}; un import cu profilul de mai jos îl înlocuiește, dacă între timp alt import nu a salvat alt profil.</>;
+            return <>The saved profile (revision {base.revision}) uses settings that this importer cannot apply: {base.reason}; an import with the profile below replaces it, if no other import saved another profile in the meantime.</>;
         default: return assertNever(base);
     }
 }
@@ -810,18 +810,18 @@ function BaseLine({ base }: { base: StoredBase }) {
 function KeyTable({ facts, working, onEdit, disabled }: { facts: SpecKeyFact[]; working: GlamImportProfile; onEdit: (edit: ProfileEdit) => void; disabled: boolean }) {
     // The file's keys (facts of the latest answered dry run), then any key the profile lists that this file does not have.
     const listed = working.specKeys.map((r) => r.key).filter((key) => !facts.some((k) => k.key === key));
-    if (facts.length === 0 && listed.length === 0) return <div className="text-xs text-muted-foreground">Fișierul nu are linii de specificații de forma „cheie: valoare”.</div>;
+    if (facts.length === 0 && listed.length === 0) return <div className="text-xs text-muted-foreground">The file has no specification lines of the form “key: value”.</div>;
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-xs">
                 <thead>
                     <tr className="text-left text-muted-foreground">
-                        <th className="py-1 pr-2">Cheia din fișier</th>
-                        <th className="py-1 pr-2">Fapte măsurate (ultima verificare)</th>
-                        <th className="py-1 pr-2">Devine</th>
-                        <th className="py-1 pr-2">Eticheta pe site</th>
-                        <th className="py-1 pr-2">Împărțire</th>
-                        <th className="py-1">Filtru</th>
+                        <th className="py-1 pr-2">Key in the file</th>
+                        <th className="py-1 pr-2">Measured facts (last check)</th>
+                        <th className="py-1 pr-2">Becomes</th>
+                        <th className="py-1 pr-2">Label on the site</th>
+                        <th className="py-1 pr-2">Split</th>
+                        <th className="py-1">Filter</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -842,18 +842,18 @@ function KeyRow({ keyName, fact, working, onEdit, disabled }: { keyName: string;
             <td className="py-1 pr-2">
                 {fact ? (
                     <>
-                        <div>{fact.rows} rânduri, {fact.products} produse, {fact.distinctValues} valori (cea mai des: {fact.maxValueHolders} produse)</div>
-                        <div className="text-muted-foreground">ex.: {fact.samples.join(" · ")}</div>
+                        <div>Rows: {fact.rows}, products: {fact.products}, values: {fact.distinctValues} (most frequent value — products: {fact.maxValueHolders})</div>
+                        <div className="text-muted-foreground">e.g. {fact.samples.join(" · ")}</div>
                         {keyHints(fact).map((h) => <div key={h} className="text-muted-foreground">• {h}</div>)}
                     </>
-                ) : <span className="text-muted-foreground">nu apare în acest fișier</span>}
+                ) : <span className="text-muted-foreground">not in this file</span>}
             </td>
             <td className="py-1 pr-2">
-                {action === "collection" ? <span className="text-muted-foreground">sursa colecției</span> : (
+                {action === "collection" ? <span className="text-muted-foreground">collection source</span> : (
                     <select className={SELECT} value={action} disabled={disabled} onChange={(e) => onEdit({ kind: "key-action", key: keyName, action: e.target.value as KeyAction })}>
-                        <option value="attribute">atribut</option>
-                        <option value="prose-only">doar în text</option>
-                        <option value="not-reviewed">nerevizuit</option>
+                        <option value="attribute">attribute</option>
+                        <option value="prose-only">text only</option>
+                        <option value="not-reviewed">not reviewed</option>
                     </select>
                 )}
             </td>
@@ -863,8 +863,8 @@ function KeyRow({ keyName, fact, working, onEdit, disabled }: { keyName: string;
             <td className="py-1 pr-2">
                 {attribute && (
                     <select className={SELECT} value={attribute.split} disabled={disabled} onChange={(e) => onEdit({ kind: "key-split", key: keyName, split: e.target.value as "none" | "comma" })}>
-                        <option value="none">valoare întreagă</option>
-                        <option value="comma">împarte la virgulă</option>
+                        <option value="none">whole value</option>
+                        <option value="comma">split at commas</option>
                     </select>
                 )}
             </td>
@@ -884,7 +884,7 @@ function KeyRow({ keyName, fact, working, onEdit, disabled }: { keyName: string;
  * `effectivePreviewChoice(shown, wanted)` — a wanted value the report still holds is kept, one it no longer
  * holds is replaced by the report's default.
  * CAT-IMAGE-GATE-1: cards, the product page choice and the panels show only the products the site would publish
- * (`publishedDrafts`: a product waiting for its image copy is marked "imagine de copiat"); the products without a
+ * (`publishedDrafts`: a product waiting for its image copy is marked "image to copy"); the products without a
  * MAIN-image address (column 9; extras never publish) are listed apart as hidden (`hiddenDrafts`). The categories are the import's either way.
  */
 export function ImportPreview({ report, context, today }: { report: GlamDryRun; context: SiteContext | null; today: string }) {
@@ -909,7 +909,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
     return (
         <div className="text-sm p-3 rounded-md border space-y-4">
             <div className="space-y-0.5">
-                <div className="font-medium">Previzualizare — nimic nu a fost scris încă</div>
+                <div className="font-medium">Preview — nothing has been written yet</div>
                 <div className="text-xs text-muted-foreground">
                     <div>{FIDELITY_NOTICE}.</div>
                     <ul className="list-disc pl-4">{FIDELITY_LIMITS.map((t) => <li key={t}>{t}</li>)}</ul>
@@ -918,7 +918,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
             </div>
 
             <div className="space-y-2">
-                <div className="text-xs font-medium">{count} produse{count > cards.length ? ` — primele ${cards.length}` : ""}</div>
+                <div className="text-xs font-medium">Products: {count}{count > cards.length ? ` — the first ${cards.length}` : ""}</div>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                     {cards.map((c) => (
                         <button key={c.slug} type="button" onClick={() => setProductSlug(c.slug)} className="text-left space-y-1">
@@ -934,7 +934,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
 
             <div className="space-y-2">
                 <label className="text-xs font-medium flex items-center gap-2">
-                    Pagina produsului
+                    Product page
                     <select className={SELECT} value={productSlug ?? ""} onChange={(e) => setProductSlug(e.target.value)}>
                         {shown.map((d) => <option key={String(d.slug)} value={String(d.slug)}>{String(d.title)}</option>)}
                     </select>
@@ -945,7 +945,7 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
             {hidden.length > 0 && (
                 <details className="text-xs">
                     <summary className="cursor-pointer font-medium">
-                        Rămân ascunse — fără adresă de imagine principală (coloana 9) în fișier ({hidden.length}); se publică doar dacă adăugați imagini principale în fișier
+                        Stay hidden — no main image address (column 9) in the file ({hidden.length}); published only if you add main images to the file
                     </summary>
                     <ul className="mt-1 space-y-0.5">
                         {hidden.map((d) => <li key={String(d.slug)}>{String(d.title)} <span className="text-muted-foreground">({String(d.slug)})</span></li>)}
@@ -954,22 +954,22 @@ export function ImportPreview({ report, context, today }: { report: GlamDryRun; 
             )}
 
             <div className="space-y-2">
-                <div className="text-xs font-medium">Filtrele, după import</div>
+                <div className="text-xs font-medium">The filters, after the import</div>
                 <div className="grid gap-3 lg:grid-cols-3">
                     {producerId
-                        ? panel("producer", `Categoria producătorului: ${categoryLabel(producerId, context)}`, { kind: "category", id: producerId })
-                        : <div className="text-xs text-muted-foreground">Fișierul nu are niciun produs.</div>}
+                        ? panel("producer", `Producer category: ${categoryLabel(producerId, context)}`, { kind: "category", id: producerId })
+                        : <div className="text-xs text-muted-foreground">The file has no product.</div>}
                     <div className="space-y-1">
                         {collectionIds.length > 0 ? (
                             <>
                                 <select className={`${SELECT} w-full`} value={collectionId ?? ""} onChange={(e) => setCollectionId(e.target.value)}>
                                     {collectionIds.map((id) => <option key={id} value={id}>{categoryLabel(id, context)}</option>)}
                                 </select>
-                                {collectionId && panel(`collection:${collectionId}`, `Colecția: ${categoryLabel(collectionId, context)}`, { kind: "category", id: collectionId })}
+                                {collectionId && panel(`collection:${collectionId}`, `Collection: ${categoryLabel(collectionId, context)}`, { kind: "category", id: collectionId })}
                             </>
-                        ) : <div className="text-xs text-muted-foreground">Nicio colecție separată de categoria producătorului.</div>}
+                        ) : <div className="text-xs text-muted-foreground">No collection separate from the producer category.</div>}
                     </div>
-                    {panel("shop", "Magazinul", { kind: "shop" })}
+                    {panel("shop", "Shop", { kind: "shop" })}
                 </div>
             </div>
         </div>
@@ -981,7 +981,7 @@ function ProductPagePreview({ draft }: { draft: PreviewItem }) {
     return (
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] rounded-md bg-muted/40 p-3">
             <div className="grid grid-cols-3 gap-1">
-                {page.gallery.length === 0 && <div className="col-span-3 text-xs text-muted-foreground">Fără imagini.</div>}
+                {page.gallery.length === 0 && <div className="col-span-3 text-xs text-muted-foreground">No images.</div>}
                 {page.gallery.map((src) => <img key={src} src={src} alt="" loading="lazy" className="aspect-square w-full object-cover rounded" />)}
             </div>
             <div className="space-y-2">
@@ -1012,13 +1012,13 @@ function ProductPagePreview({ draft }: { draft: PreviewItem }) {
 function ProseText({ html }: { html: string }) {
     return (
         <div className="text-xs space-y-1 border-t pt-2">
-            <div className="font-medium">Descriere (textul publicat)</div>
+            <div className="font-medium">Description (the published text)</div>
             {proseParagraphs(html).map((p, i) => <p key={i}>{p}</p>)}
         </div>
     );
 }
 
-const FACET_HINT = "Prea multe filtre selectate — eliminați unul";
+const FACET_HINT = "Too many filters selected — remove one";
 
 function FilterPanelPreview({ title, panel, onSelect }: { title: string; panel: PreviewPanel; onSelect: (f: string) => void }) {
     switch (panel.kind) {
@@ -1036,9 +1036,9 @@ function FilterPanelPreview({ title, panel, onSelect }: { title: string; panel: 
                 <div className="space-y-2 text-xs">
                     <div>
                         <div className="font-medium">{title}</div>
-                        <div className="text-muted-foreground break-all">{panel.path} — {listing.items.length} din {panel.baseCount} produse</div>
+                        <div className="text-muted-foreground break-all">{panel.path} — products: {listing.items.length} of {panel.baseCount}</div>
                     </div>
-                    {listing.tooLong && <div className="text-muted-foreground">Filtrele din adresă sunt prea lungi și nu au fost aplicate.</div>}
+                    {listing.tooLong && <div className="text-muted-foreground">The filters in the address are too long and were not applied.</div>}
                     {listing.chips.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                             {listing.chips.map((c) => (
@@ -1047,11 +1047,11 @@ function FilterPanelPreview({ title, panel, onSelect }: { title: string; panel: 
                                     {c.facetLabel}: {c.value} ×
                                 </button>
                             ))}
-                            {listing.clearHref && <button type="button" className="underline" onClick={follow(listing.clearHref)}>Șterge filtrele</button>}
+                            {listing.clearHref && <button type="button" className="underline" onClick={follow(listing.clearHref)}>Clear filters</button>}
                         </div>
                     )}
                     {listing.budgetHint && <div className="text-muted-foreground">{FACET_HINT}</div>}
-                    {listing.facets.length === 0 && <div className="text-muted-foreground">Niciun filtru nu este afișat pe această pagină.</div>}
+                    {listing.facets.length === 0 && <div className="text-muted-foreground">No filter is shown on this page.</div>}
                     {listing.facets.map((facet) => (
                         <details key={facet.id} open={facet.values.length <= 10}>
                             <summary className="cursor-pointer font-medium">{facet.label}</summary>

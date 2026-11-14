@@ -59,6 +59,25 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+/**
+ * ADMIN-ENGLISH-1 (docs/slices/admin-english-1.md): the one intended change since the capture — the audit target title
+ * of an import is English ("Pricelist <producer> / <sheet>"; captured: "Listă de prețuri <producer> / <sheet>"). The
+ * golden file stays the base capture; this maps exactly that member of every captured audit call and throws when a
+ * captured title is not in the old form, so no other byte of the golden is relaxed.
+ */
+const CAPTURED_TITLE_PREFIX = "Listă de prețuri ";
+function withEnglishAuditTitles(goldenCase: any): any {
+    const steps = Object.fromEntries(Object.entries(goldenCase.steps).map(([key, step]: [string, any]) => [key, {
+        ...step,
+        audit: step.audit.map((call: any) => {
+            const title: string = call.target.title;
+            if (!title.startsWith(CAPTURED_TITLE_PREFIX)) throw new Error(`golden audit title not in the captured form: ${title}`);
+            return { ...call, target: { ...call.target, title: `Pricelist ${title.slice(CAPTURED_TITLE_PREFIX.length)}` } };
+        }),
+    }]));
+    return { ...goldenCase, steps };
+}
+
 const VARIANTS = [
     ["(a) no profileChoice", undefined],
     ["(b) profileChoice = DEFAULT_PROFILE, baseRevision null", { profile: DEFAULT_PROFILE, baseRevision: null }],
@@ -85,7 +104,7 @@ describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import equal
                     return { status: res.statusCode as number, body: kept };
                 };
                 const captured = await captureCase(input, table, call, mockAudit);
-                expect(mask(captured)).toEqual(golden.cases[input.name]);
+                expect(mask(captured)).toEqual(withEnglishAuditTitles(golden.cases[input.name]));
 
                 // the plan of the handler's own resolution for this request is today's plan
                 const parsed = parseGlamCsv(input.csvContent);

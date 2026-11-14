@@ -309,7 +309,7 @@ const _handler: Handler = async (event) => {
             tenantId,
             actor: { id: auth.sub, email: auth.email },
             action: "GLAM_PRICELIST_IMPORT",
-            target: { title: `Listă de prețuri ${plan.upload.producer} / ${plan.upload.sheet}`, id: plan.upload.importSource },
+            target: { title: `Pricelist ${plan.upload.producer} / ${plan.upload.sheet}`, id: plan.upload.importSource },
             details: {
                 ...result.counts, categoriesCreated: categories.toCreate.length, incompleteCategories: incomplete.length,
                 ...auditProfileDetails(used),
