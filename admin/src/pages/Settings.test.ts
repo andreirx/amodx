@@ -149,22 +149,56 @@ function withoutCatTheme(html: string, config: Record<string, unknown>): string 
     return out;
 }
 
-describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups", () => {
-    it("content site", async () => {
-        await expect(withoutCatTheme(renderSettings(CONTENT), CONTENT)).toMatchFileSnapshot("./__markup__/settings.content.html");
+/**
+ * ADMIN-ENGLISH-2 (packet rule 3; record docs/slices/admin-english-2.md § 3) — the example placeholders became English.
+ * The captures are NOT re-taken: they keep the Romanian examples. The comparison replaces, in the CAPTURE text, exactly
+ * the old example texts by the new ones; each must occur exactly `count` times in each capture (a replacement that
+ * matches nothing, or more often, fails), so every other byte of the page stays pinned. The commerce fixture's VALUE
+ * `/produs` (tenant data, `COMMERCE.urlPrefixes.product`) is not a placeholder and is not replaced.
+ */
+const ENGLISH_EXAMPLES: [from: string, to: string, count: number][] = [
+    ['placeholder="Str. Example nr. 1, București"', 'placeholder="1 Example Street, Example City"', 1],
+    [" (e.g. &quot;/produs&quot; or &quot;/product&quot;).", " (e.g. &quot;/product&quot;).", 1],
+    ['placeholder="/produs"', 'placeholder="/product"', 1],
+    ['placeholder="/categorie"', 'placeholder="/category"', 1],
+    ['placeholder="/cos"', 'placeholder="/cart"', 1],
+    ['placeholder="/comanda"', 'placeholder="/checkout"', 1],
+    ['placeholder="/magazin"', 'placeholder="/shop"', 1],
+];
+/** The capture `settings.<name>.html` as stored, with the ENGLISH_EXAMPLES replacements applied (each count asserted). */
+function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES): string {
+    let out = readFileSync(new URL(`./__markup__/settings.${name}.html`, import.meta.url), "utf8");
+    for (const [from, to, count] of replacements) {
+        expect(out.split(from).length - 1, `${name} capture: ${from}`).toBe(count);
+        out = out.split(from).join(to);
+    }
+    return out;
+}
+
+describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups, with the ADMIN-ENGLISH-2 example texts", () => {
+    it("content site", () => {
+        expect(withoutCatTheme(renderSettings(CONTENT), CONTENT)).toBe(capture("content"));
     });
-    it("commerce site", async () => {
-        await expect(withoutCatTheme(renderSettings(COMMERCE), COMMERCE)).toMatchFileSnapshot("./__markup__/settings.commerce.html");
+    it("commerce site", () => {
+        expect(withoutCatTheme(renderSettings(COMMERCE), COMMERCE)).toBe(capture("commerce"));
+    });
+    it("control: with any one ADMIN-ENGLISH-2 replacement removed, the comparison fails", () => {
+        const pages = [["content", renderSettings(CONTENT), CONTENT], ["commerce", renderSettings(COMMERCE), COMMERCE]] as const;
+        for (const [name, html, config] of pages) {
+            for (let i = 0; i < ENGLISH_EXAMPLES.length; i++) {
+                const without = ENGLISH_EXAMPLES.filter((_, j) => j !== i);
+                expect(withoutCatTheme(html, config), `${name} without ${ENGLISH_EXAMPLES[i][0]}`).not.toBe(capture(name, without));
+            }
+        }
     });
     it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card, one byte next to a removed group", async () => {
-        const capture = (name: string) => readFileSync(new URL(`./__markup__/settings.${name}.html`, import.meta.url), "utf8");
         const content = renderSettings(CONTENT), commerce = renderSettings(COMMERCE);
         expect(withoutCatTheme(content, CONTENT)).toBe(capture("content"));            // positive control
         expect(withoutCatTheme(commerce, COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
         const footer = THEME_GROUPS(CONTENT)[3];
         const footerColours = THEME_GROUPS(COMMERCE)[4];
-        const mutations: [string, string, Record<string, unknown>][] = [
+        const mutations: [string, "content" | "commerce", Record<string, unknown>][] = [
             [once(commerce, footerColours, `${footerColours}<i></i>`), "commerce", COMMERCE],
             [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT],
             [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT],
@@ -406,9 +440,22 @@ describe("Settings — the cards of each site kind (§ 4.5)", () => {
     it("URL Prefixes on a non-catalog site: the seven fields, unchanged; no interest list", () => {
         expect(prefixFields(renderSettings(CONTENT)).map((f) => f.label)).toEqual(["Product", "Category", "Cart", "Checkout", "Shop", "Account", "Search"]);
     });
+    // ADMIN-ENGLISH-2 (record § 2): a URL-prefix placeholder shows the real default of its prefix, never another example.
+    it("URL Prefixes: each placeholder is URL_PREFIX_DEFAULTS of its field, on a non-catalog site and on a catalog", () => {
+        const KEY: Record<string, keyof typeof URL_PREFIX_DEFAULTS> = {
+            Product: "product", Category: "category", Cart: "cart", Checkout: "checkout", Shop: "shop", Account: "account", Search: "search", "Interest list": "interest",
+        };
+        for (const [config, count] of [[CONTENT, 7], [COMMERCE, 7], [CATALOG, 5]] as const) {
+            const html = renderSettings(config);
+            const card = html.slice(html.indexOf(">URL Prefixes<"), html.indexOf("Existing links using old prefixes will stop working."));
+            const fields = [...card.matchAll(/<label[^>]*>([^<]+)<\/label><input[^>]*placeholder="([^"]*)"/g)].map((m) => [m[1], m[2]]);
+            expect(fields.length, String(config.name)).toBe(count);
+            for (const [label, placeholder] of fields) expect(placeholder, `${config.name}: ${label}`).toBe(URL_PREFIX_DEFAULTS[KEY[label]]);
+        }
+    });
     it("URL Prefixes copy on a catalog says catalog, not commerce (CAT-ADMIN-2, F-CA-IMPL-2; non-catalog: the captures above)", () => {
         const html = renderSettings(CATALOG);
-        expect(html).toContain("Configure URL paths for catalog pages. Must start with &quot;/&quot; (e.g. &quot;/produs&quot; or &quot;/product&quot;).");
+        expect(html).toContain("Configure URL paths for catalog pages. Must start with &quot;/&quot; (e.g. &quot;/product&quot;).");
         expect(html).toContain("Changing these will update how catalog URLs are generated and resolved. Existing links using old prefixes will stop working.");
         expect(html).not.toContain("commerce pages");
         expect(html).not.toContain("commerce URLs");

@@ -399,7 +399,7 @@ export default function DeliverySettings() {
                                     value={form.allowedCounties}
                                     onChange={(e) => setForm({ ...form, allowedCounties: e.target.value })}
                                     rows={3}
-                                    placeholder={"București\nIlfov\nPrahova"}
+                                    placeholder={"Example County\nAnother County"}
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     One county/region per line. Leave empty to allow all within the allowed countries.
@@ -447,7 +447,7 @@ export default function DeliverySettings() {
                                 value={form.availableCounties}
                                 onChange={(e) => setForm({ ...form, availableCounties: e.target.value })}
                                 rows={3}
-                                placeholder={"București\nIlfov\nPrahova"}
+                                placeholder={"Example County\nAnother County"}
                             />
                             <p className="text-xs text-muted-foreground">
                                 One county per line. Shows in county dropdown. Leave empty to use Romanian counties as default.

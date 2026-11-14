@@ -1341,7 +1341,7 @@ export default function SettingsPage() {
                                 <Input
                                     value={config.companyDetails?.address || ""}
                                     onChange={e => setConfig({ ...config, companyDetails: { ...config.companyDetails, address: e.target.value } })}
-                                    placeholder="Str. Example nr. 1, București"
+                                    placeholder="1 Example Street, Example City"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -1579,8 +1579,8 @@ export default function SettingsPage() {
                         <CardHeader>
                             <CardTitle>URL Prefixes</CardTitle>
                             <CardDescription>{isCatalogMode(config)
-                                ? 'Configure URL paths for catalog pages. Must start with "/" (e.g. "/produs" or "/product").'
-                                : 'Configure URL paths for commerce pages. Must start with "/" (e.g. "/produs" or "/product").'}</CardDescription>
+                                ? 'Configure URL paths for catalog pages. Must start with "/" (e.g. "/product").'
+                                : 'Configure URL paths for commerce pages. Must start with "/" (e.g. "/product").'}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
@@ -1589,7 +1589,7 @@ export default function SettingsPage() {
                                     <Input
                                         value={config.urlPrefixes?.product || ""}
                                         onChange={e => updateUrlPrefix("product", e.target.value)}
-                                        placeholder="/produs"
+                                        placeholder="/product"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -1597,7 +1597,7 @@ export default function SettingsPage() {
                                     <Input
                                         value={config.urlPrefixes?.category || ""}
                                         onChange={e => updateUrlPrefix("category", e.target.value)}
-                                        placeholder="/categorie"
+                                        placeholder="/category"
                                     />
                                 </div>
                                 {!isCatalogMode(config) && (
@@ -1606,7 +1606,7 @@ export default function SettingsPage() {
                                         <Input
                                             value={config.urlPrefixes?.cart || ""}
                                             onChange={e => updateUrlPrefix("cart", e.target.value)}
-                                            placeholder="/cos"
+                                            placeholder="/cart"
                                         />
                                     </div>
                                 )}
@@ -1616,7 +1616,7 @@ export default function SettingsPage() {
                                         <Input
                                             value={config.urlPrefixes?.checkout || ""}
                                             onChange={e => updateUrlPrefix("checkout", e.target.value)}
-                                            placeholder="/comanda"
+                                            placeholder="/checkout"
                                         />
                                     </div>
                                 )}
@@ -1625,7 +1625,7 @@ export default function SettingsPage() {
                                     <Input
                                         value={config.urlPrefixes?.shop || ""}
                                         onChange={e => updateUrlPrefix("shop", e.target.value)}
-                                        placeholder="/magazin"
+                                        placeholder="/shop"
                                     />
                                 </div>
                                 {!isCatalogMode(config) && (

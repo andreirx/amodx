@@ -880,7 +880,7 @@ function SEOTab({ form, setForm }: any) {
                 <div className="mt-6 border rounded-lg p-4 bg-muted/50">
                     <p className="text-xs text-muted-foreground mb-2">Search Preview</p>
                     <p className="text-blue-600 text-lg font-medium truncate">{form.seoTitle || form.title || "Product Title"}</p>
-                    <p className="text-green-700 text-sm">example.com/produs/{form.slug || "product-slug"}</p>
+                    <p className="text-green-700 text-sm">example.com/product/{form.slug || "product-slug"}</p>
                     <p className="text-sm text-muted-foreground line-clamp-2">{form.seoDescription || form.description || "Product description..."}</p>
                 </div>
             </CardContent>
