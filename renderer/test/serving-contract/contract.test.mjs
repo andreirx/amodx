@@ -1803,25 +1803,29 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
-        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice cat-theme-1 (docs/slices/locale-1.md § 8.5; rulings § 16.2 items
-        // 4-5; docs/slices/cat-theme-1-impl.md). Helpers: locale-1/proof.mjs. Inputs, all in locale-1/theme-1/: before/
-        // (immutable, captured from 0865ac6 with the cm1-byte-identity/README.md worktree procedure — every en-US subject,
-        // every RO copy, the CQ1 and the CT1 tenants, served with this tree's fixtures.mjs), expected-diff.json (the
-        // reviewed byte-difference list of the en-US subjects: NOTHING on any URL — packet hard rule 1, zero ledger rows)
-        // and ro-expected.json (the RO copies' text changes against their own 0865ac6 capture: none). Each slice has its own
-        // set (§ 8.5 rule 5); the 1a/, 1b/, 1c/, 1d/ and reviews-date-1/ files stay as those slices' records and no row reads
-        // them. The 1e/ files are read only by the rows that pin the locale-1e root-layout move against d9999d2
-        // (loc1e-category-controls, loc1e-404-document, loc1e-cache-headers); the quote-1/ files (29a2282) only by the cq1-*
-        // rows, which pin cat-quote-1's own changes against its start commit.
+        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice cat-variant-gallery-1 (docs/slices/locale-1.md § 8.5; rulings
+        // § 16.2 items 4-5; docs/slices/cat-variant-gallery-1.md § 6, ruling CVG1-TEXT-REMOVAL = A). Helpers:
+        // locale-1/proof.mjs. Inputs, all in locale-1/variant-gallery-1/: before/ (immutable, captured from 27fa7ca with
+        // the cm1-byte-identity/README.md worktree procedure — every en-US subject, every RO copy, the CQ1 and the CT1
+        // tenants, served with this tree's fixtures.mjs), expected-diff.json (the reviewed byte-difference list of the
+        // en-US subjects: only the catalog product pages list entries, all row CVG1-GALLERY; their `textRemoved` items are
+        // the visible texts the gallery change removes) and ro-expected.json (the RO copies' text changes against their own
+        // 27fa7ca capture: only `removed` items, row CVG1-GALLERY). Each slice has its own set (§ 8.5 rule 5); the 1a/, 1b/,
+        // 1c/, 1d/ and reviews-date-1/ files stay as those slices' records and no row reads them. The 1e/ files are read
+        // only by the rows that pin the locale-1e root-layout move against d9999d2 (loc1e-category-controls,
+        // loc1e-404-document, loc1e-cache-headers); the quote-1/ files (29a2282) only by the cq1-* rows, which pin
+        // cat-quote-1's own changes against its start commit; the theme-1/ files (0865ac6) only by the ct1-* rows, which pin
+        // cat-theme-1's own changes against its start commit (`ct1BeforeSet`).
         // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`;
         // since 1d the commerce subject's list also holds its order pages, `orderRequests`).
-        // Text oracle per subject: equal to before/ (cat-theme-1 lists nothing).
+        // Text oracle per subject: equal to before/ except exactly the listed removals (cat-variant-gallery-1: the
+        // gallery counter of the catalog product page whose option pictures make the variant tiles the picker).
         // These rows run LAST in this block: the non-CM1 subjects are captured here, after every row that depends on
         // those tenants' cache state. The RO subjects are the copies `loc1-ro-*` (fixtures.mjs LOC1).
         let loc1Before, loc1Ro, loc1En;
-        const LOC1_SLICE = "theme-1";
+        const LOC1_SLICE = "variant-gallery-1";
         /** The commit before/ was captured from (the slice's start commit for render output; titles cite it). */
-        const LOC1_START = "0865ac6";
+        const LOC1_START = "27fa7ca";
         /** CAT-QUOTE-1 (read by the cq1-* rows against quote-1/before/, 29a2282): what cat-quote-1 listed for a catalog
          *  product page — row CQ1-INTEREST-LINK, the interest toggle's link form. */
         const CQ1_LINK = [
@@ -1835,8 +1839,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
         const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
-        let loc1eBefore, cq1Cand, cq1Before, ct1Cand;
-        /** CAT-THEME-1: the cat-quote-1 record set (29a2282), read explicitly by the cq1-* rows: the current set is theme-1. */
+        let loc1eBefore, cq1Cand, cq1Before, ct1Cand, ct1Before;
+        /** CAT-VARIANT-GALLERY-1: the cat-theme-1 record set (0865ac6), read explicitly by the ct1-* rows (the current set
+         *  is variant-gallery-1). */
+        const ct1BeforeSet = async () => (ct1Before ??= await readCaptures(path.join(LOC1_DIR, "theme-1", "before")));
+        /** CAT-THEME-1: the cat-quote-1 record set (29a2282), read explicitly by the cq1-* rows (the current set is variant-gallery-1). */
         const cq1BeforeSet = async () => (cq1Before ??= await readCaptures(path.join(LOC1_DIR, "quote-1", "before")));
         /** This run's captures of the CT1 tenants (fixtures.mjs `CT1`, requests `CT1_REQUESTS`). */
         const ct1Set = async () => (ct1Cand ??= await captureRequests(request, server.port, Object.values(CT1_REQUESTS).flat()));
@@ -1869,8 +1876,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         /** Per URL of a subject: the visible-text changes its category-3 (ledger) entries list (`textMismatches`). A
          *  category-3 entry lists `text` only when the visible text changes (CAT-QUOTE-1: CQ1-INTEREST-LINK is markup only). */
         const ledgerTexts = (doc, subject) => (urlPath) => expectedFor(doc, subject, urlPath).filter((e) => e.category === 3 && e.text !== undefined).map((e) => e.text);
+        /** CAT-VARIANT-GALLERY-1 (CVG1-TEXT-REMOVAL = A): per URL, the visible-text items its category-3 entries list as
+         *  removed (`textRemoved`: `{ kind, text, position }`, position = index in the before extraction). */
+        const removedTexts = (doc, subject) => (urlPath) => expectedFor(doc, subject, urlPath).filter((e) => e.category === 3 && e.textRemoved !== undefined).flatMap((e) => e.textRemoved);
 
-        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs, the RO copies', the CQ1 and the CT1 tenants' URLs; expected-diff.json lists exactly the subjects' URLs, each with nothing", async () => {
+        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs, the RO copies', the CQ1 and the CT1 tenants' URLs; expected-diff.json lists exactly the subjects' URLs, each with nothing except the catalog product pages' CVG1-GALLERY entries", async () => {
             const want = Object.fromEntries(Object.entries(EN_US_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const withoutLocale = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#") && !Object.hasOwn(i, "locale")).length;
             assert.equal(Object.keys(want).length, withoutLocale, "every tenant without `locale` is a subject");
@@ -1885,22 +1895,37 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), { ...want, ...ro, ...cq1, ...ct1 }, "before/ must hold exactly the subjects', the RO copies', the CQ1 and the CT1 tenants' URLs");
             const doc = await loc1Json("expected-diff.json");
             assert.deepEqual(Object.fromEntries(Object.entries(doc.fixtures).map(([key, urls]) => [key, Object.keys(urls).sort()])), want, "expected-diff.json must list exactly the subjects' URLs");
-            // CAT-THEME-1 (packet hard rule 1): with every new field absent, every URL lists NOTHING — no ledger row, no
-            // prop, no text, no layout move.
+            // CAT-VARIANT-GALLERY-1: a URL lists something only if it is a product page of a catalog-mode subject; every
+            // such page lists the gallery's `pinnedTop` prop; every entry is row CVG1-GALLERY — a ProductImageGallery prop
+            // (pinnedTop, optionGroupName, options) or a category-3 HTML change. Every other URL lists NOTHING.
+            const GALLERY = "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery";
+            const CVG1_PROPS = new Set(["pinnedTop", "optionGroupName", "options"]);
+            const catalogMode = (subject) => ITEMS.find((i) => i.PK === "SYSTEM" && i.Domain === EN_US_REQUESTS[subject][0].host)?.catalogMode === true;
+            let listing = 0;
             for (const [subject, urls] of Object.entries(doc.fixtures)) {
-                for (const [urlPath, list] of Object.entries(urls)) assert.deepEqual(list, [], `${subject} ${urlPath}: nothing (no ledger row, no prop, no text)`);
+                for (const [urlPath, list] of Object.entries(urls)) {
+                    const productPage = catalogMode(subject) && urlPath.startsWith("/product/");
+                    if (!productPage) { assert.deepEqual(list, [], `${subject} ${urlPath}: nothing (no ledger row, no prop, no text)`); continue; }
+                    listing++;
+                    assert.ok(list.some((e) => e.category === 2 && e.prop === "pinnedTop"), `${subject} ${urlPath}: the gallery's pinnedTop`);
+                    for (const e of list) {
+                        assert.equal(e.row, "CVG1-GALLERY", `${subject} ${urlPath}: row ${e.row}`);
+                        assert.ok(e.category === 3 || (e.category === 2 && e.element === GALLERY && CVG1_PROPS.has(e.prop) && !Object.hasOwn(e, "beforeValue")), `${subject} ${urlPath}: an entry other than a gallery prop or an HTML change`);
+                    }
+                }
             }
-            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs, each listing nothing: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs; CQ1 ${Object.values(cq1).flat().length} URLs; CT1 ${Object.values(ct1).flat().length} URLs`);
+            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs; ${listing} catalog product pages list CVG1-GALLERY entries, every other URL nothing: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs; CQ1 ${Object.values(cq1).flat().length} URLs; CT1 ${Object.values(ct1).flat().length} URLs`);
         });
 
         for (const subject of Object.keys(EN_US_REQUESTS)) {
-            test(`(loc1-text-${subject}) en-US subject ${subject}: the visible text of every captured URL equals the ${LOC1_START} capture, except exactly the listed ledger texts`, async () => {
+            test(`(loc1-text-${subject}) en-US subject ${subject}: the visible text of every captured URL equals the ${LOC1_START} capture, except exactly the listed ledger texts and listed removals`, async () => {
                 const before = await loc1BeforeSet();
                 const doc = await loc1Json("expected-diff.json");
-                assert.deepEqual(textMismatches(before, await loc1EnSet(), subject, ledgerTexts(doc, subject)), [], `${subject}: visible text`);
+                assert.deepEqual(textMismatches(before, await loc1EnSet(), subject, ledgerTexts(doc, subject), removedTexts(doc, subject)), [], `${subject}: visible text`);
                 const html = before.captures.filter((c) => c.tenant === subject && isHtml(c));
                 const listed = html.flatMap((c) => ledgerTexts(doc, subject)(c.path).map((t) => `${c.path} ${JSON.stringify(t.from)} → ${JSON.stringify(t.to)}`));
-                console.log(`  (loc1-text-${subject}) ${html.length} HTML URLs, ${html.reduce((n, c) => n + extractVisibleText(c.body).length, 0)} extracted items, all equal${listed.length ? ` except the listed ledger texts: ${listed.join("; ")}` : ""}`);
+                const gone = html.flatMap((c) => removedTexts(doc, subject)(c.path).map((t) => `${c.path} ${t.kind} ${JSON.stringify(t.text)} at ${t.position}`));
+                console.log(`  (loc1-text-${subject}) ${html.length} HTML URLs, ${html.reduce((n, c) => n + extractVisibleText(c.body).length, 0)} extracted items, all equal${listed.length ? ` except the listed ledger texts: ${listed.join("; ")}` : ""}${gone.length ? `; listed removals: ${gone.join("; ")}` : ""}`);
             });
         }
 
@@ -1914,7 +1939,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const page = cand.captures.find((c) => c.tenant === subject && isHtml(c) && c.body.includes("</body>"));
                 assert.ok(page, `${subject} has an HTML page`);
                 const mutated = { ...cand, captures: cand.captures.map((c) => (c === page ? { ...c, body: c.body.replace("</body>", "<p>LOC1 MUTATION</p></body>") } : c)) };
-                assert.deepEqual(textMismatches(before, mutated, subject, ledgerTexts(doc, subject)).length, 1, `${subject}: the mutation was not reported`);
+                assert.deepEqual(textMismatches(before, mutated, subject, ledgerTexts(doc, subject), removedTexts(doc, subject)).length, 1, `${subject}: the mutation was not reported`);
             }
             // The content home's review date (unchanged since d9999d2, its L-ALL-2 value): put back to Romanian, or in another
             // format — each is reported.
@@ -1930,7 +1955,62 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(textMismatches(before, reverted, "commerce"), [`${confirm.path}: visible text changed`]);
         });
 
-        test(`(loc1-diff-theme-1) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
+        // CAT-VARIANT-GALLERY-1 (operator ruling CVG1-TEXT-REMOVAL = A): the three refusals of a listed text removal, one
+        // row each, on the real catalog /product/oak-plank, whose list removes the gallery counter "1 / 3". Each row first
+        // proves its precondition (the page is exact under its real list), then shows the refusal through the text rows'
+        // own oracle (`textMismatches`) and the reason through `textChanges`.
+        const cvg1Oak = async () => {
+            const before = await loc1BeforeSet();
+            const cand = await loc1EnSet();
+            const doc = await loc1Json("expected-diff.json");
+            const P = "/product/oak-plank";
+            const gone = removedTexts(doc, "catalog")(P);
+            assert.deepEqual(gone, [{ kind: "text", text: "1 / 3", position: gone[0]?.position }], "precondition: oak-plank lists one removal, the counter");
+            assert.deepEqual(textMismatches(before, cand, "catalog", ledgerTexts(doc, "catalog"), removedTexts(doc, "catalog")), [], "precondition: the catalog text is exact under its list");
+            const b = before.captures.find((c) => c.tenant === "catalog" && c.path === P);
+            const a = cand.captures.find((c) => c.tenant === "catalog" && c.path === P);
+            return { before, cand, doc, P, gone, b, a, ledger: ledgerTexts(doc, "catalog") };
+        };
+        const only = (P, list) => (p) => (p === P ? list : []);
+
+        test("(cvg1-text-removal-unlisted) a removed text that is not listed is reported", async () => {
+            const { before, cand, P, b, a, ledger } = await cvg1Oak();
+            assert.deepEqual(textMismatches(before, cand, "catalog", ledger, () => []), [`${P}: visible text changed`]);
+            assert.throws(() => textChanges(extractVisibleText(b.body), extractVisibleText(a.body)), /extractions differ in length/);
+            // A second, unlisted removal next to the listed one: the page's title text taken out of the after body.
+            assert.ok(a.body.includes(">Oak Plank</h1>"), "mutation precondition: the product title is server-rendered once in an h1");
+            const mutated = { ...cand, captures: cand.captures.map((c) => (c === a ? { ...c, body: c.body.replace(">Oak Plank</h1>", "></h1>") } : c)) };
+            assert.deepEqual(textMismatches(before, mutated, "catalog", ledger, removedTexts(await loc1Json("expected-diff.json"), "catalog")), [`${P}: visible text changed`]);
+            console.log("  (cvg1-text-removal-unlisted) the counter removal without its list entry, and a second unlisted removal, are reported");
+        });
+
+        test("(cvg1-text-removal-missing) a listed removal that did not happen is reported", async () => {
+            const { before, cand, doc, P, gone, b, ledger } = await cvg1Oak();
+            // The after page = the 27fa7ca page itself (the counter still there), with the real list.
+            const unchanged = { ...cand, captures: cand.captures.map((c) => (c.tenant === "catalog" && c.path === P ? { ...c, body: b.body } : c)) };
+            assert.deepEqual(textMismatches(before, unchanged, "catalog", ledger, only(P, gone)), [`${P}: visible text changed`]);
+            assert.throws(() => textChanges(extractVisibleText(b.body), extractVisibleText(b.body), gone), /extractions differ in length/);
+            // A listed removal on a page whose text did not change at all (legacy-plank: its h1 title, really there).
+            const legacy = "/product/legacy-plank";
+            const at = extractVisibleText(before.captures.find((c) => c.tenant === "catalog" && c.path === legacy).body).findIndex((i) => i.kind === "text" && i.text === "Legacy Plank");
+            assert.ok(at >= 0, "mutation precondition: legacy-plank's title is an extracted text");
+            const withLegacy = (p) => (p === legacy ? [{ kind: "text", text: "Legacy Plank", position: at }] : removedTexts(doc, "catalog")(p));
+            assert.deepEqual(textMismatches(before, cand, "catalog", ledger, withLegacy), [`${legacy}: visible text changed`]);
+            console.log("  (cvg1-text-removal-missing) a listed removal on the unchanged page, and one on a page without removals, are reported");
+        });
+
+        test("(cvg1-text-removal-wrong-text) a listed removal with another text, kind or position is reported", async () => {
+            const { before, cand, P, gone, b, a, ledger } = await cvg1Oak();
+            const [r] = gone;
+            for (const [label, wrong] of [["text", { ...r, text: "1 / 4" }], ["kind", { ...r, kind: "@alt" }], ["position", { ...r, position: r.position - 1 }]]) {
+                assert.deepEqual(textMismatches(before, cand, "catalog", ledger, only(P, [wrong])), [`${P}: visible text changed`], `wrong ${label}`);
+                assert.throws(() => textChanges(extractVisibleText(b.body), extractVisibleText(a.body), [wrong]), /listed removal does not match/, `wrong ${label}: the reason`);
+            }
+            assert.deepEqual(textChanges(extractVisibleText(b.body), extractVisibleText(a.body), gone), [], "control: the real list leaves no change");
+            console.log(`  (cvg1-text-removal-wrong-text) "1 / 4", kind @alt and position ${r.position - 1} are refused; the real entry is accepted`);
+        });
+
+        test(`(loc1-diff-variant-gallery-1) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -1945,22 +2025,26 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
                     for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
-                    console.log(`  (loc1-diff-theme-1) ${subject} ${b.path}: ${expected.length} listed difference(s)${expected.length ? ` [${[...new Set(expected.map((e) => e.row))].join(", ")}]` : ""}`);
+                    console.log(`  (loc1-diff-variant-gallery-1) ${subject} ${b.path}: ${expected.length} listed difference(s)${expected.length ? ` [${[...new Set(expected.map((e) => e.row))].join(", ")}]` : ""}`);
                 }
             }
             assert.deepEqual(problems, []);
-            // The checker can fail (the bound mutations of this row). On a catalog product page: a ghost entry, the
-            // toggle's variant changed in the payload, one changed HTML byte, and each editorial class or marker of this
-            // slice put into the page (the HTML — a theme field leaking to a tenant without it). On the content home: one
+            // The checker can fail (the bound mutations of this row). On a catalog product page: a ghost entry, one of its
+            // listed CVG1-GALLERY entries left out, the toggle's variant changed in the payload, one changed HTML byte, and
+            // each editorial class or marker of cat-theme-1 put into the page (the HTML — a theme field leaking to a tenant
+            // without it). On the content home: one
             // changed HTML byte, the review date in another format, a changed block text in the payload, a block text in
             // Romanian in the HTML. On an order page: one changed text.
             const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
             const [bp, ap] = pick("catalog", "/product/oak-plank");
             const link = expectedFor(doc, "catalog", "/product/oak-plank");
-            assert.deepEqual(link, [], "precondition: catalog /product/oak-plank lists nothing");
-            assert.deepEqual(checkExpected(before, bp.body, cand, ap.body, link), [], "precondition: catalog /product/oak-plank is byte-equal");
+            assert.ok(link.length > 0 && link.every((e) => e.row === "CVG1-GALLERY"), "precondition: catalog /product/oak-plank lists only the CVG1-GALLERY change");
+            assert.deepEqual(checkExpected(before, bp.body, cand, ap.body, link), [], "precondition: catalog /product/oak-plank is exact under its list");
             const ghost = { category: 2, element: "[project]/renderer/src/components/QuoteRequest.tsx#QuoteRequest", prop: "strings", value: {} };
-            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, [ghost]), [], "a listed entry that does not occur was not reported");
+            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, [...link, ghost]), [], "a listed entry that does not occur was not reported");
+            for (let i = 0; i < link.length; i++) {
+                assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, link.filter((_, j) => j !== i)), [], `a CVG1-GALLERY change left out of the list (entry ${i}) was not reported`);
+            }
             const variantLink = '\\"variant\\":\\"link\\"';
             assert.equal(ap.body.split(variantLink).length - 1, 1, "mutation precondition: the toggle's variant travels once in the payload");
             assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace(variantLink, '\\"variant\\":\\"page\\"'), link), [], "a changed toggle variant in the payload was not reported");
@@ -2004,7 +2088,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // preload removed on a 200 page. Content /cart 307 shell: a missing preload with another href; two missing preloads.
         // Positive controls: both pages exact under the listed move.
         test("(loc1e-category-controls) category 4 accepts exactly the enumerated root-layout move: every other change on a real page is reported", async () => {
-            // CAT-QUOTE-1: the locale-1e record set (d9999d2 + its category-4 list), read explicitly (the current set is theme-1).
+            // CAT-QUOTE-1: the locale-1e record set (d9999d2 + its category-4 list), read explicitly (the current set is variant-gallery-1).
             const before = await loc1eBeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1eJson("expected-diff.json");
@@ -2257,10 +2341,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // at the start commit — the "Cere ofertă" button and its dialog on the RO catalog copy, which now has contact
         // channels — whose `to` is the RO pack value of its catalog key; each listed added item is removed once from the
         // after extraction, and the rest must then be exactly the listed changes. cat-theme-1 lists no changed and no added
-        // text (its before/, 0865ac6, already holds cat-quote-1's quote texts).
+        // text (its before/, 0865ac6, already holds cat-quote-1's quote texts). CAT-VARIANT-GALLERY-1 adds a third kind,
+        // `removed: true` (row CVG1-GALLERY): the item at `position` of the before extraction, exactly `kind` and `text`,
+        // taken out of the before side by `textChanges` (the RO catalog copy's gallery counter).
         const LOC1_RO_ROWS = new Set(["L-RO-1", "L-RO-2", "L-RO-3"]);
         for (const [fixture, rowId] of [["roContent", "loc1-ro-content"], ["roCommerce", "loc1-ro-commerce"], ["roCatalog", "loc1-ro-catalog"]]) {
-            test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes (each EN pack value → RO pack value) and added texts (each an RO pack value) against its own ${LOC1_START} capture`, async () => {
+            test(`(${rowId}) RO copy of the ${LOC1[fixture].source} fixture: per URL exactly the listed text changes (each EN pack value → RO pack value), added texts (each an RO pack value) and removed texts (row CVG1-GALLERY) against its own ${LOC1_START} capture`, async () => {
                 const spec = (await loc1Json("ro-expected.json")).fixtures[fixture];
                 assert.equal(spec.source, fixture);
                 assert.equal(spec.against, "before");
@@ -2271,6 +2357,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 let changes = 0;
                 const rows = {};
                 let added = 0;
+                let removedCount = 0;
                 for (const [urlPath, list] of Object.entries(spec.paths)) {
                     for (const e of list.filter((x) => x.added === true)) {
                         assert.equal(e.part, "catalog", `${urlPath} ${e.key}: an added text is a catalog text`);
@@ -2279,7 +2366,14 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                         assert.equal(e.to, renderItem(RO_TABLE, e), `${urlPath} ${e.key}: to is the RO pack value`);
                         rows[e.row] = (rows[e.row] ?? 0) + 1;
                     }
-                    for (const e of list.filter((x) => x.added !== true)) {
+                    // CAT-VARIANT-GALLERY-1 (CVG1-TEXT-REMOVAL = A): a removed text — the item at `position` of the before
+                    // extraction, exactly `kind` and `text` (textChanges refuses any other), row CVG1-GALLERY.
+                    for (const e of list.filter((x) => x.removed === true)) {
+                        assert.equal(e.row, "CVG1-GALLERY", `${urlPath}: removed text row ${e.row}`);
+                        assert.ok(!Object.hasOwn(e, "from") && !Object.hasOwn(e, "to") && Number.isInteger(e.position), `${urlPath}: a removed text has kind, text and position only`);
+                        rows[e.row] = (rows[e.row] ?? 0) + 1;
+                    }
+                    for (const e of list.filter((x) => x.added !== true && x.removed !== true)) {
                         assert.ok(e.part === "commerce" || e.part === "site", `${urlPath} ${e.key}: a site or commerce text`);
                         assert.ok(LOC1_RO_ROWS.has(e.row), `${urlPath} ${e.key}: row ${e.row}`);
                         assert.equal(e.from, renderItem(EN_TABLE, e), `${urlPath} ${e.key}: from is the EN pack value`);
@@ -2296,18 +2390,20 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                         after = [...after.slice(0, i), ...after.slice(i + 1)];
                         added++;
                     }
-                    const got = isHtml(r) ? textChanges(extractVisibleText(base.body), after) : [];
-                    assert.deepEqual(got, list.filter((x) => x.added !== true).map(({ kind, from, to }) => ({ kind, from, to })), `${fixture} ${urlPath}`);
+                    const gone = list.filter((x) => x.removed === true).map(({ kind, text, position }) => ({ kind, text, position }));
+                    removedCount += gone.length;
+                    const got = isHtml(r) ? textChanges(extractVisibleText(base.body), after, gone) : [];
+                    assert.deepEqual(got, list.filter((x) => x.added !== true && x.removed !== true).map(({ kind, from, to }) => ({ kind, from, to })), `${fixture} ${urlPath}`);
                     changes += got.length;
                 }
-                console.log(`  (${rowId}) ${Object.keys(spec.paths).length} URLs, ${changes} text changes and ${added} added texts, all listed and all from the RO pack: ${JSON.stringify(rows)}`);
+                console.log(`  (${rowId}) ${Object.keys(spec.paths).length} URLs, ${changes} text changes, ${added} added texts and ${removedCount} removed texts, all listed (changes and additions from the RO pack): ${JSON.stringify(rows)}`);
             });
         }
 
         // ── ROWS (cq1-*) — CAT-QUOTE-1 (docs/slices/cat-quote-1-impl.md; packet rule 7). Server HTML of the running build:
         // the "Cere ofertă" button and its (closed) native dialog on the RO catalog product pages, by channel set; the bar
         // fallbacks on a shop. Before side: locale-1/quote-1/before/ (29a2282, where mapTenant drops `contactChannels`),
-        // read explicitly through `cq1BeforeSet` since cat-theme-1 made theme-1 the current set.
+        // read explicitly through `cq1BeforeSet` since cat-theme-1 made theme-1 the current set (now variant-gallery-1).
         const unamp = (h) => h.replace(/&amp;/g, "&");
         /** The dialog's actions as rendered: `{ kind, href, text }`, in document order. */
         const quoteActionsOf = (html) => [...html.matchAll(/<a href="([^"]*)" data-quote-action="([a-z]+)"[^>]*>([^<]*)<\/a>/g)].map((m) => ({ kind: m[2], href: unamp(m[1]), text: m[3] }));
@@ -2348,9 +2444,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (cq1-quote-ro) ${pages} RO catalog product pages: button, link under it, dialog in Romanian, tel/wa.me/mailto hrefs`);
         });
 
-        test("(cq1-quote-channels) e-mail only → one action (mailto); an empty contactChannels object → no button, no dialog, and the page byte-equal to 29a2282 but for the interest link", async () => {
+        test("(cq1-quote-channels) e-mail only → one action (mailto); an empty contactChannels object → no button, no dialog, and the page byte-equal to 29a2282 but for the interest link and the CVG1-GALLERY change", async () => {
             const cand = await cq1CandSet();
             const before = await cq1BeforeSet();
+            // CAT-VARIANT-GALLERY-1: the gallery change of each roNone page, listed in this slice's set (`cq1RoNone`).
+            const cvg1 = (await loc1Json("expected-diff.json")).cq1RoNone;
             for (const c of cand.captures.filter((x) => x.tenant === "roEmail")) {
                 const html = splitFlight(c.body).html;
                 const acts = quoteActionsOf(html);
@@ -2363,7 +2461,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.ok(!a.body.includes("data-quote-request") && !a.body.includes("<dialog"), `roNone ${a.path}: no button, no dialog`);
                 const b = before.captures.find((x) => x.tenant === "roNone" && x.path === a.path);
                 assert.equal(a.status, b.status);
-                assert.deepEqual(checkExpected(before, b.body, cand, a.body, b.body.includes("data-interest-toggle=") ? CQ1_LINK : []), [], `roNone ${a.path}: byte-equal but for the interest link`);
+                assert.ok(Array.isArray(cvg1[a.path]) && cvg1[a.path].every((e) => e.row === "CVG1-GALLERY"), `roNone ${a.path}: the CVG1-GALLERY list`);
+                assert.deepEqual(checkExpected(before, b.body, cand, a.body, [...(b.body.includes("data-interest-toggle=") ? CQ1_LINK : []), ...cvg1[a.path]]), [], `roNone ${a.path}: byte-equal but for the interest link and the gallery change`);
                 equal++;
             }
             assert.equal(equal, 2);
@@ -2371,7 +2470,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const ro = (await loc1RoSet()).find((x) => x.tenant === "roCatalog" && x.path === "/product/oak-plank");
             const roBefore = before.captures.find((x) => x.tenant === "roCatalog" && x.path === "/product/oak-plank");
             assert.notDeepEqual(checkExpected(before, roBefore.body, { ...cand, captures: [ro] }, ro.body, CQ1_LINK), [], "the comparison must see the added button");
-            console.log("  (cq1-quote-channels) e-mail only: one mailto action; empty channels: no button, byte-equal but for CQ1-INTEREST-LINK; the detector sees the button on the copy with channels");
+            console.log("  (cq1-quote-channels) e-mail only: one mailto action; empty channels: no button, byte-equal but for CQ1-INTEREST-LINK and CVG1-GALLERY; the detector sees the button on the copy with channels");
         });
 
         test("(cq1-bars-fallback) a shop whose Top Bar, Commerce Bar and Quick contact own values are empty shows the contact channels (server HTML); 29a2282 showed none", async () => {
@@ -2418,7 +2517,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const ct1CandSet = async () => { const en = await loc1EnSet(); return { buildId: en.buildId, clientModules: en.clientModules, captures: await ct1Set() }; };
         const ct1Page = async (key, p) => {
             const a = (await ct1Set()).find((x) => x.tenant === key && x.path === p);
-            const b = (await loc1BeforeSet()).captures.find((x) => x.tenant === key && x.path === p);
+            const b = (await ct1BeforeSet()).captures.find((x) => x.tenant === key && x.path === p);
             assert.equal(a.status, 200, `${key} ${p}: 200`);
             assert.equal(b.status, 200, `${key} ${p}: 200 at 0865ac6`);
             return { html: splitFlight(a.body).html, before: splitFlight(b.body).html, body: a.body };
@@ -2556,7 +2655,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.ok(page.html.includes('<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">'), "the header keeps its own (default) width");
             assert.ok(page.before.includes('<footer class="border-t py-12 bg-muted/30"><div class="max-w-7xl mx-auto px-6">'), "precondition: 0865ac6 used the header's width");
             // The whole page, under CM1-A1 + the resolved payload: the footer width is the ONLY difference (HTML and payload).
-            const cand = await ct1CandSet(), before = await loc1BeforeSet();
+            const cand = await ct1CandSet(), before = await ct1BeforeSet();
             const a = cand.captures.find((x) => x.tenant === "footerOnly"), b = before.captures.find((x) => x.tenant === "footerOnly");
             const width = { category: 3, row: "CT1-FOOTER-WIDTH", before: '<div class="max-w-7xl mx-auto px-6">', after: '<div class="max-w-[1600px] mx-auto px-6">', flightBefore: '"max-w-7xl mx-auto px-6"', flightAfter: '"max-w-[1600px] mx-auto px-6"' };
             assert.deepEqual(checkExpected(before, b.body, cand, a.body, [width]), [], "only the footer width changed");
@@ -2566,7 +2665,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
 
         // ── ROWS (bpf1-*) — BULK-PURGE-FOOTER-1 Part B (docs/slices/bulk-purge-footer-1.md; packet rule B4). Server HTML of
         // the running build for the BPF1 tenants (fixtures.mjs `BPF1`). "Absent → today's bytes" is proven elsewhere: the
-        // loc1-* rows (every en-US subject byte-equal to 0865ac6, nothing listed), ct1-footer-width (a footer with only the
+        // loc1-* rows (every en-US subject byte-equal to its start capture: 0865ac6 with nothing listed when bulk-purge-footer-1
+        // was built; since cat-variant-gallery-1 27fa7ca with only the CVG1-GALLERY change listed), ct1-footer-width (a footer with only the
         // width carries no `style`, byte-equal to 0865ac6 but for the width) and the cq1-*/ct1-* rows.
         /** Today's text classes of the footer (layout.tsx; they read `--color-foreground` / `--color-muted-foreground`). */
         const FOOTER_TEXT_CLASSES = [
@@ -2811,7 +2911,9 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // locale-1e it was loc1-diff-1e (the d9999d2 capture, the same comparison plus category 4, the root-layout move);
         // since cat-quote-1 it was loc1-diff-quote-1 (the 29a2282 capture, which already holds the move; the same comparison
         // without category 4 — the move stays pinned against d9999d2 by loc1e-category-controls and loc1e-404-document);
-        // since cat-theme-1 it is loc1-diff-theme-1 (the 0865ac6 capture, the same comparison, nothing listed).
+        // since cat-theme-1 it was loc1-diff-theme-1 (the 0865ac6 capture, the same comparison, nothing listed); since
+        // cat-variant-gallery-1 it is loc1-diff-variant-gallery-1 (the 27fa7ca capture, the same comparison; the catalog
+        // product pages list the CVG1-GALLERY change, the text rows its listed removals).
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

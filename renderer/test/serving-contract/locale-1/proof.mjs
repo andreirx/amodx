@@ -204,9 +204,11 @@ export function cacheFields(res) {
  * Per subject, the URLs whose visible text differs between two capture sets (status, structure or text) beyond the
  * listed changes. `listed(path)` → the exact `[{ kind, from, to }]` (`textChanges` form, document order) the URL must
  * show — LOCALE-REVIEWS-DATE-1: the `text` of its category-3 (ledger) entries; default none, i.e. the extractions must
- * be equal. A listed change that does not occur is a mismatch too.
+ * be equal. A listed change that does not occur is a mismatch too. CAT-VARIANT-GALLERY-1: `removed(path)` → the
+ * `[{ kind, text, position }]` items the URL's expectation lists as removed (the `textRemoved` of its category-3
+ * entries); default none.
  */
-export function textMismatches(beforeSet, afterSet, key, listed = () => []) {
+export function textMismatches(beforeSet, afterSet, key, listed = () => [], removed = () => []) {
     const out = [];
     for (const b of beforeSet.captures.filter((c) => c.tenant === key)) {
         const a = afterSet.captures.find((c) => c.tenant === key && c.path === b.path);
@@ -215,9 +217,11 @@ export function textMismatches(beforeSet, afterSet, key, listed = () => []) {
         if (!b.contentType.startsWith("text/html")) continue;
         const from = extractVisibleText(b.body), to = extractVisibleText(a.body);
         const want = listed(b.path);
+        // CAT-VARIANT-GALLERY-1 (CVG1-TEXT-REMOVAL = A): the listed removals of this URL (`textChanges`).
+        const gone = removed(b.path);
         let same;
-        if (want.length === 0) same = JSON.stringify(to) === JSON.stringify(from);
-        else { try { same = JSON.stringify(textChanges(from, to)) === JSON.stringify(want); } catch { same = false; } }
+        if (want.length === 0 && gone.length === 0) same = JSON.stringify(to) === JSON.stringify(from);
+        else { try { same = JSON.stringify(textChanges(from, to, gone)) === JSON.stringify(want); } catch { same = false; } }
         if (!same) out.push(`${b.path}: visible text changed`);
     }
     return out;

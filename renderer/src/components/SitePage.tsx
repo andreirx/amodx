@@ -942,18 +942,76 @@ function CatalogVariantPresenter({ variants }: { variants: { id: string; name: s
 }
 
 /**
- * CAT-INTEREST-1: the product-page toggle's props. The option comes from the presenter's FIRST group with options
- * (an imported product has exactly one group) — the radio group named as `CatalogVariantPresenter` names it.
+ * The presenter's FIRST group with options (an imported product has exactly one group) and the name of its radio
+ * group, as `CatalogVariantPresenter` names it. Readers of the choice: the interest toggle (`interestToggleProps`)
+ * and the gallery's option picker (`catalogGalleryProps`, CAT-VARIANT-GALLERY-1).
+ */
+function firstOptionGroup(product: any): { name: string; options: any[] } | undefined {
+    const group = (product.variants || []).find((g: any) => (g.options || []).length > 0);
+    return group ? { name: `catalog-option-${group.id || 0}`, options: group.options } : undefined;
+}
+
+/**
+ * CAT-INTEREST-1: the product-page toggle's props. The option comes from `firstOptionGroup`.
  */
 function interestToggleProps(tenantId: string, product: any) {
-    const groups = (product.variants || []).filter((group: any) => (group.options || []).length > 0);
-    const group = groups[0];
+    const group = firstOptionGroup(product);
     return {
         tenantId, productId: product.id, title: product.title, slug: product.slug || "",
         ...(product.imageLink ? { imageLink: product.imageLink } : {}),
         ...(group ? {
-            optionGroupName: `catalog-option-${group.id || 0}`,
-            options: (group.options || []).map((o: any) => (o.imageLink ? { value: o.value, imageLink: o.imageLink } : { value: o.value })),
+            optionGroupName: group.name,
+            options: group.options.map((o: any) => (o.imageLink ? { value: o.value, imageLink: o.imageLink } : { value: o.value })),
+        } : {}),
+    };
+}
+
+/**
+ * CAT-VARIANT-GALLERY-1 (ruling CVG1-HEADER-CLEARANCE): the SERVER value of the pinned gallery's CSS `top` — the tallest
+ * height the site's sticky header (app/[siteId]/layout.tsx) can have on this tenant WITH A ONE-LINE TOP BAR, plus a 1rem
+ * gap. It is the `top` in the HTML, before hydration and without JavaScript. After hydration ProductImageGallery
+ * replaces it with the header's measured height + 1rem (review-1: a Top Bar with line breaks, or text that wraps at the
+ * window's width, is taller than any configuration value can know). Derived from the same configuration that sizes
+ * the header. Its parts at `md` and up:
+ *  - the editorial top border (`theme.shape` "editorial"): 3px;
+ *  - the Top Bar (`topBar.show`): 2rem — `text-xs` (line height 1rem) + `py-2` (2 × 0.5rem), one line of text;
+ *  - the Navbar: its 1px bottom border + the TALLER of `header.navHeight` and `header.navHeightScrolled` (`h-<n>` =
+ *    n × 0.25rem; the bar switches to the scrolled height after 20px of scroll, so the taller one clears both states).
+ *    Absent → the Navbar's own defaults `h-16` / `h-12`. A value that is not `h-<n>` counts as `h-36` (9rem), the
+ *    tallest admin choice.
+ * The Commerce Bar is never in a catalog header (catalogMode excludes commerceEnabled, CM-D11). The rem part stays in
+ * rem so that the offset grows with the visitor's root font size as the header does; the borders stay px.
+ */
+function pinnedGalleryTop(config: any): string {
+    const navRem = (value: unknown, absent: string) => {
+        const m = /^h-(\d+)$/.exec(value === undefined ? absent : String(value));
+        return m ? Number(m[1]) / 4 : 9;
+    };
+    const rem = (config.topBar?.show ? 2 : 0)
+        + Math.max(navRem(config.header?.navHeight, "h-16"), navRem(config.header?.navHeightScrolled, "h-12"))
+        + 1;
+    const px = 1 + (isEditorial(config) ? 3 : 0);
+    return `calc(${rem}rem + ${px}px)`;
+}
+
+/**
+ * CAT-VARIANT-GALLERY-1 (docs/slices/cat-variant-gallery-1.md § 1): the gallery props of a CATALOG product page —
+ * pinned from `md` up below the site header (`pinnedGalleryTop`), and, when the product has an option group, that
+ * group's radio name and each option's pictures (the gallery uses them as its picker only when an option has an
+ * `imageLink`). Only the keys an option holds are passed. Never called for a commerce product page, whose gallery
+ * props stay the three of before.
+ */
+function catalogGalleryProps(product: any, config: any) {
+    const group = firstOptionGroup(product);
+    return {
+        pinnedTop: pinnedGalleryTop(config),
+        ...(group ? {
+            optionGroupName: group.name,
+            options: group.options.map((o: any) => ({
+                value: o.value,
+                ...(o.imageLink ? { imageLink: o.imageLink } : {}),
+                ...(o.additionalImageLinks?.length ? { additionalImageLinks: o.additionalImageLinks } : {}),
+            })),
         } : {}),
     };
 }
@@ -1052,6 +1110,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                     mainImage={product.imageLink}
                     additionalImages={product.additionalImageLinks || []}
                     title={product.title}
+                    {...(catalog ? catalogGalleryProps(product, config) : {})}
                 />
 
                 {/* Product Info */}

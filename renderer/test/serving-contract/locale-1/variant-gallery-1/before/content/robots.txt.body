@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://cm1-content.serving-contract.test/sitemap.xml

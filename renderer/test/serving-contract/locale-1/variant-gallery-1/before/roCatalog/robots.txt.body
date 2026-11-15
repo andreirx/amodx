@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://loc1-ro-catalog.serving-contract.test/sitemap.xml

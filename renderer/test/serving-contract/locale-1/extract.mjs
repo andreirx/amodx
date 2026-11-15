@@ -66,8 +66,27 @@ export function extractVisibleText(body) {
  * The item-by-item changes between two extractions of the SAME page structure: `[{ kind, from, to }]` in document
  * order. Throws when the two lists differ in length or in an item's kind (a structural change is never a text
  * change; it must fail loudly).
+ *
+ * CAT-VARIANT-GALLERY-1 (operator ruling CVG1-TEXT-REMOVAL = A): `removed` lists the items an expectation set says
+ * were removed — `[{ kind, text, position }]`, `position` = the item's index in `from`. Each must be EXACTLY the item
+ * at that position (same kind, same text) — else it throws — and is taken out of `from` before the strict comparison
+ * above. So an unlisted removal still fails (length), a listed removal that did not happen fails (length), and a
+ * listed removal with another text or kind fails (mismatch). With no list (every caller before this slice) the
+ * function is unchanged.
  */
-export function textChanges(from, to) {
+export function textChanges(from, to, removed = []) {
+    if (removed.length > 0) {
+        const positions = new Set();
+        for (const r of removed) {
+            const item = from[r.position];
+            if (positions.has(r.position)) throw new Error(`listed removal: position ${r.position} listed twice`);
+            if (!item || item.kind !== r.kind || item.text !== r.text) {
+                throw new Error(`listed removal does not match: position ${r.position} holds ${item ? `${item.kind} ${JSON.stringify(item.text)}` : "nothing"}, listed ${r.kind} ${JSON.stringify(r.text)}`);
+            }
+            positions.add(r.position);
+        }
+        from = from.filter((_, i) => !positions.has(i));
+    }
     if (from.length !== to.length) throw new Error(`extractions differ in length: ${from.length} → ${to.length}`);
     const out = [];
     from.forEach((item, i) => {

@@ -9,7 +9,8 @@ import { resolveLocaleStrings } from "@amodx/shared";
  * CAT-THEME-1 (docs/slices/cat-theme-1-impl.md) — the client side of the new theme fields:
  *  - ThemeInjector (server markup): the font request (400;700 ∪ the listed weights, ascending; the nav font as one
  *    more family), the two colours, `--font-nav`, the heading weight rule and the editorial rules; absent or invalid
- *    values add nothing (the byte identity of whole pages is the serving suite's `loc1-diff-theme-1`);
+ *    values add nothing (the byte identity of whole pages was the serving suite's `loc1-diff-theme-1`; since
+ *    cat-variant-gallery-1 the current set's row is `loc1-diff-variant-gallery-1`);
  *  - Navbar and CommerceBar (mounted in jsdom): the nav-font class on the two item containers, and the arrow marker
  *    `data-theme-arrow` on exactly the text links and buttons the record names — and nowhere without the props.
  * Mocked: Next's link, NextAuth's session, the cart context and the tenant URL helper; the components are real.

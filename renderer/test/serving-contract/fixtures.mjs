@@ -706,6 +706,39 @@ const BPF1_ITEMS = [
     ]),
 ];
 
+// ── CAT-VARIANT-GALLERY-1 fixtures (docs/slices/cat-variant-gallery-1.md § 3.1; review-1: a header whose height depends
+// on its content). Catalog copies of `cm1-catalog`, each with a `locale` ("en-US", written out), so neither is an en-US
+// subject of the `loc1-*` rows and neither is in any `before/` capture. Read only by test/interest-e2e/cvg1-pinned.spec.mjs:
+//  - breaks: a Top Bar announcement with two `<br>` (three lines) and a 96px Navbar in both states (`h-24` / `h-24`);
+//  - wrap: the editorial shape, a 48px Navbar in both states (`h-12` / `h-12`: the server value has no slack from a
+//    taller unscrolled bar) and an announcement long enough to wrap at an 800px window and to fit on one line at 1600px.
+// Each also has `/product/many-colours`: 48 colour options with one picture each — the "too many variants" case — so the
+// info column is taller than the window and the gallery pins.
+export const CVG1 = {
+    breaks: { id: "cvg1-topbar-breaks", host: "cvg1-topbar-breaks.serving-contract.test" },
+    wrap: { id: "cvg1-topbar-wrap", host: "cvg1-topbar-wrap.serving-contract.test" },
+};
+export const CVG1_MANY_SLUG = "many-colours";
+const cvg1ManyColours = (tenantId) => cm1Product(tenantId, {
+    id: `${tenantId}-many-colours`, title: "Many Colours", slug: CVG1_MANY_SLUG, imageLink: IMG("colour-1"),
+    additionalImageLinks: Array.from({ length: 47 }, (_, i) => IMG(`colour-${i + 2}`)),
+    variants: [{ id: "colour", name: "Colour", options: Array.from({ length: 48 }, (_, i) => ({ value: `Colour ${i + 1}`, imageLink: IMG(`colour-${i + 1}`) })) }],
+});
+const CVG1_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.catalog, CVG1.breaks, {
+        locale: "en-US", header: { navHeight: "h-24", navHeightScrolled: "h-24" },
+        topBar: { show: true, content: "CVG1 line one<br>CVG1 line two<br>CVG1 line three" },
+    }),
+    ...localeCopy(CM1_ITEMS, CM1.catalog, CVG1.wrap, {
+        locale: "en-US", theme: { shape: "editorial" }, header: { navHeight: "h-12", navHeightScrolled: "h-12" },
+        // About 200 characters of 12px text (≈ 900-1050px): more than the 768px of an 800px window, less than the 1280px
+        // of the Top Bar's max-w-7xl at 1600px.
+        topBar: { show: true, content: "CVG1 announcement: free samples of every floor in the catalogue, delivery in three working days, a quote by phone, WhatsApp or e-mail, and a visit to the showroom on any working day of the week" },
+    }),
+    cvg1ManyColours(CVG1.breaks.id),
+    cvg1ManyColours(CVG1.wrap.id),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -744,6 +777,8 @@ export const ITEMS = [
     ...CT1_ITEMS,
     // bulk-purge-footer-1: the footer-colour tenants (above).
     ...BPF1_ITEMS,
+    // cat-variant-gallery-1: the content-dependent header tenants (above).
+    ...CVG1_ITEMS,
 ];
 
 /**

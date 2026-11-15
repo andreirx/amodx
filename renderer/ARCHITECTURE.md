@@ -447,6 +447,29 @@ facet headings, `catalog.facetProducer` / `facetVariantDefault`, locale-1b; the 
 the place of its first entry, its values in stored order joined by ", ". A product with distinct keys renders as
 before.
 
+**Product page gallery on a catalog site (slice `cat-variant-gallery-1`).** `ProductImageGallery` (client) takes three
+optional props, passed only by the catalog branch of `ProductPageView` (`catalogGalleryProps`): `pinnedTop` (a CSS
+length; from `md` up the gallery is `sticky self-start`, so it stays in view under the site header while the info
+column scrolls), and the first option group's radio name and options (`firstOptionGroup`, the group
+`CatalogVariantPresenter` renders). The sticky `top` has two stages. (1) Server HTML, before hydration and without
+JavaScript: `pinnedTop` = `pinnedGalleryTop(config)`, derived from the configuration that sizes the sticky header —
+`calc(<rem>rem + <px>px)` = Top Bar 2rem (when `topBar.show`, ONE line) + the taller of `header.navHeight` /
+`header.navHeightScrolled` (`h-<n>` = n × 0.25rem; an unreadable value counts as `h-36`) + a 1rem gap, plus the Navbar's
+1px border and the editorial 3px top border (the Commerce Bar is never in a catalog header, CM-D11). (2) After
+hydration: the gallery measures the real header (`SITE_HEADER_SELECTOR` = the layout's `sticky top-0 z-50` wrapper,
+`getBoundingClientRect`) and follows it with a `ResizeObserver`: `top` = its height + 1rem. Stage 2 covers what no
+configuration can know — a Top Bar with line breaks or text that wraps at the window's width, the visitor's font size,
+the Navbar's current state. When an option has an `imageLink`, the variant tiles are the only picker: the whole-gallery
+thumbnails are not shown, the preview starts on the product `imageLink`, and checking a tile (the radio's `change`
+event, read as `InterestToggle` reads it) shows that option's pictures — thumbnails, arrows and counter only when the
+option has more than one. An option without a picture leaves the preview as it is. Without those props (commerce) the
+gallery's markup is the one before the slice (unit row `[cvg1-server]`, byte-identical to the 27fa7ca capture) and
+nothing is measured. Tests: `test/unit/cat-variant-gallery-1-client.test.ts` (picker; the measurement mechanism),
+`…-server-render.test.ts`, `…-header-clearance.test.ts` (stage 1 for every admin header choice, measured from the real
+layout and Navbar; the selector bound to the real header), `test/interest-e2e/cvg1-pinned.spec.mjs` (stage 2 in
+Chromium: a three-line Top Bar, and an announcement that wraps at 800px and not at 1600px; fixtures `CVG1`); serving set
+`test/serving-contract/locale-1/variant-gallery-1/`.
+
 **Hidden products (slice `cat-image-gate-1`).** A product page whose product is not `active` takes the missing-product
 path (the not-found handoff) on every site; the dynamic twin's `?preview=` flag (not authenticated) is an exception
 only on a NON-catalog site (unchanged). On a catalog site a glam import writes products `draft` until their image

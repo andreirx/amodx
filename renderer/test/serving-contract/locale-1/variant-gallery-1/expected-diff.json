@@ -1,0 +1,399 @@
+{
+  "slice": "cat-variant-gallery-1",
+  "rule": "docs/slices/cat-variant-gallery-1.md § 6: per en-US subject URL, the exact byte differences against the immutable start-commit capture before/ (27fa7ca). Only the catalog product pages list entries, all row CVG1-GALLERY: the ProductImageGallery props pinnedTop (every page), optionGroupName and options (a product with an option group); the gallery subtree and the image preloads where the option pictures make the variant tiles the picker; textRemoved = the visible-text items that change removes (position = index in the before extraction).",
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [],
+      "/d4-page": [],
+      "/published": []
+    },
+    "wk": {
+      "/index.php": []
+    },
+    "iso-a": {
+      "/": [],
+      "/about": [],
+      "/listed-post": []
+    },
+    "iso-b": {
+      "/about": []
+    },
+    "commerce": {
+      "/": [],
+      "/about": [],
+      "/account": [],
+      "/cart": [],
+      "/category/rugs": [],
+      "/checkout": [],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+      "/checkout/confirmare": [],
+      "/checkout/confirmare?id=cm1-order-bank&email=buyer%40serving-contract.test": [],
+      "/checkout/confirmare?id=cm1-order-cod&email=buyer%40serving-contract.test": [],
+      "/llms.txt": [],
+      "/openai-feed": [],
+      "/product/rug-care-guide": [],
+      "/product/sale-rug": [],
+      "/product/sold-out-rug": [],
+      "/product/variant-rug": [],
+      "/products/c0000000-0000-4000-8000-000000000001": [],
+      "/robots.txt": [],
+      "/search?q=rug": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/sitemap.xml": [],
+      "/stale-showcase": []
+    },
+    "content": {
+      "/": [],
+      "/about": [],
+      "/cart": [],
+      "/category/mats": [],
+      "/checkout": [],
+      "/llms.txt": [],
+      "/openai-feed": [],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/robots.txt": [],
+      "/search?q=rug": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/sitemap.xml": []
+    },
+    "catalog": {
+      "/": [],
+      "/about": [],
+      "/cart": [],
+      "/category/floors": [],
+      "/checkout": [],
+      "/llms.txt": [],
+      "/openai-feed": [],
+      "/product/ash-plank": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/legacy-plank": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        },
+        {
+          "category": 3,
+          "row": "CVG1-GALLERY",
+          "before": "<div class=\"space-y-3\"><div class=\"aspect-square bg-muted rounded-lg overflow-hidden relative group\"><img src=\"https://img.serving-contract.test/legacy.jpg\" alt=\"Legacy Plank\" class=\"w-full h-full object-cover transition-opacity duration-200\"/></div></div>",
+          "after": "<div class=\"space-y-3 md:sticky md:self-start\" style=\"top:calc(5rem + 1px)\"><div class=\"aspect-square bg-muted rounded-lg overflow-hidden relative group\"><img src=\"https://img.serving-contract.test/legacy.jpg\" alt=\"Legacy Plank\" class=\"w-full h-full object-cover transition-opacity duration-200\"/></div></div>"
+        }
+      ],
+      "/product/oak-plank": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "optionGroupName",
+          "value": "catalog-option-format"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "options",
+          "value": [
+            {
+              "value": "120x20",
+              "imageLink": "https://img.serving-contract.test/oak-1.jpg"
+            },
+            {
+              "value": "140x20",
+              "imageLink": "https://img.serving-contract.test/oak-2.jpg"
+            },
+            {
+              "value": "180x20",
+              "imageLink": "https://img.serving-contract.test/oak-3.jpg"
+            }
+          ]
+        },
+        {
+          "category": 3,
+          "row": "CVG1-GALLERY",
+          "before": "<div class=\"space-y-3\"><div class=\"aspect-square bg-muted rounded-lg overflow-hidden relative group\"><img src=\"https://img.serving-contract.test/oak-1.jpg\" alt=\"Oak Plank\" class=\"w-full h-full object-cover transition-opacity duration-200\"/><button class=\"absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 border border-border shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity\"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15 19l-7-7 7-7\"></path></svg></button><button class=\"absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 border border-border shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity\"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 5l7 7-7 7\"></path></svg></button><span class=\"absolute bottom-2 right-2 bg-background/80 text-foreground text-xs px-2 py-0.5 rounded-full border border-border\">1<!-- --> / <!-- -->3</span></div><div class=\"grid grid-cols-5 gap-2\"><button class=\"aspect-square bg-muted rounded overflow-hidden border-2 transition-colors border-primary\"><img src=\"https://img.serving-contract.test/oak-1.jpg\" alt=\"\" class=\"w-full h-full object-cover\"/></button><button class=\"aspect-square bg-muted rounded overflow-hidden border-2 transition-colors border-transparent hover:border-primary/30\"><img src=\"https://img.serving-contract.test/oak-2.jpg\" alt=\"\" class=\"w-full h-full object-cover\"/></button><button class=\"aspect-square bg-muted rounded overflow-hidden border-2 transition-colors border-transparent hover:border-primary/30\"><img src=\"https://img.serving-contract.test/oak-3.jpg\" alt=\"\" class=\"w-full h-full object-cover\"/></button></div></div>",
+          "after": "<div class=\"space-y-3 md:sticky md:self-start\" style=\"top:calc(5rem + 1px)\"><div class=\"aspect-square bg-muted rounded-lg overflow-hidden relative group\"><img src=\"https://img.serving-contract.test/oak-1.jpg\" alt=\"Oak Plank\" class=\"w-full h-full object-cover transition-opacity duration-200\"/></div></div>",
+          "textRemoved": [
+            {
+              "kind": "text",
+              "text": "1 / 3",
+              "position": 20
+            }
+          ]
+        },
+        {
+          "category": 3,
+          "row": "CVG1-GALLERY",
+          "before": "<link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-1.jpg\"/><link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-2.jpg\"/><link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-3.jpg\"/>",
+          "after": "<link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-1.jpg\"/>"
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000001": [],
+      "/products/e0000000-0000-4000-8000-000000000002": [],
+      "/products/e0000000-0000-4000-8000-000000000003": [],
+      "/robots.txt": [],
+      "/search?q=plank": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/sitemap.xml": [],
+      "/stale-showcase": []
+    },
+    "cip1b-catalog": {
+      "/category/cip1b-boen": [],
+      "/category/cip1b-itc": [],
+      "/category/cip1b-u": [],
+      "/category/cip1b-x": [],
+      "/product/covor-arc": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "optionGroupName",
+          "value": "catalog-option-culoare"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "options",
+          "value": [
+            {
+              "value": "10"
+            },
+            {
+              "value": "34"
+            }
+          ]
+        }
+      ],
+      "/product/covor-shell": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "optionGroupName",
+          "value": "catalog-option-culoare"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "options",
+          "value": [
+            {
+              "value": "34"
+            },
+            {
+              "value": "50"
+            }
+          ]
+        }
+      ],
+      "/product/frasin-mixt": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "optionGroupName",
+          "value": "catalog-option-format"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "options",
+          "value": [
+            {
+              "value": "14x138x2200 mm"
+            }
+          ]
+        }
+      ],
+      "/product/lemn-x-doi": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/lemn-x-trei": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/lemn-x-unu": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/nuc-fara-fisa": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/placa-nod": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/placa-nod-doi": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        }
+      ],
+      "/product/stejar-mixt": [
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "pinnedTop",
+          "value": "calc(5rem + 1px)"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "optionGroupName",
+          "value": "catalog-option-format"
+        },
+        {
+          "category": 2,
+          "row": "CVG1-GALLERY",
+          "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+          "prop": "options",
+          "value": [
+            {
+              "value": "14x138x2200 mm"
+            },
+            {
+              "value": "13,2x181x2200 mm"
+            }
+          ]
+        }
+      ],
+      "/shop": []
+    }
+  },
+  "cq1RoNone": {
+    "/product/oak-plank": [
+      {
+        "category": 2,
+        "row": "CVG1-GALLERY",
+        "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+        "prop": "pinnedTop",
+        "value": "calc(5rem + 1px)"
+      },
+      {
+        "category": 2,
+        "row": "CVG1-GALLERY",
+        "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+        "prop": "optionGroupName",
+        "value": "catalog-option-format"
+      },
+      {
+        "category": 2,
+        "row": "CVG1-GALLERY",
+        "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+        "prop": "options",
+        "value": [
+          {
+            "value": "120x20",
+            "imageLink": "https://img.serving-contract.test/oak-1.jpg"
+          },
+          {
+            "value": "140x20",
+            "imageLink": "https://img.serving-contract.test/oak-2.jpg"
+          },
+          {
+            "value": "180x20",
+            "imageLink": "https://img.serving-contract.test/oak-3.jpg"
+          }
+        ]
+      },
+      {
+        "category": 3,
+        "row": "CVG1-GALLERY",
+        "before": "<div class=\"space-y-3\"><div class=\"aspect-square bg-muted rounded-lg overflow-hidden relative group\"><img src=\"https://img.serving-contract.test/oak-1.jpg\" alt=\"Oak Plank\" class=\"w-full h-full object-cover transition-opacity duration-200\"/><button class=\"absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 border border-border shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity\"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15 19l-7-7 7-7\"></path></svg></button><button class=\"absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 border border-border shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity\"><svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 5l7 7-7 7\"></path></svg></button><span class=\"absolute bottom-2 right-2 bg-background/80 text-foreground text-xs px-2 py-0.5 rounded-full border border-border\">1<!-- --> / <!-- -->3</span></div><div class=\"grid grid-cols-5 gap-2\"><button class=\"aspect-square bg-muted rounded overflow-hidden border-2 transition-colors border-primary\"><img src=\"https://img.serving-contract.test/oak-1.jpg\" alt=\"\" class=\"w-full h-full object-cover\"/></button><button class=\"aspect-square bg-muted rounded overflow-hidden border-2 transition-colors border-transparent hover:border-primary/30\"><img src=\"https://img.serving-contract.test/oak-2.jpg\" alt=\"\" class=\"w-full h-full object-cover\"/></button><button class=\"aspect-square bg-muted rounded overflow-hidden border-2 transition-colors border-transparent hover:border-primary/30\"><img src=\"https://img.serving-contract.test/oak-3.jpg\" alt=\"\" class=\"w-full h-full object-cover\"/></button></div></div>",
+        "after": "<div class=\"space-y-3 md:sticky md:self-start\" style=\"top:calc(5rem + 1px)\"><div class=\"aspect-square bg-muted rounded-lg overflow-hidden relative group\"><img src=\"https://img.serving-contract.test/oak-1.jpg\" alt=\"Oak Plank\" class=\"w-full h-full object-cover transition-opacity duration-200\"/></div></div>"
+      },
+      {
+        "category": 3,
+        "row": "CVG1-GALLERY",
+        "before": "<link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-1.jpg\"/><link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-2.jpg\"/><link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-3.jpg\"/>",
+        "after": "<link rel=\"preload\" as=\"image\" href=\"https://img.serving-contract.test/oak-1.jpg\"/>"
+      }
+    ],
+    "/product/ash-plank": [
+      {
+        "category": 2,
+        "row": "CVG1-GALLERY",
+        "element": "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery",
+        "prop": "pinnedTop",
+        "value": "calc(5rem + 1px)"
+      }
+    ]
+  }
+}
