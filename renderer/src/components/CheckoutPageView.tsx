@@ -377,7 +377,8 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
             sessionStorage.setItem("amodx_last_order", JSON.stringify(order));
 
             clearCart();
-            router.push(getUrl(`${confirmPrefix}?id=${order.id}&email=${encodeURIComponent(form.customerEmail)}`));
+            // ORDER-CHECKOUT-1: the order handler answers { orderId, orderNumber, couponDiscount } (orders/create.ts).
+            router.push(getUrl(`${confirmPrefix}?id=${order.orderId}&email=${encodeURIComponent(form.customerEmail)}`));
         } catch (err: any) {
             setError(err.message || strings.errorTryAgain);
         } finally {

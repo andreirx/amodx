@@ -104,7 +104,7 @@ describe("fnd-2 revise — format validation runs on the normalized form (PD-001
         items: [{ productId: "00000000-0000-4000-8000-000000000000", quantity: 1 }],
         customerEmail: email,
         customerName: "Test",
-        paymentMethod: "cod" as const,
+        paymentMethod: "cash_on_delivery" as const,
     });
 
     it("create.ts: a fullwidth-＠ address is REJECTED validated raw (the old order)", () => {

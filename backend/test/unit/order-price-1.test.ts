@@ -61,7 +61,7 @@ const commands = () => ddbSend.mock.calls.map((c) => c[0]);
 const transaction = () => commands().find((c) => c instanceof TransactWriteCommand) as TransactWriteCommand | undefined;
 const storedOrder = () => transaction()!.input.TransactItems![0].Put!.Item!;
 
-const body = (items: unknown[]) => ({ items, customerEmail: "buyer@example.com", customerName: "Buyer", paymentMethod: "cod" });
+const body = (items: unknown[]) => ({ items, customerEmail: "buyer@example.com", customerName: "Buyer", paymentMethod: "cash_on_delivery" });
 const orderEvent = (items: unknown[]) => ({
     headers: { "x-tenant-id": "t1", origin: "https://t1.test" },
     requestContext: { http: { sourceIp: "127.0.0.1" } },

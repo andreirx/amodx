@@ -134,7 +134,7 @@ describe("rounding to cents", () => {
 describe("OrderInputSchema — the personalization `id` is optional (§ 1 item 3)", () => {
     const order = (personalizations: unknown) => ({
         items: [{ productId: "c0000000-0000-4000-8000-000000000002", quantity: 1, personalizations }],
-        customerEmail: "a@b.test", customerName: "A", paymentMethod: "cod",
+        customerEmail: "a@b.test", customerName: "A", paymentMethod: "cash_on_delivery",
     });
 
     it("the checkout's payload before this slice ({label, value, addedCost}) is accepted; addedCost is stripped", () => {

@@ -132,7 +132,7 @@ if (CAPTURE) {
             expect(fields.map((f) => f.outerHTML)).toEqual([FREE_TEXT, FREE_TEXT]);
             // The typed texts are what the form submits (POST /public/orders body): shipping `county`, billing `billingCounty`.
             const posted: any[] = [];
-            vi.stubGlobal("fetch", async (_url: string, init: any) => { posted.push(JSON.parse(init.body)); return new Response(JSON.stringify({ id: "o1" }), { status: 200 }); });
+            vi.stubGlobal("fetch", async (_url: string, init: any) => { posted.push(JSON.parse(init.body)); return new Response(JSON.stringify({ orderId: "o1" }), { status: 200 }); });
             mountState("no-list");
             act(() => { sameAsShippingBox().click(); });
             const [shipping, billing] = countyFieldsIn(host) as HTMLInputElement[];

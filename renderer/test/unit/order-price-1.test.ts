@@ -167,7 +167,7 @@ describe("checkout — one line function; the request the server accepts", () =>
 
     it("summary lines and subtotal use the shared rule; an old item keeps its arithmetic; the server schema accepts both items", async () => {
         localStorage.setItem(CART_KEY, JSON.stringify([NEW_WITH_PERS, OLD_ITEM]));
-        const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ id: "o1", orderNumber: "PPB-0001" }) }));
+        const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ orderId: "o1", orderNumber: "PPB-0001" }) }));
         vi.stubGlobal("fetch", fetchMock);
         mountCheckout();
         const text = host.textContent!;

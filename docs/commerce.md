@@ -234,7 +234,10 @@ x-tenant-id: <tenantId>
 - On success: stores order in `sessionStorage.amodx_last_order` for confirmation page
 
 ### Post-Checkout
-- Redirects to confirmation page (`/checkout-confirm/{orderId}`)
+- Redirects to the confirmation page: `<checkout><checkoutConfirmation>?id=<orderId>&email=<email>` (default
+  `/checkout/confirmation?id=…`), with `orderId` from the order answer `{ orderId, orderNumber, couponDiscount }`
+  (`order-checkout-1`). The page reads the order with `getOrderForCustomer(tenant, id, email)`; no match shows the
+  generic thank-you panel.
 - `ConfirmationPageView`: Order details, bank transfer instructions (if applicable), order tracking link
 
 ## Order Creation (Backend)

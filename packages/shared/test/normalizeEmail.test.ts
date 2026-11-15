@@ -216,7 +216,7 @@ describe("ordering rule -- email format validation must run on the NORMALIZED fo
         items: [{ productId: "00000000-0000-4000-8000-000000000000", quantity: 1 }],
         customerEmail: email,
         customerName: "Test",
-        paymentMethod: "cod" as const,
+        paymentMethod: "cash_on_delivery" as const,
     });
 
     it("rejects a fullwidth-@ address in its RAW form", () => {

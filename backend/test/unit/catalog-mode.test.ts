@@ -417,7 +417,7 @@ describe("CM1 — order guard (CM-D6 = A)", () => {
         items: [{ productId: "3f0e4b3c-5a8e-4a43-9d2e-1c2b3a4d5e6f", quantity: 1 }],
         customerEmail: "buyer@example.com",
         customerName: "Buyer",
-        paymentMethod: "cod",
+        paymentMethod: "cash_on_delivery",
     };
     const orderEvent = () => ({ headers: { "x-tenant-id": "t1", origin: "https://t1.test" }, requestContext: { http: { sourceIp: "127.0.0.1" } }, body: JSON.stringify(order) }) as any;
 

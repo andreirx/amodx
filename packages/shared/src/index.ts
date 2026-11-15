@@ -1783,7 +1783,8 @@ export const OrderInputSchema = z.object({
     customerBirthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     shippingAddress: ShippingAddressSchema.optional(),
     billingDetails: BillingDetailsSchema.optional(),
-    paymentMethod: z.enum(["cod", "bank_transfer"]),
+    // ORDER-CHECKOUT-1: the values the checkout sends and the tenant setting, the stored order and the admin use.
+    paymentMethod: z.enum(["cash_on_delivery", "bank_transfer"]),
     requestedDeliveryDate: z.string().optional(),
     couponCode: z.string().max(50).optional(),
     recaptchaToken: z.string().min(1).optional(), // Optional for backwards compat, enforced in handler when enabled
