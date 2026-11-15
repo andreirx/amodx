@@ -47,7 +47,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, URL_PREFIX_DEFAULTS, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -177,7 +177,7 @@ function mapTenant(item: any): TenantConfig {
         legalLinks: item.legalLinks || undefined,
         theme: theme || {},
         integrations: item.integrations || {},
-        urlPrefixes: item.urlPrefixes || URL_PREFIX_DEFAULTS,
+        urlPrefixes: urlPrefixesOf(item.urlPrefixes),   // CDL-2 (§ 7.1): per key, the saved path, else the English default
         quickContact: item.quickContact || undefined,
         // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the visitor contact channels — the quote dialog and the bar fallbacks.
         contactChannels: item.contactChannels || undefined,

@@ -14,13 +14,35 @@ import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
  */
 // CAT-THEME-1 (review-0 R-CT-3): `seed.tab` starts the page's theme tab (its only `useState("light")`, `Settings.tsx`
 // `activeTab`) as "dark", so a connected render shows what the dark tab's controls read. `null` leaves it untouched.
-const seed = vi.hoisted(() => ({ config: null as null | Record<string, unknown>, tab: null as null | "dark" }));
+// CDL-2 (review-0 CDL2-R3): `seed.capture`, when set, records what a headless save test needs and changes no output —
+// every `setConfig` argument (the seeded state's setter; react-dom/server ignores a call after the render, so the test
+// applies the recorded updater itself, as React would), and the props of every `Input` and `Button` rendered (the
+// wrappers below render the real component with the same props). `null` = no recording.
+type Capture = { configUpdates: unknown[]; inputs: Record<string, any>[]; buttons: Record<string, any>[] };
+const seed = vi.hoisted(() => ({ config: null as null | Record<string, unknown>, tab: null as null | "dark", capture: null as null | Capture }));
 vi.mock("react", async (importOriginal) => {
     const React = await importOriginal<typeof import("react")>();
     const isEmptyObject = (v: unknown) => !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
-    const useState = ((init: unknown) => React.useState(seed.config && isEmptyObject(init) ? seed.config : seed.tab && init === "light" ? seed.tab : init)) as typeof React.useState;
+    const useState = ((init: unknown) => {
+        const seeded = !!seed.config && isEmptyObject(init);
+        const [value, set] = React.useState(seeded ? seed.config : seed.tab && init === "light" ? seed.tab : init);
+        const capture = seed.capture;
+        return seeded && capture ? [value, (u: unknown) => { capture.configUpdates.push(u); set(u as any); }] : [value, set];
+    }) as typeof React.useState;
     return { ...React, default: { ...React, useState }, useState };
 });
+vi.mock("@/components/ui/input", async (importOriginal) => {
+    const real = await importOriginal<typeof import("@/components/ui/input")>();
+    const { createElement: h } = await import("react");
+    return { ...real, Input: (props: any) => { seed.capture?.inputs.push(props); return h(real.Input, props); } };
+});
+vi.mock("@/components/ui/button", async (importOriginal) => {
+    const real = await importOriginal<typeof import("@/components/ui/button")>();
+    const { createElement: h } = await import("react");
+    return { ...real, Button: (props: any) => { seed.capture?.buttons.push(props); return h(real.Button, props); } };
+});
+const api = vi.hoisted(() => ({ apiRequest: vi.fn(async (..._args: unknown[]) => ({})) }));
+vi.mock("@/lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api")>()), apiRequest: api.apiRequest }));
 vi.mock("@/context/TenantContext", () => ({
     useTenant: () => ({ tenants: [], currentTenant: { id: "t", name: "T", domain: "t.test" }, selectTenant: () => {}, refreshTenants: async () => {} }),
 }));
@@ -150,6 +172,26 @@ function withoutCatTheme(html: string, config: Record<string, unknown>): string 
 }
 
 /**
+ * CDL-2 (docs/slices/catalog-data-labels-1.md § 14 item 2; record docs/slices/cdl-2.md) — ONE listed insertion: the
+ * order-confirmation field (`urlPrefixes.checkoutConfirmation`), on a non-catalog site, directly after the Checkout field
+ * (same condition as Cart and Checkout). The captures are NOT re-taken. The comparison removes EXACTLY this markup
+ * (label, input class, placeholder = the default, value = the tenant's stored segment); it must occur exactly once and
+ * directly after the Checkout field's closing tag, so every other byte of the page stays pinned. Plain elements, no React
+ * `useId`: the rest of the page is unchanged.
+ */
+const INPUT_CLASS = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm";
+const LABEL_CLASS = "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
+const confirmationField = (value: string) =>
+    `<div class="space-y-2"><label class="${LABEL_CLASS}">Confirmation (after Checkout)</label><input class="${INPUT_CLASS}" placeholder="/confirmation" value="${value}"/></div>`;
+function withoutCdl2(html: string, config: { urlPrefixes: Record<string, string> }): string {
+    const field = confirmationField(config.urlPrefixes.checkoutConfirmation);
+    const checkoutEnd = `placeholder="/checkout" value="${config.urlPrefixes.checkout}"/></div>`;
+    expect(html.split(field).length - 1, "the confirmation field occurs once").toBe(1);
+    expect(html.split(checkoutEnd + field).length - 1, "the confirmation field directly follows the Checkout field").toBe(1);
+    return html.replace(field, "");
+}
+
+/**
  * ADMIN-ENGLISH-2 (packet rule 3; record docs/slices/admin-english-2.md § 3) — the example placeholders became English.
  * The captures are NOT re-taken: they keep the Romanian examples. The comparison replaces, in the CAPTURE text, exactly
  * the old example texts by the new ones; each must occur exactly `count` times in each capture (a replacement that
@@ -175,26 +217,37 @@ function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES):
     return out;
 }
 
-describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups, with the ADMIN-ENGLISH-2 example texts", () => {
+describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups and the CDL-2 field, with the ADMIN-ENGLISH-2 example texts", () => {
     it("content site", () => {
-        expect(withoutCatTheme(renderSettings(CONTENT), CONTENT)).toBe(capture("content"));
+        expect(withoutCatTheme(withoutCdl2(renderSettings(CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
     });
     it("commerce site", () => {
-        expect(withoutCatTheme(renderSettings(COMMERCE), COMMERCE)).toBe(capture("commerce"));
+        expect(withoutCatTheme(withoutCdl2(renderSettings(COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
+    });
+    it("control (CDL-2): without the listed removal the comparison fails; a moved, doubled or changed field is refused", () => {
+        for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
+            const html = renderSettings(config);
+            expect(withoutCatTheme(html, config), name).not.toBe(capture(name));
+            const field = confirmationField(config.urlPrefixes.checkoutConfirmation);
+            const moved = html.replace(field, "").replace(">URL Prefixes<", `>URL Prefixes<${field}`);
+            expect(() => withoutCdl2(moved, config), `${name} moved`).toThrow();
+            expect(() => withoutCdl2(html.replace(field, field + field), config), `${name} doubled`).toThrow();
+            expect(() => withoutCdl2(html.replace(field, field.replace('placeholder="/confirmation"', 'placeholder="/confirmations"')), config), `${name} changed`).toThrow();
+        }
     });
     it("control: with any one ADMIN-ENGLISH-2 replacement removed, the comparison fails", () => {
         const pages = [["content", renderSettings(CONTENT), CONTENT], ["commerce", renderSettings(COMMERCE), COMMERCE]] as const;
         for (const [name, html, config] of pages) {
             for (let i = 0; i < ENGLISH_EXAMPLES.length; i++) {
                 const without = ENGLISH_EXAMPLES.filter((_, j) => j !== i);
-                expect(withoutCatTheme(html, config), `${name} without ${ENGLISH_EXAMPLES[i][0]}`).not.toBe(capture(name, without));
+                expect(withoutCatTheme(withoutCdl2(html, config), config), `${name} without ${ENGLISH_EXAMPLES[i][0]}`).not.toBe(capture(name, without));
             }
         }
     });
     it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card, one byte next to a removed group", async () => {
         const content = renderSettings(CONTENT), commerce = renderSettings(COMMERCE);
-        expect(withoutCatTheme(content, CONTENT)).toBe(capture("content"));            // positive control
-        expect(withoutCatTheme(commerce, COMMERCE)).toBe(capture("commerce"));
+        expect(withoutCatTheme(withoutCdl2(content, CONTENT), CONTENT)).toBe(capture("content"));            // positive control
+        expect(withoutCatTheme(withoutCdl2(commerce, COMMERCE), COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
         const footer = THEME_GROUPS(CONTENT)[3];
         const footerColours = THEME_GROUPS(COMMERCE)[4];
@@ -205,7 +258,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
             [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE],
             [once(content, footer, `${footer} `), "content", CONTENT],
         ];
-        for (const [html, name, config] of mutations) expect(withoutCatTheme(html, config)).not.toBe(capture(name));
+        for (const [html, name, config] of mutations) expect(withoutCatTheme(withoutCdl2(html, config as typeof CONTENT), config)).not.toBe(capture(name));
     });
 });
 
@@ -437,15 +490,66 @@ describe("Settings — the cards of each site kind (§ 4.5)", () => {
             { label: "Interest list", value: "/my-list" },
         ]);
     });
-    it("URL Prefixes on a non-catalog site: the seven fields, unchanged; no interest list", () => {
-        expect(prefixFields(renderSettings(CONTENT)).map((f) => f.label)).toEqual(["Product", "Category", "Cart", "Checkout", "Shop", "Account", "Search"]);
+    it("URL Prefixes on a non-catalog site: the eight fields — CDL-2 adds Confirmation directly after Checkout; no interest list", () => {
+        expect(prefixFields(renderSettings(CONTENT)).map((f) => f.label)).toEqual(["Product", "Category", "Cart", "Checkout", "Confirmation (after Checkout)", "Shop", "Account", "Search"]);
+    });
+    it("CDL-2 (§ 14 item 2): the Confirmation field shows urlPrefixes.checkoutConfirmation; a catalog has no such field", () => {
+        const stored = { ...COMMERCE, urlPrefixes: { ...COMMERCE.urlPrefixes, checkoutConfirmation: "/multumim" } };
+        expect(prefixFields(renderSettings(stored)).find((f) => f.label === "Confirmation (after Checkout)")).toEqual({ label: "Confirmation (after Checkout)", value: "/multumim" });
+        expect(prefixFields(renderSettings(CATALOG)).map((f) => f.label)).not.toContain("Confirmation (after Checkout)");
     });
     // ADMIN-ENGLISH-2 (record § 2): a URL-prefix placeholder shows the real default of its prefix, never another example.
+    // CDL2-R3 (review-0): the save path, run headless. The real `onChange` of the Confirmation field (`updateUrlPrefix`)
+    // gives one `setConfig` updater; applied to the seeded state it is the next state; the page rendered with that
+    // state gives the real Save button, whose `save()` sends `withContactForSave(config)` to `PUT /settings`.
+    it("CDL-2 (§ 14 item 2): typing /multumim in the Confirmation field and pressing Save sends urlPrefixes.checkoutConfirmation = \"/multumim\" in the PUT /settings body; every other prefix is kept", async () => {
+        const capture = (): Capture => (seed.capture = { configUpdates: [], inputs: [], buttons: [] });
+        const win = globalThis.window as any;
+        win.location = { reload: vi.fn() };
+        api.apiRequest.mockClear();
+        try {
+            const first = capture();
+            renderSettings(COMMERCE);
+            const fields = first.inputs.filter((p) => p.placeholder === "/confirmation");
+            expect(fields).toHaveLength(1);
+            expect(fields[0].value).toBe(URL_PREFIX_DEFAULTS.checkoutConfirmation);
+            fields[0].onChange({ target: { value: "/multumim" } });
+            expect(first.configUpdates).toHaveLength(1);
+            const update = first.configUpdates[0];
+            const next = typeof update === "function" ? update(COMMERCE) : update;
+            expect(next.urlPrefixes).toEqual({ ...COMMERCE.urlPrefixes, checkoutConfirmation: "/multumim" });
+
+            const second = capture();
+            renderSettings(next);
+            const textOf = (c: unknown): string => (typeof c === "string" ? c : Array.isArray(c) ? c.map(textOf).join("") : "");
+            const saves = second.buttons.filter((b) => textOf(b.children).trim() === "Save Changes");
+            expect(saves).toHaveLength(1);
+            await saves[0].onClick();
+            expect(api.apiRequest).toHaveBeenCalledTimes(1);
+            const [path, options] = api.apiRequest.mock.calls[0] as [string, RequestInit];
+            expect(path).toBe("/settings");
+            expect(options.method).toBe("PUT");
+            const body = JSON.parse(String(options.body));
+            expect(body.urlPrefixes).toEqual({ ...COMMERCE.urlPrefixes, checkoutConfirmation: "/multumim" });
+            expect(body.urlPrefixes.checkoutConfirmation).toBe("/multumim");
+            expect(win.location.reload).toHaveBeenCalledTimes(1);
+            // Control: the Checkout field's onChange writes checkout, not the confirmation key.
+            const third = capture();
+            renderSettings(COMMERCE);
+            third.inputs.find((p) => p.placeholder === "/checkout")!.onChange({ target: { value: "/comanda" } });
+            const u = third.configUpdates[0];
+            expect((typeof u === "function" ? u(COMMERCE) : u).urlPrefixes).toEqual({ ...COMMERCE.urlPrefixes, checkout: "/comanda" });
+        } finally {
+            seed.capture = null;
+            delete win.location;
+        }
+    });
     it("URL Prefixes: each placeholder is URL_PREFIX_DEFAULTS of its field, on a non-catalog site and on a catalog", () => {
         const KEY: Record<string, keyof typeof URL_PREFIX_DEFAULTS> = {
-            Product: "product", Category: "category", Cart: "cart", Checkout: "checkout", Shop: "shop", Account: "account", Search: "search", "Interest list": "interest",
+            Product: "product", Category: "category", Cart: "cart", Checkout: "checkout", "Confirmation (after Checkout)": "checkoutConfirmation",
+            Shop: "shop", Account: "account", Search: "search", "Interest list": "interest",
         };
-        for (const [config, count] of [[CONTENT, 7], [COMMERCE, 7], [CATALOG, 5]] as const) {
+        for (const [config, count] of [[CONTENT, 8], [COMMERCE, 8], [CATALOG, 5]] as const) {
             const html = renderSettings(config);
             const card = html.slice(html.indexOf(">URL Prefixes<"), html.indexOf("Existing links using old prefixes will stop working."));
             const fields = [...card.matchAll(/<label[^>]*>([^<]+)<\/label><input[^>]*placeholder="([^"]*)"/g)].map((m) => [m[1], m[2]]);

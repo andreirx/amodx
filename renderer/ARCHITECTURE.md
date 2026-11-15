@@ -688,6 +688,27 @@ light and dark): `layout.tsx#footerColorStyle` puts `background-color` and the r
 (`isCssColor`) is set — absent → today's bytes (an RSC payload would encode `style: undefined` as `"$undefined"`).
 Rows `bpf1-*`.
 
+## Path settings — slice `cdl-2`
+
+Design `docs/slices/catalog-data-labels-1.md` § 7, § 14; record `docs/slices/cdl-2.md`.
+
+- `mapTenant` (`lib/dynamo.ts`) sets `urlPrefixes = urlPrefixesOf(stored)` (shared): per key the saved path, else the
+  English default. A stored object with one key (what Settings saves on a tenant that stored none) or a cleared `""`
+  field no longer leaves the other keys `undefined`, so product, category, shop, cart and checkout route again
+  (F-CDL-PARTIAL-PREFIXES; row `cdl2-partial-prefixes`). Every reader of `config.urlPrefixes` gets a complete object.
+- The interest list's default address is `/my-list` (`URL_PREFIX_DEFAULTS.interest`). Only the header `InterestWidget`
+  (desktop and mobile copies, `Navbar` prop `interest.listPrefix`) links to it.
+- `SitePage.tsx` `matchCommercePrefix`: the order confirmation is `checkout + checkoutConfirmation` (default
+  `/checkout/confirmation`; was the fixed `/confirmare`); every other segment under `checkout` is a tracking address,
+  so `/checkout/confirmare` now answers as tracking for the order id "confirmare". `CheckoutPageView` gets
+  `confirmPrefix` from the same two keys. Every view in `SitePage.tsx` that reads a prefix falls back to
+  `URL_PREFIX_DEFAULTS` of the same key; the Romanian literals (`/magazin`, `/produs`, `/comanda`, `/cos`) are gone.
+  Their input is `mapTenant`'s complete object, so no fallback is reached and the served bytes did not change
+  (serving contract: no listed difference on any commerce or content page from these lines).
+- The backend slug check (`backend/src/lib/slug-guard.ts`) holds a copy of this route precedence to name the page
+  in its refusal; `test/unit/cdl-2-site-page.test.ts` › "CDL2-R2 overlaps" runs the same rows through `SitePage`.
+- Serving contract: current set `test/serving-contract/locale-1/cdl-2/` (7bd3d51), rows `cdl2-*`.
+
 ## Block Rendering (`RenderBlocks.tsx`)
 
 Merges core block types (paragraph, heading, lists, blockquote, horizontal rule) with the plugin

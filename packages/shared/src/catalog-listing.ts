@@ -1,12 +1,13 @@
 // CAT-IMPORT-PROFILE-1B — the catalog listing rule (design docs/slices/cat-import-profile-1.md § 5.2, ruling
 // CIP1-PREVIEW = A). PURE: no I/O, no clock — `today` is an input.
 //
-// Which products a catalog site lists on its shop or on one category page, in which order, and the public path of
-// that page. Moved here from the renderer (`getCatalogListing` membership/date/sort, `isProductAvailable`, the two
-// path expressions of `SitePage.tsx`) so that the admin's import preview (slice 1c) applies the SAME rule to the
-// dry-run plan that the site applies to the stored products. Users: `renderer/src/lib/dynamo.ts` (`getCatalogListing`,
-// and every other availability check of that file), `renderer/src/components/SitePage.tsx` (the two paths); slice 1c
-// (admin preview). The behaviour is the base commit's, field for field — pinned by the 1b golden
+// Which products a catalog site lists on its shop or on one category page, and in which order. (The public path of
+// that page, `catalogListingPath`, moved to `index.ts` in CDL-2, ruling CDL2-SHARED-DAG: it reads
+// `URL_PREFIX_DEFAULTS`, and this file stays a leaf that imports nothing.) Moved here from the renderer
+// (`getCatalogListing` membership/date/sort, `isProductAvailable`, the two path expressions of `SitePage.tsx`) so
+// that the admin's import preview (slice 1c) applies the SAME rule to the dry-run plan that the site applies to the
+// stored products. Users: `renderer/src/lib/dynamo.ts` (`getCatalogListing`, and every other availability check of
+// that file); slice 1c (admin preview). The behaviour is the base commit's, field for field — pinned by the 1b golden
 // (`test/cat-import-profile-1b-golden.test.ts`).
 
 /** The fields of a product item the listing rule reads. Anything else on the item is passed through untouched. */
@@ -58,17 +59,4 @@ export function catalogListing<P extends CatalogListingItem>(items: readonly P[]
         .filter(member)
         .filter((p) => isProductAvailable(p, today))
         .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-}
-
-/**
- * The public path of a catalog page, without any `basePath` (the caller prepends its own: the renderer its preview
- * base, the admin preview ""). `prefixes` = the tenant's `urlPrefixes`, or `URL_PREFIX_DEFAULTS` when the tenant has
- * none (the caller decides, as `SitePage.tsx` does).
- *   - shop (`categorySlug` undefined): `prefixes.shop`, or "/magazin" when it is empty — the renderer's literal
- *     fallback, kept as it is (it differs from `URL_PREFIX_DEFAULTS.shop`, "/shop"; recorded in the 1b record);
- *   - category: `${prefixes.category}/${categorySlug}`.
- * The path is an input of the URL-budget rule (`selectionFits`), so both callers must pass the same string.
- */
-export function catalogListingPath(prefixes: { shop?: string; category?: string }, categorySlug: string | undefined): string {
-    return categorySlug === undefined ? prefixes.shop || "/magazin" : `${prefixes.category}/${categorySlug}`;
 }

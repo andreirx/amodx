@@ -153,9 +153,19 @@ describe("near the URL budget: the path is an input (§ 5.5)", () => {
     it("(3) the admin path follows the tenant's urlPrefixes (custom /categorie; absent → URL_PREFIX_DEFAULTS)", () => {
         expect(panelOf({ kind: "category", id: "cat-long" }, f, context, report).path).toBe(`/categorie/${slug}`);
         const defaults = siteContextOf({}, context.categories);
-        expect(defaults.prefixes).toBe(URL_PREFIX_DEFAULTS);
+        // CDL-2: the context holds `urlPrefixesOf(stored)` — a new object with every key — not the constant itself.
+        expect(defaults.prefixes).toEqual(URL_PREFIX_DEFAULTS);
         expect(panelOf({ kind: "category", id: "cat-long" }, f, defaults, report).path).toBe(`/category/${slug}`);
-        expect(siteContextOf({ urlPrefixes: custom }, []).prefixes).toBe(custom);
+        expect(siteContextOf({ urlPrefixes: custom }, []).prefixes).toEqual({ ...URL_PREFIX_DEFAULTS, ...custom });
+    });
+
+    it("(3b) CDL-2 (§ 7.1): a partial or blank stored object → the missing or blank keys take their default (the renderer's mapTenant rule)", () => {
+        const partial = siteContextOf({ urlPrefixes: { interest: "/favourites" } as any }, context.categories);
+        expect(panelOf({ kind: "category", id: "cat-long" }, f, partial, report).path).toBe(`/category/${slug}`);
+        expect(panelOf({ kind: "shop" }, f, partial, report).path).toBe("/shop");
+        const blank = siteContextOf({ urlPrefixes: { shop: "", category: "  " } }, context.categories);
+        expect(blank.prefixes.shop).toBe("/shop");
+        expect(blank.prefixes.category).toBe("/category");
     });
 
     it("a click follows the panel's own href: its f selects the value; the clear link selects nothing", () => {

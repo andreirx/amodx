@@ -53,6 +53,14 @@ src/
 │   │                      #   BULK-PURGE-FOOTER-1: purgeStoredPagesOf{RequestTenant,Tenant,Domains}() — whole-tenant
 │   │                      #   S3 purge for bulk handlers, passed to withInvalidation(h, purge) (purge, then marker)
 │   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
+│   ├── slug-guard.ts      # checkSlugCommerceConflict(): refuses a content slug equal to, or under, an address the renderer
+│   │                      #   serves before content (CDL-2, design catalog-data-labels-1 § 14 item 1): cart, checkout, shop,
+│   │                      #   product, category, account, search on every site; interest on a catalog site only
+│   │                      #   (isCatalogMode). One GetCommand (urlPrefixes, catalogMode); prefixes via urlPrefixesOf.
+│   │                      #   The message names the page the renderer shows at the slug (builtInPageAt: a COPY of the
+│   │                      #   renderer's precedence, pinned by the same overlap table in a renderer unit test); else the
+│   │                      #   first reserved address in that precedence. The name says "commerce"; rename proposed
+│   │                      #   (docs/slices/cdl-2.md, F-CDL2-GUARD-NAME). Unit: test/unit/cdl-2-paths.test.ts
 │   └── review-media.ts     # rev-2a staged-media SPINE (no image decode; D-REV-4 SUPERSEDED): declared
 │                           #   type-AND-size STAGE to the private quarantine + PROMOTION gate
 │                           #   (both-approvals → copy the staged ORIGINAL to public, Asset record) +

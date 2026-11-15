@@ -1,0 +1,559 @@
+{
+  "slice": "cdl-2",
+  "rule": "docs/slices/cdl-2.md § 8 (design docs/slices/catalog-data-labels-1.md § 7.2, § 14 item 2): per en-US subject and captured URL, the exact list of byte differences between this tree and the immutable start-commit capture before/ (7bd3d51, served with that commit's fixtures). Row CDL2-INTEREST-PATH, on every page of a catalog-mode subject: the interest list's default address \"/lista-mea\" → \"/my-list\" in the payload (`\"listPrefix\"`, category 3 payload text) and, where the header widget is server-rendered, in its href (category 3 HTML; markup only, no visible text). Row CDL2-CONFIRMATION, on the commerce subject: the CheckoutPageView prop `confirmPrefix` \"/checkout/confirmare\" → \"/checkout/confirmation\" (category 2), and on the three order-confirmation pages — requested at their new address and captured at 7bd3d51 at the old one (`requestedPath`, `preCdl2Address`) — Next's route-segment text in the payload (`\"k\"`, `\"c\"`; category 3 payload text). Every other URL: []. `cq1RoNone`: the CDL2 entries of the roNone pages against quote-1/before/ (29a2282), read by row cq1-quote-channels together with CQ1_LINK and variant-gallery-1's cq1RoNone.",
+  "fixtures": {
+    "fixture-tenant": {
+      "/": [],
+      "/published": [],
+      "/d4-page": []
+    },
+    "wk": {
+      "/index.php": []
+    },
+    "iso-a": {
+      "/": [],
+      "/about": [],
+      "/listed-post": []
+    },
+    "iso-b": {
+      "/about": []
+    },
+    "commerce": {
+      "/": [],
+      "/about": [],
+      "/stale-showcase": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/rugs": [],
+      "/product/sale-rug": [],
+      "/product/variant-rug": [],
+      "/product/sold-out-rug": [],
+      "/product/rug-care-guide": [],
+      "/products/c0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [
+        {
+          "category": 2,
+          "row": "CDL2-CONFIRMATION",
+          "element": "[project]/renderer/src/components/CheckoutPageView.tsx#CheckoutPageView",
+          "prop": "confirmPrefix",
+          "beforeValue": "/checkout/confirmare",
+          "value": "/checkout/confirmation"
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": [],
+      "/account": [],
+      "/checkout/confirmation": [
+        {
+          "category": 3,
+          "row": "CDL2-CONFIRMATION",
+          "flightBefore": "\"k\":\"checkout/confirmare\"",
+          "flightAfter": "\"k\":\"checkout/confirmation\""
+        },
+        {
+          "category": 3,
+          "row": "CDL2-CONFIRMATION",
+          "flightBefore": "\"c\":[\"\",\"checkout\",\"confirmare",
+          "flightAfter": "\"c\":[\"\",\"checkout\",\"confirmation"
+        }
+      ],
+      "/checkout/confirmation?id=cm1-order-bank&email=buyer%40serving-contract.test": [
+        {
+          "category": 3,
+          "row": "CDL2-CONFIRMATION",
+          "flightBefore": "\"k\":\"checkout/confirmare\"",
+          "flightAfter": "\"k\":\"checkout/confirmation\""
+        },
+        {
+          "category": 3,
+          "row": "CDL2-CONFIRMATION",
+          "flightBefore": "\"c\":[\"\",\"checkout\",\"confirmare",
+          "flightAfter": "\"c\":[\"\",\"checkout\",\"confirmation"
+        }
+      ],
+      "/checkout/cm1-order-bank?email=buyer%40serving-contract.test": [],
+      "/checkout/confirmation?id=cm1-order-cod&email=buyer%40serving-contract.test": [
+        {
+          "category": 3,
+          "row": "CDL2-CONFIRMATION",
+          "flightBefore": "\"k\":\"checkout/confirmare\"",
+          "flightAfter": "\"k\":\"checkout/confirmation\""
+        },
+        {
+          "category": 3,
+          "row": "CDL2-CONFIRMATION",
+          "flightBefore": "\"c\":[\"\",\"checkout\",\"confirmare",
+          "flightAfter": "\"c\":[\"\",\"checkout\",\"confirmation"
+        }
+      ],
+      "/checkout/cm1-order-cod?email=buyer%40serving-contract.test": [],
+      "/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test": []
+    },
+    "content": {
+      "/": [],
+      "/about": [],
+      "/shop": [],
+      "/shop?availability=in_stock": [],
+      "/category/mats": [],
+      "/product/plain-rug": [],
+      "/products/d0000000-0000-4000-8000-000000000001": [],
+      "/search?q=rug": [],
+      "/cart": [],
+      "/checkout": [],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "catalog": {
+      "/": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/about": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/stale-showcase": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/shop": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/shop?availability=in_stock": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/category/floors": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/oak-plank": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/ash-plank": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/legacy-plank": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000001": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000002": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/products/e0000000-0000-4000-8000-000000000003": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/search?q=plank": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/cart": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/checkout": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/sitemap.xml": [],
+      "/openai-feed": [],
+      "/robots.txt": [],
+      "/llms.txt": []
+    },
+    "cip1b-catalog": {
+      "/shop": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/category/cip1b-boen": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/category/cip1b-itc": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/category/cip1b-x": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/category/cip1b-u": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/stejar-mixt": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/frasin-mixt": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/nuc-fara-fisa": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/covor-arc": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/covor-shell": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/placa-nod": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/placa-nod-doi": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/lemn-x-unu": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/lemn-x-doi": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ],
+      "/product/lemn-x-trei": [
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "before": "href=\"/lista-mea\"><span class=\"relative\">",
+          "after": "href=\"/my-list\"><span class=\"relative\">"
+        },
+        {
+          "category": 3,
+          "row": "CDL2-INTEREST-PATH",
+          "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+          "flightAfter": "\"listPrefix\":\"/my-list\""
+        }
+      ]
+    }
+  },
+  "cq1RoNone": {
+    "/product/oak-plank": [
+      {
+        "category": 3,
+        "row": "CDL2-INTEREST-PATH",
+        "before": "href=\"/lista-mea\"><span class=\"relative\">",
+        "after": "href=\"/my-list\"><span class=\"relative\">"
+      },
+      {
+        "category": 3,
+        "row": "CDL2-INTEREST-PATH",
+        "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+        "flightAfter": "\"listPrefix\":\"/my-list\""
+      }
+    ],
+    "/product/ash-plank": [
+      {
+        "category": 3,
+        "row": "CDL2-INTEREST-PATH",
+        "before": "href=\"/lista-mea\"><span class=\"relative\">",
+        "after": "href=\"/my-list\"><span class=\"relative\">"
+      },
+      {
+        "category": 3,
+        "row": "CDL2-INTEREST-PATH",
+        "flightBefore": "\"listPrefix\":\"/lista-mea\"",
+        "flightAfter": "\"listPrefix\":\"/my-list\""
+      }
+    ]
+  }
+}

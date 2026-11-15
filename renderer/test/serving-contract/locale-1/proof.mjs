@@ -31,7 +31,7 @@
 //     The check removes each listed difference from the AFTER side and then demands byte equality with BEFORE; a
 //     listed difference that does not occur on that URL also fails. No canonicalisation is added or widened.
 import { fileURLToPath } from "node:url";
-import { fillTemplate, selectPluralText } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, fillTemplate, selectPluralText } from "@amodx/shared";
 import { CM1_REQUESTS, maskBody, splitFlight } from "../cm1-byte-identity.mjs";
 import { CM1, CQ1, CT1, FIXTURE_HOST, ITEMS, LOC1, LOC1E, MISSING_SLUG, UNKNOWN_HOST } from "../fixtures.mjs";
 
@@ -41,12 +41,32 @@ const fileOf = (p) => (p === "/" ? "root" : p.replace(/^\//, "").replace(/[^A-Za
 
 /**
  * LOCALE-1D (§ 16.2 item 5, coverage rule item 2): the commerce-only pages a CM1 request list does not hold, derived by
- * RULE from the fixture items of a `commerceEnabled` tenant (default URL prefixes; no fixture sets `urlPrefixes`):
- * `/account`, the order confirmation without an order ("Thank you for your order!"), and per `ORDER#` item its
+ * RULE from the fixture items of a `commerceEnabled` tenant (default URL prefixes; no commerce fixture sets `urlPrefixes`):
+ * `/account`, the order confirmation without an order ("Thank you for your order!") at `CONFIRMATION_ADDRESS`, and per
+ * `ORDER#` item its
  * confirmation and its tracking page with the order's e-mail, plus one tracking request of the first order with a wrong
  * e-mail ("Order Not Found"). A tenant without commerce or without orders adds nothing. Used for the en-US subjects and,
  * through their source, for the RO copies.
  */
+/** CDL-2: the order-confirmation page's address on a tenant with default prefixes — `checkout` + `checkoutConfirmation`
+ *  (`/checkout/confirmation`; before cdl-2 the fixed `/checkout/confirmare`, see `preCdl2Address`). */
+export const CONFIRMATION_ADDRESS = URL_PREFIX_DEFAULTS.checkout + URL_PREFIX_DEFAULTS.checkoutConfirmation;
+/** The address the order-confirmation page had before cdl-2 (`SitePage.tsx` matched the fixed segment `/confirmare`). */
+export const PRE_CDL2_CONFIRMATION_ADDRESS = "/checkout/confirmare";
+
+/**
+ * CDL-2 — the ONE address move of the serving fixtures (design docs/slices/catalog-data-labels-1.md § 14 item 2; record
+ * docs/slices/cdl-2.md): a request path at `CONFIRMATION_ADDRESS` (exactly, or followed by a query string) → the same
+ * path at `PRE_CDL2_CONFIRMATION_ADDRESS`, query kept; every other path unchanged. Used where a capture or header record
+ * taken before cdl-2 is looked up by the current request path (`cdl-2/before/` records it per capture as
+ * `requestedPath`; row `loc1e-cache-headers`). Negative controls: row `cdl2-moved-address`.
+ */
+export function preCdl2Address(urlPath) {
+    if (urlPath === CONFIRMATION_ADDRESS) return PRE_CDL2_CONFIRMATION_ADDRESS;
+    if (urlPath.startsWith(`${CONFIRMATION_ADDRESS}?`)) return PRE_CDL2_CONFIRMATION_ADDRESS + urlPath.slice(CONFIRMATION_ADDRESS.length);
+    return urlPath;
+}
+
 export function orderRequests(tenantId) {
     const t = ITEMS.find((i) => i.PK === "SYSTEM" && i.SK === `TENANT#${tenantId}`);
     if (!t || t.commerceEnabled !== true) return [];
@@ -54,8 +74,8 @@ export function orderRequests(tenantId) {
     if (orders.length === 0) return [];
     const email = (o) => encodeURIComponent(o.customerEmail);
     const paths = [
-        "/account", "/checkout/confirmare",
-        ...orders.flatMap((o) => [`/checkout/confirmare?id=${o.id}&email=${email(o)}`, `/checkout/${o.id}?email=${email(o)}`]),
+        "/account", CONFIRMATION_ADDRESS,
+        ...orders.flatMap((o) => [`${CONFIRMATION_ADDRESS}?id=${o.id}&email=${email(o)}`, `/checkout/${o.id}?email=${email(o)}`]),
         `/checkout/${orders[0].id}?email=${encodeURIComponent("not-the-buyer@serving-contract.test")}`,
     ];
     return paths.map((p) => ({ tenant: tenantId, host: t.Domain, path: p, file: fileOf(p) }));

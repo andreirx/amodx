@@ -98,24 +98,22 @@ describe("TenantConfigSchema — `domain` is SINGULAR", () => {
 describe("UrlPrefixesSchema / TenantConfig.urlPrefixes — English-first defaults", () => {
     /**
      * INVARIANT (CLAUDE.md-level rule, MEMORY "Hardcoded Defaults — English First"):
-     * `URL_PREFIX_DEFAULTS` is the SINGLE source of truth for commerce URL prefixes, and
-     * every default is English — with ONE ratified exception: `interest: "/lista-mea"`
-     * (CAT-INTEREST-1, slice docs/slices/cat-interest-1.md § 8). That prefix is served only
-     * under `catalogMode` and is not in `checkSlugCommerceConflict`'s list, so it changes no
-     * tenant's allowed slugs. For every other prefix, Romanian tenants opt in; Romanian is not
-     * the default.
+     * `URL_PREFIX_DEFAULTS` is the SINGLE source of truth for URL prefixes, and every default
+     * is English — since CDL-2 (docs/slices/catalog-data-labels-1.md § 7.2) without exception:
+     * the interest list moved from "/lista-mea" to "/my-list". Romanian tenants opt in.
      *
-     * Consumers that read these values without re-deriving them: `matchCommercePrefix()`
+     * Consumers that read these values without re-deriving them: `urlPrefixesOf()` (the
+     * renderer's `mapTenant`, the admin preview, the backend slug check), `matchCommercePrefix()`
      * in the renderer's catch-all route, the admin Settings page, and
      * `checkSlugCommerceConflict()` in backend/src/lib/slug-guard.ts — which BLOCKS content
-     * slugs that collide with a commerce prefix. A drift here silently changes which slugs
-     * a tenant is allowed to publish.
+     * slugs at a built-in address. A drift here silently changes which slugs a tenant is
+     * allowed to publish.
      */
     it("fills every prefix from URL_PREFIX_DEFAULTS when the tenant has none", () => {
         expect(TenantConfigSchema.parse(MINIMAL_TENANT).urlPrefixes).toEqual(URL_PREFIX_DEFAULTS);
     });
 
-    it("pins the defaults as English, except the catalog-only interest prefix", () => {
+    it("pins the defaults as English, the interest list and the confirmation segment included (CDL-2)", () => {
         expect(URL_PREFIX_DEFAULTS).toEqual({
             product: "/product",
             category: "/category",
@@ -124,12 +122,10 @@ describe("UrlPrefixesSchema / TenantConfig.urlPrefixes — English-first default
             shop: "/shop",
             account: "/account",
             search: "/search",
-            // CAT-INTEREST-1 (slice docs/slices/cat-interest-1.md § 8, operator ruling): the ONE Romanian default.
-            // The interest-list page is served only under `catalogMode`, and `interest` is NOT in
-            // `checkSlugCommerceConflict`'s list (backend/src/lib/slug-guard.ts:23-29), so no tenant's page slugs
-            // change. Named, not fixed: a catalog tenant's content page slugged `lista-mea` would collide with the list
-            // page (follow-up CAT-INTEREST-SLUG-GUARD-1).
-            interest: "/lista-mea",
+            // CDL-2 (§ 7.2): was "/lista-mea" (CAT-INTEREST-1). A Romanian site sets "/lista-mea" in Settings.
+            interest: "/my-list",
+            // CDL-2 (§ 14 item 2): was the fixed segment "/confirmare" (SitePage.tsx).
+            checkoutConfirmation: "/confirmation",
         });
     });
 

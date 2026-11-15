@@ -1,5 +1,5 @@
 import {
-    URL_PREFIX_DEFAULTS, buildFacetListing, catalogListing, catalogListingPath, resolveLocaleStrings, type FacetLabels,
+    urlPrefixesOf, buildFacetListing, catalogListing, catalogListingPath, resolveLocaleStrings, type FacetLabels,
     type FacetListing, type LocaleStringsInput,
 } from "@amodx/shared";
 
@@ -15,8 +15,9 @@ import {
  *     `drafts` (the items the execution would write, built by the backend's `productItem`);
  *   - base set: `catalogListing(siteProducts ∪ drafts, scope, today)`; scope = the shop, the producer's category or one
  *     collection category, by the ids the drafts carry (`<found id>`, `new:<slug>`, `occupied:<slug>`);
- *   - path: `catalogListingPath(prefixes, slug)` with `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` (the renderer's
- *     expression) and `basePath = ""` (the tenant's public domain);
+ *   - path: `catalogListingPath(prefixes, slug)` with `prefixes = urlPrefixesOf(urlPrefixes)` (the renderer's
+ *     `mapTenant` rule, CDL-2: per key, the saved path, else the English default) and `basePath = ""` (the tenant's
+ *     public domain);
  *   - selection: the raw `f` string. A click follows the href the panel built (`selectionOfHref`), the same link the
  *     site's `<a>` carries.
  *
@@ -47,13 +48,13 @@ export interface SiteContext {
 }
 
 /**
- * `GET /settings` and `GET /categories` answers → the context. `urlPrefixes || URL_PREFIX_DEFAULTS`, as `SitePage.tsx`;
+ * `GET /settings` and `GET /categories` answers → the context. `urlPrefixesOf(urlPrefixes)`, as the renderer's `mapTenant`;
  * the facet headings as `SitePage.tsx` passes them: `resolveLocaleStrings(settings).strings.catalog`.
  */
 export function siteContextOf(settings: { urlPrefixes?: { shop?: string; category?: string } } & LocaleStringsInput, categories: { id?: unknown; slug?: unknown; name?: unknown }[]): SiteContext {
     const catalog = resolveLocaleStrings(settings).strings.catalog;
     return {
-        prefixes: settings.urlPrefixes || URL_PREFIX_DEFAULTS,
+        prefixes: urlPrefixesOf(settings.urlPrefixes),
         facetLabels: { producer: catalog.facetProducer, variantDefault: catalog.facetVariantDefault },
         categories: categories
             .filter((c) => typeof c.id === "string" && typeof c.slug === "string")

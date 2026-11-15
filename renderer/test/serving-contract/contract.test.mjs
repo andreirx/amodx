@@ -36,11 +36,11 @@ import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
-import { CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
-import { getCountryPack, resolveLocaleStrings } from "@amodx/shared";
+import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
-    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY,
+    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -1803,14 +1803,17 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A marked key is still displayed: `never` hides the filter, not the attribute.
             assert.ok(html.includes('<dt class="text-muted-foreground">Certificates</dt><dd class="font-medium">FSC</dd>'));
         });
-        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice cat-variant-gallery-1 (docs/slices/locale-1.md § 8.5; rulings
-        // § 16.2 items 4-5; docs/slices/cat-variant-gallery-1.md § 6, ruling CVG1-TEXT-REMOVAL = A). Helpers:
-        // locale-1/proof.mjs. Inputs, all in locale-1/variant-gallery-1/: before/ (immutable, captured from 27fa7ca with
-        // the cm1-byte-identity/README.md worktree procedure — every en-US subject, every RO copy, the CQ1 and the CT1
-        // tenants, served with this tree's fixtures.mjs), expected-diff.json (the reviewed byte-difference list of the
-        // en-US subjects: only the catalog product pages list entries, all row CVG1-GALLERY; their `textRemoved` items are
-        // the visible texts the gallery change removes) and ro-expected.json (the RO copies' text changes against their own
-        // 27fa7ca capture: only `removed` items, row CVG1-GALLERY). Each slice has its own set (§ 8.5 rule 5); the 1a/, 1b/,
+        // ── ROWS (loc1-*) — LOCALE-1 proof, current slice cdl-2 (docs/slices/locale-1.md § 8.5; rulings § 16.2 items 4-5;
+        // docs/slices/cdl-2.md § 8, the procedure of docs/slices/cat-variant-gallery-1.md § 6). Helpers: locale-1/proof.mjs.
+        // Inputs, all in locale-1/cdl-2/: before/ (immutable, captured from 7bd3d51 with that commit's own suite harness and
+        // fixtures in a throwaway worktree — every en-US subject, every RO copy, the CQ1 and the CT1 tenants; the three
+        // order-confirmation requests of the commerce subject and of its RO copy were sent at their pre-cdl-2 address and
+        // are recorded under their current one with `requestedPath`, `preCdl2Address`), expected-diff.json (the reviewed
+        // byte-difference list of the en-US subjects: every page of a catalog-mode subject lists row CDL2-INTEREST-PATH, the
+        // commerce checkout and its three confirmation pages row CDL2-CONFIRMATION, every other URL nothing) and
+        // ro-expected.json (the RO copies' text changes against their own 7bd3d51 capture: none). The previous set,
+        // variant-gallery-1/ (27fa7ca), is read explicitly only by the cvg1-text-removal-* rows and, for its cq1RoNone
+        // list, by cq1-quote-channels (`cvg1BeforeSet`, `cvg1Json`). Each slice has its own set (§ 8.5 rule 5); the 1a/, 1b/,
         // 1c/, 1d/ and reviews-date-1/ files stay as those slices' records and no row reads them. The 1e/ files are read
         // only by the rows that pin the locale-1e root-layout move against d9999d2 (loc1e-category-controls,
         // loc1e-404-document, loc1e-cache-headers); the quote-1/ files (29a2282) only by the cq1-* rows, which pin
@@ -1818,14 +1821,14 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // cat-theme-1's own changes against its start commit (`ct1BeforeSet`).
         // SUBJECTS (1a review-0 R1): every fixtures.mjs tenant without `locale` is an en-US subject (`EN_US_REQUESTS`;
         // since 1d the commerce subject's list also holds its order pages, `orderRequests`).
-        // Text oracle per subject: equal to before/ except exactly the listed removals (cat-variant-gallery-1: the
-        // gallery counter of the catalog product page whose option pictures make the variant tiles the picker).
+        // Text oracle per subject: equal to before/ except exactly the listed ledger texts and removals (cdl-2 lists none:
+        // its changes are addresses, not visible text).
         // These rows run LAST in this block: the non-CM1 subjects are captured here, after every row that depends on
         // those tenants' cache state. The RO subjects are the copies `loc1-ro-*` (fixtures.mjs LOC1).
         let loc1Before, loc1Ro, loc1En;
-        const LOC1_SLICE = "variant-gallery-1";
+        const LOC1_SLICE = "cdl-2";
         /** The commit before/ was captured from (the slice's start commit for render output; titles cite it). */
-        const LOC1_START = "27fa7ca";
+        const LOC1_START = "7bd3d51";
         /** CAT-QUOTE-1 (read by the cq1-* rows against quote-1/before/, 29a2282): what cat-quote-1 listed for a catalog
          *  product page — row CQ1-INTEREST-LINK, the interest toggle's link form. */
         const CQ1_LINK = [
@@ -1839,7 +1842,11 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         const ERROR_SHELL = '<!DOCTYPE html><html id="__next_error__">';
         const loc1BeforeSet = async () => (loc1Before ??= await readCaptures(path.join(LOC1_DIR, LOC1_SLICE, "before")));
         const loc1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, LOC1_SLICE, file), "utf8"));
-        let loc1eBefore, cq1Cand, cq1Before, ct1Cand, ct1Before;
+        let loc1eBefore, cq1Cand, cq1Before, ct1Cand, ct1Before, cvg1Before;
+        /** CDL-2: the cat-variant-gallery-1 record set (27fa7ca + its lists), read explicitly by the cvg1-text-removal-*
+         *  rows (they pin CVG1's listed text removal against ITS start commit) and, for `cq1RoNone`, by cq1-quote-channels. */
+        const cvg1BeforeSet = async () => (cvg1Before ??= await readCaptures(path.join(LOC1_DIR, "variant-gallery-1", "before")));
+        const cvg1Json = async (file) => JSON.parse(await readFile(path.join(LOC1_DIR, "variant-gallery-1", file), "utf8"));
         /** CAT-VARIANT-GALLERY-1: the cat-theme-1 record set (0865ac6), read explicitly by the ct1-* rows (the current set
          *  is variant-gallery-1). */
         const ct1BeforeSet = async () => (ct1Before ??= await readCaptures(path.join(LOC1_DIR, "theme-1", "before")));
@@ -1880,41 +1887,64 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
          *  removed (`textRemoved`: `{ kind, text, position }`, position = index in the before extraction). */
         const removedTexts = (doc, subject) => (urlPath) => expectedFor(doc, subject, urlPath).filter((e) => e.category === 3 && e.textRemoved !== undefined).flatMap((e) => e.textRemoved);
 
-        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs, the RO copies', the CQ1 and the CT1 tenants' URLs; expected-diff.json lists exactly the subjects' URLs, each with nothing except the catalog product pages' CVG1-GALLERY entries", async () => {
+        /** CDL-2 — the five exact entry shapes of cdl-2/expected-diff.json (docs/slices/cdl-2.md § 8). */
+        const CDL2_INTEREST_HTML = { category: 3, row: "CDL2-INTEREST-PATH", before: 'href="/lista-mea"><span class="relative">', after: 'href="/my-list"><span class="relative">' };
+        const CDL2_INTEREST_FLIGHT = { category: 3, row: "CDL2-INTEREST-PATH", flightBefore: '"listPrefix":"/lista-mea"', flightAfter: '"listPrefix":"/my-list"' };
+        const CDL2_CONFIRM_PROP = { category: 2, row: "CDL2-CONFIRMATION", element: "[project]/renderer/src/components/CheckoutPageView.tsx#CheckoutPageView", prop: "confirmPrefix", beforeValue: PRE_CDL2_CONFIRMATION_ADDRESS, value: CONFIRMATION_ADDRESS };
+        const CDL2_SEGMENT = [
+            { category: 3, row: "CDL2-CONFIRMATION", flightBefore: '"k":"checkout/confirmare"', flightAfter: '"k":"checkout/confirmation"' },
+            { category: 3, row: "CDL2-CONFIRMATION", flightBefore: '"c":["","checkout","confirmare', flightAfter: '"c":["","checkout","confirmation' },
+        ];
+
+        test("(loc1-subjects) the en-US subjects are every fixture tenant without `locale`; before/ holds exactly their URLs, the RO copies', the CQ1 and the CT1 tenants' URLs, and records the pre-cdl-2 address of exactly the moved ones; expected-diff.json lists exactly the subjects' URLs, each with nothing except CDL2-INTEREST-PATH on every HTML page of a catalog-mode subject and CDL2-CONFIRMATION on the commerce checkout and confirmation pages", async () => {
             const want = Object.fromEntries(Object.entries(EN_US_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const withoutLocale = ITEMS.filter((i) => i.PK === "SYSTEM" && String(i.SK).startsWith("TENANT#") && !Object.hasOwn(i, "locale")).length;
             assert.equal(Object.keys(want).length, withoutLocale, "every tenant without `locale` is a subject");
             for (const key of CM1_KEYS) assert.ok(want[key], `CM1 ${key} is a subject`);
             for (const t of Object.values(LOC1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (ro-RO) is not an en-US subject`);
-            assert.ok(want.commerce.some((p) => p.startsWith("/checkout/confirmare?id=")) && want.commerce.includes("/account"), "the commerce subject's order pages are subjects (locale-1d)");
+            assert.ok(want.commerce.some((p) => p.startsWith(`${CONFIRMATION_ADDRESS}?id=`)) && want.commerce.includes("/account"), "the commerce subject's order pages are subjects (locale-1d)");
             const ro = Object.fromEntries(Object.entries(LOC1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             const cq1 = Object.fromEntries(Object.entries(CQ1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             for (const t of Object.values(CQ1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (CQ1, has a locale) is not an en-US subject`);
             const ct1 = Object.fromEntries(Object.entries(CT1_REQUESTS).map(([key, list]) => [key, list.map((r) => r.path).sort()]));
             for (const t of Object.values(CT1)) assert.ok(!Object.hasOwn(want, t.id), `${t.id} (CT1, has a locale) is not an en-US subject`);
-            assert.deepEqual(pathsBySubject((await loc1BeforeSet()).captures), { ...want, ...ro, ...cq1, ...ct1 }, "before/ must hold exactly the subjects', the RO copies', the CQ1 and the CT1 tenants' URLs");
+            assert.ok(!Object.hasOwn(want, CDL2.partial.id), `${CDL2.partial.id} (CDL2, has a locale) is not an en-US subject`);
+            const before = await loc1BeforeSet();
+            assert.deepEqual(pathsBySubject(before.captures), { ...want, ...ro, ...cq1, ...ct1 }, "before/ must hold exactly the subjects', the RO copies', the CQ1 and the CT1 tenants' URLs");
+            // CDL-2: a capture records `requestedPath` exactly when its address moved, and then it is the pre-cdl-2 address.
+            const moved = before.captures.filter((c) => preCdl2Address(c.path) !== c.path);
+            assert.deepEqual(before.captures.filter((c) => Object.hasOwn(c, "requestedPath")), moved, "requestedPath on exactly the moved captures");
+            for (const c of moved) assert.equal(c.requestedPath, preCdl2Address(c.path), `${c.tenant} ${c.path}: requestedPath`);
+            assert.deepEqual(moved.map((c) => c.tenant).sort(), ["commerce", "commerce", "commerce", "roCommerce", "roCommerce", "roCommerce"], "the moved captures are the three confirmation requests of the commerce subject and of its RO copy");
             const doc = await loc1Json("expected-diff.json");
             assert.deepEqual(Object.fromEntries(Object.entries(doc.fixtures).map(([key, urls]) => [key, Object.keys(urls).sort()])), want, "expected-diff.json must list exactly the subjects' URLs");
-            // CAT-VARIANT-GALLERY-1: a URL lists something only if it is a product page of a catalog-mode subject; every
-            // such page lists the gallery's `pinnedTop` prop; every entry is row CVG1-GALLERY — a ProductImageGallery prop
-            // (pinnedTop, optionGroupName, options) or a category-3 HTML change. Every other URL lists NOTHING.
-            const GALLERY = "[project]/renderer/src/components/ProductImageGallery.tsx#ProductImageGallery";
-            const CVG1_PROPS = new Set(["pinnedTop", "optionGroupName", "options"]);
+            // CDL-2: a catalog-mode subject's HTML page lists the payload entry of CDL2-INTEREST-PATH and, where the header
+            // widget is server-rendered, its HTML entry — nothing else; its other responses nothing. The commerce subject's
+            // checkout lists the confirmPrefix change, its three moved confirmation pages the two route-segment texts. Every
+            // other URL lists NOTHING.
             const catalogMode = (subject) => ITEMS.find((i) => i.PK === "SYSTEM" && i.Domain === EN_US_REQUESTS[subject][0].host)?.catalogMode === true;
-            let listing = 0;
+            const counts = { interest: 0, checkout: 0, confirmation: 0 };
             for (const [subject, urls] of Object.entries(doc.fixtures)) {
                 for (const [urlPath, list] of Object.entries(urls)) {
-                    const productPage = catalogMode(subject) && urlPath.startsWith("/product/");
-                    if (!productPage) { assert.deepEqual(list, [], `${subject} ${urlPath}: nothing (no ledger row, no prop, no text)`); continue; }
-                    listing++;
-                    assert.ok(list.some((e) => e.category === 2 && e.prop === "pinnedTop"), `${subject} ${urlPath}: the gallery's pinnedTop`);
-                    for (const e of list) {
-                        assert.equal(e.row, "CVG1-GALLERY", `${subject} ${urlPath}: row ${e.row}`);
-                        assert.ok(e.category === 3 || (e.category === 2 && e.element === GALLERY && CVG1_PROPS.has(e.prop) && !Object.hasOwn(e, "beforeValue")), `${subject} ${urlPath}: an entry other than a gallery prop or an HTML change`);
+                    const capture = before.captures.find((c) => c.tenant === subject && c.path === urlPath);
+                    if (catalogMode(subject) && isHtml(capture)) {
+                        const html = list.filter((e) => Object.hasOwn(e, "after"));
+                        assert.deepEqual(list.filter((e) => !Object.hasOwn(e, "after")), [CDL2_INTEREST_FLIGHT], `${subject} ${urlPath}: the CDL2-INTEREST-PATH payload entry`);
+                        assert.ok(html.length === 0 || (html.length === 1 && JSON.stringify(html[0]) === JSON.stringify(CDL2_INTEREST_HTML)), `${subject} ${urlPath}: at most the CDL2-INTEREST-PATH HTML entry`);
+                        counts.interest++;
+                    } else if (subject === "commerce" && urlPath === URL_PREFIX_DEFAULTS.checkout) {
+                        assert.deepEqual(list, [CDL2_CONFIRM_PROP], `${subject} ${urlPath}: the confirmPrefix change`);
+                        counts.checkout++;
+                    } else if (subject === "commerce" && preCdl2Address(urlPath) !== urlPath) {
+                        assert.deepEqual(list, CDL2_SEGMENT, `${subject} ${urlPath}: the route-segment texts of the moved address`);
+                        counts.confirmation++;
+                    } else {
+                        assert.deepEqual(list, [], `${subject} ${urlPath}: nothing (no ledger row, no prop, no text)`);
                     }
                 }
             }
-            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs; ${listing} catalog product pages list CVG1-GALLERY entries, every other URL nothing: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs; CQ1 ${Object.values(cq1).flat().length} URLs; CT1 ${Object.values(ct1).flat().length} URLs`);
+            assert.deepEqual(counts, { interest: 30, checkout: 1, confirmation: 3 }, "the listing URLs");
+            console.log(`  (loc1-subjects) ${Object.keys(want).length} subjects, ${Object.values(want).flat().length} URLs; ${counts.interest} catalog-mode HTML pages list CDL2-INTEREST-PATH, commerce /checkout and ${counts.confirmation} moved confirmation pages CDL2-CONFIRMATION, every other URL nothing: ${Object.keys(want).join(", ")}; RO copies ${Object.values(ro).flat().length} URLs; CQ1 ${Object.values(cq1).flat().length} URLs; CT1 ${Object.values(ct1).flat().length} URLs; ${moved.length} captures at their pre-cdl-2 address`);
         });
 
         for (const subject of Object.keys(EN_US_REQUESTS)) {
@@ -1950,7 +1980,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(textMismatches(before, withHome(home.body.replace(">October 31, 2026<", ">10/31/2026<")), "content", ledgerTexts(doc, "content")), ["/: visible text changed"], "another date format was not reported");
             assert.deepEqual(textMismatches(before, cand, "content", ledgerTexts(doc, "content")), [], "precondition: the content home's text is equal to d9999d2");
             // A commerce text left in Romanian on an en-US order page is reported (locale-1d: the order pages are subjects).
-            const confirm = cand.captures.find((c) => c.tenant === "commerce" && c.path.startsWith("/checkout/confirmare?id=cm1-order-bank"));
+            const confirm = cand.captures.find((c) => c.tenant === "commerce" && c.path.startsWith(`${CONFIRMATION_ADDRESS}?id=cm1-order-bank`));
             const reverted = { ...cand, captures: cand.captures.map((c) => (c === confirm ? { ...c, body: c.body.replace(">Bank Transfer Details<", ">Detalii pentru transfer bancar<") } : c)) };
             assert.deepEqual(textMismatches(before, reverted, "commerce"), [`${confirm.path}: visible text changed`]);
         });
@@ -1959,10 +1989,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // row each, on the real catalog /product/oak-plank, whose list removes the gallery counter "1 / 3". Each row first
         // proves its precondition (the page is exact under its real list), then shows the refusal through the text rows'
         // own oracle (`textMismatches`) and the reason through `textChanges`.
+        // CDL-2: these rows read cat-variant-gallery-1's own record set (27fa7ca, `cvg1BeforeSet`, `cvg1Json`) — the counter
+        // removal is a change against THAT start commit; the current set (cdl-2, 7bd3d51) already holds it.
         const cvg1Oak = async () => {
-            const before = await loc1BeforeSet();
+            const before = await cvg1BeforeSet();
             const cand = await loc1EnSet();
-            const doc = await loc1Json("expected-diff.json");
+            const doc = await cvg1Json("expected-diff.json");
             const P = "/product/oak-plank";
             const gone = removedTexts(doc, "catalog")(P);
             assert.deepEqual(gone, [{ kind: "text", text: "1 / 3", position: gone[0]?.position }], "precondition: oak-plank lists one removal, the counter");
@@ -1980,7 +2012,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // A second, unlisted removal next to the listed one: the page's title text taken out of the after body.
             assert.ok(a.body.includes(">Oak Plank</h1>"), "mutation precondition: the product title is server-rendered once in an h1");
             const mutated = { ...cand, captures: cand.captures.map((c) => (c === a ? { ...c, body: c.body.replace(">Oak Plank</h1>", "></h1>") } : c)) };
-            assert.deepEqual(textMismatches(before, mutated, "catalog", ledger, removedTexts(await loc1Json("expected-diff.json"), "catalog")), [`${P}: visible text changed`]);
+            assert.deepEqual(textMismatches(before, mutated, "catalog", ledger, removedTexts(await cvg1Json("expected-diff.json"), "catalog")), [`${P}: visible text changed`]);
             console.log("  (cvg1-text-removal-unlisted) the counter removal without its list entry, and a second unlisted removal, are reported");
         });
 
@@ -2010,7 +2042,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (cvg1-text-removal-wrong-text) "1 / 4", kind @alt and position ${r.position - 1} are refused; the real entry is accepted`);
         });
 
-        test(`(loc1-diff-variant-gallery-1) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
+        test(`(loc1-diff-cdl-2) en-US subjects: every byte difference to the ${LOC1_START} capture is listed in ${LOC1_SLICE}/expected-diff.json, and every listed one occurs`, async () => {
             const before = await loc1BeforeSet();
             const cand = await loc1EnSet();
             const doc = await loc1Json("expected-diff.json");
@@ -2025,12 +2057,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                     if (a.status !== b.status || a.contentType !== b.contentType) { problems.push(`${subject} ${b.path}: status/Content-Type changed`); continue; }
                     const expected = expectedFor(doc, subject, b.path);
                     for (const p of checkExpected(before, b.body, cand, a.body, expected)) problems.push(`${subject} ${b.path}: ${p}`);
-                    console.log(`  (loc1-diff-variant-gallery-1) ${subject} ${b.path}: ${expected.length} listed difference(s)${expected.length ? ` [${[...new Set(expected.map((e) => e.row))].join(", ")}]` : ""}`);
+                    console.log(`  (loc1-diff-cdl-2) ${subject} ${b.path}: ${expected.length} listed difference(s)${expected.length ? ` [${[...new Set(expected.map((e) => e.row))].join(", ")}]` : ""}`);
                 }
             }
             assert.deepEqual(problems, []);
             // The checker can fail (the bound mutations of this row). On a catalog product page: a ghost entry, one of its
-            // listed CVG1-GALLERY entries left out, the toggle's variant changed in the payload, one changed HTML byte, and
+            // listed CDL2-INTEREST-PATH entries left out, the toggle's variant changed in the payload, one changed HTML byte, and
             // each editorial class or marker of cat-theme-1 put into the page (the HTML — a theme field leaking to a tenant
             // without it). On the content home: one
             // changed HTML byte, the review date in another format, a changed block text in the payload, a block text in
@@ -2038,12 +2070,12 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const pick = (subject, p) => [before.captures.find((c) => c.tenant === subject && c.path === p), cand.captures.find((c) => c.tenant === subject && c.path === p)];
             const [bp, ap] = pick("catalog", "/product/oak-plank");
             const link = expectedFor(doc, "catalog", "/product/oak-plank");
-            assert.ok(link.length > 0 && link.every((e) => e.row === "CVG1-GALLERY"), "precondition: catalog /product/oak-plank lists only the CVG1-GALLERY change");
+            assert.ok(link.length > 0 && link.every((e) => e.row === "CDL2-INTEREST-PATH"), "precondition: catalog /product/oak-plank lists only the CDL2-INTEREST-PATH change");
             assert.deepEqual(checkExpected(before, bp.body, cand, ap.body, link), [], "precondition: catalog /product/oak-plank is exact under its list");
             const ghost = { category: 2, element: "[project]/renderer/src/components/QuoteRequest.tsx#QuoteRequest", prop: "strings", value: {} };
             assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, [...link, ghost]), [], "a listed entry that does not occur was not reported");
             for (let i = 0; i < link.length; i++) {
-                assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, link.filter((_, j) => j !== i)), [], `a CVG1-GALLERY change left out of the list (entry ${i}) was not reported`);
+                assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body, link.filter((_, j) => j !== i)), [], `a CDL2-INTEREST-PATH change left out of the list (entry ${i}) was not reported`);
             }
             const variantLink = '\\"variant\\":\\"link\\"';
             assert.equal(ap.body.split(variantLink).length - 1, 1, "mutation precondition: the toggle's variant travels once in the payload");
@@ -2077,6 +2109,31 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const orderListed = expectedFor(doc, "commerce", bo.path);
             assert.ok(ao.body.includes(">Tracking Number: <"), "mutation precondition: the tracking page shows its tracking number label");
             assert.notDeepEqual(checkExpected(before, bo.body, cand, ao.body.replace(">Tracking Number: <", ">Tracking number: <"), orderListed), [], "a changed order-page text was not reported");
+            // CDL-2 controls. The interest path: the old address left in the payload, or another address in the header
+            // link, is reported under the real list.
+            const interestAddressNow = '\\"listPrefix\\":\\"/my-list\\"';
+            assert.equal(ap.body.split(interestAddressNow).length - 1, 1, "mutation precondition: the interest address travels once in the payload");
+            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace(interestAddressNow, '\\"listPrefix\\":\\"/lista-mea\\"'), link), [], "the old interest address left in the payload was not reported");
+            assert.notDeepEqual(checkExpected(before, bp.body, cand, ap.body.replace('href="/my-list"><span class="relative">', 'href="/my-lists"><span class="relative">'), link), [], "another interest address in the header link was not reported");
+            // The confirmation: /checkout without its listed prop, or with the old confirmPrefix, is reported; a moved
+            // confirmation page without its listed route-segment texts, or with a changed text, is reported.
+            const [bk, ak] = pick("commerce", URL_PREFIX_DEFAULTS.checkout);
+            const confirmListed = expectedFor(doc, "commerce", URL_PREFIX_DEFAULTS.checkout);
+            assert.deepEqual(checkExpected(before, bk.body, cand, ak.body, confirmListed), [], "precondition: commerce /checkout is exact under its list");
+            assert.notDeepEqual(checkExpected(before, bk.body, cand, ak.body, []), [], "the confirmPrefix change unlisted was not reported");
+            const confirmPrefixNow = `\\"confirmPrefix\\":\\"${CONFIRMATION_ADDRESS}\\"`;
+            assert.equal(ak.body.split(confirmPrefixNow).length - 1, 1, "mutation precondition: confirmPrefix travels once in the payload");
+            assert.notDeepEqual(checkExpected(before, bk.body, cand, ak.body.replace(confirmPrefixNow, `\\"confirmPrefix\\":\\"/checkout/multumim\\"`), confirmListed), [], "another confirmPrefix was not reported");
+            const bankPath = `${CONFIRMATION_ADDRESS}?id=cm1-order-bank&email=buyer%40serving-contract.test`;
+            const [bc, ac] = pick("commerce", bankPath);
+            assert.equal(bc.requestedPath, preCdl2Address(bankPath), "precondition: the before side was served at the pre-cdl-2 address");
+            const segListed = expectedFor(doc, "commerce", bankPath);
+            assert.deepEqual(checkExpected(before, bc.body, cand, ac.body, segListed), [], "precondition: the moved bank confirmation is exact under its list");
+            for (let i = 0; i < segListed.length; i++) assert.notDeepEqual(checkExpected(before, bc.body, cand, ac.body, segListed.filter((_, j) => j !== i)), [], `a route-segment text left out (entry ${i}) was not reported`);
+            assert.notDeepEqual(checkExpected(before, bc.body, cand, ac.body.replace(">Bank Transfer Details<", ">Bank transfer details<"), segListed), [], "a changed text on the moved confirmation page was not reported");
+            // The moved page compared with the TRACKING page of the old address (what a wrong mapping would pick): reported.
+            const [, trackAtOld] = pick("commerce", `/checkout/cm1-order-cod?email=buyer%40serving-contract.test`);
+            assert.notDeepEqual(checkExpected(before, bc.body, cand, trackAtOld.body, segListed), [], "another page in place of the confirmation was not reported");
         });
 
         // LOCALE-1E — the refusals of category 4 (operator rulings LOC1E-STRUCTURE-CATEGORY = A, LOC1E-404-SHELL-PRELOAD = A,
@@ -2444,11 +2501,13 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (cq1-quote-ro) ${pages} RO catalog product pages: button, link under it, dialog in Romanian, tel/wa.me/mailto hrefs`);
         });
 
-        test("(cq1-quote-channels) e-mail only → one action (mailto); an empty contactChannels object → no button, no dialog, and the page byte-equal to 29a2282 but for the interest link and the CVG1-GALLERY change", async () => {
+        test("(cq1-quote-channels) e-mail only → one action (mailto); an empty contactChannels object → no button, no dialog, and the page byte-equal to 29a2282 but for the interest link, the CVG1-GALLERY change and the CDL2-INTEREST-PATH change", async () => {
             const cand = await cq1CandSet();
             const before = await cq1BeforeSet();
-            // CAT-VARIANT-GALLERY-1: the gallery change of each roNone page, listed in this slice's set (`cq1RoNone`).
-            const cvg1 = (await loc1Json("expected-diff.json")).cq1RoNone;
+            // CAT-VARIANT-GALLERY-1: the gallery change of each roNone page, listed in that slice's set (`cq1RoNone`).
+            const cvg1 = (await cvg1Json("expected-diff.json")).cq1RoNone;
+            // CDL-2: the interest-path change of each roNone page (it stores no `interest`), listed in this slice's set.
+            const cdl2 = (await loc1Json("expected-diff.json")).cq1RoNone;
             for (const c of cand.captures.filter((x) => x.tenant === "roEmail")) {
                 const html = splitFlight(c.body).html;
                 const acts = quoteActionsOf(html);
@@ -2462,7 +2521,9 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const b = before.captures.find((x) => x.tenant === "roNone" && x.path === a.path);
                 assert.equal(a.status, b.status);
                 assert.ok(Array.isArray(cvg1[a.path]) && cvg1[a.path].every((e) => e.row === "CVG1-GALLERY"), `roNone ${a.path}: the CVG1-GALLERY list`);
-                assert.deepEqual(checkExpected(before, b.body, cand, a.body, [...(b.body.includes("data-interest-toggle=") ? CQ1_LINK : []), ...cvg1[a.path]]), [], `roNone ${a.path}: byte-equal but for the interest link and the gallery change`);
+                assert.deepEqual(cdl2[a.path], [CDL2_INTEREST_HTML, CDL2_INTEREST_FLIGHT], `roNone ${a.path}: the CDL2-INTEREST-PATH list`);
+                assert.deepEqual(checkExpected(before, b.body, cand, a.body, [...(b.body.includes("data-interest-toggle=") ? CQ1_LINK : []), ...cvg1[a.path], ...cdl2[a.path]]), [], `roNone ${a.path}: byte-equal but for the interest link, the gallery change and the interest path`);
+                assert.notDeepEqual(checkExpected(before, b.body, cand, a.body, [...(b.body.includes("data-interest-toggle=") ? CQ1_LINK : []), ...cvg1[a.path]]), [], `roNone ${a.path}: control — without the CDL2 list the interest path is reported`);
                 equal++;
             }
             assert.equal(equal, 2);
@@ -2470,7 +2531,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const ro = (await loc1RoSet()).find((x) => x.tenant === "roCatalog" && x.path === "/product/oak-plank");
             const roBefore = before.captures.find((x) => x.tenant === "roCatalog" && x.path === "/product/oak-plank");
             assert.notDeepEqual(checkExpected(before, roBefore.body, { ...cand, captures: [ro] }, ro.body, CQ1_LINK), [], "the comparison must see the added button");
-            console.log("  (cq1-quote-channels) e-mail only: one mailto action; empty channels: no button, byte-equal but for CQ1-INTEREST-LINK and CVG1-GALLERY; the detector sees the button on the copy with channels");
+            console.log("  (cq1-quote-channels) e-mail only: one mailto action; empty channels: no button, byte-equal but for CQ1-INTEREST-LINK, CVG1-GALLERY and CDL2-INTEREST-PATH; the detector sees the button on the copy with channels");
         });
 
         test("(cq1-bars-fallback) a shop whose Top Bar, Commerce Bar and Quick contact own values are empty shows the contact channels (server HTML); 29a2282 showed none", async () => {
@@ -2732,20 +2793,88 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const cand = await loc1EnSet();
             const at = (p) => { const c = cand.captures.find((x) => x.tenant === "commerce" && x.path === p); assert.ok(c, p); assert.equal(c.status, 200, p); return extractVisibleText(c.body).map((i) => i.text); };
             const q = "email=buyer%40serving-contract.test";
-            const bank = at(`/checkout/confirmare?id=cm1-order-bank&${q}`);
+            const bank = at(`${CONFIRMATION_ADDRESS}?id=cm1-order-bank&${q}`);   // CDL-2: the confirmation's new address
             for (const t of ["Order Confirmed!", "Bank Transfer Details", "Bank:", "IBAN:", "RO49AAAA1B31007593840000", "SWIFT:", "Reference:", "Amount:", "Qty: 2", "Free", "Shipping Address"]) assert.ok(bank.includes(t), `bank confirmation: ${t}`);
-            const cod = at(`/checkout/confirmare?id=cm1-order-cod&${q}`);
+            const cod = at(`${CONFIRMATION_ADDRESS}?id=cm1-order-cod&${q}`);
             for (const t of ["Cash on Delivery", "You will pay", "when you receive your order.", "Estimated delivery:", "Discount", "Phone: +1 555 0100"]) assert.ok(cod.includes(t), `COD confirmation: ${t}`);
-            assert.ok(at("/checkout/confirmare").includes("Thank you for your order!"));
+            assert.ok(at(CONFIRMATION_ADDRESS).includes("Thank you for your order!"));
             const track = at(`/checkout/cm1-order-cod?${q}`);
             for (const t of ["Order CM1-0002", "Placed on 10/15/2026", "pending", "completed", "Tracking Number:", "AWB-CM1-0002", "Items"]) assert.ok(track.includes(t), `tracking: ${t}`);
             assert.ok(at("/checkout/cm1-order-bank?email=not-the-buyer%40serving-contract.test").includes("Order Not Found"));
             at("/account");
             // The RO copy's bank block: the two labels whose Romanian text equals the English one (so no RO change lists them).
-            const roBank = (await loc1RoSet()).find((c) => c.tenant === "roCommerce" && c.path === `/checkout/confirmare?id=cm1-order-bank&${q}`);
+            const roBank = (await loc1RoSet()).find((c) => c.tenant === "roCommerce" && c.path === `${CONFIRMATION_ADDRESS}?id=cm1-order-bank&${q}`);
             const roTexts = extractVisibleText(roBank.body).map((i) => i.text);
             for (const k of ["ibanLabel", "swiftLabel", "bankLabel", "amountLabel"]) assert.ok(roTexts.includes(RO_TABLE.commerce[k]), `RO bank confirmation: ${k}`);
             console.log("  (loc1-order-pages) bank, COD and no-order confirmations, tracking, not found and account render on the en-US commerce fixture; the RO bank block shows the RO pack labels");
+        });
+
+        // ── ROWS (cdl2-*) — CDL-2 (docs/slices/cdl-2.md; design docs/slices/catalog-data-labels-1.md § 7, § 14). ───────────
+        // The one address move of the fixtures (`preCdl2Address`): its rule, its record in cdl-2/before/, and the accepted
+        // effect at the old address (a commerce tenant without a stored segment: `/checkout/confirmare` reads as tracking).
+        test("(cdl2-moved-address) the confirmation address move: exactly CONFIRMATION_ADDRESS (± query) maps to /checkout/confirmare; before/ holds the confirmation page there; the old address now answers as an order tracking page", async () => {
+            assert.equal(CONFIRMATION_ADDRESS, "/checkout/confirmation");
+            assert.equal(preCdl2Address("/checkout/confirmation"), "/checkout/confirmare");
+            assert.equal(preCdl2Address("/checkout/confirmation?id=o1&email=a%40b.test"), "/checkout/confirmare?id=o1&email=a%40b.test");
+            // Negative controls: every other path is returned unchanged.
+            for (const p of ["/checkout", "/checkout/confirmations", "/checkout/confirmation-x", "/checkout/confirmation/x", "/checkout/o1?email=a", "/x/checkout/confirmation", "/checkout/confirmare", "/my-list", "/"]) {
+                assert.equal(preCdl2Address(p), p, p);
+            }
+            // The record: each moved before/ capture is the 7bd3d51 CONFIRMATION page (not a tracking page).
+            const before = await loc1BeforeSet();
+            const moved = before.captures.filter((c) => Object.hasOwn(c, "requestedPath"));
+            assert.equal(moved.length, 6);
+            const textOf = (c) => extractVisibleText(c.body).map((i) => i.text);
+            for (const c of moved.filter((x) => x.tenant === "commerce")) {
+                const t = textOf(c);
+                assert.ok(c.path === CONFIRMATION_ADDRESS ? t.includes("Thank you for your order!") : t.includes("Order Confirmed!"), `${c.path}: the confirmation page at ${c.requestedPath}`);
+                assert.ok(!t.includes("Order Not Found") && !t.includes("Order Tracking"), `${c.path}: not a tracking page`);
+            }
+            // The accepted effect (packet § 2 item 4): on the candidate the old address is an order tracking address.
+            const q = "email=buyer%40serving-contract.test";
+            for (const p of [`${PRE_CDL2_CONFIRMATION_ADDRESS}?id=cm1-order-bank&${q}`, PRE_CDL2_CONFIRMATION_ADDRESS]) {
+                const res = await request({ port: server.port, path: p, host: CM1.commerce.host });
+                const t = extractVisibleText(res.body).map((i) => i.text);
+                assert.equal(res.status, 200, p);
+                assert.ok(t.includes("Order Not Found") && !t.includes("Order Confirmed!") && !t.includes("Thank you for your order!"), `${p}: a tracking page for the order id "confirmare"`);
+            }
+            console.log(`  (cdl2-moved-address) ${CONFIRMATION_ADDRESS} (± query) ↔ ${PRE_CDL2_CONFIRMATION_ADDRESS}; 9 other paths unchanged; ${moved.length} before/ captures are 7bd3d51 confirmation pages; the old address answers "Order Not Found" (tracking)`);
+        });
+
+        // The partial-prefix tenant (fixtures.mjs CDL2; design § 8.4 "cdl-2"): its stored urlPrefixes is the one-key object
+        // the Settings page saves. Under the per-key rule its product, shop and category pages route at the English
+        // defaults, and its interest list is at the stored /lista-mea, which the header widget links to. On 7bd3d51 the same
+        // tenant answered the not-found handoff (307) for /product/oak-plank, /shop and /category/floors (EXECUTED,
+        // docs/slices/cdl-2.md § 8.3). Control: the en-US catalog subject (no stored interest) has its list at /my-list.
+        test("(cdl2-partial-prefixes) a catalog tenant storing only { interest: \"/lista-mea\" }: /product/<slug>, /shop and /category/<slug> route; /lista-mea is the interest list page and the header links there; /my-list is not; the subject without a stored interest has its list at /my-list", async () => {
+            const stored = ITEMS.find((i) => i.SK === `TENANT#${CDL2.partial.id}`).urlPrefixes;
+            assert.deepEqual(stored, CDL2_STORED_PREFIXES, "precondition: the stored object has the interest key only");
+            assert.deepEqual(urlPrefixesOf(stored), { ...URL_PREFIX_DEFAULTS, interest: "/lista-mea" });
+            const get = (host, p) => request({ port: server.port, path: p, host });
+            const LIST_PAGE = "InterestListPage";   // the client export the list page (and only it) references in its payload
+            const lines = [];
+            for (const p of ["/product/oak-plank", "/shop", "/category/floors"]) {
+                const res = await get(CDL2.partial.host, p);
+                assert.equal(res.status, 200, `${p} routes`);
+                const html = splitFlight(res.body).html;
+                assert.equal(html.split('href="/lista-mea"><span class="relative">').length - 1, 2, `${p}: the header widget (desktop and mobile) links to /lista-mea`);
+                assert.ok(!html.includes('href="/my-list"'), `${p}: no link to /my-list`);
+                assert.ok(splitFlight(res.body).flight.includes('"listPrefix":"/lista-mea"'), `${p}: the payload carries /lista-mea`);
+                assert.ok(!res.body.includes(LIST_PAGE), `${p}: not the list page`);
+                lines.push(`${p} 200`);
+            }
+            assert.ok(splitFlight((await get(CDL2.partial.host, "/product/oak-plank")).body).html.includes(">Oak Plank</h1>"), "the product page of the fixture product");
+            const list = await get(CDL2.partial.host, "/lista-mea");
+            assert.equal(list.status, 200);
+            assert.ok(list.body.includes(LIST_PAGE), "/lista-mea is the interest list page");
+            const other = await get(CDL2.partial.host, "/my-list");
+            assert.equal(other.status, 307, "/my-list is not the list page on this tenant (no content page: the not-found handoff)");
+            // Control: the en-US catalog subject stores no interest → its list is at /my-list; /lista-mea is an ordinary slug.
+            const subjectList = await get(CM1.catalog.host, "/my-list");
+            assert.equal(subjectList.status, 200);
+            assert.ok(subjectList.body.includes(LIST_PAGE), "the subject's list page is at /my-list");
+            assert.equal((await get(CM1.catalog.host, "/lista-mea")).status, 307, "the subject's /lista-mea is not the list page");
+            console.log(`  (cdl2-partial-prefixes) ${CDL2.partial.id}: ${lines.join(", ")}; /lista-mea list page (header links there); /my-list 307. ${CM1.catalog.id}: /my-list list page, /lista-mea 307`);
         });
 
         // ── ROW (cmrc-counties-1) — docs/slices/cmrc-counties-1.md. The checkout form's region list follows the tenant's
@@ -2884,11 +3013,14 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         test("(loc1e-cache-headers) every fixture URL and not-found probe answers the status, cache-control, content-type and vary of d9999d2", async () => {
             const doc = JSON.parse(await readFile(path.join(LOC1_DIR, "1e", "before-headers.json"), "utf8"));
             const want = [...Object.values(EN_US_REQUESTS).flat(), ...Object.values(LOC1_REQUESTS).flat(), ...LOC1E_PROBE_REQUESTS];
-            assert.deepEqual(doc.requests.map((r) => `${r.host}${r.path}`), want.map((r) => `${r.host}${r.path}`), "before-headers.json lists exactly the current request list");
+            // CDL-2: the three order-confirmation requests of the commerce fixture and of its RO copy moved address; the
+            // d9999d2 record holds them at the pre-cdl-2 address (`preCdl2Address`, controls in row cdl2-moved-address).
+            // Each record is compared with the answer of the CURRENT address of the same request.
+            assert.deepEqual(doc.requests.map((r) => `${r.host}${r.path}`), want.map((r) => `${r.host}${preCdl2Address(r.path)}`), "before-headers.json lists exactly the current request list (moved requests at their pre-cdl-2 address)");
             const fields = (r) => ({ status: r.status, cacheControl: r.cacheControl, contentType: r.contentType, vary: r.vary });
             const mismatches = (expected, got) => expected.flatMap((e, i) => (JSON.stringify(fields(e)) === JSON.stringify(got[i]) ? [] : [`${e.host}${e.path}: ${JSON.stringify(fields(e))} → ${JSON.stringify(got[i])}`]));
             const got = [];
-            for (const r of doc.requests) got.push(cacheFields(await request({ port: server.port, path: r.path, host: r.host })));
+            for (const r of want) got.push(cacheFields(await request({ port: server.port, path: r.path, host: r.host })));
             assert.deepEqual(mismatches(doc.requests, got), []);
             // Bound mutation: one changed field on one URL is reported.
             const mutated = doc.requests.map((r, i) => (i === 0 ? { ...r, cacheControl: "private, no-store" } : r));

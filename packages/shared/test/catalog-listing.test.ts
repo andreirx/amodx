@@ -2,8 +2,8 @@
 // "for the shared rule"). The base behaviour is pinned by the 1b golden; these rows state the rule case by case.
 // The renderer runs the same fixture through `getCatalogListing` (renderer/test/unit/catalog-listing.test.ts).
 import { describe, expect, it } from "vitest";
-import { URL_PREFIX_DEFAULTS } from "../src/index";
-import { catalogListing, catalogListingPath, isProductAvailable, utcDay } from "../src/catalog-listing";
+import { URL_PREFIX_DEFAULTS, catalogListingPath } from "../src/index";   // CDL-2: catalogListingPath lives in index.ts
+import { catalogListing, isProductAvailable, utcDay } from "../src/catalog-listing";
 
 const TODAY = "2026-10-31";
 const p = (id: string, fields: Record<string, unknown> = {}) => ({ id, status: "active", categoryIds: ["c1"], sortOrder: 0, ...fields });
@@ -76,7 +76,8 @@ describe("catalogListingPath — the public path the renderer passes to the face
         expect(catalogListingPath(custom, undefined)).toBe("/magazin");
         expect(catalogListingPath(custom, "boen")).toBe("/categorie/boen");
     });
-    it("an empty shop prefix falls back to the renderer's literal \"/magazin\" (kept as it was; see the 1b record)", () => {
-        expect(catalogListingPath({ ...URL_PREFIX_DEFAULTS, shop: "" }, undefined)).toBe("/magazin");
+    it("CDL-2 (§ 7.1): an empty or absent shop prefix falls back to URL_PREFIX_DEFAULTS.shop (\"/shop\"), not \"/magazin\"", () => {
+        expect(catalogListingPath({ ...URL_PREFIX_DEFAULTS, shop: "" }, undefined)).toBe("/shop");
+        expect(catalogListingPath({ category: "/category" }, undefined)).toBe("/shop");
     });
 });

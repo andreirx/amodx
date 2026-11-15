@@ -739,6 +739,15 @@ const CVG1_ITEMS = [
     cvg1ManyColours(CVG1.wrap.id),
 ];
 
+// ── CDL-2 fixture (docs/slices/cdl-2.md; design docs/slices/catalog-data-labels-1.md § 7.1, § 8.4) ──────────────────
+// A catalog copy whose stored `urlPrefixes` is the ONE-key object the admin Settings page saves on a tenant that stored
+// none (`updateUrlPrefix`, finding F-CDL-PARTIAL-PREFIXES): `{ interest: "/lista-mea" }`. Under the per-key path rule its
+// product, category, shop and search pages route at the English defaults and its interest list is at `/lista-mea`.
+// With a `locale`, so it is not an en-US subject and is in no before/ capture; read only by row `cdl2-partial-prefixes`.
+export const CDL2 = { partial: { id: "cdl2-partial-prefixes", host: "cdl2-partial-prefixes.serving-contract.test" } };
+export const CDL2_STORED_PREFIXES = { interest: "/lista-mea" };
+const CDL2_ITEMS = localeCopy(CM1_ITEMS, CM1.catalog, CDL2.partial, { locale: "en-US", urlPrefixes: CDL2_STORED_PREFIXES });
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -779,6 +788,8 @@ export const ITEMS = [
     ...BPF1_ITEMS,
     // cat-variant-gallery-1: the content-dependent header tenants (above).
     ...CVG1_ITEMS,
+    // cdl-2: the partial-prefix tenant (above).
+    ...CDL2_ITEMS,
 ];
 
 /**

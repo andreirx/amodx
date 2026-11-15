@@ -92,7 +92,7 @@ test("catalog: mark two items (one with an option) → widget 2 → list page sh
 
     // 4. The list page shows both, the option with its item.
     await page.locator("[data-interest-widget]:visible").click();
-    await expect(page).toHaveURL(url("catalog", "/lista-mea"));
+    await expect(page).toHaveURL(url("catalog", "/my-list"));
     const items = page.locator("[data-interest-item]");
     await expect(items).toHaveCount(2);
     await expect(page.locator(`[data-interest-item="${ASH}"]`)).toContainText("Ash Plank");
@@ -164,7 +164,7 @@ test("catalog list page, complete resolution: available | expired (absent) | una
     });
     await recordSubmissions(page, sent);
 
-    await page.goto(url("catalog", "/lista-mea"));
+    await page.goto(url("catalog", "/my-list"));
     const state = (id, option) => page.locator(`[data-interest-item="${id}"]`).filter({ hasText: option ?? "" });
     await expect(state(OAK, "140x20")).toHaveAttribute("data-row-state", "available");
     await expect(state("gone-id")).toHaveAttribute("data-row-state", "expired");
@@ -188,7 +188,7 @@ test("catalog list page, the resolve read fails (503 keys unprocessed): nothing 
     await resolveWith(page, () => ({ status: 503, body: { error: "The product list could not be checked. Please try again.", retryable: true } }));
     await recordSubmissions(page, sent);
 
-    await page.goto(url("catalog", "/lista-mea"));
+    await page.goto(url("catalog", "/my-list"));
     await expect(page.locator("[data-interest-item]")).toHaveCount(4);
     await expect(page.locator('[data-row-state="unchecked"]')).toHaveCount(4);
     await fillAndSend(page);

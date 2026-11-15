@@ -242,7 +242,8 @@ if (CAPTURE) {
             const titles = async (locale: Record<string, string>) => {
                 dynamo.getTenantConfig.mockResolvedValue(tenant(locale));
                 const out: unknown[] = [];
-                for (const slug of [["cart"], ["checkout"], ["checkout", "confirmare"], ["checkout", "o1"]]) out.push((await buildSitePageMetadata({ siteId: "t1", slug, query: {} })).title);
+                // CDL-2: the default confirmation segment moved "/confirmare" → "/confirmation" (URL_PREFIX_DEFAULTS.checkoutConfirmation).
+                for (const slug of [["cart"], ["checkout"], ["checkout", "confirmation"], ["checkout", "o1"]]) out.push((await buildSitePageMetadata({ siteId: "t1", slug, query: {} })).title);
                 return out;
             };
             expect(await titles({})).toEqual(["Cart - Atelier", "Checkout - Atelier", "Order Confirmation - Atelier", "Order Tracking - Atelier"]);

@@ -65,6 +65,8 @@ src/
     │                           #   pure helpers localeStatus / withSiteLanguage / withCountry (Settings.test.ts);
     │                           #   CAT-ADMIN-1 § 4.5: a catalog gets a "Catalog" card (no control) instead of
     │                           #   "Commerce", Product Search, and URL prefixes product/category/shop/search/interest
+    │                           #   CDL-2: interest placeholder /my-list; a non-catalog site has the field "Confirmation
+    │                           #   (after Checkout)" → urlPrefixes.checkoutConfirmation (default /confirmation)
     │                           #   CAT-QUOTE-1: "Contact channels" card (every kind: phone, WhatsApp, e-mail; on a
     │                           #   catalog only, ruling R3, "Send interest lists to" = "Visitor contact e-mail
     │                           #   (default)" → interestListEmail: null (removes it) or a separate address);
@@ -177,7 +179,7 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
   without `profileChoice` that re-reads the stored profile under the new labels (nothing replaced; it loads if supported).
 - **Preview** (`glamPreview.ts`, pure): base sets = `catalogListing(siteProducts ∪ publishedDrafts(drafts), scope, today)` for the
   producer category, one collection and the shop; panel = `buildFacetListing(base, f, catalogListingPath(prefixes,
-  slug), facetLabels)` — the renderer's own functions and inputs. `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` and
+  slug), facetLabels)` — the renderer's own functions and inputs. `prefixes = urlPrefixesOf(urlPrefixes)` (CDL-2: the renderer's `mapTenant` rule) and
   `facetLabels` (the tenant's `catalog.facetProducer` / `facetVariantDefault`, `resolveLocaleStrings`, locale-1b) from
   `GET /settings`; found category slugs from `GET /categories` (the dry run names them by id). A value click follows
   the panel's own href (`selectionOfHref`). The chosen product and collection are checked against the report they are

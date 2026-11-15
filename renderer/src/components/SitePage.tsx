@@ -215,10 +215,10 @@ function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch 
 
     if (slugPath === prefixes.cart) return { type: 'cart' };
     if (slugPath === prefixes.checkout) return { type: 'checkout' };
-    if (slugPath === prefixes.checkout + "/confirmare") return { type: 'checkout-confirm' };
+    if (slugPath === prefixes.checkout + (prefixes.checkoutConfirmation || URL_PREFIX_DEFAULTS.checkoutConfirmation)) return { type: 'checkout-confirm' };
     if (slugPath.startsWith(prefixes.checkout + "/")) {
         const segment = slugPath.slice(prefixes.checkout.length + 1);
-        if (segment && segment !== "confirmare") return { type: 'checkout-track', itemSlug: segment };
+        if (segment && "/" + segment !== (prefixes.checkoutConfirmation || URL_PREFIX_DEFAULTS.checkoutConfirmation)) return { type: 'checkout-track', itemSlug: segment };
     }
     if (slugPath === prefixes.shop) return { type: 'shop' };
     if (slugPath.startsWith(prefixes.product + "/")) {
@@ -232,7 +232,7 @@ function matchCommercePrefix(slugPath: string, urlPrefixes: any): CommerceMatch 
     return null;
 }
 
-/** CAT-INTEREST-1: the interest-list path of a tenant (`urlPrefixes.interest`, default "/lista-mea"). Catalog sites only. */
+/** CAT-INTEREST-1: the interest-list path of a tenant (`urlPrefixes.interest`, default `URL_PREFIX_DEFAULTS.interest`, "/my-list" since CDL-2). Catalog sites only. */
 function interestPrefix(config: any): string {
     return config.urlPrefixes?.interest || URL_PREFIX_DEFAULTS.interest;
 }
@@ -478,8 +478,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
             return (
                 <CartPageView
-                    checkoutPrefix={prefixes.checkout || "/comanda"}
-                    shopPrefix={prefixes.shop || "/magazin"}
+                    checkoutPrefix={prefixes.checkout || URL_PREFIX_DEFAULTS.checkout}
+                    shopPrefix={prefixes.shop || URL_PREFIX_DEFAULTS.shop}
                     freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
                     minimumOrderAmount={deliveryConfig?.minimumOrderAmount || 0}
@@ -500,8 +500,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 <CheckoutPageView
                     tenantId={config.id}
                     apiUrl={apiUrl}
-                    confirmPrefix={`${prefixes.checkout || "/comanda"}/confirmare`}
-                    cartPrefix={prefixes.cart || "/cos"}
+                    confirmPrefix={`${prefixes.checkout || URL_PREFIX_DEFAULTS.checkout}${prefixes.checkoutConfirmation || URL_PREFIX_DEFAULTS.checkoutConfirmation}`}
+                    cartPrefix={prefixes.cart || URL_PREFIX_DEFAULTS.cart}
                     freeDeliveryThreshold={deliveryConfig?.freeDeliveryThreshold || 0}
                     flatShippingCost={deliveryConfig?.flatShippingCost || 0}
                     currency={config.currency || "USD"}
@@ -1099,7 +1099,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
             <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">{strings.shopTitle}</Link>
+                <Link href={`${basePath}${prefixes.shop || URL_PREFIX_DEFAULTS.shop}`} className="hover:text-primary">{strings.shopTitle}</Link>
                 <span className="mx-2">/</span>
                 <span className="text-foreground">{product.title}</span>
             </nav>
@@ -1459,7 +1459,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, cardCategories, product)} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || URL_PREFIX_DEFAULTS.product} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, cardCategories, product)} />
                     ))}
                 </div>
             );
@@ -1482,7 +1482,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                 <nav className="text-sm text-muted-foreground mb-8">
                 <Link href={`${basePath}/`} className="hover:text-primary">{site.breadcrumbHome}</Link>
                 <span className="mx-2">/</span>
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="hover:text-primary">{strings.shopTitle}</Link>
+                <Link href={`${basePath}${prefixes.shop || URL_PREFIX_DEFAULTS.shop}`} className="hover:text-primary">{strings.shopTitle}</Link>
                 <span className="mx-2">/</span>
                 <span className="text-foreground">{category.name}</span>
             </nav>
@@ -1507,7 +1507,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
     // LOCALE-1A: breadcrumb Home, pagination; LOCALE-1B: the shared product texts and the catalog texts.
     const resolved = resolveLocaleStrings(config);
     const { site, commerce: strings, catalog: catalogStrings } = resolved.strings;
-    const shopUrl = prefixes.shop || "/magazin";
+    const shopUrl = prefixes.shop || URL_PREFIX_DEFAULTS.shop;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const grid = products.length === 0 ? (
                 <p className="text-muted-foreground py-12 text-center">
@@ -1516,7 +1516,7 @@ function ShopPageView({ products, categories, total, page, config, prefixes, bas
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {products.map((product: any) => (
-                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || "/produs"} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, categories, product)} />
+                        <ProductCard key={product.id} product={product} productPrefix={prefixes.product || URL_PREFIX_DEFAULTS.product} basePath={basePath} catalog={catalog} tenantId={config.id} catalogStrings={catalogStrings} {...cardThemeProps(config, categories, product)} />
                     ))}
                 </div>
             );
@@ -1637,7 +1637,7 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
                 <div className="text-6xl mb-6">✅</div>
                 <h1 className="text-3xl font-bold mb-4">{t.orderThankYou}</h1>
                 <p className="text-muted-foreground mb-8">{t.orderPlacedMessage}</p>
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
+                <Link href={`${basePath}${prefixes.shop || URL_PREFIX_DEFAULTS.shop}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
                     {t.continueShopping}
                 </Link>
             </main>
@@ -1726,7 +1726,7 @@ function ConfirmationPageView({ order, config, prefixes, basePath = "" }: { orde
             )}
 
             <div className="text-center">
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
+                <Link href={`${basePath}${prefixes.shop || URL_PREFIX_DEFAULTS.shop}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
                     {t.continueShopping}
                 </Link>
             </div>
@@ -1755,7 +1755,7 @@ function OrderTrackingView({ order, config, prefixes, basePath = "" }: { order: 
             <main className={`${pageWidth} mx-auto py-20 px-6 text-center`}>
                 <h1 className="text-3xl font-bold mb-4">{t.orderNotFound}</h1>
                 <p className="text-muted-foreground mb-8">{t.orderNotFoundMessage}</p>
-                <Link href={`${basePath}${prefixes.shop || "/magazin"}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
+                <Link href={`${basePath}${prefixes.shop || URL_PREFIX_DEFAULTS.shop}`} className="inline-flex items-center bg-primary text-primary-foreground px-6 py-3 rounded-md font-medium hover:opacity-90 transition-opacity">
                     {t.continueShopping}
                 </Link>
             </main>

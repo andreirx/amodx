@@ -1620,6 +1620,18 @@ export default function SettingsPage() {
                                         />
                                     </div>
                                 )}
+                                {/* CDL-2 (§ 14 item 2): the order-confirmation segment, appended to the checkout path. Same
+                                    condition as Cart and Checkout. */}
+                                {!isCatalogMode(config) && (
+                                    <div className="space-y-2">
+                                        <Label>Confirmation (after Checkout)</Label>
+                                        <Input
+                                            value={config.urlPrefixes?.checkoutConfirmation || ""}
+                                            onChange={e => updateUrlPrefix("checkoutConfirmation", e.target.value)}
+                                            placeholder="/confirmation"
+                                        />
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <Label>Shop</Label>
                                     <Input
@@ -1652,7 +1664,7 @@ export default function SettingsPage() {
                                         <Input
                                             value={config.urlPrefixes?.interest || ""}
                                             onChange={e => updateUrlPrefix("interest", e.target.value)}
-                                            placeholder="/lista-mea"
+                                            placeholder="/my-list"
                                         />
                                     </div>
                                 )}

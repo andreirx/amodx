@@ -228,7 +228,8 @@ describe("[1b-server] metadata of the shared pages and the interest list", () =>
             expect((await meta(tenant(locale), ["shop"])).title).toBe(want.shop);
             expect((await meta(tenant(locale), ["search"])).title).toBe(want.search);
             expect((await meta(tenant(locale), ["search"], { q: "oak" })).title).toBe(want.query);
-            expect((await meta(catalogTenant(locale), ["lista-mea"])).title).toBe(want.list);
+            // CDL-2: the default interest address moved "/lista-mea" → "/my-list" (URL_PREFIX_DEFAULTS.interest).
+            expect((await meta(catalogTenant(locale), ["my-list"])).title).toBe(want.list);
         });
     }
 });
@@ -314,7 +315,7 @@ describe("[1b-server] catalog facet panel (shop and category pages)", () => {
             dynamo.getProductBySlug.mockResolvedValue({ ...CATALOG_PRODUCTS[0], variants: [] });
             const [page] = probes(await siteHtml(catalogTenant(locale), ["product", "a"]), "toggle-probe");
             expect(page.strings).toEqual(c);
-            const [list] = probes(await siteHtml(catalogTenant(locale), ["lista-mea"]), "list-probe");
+            const [list] = probes(await siteHtml(catalogTenant(locale), ["my-list"]), "list-probe");   // CDL-2: default address moved
             expect(Object.keys(list.strings)).toHaveLength(25);
             expect(list.strings.interestListTitle).toBe(name === "EN" ? "My list" : "Lista mea");
             expect(list.strings.interestRemove).toBe(name === "EN" ? "Remove {title} from the list" : "Scoateți {title} din listă");

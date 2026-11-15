@@ -27,6 +27,7 @@
   "768017": "[project]/node_modules/next/dist/esm/client/components/http-access-fallback/error-boundary.js",
   "837457": "[project]/node_modules/next/dist/esm/client/components/render-from-template-context.js",
   "852422": "[project]/renderer/src/components/CelebrationWrapper.tsx",
+  "866714": "[project]/renderer/src/components/QuoteRequest.tsx",
   "894921": "[project]/renderer/src/components/ProductImageGallery.tsx",
   "897367": "[project]/node_modules/next/dist/esm/lib/framework/boundary-components.js",
   "949371": "[project]/renderer/src/components/AddToCartButton.tsx",
