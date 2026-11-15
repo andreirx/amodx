@@ -20,7 +20,7 @@ Three separate entry points keep bundles lean:
 - `getExtensions()` returns an array of Tiptap Node extensions for all plugins
 - `getPluginList()` returns `{key, label, icon, offeredOn}[]` for the editor toolbar insert menu; `offeredOn` (CAT-ADMIN-2)
   is the list of site kinds (`"commerce"`, `"catalog"`) whose inserter offers the block, `[]` = every site
-  (`category-showcase`: both; `reviews-carousel`: commerce), and the renderer never reads it
+  (`category-showcase`: both; `category-grid`: both; `reviews-carousel`: commerce), and the renderer never reads it
 - `RENDER_LOADERS` is a `Record<string, () => Promise<{ default: React.FC<any> }>>` mapping block type
   keys to **dynamic `import()` thunks** (perf-1). It replaced the eager `RENDER_MAP`: because the
   renderer's `RenderBlocks` is a client component, an eager map pulled every plugin (incl.
@@ -41,10 +41,10 @@ src/blocks/<name>/
 └── <Name>Render.tsx  # Pure React render component (SSR-safe)
 ```
 
-## All 20 Plugins
+## All 21 Plugins
 
 This table lists every key in `RENDER_LOADERS` (`src/render.ts`) — one row per registered
-render loader. It must stay in sync with that map (perf-1: 20 loaders).
+render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since `shop-look-1c`).
 
 | Key | Label | Attributes | Styles/Variants |
 |-----|-------|-----------|-----------------|
@@ -67,6 +67,7 @@ render loader. It must stay in sync with that map (perf-1: 20 loaders).
 | `codeBlock` | Code Block | code, language, filename, showLineNumbers, blockWidth | 19 languages; dark `<pre><code>` + copy button |
 | `reviewsCarousel` | Reviews Carousel | headline, scope, productId, items[] (name, avatar, date, rating, text, source, photos), showSource, autoScroll, maxLines, blockWidth | manual / product-reviews-by-id / site-reviews (see § *The `reviews-carousel` block's render contract*) |
 | `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth | 2 / 3 / 4 columns |
+| `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText, chips[] (label, href; ≤ 12), blockWidth; server data `_categories` (see § *The `category-grid` block*) | 2 / 3 / 4 columns from `lg` |
 | `markdown` | Markdown | content, blockWidth | rendered via `marked` (async chunk) |
 
 ## Tiptap Integration Pattern
@@ -84,6 +85,8 @@ Plugins access runtime dependencies via `editor.storage.<key>`:
 - `editor.storage.image.uploadFn` — file upload to S3 (presigned URL)
 - `editor.storage.image.pickFn` — open media library picker dialog
 - `editor.storage.postGrid.fetchTagsFn` — load available tags for autocomplete
+- `editor.storage.categoryShowcase.fetchCategoriesFn`, `editor.storage.categoryGrid.fetchCategoriesFn` — the tenant's
+  category list (`GET /categories`; one function, both storages)
 
 These are injected by the admin's BlockEditor component before the editor mounts.
 
@@ -269,6 +272,32 @@ white and white/90 — the cover's own defaults); the design names no cover colo
 Every class is a literal in `HeroRender.tsx`, so the renderer's Tailwind (`@source` on this package) compiles it. The editor
 stores a cleared option as `null` (`storedOption` in `HeroEditor.tsx`: blank text, empty list or the default choice).
 
+## The `category-grid` block (slice `shop-look-1c`)
+
+Design `docs/slices/shop-look-1.md` § 3 rows 4-5, § 3.1, § 4.2, § 6.2, SL-D11/12/14; record `docs/slices/shop-look-1c.md`.
+A new block (no stored instances): ordinary defaults (`schema.ts`; the Tiptap attributes repeat them, pinned by
+`test/categoryGrid.test.ts`). Offered on commerce and catalog sites (`offeredOn`); the renderer draws it on every site.
+
+- **Data:** the render reads no category itself. The renderer's server pass (`prepareBlocks`, `renderer/src/components/
+  SitePage.tsx`) reads the picked ids (non-blank strings, the first 12) with `getActiveCategoriesByIds` and sets
+  `attrs._categories` = the active, existing ones in the picked order, each `{ id, name, description?, imageLink?, path }`
+  (`path` = the tenant's category prefix + slug). No `_categories` (no server pass: the admin preview) → the block draws
+  nothing; no browser fetch (SL-D12).
+- **Render (`CategoryGridRender.tsx`):** `<section>` with an optional header (eyebrow pill, `<h2>` headline), a grid of
+  `aspect-[3/4]` tile links (`GRID_CLASS`: one column, two from `sm`, `columns` from `lg`; an unknown value → `"4"`), then
+  optional chips (`<ul>` of pill `<a>`; an item without a non-blank label or href is skipped). `_categories` empty → the
+  header and chips only; none of them either → nothing. Each tile: the photo (`<img alt="" loading="lazy">`, raw URL as
+  the showcase cards; none → no element, the tile's `bg-muted` shows), then the text panel: name `<h3>`, description
+  (`line-clamp-2`; blank → no element), `ctaText` (blank → no element). Texts are trimmed. Links through `attrs._getUrl`.
+- **Overlay rule:** every tile text sits on a scrim `bg-foreground/75` (a fade `bg-gradient-to-t from-foreground/75` above
+  it carries no text), in `text-background`. Worst photo (a pixel of the text's own colour): 9.5 : 1 on the default theme,
+  10.4 : 1 on a dark theme (#f8fafc / #020817), calculated; the theme's own text/background pair sets the bound.
+- **Texts:** all owner content or category data; no `strings` key; the render imports only `react` (pinned by the test).
+- **Editor (`CategoryGridEditor.tsx`):** English; category list from `editor.storage.categoryGrid.fetchCategoriesFn`; add
+  (`withPickedId`), move up / down (`withItemMoved`), remove (`withoutItem`) — exported pure functions, the test seam
+  (no DOM harness); the picked list with photo and name is the editor's preview; a picked id that is missing or not
+  active is marked "skipped on the site".
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -282,8 +311,9 @@ stores a cleared option as `null` (`storedOption` in `HeroEditor.tsx`: blank tex
 | `renderer/test/unit/locale-1c-blocks-client.test.ts` (`locale-1c`; in the RENDERER suite — this package has no DOM harness and no jsdom dependency) | The block texts of every state of the eleven text-bearing blocks (forms sending/sent/failed, copy, read more, post grid loading/failed/empty/dates, showcase): en-US markup equal to a `0c0dbc8` capture, every Romanian change a declared key, the reviews-carousel date cases, the § 5.2 preservation cases at one reader per block (the iframe names pattern F) |
 | `test/hero.test.ts` (`shop-look-1b`) | `RENDER_LOADERS["hero"]`: every case of `test/heroBaselineCases.ts` (four styles × image, rich/legacy subheadline, no button, tokens, Tiptap defaults) renders equal to `test/hero.baseline.json` (HTML recorded at 783e95f; static and streaming renderers) with each new attribute absent, `null`, blank, empty or malformed; each option present → its element, and removing it gives the baseline back; the three § 6.5 inverse cases; schema limits; the editor's controls and `storedOption` |
 | `test/showcasePriceRange.test.ts` (`price-locale-1`) | `RENDER_LOADERS["categoryShowcase"]` price line: a given `_priceRange` is printed (`10 – 12.5 RON`); without it the card's reading is today's (`10 – 12 RON` for a comma text, `75 – 100 USD` for point texts); a range with min = max prints the price text |
-| `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
-| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 20, so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
+| `test/categoryGrid.test.ts` (`shop-look-1c`) | `RENDER_LOADERS["categoryGrid"]`: no `_categories` → nothing; 0 / 1 / 12 tiles in the given order (one tile byte for byte); photo and description fallbacks (no element); the scrim around every tile text and no palette colour class; `columns` 2 / 3 / 4 and unknown → the grid class; `ctaText`, eyebrow, headline blank / set; chips none / valid / without label or href; `_getUrl` on tiles and chips; schema defaults and limits (13th id refused); Tiptap defaults = schema defaults; the render imports only `react`; the editor's options and its three list functions |
+| `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` and `categoryGrid` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
+| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 21 (20 before `shop-look-1c`), so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
 components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path
@@ -300,7 +330,7 @@ is NO LONGER a whole-entry SSR smoke test on its own. The per-plugin suites belo
 render only THEIR loader, so each covers only its own module. The whole-entry guarantee now lives
 in `test/renderLoaders.test.ts`: it `await`s every `RENDER_LOADERS` entry in `environment: "node"`,
 which forces each render module to load. That detects **module-load** SSR hazards (a top-level
-`window`/`document` reference in any registered render module) for all 20 loaders. It does NOT
+`window`/`document` reference in any registered render module) for all 21 loaders. It does NOT
 render each component, so it does not prove browser-free *render execution* — the per-plugin
 suites do that for the components they exercise.
 

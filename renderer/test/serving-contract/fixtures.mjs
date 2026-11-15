@@ -895,6 +895,45 @@ const SL1B_ITEMS = [
     ...sl1bTenant("blank", { ...SL1B_COVER, ...SL1B_BLANK_OPTIONS }, { ...SL1B_SPLIT, ...SL1B_BLANK_OPTIONS, splitPanel: "plain" }),
 ];
 
+// ── SHOP-LOOK-1C fixtures (docs/slices/shop-look-1c.md; design docs/slices/shop-look-1.md § 4.2, § 6.3) ────────────────
+// Two copies of the CM1 commerce tenant (each with a `locale`, "en-US" written out, so neither is an en-US subject of the
+// `loc1-*` rows and neither is in any `before/` capture: rows `sl1c-*` read the running build only). Both hold the same
+// five extra categories and a page `/sl1c-rooms` with one `categoryGrid` block (blockWidth `wide`); they differ only in
+// that block's attributes:
+//  - set: `SL1C_GRID` — the ids name, in this order, an active category without a photo, a hidden one, an active one with
+//    photo and description, an id of no category, an active one without a description → tiles Walnut, Oak, Ash; eyebrow,
+//    headline, the foot text, three columns, three chips of which one has no label (skipped);
+//  - blank: the same block resolving to nothing — ids all hidden or missing, a whitespace eyebrow, an empty headline, a
+//    chip without a label → the block draws nothing (the content-width wrapper stays, empty, as for any block).
+export const SL1C = {
+    set: { id: "sl1c-set", host: "sl1c-set.serving-contract.test" },
+    blank: { id: "sl1c-blank", host: "sl1c-blank.serving-contract.test" },
+};
+export const SL1C_PATH = "/sl1c-rooms";
+export const SL1C_CATEGORIES = {
+    oak: { id: "sl1c-oak", name: "SL1C Oak", description: "Warm oak planks for every room.", imageLink: IMG("sl1c-oak") },
+    hidden: { id: "sl1c-hidden", name: "SL1C Hidden", description: "Not listed.", imageLink: IMG("sl1c-hidden"), status: "hidden" },
+    walnut: { id: "sl1c-walnut", name: "SL1C Walnut", description: "Dark walnut, no photo yet." },
+    ash: { id: "sl1c-ash", name: "SL1C Ash", imageLink: IMG("sl1c-ash") },
+};
+export const SL1C_GRID = {
+    eyebrow: "Rooms", headline: "SL1C Shop by room", categoryIds: ["sl1c-walnut", "sl1c-hidden", "sl1c-oak", "sl1c-missing", "sl1c-ash"],
+    columns: "3", ctaText: "Shop category",
+    chips: [{ label: "Oak floors", href: "/category/sl1c-oak" }, { label: "", href: "/sl1c-no-label" }, { label: "All floors", href: "/shop" }],
+    blockWidth: "wide",
+};
+export const SL1C_BLANK_GRID = {
+    eyebrow: "  ", headline: "", categoryIds: ["sl1c-hidden", "sl1c-missing"], columns: "3", ctaText: "Shop category",
+    chips: [{ label: "", href: "/sl1c-no-label" }], blockWidth: "wide",
+};
+const sl1cTenant = (key, grid) => [
+    ...localeCopy(CM1_ITEMS, CM1.commerce, SL1C[key], { locale: "en-US", name: "SL1C Shop" }),
+    ...Object.values(SL1C_CATEGORIES).map(({ id, name, ...rest }) => ({ ...cm1Category(SL1C[key].id, id, id, name), ...rest })),
+    siteRouteItem(SL1C[key].id, SL1C_PATH, "sl1c-rooms"),
+    siteContentItem(SL1C[key].id, "sl1c-rooms", SL1C_PATH, "SL1C Rooms", { blocks: [{ type: "categoryGrid", attrs: grid }] }),
+];
+const SL1C_ITEMS = [...sl1cTenant("set", SL1C_GRID), ...sl1cTenant("blank", SL1C_BLANK_GRID)];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -945,6 +984,8 @@ export const ITEMS = [
     ...SL1A_ITEMS,
     // shop-look-1b: the hero tenants (above).
     ...SL1B_ITEMS,
+    // shop-look-1c: the category-grid tenants (above).
+    ...SL1C_ITEMS,
 ];
 
 /**

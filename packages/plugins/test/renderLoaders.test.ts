@@ -43,8 +43,9 @@ describe("RENDER_LOADERS — whole-entry SSR-safety binding (perf-1)", () => {
 
     // Pins the map size. A new plugin added to RENDER_LOADERS without its own suite is still
     // covered by the resolve-every-loader test below; this guard makes the count intentional.
-    it("registers exactly 20 render loaders", () => {
-        expect(entries.length).toBe(20);
+    it("registers exactly 21 render loaders", () => {
+        // 21 since SHOP-LOOK-1C (`categoryGrid`).
+        expect(entries.length).toBe(21);
     });
 
     it.each(entries)(

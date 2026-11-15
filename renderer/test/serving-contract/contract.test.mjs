@@ -41,7 +41,7 @@ import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesO
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
-    SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS,
+    SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS, SL1C, SL1C_PATH, SL1C_CATEGORIES, SL1C_GRID, SL1C_BLANK_GRID,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -3177,6 +3177,92 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.ok(page.flight.includes('"eyebrow"') && page.flight.includes('"splitPanel"'), "precondition: the blank tenant stores the attributes");
             assert.equal(page.html, plain.html, `HTML equal to the twin; ${sl1aDiff(page.html, plain.html)}`);
             console.log("  (sl1b-blank-as-absent) null and blank hero options: HTML byte-equal to the twin (the payload carries the stored nulls, § 4.2)");
+        });
+
+        // ── ROWS (sl1c-*) — SHOP-LOOK-1C (docs/slices/shop-look-1c.md). Server HTML and payload of the running build for the
+        // SL1C tenants (fixtures.mjs `SL1C`: two copies of the CM1 commerce tenant whose page `/sl1c-rooms` holds one
+        // `categoryGrid` block). "A page without the block → today's bytes" is proven by every existing row, unchanged (no
+        // existing page holds the block). These rows prove, in the built site: the tiles in the picked order with hidden and
+        // missing categories skipped, the photo and description fallbacks, the foot text, eyebrow, headline and chips; that
+        // the set page differs from its blank twin EXACTLY by the block's <section> (HTML) and the block's attributes
+        // (payload); that a block resolving to nothing draws nothing; and that the built stylesheet holds every new class.
+        /** The page of an SL1C copy, its key fields written as the blank twin's (so twins compare byte for byte). */
+        const sl1cPage = async (key) => {
+            const res = await request({ port: server.port, path: SL1C_PATH, host: SL1C[key].host });
+            assert.equal(res.status, 200, `${key}: 200`);
+            const asBlank = (t) => t.split(SL1C[key].host).join(SL1C.blank.host).split(SL1C[key].id).join(SL1C.blank.id);
+            const { html } = splitFlight(res.body);
+            sl1aSide ??= { buildId: (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim(), clientModules: await readClientModules(RENDERER_DIR) };
+            const flight = maskBody(res.body, sl1aSide).masked.split("\n--- flight payload rows, sorted ---\n")[1];
+            return { raw: html, html: asBlank(html), flight: asBlank(flight) };
+        };
+        // The literals of CategoryGridRender (as the plugin suite pins them).
+        const SL1C_SCRIM = '<div class="absolute inset-x-0 bottom-0 flex flex-col"><div aria-hidden="true" class="h-16 bg-gradient-to-t from-foreground/75 to-transparent"></div><div class="bg-foreground/75 px-5 pb-5 text-background">';
+        const SL1C_CHIP = "inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted";
+        const sl1cTile = (c) => `<a href="${URL_PREFIX_DEFAULTS.category}/${c.id}" class="group relative block aspect-[3/4] overflow-hidden rounded-lg bg-muted">`
+            + (c.imageLink ? `<img src="${c.imageLink}" alt="" loading="lazy" class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"/>` : "")
+            + `${SL1C_SCRIM}<h3 class="text-xl font-semibold leading-tight">${c.name}</h3>`
+            + (c.description ? `<p class="mt-1 text-sm line-clamp-2">${c.description}</p>` : "")
+            + `<p class="mt-3 text-xs font-semibold uppercase tracking-widest">${SL1C_GRID.ctaText}</p></div></div></a>`;
+        /** The tiles the set block must draw: its ids in order, the hidden one and the id of no category skipped. */
+        const SL1C_SHOWN = [SL1C_CATEGORIES.walnut, SL1C_CATEGORIES.oak, SL1C_CATEGORIES.ash];
+        /** The `_categories` array of a payload (it holds flat objects only), parsed; asserted to occur exactly once. */
+        const sl1cCategoriesText = (flight, what) => {
+            const all = [...flight.matchAll(/"_categories":(\[[^\[\]]*\])/g)];
+            assert.equal(all.length, 1, `${what}: _categories exactly once`);
+            return all[0][1];
+        };
+
+        test("(sl1c-grid) the category grid: tiles in the picked order (hidden and missing skipped; photo and description fallbacks), foot text, eyebrow, headline and chips; the set page differs from its blank twin exactly by the block's section (HTML) and the block's attributes (payload); the stylesheet holds every new class", async () => {
+            const [page, blank] = [await sl1cPage("set"), await sl1cPage("blank")];
+            const chips = SL1C_GRID.chips.filter((c) => c.label && c.href);
+            const section = '<section class="my-12"><div class="text-center mb-10">'
+                + `<p class="inline-block w-fit rounded-full border px-3 py-1 mb-4 text-xs font-semibold uppercase tracking-widest border-primary/30 text-primary">${SL1C_GRID.eyebrow}</p>`
+                + `<h2 class="text-3xl md:text-4xl font-bold tracking-tight text-foreground">${SL1C_GRID.headline}</h2></div>`
+                + `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">${SL1C_SHOWN.map(sl1cTile).join("")}</div>`
+                + `<ul class="mt-8 flex flex-wrap justify-center gap-3">${chips.map((c) => `<li><a href="${c.href}" class="${SL1C_CHIP}">${c.label}</a></li>`).join("")}</ul></section>`;
+            assert.equal(chips.length, 2, "precondition: one stored chip has no label");
+            // HTML: the section, once, inside the block's wide wrapper; removing it gives the twin byte for byte.
+            assert.equal(page.html.split(section).length - 1, 1, `the grid section once, byte for byte; ${sl1aDiff(page.html.slice(page.html.indexOf('<section class="my-12">')), section)}`);
+            assert.ok(page.html.includes(`<div class="max-w-7xl mx-auto px-6">${section}</div>`), "inside the wide (site width) wrapper");
+            assert.ok(!blank.html.includes('<section class="my-12">'), "the blank twin draws no section");
+            assert.equal(page.html.replace(section, ""), blank.html, `HTML equal to the twin but for the section; ${sl1aDiff(page.html.replace(section, ""), blank.html)}`);
+            for (const t of [SL1C_CATEGORIES.hidden.name, SL1C_CATEGORIES.hidden.description, "sl1c-no-label"]) assert.ok(!page.raw.includes(t), `HTML: ${t} is not rendered`);
+            assert.ok(!page.flight.includes(SL1C_CATEGORIES.hidden.name), "payload: the hidden category's data is not sent");
+            // Payload: the stored attributes plus `_categories` (the shown tiles: display fields and the category path);
+            // swapping the set block's attributes for the twin's gives the twin's payload (resolved).
+            const tilesText = sl1cCategoriesText(page.flight, "set");
+            assert.deepEqual(JSON.parse(tilesText), SL1C_SHOWN.map(({ id, name, description, imageLink }) => ({
+                id, name, ...(description ? { description } : {}), ...(imageLink ? { imageLink } : {}), path: `${URL_PREFIX_DEFAULTS.category}/${id}`,
+            })), "payload: _categories = the shown tiles, in order");
+            assert.equal(sl1cCategoriesText(blank.flight, "blank"), "[]", "payload: the twin's _categories is empty");
+            const setAttrs = `${JSON.stringify(SL1C_GRID).slice(0, -1)},"_categories":${tilesText}}`;
+            const blankAttrs = `${JSON.stringify(SL1C_BLANK_GRID).slice(0, -1)},"_categories":[]}`;
+            const flightBack = swapOnce(page.flight, setAttrs, blankAttrs, "payload attrs");
+            assert.ok(blank.flight.includes(blankAttrs), "the twin's payload carries its attributes");
+            assert.deepEqual(sl1aResolved(flightBack), sl1aResolved(blank.flight), `payload equal to the twin but for the block's attributes (resolved); ${sl1aDiff(flightBack, blank.flight)}`);
+            // The compiled CSS has every class the block can emit (literal in CategoryGridRender.tsx, which Tailwind scans
+            // through globals.css `@source`).
+            const sheets = [...page.raw.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: SL1C.set.host })))).map((r) => r.body).join("\n");
+            const SL1C_CLASSES = [
+                "aspect-\\[3\\/4\\]", "bg-foreground\\/75", "from-foreground\\/75", "to-transparent", "bg-gradient-to-t", "text-background",
+                "line-clamp-2", "group-hover\\:scale-105", "object-cover", "inset-x-0", "bottom-0", "h-16", "px-5", "pb-5", "mt-3",
+                "sm\\:grid-cols-2", "lg\\:grid-cols-3", "lg\\:grid-cols-4", "grid-cols-1", "bg-muted", "rounded-lg", "rounded-full",
+                "border-border", "hover\\:bg-muted", "flex-wrap", "justify-center", "gap-3", "mt-8", "mb-10", "md\\:text-4xl", "text-xl",
+                "border-primary\\/30", "tracking-widest", "w-fit",
+            ];
+            const missing = SL1C_CLASSES.filter((cls) => !css.includes(`.${cls}{`) && !css.includes(`.${cls} {`) && !css.includes(`.${cls}:`) && !css.includes(`.${cls},`));
+            assert.deepEqual(missing, [], `compiled: every class of the block has a rule (${sheets.length} stylesheet(s))`);
+            console.log(`  (sl1c-grid) ${SL1C_SHOWN.length} tiles (hidden and missing skipped), 2 chips; HTML = twin + the section; payload = twin but for the block's attributes; ${SL1C_CLASSES.length} classes compiled in ${sheets.length} stylesheet(s)`);
+        });
+
+        test("(sl1c-blank-draws-nothing) a grid whose ids are all hidden or missing, with a whitespace eyebrow, an empty headline and a chip without a label: no section, no tile, no chip; the block's wrapper is empty", async () => {
+            const blank = await sl1cPage("blank");
+            assert.ok(blank.html.includes('<div class="max-w-7xl mx-auto px-6"></div>'), "the block's wrapper, empty");
+            for (const t of ['<section class="my-12">', "aspect-[3/4]", SL1C_CATEGORIES.hidden.name, "sl1c-no-label", "Shop category"]) assert.ok(!blank.raw.includes(t), `no ${t}`);
+            console.log("  (sl1c-blank-draws-nothing) nothing drawn; the wide wrapper stays empty");
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

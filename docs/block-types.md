@@ -26,6 +26,24 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 | `codeBlock` | Code Block | code, language, filename, showLineNumbers | 19 languages |
 | `reviewsCarousel` | Reviews Carousel | headline, scope (manual \| product-reviews-by-id \| site-reviews), productId, items[] (name, avatarUrl, date, rating, text, source), showSource, autoScroll | google, facebook, manual sources. `scope: product-reviews-by-id` (needs `productId`) / `scope: site-reviews` (rev-4) render approved moderated reviews with approved photos — server-prefetched, assetKey→raw asset URL, never next/image |
 | `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText | 2, 3, 4 columns |
+| `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText (foot text of every tile), chips[] (label, href; ≤ 12), blockWidth (SHOP-LOOK-1C; see § *Category grid*) | 2, 3, 4 columns from large screens; 1 on a phone, 2 from `sm` |
+
+## Category grid (`categoryGrid`, slice `shop-look-1c`)
+
+Tall tiles (`aspect-[3/4]`) of categories the owner picks by id, in the picked order: the category photo, its name, its
+description (two lines at most) and, when `ctaText` is set, that text at the foot of every tile. Each tile links to the
+category page on the tenant's own category path. Optional eyebrow and headline above; optional pill links (`chips`)
+under the grid. Offered in the block inserter on commerce and catalog sites; drawn on any site that stores it.
+
+- The categories are read on the server when the page renders (one `GetCommand` per stored id, at most 12; none
+  without ids). A hidden or deleted category is left out; the others keep their order. A stored 13th id (the editor and
+  the schema stop at 12; the backend does not check block attributes) is not read and not drawn.
+- No photo → no image element (the tile's muted background shows). No description → no description element. Blank
+  `ctaText`, eyebrow or headline → no element. A chip without a label or a link → not shown.
+- No category resolves → the eyebrow, the headline and the chips only; with none of those either → nothing.
+- The tile text is on a scrim of the theme's text colour at 75 % opacity, in the theme's background colour: readable on
+  any photo (record `docs/slices/shop-look-1c.md` § *Overlay rule*).
+- Without the server pass (the admin editor) the public render draws nothing; the editor shows its own list.
 
 ## Video embed support
 

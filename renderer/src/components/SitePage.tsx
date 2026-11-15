@@ -16,13 +16,13 @@
 //
 // Phase 3.3: getCustomerOrders / getCustomerProfile are deliberately NOT imported here.
 // Customer-private data is fetched via session-validating API routes, not SSR.
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds } from "@/lib/dynamo";
 import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from "@/lib/review-images";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -748,7 +748,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
 /**
  * SERVER PRE-FETCH FOR PLUGIN BLOCKS — the preparation pass every list of blocks gets before `RenderBlocks` draws it.
  * Injects server-fetched data and tenant settings into the attrs of the blocks, IN PLACE: `postGrid` posts,
- * `categoryShowcase` products (+ the catalog-mode reduction and the URL prefixes), `reviewsCarousel` reviews.
+ * `categoryShowcase` products (+ the catalog-mode reduction and the URL prefixes), `reviewsCarousel` reviews,
+ * `categoryGrid` categories (SHOP-LOOK-1C).
  * Eliminates client-side browser→API Gateway fetches which are fragile (CORS, missing env vars, silent failures).
  * A value that is not an array is left alone (no read). Users: the content page and the category page
  * (CATEGORY-CONTENT-1), so a block works the same on both.
@@ -815,6 +816,28 @@ async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
             const resolvedPrefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
             block.attrs._productPrefix = resolvedPrefixes.product || "/product";
             block.attrs._categoryPrefix = resolvedPrefixes.category || "/category";
+        }
+
+        // SHOP-LOOK-1C (docs/slices/shop-look-1.md § 6.4; record docs/slices/shop-look-1c.md): the picked categories of a
+        // tile grid. Only this block's attrs gain a key (`_categories`, § 6.3 rule 3). The stored ids: strings that are not
+        // blank, the first 12 (the schema's limit; the backend does not check block attributes, so a stored 13th id is not
+        // read and not drawn) — one `getActiveCategoriesByIds` call per block, one `GetCommand` per id, none when no id is
+        // left. A hidden or missing category is skipped by the read; the others keep the picked order. Each tile is built
+        // field by field — id, name, description and imageLink when present, and the site path of its category page
+        // (`urlPrefixesOf`: the tenant's category prefix, else the default) — so the payload holds these fields whatever
+        // the read returns (the attrs of a client block travel in the RSC payload).
+        if (block.type === 'categoryGrid') {
+            const stored: unknown[] = Array.isArray(block.attrs.categoryIds) ? block.attrs.categoryIds : [];
+            const ids = stored.filter((id): id is string => typeof id === "string" && id.trim() !== "").slice(0, 12);
+            const categoryPrefix = urlPrefixesOf(config.urlPrefixes).category;
+            const categories = ids.length > 0 ? await getActiveCategoriesByIds(config.id, ids) : [];
+            block.attrs._categories = categories.map((c) => ({
+                id: c.id,
+                name: c.name,
+                ...(c.description !== undefined ? { description: c.description } : {}),
+                ...(c.imageLink !== undefined ? { imageLink: c.imageLink } : {}),
+                path: `${categoryPrefix}/${c.slug}`,
+            }));
         }
 
         // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here

@@ -39,6 +39,8 @@ Plugin editors cannot import from `admin/` or call APIs directly. If an editor n
 editor.storage.image.uploadFn = uploadFile;
 editor.storage.image.pickFn = openMediaPicker;
 editor.storage.postGrid.fetchTagsFn = fetchTags;
+editor.storage.categoryShowcase.fetchCategoriesFn = fetchCategories;
+editor.storage.categoryGrid.fetchCategoriesFn = fetchCategories;   // SHOP-LOOK-1C
 ```
 
 The plugin reads from `this.editor.storage.<key>` at runtime.
@@ -59,6 +61,16 @@ All `*Editor.tsx` components must use this card layout for visual consistency:
     </div>
 </NodeViewWrapper>
 ```
+
+## Server-prepared block data
+
+A render component never reads the database. When a block needs tenant data on the public site, the renderer's server
+pass (`prepareBlocks` in `renderer/src/components/SitePage.tsx`) reads it before `RenderBlocks` draws the page and adds
+plain fields to that block's `attrs` only: `postGrid` (`prefetchedPosts`), `categoryShowcase` (`prefetchedProducts`,
+`_productPrefix`, `_categoryPrefix`, `_catalogMode`), `reviewsCarousel` (`items`), `categoryGrid` (`_categories`: the
+picked active categories, each `{ id, name, description?, imageLink?, path }`, SHOP-LOOK-1C). The attrs of a block travel
+in the page's RSC payload, so the pass builds these values field by field. A new block that needs server data adds one
+branch there; see `docs/block-types.md` per block.
 
 ## Render Component Contract
 

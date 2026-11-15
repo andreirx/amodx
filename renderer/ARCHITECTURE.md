@@ -222,7 +222,8 @@ legacy `/products/<id>` route. Steps:
    alone.
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
 5. **Block preparation (`prepareBlocks`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
-   products (+ the catalog-mode reduction, the URL prefixes), `reviewsCarousel` reviews (avoids client fetches). One
+   products (+ the catalog-mode reduction, the URL prefixes), `reviewsCarousel` reviews, `categoryGrid` categories
+   (SHOP-LOOK-1C) (avoids client fetches). One
    function, two users: the content page and the category page (CATEGORY-CONTENT-1)
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
 7. Renders blocks via `<RenderBlocks>` + comments section + social share buttons
@@ -800,6 +801,17 @@ page as stored block attributes through `RenderBlocks` (the second button's link
 the new elements and undoing the § 6.5 class swaps; the payload differs by the stored attributes only; the built
 stylesheet holds every new class, e.g. `.bg-foreground`, `.text-background`) and `sl1b-blank-as-absent` (`null` and
 blank options: the twin's HTML byte for byte).
+
+**SHOP-LOOK-1C (docs/slices/shop-look-1c.md; design docs/slices/shop-look-1.md § 4.2, § 6.3, § 6.4).** `prepareBlocks`
+gains one branch, for `categoryGrid` blocks only: the stored `categoryIds` (non-blank strings, the first 12; a stored
+13th id is not read) → one `getActiveCategoriesByIds(tenantId, ids)` call per block (one `GetCommand` per id; no call
+without ids) → `attrs._categories` = the resolved categories in the picked order, each built field by field `{ id, name,
+description?, imageLink?, path }` (`path` = `urlPrefixesOf(urlPrefixes).category + "/" + slug`; the tile link then goes
+through `_getUrl`). No other block's attrs change; a page without the block makes no new read and keeps its bytes (every
+existing row unchanged). The block is drawn on content, commerce and catalog sites alike (no kind gate in the renderer;
+the admin offers it on commerce and catalog). Rows `sl1c-grid` (the set page = its blank twin + the block's `<section>`,
+byte for byte; the payload differs by the block's attributes only; the built stylesheet holds every class) and
+`sl1c-blank-draws-nothing`; unit `test/unit/shop-look-1c-grid.test.ts`.
 
 ## Path settings — slice `cdl-2`
 

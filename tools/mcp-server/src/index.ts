@@ -626,6 +626,30 @@ const BLOCK_SCHEMAS = {
             }
         }
     },
+    categoryGrid: {
+        description: "Tall tiles of chosen categories (photo, name, description, optional foot text over the photo), in the chosen order, with an optional label and headline above and optional pill links under the grid. Each tile links to its category page. The categories are read from the shop when the page renders: a hidden or deleted category is left out. Offered on commerce and catalog sites.",
+        attrs: {
+            eyebrow: "string (optional small label above the headline; '' = none)",
+            headline: "string (optional; '' = none)",
+            categoryIds: "array of category UUIDs from list_categories, in tile order (max 12)",
+            columns: "'2' | '3' | '4' (default '4'; columns from large screens, 1 on a phone, 2 on a tablet)",
+            ctaText: "string (optional text at the foot of every tile, e.g. 'Shop category'; '' = none)",
+            chips: "array of { label, href } — pill links under the grid (max 12); an item without a label or href is not shown",
+            blockWidth: "'content' | 'wide' | 'full' (default 'content')"
+        },
+        example: {
+            type: "categoryGrid",
+            attrs: {
+                eyebrow: "Shop by room",
+                headline: "Floors for every space",
+                categoryIds: ["cat-uuid-1", "cat-uuid-2", "cat-uuid-3", "cat-uuid-4"],
+                columns: "4",
+                ctaText: "Shop category",
+                chips: [{ label: "Hardwood", href: "/category/hardwood" }, { label: "All floors", href: "/shop" }],
+                blockWidth: "wide"
+            }
+        }
+    },
     paragraph: {
         description: "Standard text paragraph. Use for body content.",
         content: "string (the text content)"
@@ -920,7 +944,8 @@ server.tool("add_block",
             "carousel",
             "codeBlock",
             "reviewsCarousel",
-            "categoryShowcase"
+            "categoryShowcase",
+            "categoryGrid"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
@@ -2622,6 +2647,7 @@ CURRENT PLUGINS (18 + 2 builtins):
 ✓ Code Block (syntax-highlighted, 19 languages)
 ✓ Reviews Carousel (Google/Facebook badges, star ratings)
 ✓ Category Showcase (live product grid from commerce API)
+✓ Category Grid (tiles of chosen categories + pill links)
 
 ORDER STATUS FLOW:
 placed → confirmed → prepared → shipped → delivered
@@ -2635,6 +2661,7 @@ TIPS:
 - Columns widths should add up logically (1/2 + 1/2, 1/3 + 2/3, etc)
 - Table rows must have same number of cells as headers
 - categoryShowcase requires commerce-enabled tenant and valid category ID
+- categoryGrid takes category IDs (list_categories); hidden or deleted categories are left out
 - bulk_price_adjust defaults to dry_run=true (preview only) — call with dry_run=false to apply
 - Currency is set per-tenant in settings (default RON), inherited by new products`
         }],

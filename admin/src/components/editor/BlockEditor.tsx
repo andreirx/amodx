@@ -87,17 +87,21 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
                 storage.postGrid.fetchTagsFn = handleFetchTags;
             }
 
-            // Category Showcase Handlers
+            // Category Showcase and Category Grid (SHOP-LOOK-1C) Handlers: the tenant's category list
+            const fetchCategories = async () => {
+                try {
+                    const res = await apiRequest("/categories");
+                    return res.items || [];
+                } catch (e) {
+                    console.error("Failed to fetch categories for editor", e);
+                    return [];
+                }
+            };
             if (storage.categoryShowcase) {
-                storage.categoryShowcase.fetchCategoriesFn = async () => {
-                    try {
-                        const res = await apiRequest("/categories");
-                        return res.items || [];
-                    } catch (e) {
-                        console.error("Failed to fetch categories for editor", e);
-                        return [];
-                    }
-                };
+                storage.categoryShowcase.fetchCategoriesFn = fetchCategories;
+            }
+            if (storage.categoryGrid) {
+                storage.categoryGrid.fetchCategoriesFn = fetchCategories;
             }
         },
         onUpdate: ({ editor }) => {

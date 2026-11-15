@@ -12,15 +12,18 @@ import { offeredPlugins } from "./Toolbar";
  */
 const ALL = getPluginList();
 const keys = (tenant: Parameters<typeof offeredPlugins>[1]) => offeredPlugins(ALL, tenant).map((p) => p.key);
-const everyOther = ALL.map((p) => p.key).filter((k) => k !== "categoryShowcase" && k !== "reviewsCarousel");
+// The kind-bound blocks: the showcase and (SHOP-LOOK-1C, design SL-D11) the category grid on commerce and catalog sites;
+// the reviews carousel on commerce sites.
+const KIND_BOUND = ["categoryShowcase", "reviewsCarousel", "categoryGrid"];
+const everyOther = ALL.map((p) => p.key).filter((k) => !KIND_BOUND.includes(k));
 
 describe("offeredPlugins", () => {
-    it("the registry has the two kind-bound blocks and others", () => {
-        expect(ALL.map((p) => p.key)).toEqual(expect.arrayContaining(["categoryShowcase", "reviewsCarousel"]));
-        expect(everyOther.length).toBe(ALL.length - 2);
+    it("the registry has the three kind-bound blocks and others", () => {
+        expect(ALL.map((p) => p.key)).toEqual(expect.arrayContaining(KIND_BOUND));
+        expect(everyOther.length).toBe(ALL.length - KIND_BOUND.length);
     });
 
-    it("content site (no flag, or no tenant): neither the showcase nor the carousel", () => {
+    it("content site (no flag, or no tenant): neither the showcase, the grid nor the carousel", () => {
         expect(keys({})).toEqual(everyOther);
         expect(keys({ commerceEnabled: false, catalogMode: false })).toEqual(everyOther);
         expect(keys(null)).toEqual(everyOther);
@@ -30,9 +33,10 @@ describe("offeredPlugins", () => {
         expect(keys({ commerceEnabled: true })).toEqual(ALL.map((p) => p.key));
     });
 
-    it("catalog site: the showcase, not the carousel", () => {
+    it("catalog site: the showcase and the grid, not the carousel", () => {
         const k = keys({ catalogMode: true });
         expect(k).toContain("categoryShowcase");
+        expect(k).toContain("categoryGrid");
         expect(k).not.toContain("reviewsCarousel");
         expect(k).toEqual(ALL.map((p) => p.key).filter((x) => x !== "reviewsCarousel"));
     });

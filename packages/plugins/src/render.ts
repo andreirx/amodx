@@ -40,5 +40,6 @@ export const RENDER_LOADERS: Record<string, RenderLoader> = {
     'codeBlock': () => import('./code-block/CodeBlockRender').then(m => ({ default: m.CodeBlockRender })),
     'reviewsCarousel': () => import('./reviews-carousel/ReviewsCarouselRender').then(m => ({ default: m.ReviewsCarouselRender })),
     'categoryShowcase': () => import('./category-showcase/CategoryShowcaseRender').then(m => ({ default: m.CategoryShowcaseRender })),
+    'categoryGrid': () => import('./category-grid/CategoryGridRender').then(m => ({ default: m.CategoryGridRender })),
     'markdown': () => import('./markdown/MarkdownRender').then(m => ({ default: m.MarkdownRender })),
 };
