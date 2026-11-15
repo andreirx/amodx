@@ -94,6 +94,16 @@ src/
 │   ├── get.ts             # GET /products/{id}
 │   ├── update.ts          # PUT /products/{id}
 │   └── delete.ts          # DELETE /products/{id}
+├── categories/
+│   ├── create.ts          # POST /categories (CategorySchema.omit; `blocks` stored when sent)
+│   ├── update.ts          # PUT /categories/{id}: Get + merge over the stored item + Put — a body without
+│   │                      #   `blocks` keeps them (CATEGORY-CONTENT-1); purges the category page
+│   │                      #   (revalidateTenantPaths "category", old + new slug)
+│   ├── get.ts             # GET /categories/{id} — the whole item, `blocks` included (the admin editor)
+│   ├── list.ts            # GET /categories, public-list.ts GET /public/categories — Projection without
+│   │                      #   `blocks`, every page followed (the 1 MB page limit counts the stored item)
+│   ├── public-get.ts      # GET /public/categories/{slug} (GSI_Slug) — one category + its products
+│   └── delete.ts          # DELETE /categories/{id}
 ├── reviews/
 │   ├── create.ts          # POST /reviews
 │   ├── list.ts            # GET /reviews (admin, all statuses). No productId → merges BOTH the
@@ -212,7 +222,9 @@ src/
     ├── wxr-parser.ts      # WXR XML parser utility
     ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
     ├── woocommerce.ts     # POST /import/woocommerce — product CSV import; refuses a catalog tenant (403) and
-    │                      #   a missing tenant (404) before the first write (CATALOG-MODE-1, CM-D8 guard 1)
+    │                      #   a missing tenant (404) before the first write (CATALOG-MODE-1, CM-D8 guard 1);
+    │                      #   creates an absent CATEGORY#<slug> with attribute_not_exists(SK) — never replaces
+    │                      #   a category (its `blocks`, CATEGORY-CONTENT-1); a refused create fails the row
     ├── glam-pricelist.ts  # POST /import/glam-pricelist[?dryRun=1] (CAT-IMPORT-1) — one glam enriched pricelist
     │                      #   CSV → one product per style (its rows = options of one variant group), REPLACING
     │                      #   the products carrying the sheet's importSource. Body must be a JSON object. Catalog

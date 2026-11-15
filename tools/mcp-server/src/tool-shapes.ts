@@ -3,8 +3,8 @@
  *
  * No I/O, no environment, no import from `index.ts`: `index.ts` runs `dotenv.config()` and `main()` when imported,
  * so its handlers cannot be loaded by a test. The handlers named below call these functions; `test/tool-shapes.test.ts`
- * asserts on what they return. Users: `create_tenant`, `create_product`, `list_products`, `import_glam_pricelist` (CAT-IMPORT-1)
- * in `index.ts`.
+ * asserts on what they return. Users: `create_tenant`, `create_product`, `list_products`, `import_glam_pricelist` (CAT-IMPORT-1),
+ * `create_category` (CATEGORY-CONTENT-1) in `index.ts`.
  */
 
 /** `POST /tenants` body. `catalogMode` is true only for the literal `true` (the mode is fixed at creation, CM-D11). */
@@ -38,6 +38,25 @@ export function createProductBody(args: {
     if (args.sku) payload.sku = args.sku;
     if (args.category_ids) payload.categoryIds = args.category_ids.split(",").map((s) => s.trim());
     if (args.tags) payload.tags = args.tags.split(",").map((s) => s.trim());
+    return payload;
+}
+
+/**
+ * CATEGORY-CONTENT-1 — `POST /categories` body of `create_category`. The route's schema calls the category's name `name`
+ * (`CategorySchema`); the tool's argument stays `title`. `blocks` = the category page's content, already parsed as a JSON
+ * array (`parseJsonInput` in `index.ts`); sent only when given. Absent optional values are omitted keys.
+ */
+export function createCategoryBody(
+    args: { title: string; slug?: string; description?: string; image_link?: string; parent_id?: string; sort_order?: number },
+    blocks?: unknown[],
+): Record<string, unknown> {
+    const payload: Record<string, unknown> = { name: args.title };
+    if (args.slug) payload.slug = args.slug;
+    if (args.description) payload.description = args.description;
+    if (args.image_link) payload.imageLink = args.image_link;
+    if (args.parent_id) payload.parentId = args.parent_id;
+    if (args.sort_order !== undefined) payload.sortOrder = args.sort_order;
+    if (blocks !== undefined) payload.blocks = blocks;
     return payload;
 }
 

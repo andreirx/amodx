@@ -171,3 +171,21 @@ test("import_glam_pricelist summary: one line with the label set used and its fo
     assert.ok(fromFile.includes("Labels: this file's labels — colectie, unitate de masura, unitate de impachetare, comanda minima"));
     assert.ok(fromFile.includes("These lists use other labels: glam:alpod/a (2 products: Collection, Unit, Packaging, Minimum order). Import them again to share filters."));
 });
+
+// CATEGORY-CONTENT-1 (docs/slices/category-content-1.md, rule 8) — `create_category`.
+test("create_category sends the name as `name` (the route's schema), and only the given optional keys", async () => {
+    const { createCategoryBody } = await import("../src/tool-shapes.ts");
+    assert.deepEqual(createCategoryBody({ title: "Boen" }), { name: "Boen" });
+    assert.deepEqual(
+        createCategoryBody({ title: "Boen", slug: "boen", description: "d", image_link: "https://img.test/b.jpg", parent_id: "p1", sort_order: 0 }),
+        { name: "Boen", slug: "boen", description: "d", imageLink: "https://img.test/b.jpg", parentId: "p1", sortOrder: 0 },
+    );
+});
+
+test("create_category passes `blocks` through as sent (parsed array); no blocks → no key", async () => {
+    const { createCategoryBody } = await import("../src/tool-shapes.ts");
+    const blocks = [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Boen" }] }, { type: "image", attrs: { src: "https://img.test/b.jpg" } }];
+    assert.deepEqual(createCategoryBody({ title: "Boen" }, blocks).blocks, blocks);
+    assert.deepEqual(createCategoryBody({ title: "Boen" }, []).blocks, []);
+    assert.ok(!("blocks" in createCategoryBody({ title: "Boen" })));
+});

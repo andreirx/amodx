@@ -89,7 +89,7 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | Tool | Method | Purpose |
 |------|--------|---------|
 | `list_categories` | GET /categories | List categories |
-| `create_category` | POST /categories | Create category |
+| `create_category` | POST /categories | Create category; optional `blocks` (JSON array, the category page's content, CATEGORY-CONTENT-1). Body by `createCategoryBody` (`name` = the `title` argument) |
 | `list_orders` | GET /orders | List orders (optional status filter) |
 | `get_order` | GET /orders/{id} | Read one order |
 | `update_order_status` | PUT /orders/{id}/status | Move order through the status workflow |

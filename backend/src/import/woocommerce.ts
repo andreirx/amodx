@@ -364,7 +364,11 @@ const _handler: Handler = async (event) => {
                                         productCount: 0,
                                         createdAt: now,
                                         updatedAt: now,
-                                    }
+                                    },
+                                    // CATEGORY-CONTENT-1 (rule 6): create only. The Get above is not a lock: a category
+                                    // written at this key since the Get (an admin's `blocks` included) is never replaced;
+                                    // the row then fails and a second import matches the category (as glam-pricelist.ts).
+                                    ConditionExpression: "attribute_not_exists(SK)",
                                 }));
                                 categoryCache[leafCat] = catId;
                                 result.categoriesCreated++;

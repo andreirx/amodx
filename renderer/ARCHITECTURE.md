@@ -221,7 +221,9 @@ legacy `/products/<id>` route. Steps:
    closed in `cache-3` revision 3. Never state this gate as working from the middleware rule
    alone.
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
-5. **Post grid prefetch:** server-side fetches posts for any `postGrid` blocks (avoids client "window is undefined")
+5. **Block preparation (`prepareBlocks`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
+   products (+ the catalog-mode reduction, the URL prefixes), `reviewsCarousel` reviews (avoids client fetches). One
+   function, two users: the content page and the category page (CATEGORY-CONTENT-1)
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
 7. Renders blocks via `<RenderBlocks>` + comments section + social share buttons
 8. Shows draft watermark banner for unpublished content
@@ -385,6 +387,25 @@ Two read paths outside this file keep different internals on purpose: `lib/tenan
 whole estate on a blip — the render repeats the lookup and throws anyway; and
 `lib/api-client.ts` (Secrets Manager) returns `""`, which its callers forward to the backend,
 which rejects it, so the route still answers a non-2xx rather than a 200 with empty data.
+
+## Category page content (CATEGORY-CONTENT-1, PROTOTYPE)
+
+A category's own `blocks` (`Category.blocks`, the content page's block type) render on its page, every site kind:
+after the title block (title, description, product count) and before the filters and the product list, on every
+page (`?page=`) and filter state (`?f=`). `SitePage` runs `prepareBlocks(category.blocks, config)` (no read without
+blocks); `CategoryPageView` draws them with `RenderBlocks` and the tenant's `blockStrings(resolved, { catalogMode })`,
+inside `<div class="mb-8" data-category-content>`.
+- **Width:** no `contentMaxWidth` / `siteMaxWidth` is passed, so `RenderBlocks` adds no per-block wrapper: each block
+  takes the width of the category page's own container (`<main>`, `header.contentMaxWidth`, default `max-w-6xl`,
+  `px-6`), aligned with the title and the grid. A "full" block (hero, CTA, …) cannot break out of that container.
+- **No blocks = byte identity:** absent, `[]` or not an array → `pageContent` is `undefined` and the title block stays
+  the same single element (`{pageContent ? <>{titleBlock}{pageContent}</> : titleBlock}`). A `{cond && …}` child would
+  put a `false`/`undefined` entry into the RSC payload of every category page (control EXECUTED: rows
+  `cm1-identity-*`, `loc1-diff-cdl-2` fail).
+- **Refresh:** the admin save is `PUT /categories/{id}` → `revalidateTenantPaths(tenantId, "category", …)`, the same
+  purge as a description change.
+- Tests: `test/unit/category-content-1.test.ts`; serving rows `cc1-category-content`, `cc1-category-no-content`
+  (fixtures `CC1`).
 
 ## Catalog listings and filters (`@amodx/shared` `facets.ts`, `catalog-listing.ts`) — slices `cat-facets-1`, `cat-import-profile-1b` (PROTOTYPE)
 

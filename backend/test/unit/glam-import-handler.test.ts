@@ -196,6 +196,20 @@ describe("CAT-IMPORT-1 integration (in-memory store)", () => {
         expect(table.get("TENANT#t1", "CATEGORY#boen-chevron")!.parentId).toBe("uuid-1");
     });
 
+    it("CATEGORY-CONTENT-1 rule 6: categories that exist with page content (`blocks`) keep it, item unchanged, on a first and a repeated import", async () => {
+        const blocks = [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Boen" }] }, { type: "image", attrs: { src: img(9), alt: "Boen" } }];
+        // Both stores of a category: admin-created (uuid key, found by slug) and importer-created (slug key).
+        table.put({ PK: "TENANT#t1", SK: "CATEGORY#uuid-1", TenantSlug: "t1#boen", id: "uuid-1", slug: "boen", name: "Boen", blocks });
+        table.put({ PK: "TENANT#t1", SK: "CATEGORY#boen-chevron", TenantSlug: "t1#boen-chevron", id: "boen-chevron", slug: "boen-chevron", name: "Chevron", parentId: "uuid-1", blocks });
+        const before = [table.get("TENANT#t1", "CATEGORY#uuid-1"), table.get("TENANT#t1", "CATEGORY#boen-chevron")];
+        for (const _ of [1, 2]) {
+            expect((await call(event(body()))).status).toBe(200);
+            expect([table.get("TENANT#t1", "CATEGORY#uuid-1"), table.get("TENANT#t1", "CATEGORY#boen-chevron")]).toEqual(before);
+        }
+        // Only the absent collection category was written; never an existing one.
+        expect(table.writes.filter((w) => String(w.SK).startsWith("CATEGORY#")).map((w) => w.SK)).toEqual(["CATEGORY#boen-herringbone"]);
+    });
+
     it("the previous-set read is a strongly consistent PRODUCT# query without FilterExpression", async () => {
         await call(event(body()));
         const q = table.commands.find((c) => c instanceof QueryCommand && c.input.ExpressionAttributeValues[":sk"] === "PRODUCT#");

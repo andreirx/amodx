@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import { chromium } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
-import { createTenantBody, createProductBody, productListLine, glamPricelistRequest, glamPricelistSummary } from "./tool-shapes.js";
+import { createTenantBody, createProductBody, createCategoryBody, productListLine, glamPricelistRequest, glamPricelistSummary } from "./tool-shapes.js";
 
 // Storage directory for browser auth states
 const STORAGE_DIR = path.join(import.meta.dirname, "../.storage");
@@ -1191,15 +1191,17 @@ server.tool("create_category",
         image_link: z.string().optional().describe("Category image URL"),
         parent_id: z.string().optional().describe("Parent category ID for nested categories"),
         sort_order: z.number().optional().describe("Sort order (lower = first)"),
+        blocks: z.string().optional().describe("Page content: a JSON array of blocks, shown on the category page after the title and before the product list (the same blocks as a page; see get_block_schemas)"),
     },
-    async ({ tenant_id, title, slug, description, image_link, parent_id, sort_order }) => {
+    async ({ tenant_id, title, slug, description, image_link, parent_id, sort_order, blocks }) => {
         try {
-            const payload: any = { title };
-            if (slug) payload.slug = slug;
-            if (description) payload.description = description;
-            if (image_link) payload.imageLink = image_link;
-            if (parent_id) payload.parentId = parent_id;
-            if (sort_order !== undefined) payload.sortOrder = sort_order;
+            let parsedBlocks: unknown[] | undefined;
+            if (blocks) {
+                const parsed = parseJsonInput(blocks, "array", "blocks");
+                if (!parsed.ok) return parsed.result;
+                parsedBlocks = parsed.value;
+            }
+            const payload = createCategoryBody({ title, slug, description, image_link, parent_id, sort_order }, parsedBlocks);
             const response = await axios.post(`${API_URL}/categories`, payload, { headers: getHeaders(tenant_id) });
             return { content: [{ type: "text", text: `✓ Created category "${title}" (ID: ${response.data.id})` }] };
         } catch (error: any) {

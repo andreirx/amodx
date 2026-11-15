@@ -1608,6 +1608,12 @@ export const CategorySchema = z.object({
     seoTitle: z.string().optional(),
     seoDescription: z.string().optional(),
 
+    // CATEGORY-CONTENT-1: the category page's own content, drawn after the title block and before the product list.
+    // The type and the rule of a content page's `blocks` (the same schema, `ContentItemSchema.shape.blocks`) WITHOUT
+    // its `[]` default: zod 4 applies a default inside `.partial()` too, so a default here would make every
+    // `PUT /categories/{id}` body without `blocks` write `blocks: []` over the stored content. Absent = no content.
+    blocks: ContentItemSchema.shape.blocks.unwrap().optional(),
+
     // State
     status: z.enum(["active", "hidden"]).default("active"),
     productCount: z.number().default(0),

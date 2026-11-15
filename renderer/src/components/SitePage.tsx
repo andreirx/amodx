@@ -408,6 +408,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         if (commerce.type === 'category' && commerce.itemSlug) {
             const category = await getCategoryBySlug(config.id, commerce.itemSlug);
             if (!category) return notFoundHere();
+            // CATEGORY-CONTENT-1: the category's own blocks get the content page's preparation pass (no read without blocks).
+            await prepareBlocks(category.blocks, config);
             const page = parseInt(query.page || "1");
             // CAT-FACETS-1: a catalog site lists the category from its `PRODUCT#` items and filters it (`?f=`).
             if (catalog) {
@@ -669,73 +671,8 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         );
     }
 
-    // --- SERVER PRE-FETCH FOR PLUGIN BLOCKS ---
-    // Inject server-fetched data into block attrs before rendering.
-    // Eliminates client-side browser→API Gateway fetches which are fragile
-    // (CORS, missing env vars, silent failures). Same pattern for all plugins.
-    if (content.blocks && Array.isArray(content.blocks)) {
-        await Promise.all(content.blocks.map(async (block: any) => {
-            if (block.type === 'postGrid') {
-                const tag = block.attrs.filterTag;
-                let limit = 6;
-                if (block.attrs.limit !== undefined && block.attrs.limit !== null && block.attrs.limit !== "") {
-                    limit = parseInt(block.attrs.limit);
-                }
-                const posts = await getPosts(config.id, tag, limit);
-                block.attrs.prefetchedPosts = posts;
-                block.attrs.serverDomain = config.domain;
-            }
-
-            if (block.type === 'categoryShowcase') {
-                const slug = block.attrs.categorySlug;
-                if (slug) {
-                    const category = await getCategoryBySlug(config.id, slug);
-                    if (category) {
-                        const limit = block.attrs.limit || 4;
-                        const { items } = await getProductsByCategory(config.id, category.id, 1, limit);
-                        block.attrs.prefetchedProducts = items;
-                    }
-                }
-                // CATALOG-MODE-1 (§ 3.2.6): on EVERY showcase block of a catalog tenant — whether or not the lookup
-                // above succeeded. `_catalogMode` is the mechanism: the plugin emits no price, currency or stock overlay
-                // for any product source (this prefetch, stale authored attrs, its browser fallback fetch). Defence in
-                // depth: the block is a client component, so its attrs travel in the RSC payload — whatever their
-                // source, catalog `prefetchedProducts` keep display fields only (no currency, availability, tiers).
-                // Neither key changes for a non-catalog tenant, so their attrs and RSC payloads do not change.
-                if (isCatalogMode(config)) {
-                    block.attrs._catalogMode = true;
-                    if (Array.isArray(block.attrs.prefetchedProducts)) block.attrs.prefetchedProducts = block.attrs.prefetchedProducts.map((p: any) => ({ id: p.id, title: p.title, slug: p.slug, ...(p.imageLink !== undefined ? { imageLink: p.imageLink } : {}) }));
-                }
-                // Inject tenant-resolved URL prefixes so the component doesn't
-                // need to read from document meta tags (unavailable during SSR).
-                const resolvedPrefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
-                block.attrs._productPrefix = resolvedPrefixes.product || "/product";
-                block.attrs._categoryPrefix = resolvedPrefixes.category || "/category";
-            }
-
-            // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here
-            // (server-side), REPLACING any authored `items`. Photo assetKeys are resolved to raw
-            // asset URLs on the SERVER: the `UPLOADS_CDN_URL` env var and the key→URL resolution stay
-            // server-side, while the RESOLVED public URL (base included) ships to the client in the
-            // raw `<img src>`, exactly as product `imageLink`s reach the client already-resolved.
-            // Both are plain cacheable-route DB reads (getSiteReviews / getProductReviews), NOT
-            // dynamic APIs.
-            //   • site-reviews          — the tenant's approved SITE-scope (SITEREVIEW#) reviews.
-            //   • product-reviews-by-id — a specific product's approved reviews, by `productId` attr.
-            if (block.type === 'reviewsCarousel' && block.attrs.scope === 'site-reviews') {
-                const { items } = await getSiteReviews(config.id);
-                block.attrs.items = toCarouselReviewItems(items, reviewAssetCdnBase());
-            }
-            if (block.type === 'reviewsCarousel' && block.attrs.scope === 'product-reviews-by-id') {
-                const productId = block.attrs.productId;
-                const { items } = productId
-                    ? await getProductReviews(config.id, productId)
-                    : { items: [] as any[] };
-                block.attrs.items = toCarouselReviewItems(items, reviewAssetCdnBase());
-            }
-        }));
-    }
-    // -----------------------------------------
+    // --- SERVER PRE-FETCH FOR PLUGIN BLOCKS --- (CATEGORY-CONTENT-1: the pass is `prepareBlocks`, shared with the category page)
+    await prepareBlocks(content.blocks, config);
 
     // --- RENDER: CONTENT ---
     const mergedTheme = {
@@ -806,6 +743,78 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
                 {...(locale !== "en-US" ? { dateLocale: locale } : {})} />
         </main>
     );
+}
+
+/**
+ * SERVER PRE-FETCH FOR PLUGIN BLOCKS — the preparation pass every list of blocks gets before `RenderBlocks` draws it.
+ * Injects server-fetched data and tenant settings into the attrs of the blocks, IN PLACE: `postGrid` posts,
+ * `categoryShowcase` products (+ the catalog-mode reduction and the URL prefixes), `reviewsCarousel` reviews.
+ * Eliminates client-side browser→API Gateway fetches which are fragile (CORS, missing env vars, silent failures).
+ * A value that is not an array is left alone (no read). Users: the content page and the category page
+ * (CATEGORY-CONTENT-1), so a block works the same on both.
+ */
+async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
+    if (!Array.isArray(blocks)) return;
+    await Promise.all(blocks.map(async (block: any) => {
+        if (block.type === 'postGrid') {
+            const tag = block.attrs.filterTag;
+            let limit = 6;
+            if (block.attrs.limit !== undefined && block.attrs.limit !== null && block.attrs.limit !== "") {
+                limit = parseInt(block.attrs.limit);
+            }
+            const posts = await getPosts(config.id, tag, limit);
+            block.attrs.prefetchedPosts = posts;
+            block.attrs.serverDomain = config.domain;
+        }
+
+        if (block.type === 'categoryShowcase') {
+            const slug = block.attrs.categorySlug;
+            if (slug) {
+                const category = await getCategoryBySlug(config.id, slug);
+                if (category) {
+                    const limit = block.attrs.limit || 4;
+                    const { items } = await getProductsByCategory(config.id, category.id, 1, limit);
+                    block.attrs.prefetchedProducts = items;
+                }
+            }
+            // CATALOG-MODE-1 (§ 3.2.6): on EVERY showcase block of a catalog tenant — whether or not the lookup
+            // above succeeded. `_catalogMode` is the mechanism: the plugin emits no price, currency or stock overlay
+            // for any product source (this prefetch, stale authored attrs, its browser fallback fetch). Defence in
+            // depth: the block is a client component, so its attrs travel in the RSC payload — whatever their
+            // source, catalog `prefetchedProducts` keep display fields only (no currency, availability, tiers).
+            // Neither key changes for a non-catalog tenant, so their attrs and RSC payloads do not change.
+            if (isCatalogMode(config)) {
+                block.attrs._catalogMode = true;
+                if (Array.isArray(block.attrs.prefetchedProducts)) block.attrs.prefetchedProducts = block.attrs.prefetchedProducts.map((p: any) => ({ id: p.id, title: p.title, slug: p.slug, ...(p.imageLink !== undefined ? { imageLink: p.imageLink } : {}) }));
+            }
+            // Inject tenant-resolved URL prefixes so the component doesn't
+            // need to read from document meta tags (unavailable during SSR).
+            const resolvedPrefixes = config.urlPrefixes || URL_PREFIX_DEFAULTS;
+            block.attrs._productPrefix = resolvedPrefixes.product || "/product";
+            block.attrs._categoryPrefix = resolvedPrefixes.category || "/category";
+        }
+
+        // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here
+        // (server-side), REPLACING any authored `items`. Photo assetKeys are resolved to raw
+        // asset URLs on the SERVER: the `UPLOADS_CDN_URL` env var and the key→URL resolution stay
+        // server-side, while the RESOLVED public URL (base included) ships to the client in the
+        // raw `<img src>`, exactly as product `imageLink`s reach the client already-resolved.
+        // Both are plain cacheable-route DB reads (getSiteReviews / getProductReviews), NOT
+        // dynamic APIs.
+        //   • site-reviews          — the tenant's approved SITE-scope (SITEREVIEW#) reviews.
+        //   • product-reviews-by-id — a specific product's approved reviews, by `productId` attr.
+        if (block.type === 'reviewsCarousel' && block.attrs.scope === 'site-reviews') {
+            const { items } = await getSiteReviews(config.id);
+            block.attrs.items = toCarouselReviewItems(items, reviewAssetCdnBase());
+        }
+        if (block.type === 'reviewsCarousel' && block.attrs.scope === 'product-reviews-by-id') {
+            const productId = block.attrs.productId;
+            const { items } = productId
+                ? await getProductReviews(config.id, productId)
+                : { items: [] as any[] };
+            block.attrs.items = toCarouselReviewItems(items, reviewAssetCdnBase());
+        }
+    }));
 }
 
 // --- COMMERCE PAGE COMPONENTS ---
@@ -1463,6 +1472,26 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                     ))}
                 </div>
             );
+    const titleBlock = (
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold tracking-tight">{category.name}</h1>
+                {category.description && (
+                    <p className="text-muted-foreground mt-2">{category.description}</p>
+                )}
+                <p className="text-sm text-muted-foreground mt-1">{fillTemplate(selectPluralText(strings.productCount, total), { n: total })}</p>
+            </div>
+    );
+    // CATEGORY-CONTENT-1: the category's own blocks, after the title block and before the filters and the list, on every
+    // page and filter state; prepared by `prepareBlocks` in SitePage. Width: no `contentMaxWidth` is given, so
+    // `RenderBlocks` adds no per-block wrapper and each block takes the width of this page's container (`<main>`, the
+    // site width), aligned with the title and the grid. No blocks (absent, `[]`, not an array) → `undefined`, and the
+    // title block stays the element it was: no extra child (a `false` child would still change the RSC payload).
+    const pageContent = Array.isArray(category.blocks) && category.blocks.length > 0 ? (
+        <div className="mb-8" data-category-content>
+            <RenderBlocks blocks={category.blocks} tenantId={config.id} basePath={basePath}
+                strings={blockStrings(resolved, { catalogMode: catalog })} />
+        </div>
+    ) : undefined;
     return (
         <>
             {config.searchBar?.enabled && (
@@ -1487,13 +1516,7 @@ function CategoryPageView({ category, products, total, page, config, prefixes, b
                 <span className="text-foreground">{category.name}</span>
             </nav>
 
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold tracking-tight">{category.name}</h1>
-                {category.description && (
-                    <p className="text-muted-foreground mt-2">{category.description}</p>
-                )}
-                <p className="text-sm text-muted-foreground mt-1">{fillTemplate(selectPluralText(strings.productCount, total), { n: total })}</p>
-            </div>
+            {pageContent ? <>{titleBlock}{pageContent}</> : titleBlock}
 
             {facets ? <FacetedListing listing={facets.listing} grid={grid} strings={catalogStrings} /> : grid}
 

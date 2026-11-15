@@ -778,6 +778,37 @@ const HC1_ITEMS = [
     ...localeCopy(CM1_ITEMS, CM1.commerce, HC1.invalid, hc1Fields(HC1_INVALID)),
 ];
 
+// ── CATEGORY-CONTENT-1 fixtures (docs/slices/category-content-1.md) ─────────────────────────────────────────────────
+// Copies of the CM1 catalog tenant (category `cf1-many`: 30 products → two pages, and filters) and of the CM1 commerce
+// tenant (category `rugs`), each with a `locale` ("en-US", written out), so none is an en-US subject of the `loc1-*`
+// rows and none is in any `before/` capture: rows `cc1-*` read the running build only. Twins differ only by their key
+// fields and the category's `blocks`:
+//  - catBlocks: `cf1-many` holds a paragraph and a `categoryShowcase` of `floors` (it needs the preparation pass: the
+//    server reads that category's products; on a catalog site the catalog-mode rule applies); twin catPlain;
+//  - catEmpty: `cf1-many` holds `blocks: []` → as absent; twin catPlain;
+//  - shopBlocks: `rugs` holds a paragraph and a `postGrid` (the server reads the tenant's posts); twin shopPlain;
+//  - shopMalformed: `rugs` holds `blocks` that is not an array (a string) → ignored, as absent; twin shopPlain.
+export const CC1 = Object.fromEntries(
+    ["catBlocks", "catPlain", "catEmpty", "shopBlocks", "shopPlain", "shopMalformed"].map((key) => {
+        const id = `cc1-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+        return [key, { id, host: `${id}.serving-contract.test` }];
+    }),
+);
+export const CC1_TWIN = { catBlocks: "catPlain", catEmpty: "catPlain", shopBlocks: "shopPlain", shopMalformed: "shopPlain" };
+export const CC1_PARAGRAPH = "CC1 producer text: Boen has made floors since 1640.";
+export const CC1_MALFORMED = "<h2>CC1 not a block list</h2>";
+const cc1Paragraph = { type: "paragraph", content: [{ type: "text", text: CC1_PARAGRAPH }] };
+const cc1Copy = (from, key, categoryId, blocks) => localeCopy(CM1_ITEMS, from, CC1[key], { locale: "en-US" })
+    .map((item) => (blocks !== undefined && item.SK === `CATEGORY#${categoryId}` ? { ...item, blocks } : item));
+const CC1_ITEMS = [
+    ...cc1Copy(CM1.catalog, "catBlocks", "cf1-many", [cc1Paragraph, showcase("floors")]),
+    ...cc1Copy(CM1.catalog, "catPlain", "cf1-many"),
+    ...cc1Copy(CM1.catalog, "catEmpty", "cf1-many", []),
+    ...cc1Copy(CM1.commerce, "shopBlocks", "rugs", [cc1Paragraph, { type: "postGrid", attrs: {} }]),
+    ...cc1Copy(CM1.commerce, "shopPlain", "rugs"),
+    ...cc1Copy(CM1.commerce, "shopMalformed", "rugs", CC1_MALFORMED),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -822,6 +853,8 @@ export const ITEMS = [
     ...CDL2_ITEMS,
     // header-colours-1: the header-colour tenants (above).
     ...HC1_ITEMS,
+    // category-content-1: the category-content tenants (above).
+    ...CC1_ITEMS,
 ];
 
 /**

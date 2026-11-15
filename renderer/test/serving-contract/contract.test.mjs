@@ -36,11 +36,11 @@ import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
 } from "./cm1-byte-identity.mjs";
-import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
+import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, canon, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
-    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID,
+    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -2855,6 +2855,119 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.deepEqual(rowsOf(page.flight), rowsOf(plain.flight), `${reqPath}: payload equal to the twin; ${firstDiff(rowsOf(page.flight).join("\n"), rowsOf(plain.flight).join("\n"))}`);
             }
             console.log(`  (hc1-header-invalid) ${JSON.stringify(HC1_INVALID)} ignored on ${HC1_PATHS.join(", ")}: byte-equal to the twin`);
+        });
+
+        // ── ROWS (cc1-*) — CATEGORY-CONTENT-1 (docs/slices/category-content-1.md). Server HTML and payload of the running
+        // build for the CC1 tenants (fixtures.mjs `CC1`: copies of the CM1 catalog and commerce tenants whose category holds
+        // `blocks`, `[]`, a non-array, or nothing). "Absent → today's bytes" for every site kind is proven by the rows that
+        // compare with a capture taken before this slice (cm1-*, loc1-*, ct1-*, cq1-*), unchanged: no fixture category of
+        // theirs has `blocks`.
+        /** One page of a CC1 copy, its key fields written as its twin's (so twins compare byte for byte). */
+        const cc1Page = async (key, reqPath) => {
+            const twin = CC1[CC1_TWIN[key] ?? key];
+            const res = await request({ port: server.port, path: reqPath, host: CC1[key].host });
+            assert.equal(res.status, 200, `${key} ${reqPath}: 200`);
+            const asTwin = (t) => t.split(CC1[key].host).join(twin.host).split(CC1[key].id).join(twin.id);
+            const { html, flight } = splitFlight(res.body);
+            const at = html.indexOf("<main"), end = html.indexOf("</main>");
+            assert.ok(at >= 0 && end > at, `${key} ${reqPath}: one <main>`);
+            return { body: asTwin(res.body), html: asTwin(html), flight: asTwin(flight), main: asTwin(html.slice(at, end + "</main>".length)) };
+        };
+        /** The end of the title block (the product-count line closes it) in a category page's <main>. */
+        const titleBlockEnd = (main) => {
+            const m = /<p class="text-sm text-muted-foreground mt-1">[^<]*<\/p><\/div>/.exec(main);
+            assert.ok(m, "the title block's product-count line");
+            return m.index + m[0].length;
+        };
+        const CC1_OPEN = '<div class="mb-8" data-category-content="true">';
+        /**
+         * A body's payload as its resolved tree (row 0, the other unconsumed rows and the hints, each canonical): the payload
+         * after the CM1-A1 masks of this build (`maskBody`: client references by module path, asset paths, build id), then
+         * `resolveFlight` (LOCALE1B-ROW-CUT = A) — row ids are gone, every value is compared.
+         */
+        let cc1Side;
+        const cc1Resolved = async (body) => {
+            cc1Side ??= { buildId: (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim(), clientModules: await readClientModules(RENDERER_DIR) };
+            const t = resolveFlight(maskBody(body, cc1Side).masked.split("\n--- flight payload rows, sorted ---\n")[1].split("\n"));
+            return { root: canon(t.root), others: t.others, hints: t.hints };
+        };
+        /**
+         * The content section of a page with blocks, proven to be the page's ONLY difference inside <main> from its twin:
+         * the twin's <main> = this <main> with the section cut out, and the section sits right after the title block.
+         */
+        const cc1Section = (page, plain, label) => {
+            const cut = titleBlockEnd(plain.main);
+            const tail = plain.main.slice(cut);
+            assert.equal(page.main.slice(0, cut), plain.main.slice(0, cut), `${label}: <main> up to the title block's end equals the twin; ${firstDiff(page.main.slice(0, cut), plain.main.slice(0, cut))}`);
+            assert.ok(page.main.endsWith(tail), `${label}: after the content, <main> (filters, list, pager) equals the twin's; ${firstDiff(page.main.slice(page.main.length - tail.length), tail)}`);
+            const section = page.main.slice(cut, page.main.length - tail.length);
+            assert.ok(section.startsWith(CC1_OPEN) && section.endsWith("</div>"), `${label}: the section is one content <div> (${section.slice(0, 80)}…)`);
+            assert.equal(page.main.split("data-category-content").length - 1, 1, `${label}: one content section`);
+            return section;
+        };
+
+        test("(cc1-category-content) a category's blocks render between the title block and the listing on page 1, page 2 and a filter state; the blocks get the preparation pass and the catalog-mode rule; every other byte of <main> equals the twin without blocks", async () => {
+            // Catalog: `cf1-many`, 30 products. The filter state is the first filter link of the twin's own page.
+            const catBase = `${URL_PREFIX_DEFAULTS.category}/cf1-many`;
+            const firstFilter = /href="(\/category\/cf1-many\?f=[^"]+)"/.exec((await cc1Page("catPlain", catBase)).main)?.[1]?.replace(/&amp;/g, "&");
+            assert.ok(firstFilter, "precondition: the twin's page offers a filter link");
+            const catPaths = [catBase, `${catBase}?page=2`, firstFilter];
+            for (const reqPath of catPaths) {
+                const [page, plain] = [await cc1Page("catBlocks", reqPath), await cc1Page("catPlain", reqPath)];
+                const section = cc1Section(page, plain, `catalog ${reqPath}`);
+                assert.ok(section.includes(CC1_PARAGRAPH), `catalog ${reqPath}: the paragraph`);
+                // The showcase was prepared on the server: it shows the `floors` products (none of them is in `cf1-many`).
+                assert.ok(section.includes("Oak Plank"), `catalog ${reqPath}: the showcase's prefetched product`);
+                assert.ok(!plain.main.includes("Oak Plank"), `catalog ${reqPath}: control — the twin's list does not show it`);
+                // The catalog-mode rule: no price, currency or stock text in the content; the flag in the block's attrs.
+                for (const forbidden of ["USD", "$", "Out of Stock", "In Stock"]) assert.ok(!section.includes(forbidden), `catalog ${reqPath}: no ${forbidden}`);
+                assert.ok(page.flight.includes('"_catalogMode":true'), `catalog ${reqPath}: _catalogMode in the showcase's attrs`);
+                assert.ok(page.main.includes("data-facet-panel") && plain.main.includes("data-facet-panel"), `catalog ${reqPath}: the filters render`);
+                assert.ok(page.flight.includes(CC1_PARAGRAPH) && !plain.flight.includes(CC1_PARAGRAPH), `catalog ${reqPath}: the blocks travel in the payload (RenderBlocks is a client component)`);
+            }
+            // Page 1 and page 2 list different products (the pager works); the content is the same section on both.
+            const [p1, p2] = [await cc1Page("catBlocks", catBase), await cc1Page("catBlocks", `${catBase}?page=2`)];
+            const cards = (main) => new Set([...main.matchAll(/href="\/product\/(placa-\d+)"/g)].map((m) => m[1]));
+            const [c1, c2] = [cards(p1.main), cards(p2.main)];
+            assert.ok(c1.size === 24 && c2.size === 6 && [...c2].every((s) => !c1.has(s)), `page 1 lists 24 products, page 2 the other 6 (${c1.size}, ${c2.size})`);
+            assert.equal(cc1Section(p1, await cc1Page("catPlain", catBase), "p1"), cc1Section(p2, await cc1Page("catPlain", `${catBase}?page=2`), "p2"), "the same content on page 1 and page 2");
+
+            // Commerce: `rugs`; a post grid (the server reads the tenant's posts).
+            const shopBase = `${URL_PREFIX_DEFAULTS.category}/rugs`;
+            for (const reqPath of [shopBase, `${shopBase}?page=2`]) {
+                const [page, plain] = [await cc1Page("shopBlocks", reqPath), await cc1Page("shopPlain", reqPath)];
+                const section = cc1Section(page, plain, `commerce ${reqPath}`);
+                assert.ok(section.includes(CC1_PARAGRAPH), `commerce ${reqPath}: the paragraph`);
+                // The post grid was prepared on the server: it links the tenant's published content pages.
+                assert.ok(section.includes(`${CM1.commerce.id} about`), `commerce ${reqPath}: the post grid lists the tenant's posts`);
+            }
+            console.log(`  (cc1-category-content) catalog ${catPaths.join(", ")}; commerce ${shopBase}, ?page=2: the content section after the title block, <main> otherwise equal to the twin`);
+        });
+
+        test("(cc1-category-no-content) a category whose blocks are [] or not an array: the page equals the twin without blocks, HTML and payload", async () => {
+            const cases = [
+                ["catEmpty", [`${URL_PREFIX_DEFAULTS.category}/cf1-many`, `${URL_PREFIX_DEFAULTS.category}/cf1-many?page=2`]],
+                ["shopMalformed", [`${URL_PREFIX_DEFAULTS.category}/rugs`, `${URL_PREFIX_DEFAULTS.category}/rugs?page=2`]],
+            ];
+            for (const [key, paths] of cases) {
+                for (const reqPath of paths) {
+                    const [page, plain] = [await cc1Page(key, reqPath), await cc1Page(CC1_TWIN[key], reqPath)];
+                    assert.ok(!page.html.includes("data-category-content") && !page.html.includes(CC1_MALFORMED) && !page.flight.includes("CC1 not a block list"), `${key} ${reqPath}: no content section`);
+                    // HTML: byte-equal on the cacheable page 1. A `?page=2` request is a dynamic render, whose metadata tags Next
+                    // STREAMS: they land inside <head> or after it by timing (EXECUTED: equal twins differed only there), so there
+                    // the page body (<main>) is compared byte for byte, and the head by the payload below.
+                    if (reqPath.includes("?")) assert.equal(page.main, plain.main, `${key} ${reqPath}: <main> equal to the twin; ${firstDiff(page.main, plain.main)}`);
+                    else assert.equal(page.html, plain.html, `${key} ${reqPath}: HTML equal to the twin; ${firstDiff(page.html, plain.html)}`);
+                    // Payload: the resolved tree (LOCALE1B-ROW-CUT = A): Next numbers the rows in the order its async work ends, so
+                    // equal twins can carry different row ids (seen: the metadata icon row); every value is still compared.
+                    const [a, b] = [await cc1Resolved(page.body), await cc1Resolved(plain.body)];
+                    assert.deepEqual(a, b, `${key} ${reqPath}: payload equal to the twin (resolved); ${firstDiff(JSON.stringify(a), JSON.stringify(b))}`);
+                }
+            }
+            // Control: the same comparison reports the content of a category with blocks.
+            const [withBlocks, twin] = [await cc1Page("catBlocks", `${URL_PREFIX_DEFAULTS.category}/cf1-many`), await cc1Page("catPlain", `${URL_PREFIX_DEFAULTS.category}/cf1-many`)];
+            assert.notDeepEqual(await cc1Resolved(withBlocks.body), await cc1Resolved(twin.body), "control: a category with blocks differs under the resolved comparison");
+            console.log("  (cc1-category-no-content) blocks [] (catalog) and a non-array (commerce): page 1 HTML byte-equal to the twin, page 2 <main> byte-equal; payload equal resolved on both");
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

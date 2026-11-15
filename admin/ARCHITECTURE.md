@@ -50,6 +50,16 @@ src/
     ├── CatalogImport.tsx       # "Pricelist import" (catalog sites; CAT-ADMIN-1 § 4.3): the import contract in two
     │                           #   sentences + GlamPricelistImport unchanged; a non-catalog site: one sentence, no form
     ├── ProductEditor.tsx       # Product form: pricing, inventory, images, Paddle/digital delivery
+    ├── CategoryEditor.tsx      # Category form; CATEGORY-CONTENT-1: "Page content" card = BlockEditor on form.blocks
+    │                           #   (categoryFormOf: stored list or []), Save sends the whole form. State = ONE editing
+    │                           #   session `{ session, id, tenantId, form }`, a new token per run of the load effect
+    │                           #   (route id × tenant; each visit to "new" is a session); form, editor (key = session)
+    │                           #   and Save show only when the session is for the route id AND the current tenant (no
+    │                           #   form before the tenant is known); every change goes through `edit(forSession, …)`
+    │                           #   (a functional update, applied only while the form is still that session's); a load
+    │                           #   answer or parent list applies only to its own session. Tests: CategoryEditor.test.ts
+    │                           #   runs the real component with a hook store and a model of the editor's document
+    │                           #   (no DOM, no new dependency); every Save asserts saved blocks = shown document
     ├── StrategyBoard.tsx       # Strategy document cards with quick-create dialog
     ├── StrategyEditor.tsx      # Block editor for strategy docs with tags
     ├── Signals.tsx             # Outbound lead signals list + detail side panel
@@ -232,7 +242,7 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
 
 ## Tiptap Editor Integration
 
-`BlockEditor.tsx` wraps the Tiptap editor:
+`BlockEditor.tsx` wraps the Tiptap editor (users: `ContentEditor`, `StrategyEditor`, `CategoryEditor`):
 - Loads extensions from `getExtensions()` (`@amodx/plugins/admin`)
 - Injects storage callbacks: `uploadFn`, `pickFn` (media), `fetchTagsFn` (post grid tags)
 - `Toolbar.tsx` renders formatting buttons + dynamic plugin insert buttons from `getPluginList()`, filtered by
