@@ -41,6 +41,7 @@ editor.storage.image.pickFn = openMediaPicker;
 editor.storage.postGrid.fetchTagsFn = fetchTags;
 editor.storage.categoryShowcase.fetchCategoriesFn = fetchCategories;
 editor.storage.categoryGrid.fetchCategoriesFn = fetchCategories;   // SHOP-LOOK-1C
+editor.storage.form.fetchFormsFn = fetchForms;                    // SHOP-LOOK-1E (GET /forms)
 ```
 
 The plugin reads from `this.editor.storage.<key>` at runtime.
@@ -68,9 +69,20 @@ A render component never reads the database. When a block needs tenant data on t
 pass (`prepareBlocks` in `renderer/src/components/SitePage.tsx`) reads it before `RenderBlocks` draws the page and adds
 plain fields to that block's `attrs` only: `postGrid` (`prefetchedPosts`), `categoryShowcase` (`prefetchedProducts`,
 `_productPrefix`, `_categoryPrefix`, `_catalogMode`), `reviewsCarousel` (`items`), `categoryGrid` (`_categories`: the
-picked active categories, each `{ id, name, description?, imageLink?, path }`, SHOP-LOOK-1C). The attrs of a block travel
+picked active categories, each `{ id, name, description?, imageLink?, path }`, SHOP-LOOK-1C), `form` (`_form`: the active
+form of `formSlug` as `{ slug, name, fields, submitButtonText, successMessage, strings }` — display data and the four
+form texts of the tenant's locale table, never the notify address; SHOP-LOOK-1E). The attrs of a block travel
 in the page's RSC payload, so the pass builds these values field by field. A new block that needs server data adds one
 branch there; see `docs/block-types.md` per block.
+
+## Browser submits from a block
+
+A block that posts from the browser uses the page's globals and the build's public settings, never a renderer import
+(split entry): the tenant is the `tenantId` prop (RenderBlocks gives `config.id`) or `window.AMODX_TENANT_ID`; the
+reCAPTCHA key is `window.AMODX_RECAPTCHA_KEY` with `window.grecaptcha` (both injected by the renderer's `ThemeInjector`;
+no key or no script → no token); the API address is `process.env.NEXT_PUBLIC_API_URL`, inlined by `next build` into the
+block's chunk. Users: `contact` and `leadMagnet` (renderer proxies `/api/contact`, `/api/leads`), the showcase's
+fallback fetch, and `form` (`POST <API>/public/forms/{slug}/submit`, SHOP-LOOK-1E).
 
 ## Render Component Contract
 

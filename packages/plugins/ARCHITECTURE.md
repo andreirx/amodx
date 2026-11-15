@@ -41,10 +41,10 @@ src/blocks/<name>/
 └── <Name>Render.tsx  # Pure React render component (SSR-safe)
 ```
 
-## All 21 Plugins
+## All 22 Plugins
 
 This table lists every key in `RENDER_LOADERS` (`src/render.ts`) — one row per registered
-render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since `shop-look-1c`).
+render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since `shop-look-1c`; 22 since `shop-look-1e`).
 
 | Key | Label | Attributes | Styles/Variants |
 |-----|-------|-----------|-----------------|
@@ -69,6 +69,7 @@ render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since 
 | `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth; optional (SHOP-LOOK-1D): eyebrow, badgeTags, showCategoryLabel, showDescription, showRating | 2 / 3 / 4 columns |
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText, chips[] (label, href; ≤ 12), blockWidth; server data `_categories` (see § *The `category-grid` block*) | 2 / 3 / 4 columns from `lg` |
 | `markdown` | Markdown | content, blockWidth | rendered via `marked` (async chunk) |
+| `form` | Custom Form | formSlug, eyebrow, headline, text, card, blockWidth; server data `_form` (see § *The `form` block*) | plain or in a card |
 
 ## Tiptap Integration Pattern
 
@@ -87,6 +88,7 @@ Plugins access runtime dependencies via `editor.storage.<key>`:
 - `editor.storage.postGrid.fetchTagsFn` — load available tags for autocomplete
 - `editor.storage.categoryShowcase.fetchCategoriesFn`, `editor.storage.categoryGrid.fetchCategoriesFn` — the tenant's
   category list (`GET /categories`; one function, both storages)
+- `editor.storage.form.fetchFormsFn` — the tenant's custom forms (`GET /forms`: `id, name, slug, status`), SHOP-LOOK-1E
 
 These are injected by the admin's BlockEditor component before the editor mounts.
 
@@ -126,7 +128,7 @@ card prints the given range; without it the card reads `price` and the tier pric
 fallback fetch (no server prefetch, e.g. the editor preview) has no `_priceRange`: a comma text there is read by
 `parseFloat` (`12,50` → 12).
 
-Client-side components (contact form, lead magnet, post grid) use `window.AMODX_TENANT_ID` for API calls and submit to `/api/contact`, `/api/leads`, or `/api/posts`.
+Client-side components (contact form, lead magnet, post grid) use `window.AMODX_TENANT_ID` for API calls and submit to `/api/contact`, `/api/leads`, or `/api/posts`. The `form` block (SHOP-LOOK-1E) uses its `tenantId` prop and posts to the API directly (`process.env.NEXT_PUBLIC_API_URL` + `/public/forms/{slug}/submit`), as the showcase's fallback fetch reads the API address; its reCAPTCHA token comes from the same page globals as the contact form's.
 
 ## Shared modules under `src/common/`
 
@@ -322,6 +324,32 @@ cases in `test/sectionBlocksBaselineCases.ts`).
 - **Editors:** English controls; a cleared option stores `null` — `storedShowcaseOption` and `badgeTagsFromText`
   (`CategoryShowcaseEditor.tsx`), `storedText` (`PostGridEditor.tsx`), exported pure functions, the test seam.
 
+## The `form` block (slice `shop-look-1e`)
+
+One custom form of the tenant (admin Forms), placed by its slug (`formSlug`). Files: `src/form/{schema.ts, index.ts,
+FormEditor.tsx, FormRender.tsx, DynamicForm.tsx}`; record `docs/slices/shop-look-1e.md`. Offered on every site kind (no
+`offeredOn`).
+
+- **Server data (`_form`).** The renderer's `prepareBlocks` reads the form with `getFormBySlug` (active forms only) and
+  gives `{ slug, name, fields, submitButtonText, successMessage, strings }`: `fields` = the stored entries that pass
+  `FormFieldSchema`, the first field of each label (the submit handler's rule — labels are the submission's keys);
+  `strings` = `formSubmissionFailed`, `formErrorShort`, `formSelectPlaceholder`, `formSubmitting` of the tenant's
+  locale table (three of them are not block keys, so the block's `strings` prop does not hold them). No `_form` → the
+  render draws nothing (no slug, no form, disabled form, or the admin preview).
+- **Render (`FormRender.tsx`).** Optional eyebrow, headline, text (blank = absent), centred above the form; the form at
+  most `max-w-lg`; `card === true` → `rounded-xl border border-border bg-background p-6 md:p-8 shadow-sm`. Theme classes
+  only.
+- **Form (`DynamicForm.tsx`).** Moved from `renderer/src/components/DynamicForm.tsx` (it had no importer). Each field by
+  its type; `data` keyed by field label; `submitterEmail` = the first email field's value; reCAPTCHA v3 action
+  `form_submit` from `window.AMODX_RECAPTCHA_KEY` / `window.grecaptcha`; success → the success text replaces the form;
+  failure → the server's `error` text, else `formSubmissionFailed`; a thrown fetch → `formErrorShort`. Required mark and
+  error text `text-destructive`; the success icon keeps `text-green-500` (no success token in the theme; finding
+  F-1E-SUCCESS-COLOUR). Each label is tied to its control (`htmlFor` / `id` from `useId`).
+- **Editor (`FormEditor.tsx`).** English; the form list from `editor.storage.form.fetchFormsFn`; a select of the forms by
+  name (a disabled form marked), the stored slug kept as an option while the list loads; `formSlugNote` (exported, pure)
+  says why the site would draw nothing.
+- Render imports: `react`, `lucide-react`, and `@amodx/shared` as a type only (D3).
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -337,8 +365,9 @@ cases in `test/sectionBlocksBaselineCases.ts`).
 | `test/showcasePriceRange.test.ts` (`price-locale-1`) | `RENDER_LOADERS["categoryShowcase"]` price line: a given `_priceRange` is printed (`10 – 12.5 RON`); without it the card's reading is today's (`10 – 12 RON` for a comma text, `75 – 100 USD` for point texts); a range with min = max prints the price text |
 | `test/sectionBlocks.test.ts` (`shop-look-1d`) | `RENDER_LOADERS["categoryShowcase"]` and `["postGrid"]`: every case of `test/sectionBlocksBaselineCases.ts` renders equal to `test/sectionBlocks.baseline.json` (HTML recorded at 61d965d; static and streaming renderers) with the new attributes absent, `null`, blank, off or malformed, and with the card options on but no product key; each option present → its element, and removing it gives the baseline back; the § 7.4 badge cases (zero / one / several matches, both orders of the block list and of the product's tags, case and spaces, blank entries, no tags, catalog); label, short text and rating (HTML escaped, malformed rating); the panel's parts alone and together, a link without a text, phone order; schema and Tiptap defaults; the editors' controls and pure functions; type-only `@amodx/shared` import; no palette colour class |
 | `test/categoryGrid.test.ts` (`shop-look-1c`) | `RENDER_LOADERS["categoryGrid"]`: no `_categories` → nothing; 0 / 1 / 12 tiles in the given order (one tile byte for byte); photo and description fallbacks (no element); the scrim around every tile text and no palette colour class; `columns` 2 / 3 / 4 and unknown → the grid class; `ctaText`, eyebrow, headline blank / set; chips none / valid / without label or href; `_getUrl` on tiles and chips; schema defaults and limits (13th id refused); Tiptap defaults = schema defaults; the render imports only `react`; the editor's options and its three list functions |
+| `test/formBlock.test.ts` (`shop-look-1e`) | `RENDER_LOADERS["form"]`: no `_form` or a malformed one → nothing; each field type's element, labels in order tied to their controls, required marks, the select's locale placeholder (EN, RO; a field placeholder wins), button text, no success text before a submit; eyebrow / headline / text blank vs set; `card` exactly `true`; owner texts escaped; schema defaults; Tiptap attributes = schema defaults, storage `fetchFormsFn`; registration in both entries (`offeredOn: []`); the editor's controls and `formSlugNote`; no renderer/admin import, type-only `@amodx/shared`; the renderer copy gone; only `text-green-500` as a palette class |
 | `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` and `categoryGrid` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
-| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 21 (20 before `shop-look-1c`), so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
+| `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 22 (20 before `shop-look-1c`, 21 before `shop-look-1e`), so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
 
 `vid-2` widened the scope beyond `src/common/`: `videoPlugin.test.ts` renders real plugin
 components through `renderToStaticMarkup` (`react-dom/server`), which is the same code path
@@ -355,7 +384,7 @@ is NO LONGER a whole-entry SSR smoke test on its own. The per-plugin suites belo
 render only THEIR loader, so each covers only its own module. The whole-entry guarantee now lives
 in `test/renderLoaders.test.ts`: it `await`s every `RENDER_LOADERS` entry in `environment: "node"`,
 which forces each render module to load. That detects **module-load** SSR hazards (a top-level
-`window`/`document` reference in any registered render module) for all 21 loaders. It does NOT
+`window`/`document` reference in any registered render module) for all 22 loaders. It does NOT
 render each component, so it does not prove browser-free *render execution* — the per-plugin
 suites do that for the components they exercise.
 

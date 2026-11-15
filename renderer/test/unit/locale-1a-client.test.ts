@@ -24,8 +24,19 @@ import { Navbar } from "@/components/Navbar";
 import { CommentsSection } from "@/components/CommentsSection";
 import { SocialShare } from "@/components/SocialShare";
 import { QuickContact } from "@/components/QuickContact";
-import { DynamicForm } from "@/components/DynamicForm";
+import { RENDER_LOADERS } from "@amodx/plugins/render";
 import { CookieConsent } from "@/components/CookieConsent";
+
+/**
+ * SHOP-LOOK-1E: `DynamicForm` moved from `renderer/src/components/` into the plugin `form` block
+ * (`packages/plugins/src/form/DynamicForm.tsx`). It is mounted here THROUGH the block, as a page draws it: the block
+ * gets the server pass's `_form` (built from the props below) and passes each prop on to the component unchanged. The
+ * test titles stay (the 1a coverage file cites them).
+ */
+const FormBlock = (await RENDER_LOADERS["form"]()).default;
+type FormProps = { formSlug: string; formName: string; tenantId: string; apiUrl: string; submitButtonText: string; successMessage: string; fields: any[]; strings: Record<string, string> };
+const DynamicForm = ({ formSlug, formName, tenantId, submitButtonText, successMessage, fields, strings }: FormProps) =>
+    createElement(FormBlock, { tenantId, strings: {}, attrs: { formSlug, _form: { slug: formSlug, name: formName, fields, submitButtonText, successMessage, strings } } });
 
 const EN = resolveLocaleStrings({}).strings.site;
 const RO = resolveLocaleStrings({ locale: "ro-RO" }).strings.site;
@@ -164,7 +175,7 @@ describe("[1a-client] QuickContact", () => {
     }
 });
 
-describe("[1a-client] DynamicForm (no importer in the repo today — a graph orphan; its texts are proven here only)", () => {
+describe("[1a-client] DynamicForm (the `form` block's form since SHOP-LOOK-1E; mounted through the block)", () => {
     const formStrings = (s: typeof EN) => ({ formSubmissionFailed: s.formSubmissionFailed, formErrorShort: s.formErrorShort, formSelectPlaceholder: s.formSelectPlaceholder, formSubmitting: s.formSubmitting });
     const props = (s: typeof EN) => ({
         formSlug: "f", formName: "F", tenantId: "t", apiUrl: "https://api.test", submitButtonText: "Send", successMessage: "Thanks",
@@ -182,7 +193,7 @@ describe("[1a-client] DynamicForm (no importer in the repo today — a graph orp
             expect(host.querySelector("button")!.textContent).toBe(s.formSubmitting);
             await act(async () => { answer({ ok: false, json: async () => ({}) }); });
             await flush();
-            expect(host.querySelector("p.text-red-500")!.textContent).toBe(s.formSubmissionFailed);
+            expect(host.querySelector("p.text-destructive")!.textContent).toBe(s.formSubmissionFailed);
         });
 
         it(`[1a-client] ${name}: an error without a message → formErrorShort; the server's error text is shown as sent`, async () => {
@@ -190,13 +201,13 @@ describe("[1a-client] DynamicForm (no importer in the repo today — a graph orp
             mount(createElement(DynamicForm, props(s)));
             await submit();
             await flush();
-            expect(host.querySelector("p.text-red-500")!.textContent).toBe(s.formErrorShort);
+            expect(host.querySelector("p.text-destructive")!.textContent).toBe(s.formErrorShort);
             act(() => root!.unmount()); root = null; document.body.innerHTML = "";
             vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, json: async () => ({ error: "Limit reached" }) })));
             mount(createElement(DynamicForm, props(s)));
             await submit();
             await flush();
-            expect(host.querySelector("p.text-red-500")!.textContent).toBe("Limit reached");
+            expect(host.querySelector("p.text-destructive")!.textContent).toBe("Limit reached");
         });
     }
 });

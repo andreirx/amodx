@@ -660,6 +660,28 @@ const BLOCK_SCHEMAS = {
             }
         }
     },
+    form: {
+        description: "One custom form of the tenant (built with create_form), placed by its slug: the form's fields by type, its button text and its success text. Optional label, headline and text above it, optional card around it. The form is read from the site's forms when the page renders: a slug of no form, or of a disabled form, draws nothing. Visitors submit to the public route /public/forms/{slug}/submit; read submissions with get_form_submissions. Offered on every site kind.",
+        attrs: {
+            formSlug: "string — the slug of a form from list_forms ('' = no form, the block draws nothing)",
+            eyebrow: "string (optional small label above the headline; '' = none)",
+            headline: "string (optional; '' = none)",
+            text: "string (optional text under the headline; '' = none)",
+            card: "boolean (default false; true = the form inside a bordered card)",
+            blockWidth: "'content' | 'wide' | 'full' (default 'content')"
+        },
+        example: {
+            type: "form",
+            attrs: {
+                formSlug: "contact",
+                eyebrow: "Contact",
+                headline: "Not sure where to start?",
+                text: "Tell us about your room and we will call you.",
+                card: true,
+                blockWidth: "content"
+            }
+        }
+    },
     paragraph: {
         description: "Standard text paragraph. Use for body content.",
         content: "string (the text content)"
@@ -955,7 +977,8 @@ server.tool("add_block",
             "codeBlock",
             "reviewsCarousel",
             "categoryShowcase",
-            "categoryGrid"
+            "categoryGrid",
+            "form"
         ]),
         attrs: z.string().describe("JSON string of attributes matching get_block_schemas"),
         content_text: z.string().optional().describe("For text blocks (paragraph/heading), the text content"),
@@ -2672,6 +2695,7 @@ TIPS:
 - Table rows must have same number of cells as headers
 - categoryShowcase requires commerce-enabled tenant and valid category ID
 - categoryGrid takes category IDs (list_categories); hidden or deleted categories are left out
+- form takes the slug of a form (list_forms); the form's fields are edited with update_form, not on the page
 - bulk_price_adjust defaults to dry_run=true (preview only) — call with dry_run=false to apply
 - Currency is set per-tenant in settings (default RON), inherited by new products`
         }],

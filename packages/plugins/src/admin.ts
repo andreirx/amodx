@@ -20,6 +20,7 @@ import { CategoryShowcasePlugin } from './category-showcase';
 import { CategoryGridPlugin } from './category-grid';
 import { MarkdownPlugin } from './markdown';
 import { VideoHeroPlugin } from './video-hero';
+import { FormPlugin } from './form';
 
 const REGISTRY: PluginDefinition[] = [
     HeroPlugin,
@@ -42,7 +43,8 @@ const REGISTRY: PluginDefinition[] = [
     ReviewsCarouselPlugin,
     CategoryShowcasePlugin,
     CategoryGridPlugin,
-    MarkdownPlugin
+    MarkdownPlugin,
+    FormPlugin
 ];
 
 

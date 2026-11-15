@@ -148,6 +148,18 @@ src/
 ├── leads/
 │   ├── create.ts          # POST /leads (public, no auth)
 │   └── list.ts            # GET /leads
+├── forms/
+│   ├── create/list/get/update/delete.ts, submissions.ts   # admin forms (FORM#<id> + FORMSLUG#<slug> pointer)
+│   └── public-submit.ts   # POST /public/forms/{slug}/submit (public): origin check, then the body parsed once (not a
+│                          #   JSON object → 400), reCAPTCHA, the form read under TENANT#<verified tenant> (FORMSLUG#
+│                          #   → FORM#; 404 / disabled 403). SHOP-LOOK-1E: `data` read BY FIELD LABEL for exactly the
+│                          #   stored form's fields (FormFieldSchema-valid, first field of each label); per type cleaned
+│                          #   (strings trimmed, ≤ 500 / textarea ≤ 5 000; number finite or ""; checkbox boolean;
+│                          #   select "" or an option) — wrong type / option 400 "Invalid value", too long 400 "Value
+│                          #   too long", bad email 400 "Invalid email format", blank required 400 "Missing required
+│                          #   fields", each with the labels; submitter email = body.submitterEmail else the first
+│                          #   email field (CR/LF removed, pattern checked). Stores and mails only the cleaned values
+│                          #   (mail value CR/LF → space). Unit: test/unit/forms-public-submit.test.ts
 ├── interest/
 │   └── public.ts          # CAT-INTEREST-1: the interest list's two PUBLIC routes, one Lambda (dispatch on routeKey).
 │                          #   POST /public/interest — a catalog visitor's shortlist as ONE submission of the system

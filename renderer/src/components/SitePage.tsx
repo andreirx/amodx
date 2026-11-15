@@ -16,13 +16,13 @@
 //
 // Phase 3.3: getCustomerOrders / getCustomerProfile are deliberately NOT imported here.
 // Customer-private data is fetched via session-validating API routes, not SSR.
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds, getProductById } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds, getProductById, getFormBySlug } from "@/lib/dynamo";
 import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from "@/lib/review-images";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -833,6 +833,36 @@ async function withShowcaseCardData(attrs: any, products: any[], config: any): P
     }));
 }
 
+/**
+ * SHOP-LOOK-1E (record docs/slices/shop-look-1e.md § 2): the `form` block's `_form`, built field by field from the form
+ * `getFormBySlug` read (an active form of this tenant) — never the stored item, which also holds the owner's notify
+ * address and the keys. `fields`: the stored entries that are fields (`FormFieldSchema`), the first field of each label
+ * only — the rule of the submit handler (`backend/src/forms/public-submit.ts` `formFields`), so the page shows exactly
+ * the fields the handler reads. `strings`: the four form texts of the tenant's locale table (three of them are not
+ * block keys, so `strings` of RenderBlocks does not hold them).
+ */
+function formForBlock(form: Record<string, any>, slug: string, site: LocaleStrings["site"]) {
+    const seen = new Set<string>();
+    const fields: FormField[] = [];
+    for (const entry of Array.isArray(form.fields) ? form.fields : []) {
+        const parsed = FormFieldSchema.safeParse(entry);
+        if (!parsed.success || seen.has(parsed.data.label)) continue;
+        seen.add(parsed.data.label);
+        fields.push(parsed.data);
+    }
+    return {
+        slug,
+        name: typeof form.name === "string" ? form.name : "",
+        fields,
+        submitButtonText: typeof form.submitButtonText === "string" ? form.submitButtonText : "",
+        successMessage: typeof form.successMessage === "string" ? form.successMessage : "",
+        strings: {
+            formSubmissionFailed: site.formSubmissionFailed, formErrorShort: site.formErrorShort,
+            formSelectPlaceholder: site.formSelectPlaceholder, formSubmitting: site.formSubmitting,
+        },
+    };
+}
+
 async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
     if (!Array.isArray(blocks)) return;
     await Promise.all(blocks.map(async (block: any) => {
@@ -904,6 +934,15 @@ async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
                 ...(c.imageLink !== undefined ? { imageLink: c.imageLink } : {}),
                 path: `${categoryPrefix}/${c.slug}`,
             }));
+        }
+
+        // SHOP-LOOK-1E: the custom form of a `form` block, by its slug (trimmed; blank → no read). One `getFormBySlug` per
+        // block (two keyed `GetCommand`s under TENANT#<this tenant>); only this block's attrs gain `_form`, and only when the
+        // form exists and is active. No `_form` → the block draws nothing.
+        if (block.type === 'form') {
+            const slug = typeof block.attrs.formSlug === "string" ? block.attrs.formSlug.trim() : "";
+            const form = slug !== "" ? await getFormBySlug(config.id, slug) : null;
+            if (form) block.attrs._form = formForBlock(form, slug, resolveLocaleStrings(config).strings.site);
         }
 
         // rev-4: a reviews carousel in a DB-backed scope is fed approved System-A reviews here

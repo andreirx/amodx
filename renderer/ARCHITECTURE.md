@@ -223,7 +223,7 @@ legacy `/products/<id>` route. Steps:
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
 5. **Block preparation (`prepareBlocks`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
    products (+ the catalog-mode reduction, the URL prefixes; the card options' data, SHOP-LOOK-1D), `reviewsCarousel`
-   reviews, `categoryGrid` categories (SHOP-LOOK-1C) (avoids client fetches). One
+   reviews, `categoryGrid` categories (SHOP-LOOK-1C), the `form` block's custom form (SHOP-LOOK-1E) (avoids client fetches). One
    function, two users: the content page and the category page (CATEGORY-CONTENT-1)
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
 7. Renders blocks via `<RenderBlocks>` + comments section + social share buttons
@@ -583,7 +583,8 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   the browser builds from the payload (also before this slice). Rows `loc1e-html-lang`, `loc1e-404-document`
   (`locale-1/1e/before-404/`), `loc1e-category-controls`, `loc1e-cache-headers` (`locale-1/1e/before-headers.json`);
   unit `test/unit/locale-1e-html-lang.test.ts`.
-- `DynamicForm.tsx` has no importer in the repo (graph orphan, `git grep`); its texts are proven by jsdom only.
+- `DynamicForm.tsx` moved to the plugin `form` block (`packages/plugins/src/form/DynamicForm.tsx`, SHOP-LOOK-1E); its
+  1a texts are proven by jsdom through the block (`test/unit/locale-1a-client.test.ts`, test titles unchanged).
 - Proof: `test/serving-contract/locale-1/` — `proof.mjs` (byte-difference check incl. the 1b changed-prop form
   `beforeValue`, `renderItem` incl. the 1d `segment` form, the request rules incl. `orderRequests`), `extract.mjs` (the
   visible-text extraction, re-exported by `proof.mjs`; importable under jsdom), per slice `<slice>/before/` (immutable
@@ -830,6 +831,23 @@ new class), `sl1d-blank-as-absent` (null, blank and off options: the twin's HTML
 `sl1d-catalog-no-effect` (catalog: the twin's HTML with every card option on); unit
 `test/unit/shop-look-1d-showcase.test.ts` (calls and DynamoDB requests per option; the two-page cases of
 `getAllCategories` and `getProductReviews`).
+
+**SHOP-LOOK-1E (docs/slices/shop-look-1e.md).** `prepareBlocks` gains one branch, for `form` blocks only: the stored
+`formSlug` trimmed; blank or not a string → no read; else one `getFormBySlug(tenantId, slug)` per block (two keyed
+`GetCommand`s under `TENANT#<this tenant>`: `FORMSLUG#<slug>`, then `FORM#<id>`; active forms only) → `attrs._form` =
+`formForBlock(form, slug, site texts)`, built field by field: `{ slug, name, fields, submitButtonText, successMessage,
+strings }` — `fields` the stored entries that pass `FormFieldSchema`, the first of each label (the submit handler's rule);
+`strings` the four form texts of the tenant's locale table. Never the stored item (it holds the owner's notify address,
+the keys, status and dates). No form, a disabled form → no `_form` → the block draws nothing. No other block's attrs
+change; a page without the block makes no new read (every existing row unchanged). The browser submits to
+`<NEXT_PUBLIC_API_URL>/public/forms/{slug}/submit` with `x-tenant-id` (the block's `tenantId` prop); the value of
+`NEXT_PUBLIC_API_URL` is inlined into the block's chunk by `next build` (OBSERVED: the serving build's chunk holds
+`apiUrl:""`). Freshness: the forms create / update / delete handlers already purge the tenant's stored pages
+(`withInvalidation(…, purgeStoredPagesOfRequestTenant)`). Rows `sl1e-form` (the set page = its blank-slug twin + the
+block's `<section>`, byte for byte; the payload differs by the block's attributes and `_form` only; no notify address;
+the stylesheet holds every class) and `sl1e-draws-nothing` (a disabled form and a slug of no form: two empty wrappers);
+unit `test/unit/shop-look-1e-form.test.ts` (calls and requests; the DTO; the field rule; locale texts) and
+`test/unit/shop-look-1e-form-client.test.ts` (jsdom: the request, reCAPTCHA token, success, failure).
 
 ## Path settings — slice `cdl-2`
 

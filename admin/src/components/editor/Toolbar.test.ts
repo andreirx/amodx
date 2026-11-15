@@ -41,6 +41,10 @@ describe("offeredPlugins", () => {
         expect(k).toEqual(ALL.map((p) => p.key).filter((x) => x !== "reviewsCarousel"));
     });
 
+    it("SHOP-LOOK-1E: the custom form block is offered on every site kind (content, commerce, catalog)", () => {
+        for (const tenant of [{}, null, { commerceEnabled: true }, { catalogMode: true }]) expect(keys(tenant)).toContain("form");
+    });
+
     it("catalog + commerceEnabled: the commerce flag is ignored (same as catalog)", () => {
         expect(keys({ catalogMode: true, commerceEnabled: true })).toEqual(keys({ catalogMode: true }));
     });

@@ -1,11 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Loader2, CheckCircle } from "lucide-react";
-import { useRecaptcha } from "@/hooks/useRecaptcha";
 import type { LocaleStrings } from "@amodx/shared";
 
-interface FormField {
+/**
+ * SHOP-LOOK-1E: moved from `renderer/src/components/DynamicForm.tsx` (it had no importer there) into the `form` block,
+ * so a page can place it. Changes from the renderer copy, and nothing else:
+ * - reCAPTCHA: the page globals `window.AMODX_RECAPTCHA_KEY` and `window.grecaptcha` (injected by the renderer's
+ *   `ThemeInjector`), read here as the `contact` and `leadMagnet` blocks read them — a plugin cannot import the
+ *   renderer's `useRecaptcha` hook (split entry, `docs/plugin-architecture.md`). Same behaviour: no key or no script →
+ *   no token (`null`).
+ * - The slug is URL-encoded in the submit path.
+ * - Each field's label is tied to its control (`htmlFor` / `id`), so every input has an accessible name. A checkbox keeps
+ *   its own wrapping label, as before (a second label would repeat its name).
+ * - The required mark and the error text use the theme's `destructive` colour (was `text-red-500`). The success icon
+ *   keeps `text-green-500`: the theme has no success colour (finding F-1E-SUCCESS-COLOUR).
+ */
+
+export interface FormField {
     id: string;
     label: string;
     type: "text" | "email" | "phone" | "textarea" | "select" | "checkbox" | "number";
@@ -13,6 +26,8 @@ interface FormField {
     placeholder?: string;
     options?: string[];
 }
+
+export type DynamicFormStrings = Pick<LocaleStrings["site"], "formSubmissionFailed" | "formErrorShort" | "formSelectPlaceholder" | "formSubmitting">;
 
 interface DynamicFormProps {
     formSlug: string;
@@ -23,15 +38,32 @@ interface DynamicFormProps {
     tenantId: string;
     apiUrl: string;
     /** LOCALE-1A: the site keys this component renders (docs/slices/locale-1.md § 6.1). */
-    strings: Pick<LocaleStrings["site"], "formSubmissionFailed" | "formErrorShort" | "formSelectPlaceholder" | "formSubmitting">;
+    strings: DynamicFormStrings;
 }
 
-export function DynamicForm({ formSlug, formName, fields, submitButtonText, successMessage, tenantId, apiUrl, strings }: DynamicFormProps) {
+/** A reCAPTCHA v3 token for `action`, or null when the page has no key or no reCAPTCHA script (the contact block's rule). */
+function recaptchaToken(action: string): Promise<string | null> {
+    if (typeof window === "undefined") return Promise.resolve(null);
+    const siteKey = (window as any).AMODX_RECAPTCHA_KEY;
+    const grecaptcha = (window as any).grecaptcha;
+    if (!siteKey || !grecaptcha) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        grecaptcha.ready(() => {
+            grecaptcha
+                .execute(siteKey, { action })
+                .then((token: string) => resolve(token))
+                .catch(() => resolve(null));
+        });
+    });
+}
+
+// `formName` is accepted as before and not drawn (finding F-1E-FORM-NAME in the record).
+export function DynamicForm({ formSlug, fields, submitButtonText, successMessage, tenantId, apiUrl, strings }: DynamicFormProps) {
     const [values, setValues] = useState<Record<string, any>>({});
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [error, setError] = useState("");
-    const { execute: executeRecaptcha } = useRecaptcha("form_submit");
+    const idPrefix = useId();
 
     function updateValue(fieldId: string, value: any) {
         setValues(prev => ({ ...prev, [fieldId]: value }));
@@ -53,13 +85,13 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
         const submitterEmail = emailField ? values[emailField.id] : undefined;
 
         // Get reCAPTCHA token (null if not configured)
-        const recaptchaToken = await executeRecaptcha();
+        const token = await recaptchaToken("form_submit");
 
         try {
-            const res = await fetch(`${apiUrl}/public/forms/${formSlug}/submit`, {
+            const res = await fetch(`${apiUrl}/public/forms/${encodeURIComponent(formSlug)}/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
-                body: JSON.stringify({ data, submitterEmail, recaptchaToken }),
+                body: JSON.stringify({ data, submitterEmail, recaptchaToken: token }),
             });
 
             if (!res.ok) {
@@ -86,15 +118,18 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            {fields.map(field => (
+            {fields.map(field => {
+                const controlId = `${idPrefix}-${field.id}`;
+                return (
                 <div key={field.id}>
-                    <label className="text-sm font-medium block mb-1">
+                    <label htmlFor={field.type === "checkbox" ? undefined : controlId} className="text-sm font-medium block mb-1">
                         {field.label}
-                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                        {field.required && <span className="text-destructive ml-1">*</span>}
                     </label>
 
                     {field.type === "textarea" ? (
                         <textarea
+                            id={controlId}
                             value={values[field.id] || ""}
                             onChange={e => updateValue(field.id, e.target.value)}
                             placeholder={field.placeholder}
@@ -104,6 +139,7 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
                         />
                     ) : field.type === "select" ? (
                         <select
+                            id={controlId}
                             value={values[field.id] || ""}
                             onChange={e => updateValue(field.id, e.target.value)}
                             required={field.required}
@@ -127,6 +163,7 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
                         </label>
                     ) : (
                         <input
+                            id={controlId}
                             type={field.type === "phone" ? "tel" : field.type}
                             value={values[field.id] || ""}
                             onChange={e => updateValue(field.id, e.target.value)}
@@ -136,9 +173,10 @@ export function DynamicForm({ formSlug, formName, fields, submitButtonText, succ
                         />
                     )}
                 </div>
-            ))}
+                );
+            })}
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
             <button
                 type="submit"

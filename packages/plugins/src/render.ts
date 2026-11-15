@@ -42,4 +42,5 @@ export const RENDER_LOADERS: Record<string, RenderLoader> = {
     'categoryShowcase': () => import('./category-showcase/CategoryShowcaseRender').then(m => ({ default: m.CategoryShowcaseRender })),
     'categoryGrid': () => import('./category-grid/CategoryGridRender').then(m => ({ default: m.CategoryGridRender })),
     'markdown': () => import('./markdown/MarkdownRender').then(m => ({ default: m.MarkdownRender })),
+    'form': () => import('./form/FormRender').then(m => ({ default: m.FormRender })),
 };

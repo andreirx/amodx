@@ -103,6 +103,19 @@ export function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
             if (storage.categoryGrid) {
                 storage.categoryGrid.fetchCategoriesFn = fetchCategories;
             }
+
+            // Custom Form (SHOP-LOOK-1E) Handler: the tenant's forms, the list the Forms page shows (`GET /forms`)
+            if (storage.form) {
+                storage.form.fetchFormsFn = async () => {
+                    try {
+                        const res = await apiRequest("/forms");
+                        return res.items || [];
+                    } catch (e) {
+                        console.error("Failed to fetch forms for editor", e);
+                        return [];
+                    }
+                };
+            }
         },
         onUpdate: ({ editor }) => {
             onChange(editor.getJSON().content || []);

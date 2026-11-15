@@ -27,6 +27,7 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 | `reviewsCarousel` | Reviews Carousel | headline, scope (manual \| product-reviews-by-id \| site-reviews), productId, items[] (name, avatarUrl, date, rating, text, source), showSource, autoScroll | google, facebook, manual sources. `scope: product-reviews-by-id` (needs `productId`) / `scope: site-reviews` (rev-4) render approved moderated reviews with approved photos — server-prefetched, assetKey→raw asset URL, never next/image |
 | `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText; optional (absent = not shown, SHOP-LOOK-1D): eyebrow, badgeTags[] (≤ 10), showCategoryLabel, showDescription, showRating (see § *Category showcase card options*) | 2, 3, 4 columns |
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText (foot text of every tile), chips[] (label, href; ≤ 12), blockWidth (SHOP-LOOK-1C; see § *Category grid*) | 2, 3, 4 columns from large screens; 1 on a phone, 2 from `sm` |
+| `form` | Custom Form | formSlug (a form of admin Forms), eyebrow, headline, text, card, blockWidth (SHOP-LOOK-1E; see § *Custom form*) | plain or in a card |
 
 ## Category grid (`categoryGrid`, slice `shop-look-1c`)
 
@@ -44,6 +45,29 @@ under the grid. Offered in the block inserter on commerce and catalog sites; dra
 - The tile text is on a scrim of the theme's text colour at 75 % opacity, in the theme's background colour: readable on
   any photo (record `docs/slices/shop-look-1c.md` § *Overlay rule*).
 - Without the server pass (the admin editor) the public render draws nothing; the editor shows its own list.
+
+## Custom form (`form`, slice `shop-look-1e`)
+
+One custom form of the tenant (admin **Forms**), chosen in the block editor by its name; the block stores the form's
+slug (`formSlug`). The form's fields, button text, success text and notify address are edited on the Forms page, not in
+the block. Offered on every site kind.
+
+- The form is read on the server when the page renders (`getFormBySlug`: two keyed `GetCommand`s; none without a slug).
+  A slug of no form, a disabled form or a blank slug → the block draws nothing. The page receives display data only
+  (name, fields, button text, success text, the four form texts of the tenant's locale table) — never the notify address.
+- Each stored field is drawn by its type: `text`, `email`, `phone` (tel), `number` → an input; `textarea`; `select` → a
+  list of its `options` with the placeholder (else the locale text `formSelectPlaceholder`); `checkbox` → a tick box
+  with its placeholder (else its label). A required field has a mark and must be filled (a required tick box ticked). A
+  stored entry that is not a valid field, and a later field with the label of an earlier one, are not drawn.
+- Options above the form: `eyebrow` (small label), `headline`, `text` — blank = absent. `card: true` → the form in a
+  bordered card. The form is at most `max-w-lg` wide, centred.
+- Submit: the browser posts to `POST /public/forms/{slug}/submit` (origin check and reCAPTCHA, as the contact form)
+  with `data` keyed by field label. The handler keeps only the form's own fields, cleans each value by type, limits the
+  length (text 500, textarea 5 000 characters) and refuses a value that is not of the field's type or not an option of
+  the select (record `docs/slices/shop-look-1e.md` § 2). After a good submit the form's success text replaces the form; a
+  refusal shows the server's error text, else the locale text `formSubmissionFailed`.
+- Submissions are listed on admin **Forms → Submissions**; the notify mail (if the form has an address) lists each field
+  label with its value.
 
 ## Category showcase card options (`categoryShowcase`, slice `shop-look-1d`)
 

@@ -1005,6 +1005,54 @@ const SL1D_ITEMS = [
     ...sl1dCatalogTenant("catalogPlain", SL1D_CATALOG_SHOWCASE),
 ];
 
+// ── SHOP-LOOK-1E fixtures (docs/slices/shop-look-1e.md; the `form` block) ────────────────────────────────────────────
+// Three copies of the CM1 commerce tenant (each with `locale: "en-US"` written out, so none is an en-US subject of the
+// `loc1-*` rows and none is in any `before/` capture: rows `sl1e-*` read the running build only). Each copy stores two
+// forms in the shape `backend/src/forms/create.ts` writes (FORM# item + FORMSLUG# pointer): `sl1e-contact` (active; the
+// reference form of section 9: Name, E-mail, the select "Primary interest", a textarea; a notify address that must
+// never reach a page) and `sl1e-closed` (disabled). Their page `/sl1e-form` holds a paragraph and:
+//  - set: one `form` block of `sl1e-contact` with every option (eyebrow, headline, text, card);
+//  - blank: the same block with a blank slug — the twin of `set` (a page holding a `form` block loads the block's
+//    code-split chunk, so the twin holds the block too; "a page without the block" is every existing row);
+//  - none: two `form` blocks that draw nothing — the disabled form and a slug of no form.
+export const SL1E = {
+    set: { id: "sl1e-set", host: "sl1e-set.serving-contract.test" },
+    blank: { id: "sl1e-blank", host: "sl1e-blank.serving-contract.test" },
+    none: { id: "sl1e-none", host: "sl1e-none.serving-contract.test" },
+};
+export const SL1E_PATH = "/sl1e-form";
+export const SL1E_NOTIFY = "owner@sl1e-private.test";
+export const SL1E_FIELDS = [
+    { id: "sl1e-f-name", label: "Name", type: "text", required: true, placeholder: "Your name" },
+    { id: "sl1e-f-mail", label: "E-mail", type: "email", required: true },
+    { id: "sl1e-f-interest", label: "Primary interest", type: "select", required: false, options: ["Hardwood", "Carpet", "Tile"] },
+    { id: "sl1e-f-msg", label: "Message", type: "textarea", required: false },
+];
+export const SL1E_FORM = { name: "SL1E Contact", submitButtonText: "Send request", successMessage: "Thanks, we will call you." };
+export const SL1E_BLOCK = { formSlug: "sl1e-contact", eyebrow: "Contact", headline: "Not sure where to start?", text: "Tell us about your room.", card: true, blockWidth: "content" };
+const SL1E_PARAGRAPH = { type: "paragraph", content: [{ type: "text", text: "SL1E paragraph." }] };
+const sl1eForm = (tenantId, id, slug, over = {}) => [
+    { PK: `TENANT#${tenantId}`, SK: `FORMSLUG#${slug}`, Type: "FormSlug", formId: id, formName: SL1E_FORM.name },
+    {
+        PK: `TENANT#${tenantId}`, SK: `FORM#${id}`, Type: "Form", id, tenantId, slug, fields: SL1E_FIELDS, ...SL1E_FORM,
+        notifyEmail: SL1E_NOTIFY, status: "active", createdAt: CM1_AT, updatedAt: CM1_AT, ...over,
+    },
+];
+const sl1eTenant = (key, formBlocks) => [
+    ...localeCopy(CM1_ITEMS, CM1.commerce, SL1E[key], { locale: "en-US", name: "SL1E Shop" }),
+    ...sl1eForm(SL1E[key].id, "sl1e-form-1", "sl1e-contact"),
+    ...sl1eForm(SL1E[key].id, "sl1e-form-2", "sl1e-closed", { status: "disabled" }),
+    siteRouteItem(SL1E[key].id, SL1E_PATH, "sl1e-form"),
+    siteContentItem(SL1E[key].id, "sl1e-form", SL1E_PATH, "SL1E Form", { blocks: [SL1E_PARAGRAPH, ...formBlocks.map((attrs) => ({ type: "form", attrs }))], createdAt: CM1_AT }),
+];
+export const SL1E_BLANK_BLOCK = { ...SL1E_BLOCK, formSlug: "  " };
+export const SL1E_NONE_BLOCKS = [{ ...SL1E_BLOCK, formSlug: "sl1e-closed" }, { ...SL1E_BLOCK, formSlug: "sl1e-no-such-form" }];
+const SL1E_ITEMS = [
+    ...sl1eTenant("set", [SL1E_BLOCK]),
+    ...sl1eTenant("blank", [SL1E_BLANK_BLOCK]),
+    ...sl1eTenant("none", SL1E_NONE_BLOCKS),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -1059,6 +1107,8 @@ export const ITEMS = [
     ...SL1C_ITEMS,
     // shop-look-1d: the showcase-card and post-grid-panel tenants (above).
     ...SL1D_ITEMS,
+    // shop-look-1e: the custom-form tenants (above).
+    ...SL1E_ITEMS,
 ];
 
 /**

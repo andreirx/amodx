@@ -43,6 +43,7 @@ import {
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
     SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS, SL1C, SL1C_PATH, SL1C_CATEGORIES, SL1C_GRID, SL1C_BLANK_GRID,
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
+    SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -3384,6 +3385,93 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.deepEqual(sl1aResolved(flight), sl1aResolved(plain.flight), `payload equal to the twin but for the stored attributes (resolved); ${sl1aDiff(flight, plain.flight)}`);
             for (const k of ["_categoryName", "_descriptionText", "_rating", '"tags"']) assert.ok(!page.flight.includes(k), `payload: no ${k}`);
             console.log("  (sl1d-catalog-no-effect) catalog: HTML byte-equal to the twin; no server key");
+        });
+
+        // ── ROWS (sl1e-*) — SHOP-LOOK-1E (docs/slices/shop-look-1e.md). Server HTML and payload of the running build for the
+        // SL1E tenants (fixtures.mjs `SL1E`: copies of the CM1 commerce tenant storing an active and a disabled custom form;
+        // page `/sl1e-form` = a paragraph and `form` block(s): set / blank (its twin: same options, blank slug) / none).
+        // "A page without the block → today's bytes" is proven by every existing row, unchanged (no existing page holds
+        // the block). These rows prove, in the built site: the form drawn from the stored form (fields by type in order,
+        // the select of the reference, the button text, the locale placeholder) with the eyebrow, headline, text and card;
+        // that the set page differs from its twin EXACTLY by the block's <section> (HTML) and the block's attributes plus
+        // `_form` (payload); that the owner's notify address never reaches a page; that a disabled form, a slug of no form
+        // and a blank slug draw nothing and add no `_form`.
+        /** The page of an SL1E copy, its key fields written as its twin's (so twins compare byte for byte). */
+        const sl1ePage = async (key, twin) => {
+            const res = await request({ port: server.port, path: SL1E_PATH, host: SL1E[key].host });
+            assert.equal(res.status, 200, `${key}: 200`);
+            const asTwin = (t) => t.split(SL1E[key].host).join(SL1E[twin].host).split(SL1E[key].id).join(SL1E[twin].id);
+            const { html } = splitFlight(res.body);
+            sl1aSide ??= { buildId: (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim(), clientModules: await readClientModules(RENDERER_DIR) };
+            const flight = maskBody(res.body, sl1aSide).masked.split("\n--- flight payload rows, sorted ---\n")[1];
+            return { raw: html, html: asTwin(html), flight: asTwin(flight), body: res.body };
+        };
+        const SL1E_SITE = resolveLocaleStrings({ locale: "en-US" }).strings.site;
+        /** What the server pass must give the set block (`formForBlock`): display data only, the four locale texts. */
+        const SL1E_PREPARED = {
+            slug: SL1E_BLOCK.formSlug, name: SL1E_FORM.name, fields: SL1E_FIELDS, submitButtonText: SL1E_FORM.submitButtonText, successMessage: SL1E_FORM.successMessage,
+            strings: { formSubmissionFailed: SL1E_SITE.formSubmissionFailed, formErrorShort: SL1E_SITE.formErrorShort, formSelectPlaceholder: SL1E_SITE.formSelectPlaceholder, formSubmitting: SL1E_SITE.formSubmitting },
+        };
+
+        test("(sl1e-form) a custom form placed by its slug: eyebrow, headline, text, the card, the fields by type in order, the select \"Primary interest\", the button text; the set page differs from its blank-slug twin exactly by the block's section (HTML) and its attributes + `_form` (payload); the notify address is never sent; the stylesheet holds every class", async () => {
+            const [page, blank] = [await sl1ePage("set", "blank"), await sl1ePage("blank", "blank")];
+            const start = page.html.indexOf('<section class="my-12">');
+            assert.ok(start >= 0, "the form section is drawn");
+            const section = page.html.slice(start, page.html.indexOf("</section>", start) + "</section>".length);
+            const head = '<section class="my-12"><div class="text-center mb-8">'
+                + `<p class="mx-auto w-fit rounded-full border px-3 py-1 mb-4 text-xs font-semibold uppercase tracking-widest border-primary/30 text-primary">${SL1E_BLOCK.eyebrow}</p>`
+                + `<h2 class="text-2xl md:text-3xl font-bold mb-2">${SL1E_BLOCK.headline}</h2><p class="text-muted-foreground">${SL1E_BLOCK.text}</p></div>`
+                + '<div class="max-w-lg mx-auto rounded-xl border border-border bg-background p-6 md:p-8 shadow-sm"><form class="space-y-4">';
+            assert.ok(section.startsWith(head), `the head and the card, byte for byte; ${sl1aDiff(section.slice(0, head.length), head)}`);
+            assert.ok(section.endsWith(`>${SL1E_FORM.submitButtonText}</button></form></div></section>`), "the button text closes the form, inside the card");
+            const labels = [...section.matchAll(/<label for="([^"]+)" class="text-sm font-medium block mb-1">([^<]+)/g)];
+            assert.deepEqual(labels.map((m) => m[2]), SL1E_FIELDS.map((f) => f.label), "one label per stored field, in order");
+            for (const [, id] of labels) assert.equal(section.split(`id="${id}"`).length - 1, 1, `the label's control ${id}`);
+            assert.match(section, /<input id="[^"]+" type="text" placeholder="Your name" required=""/, "Name: a required text input with its placeholder");
+            assert.match(section, /<input id="[^"]+" type="email" required=""/, "E-mail: a required email input");
+            assert.ok(section.includes(`<option value="" selected="">${SL1E_SITE.formSelectPlaceholder}</option><option value="Hardwood">Hardwood</option><option value="Carpet">Carpet</option><option value="Tile">Tile</option></select>`), "Primary interest: the locale placeholder and the stored options");
+            assert.match(section, /<textarea id="[^"]+" rows="4"/, "Message: a textarea");
+            assert.equal(section.split('<span class="text-destructive ml-1">*</span>').length - 1, 2, "two required marks, theme colour");
+            assert.ok(page.html.includes(`mx-auto px-6">${section}</div>`), "inside the block's width wrapper");
+            assert.equal(page.html.replace(section, ""), blank.html, `HTML equal to the twin but for the section; ${sl1aDiff(page.html.replace(section, ""), blank.html)}`);
+            assert.ok(!page.body.includes(SL1E_NOTIFY) && !page.body.includes("FORMSLUG#") && !page.body.includes('"notifyEmail"'), "neither the notify address nor the stored keys reach the page (HTML or payload)");
+            // Payload: the stored attributes plus `_form` = SL1E_PREPARED, exactly once; swapping the set block's attributes
+            // for the twin's gives the twin's payload (resolved).
+            const setAttrs = JSON.stringify({ ...SL1E_BLOCK, _form: SL1E_PREPARED });
+            const flightBack = swapOnce(page.flight, setAttrs, JSON.stringify(SL1E_BLANK_BLOCK), "payload attrs");
+            assert.deepEqual(sl1aResolved(flightBack), sl1aResolved(blank.flight), `payload equal to the twin but for the block's attributes (resolved); ${sl1aDiff(flightBack, blank.flight)}`);
+            const sheets = [...page.raw.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: SL1E.set.host })))).map((r) => r.body).join("\n");
+            const SL1E_CLASSES = [
+                "max-w-lg", "rounded-xl", "border-border", "bg-background", "p-6", "md\\:p-8", "shadow-sm", "text-destructive", "text-muted-foreground",
+                "md\\:text-3xl", "border-primary\\/30", "tracking-widest", "w-fit", "space-y-4", "resize-y", "focus\\:ring-primary\\/20", "focus\\:border-primary",
+                "bg-primary", "text-primary-foreground", "disabled\\:opacity-50", "text-green-500", "animate-spin",
+            ];
+            // `.c{`, `.c:`, `.c,` — and `.c>` for a child selector (Tailwind v4 compiles `space-y-4` as `:where(.space-y-4>…)`).
+            const missing = SL1E_CLASSES.filter((cls) => ![`.${cls}{`, `.${cls} {`, `.${cls}:`, `.${cls},`, `.${cls}>`].some((form) => css.includes(form)));
+            assert.deepEqual(missing, [], `compiled: every class of the block has a rule (${sheets.length} stylesheet(s))`);
+            console.log(`  (sl1e-form) ${labels.length} fields in order; HTML = twin + the section; payload = twin but for the block's attributes and _form; no notify address; ${SL1E_CLASSES.length} classes compiled`);
+        });
+
+        test("(sl1e-draws-nothing) a blank slug, a disabled form and a slug of no form: no section, no form, no `_form`; each block's width wrapper stays empty", async () => {
+            const [none, blank] = [await sl1ePage("none", "blank"), await sl1ePage("blank", "blank")];
+            // The block's width wrapper follows the paragraph's: it is empty on the twin; on `none` there are two, both empty.
+            const AFTER = "SL1E paragraph.</span></p></div>";
+            assert.equal(blank.html.split(AFTER).length - 1, 1, "precondition: the paragraph once");
+            const at = blank.html.indexOf(AFTER) + AFTER.length;
+            const EMPTY = blank.html.slice(at).match(/^<div class="[^"]+ mx-auto px-6"><\/div>/)?.[0];
+            assert.ok(EMPTY, `blank: the block's wrapper, empty; found ${blank.html.slice(at, at + 120)}`);
+            const expected = blank.html.slice(0, at) + EMPTY + blank.html.slice(at);
+            assert.equal(none.html, expected, `none = the twin with two empty wrappers; ${sl1aDiff(none.html, expected)}`);
+            for (const page of [none, blank]) {
+                for (const t of ['<section class="my-12">', "<form", SL1E_FORM.submitButtonText, SL1E_BLOCK.headline, "Primary interest", SL1E_NOTIFY]) assert.ok(!page.raw.includes(t), `HTML: no ${t}`);
+                assert.ok(!page.flight.includes('"_form"') && !page.body.includes(SL1E_NOTIFY), "payload: no _form, no notify address");
+            }
+            const noneBlocks = SL1E_NONE_BLOCKS.map((attrs) => JSON.stringify({ type: "form", attrs })).join(",");
+            const flightBack = swapOnce(none.flight, noneBlocks, JSON.stringify({ type: "form", attrs: SL1E_BLANK_BLOCK }), "payload blocks");
+            assert.deepEqual(sl1aResolved(flightBack), sl1aResolved(blank.flight), `payload equal to the twin but for the stored blocks (resolved); ${sl1aDiff(flightBack, blank.flight)}`);
+            console.log("  (sl1e-draws-nothing) blank slug, disabled form, slug of no form: nothing drawn, no _form");
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the
