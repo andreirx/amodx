@@ -624,6 +624,26 @@ CURRENT quantity across volume tiers (also after a merge in `addItem`). An item 
 Tests: `test/unit/order-price-1.test.ts`; the mocks of `cmrc-counties-1-checkout` and `locale-1d-client` re-export the
 real `cartLineTotal` (their items have no `priceInputs`, so their captured markup stays the oracle).
 
+**Price texts by locale (slice `price-locale-1`, record `docs/slices/price-locale-1.md`).** A price text is read by the
+shared `parseMoney` / `linePrice` with the tenant's locale (a `ro-RO` tenant's `12,50` = 12.5).
+- Product page: `SitePage` passes `AddToCartButton` a `priceLocale` prop — the normalised locale — ONLY when
+  `localeUsesDecimalComma` is true; every decimal-point locale reads exactly like en-US, so those tenants' props and
+  flight payload do not change. The button reads with it the shown line total, the cart personalization's `addedCost`
+  number and the `(+cost)` label condition (was `parseFloat`).
+- Cart (ruling PL1-CART-WIRING = N): the cart takes no locale. At add time the button stores the cart item's
+  `priceInputs` in MACHINE FORM (`toMachineFormPriceInputs`: only the texts `linePrice` can select, each with a decimal
+  point — `12,50` → `12.50`; a point text is trimmed, otherwise kept). The stored object can hold fewer texts than
+  today's (an override hides the rest; a `salePrice` hides `price`); the shown total, the line at every quantity and the
+  order request are the same. If one of those texts does not parse — also an unused tier — the item is not added, for
+  every tenant (the button keeps its display: NaN when the broken text is the selected price). `cartLineTotal(item)` calls `linePrice(…, undefined)` (machine form
+  only). An item stored earlier with a raw comma text keeps the named failure (NaN); no migration.
+- Showcase (ruling PL1-SHOWCASE = C narrowed): `prepareBlocks` gives a prefetched showcase product `_priceRange`
+  (`withCommaPriceRange`) only for a decimal-comma tenant and a product with tiers whose `price` or a tier price holds a
+  comma; the card prints it (`packages/plugins/ARCHITECTURE.md`). Other tenants and products: attrs unchanged.
+Tests: `test/unit/price-locale-1.test.ts` (real provider, button, cart page, checkout),
+`test/unit/price-locale-1-server-render.test.ts` (the props `SitePage` passes), `test/unit/price-locale-1-showcase.test.ts`
+(the showcase server pass).
+
 ## Order read by email — slice `order-email-1`
 
 Record `docs/slices/order-email-1.md`. `getOrderForCustomer(tenant, orderId, email)` (`lib/dynamo.ts`) reads

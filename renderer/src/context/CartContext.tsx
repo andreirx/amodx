@@ -15,7 +15,11 @@ export interface CartItem {
     selectedVariant?: string;
     /** `id`: the product's personalization id; absent on an item saved before ORDER-PRICE-1. */
     personalizations: { id?: string; label: string; value: string; addedCost: number }[];
-    /** ORDER-PRICE-1: the product's price data for the shared rule (`linePrice`); absent on an item saved before. */
+    /**
+     * ORDER-PRICE-1: the product's price data for the shared rule (`linePrice`); absent on an item saved before.
+     * PRICE-LOCALE-1 (ruling PL1-CART-WIRING = N): `AddToCartButton` stores every text in MACHINE FORM (digits and an
+     * optional decimal point), so the cart reads them without a locale.
+     */
     priceInputs?: LinePriceInputs;
 }
 
@@ -24,11 +28,12 @@ export interface CartItem {
  * one browser copy of the line arithmetic (the cart subtotal, the cart page and the checkout read it). An item with
  * `priceInputs` is priced by the shared rule, the rule the order handler charges (NaN when its price data does not
  * parse — the order handler refuses that line). An item saved before ORDER-PRICE-1 keeps the arithmetic of that time
- * on its stored `unitPrice`.
+ * on its stored `unitPrice`. PRICE-LOCALE-1: the stored texts are machine form, so `linePrice` gets no locale
+ * (`undefined` = machine form only); an item whose stored text still does not parse keeps the named failure (NaN).
  */
 export function cartLineTotal(item: CartItem): number {
     if (item.priceInputs) {
-        const priced = linePrice(item.priceInputs, item.quantity);
+        const priced = linePrice(item.priceInputs, item.quantity, undefined);
         return priced.kind === "priced" ? priced.lineTotal : NaN;
     }
     const personalizationCost = item.personalizations.reduce((s, p) => s + p.addedCost, 0);

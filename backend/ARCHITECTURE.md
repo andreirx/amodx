@@ -462,7 +462,13 @@ All entities in one table. Partition key `PK`, sort key `SK`.
   label equals `<group>: <value>` or starts with it followed by `, `; not exactly one match → 400 `Variant selection not
   recognised for product: <id>`. A price text that does not parse → 400 `Invalid price for product: <id>`. Both refuse
   before any write. Stored item: `unitPrice` string with two decimals (unit + added cost), `totalPrice` number rounded
-  to cents; `subtotal` = their sum, rounded to cents
+  to cents; `subtotal` = their sum, rounded to cents. PRICE-LOCALE-1 (record `docs/slices/price-locale-1.md`): the
+  price texts are read with the locale of the TENANT ITEM (`tenantConfig.locale`, never the request), so a `ro-RO`
+  tenant's `12,50` is 12.5; an en-US tenant's `12,50` is still a 400
+- **Bulk price change (PRICE-LOCALE-1):** `products/bulk-price.ts` reads the tenant item (`GetCommand` `SYSTEM` /
+  `TENANT#<id>`) for its `locale` and reads the old `price` / `salePrice` with the shared `parseMoney` (was
+  `parseFloat`, which read `12,50` as 12). A text that does not parse is skipped. New prices are written in machine
+  form (`toFixed(2)`)
 
 ## Response Format
 
@@ -531,5 +537,8 @@ order handlers with `lib/db.ts`, `publishAudit`, the cache-revalidation call and
 reCAPTCHA helpers mocked; each row inspects the commands that would reach DynamoDB.
 `test/unit/order-price-1.test.ts` (ORDER-PRICE-1) is the same shape for `orders/create.ts` (plus a mocked SES client,
 so the confirmation mail's item lines are read): each row inspects the `TransactWriteCommand`, or that none is sent.
+`test/unit/price-locale-1.test.ts` (PRICE-LOCALE-1) is the same shape for `orders/create.ts` and
+`products/bulk-price.ts` (audit, purge and the invalidation wrapper mocked): the tenant item's locale decides how a
+price text is read.
 
 Run: `cd backend && npm run test:unit`.

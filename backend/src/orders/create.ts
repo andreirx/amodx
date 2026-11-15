@@ -168,7 +168,7 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 volumePricing: product.volumePricing,
                 priceOverride,
                 addedCosts,
-            }, item.quantity);
+            }, item.quantity, tenantConfig.locale); // PRICE-LOCALE-1: the tenant item's locale, never the request's
             if (priced.kind === "invalid-price") {
                 console.warn("Order refused: product price does not parse", { productId: item.productId, source: priced.source, text: priced.text });
                 return { statusCode: 400, body: JSON.stringify({ error: `Invalid price for product: ${item.productId}` }) };

@@ -7,6 +7,7 @@ import { publishAudit } from "../lib/events.js";
 import { writeCatProductItems, deleteCatProductItems } from "../lib/catprod.js";
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfTenant } from "../lib/revalidate.js";
+import { parseMoney } from "@amodx/shared";
 
 type Handler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -104,13 +105,21 @@ const _handler: Handler = async (event) => {
             products = result.Items || [];
         }
 
-        // 2. Calculate new prices
+        // 2. Calculate new prices. PRICE-LOCALE-1 (docs/slices/price-locale-1.md § 1 item 2): the stored price texts are
+        // read by the shared parser with the tenant's locale (from the tenant item), so a Romanian "12,50" is 12.5, not
+        // 12. A text that does not parse is skipped (before, parseFloat skipped only NaN and read "12abc" or an en-US
+        // "12,50" as 12). The new price is written in machine form (toFixed(2)).
+        const tenantResult = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` },
+        }));
+        const locale = tenantResult.Item?.locale;
         const multiplier = 1 + percent / 100;
         const preview: any[] = [];
 
         for (const product of products) {
-            const oldPrice = parseFloat(product.price);
-            if (isNaN(oldPrice) || oldPrice <= 0) continue;
+            const oldPrice = parseMoney(product.price, locale);
+            if (oldPrice === undefined || oldPrice <= 0) continue;
 
             const rawNewPrice = oldPrice * multiplier;
             const newPrice = roundPrice(rawNewPrice, roundTo);
@@ -124,8 +133,8 @@ const _handler: Handler = async (event) => {
             };
 
             if (applyToSalePrice && product.salePrice) {
-                const oldSale = parseFloat(product.salePrice);
-                if (!isNaN(oldSale) && oldSale > 0) {
+                const oldSale = parseMoney(product.salePrice, locale);
+                if (oldSale !== undefined && oldSale > 0) {
                     const rawNewSale = oldSale * multiplier;
                     entry.oldSalePrice = product.salePrice;
                     entry.newSalePrice = roundPrice(rawNewSale, roundTo).toFixed(2);

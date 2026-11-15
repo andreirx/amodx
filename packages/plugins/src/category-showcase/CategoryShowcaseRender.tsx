@@ -13,6 +13,12 @@ interface Product {
     imageLink?: string;
     availability: string;
     volumePricing?: { minQuantity: number; price: string }[];
+    /**
+     * PRICE-LOCALE-1 (ruling PL1-SHOWCASE = C, narrowed): the card's price range, computed by the renderer's server pass
+     * with the shared parser. Present ONLY for a tenant whose locale writes a decimal comma and a product whose `price` or
+     * a tier price contains a comma (`12,50`); absent otherwise, and then the range is read below exactly as before.
+     */
+    _priceRange?: { min: number; max: number };
 }
 
 /**
@@ -30,9 +36,17 @@ function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, s
         priceDisplay = `${product.salePrice} ${product.currency}`;
     }
     if (hasVolume) {
-        const prices = product.volumePricing!.map(v => parseFloat(v.price));
-        const min = Math.min(parseFloat(product.price), ...prices);
-        const max = Math.max(parseFloat(product.price), ...prices);
+        let min: number;
+        let max: number;
+        if (product._priceRange) {
+            ({ min, max } = product._priceRange);
+        } else {
+            // Debt (PRICE-LOCALE-1 record § 8 F-PL1-9): parseFloat on a price text, kept for products without a comma
+            // text; removed with `shop-look-1d`, which re-baselines the showcase payload.
+            const prices = product.volumePricing!.map(v => parseFloat(v.price));
+            min = Math.min(parseFloat(product.price), ...prices);
+            max = Math.max(parseFloat(product.price), ...prices);
+        }
         if (min !== max) priceDisplay = `${min} – ${max} ${product.currency}`;
     }
 

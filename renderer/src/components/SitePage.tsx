@@ -22,7 +22,7 @@ import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, URL_PREFIX_DEFAULTS, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -753,6 +753,22 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
  * A value that is not an array is left alone (no read). Users: the content page and the category page
  * (CATEGORY-CONTENT-1), so a block works the same on both.
  */
+/**
+ * PRICE-LOCALE-1 (ruling PL1-SHOWCASE = C, narrowed): the showcase card's price range (min and max of `price` and the
+ * tier prices — the card's own rule) for a product with tiers whose `price` or a tier price contains a comma, read by
+ * `parseMoney` with the tenant locale and given to the card as `_priceRange`. Any other product is returned as it is (the
+ * same object). A text that does not parse → no range: the card keeps its own reading. Pure; never mutates `product`.
+ */
+function withCommaPriceRange(product: any, locale: string | undefined): any {
+    const tiers: any[] = Array.isArray(product?.volumePricing) ? product.volumePricing : [];
+    const texts: unknown[] = [product?.price, ...tiers.map((t) => t?.price)];
+    if (tiers.length === 0 || !texts.some((t) => typeof t === "string" && t.includes(","))) return product;
+    const numbers = texts.map((t) => (typeof t === "string" ? parseMoney(t, locale) : undefined));
+    if (numbers.some((n) => n === undefined)) return product;
+    const values = numbers as number[];
+    return { ...product, _priceRange: { min: Math.min(...values), max: Math.max(...values) } };
+}
+
 async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
     if (!Array.isArray(blocks)) return;
     await Promise.all(blocks.map(async (block: any) => {
@@ -776,6 +792,13 @@ async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
                     const { items } = await getProductsByCategory(config.id, category.id, 1, limit);
                     block.attrs.prefetchedProducts = items;
                 }
+            }
+            // PRICE-LOCALE-1 (ruling PL1-SHOWCASE = C, narrowed): for a decimal-comma tenant only, each product whose price
+            // texts hold a comma gets its card range from the shared parser (`withCommaPriceRange`). Every other tenant and
+            // product keeps the same attrs, so its payload does not change. Before the catalog reduction below, which
+            // keeps display fields only.
+            if (Array.isArray(block.attrs.prefetchedProducts) && localeUsesDecimalComma(config.locale)) {
+                block.attrs.prefetchedProducts = block.attrs.prefetchedProducts.map((p: any) => withCommaPriceRange(p, config.locale));
             }
             // CATALOG-MODE-1 (§ 3.2.6): on EVERY showcase block of a catalog tenant — whether or not the lookup
             // above succeeded. `_catalogMode` is the mechanism: the plugin emits no price, currency or stock overlay
@@ -1259,6 +1282,7 @@ function ProductPageView({ product, config, prefixes, reviews, commerceEnabled =
                             personalizations={product.personalizations || []}
                             volumePricing={product.volumePricing || []}
                             strings={addToCartStrings(resolved)}
+                            {...(localeUsesDecimalComma(resolved.locale) ? { priceLocale: resolved.locale } : {})}
                         />
                     )}
 

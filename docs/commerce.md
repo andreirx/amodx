@@ -72,10 +72,12 @@ interface CartItem {
     currency: string;
     selectedVariant?: string;           // e.g., "Size: Large"
     personalizations: {
+        id?: string;                    // the product's personalization id (absent on items saved before order-price-1)
         label: string;
         value: string;
-        addedCost: number;
+        addedCost: number;              // read by the tenant locale (PRICE-LOCALE-1)
     }[];
+    priceInputs?: LinePriceInputs;      // the price texts the shared rule reads, in MACHINE FORM (PRICE-LOCALE-1; absent on old items)
 }
 ```
 
@@ -86,8 +88,9 @@ Keyed by `productId` + optional `selectedVariant` (format: `{productId}__{varian
 ### Price Calculation
 
 ```
-lineTotal = (unitPrice + sum(personalization.addedCost)) * quantity
-subtotal  = sum(lineTotal for all items)
+lineTotal = linePrice(item.priceInputs, quantity, undefined).lineTotal   // shared rule on machine-form texts, see "Price texts" below
+            // an item without priceInputs (saved before order-price-1): (unitPrice + Σ addedCost) × quantity
+subtotal  = sum(lineTotal for all items), rounded to cents
 shipping  = (freeDeliveryThreshold > 0 && subtotal >= threshold) ? 0 : flatShippingCost
 total     = subtotal + shipping - couponDiscount
 ```
@@ -247,7 +250,10 @@ x-tenant-id: <tenantId>
 ### Server-Side Validation
 
 1. **Product lookup**: Fetches each product from DB to validate existence
-2. **Price validation**: Uses `salePrice || price` from DB record (ignores client-submitted price)
+2. **Price validation**: the shared `linePrice` on the STORED product (option `priceOverride` > volume tier >
+   `salePrice` > `price`, plus added costs), with the locale of the tenant item (never the request's); ignores every
+   client-submitted price. A text that does not parse → 400 `Invalid price for product: <id>` (record
+   `docs/slices/order-price-1.md`, `docs/slices/price-locale-1.md`)
 3. **Personalization cost**: Re-calculates from product's `personalizations` array by matching `id` or `label`
 4. **Delivery zone restrictions**: If `deliveryConfig.restrictDeliveryZones` is true, validates `allowedCountries` and `allowedCounties` (case-insensitive). Returns 400 if address not in allowed zones
 
@@ -483,7 +489,7 @@ Each adds `addedCost` per unit to the line total. Values are captured in the car
 
 Stored in `product.volumePricing[]`:
 ```typescript
-{ minQuantity: number, price: number }
+{ minQuantity: number, price: string }   // price is a money TEXT, read by the tenant locale
 ```
 
 Sorted ascending by minQuantity. When quantity >= a tier's minQuantity, that tier's price applies. Displayed as a table on the product page.
@@ -514,6 +520,26 @@ Sorted ascending by minQuantity. When quantity >= a tier's minQuantity, that tie
 | `0.99` | 42.99 | Round to .99 ending |
 
 Dry run returns preview array: `[{ id, title, oldPrice, newPrice, oldSalePrice?, newSalePrice? }]`. Apply mode updates products and their CATPROD# adjacency entries, publishes audit event.
+
+The old `price` / `salePrice` texts are read by the shared `parseMoney` with the tenant's locale (one `GetCommand` on
+`SYSTEM` / `TENANT#<id>`, PRICE-LOCALE-1): on a `ro-RO` tenant `12,50` is 12.5. A text that does not parse is skipped.
+The new price is written in machine form (`toFixed(2)`): after a bulk change a comma price `12,50` becomes `13.75`
+(+10 %). Volume tier prices and option `priceOverride`s are not changed by a bulk change.
+
+## Price texts and the locale (PRICE-LOCALE-1)
+
+Money on a product (`price`, `salePrice`, tier `price`, option `priceOverride`, personalization `addedCost`) is stored
+as free TEXT. One shared parser reads it: `parseMoney(text, locale)` (`packages/shared/src/index.ts`, used by
+`linePrice`). Every locale reads machine form (digits and an optional decimal point: `12.50`, `1.250` = 1.25). A locale
+whose own number format writes a decimal comma (`Intl.NumberFormat(locale)`, the `decimal` part — `ro-RO`, `de-DE`,
+`fr-FR`; not `en-US`, `en-GB`, `de-CH`) also reads a text WITH a comma: comma = decimal separator, points = group
+separators in groups of three (`12,50` = 12.5, `1.250,50` = 1250.5). Anything else fails. The locale is the tenant's
+`locale` setting: the order handler and the bulk change read it from the tenant item; the product page receives it
+from `SitePage` (only for a decimal-comma locale). The cart needs no locale: at add time the button stores the item's
+price texts in machine form (`12,50` → `12.50`); a text the line can use that does not parse → the item is not added.
+The category showcase card gets its range from the server pass for a decimal-comma tenant's product with a comma text;
+other products keep the card's `parseFloat` reading (recorded debt F-PL1-9). A stored text is still shown as stored;
+computed totals keep their format (`50.00`). Record: `docs/slices/price-locale-1.md`.
 
 ## WooCommerce Import
 

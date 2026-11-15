@@ -113,6 +113,16 @@ omitting it is unsupported; there is no runtime validation (a render branch that
 branch that reads none renders). This package's
 tests that render a block pass an en-US tenant's `blockStrings` (`videoPlugin`, `videoHeroPlugin`, `reviewsCarousel`).
 
+**Showcase price range (slice `price-locale-1`, ruling PL1-SHOWCASE = C narrowed).** `CategoryShowcaseRender` prints
+a product's price range as `min – max` when the product has volume tiers. A product may carry `_priceRange: { min, max }`
+(numbers): the renderer's server pass (`prepareBlocks` in `renderer/src/components/SitePage.tsx`) sets it ONLY for a
+tenant whose locale writes a decimal comma and a product whose `price` or a tier price contains a comma, computed with
+the shared `parseMoney` on the server (the render file keeps its type-only import of `@amodx/shared`, D3 above). The
+card prints the given range; without it the card reads `price` and the tier prices with `parseFloat`, exactly as before
+— recorded debt (record `docs/slices/price-locale-1.md` F-PL1-9), to be removed with `shop-look-1d`. The browser
+fallback fetch (no server prefetch, e.g. the editor preview) has no `_priceRange`: a comma text there is read by
+`parseFloat` (`12,50` → 12).
+
 Client-side components (contact form, lead magnet, post grid) use `window.AMODX_TENANT_ID` for API calls and submit to `/api/contact`, `/api/leads`, or `/api/posts`.
 
 ## Shared modules under `src/common/`
@@ -246,6 +256,7 @@ only for `product-reviews-by-id`); in the two DB scopes the manual item editor i
 | `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_LOADERS["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
 | `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_LOADERS["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
 | `renderer/test/unit/locale-1c-blocks-client.test.ts` (`locale-1c`; in the RENDERER suite — this package has no DOM harness and no jsdom dependency) | The block texts of every state of the eleven text-bearing blocks (forms sending/sent/failed, copy, read more, post grid loading/failed/empty/dates, showcase): en-US markup equal to a `0c0dbc8` capture, every Romanian change a declared key, the reviews-carousel date cases, the § 5.2 preservation cases at one reader per block (the iframe names pattern F) |
+| `test/showcasePriceRange.test.ts` (`price-locale-1`) | `RENDER_LOADERS["categoryShowcase"]` price line: a given `_priceRange` is printed (`10 – 12.5 RON`); without it the card's reading is today's (`10 – 12 RON` for a comma text, `75 – 100 USD` for point texts); a range with min = max prints the price text |
 | `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
 | `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 20, so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |
 

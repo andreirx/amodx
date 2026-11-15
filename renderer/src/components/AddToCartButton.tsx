@@ -5,7 +5,7 @@ import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { ShoppingCart, Check, Minus, Plus } from "lucide-react";
 import { trackFBEvent } from "@/lib/fbpixel";
-import { fillTemplate, linePrice, type LinePriceInputs, type LocaleStrings } from "@amodx/shared";
+import { fillTemplate, linePrice, parseMoney, toMachineFormPriceInputs, type LinePriceInputs, type LocaleStrings } from "@amodx/shared";
 
 interface VariantOption {
     value: string;
@@ -56,12 +56,18 @@ interface AddToCartProps {
     personalizations: PersonalizationOption[];
     volumePricing: VolumePricingTier[];
     strings: AddToCartStrings;
+    /**
+     * PRICE-LOCALE-1 (docs/slices/price-locale-1.md § 1): the tenant locale the price texts are read with. `SitePage`
+     * passes it only for a locale that writes a decimal comma; absent → machine text only (the en-US rule), which is
+     * what every decimal-point locale reads, so those tenants' props stay as they were.
+     */
+    priceLocale?: string;
 }
 
 export function AddToCartButton({
     productId, title, slug, imageLink, price, salePrice,
     currency, availability, variants, personalizations, volumePricing,
-    strings,
+    strings, priceLocale,
 }: AddToCartProps) {
     const { addItem, cartPrefix } = useCart();
     const { getUrl } = useTenantUrl();
@@ -82,7 +88,8 @@ export function AddToCartButton({
     }, [variants, selectedVariants]);
 
     // ORDER-PRICE-1: the personalizations the cart line will carry (a non-blank value) and the price data of the
-    // shared rule — the rule the order handler charges. The cart stores `priceInputs` so the line follows the quantity.
+    // shared rule — the rule the order handler charges. The cart stores them (in machine form, PRICE-LOCALE-1) so the
+    // line follows the quantity.
     const chosenPersonalizations = useMemo(
         () => personalizations.filter(p => personalizationValues[p.id]?.trim()),
         [personalizations, personalizationValues],
@@ -92,7 +99,7 @@ export function AddToCartButton({
         priceOverride: activeVariantOption?.priceOverride,
         addedCosts: chosenPersonalizations.map(p => p.addedCost),
     }), [price, salePrice, volumePricing, activeVariantOption, chosenPersonalizations]);
-    const priced = useMemo(() => linePrice(priceInputs, quantity), [priceInputs, quantity]);
+    const priced = useMemo(() => linePrice(priceInputs, quantity, priceLocale), [priceInputs, quantity, priceLocale]);
     // NaN when the product's price data does not parse (as the former arithmetic showed it); the order handler refuses it.
     const effectiveUnitPrice = priced.kind === "priced" ? priced.unitPrice : NaN;
     const lineTotal = priced.kind === "priced" ? priced.lineTotal : NaN;
@@ -121,6 +128,12 @@ export function AddToCartButton({
             }
         }
 
+        // PRICE-LOCALE-1 (ruling PL1-CART-WIRING = N): the cart item stores the price texts in MACHINE FORM (read here
+        // with the tenant locale), so the cart needs no locale. A text the line can use that does not parse → the item
+        // is not added; the button keeps showing what it showed before this slice for such a price (NaN).
+        const machine = toMachineFormPriceInputs(priceInputs, priceLocale);
+        if (machine.kind === "invalid-price") return;
+
         const variantLabel = variants.length > 0
             ? variants.map(v => `${v.name}: ${selectedVariants[v.id]}`).join(", ")
             : undefined;
@@ -130,7 +143,7 @@ export function AddToCartButton({
                 id: p.id,
                 label: p.label,
                 value: personalizationValues[p.id].trim(),
-                addedCost: parseFloat(p.addedCost) || 0,
+                addedCost: parseMoney(p.addedCost, priceLocale) ?? 0,
             }));
 
         addItem({
@@ -142,7 +155,7 @@ export function AddToCartButton({
             currency,
             selectedVariant: variantLabel,
             personalizations: cartPersonalizations,
-            priceInputs,
+            priceInputs: machine.inputs,
             quantity,
         });
 
@@ -197,7 +210,7 @@ export function AddToCartButton({
                 <div key={p.id}>
                     <label className="text-sm font-medium block mb-1">
                         {p.label} {p.required && <span className="text-red-500">*</span>}
-                        {parseFloat(p.addedCost) > 0 && (
+                        {(parseMoney(p.addedCost, priceLocale) ?? 0) > 0 && (
                             <span className="text-muted-foreground ml-1 font-normal">(+{p.addedCost} {currency})</span>
                         )}
                     </label>
