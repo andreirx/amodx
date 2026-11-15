@@ -9,7 +9,8 @@
  * this file binds them to React (`useSyncExternalStore`) and does the two network calls of the list page:
  *   - the stored ids resolved BY ID, `POST /public/interest/resolve` (`resolveShortlist`) — expired, unavailable,
  *     option gone, the live collection; a failed or incomplete read marks nothing;
- *   - the submission, `POST /public/interest`, called by the browser directly as DynamicForm does for forms.
+ *   - the submission, `POST /public/interest`, called by the browser directly as `DynamicForm` does for forms
+ *     (`packages/plugins/src/form/DynamicForm.tsx`, the `form` block since SHOP-LOOK-1E).
  *
  * LOCALE-1B (docs/slices/locale-1.md § 6.3, § 5.3): the toggle, the list page and the header widget show the tenant's
  * catalog texts, passed by the server as a `strings` prop with only the keys each uses — the toggle and the list page by

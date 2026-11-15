@@ -63,13 +63,16 @@ describe("the form: each stored field by its type, the button text, the locale t
         expect(html).toMatch(/<input id="[^"]+-f-count" type="number"/);
         expect(html).toMatch(/<textarea id="[^"]+-f-msg" rows="4"/);
         expect(html).toMatch(/<select id="[^"]+-f-interest"[^>]*><option value="" selected="">Select\.\.\.<\/option><option value="Hardwood">Hardwood<\/option><option value="Carpet">Carpet<\/option><\/select>/);
-        expect(html).toContain('<label class="flex items-center gap-2 text-sm"><input type="checkbox" required="" class="h-4 w-4 rounded border"/>I agree</label>');
+        // SMALL-FIXES-1 C: the text and the required mark in one span inside the wrapping label.
+        expect(html).toContain('<label class="flex items-center gap-2 text-sm"><input type="checkbox" required="" class="h-4 w-4 rounded border"/><span>I agree<span class="text-destructive ml-1">*</span></span></label>');
     });
 
     it("each label in field order, tied to its control (htmlFor = id); the checkbox keeps its wrapping label only", () => {
         const labels = [...html.matchAll(/<label for="([^"]+)" class="text-sm font-medium block mb-1">([^<]+)/g)].map((m) => [m[1].replace(/^.*-(f-[a-z]+)$/, "$1"), m[2]]);
         expect(labels).toEqual([["f-name", "Name"], ["f-mail", "E-mail"], ["f-phone", "Phone"], ["f-count", "Rooms"], ["f-interest", "Primary interest"], ["f-msg", "Message"]]);
-        expect(html).toContain('<label class="text-sm font-medium block mb-1">Terms<span class="text-destructive ml-1">*</span></label>');
+        // SMALL-FIXES-1 C: no label line above the checkbox (it printed the text twice); its label "Terms" is not drawn.
+        expect(html).not.toContain("Terms");
+        expect((html.match(/<label class="text-sm font-medium block mb-1"/g) ?? []).length).toBe(0);
         for (const [, id] of html.matchAll(/<label for="([^"]+)"/g)) expect(html).toContain(`id="${id}"`);
     });
 

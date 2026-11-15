@@ -7,7 +7,7 @@ import { ContentItemSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
-import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
+import { reservedAddressRefusal } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { normalizeSlug } from "@amodx/shared";
 
@@ -58,8 +58,8 @@ const _handler: AmodxHandler = async (event) => {
         const rawSlug = input.slug && input.slug.trim() ? input.slug : input.title;
         const slug = normalizeSlug(rawSlug);
 
-        // 2b. Check slug doesn't conflict with commerce URL prefixes
-        const conflict = await checkSlugCommerceConflict(tenantId, slug);
+        // 2b. Refuse a slug at a reserved address (a built-in page the renderer serves for this kind of site)
+        const conflict = await reservedAddressRefusal(tenantId, slug);
         if (conflict) {
             return { statusCode: 400, body: JSON.stringify({ error: conflict }) };
         }

@@ -57,10 +57,11 @@ function builtInPageAt(slug: string, p: ReturnType<typeof urlPrefixesOf>, catalo
  * content (for example the bare `/product`, or `/shop/x`), the first reserved address the slug falls on, in the
  * renderer's precedence.
  *
- * NAME: the name says "commerce"; since CDL-2 the check also reserves search, account and the interest list. Rename
- * proposed in the record (finding F-CDL2-GUARD-NAME); not applied here because the callers are outside this slice.
+ * NAME (SMALL-FIXES-1 B, closes F-CDL2-GUARD-NAME of docs/slices/cdl-2.md): the function returns the REFUSAL for a
+ * slug at a RESERVED ADDRESS (a built-in page of any kind of site, not only commerce), or null. Its old name said
+ * "commerce conflict".
  */
-export async function checkSlugCommerceConflict(tenantId: string, slug: string): Promise<string | null> {
+export async function reservedAddressRefusal(tenantId: string, slug: string): Promise<string | null> {
     // Ensure slug starts with /
     const normalizedSlug = slug.startsWith("/") ? slug : `/${slug}`;
 

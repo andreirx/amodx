@@ -33,11 +33,22 @@ const _handler: Handler = async (event) => {
         if (!tenantId) return { statusCode: 400, body: JSON.stringify({ error: "Missing Tenant" }) };
         if (!event.body) return { statusCode: 400, body: JSON.stringify({ error: "Missing Body" }) };
 
-        const body = JSON.parse(event.body);
+        // SMALL-FIXES-1 A: a malformed body or a schema refusal is the CLIENT's error → 400, in the shape of
+        // content/create.ts (BACKEND-CONTRACT-1 D1). Before, both threw inside this `try` and the catch answered 500.
+        let body: unknown;
+        try {
+            body = JSON.parse(event.body);
+        } catch {
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
+        }
 
-        const input = CategorySchema.omit({
+        const parsed = CategorySchema.omit({
             id: true, tenantId: true, createdAt: true, updatedAt: true, productCount: true
-        }).parse(body);
+        }).safeParse(body);
+        if (!parsed.success) {
+            return { statusCode: 400, body: JSON.stringify({ error: "Validation failed", issues: parsed.error.issues }) };
+        }
+        const input = parsed.data;
 
         // Auto-generate slug if not provided
         if (!input.slug) {

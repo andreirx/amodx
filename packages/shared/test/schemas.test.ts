@@ -105,7 +105,7 @@ describe("UrlPrefixesSchema / TenantConfig.urlPrefixes — English-first default
      * Consumers that read these values without re-deriving them: `urlPrefixesOf()` (the
      * renderer's `mapTenant`, the admin preview, the backend slug check), `matchCommercePrefix()`
      * in the renderer's catch-all route, the admin Settings page, and
-     * `checkSlugCommerceConflict()` in backend/src/lib/slug-guard.ts — which BLOCKS content
+     * `reservedAddressRefusal()` in backend/src/lib/slug-guard.ts — which BLOCKS content
      * slugs at a built-in address. A drift here silently changes which slugs a tenant is
      * allowed to publish.
      */

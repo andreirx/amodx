@@ -17,14 +17,14 @@ vi.mock("../../src/lib/revalidate.js", () => ({
     revalidateTenantPaths: async () => {}, purgeStoredPagesOfRequestTenant: async () => {}, purgeStoredPagesOfDomains: async () => {},
 }));
 
-import { checkSlugCommerceConflict } from "../../src/lib/slug-guard.js";
+import { reservedAddressRefusal } from "../../src/lib/slug-guard.js";
 import { handler as createTenant } from "../../src/tenant/create.js";
 
 /** The tenant record the Get returns (undefined = no record). */
 function tenantRecord(item: Record<string, unknown> | undefined) {
     ddbSend.mockImplementation(async (cmd: any) => (cmd instanceof GetCommand ? { Item: item ? structuredClone(item) : undefined } : {}));
 }
-const check = (slug: string) => checkSlugCommerceConflict("t1", slug);
+const check = (slug: string) => reservedAddressRefusal("t1", slug);
 const message = (slug: string, prefix: string, page: string) =>
     `Slug "${slug}" uses the address "${prefix}" of the built-in ${page}. Choose a different slug, or change that address in Settings.`;
 

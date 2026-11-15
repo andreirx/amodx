@@ -11,7 +11,7 @@ import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
  *      stored slug resent unchanged, keeps the stored one as it is.
  *
  * Credential-free (db-mock seam of revalidate-order.test.ts): `db.js` is mocked; audit, the
- * commerce-prefix guard and the ISR purge are mocked because they do their own I/O and are not
+ * reserved-address check and the ISR purge are mocked because they do their own I/O and are not
  * under test here. `requireRole` is the real (pure) function. "Writes" in a test name = the value in
  * the DynamoDB command the handler SENDS to the mocked client; nothing is persisted.
  */
@@ -20,7 +20,7 @@ const { ddbSend } = vi.hoisted(() => ({ ddbSend: vi.fn() }));
 
 vi.mock("../../src/lib/db.js", () => ({ db: { send: ddbSend }, TABLE_NAME: "test-table" }));
 vi.mock("../../src/lib/events.js", () => ({ publishAudit: vi.fn() }));
-vi.mock("../../src/lib/slug-guard.js", () => ({ checkSlugCommerceConflict: vi.fn(async () => null) }));
+vi.mock("../../src/lib/slug-guard.js", () => ({ reservedAddressRefusal: vi.fn(async () => null) }));
 vi.mock("../../src/lib/revalidate.js", () => ({ revalidateTenantPaths: vi.fn() }));
 
 import { handler } from "../../src/content/update.js";

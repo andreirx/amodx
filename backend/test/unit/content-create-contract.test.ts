@@ -9,7 +9,7 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
  *  D3  the slug goes through normalizeSlug.
  *
  * Credential-free: `db.js` is mocked (db-mock seam of revalidate-order.test.ts); audit, the
- * commerce-prefix guard and the ISR purge are mocked. `requireRole` is the real function.
+ * reserved-address check and the ISR purge are mocked. `requireRole` is the real function.
  * "Writes" = the value in the TransactWrite the handler SENDS to the mocked client.
  */
 
@@ -17,7 +17,7 @@ const { ddbSend } = vi.hoisted(() => ({ ddbSend: vi.fn() }));
 
 vi.mock("../../src/lib/db.js", () => ({ db: { send: ddbSend }, TABLE_NAME: "test-table" }));
 vi.mock("../../src/lib/events.js", () => ({ publishAudit: vi.fn() }));
-vi.mock("../../src/lib/slug-guard.js", () => ({ checkSlugCommerceConflict: vi.fn(async () => null) }));
+vi.mock("../../src/lib/slug-guard.js", () => ({ reservedAddressRefusal: vi.fn(async () => null) }));
 vi.mock("../../src/lib/revalidate.js", () => ({ revalidateTenantPaths: vi.fn() }));
 
 import { handler } from "../../src/content/create.js";

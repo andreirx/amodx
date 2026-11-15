@@ -81,9 +81,10 @@ describe("POST /categories — blocks (rule 1)", () => {
     it("blocks not an array → refused by the content page's rule, nothing written", async () => {
         for (const blocks of ["<h2>x</h2>", { type: "paragraph" }, 3, null]) {
             const res = await call(createCategory, event({ name: "Boen", slug: "boen", blocks }, { path: "POST /categories" }));
-            // The category routes answer a schema refusal with their existing 500 + the zod message (finding F-2).
-            expect(res.status, JSON.stringify(blocks)).toBe(500);
-            expect(res.body.error).toContain("blocks");
+            // SMALL-FIXES-1 A closed finding F-2: a schema refusal is a 400 with the zod issues (was 500).
+            expect(res.status, JSON.stringify(blocks)).toBe(400);
+            expect(res.body.error).toBe("Validation failed");
+            expect(res.body.issues.map((i: any) => i.path)).toEqual([["blocks"]]);
         }
         expect(categoryPuts()).toEqual([]);
     });
@@ -113,8 +114,9 @@ describe("PUT /categories/{id} — blocks (rules 1, 6)", () => {
     it("blocks not an array → refused, nothing written, the stored blocks kept", async () => {
         for (const blocks of ["x", { a: 1 }, null]) {
             const res = await call(updateCategory, event({ blocks }, { id: "c1" }));
-            expect(res.status, JSON.stringify(blocks)).toBe(500);
-            expect(res.body.error).toContain("blocks");
+            expect(res.status, JSON.stringify(blocks)).toBe(400);
+            expect(res.body.error).toBe("Validation failed");
+            expect(res.body.issues.map((i: any) => i.path)).toEqual([["blocks"]]);
         }
         expect(categoryPuts()).toEqual([]);
         expect(table.get("TENANT#t1", "CATEGORY#c1")!.blocks).toEqual(BLOCKS);

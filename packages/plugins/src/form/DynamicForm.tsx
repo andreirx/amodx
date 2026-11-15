@@ -12,8 +12,8 @@ import type { LocaleStrings } from "@amodx/shared";
  *   renderer's `useRecaptcha` hook (split entry, `docs/plugin-architecture.md`). Same behaviour: no key or no script →
  *   no token (`null`).
  * - The slug is URL-encoded in the submit path.
- * - Each field's label is tied to its control (`htmlFor` / `id`), so every input has an accessible name. A checkbox keeps
- *   its own wrapping label, as before (a second label would repeat its name).
+ * - Each field's label is tied to its control (`htmlFor` / `id`), so every input has an accessible name. A checkbox has
+ *   only its own wrapping label (SMALL-FIXES-1 C: it drew a label line above it too, so its text showed twice).
  * - The required mark and the error text use the theme's `destructive` colour (was `text-red-500`). The success icon
  *   keeps `text-green-500`: the theme has no success colour (finding F-1E-SUCCESS-COLOUR).
  */
@@ -122,10 +122,13 @@ export function DynamicForm({ formSlug, fields, submitButtonText, successMessage
                 const controlId = `${idPrefix}-${field.id}`;
                 return (
                 <div key={field.id}>
-                    <label htmlFor={field.type === "checkbox" ? undefined : controlId} className="text-sm font-medium block mb-1">
-                        {field.label}
-                        {field.required && <span className="text-destructive ml-1">*</span>}
-                    </label>
+                    {/* SMALL-FIXES-1 C: no label line above a checkbox — its wrapping label below is its one text. */}
+                    {field.type !== "checkbox" && (
+                        <label htmlFor={controlId} className="text-sm font-medium block mb-1">
+                            {field.label}
+                            {field.required && <span className="text-destructive ml-1">*</span>}
+                        </label>
+                    )}
 
                     {field.type === "textarea" ? (
                         <textarea
@@ -159,7 +162,11 @@ export function DynamicForm({ formSlug, fields, submitButtonText, successMessage
                                 required={field.required}
                                 className="h-4 w-4 rounded border"
                             />
-                            {field.placeholder || field.label}
+                            {/* One flex item: the mark sits after the text as in the other labels, not a flex gap away. */}
+                            <span>
+                                {field.placeholder || field.label}
+                                {field.required && <span className="text-destructive ml-1">*</span>}
+                            </span>
                         </label>
                     ) : (
                         <input

@@ -29,7 +29,7 @@ vi.mock("../../src/lib/db.js", () => ({
     TABLE_NAME: "test-table",
 }));
 vi.mock("../../src/lib/events.js", () => ({ publishAudit: mockAudit }));
-vi.mock("../../src/lib/slug-guard.js", () => ({ checkSlugCommerceConflict: vi.fn(async () => null) }));
+vi.mock("../../src/lib/slug-guard.js", () => ({ reservedAddressRefusal: vi.fn(async () => null) }));
 vi.mock("@aws-sdk/client-secrets-manager", () => ({
     SecretsManagerClient: class {
         send = async () => ({ SecretString: "s3cret" });

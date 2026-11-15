@@ -6,7 +6,7 @@ import { publishAudit } from "../lib/events.js";
 import { z } from "zod";
 import { AccessPolicySchema } from "@amodx/shared";
 import { requireRole } from "../auth/policy.js";
-import { checkSlugCommerceConflict } from "../lib/slug-guard.js";
+import { reservedAddressRefusal } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { normalizeSlug } from "@amodx/shared";
 
@@ -94,9 +94,9 @@ const _handler: AmodxHandler = async (event) => {
         const newSlug = input.slug === undefined || input.slug === oldSlug ? oldSlug : normalizeSlug(input.slug);
         const slugChanged = newSlug !== oldSlug;
 
-        // Check slug doesn't conflict with commerce URL prefixes
+        // Refuse a slug at a reserved address (a built-in page the renderer serves for this kind of site)
         if (slugChanged) {
-            const conflict = await checkSlugCommerceConflict(tenantId, newSlug);
+            const conflict = await reservedAddressRefusal(tenantId, newSlug);
             if (conflict) {
                 return { statusCode: 400, body: JSON.stringify({ error: conflict }) };
             }

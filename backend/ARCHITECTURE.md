@@ -53,14 +53,14 @@ src/
 │   │                      #   BULK-PURGE-FOOTER-1: purgeStoredPagesOf{RequestTenant,Tenant,Domains}() — whole-tenant
 │   │                      #   S3 purge for bulk handlers, passed to withInvalidation(h, purge) (purge, then marker)
 │   ├── revalidate-paths.ts # PURE: tenant routing + slugs → the domain-keyed paths to purge (unit-tested)
-│   ├── slug-guard.ts      # checkSlugCommerceConflict(): refuses a content slug equal to, or under, an address the renderer
+│   ├── slug-guard.ts      # reservedAddressRefusal(): refuses a content slug equal to, or under, an address the renderer
 │   │                      #   serves before content (CDL-2, design catalog-data-labels-1 § 14 item 1): cart, checkout, shop,
 │   │                      #   product, category, account, search on every site; interest on a catalog site only
 │   │                      #   (isCatalogMode). One GetCommand (urlPrefixes, catalogMode); prefixes via urlPrefixesOf.
 │   │                      #   The message names the page the renderer shows at the slug (builtInPageAt: a COPY of the
 │   │                      #   renderer's precedence, pinned by the same overlap table in a renderer unit test); else the
-│   │                      #   first reserved address in that precedence. The name says "commerce"; rename proposed
-│   │                      #   (docs/slices/cdl-2.md, F-CDL2-GUARD-NAME). Unit: test/unit/cdl-2-paths.test.ts
+│   │                      #   first reserved address in that precedence. Returns the refusal text, or null if the slug is
+│   │                      #   free (renamed in SMALL-FIXES-1, F-CDL2-GUARD-NAME). Unit: test/unit/cdl-2-paths.test.ts
 │   └── review-media.ts     # rev-2a staged-media SPINE (no image decode; D-REV-4 SUPERSEDED): declared
 │                           #   type-AND-size STAGE to the private quarantine + PROMOTION gate
 │                           #   (both-approvals → copy the staged ORIGINAL to public, Asset record) +
@@ -99,6 +99,8 @@ src/
 │   ├── update.ts          # PUT /categories/{id}: Get + merge over the stored item + Put — a body without
 │   │                      #   `blocks` keeps them (CATEGORY-CONTENT-1); purges the category page
 │   │                      #   (revalidateTenantPaths "category", old + new slug)
+│   │                      #   Both (SMALL-FIXES-1 A): malformed JSON → 400 "Invalid JSON"; a schema refusal → 400
+│   │                      #   "Validation failed" + zod issues; no write, no purge (content/create.ts shape)
 │   ├── get.ts             # GET /categories/{id} — the whole item, `blocks` included (the admin editor)
 │   ├── list.ts            # GET /categories, public-list.ts GET /public/categories — Projection without
 │   │                      #   `blocks`, every page followed (the 1 MB page limit counts the stored item)

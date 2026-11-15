@@ -668,7 +668,7 @@ Configurable per tenant via Settings > URL Prefixes. Defaults in `URL_PREFIX_DEF
 
 `matchCommercePrefix()` in the renderer matches incoming slugs against tenant's configured prefixes. Also handles `account` type for customer account pages.
 
-Slug conflict validation: `checkSlugCommerceConflict()` in `backend/src/lib/slug-guard.ts` prevents content pages from using slugs that collide with commerce URL prefixes.
+Slug conflict validation: `reservedAddressRefusal()` in `backend/src/lib/slug-guard.ts` refuses a content slug that equals, or lies under, the address of a built-in page the renderer serves for the tenant's kind of site (cart, checkout, shop, product, category, account, search; the interest list on a catalog site). It returns the refusal text, or null if the slug is free.
 
 ## Reports
 
