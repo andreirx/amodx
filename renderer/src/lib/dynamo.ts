@@ -522,7 +522,7 @@ export async function getOrderForCustomer(tenantId: string, orderId: string, ema
     }));
 
     if (!result.Item) return null;
-    if (result.Item.customerEmail !== email) return null;
+    if (result.Item.customerEmail !== normalizeEmail(email)) return null; // stored normalized (orders/create.ts); order-email-1
 
     const { internalNotes, ...order } = result.Item;
     return order;

@@ -624,6 +624,16 @@ CURRENT quantity across volume tiers (also after a merge in `addItem`). An item 
 Tests: `test/unit/order-price-1.test.ts`; the mocks of `cmrc-counties-1-checkout` and `locale-1d-client` re-export the
 real `cartLineTotal` (their items have no `priceInputs`, so their captured markup stays the oracle).
 
+## Order read by email — slice `order-email-1`
+
+Record `docs/slices/order-email-1.md`. `getOrderForCustomer(tenant, orderId, email)` (`lib/dynamo.ts`) reads
+`ORDER#<orderId>` and returns it (without `internalNotes`) only when the stored `customerEmail` equals
+`normalizeEmail(email)` (`@amodx/shared`). The order handler stores `normalizeEmail(typed)`; the confirmation address
+(`CheckoutPageView`) and the account page's tracking link carry the email as typed or as the session gives it, so the
+read normalizes the request side. Only the request side: a stored value that is not in normalized form matches no
+request (the current writer makes none; only an order of 2026-02-15..03-07 can hold one; the backend `orders/public-get.ts` normalizes both sides).
+Tests: `test/unit/order-email-1.test.ts`.
+
 ## Checkout region list — slice `cmrc-counties-1`
 
 Record `docs/slices/cmrc-counties-1.md`. `mapTenant` copies `countryCode` (absent stays absent). The checkout branch of
