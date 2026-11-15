@@ -8,7 +8,7 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 
 | Key | Label | Key Attributes | Variants |
 |-----|-------|---------------|----------|
-| `hero` | Hero Section | headline, subheadline, ctaText, ctaLink, imageSrc, style | center, split, minimal |
+| `hero` | Hero Section | headline, subheadline, ctaText, ctaLink, imageSrc, style, cover tokens (overlayOpacity, overlayColorToken, headlineColorToken, subheadlineColorToken); optional (absent = not shown, SHOP-LOOK-1B): eyebrow, headlineAccent + headlineAccentColorToken, secondaryCtaText + secondaryCtaLink, stats[] (≤ 4: value, label), buttonShape (rounded / pill), splitPanel (plain / inverse, split only) | center, split, cover, minimal |
 | `pricing` | Pricing Table | headline, subheadline, plans[] (title, price, interval, features, buttonText, buttonLink, highlight) | — |
 | `image` | Image | src, alt, title, caption, width, aspectRatio | full, wide, centered |
 | `contact` | Contact Form | headline, description, buttonText, successMessage, tags | — |

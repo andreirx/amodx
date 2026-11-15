@@ -41,7 +41,7 @@ import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesO
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
-    SL1A, SL1A_HEADER, SL1A_FOOTER,
+    SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -3080,6 +3080,103 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.deepEqual(a, b, `${reqPath}: payload equal to the twin (resolved); ${sl1aDiff(JSON.stringify(a), JSON.stringify(b))}`);
             }
             console.log(`  (sl1a-blank-as-absent) ${SL1A_PATHS.join(", ")}: HTML byte-equal to the twin; payload equal resolved`);
+        });
+
+        // ── ROWS (sl1b-*) — SHOP-LOOK-1B (docs/slices/shop-look-1b.md). Server HTML and payload of the running build for the
+        // SL1B tenants (fixtures.mjs `SL1B`: three content tenants whose home page holds a cover hero and a split hero).
+        // "Absent → today's bytes" for every existing hero is proven by the rows that compare with a capture taken before
+        // this slice (cm1-*, loc1-*, ct1-* — the ct1 tenants render a hero), unchanged, and by the plugin suite
+        // (packages/plugins/test/hero.test.ts, every style against HTML recorded before the change). These rows prove that,
+        // in the built site, the set tenant differs from its twin EXACTLY by the new elements and the § 6.5 class swaps,
+        // that `null` and blank values draw as absent, and that the built stylesheet holds every new class.
+        /** The home page of an SL1B copy, its key fields written as the plain twin's (so twins compare byte for byte). */
+        const sl1bPage = async (key) => {
+            const res = await request({ port: server.port, path: "/", host: SL1B[key].host });
+            assert.equal(res.status, 200, `${key}: 200`);
+            const asPlain = (t) => t.split(SL1B[key].host).join(SL1B.plain.host).split(SL1B[key].id).join(SL1B.plain.id);
+            const { html } = splitFlight(res.body);
+            sl1aSide ??= { buildId: (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim(), clientModules: await readClientModules(RENDERER_DIR) };
+            const flight = maskBody(res.body, sl1aSide).masked.split("\n--- flight payload rows, sorted ---\n")[1];
+            return { raw: html, html: asPlain(html), flight: asPlain(flight) };
+        };
+        /** `text` with `from` replaced by `to`, asserting `from` occurs exactly once. */
+        const swapOnce = (text, from, to, what) => {
+            assert.equal(text.split(from).length - 1, 1, `${what}: exactly once`);
+            return text.replace(from, () => to);
+        };
+        // The literals of HeroRender (design § 6.5 table, § 6.2), as the plugin suite pins them.
+        const SL1B_BTN = "inline-flex items-center justify-center rounded-md text-sm font-medium text-primary-foreground shadow h-11 px-8 hover:opacity-90 bg-primary";
+        const SL1B_PILL = SL1B_BTN.replace("rounded-md", "rounded-full");
+        const SL1B_EYEBROW = "inline-block w-fit rounded-full border px-3 py-1 mb-6 text-xs font-semibold uppercase tracking-widest";
+        const SL1B_OUTLINE = "inline-flex items-center justify-center rounded-full border text-sm font-medium h-11 px-8 hover:opacity-90";
+        const SL1B_PANEL = "relative z-10 order-2 lg:order-1 flex flex-col justify-center px-6 lg:px-12 py-12 lg:py-20";
+        const SL1B_VALUE = "text-2xl md:text-4xl font-black tracking-tight";
+        const sl1bStats = (grid, items, valueCls, labelCls) => `<div class="${grid}">${items.map((i) => `<div><p class="${valueCls}">${i.value}</p><p class="${labelCls}">${i.label}</p></div>`).join("")}</div>`;
+
+        test("(sl1b-hero-options) a cover hero and a split inverse hero with every new option: the set tenant differs from its twin exactly by the new elements and the § 6.5 class swaps, in the HTML; by the stored attributes only, in the payload; the stylesheet holds every new class", async () => {
+            const [page, plain] = [await sl1bPage("set"), await sl1bPage("plain")];
+            const C = SL1B_COVER_OPTIONS, S = SL1B_SPLIT_OPTIONS;
+            // Cover (reference section 2): eyebrow (ruling SL1B-COVER-EYEBROW: the cover headline's class, default white),
+            // accent (the § 4.2 default text-primary), two pill buttons, three numbers.
+            const coverEyebrow = `<p class="${SL1B_EYEBROW} border-current text-white">${C.eyebrow}</p>`;
+            const coverAccent = `<!-- --> <span class="text-primary">${C.headlineAccent}</span>`;
+            const coverToday = `<a href="/shop" class="${SL1B_BTN}">Shop floors</a>`;
+            const coverRow = `<div class="flex flex-col md:flex-row gap-4 md:justify-center"><a href="/shop" class="${SL1B_PILL}">Shop floors</a><a href="${C.secondaryCtaLink}" class="${SL1B_OUTLINE} border-current text-white">${C.secondaryCtaText}</a></div>`;
+            const coverStats = sl1bStats("mt-12 grid grid-cols-3 gap-6", C.stats, `${SL1B_VALUE} drop-shadow-md text-white`, "text-sm drop-shadow-md text-white/90");
+            // Split (reference section 6): the inverse panel, every colour class swapped in its place; the first button keeps
+            // its fill and gains an edge (ruling SL1B-INVERSE-BUTTON).
+            const splitEyebrow = `<p class="${SL1B_EYEBROW} border-background/40 text-background">${S.eyebrow}</p>`;
+            const splitAccent = `<!-- --> <span class="text-background/70">${S.headlineAccent}</span>`;
+            const splitToday = `<div><a href="/about" class="${SL1B_BTN}">Read more</a></div>`;
+            const splitRow = `<div class="flex flex-col md:flex-row gap-4"><a href="/about" class="${SL1B_PILL} border border-background/40">Read more</a><a href="${S.secondaryCtaLink}" class="${SL1B_OUTLINE} border-background text-background">${S.secondaryCtaText}</a></div>`;
+            const splitStats = sl1bStats("mt-12 grid grid-cols-2 md:grid-cols-4 gap-6", S.stats, `${SL1B_VALUE} text-background`, "text-sm text-background/70");
+            const swaps = [
+                [coverEyebrow, ""], [coverAccent, ""], [coverRow, coverToday], [coverStats, ""],
+                [splitEyebrow, ""], [splitAccent, ""], [splitRow, splitToday], [splitStats, ""],
+                [`<div class="${SL1B_PANEL} bg-foreground">`, `<div class="${SL1B_PANEL}">`],
+                ['<h1 class="text-4xl lg:text-5xl font-black tracking-tight text-background mb-6">', '<h1 class="text-4xl lg:text-5xl font-black tracking-tight text-foreground mb-6">'],
+                ['<p class="text-lg text-background/80 mb-8">', '<p class="text-lg text-muted-foreground mb-8">'],
+            ];
+            // Order inside each hero: eyebrow directly above the <h1>; the accent inside it, after the headline; the numbers
+            // directly after the button row.
+            assert.ok(page.html.includes(`${coverEyebrow}<h1 `) && page.html.includes(`SL1B Floors${coverAccent}</h1>`) && page.html.includes(`${coverRow}${coverStats}`), "cover: element order");
+            assert.ok(page.html.includes(`${splitEyebrow}<h1 `) && page.html.includes(`SL1B Heritage${splitAccent}</h1>`) && page.html.includes(`${splitRow}${splitStats}`), "split: element order");
+            let back = page.html;
+            for (const [from, to] of swaps) back = swapOnce(back, from, to, from.slice(0, 80));
+            assert.equal(back, plain.html, `HTML equal to the twin but for the new elements and the class swaps; ${sl1aDiff(back, plain.html)}`);
+            // § 6.5 case 1 on the built page: inside the inverse panel no class token is text-foreground or text-muted-foreground.
+            const panelStart = page.html.indexOf(`<div class="${SL1B_PANEL} bg-foreground">`);
+            const panel = page.html.slice(panelStart, page.html.indexOf("</section>", panelStart));
+            const tokens = [...panel.matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/));
+            for (const t of ["text-foreground", "text-muted-foreground", "border-foreground"]) assert.ok(!tokens.includes(t), `inverse panel: no ${t}`);
+            // Payload: the stored attributes travel in the blocks prop (§ 4.2); appended after today's keys, they are the only
+            // difference.
+            assert.ok(!plain.flight.includes('"eyebrow"') && !plain.flight.includes('"splitPanel"'), "the twin's payload carries no new attribute");
+            let flightBack = page.flight;
+            for (const o of [C, S]) flightBack = swapOnce(flightBack, `,${JSON.stringify(o).slice(1, -1)}}`, "}", `payload attrs ${o.eyebrow}`);
+            assert.deepEqual(sl1aResolved(flightBack), sl1aResolved(plain.flight), `payload equal to the twin but for the attributes (resolved); ${sl1aDiff(flightBack, plain.flight)}`);
+            // The compiled CSS has every class the new elements and the swaps can emit (literal in HeroRender.tsx, which
+            // Tailwind scans through globals.css `@source`).
+            const sheets = [...page.raw.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: SL1B.set.host })))).map((r) => r.body).join("\n");
+            const SL1B_CLASSES = [
+                "bg-foreground", "text-background", "text-background\\/80", "text-background\\/70", "border-background", "border-background\\/40",
+                "border-primary\\/30", "border", "border-current", "border-foreground", "rounded-full", "w-fit", "inline-block", "tracking-widest", "uppercase",
+                "md\\:flex-row", "md\\:justify-center", "flex-col", "gap-4", "gap-6", "mt-12", "grid-cols-1", "grid-cols-2", "grid-cols-3",
+                "md\\:grid-cols-4", "text-2xl", "md\\:text-4xl", "drop-shadow-md", "text-white", "text-white\\/90", "text-primary",
+                "text-foreground", "text-muted-foreground", "text-xs", "text-sm", "px-3", "py-1", "mb-6",
+            ];
+            const missing = SL1B_CLASSES.filter((cls) => !css.includes(`.${cls}{`) && !css.includes(`.${cls} {`) && !css.includes(`.${cls}:`) && !css.includes(`.${cls},`));
+            assert.deepEqual(missing, [], `compiled: every new class has a rule (${sheets.length} stylesheet(s))`);
+            console.log(`  (sl1b-hero-options) cover + split inverse: ${swaps.length} HTML substitutions give the twin byte for byte; payload differs by the two attribute sets only; ${SL1B_CLASSES.length} classes compiled in ${sheets.length} stylesheet(s)`);
+        });
+
+        test("(sl1b-blank-as-absent) every new hero attribute null (as Tiptap stores a cleared option) or blank — a whitespace eyebrow, a link without text, a number without value, splitPanel plain: the twin's HTML byte for byte", async () => {
+            const [page, plain] = [await sl1bPage("blank"), await sl1bPage("plain")];
+            assert.ok(page.flight.includes('"eyebrow"') && page.flight.includes('"splitPanel"'), "precondition: the blank tenant stores the attributes");
+            assert.equal(page.html, plain.html, `HTML equal to the twin; ${sl1aDiff(page.html, plain.html)}`);
+            console.log("  (sl1b-blank-as-absent) null and blank hero options: HTML byte-equal to the twin (the payload carries the stored nulls, § 4.2)");
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

@@ -1,19 +1,36 @@
 import { NodeViewWrapper } from '@tiptap/react';
-import { LayoutTemplate, Link as LinkIcon, Image as ImageIcon, Upload, Search } from 'lucide-react';
+import { LayoutTemplate, Link as LinkIcon, Image as ImageIcon, Upload, Search, Plus, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 import { EffectControls } from '../common/EffectControls';
 import { InlineRichTextField } from '../common/InlineRichTextField';
 
 // Unified Input Helper
-const Input = ({ value, onChange, placeholder, className = "" }: any) => (
+const Input = ({ value, onChange, placeholder, className = "", maxLength }: any) => (
     <input
         className={`flex h-9 w-full rounded-md border border-gray-200 bg-white px-3 py-1 text-sm shadow-sm transition-all focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none placeholder:text-gray-400 ${className}`}
         value={value || ""}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
+        maxLength={maxLength}
     />
 );
+
+type HeroStat = { value: string; label: string };
+
+/**
+ * SHOP-LOOK-1B: the value an option control stores. A cleared option goes back to `null` (absent, today's HTML), so
+ * nothing is stored as `""` or `[]`: a blank text (whitespace only), an empty list, or the option's default choice
+ * (`auto`, `rounded`, `plain`) → `null`; any other value is stored unchanged (a text is not trimmed while it is typed;
+ * the render trims it).
+ */
+export function storedOption<T extends string | HeroStat[]>(value: T, defaultChoice?: string): T | null {
+    if (Array.isArray(value)) return value.length === 0 ? null : value;
+    if (value.trim() === "") return null;
+    return defaultChoice !== undefined && value === defaultChoice ? null : value;
+}
+
+const selectClass = "w-full h-8 text-xs border border-gray-200 rounded px-2 bg-white focus:border-indigo-500 outline-none";
 
 const Label = ({ children, icon: Icon }: any) => (
     <div className="flex items-center gap-2 mb-1.5 text-xs font-semibold text-gray-600">
@@ -24,8 +41,13 @@ const Label = ({ children, icon: Icon }: any) => (
 
 export function HeroEditor(props: any) {
     const { headline, subheadline, subheadlineRich, ctaText, ctaLink, style, imageSrc, blockWidth, overlayOpacity, overlayColorToken, headlineColorToken, subheadlineColorToken } = props.node.attrs;
+    const { eyebrow, headlineAccent, headlineAccentColorToken, secondaryCtaText, secondaryCtaLink, buttonShape, splitPanel } = props.node.attrs;
+    const stats: HeroStat[] = Array.isArray(props.node.attrs.stats) ? props.node.attrs.stats : [];
     const [uploading, setUploading] = useState(false);
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
+    // SHOP-LOOK-1B: the new options store null when cleared (storedOption).
+    const updateOption = (field: string, value: string | HeroStat[], defaultChoice?: string) => update(field, storedOption(value, defaultChoice));
+    const setStat = (i: number, key: keyof HeroStat, v: string) => updateOption('stats', stats.map((s, j) => j === i ? { ...s, [key]: v } : s));
 
     const handleLibraryPick = () => {
         const pickFn = props.editor.storage.image?.pickFn;
@@ -96,6 +118,100 @@ export function HeroEditor(props: any) {
                                 <Input value={ctaLink} onChange={(v: string) => update('ctaLink', v)} list="amodx-links" placeholder="/path" className="font-mono text-xs" />
                             </div>
                         </div>
+
+                        {/* SHOP-LOOK-1B: label, second tone, second button, button shape, numbers. Empty = not shown. */}
+                        <div className="space-y-2">
+                            <Label>Label above the headline</Label>
+                            <Input value={eyebrow} onChange={(v: string) => updateOption('eyebrow', v)} placeholder="e.g. Since 1998 (empty = none)" />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="col-span-2 space-y-1">
+                                <Label>Headline second tone</Label>
+                                <Input value={headlineAccent} onChange={(v: string) => updateOption('headlineAccent', v)} placeholder="Shown after the headline (empty = none)" />
+                            </div>
+                            <div className="space-y-1">
+                                <Label>Second tone colour</Label>
+                                <select
+                                    value={headlineAccentColorToken || 'auto'}
+                                    onChange={e => updateOption('headlineAccentColorToken', e.target.value, 'auto')}
+                                    className={selectClass}
+                                >
+                                    <option value="auto">Auto (Primary)</option>
+                                    <option value="white">White</option>
+                                    <option value="foreground">Foreground</option>
+                                    <option value="primary">Primary</option>
+                                    <option value="primary-foreground">Primary FG</option>
+                                    <option value="muted-foreground">Muted FG</option>
+                                    <option value="accent-foreground">Accent FG</option>
+                                </select>
+                            </div>
+                        </div>
+                        {style !== 'minimal' && (
+                            <>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <Label>Second Button Text</Label>
+                                        <Input value={secondaryCtaText} onChange={(v: string) => updateOption('secondaryCtaText', v)} placeholder="Outline button (empty = none)" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label icon={LinkIcon}>Second Button Link</Label>
+                                        <Input value={secondaryCtaLink} onChange={(v: string) => updateOption('secondaryCtaLink', v)} list="amodx-links" placeholder="/path" className="font-mono text-xs" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <Label>Button Shape</Label>
+                                        <select
+                                            value={buttonShape || 'rounded'}
+                                            onChange={e => updateOption('buttonShape', e.target.value, 'rounded')}
+                                            className={selectClass}
+                                        >
+                                            <option value="rounded">Rounded</option>
+                                            <option value="pill">Pill</option>
+                                        </select>
+                                    </div>
+                                    {style === 'split' && (
+                                        <div className="space-y-1">
+                                            <Label>Text Panel</Label>
+                                            <select
+                                                value={splitPanel || 'plain'}
+                                                onChange={e => updateOption('splitPanel', e.target.value, 'plain')}
+                                                className={selectClass}
+                                            >
+                                                <option value="plain">Plain (page background)</option>
+                                                <option value="inverse">Inverse (dark panel)</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Numbers (up to 4; an empty value is not shown)</Label>
+                                    {stats.map((item, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                            <Input value={item.value} onChange={(v: string) => setStat(i, 'value', v)} placeholder="25+" maxLength={12} className="w-24 font-bold" />
+                                            <Input value={item.label} onChange={(v: string) => setStat(i, 'label', v)} placeholder="Caption, e.g. years in business" maxLength={40} />
+                                            <button
+                                                type="button"
+                                                aria-label="Remove number"
+                                                onClick={() => updateOption('stats', stats.filter((_, j) => j !== i))}
+                                                className="p-1 text-gray-400 hover:text-red-500"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {stats.length < 4 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => updateOption('stats', [...stats, { value: '', label: '' }])}
+                                            className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" /> Add number
+                                        </button>
+                                    )}
+                                </div>
+                            </>
+                        )}
 
                         <EffectControls
                             effect={props.node.attrs.buttonEffect}

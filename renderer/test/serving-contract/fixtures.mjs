@@ -850,6 +850,51 @@ const SL1A_ITEMS = [
     ...Object.values(SL1A).flatMap((t) => sl1aCategories(t.id)),
 ];
 
+// ── SHOP-LOOK-1B fixtures (docs/slices/shop-look-1b.md; design docs/slices/shop-look-1.md § 4.2, § 6.5) ─────────────────
+// Three content tenants (each with a `locale`, "en-US" written out, so none is an en-US subject of the `loc1-*` rows and none
+// is in any `before/` capture: rows `sl1b-*` read the running build only). Each home page holds the same two hero blocks —
+// a `cover` hero (reference section 2) and a `split` hero (reference section 6) — and differs only in the new attributes:
+//  - set: every new attribute (`SL1B_COVER_OPTIONS`, `SL1B_SPLIT_OPTIONS`), appended after the attributes of today's block;
+//  - plain: none of them (today's block; the twin the other two are compared with);
+//  - blank: every new attribute present but drawn as absent — `null` (as Tiptap stores a cleared attribute) or blank.
+export const SL1B = {
+    set: { id: "sl1b-set", host: "sl1b-set.serving-contract.test" },
+    plain: { id: "sl1b-plain", host: "sl1b-plain.serving-contract.test" },
+    blank: { id: "sl1b-blank", host: "sl1b-blank.serving-contract.test" },
+};
+export const SL1B_COVER = {
+    headline: "SL1B Floors", subheadline: "SL1B cover text", ctaText: "Shop floors", ctaLink: "/shop", imageSrc: "/sl1b-cover.jpg",
+    style: "cover", overlayOpacity: 0.5, overlayColorToken: "auto", headlineColorToken: "auto", subheadlineColorToken: "auto", blockWidth: "full",
+};
+export const SL1B_SPLIT = {
+    headline: "SL1B Heritage", subheadline: "SL1B split text", ctaText: "Read more", ctaLink: "/about", imageSrc: "/sl1b-split.jpg",
+    style: "split", overlayOpacity: 0.5, overlayColorToken: "auto", headlineColorToken: "auto", subheadlineColorToken: "auto", blockWidth: "full",
+};
+export const SL1B_COVER_OPTIONS = {
+    eyebrow: "Since 1998", headlineAccent: "for every room", headlineAccentColorToken: "auto", secondaryCtaText: "Visit a showroom",
+    secondaryCtaLink: "/showrooms", stats: [{ value: "25+", label: "Years" }, { value: "4", label: "Showrooms" }, { value: "10k", label: "Floors laid" }],
+    buttonShape: "pill",
+};
+export const SL1B_SPLIT_OPTIONS = {
+    eyebrow: "Heritage", headlineAccent: "since 1998", headlineAccentColorToken: "auto", secondaryCtaText: "Our story", secondaryCtaLink: "/story",
+    stats: [{ value: "3", label: "Generations" }, { value: "40", label: "Craftsmen" }, { value: "12", label: "Countries" }, { value: "1M", label: "Square metres" }],
+    buttonShape: "pill", splitPanel: "inverse",
+};
+const SL1B_BLANK_OPTIONS = {
+    eyebrow: "  ", headlineAccent: null, headlineAccentColorToken: null, secondaryCtaText: null, secondaryCtaLink: "/link-without-text",
+    stats: [{ value: " ", label: "No value" }], buttonShape: null, splitPanel: null,
+};
+const sl1bTenant = (key, cover, split) => [
+    { ...siteTenant(SL1B[key].id, SL1B[key].host, "SL1B Hero"), description: "SL1B fixture (hero options).", locale: "en-US" },
+    siteRouteItem(SL1B[key].id, "/", "sl1b-home"),
+    siteContentItem(SL1B[key].id, "sl1b-home", "/", "SL1B Home", { blocks: [{ type: "hero", attrs: cover }, { type: "hero", attrs: split }] }),
+];
+const SL1B_ITEMS = [
+    ...sl1bTenant("set", { ...SL1B_COVER, ...SL1B_COVER_OPTIONS }, { ...SL1B_SPLIT, ...SL1B_SPLIT_OPTIONS }),
+    ...sl1bTenant("plain", SL1B_COVER, SL1B_SPLIT),
+    ...sl1bTenant("blank", { ...SL1B_COVER, ...SL1B_BLANK_OPTIONS }, { ...SL1B_SPLIT, ...SL1B_BLANK_OPTIONS, splitPanel: "plain" }),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -898,6 +943,8 @@ export const ITEMS = [
     ...CC1_ITEMS,
     // shop-look-1a: the header and footer tenants (above).
     ...SL1A_ITEMS,
+    // shop-look-1b: the hero tenants (above).
+    ...SL1B_ITEMS,
 ];
 
 /**

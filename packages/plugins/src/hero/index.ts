@@ -34,6 +34,15 @@ export const HeroPlugin: PluginDefinition = {
                 buttonEffect: { default: null },
                 // Legacy: reads old "glow" attrs, writes to buttonEffect on save
                 glow: { default: null },
+                // SHOP-LOOK-1B: null = absent (today's HTML); the editor writes null when an option is cleared.
+                eyebrow: { default: null },
+                headlineAccent: { default: null },
+                headlineAccentColorToken: { default: null },
+                secondaryCtaText: { default: null },
+                secondaryCtaLink: { default: null },
+                stats: { default: null },
+                buttonShape: { default: null },
+                splitPanel: { default: null },
             };
         },
         parseHTML() { return [{ tag: 'app-hero' }]; },

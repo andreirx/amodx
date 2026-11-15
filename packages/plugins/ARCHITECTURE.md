@@ -48,7 +48,7 @@ render loader. It must stay in sync with that map (perf-1: 20 loaders).
 
 | Key | Label | Attributes | Styles/Variants |
 |-----|-------|-----------|-----------------|
-| `hero` | Hero Section | headline, subheadline, ctaText, ctaLink, imageSrc, style | center, split, minimal |
+| `hero` | Hero Section | headline, subheadline, ctaText, ctaLink, imageSrc, style, cover tokens; optional eyebrow, headlineAccent (+ token), secondaryCtaText/Link, stats[], buttonShape, splitPanel (see § *The `hero` block's options*) | center, split, cover, minimal |
 | `videoHero` | Video Hero | headline, subheadline, videoSrc, posterSrc, ctaText, ctaLink, overlay/heading color tokens, muted, loop, blockWidth | direct → native `<video>`, YouTube/Vimeo → cover `<iframe>`, unknown → poster (see § *The `video-hero` block's render contract*) |
 | `pricing` | Pricing Table | headline, subheadline, plans[] (title, price, interval, features, highlight) | — |
 | `image` | Image | src, alt, caption, width, aspectRatio | full, wide, centered |
@@ -245,6 +245,30 @@ inside a plain `<a target="_blank">` to the full image — RAW asset URLs, **nev
 The editor (`ReviewsCarouselEditor.tsx`) exposes the `scope` toggle and a `productId` input (shown
 only for `product-reviews-by-id`); in the two DB scopes the manual item editor is hidden.
 
+## The `hero` block's options (slice `shop-look-1b`)
+
+Design `docs/slices/shop-look-1.md` § 4.2, § 6.2, § 6.5; record `docs/slices/shop-look-1b.md`. Eight optional attributes
+(zod `.optional()`, no default; Tiptap `default: null`). **Absent = today's bytes:** absent, `null`, a blank text (whitespace
+only), an empty list, `buttonShape: "rounded"` and `splitPanel: "plain"` render the HTML of the hero before the slice,
+character for character — pinned by `test/hero.baseline.json` (recorded at 783e95f, before the change).
+
+| Attribute | Styles | Render |
+|---|---|---|
+| `eyebrow` | all | `<p>` pill (`rounded-full border`, small uppercase) directly above the `<h1>`; text trimmed. Colour: page `text-primary`, inverse panel `text-background`, cover the cover headline's class with `border-current` (ruling SL1B-COVER-EYEBROW) |
+| `headlineAccent` | all | inside the `<h1>`, after the headline and one space: `<span>`; colour = `headlineAccentColorToken` via `resolveTextClass` (absent, `auto` or an unknown value → `text-primary`; on the inverse panel `text-background/70`); an explicit token is kept on every surface |
+| `secondaryCtaText` / `secondaryCtaLink` | center, split, cover | shown when the text is non-blank: one row (`flex-col`, `md:flex-row`) holds the first button then an outline `<a>`; the row replaces the first button's slot. Link through `attrs._getUrl` (RenderBlocks); a blank link → `#`; a link without text → nothing |
+| `stats` | center, split, cover | items with a non-blank value, at most four, in a grid after the buttons (`grid-cols-1/2/3`, four → `grid-cols-2 md:grid-cols-4`); a blank caption → no caption `<p>` |
+| `buttonShape` | center, split, cover | `pill` → both buttons `rounded-full` (the first button: a second complete literal, `btnClassPill`). With a `buttonEffect`, the effect shell of `ButtonEffectWrap` keeps its own `rounded-lg` (not changed) |
+| `splitPanel` | split | `inverse` → `SPLIT_PANEL.inverse`: panel `+ bg-foreground`, headline `text-background`, text `text-background/80`; the new elements take `INVERSE_TONE`. The first button keeps its fill and label and gains `border border-background/40` (`FIRST_BUTTON_CLASS.inverse`, ruling SL1B-INVERSE-BUTTON, amends design § 6.5) |
+
+Class rule: an EXISTING element's class string is a complete literal chosen by one lookup (`FIRST_BUTTON_CLASS[plain |
+inverse][rounded | pill]`, whose `plain` entries are `btnClass` / `btnClassPill`; `SPLIT_PANEL.plain` / `.inverse`), never today's string with a part appended. The NEW elements exist only
+when set; their strings are composed from literal parts by surface (`PAGE_TONE`, `INVERSE_TONE`, `coverTone(hl, sh)`). On
+`cover` the eyebrow, the outline button and the numbers follow the cover headline token, the captions the subheadline token (defaults
+white and white/90 — the cover's own defaults); the design names no cover colour for them (record § *Decisions*).
+Every class is a literal in `HeroRender.tsx`, so the renderer's Tailwind (`@source` on this package) compiles it. The editor
+stores a cleared option as `null` (`storedOption` in `HeroEditor.tsx`: blank text, empty list or the default choice).
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -256,6 +280,7 @@ only for `product-reviews-by-id`); in the two DB scopes the manual item editor i
 | `test/videoHeroPlugin.test.ts` (`vid-3`) | The same for `RENDER_LOADERS["videoHero"]`: background element + `src` per kind, the YouTube/Vimeo background parameters named individually, the cover sizer's emitted declarations, `VideoHeroSchema` round-trip (pinning the "schema unchanged" non-scope), and the editor's tabs / indicator / warning / preview |
 | `test/reviewsCarousel.test.ts` (`rev-4`) | `RENDER_LOADERS["reviewsCarousel"]` photo markup in a DB scope (lazy `<img>`, `alt`, `<a href>` to the full URL, no `/_next/image`); the **DB-scope gate** — a `manual`/legacy block with an injected `photos` array emits NO thumbnail; and the editor's three `scope` options + conditional `productId` input |
 | `renderer/test/unit/locale-1c-blocks-client.test.ts` (`locale-1c`; in the RENDERER suite — this package has no DOM harness and no jsdom dependency) | The block texts of every state of the eleven text-bearing blocks (forms sending/sent/failed, copy, read more, post grid loading/failed/empty/dates, showcase): en-US markup equal to a `0c0dbc8` capture, every Romanian change a declared key, the reviews-carousel date cases, the § 5.2 preservation cases at one reader per block (the iframe names pattern F) |
+| `test/hero.test.ts` (`shop-look-1b`) | `RENDER_LOADERS["hero"]`: every case of `test/heroBaselineCases.ts` (four styles × image, rich/legacy subheadline, no button, tokens, Tiptap defaults) renders equal to `test/hero.baseline.json` (HTML recorded at 783e95f; static and streaming renderers) with each new attribute absent, `null`, blank, empty or malformed; each option present → its element, and removing it gives the baseline back; the three § 6.5 inverse cases; schema limits; the editor's controls and `storedOption` |
 | `test/showcasePriceRange.test.ts` (`price-locale-1`) | `RENDER_LOADERS["categoryShowcase"]` price line: a given `_priceRange` is printed (`10 – 12.5 RON`); without it the card's reading is today's (`10 – 12 RON` for a comma text, `75 – 100 USD` for point texts); a range with min = max prints the price text |
 | `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
 | `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 20, so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |

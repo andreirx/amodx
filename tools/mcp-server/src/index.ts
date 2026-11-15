@@ -115,14 +115,26 @@ const parseJsonInput = (raw: string, shape: "array" | "object", name: string): J
 // Synced with packages/plugins — 18 custom blocks + 2 Tiptap builtins
 const BLOCK_SCHEMAS = {
     hero: {
-        description: "A large banner with headline, subheadline, CTA button, and optional background image. Supports 3 layout styles.",
+        description: "A large banner with headline, subheadline, CTA button, and optional image. Supports 4 layout styles: center, split (image beside the text), cover (image as full background with an overlay), minimal. Optional extras (omit = not shown): a small label above the headline, a second-tone part of the headline, a second outline button, up to 4 numbers with captions, pill-shaped buttons, and a dark text panel on split.",
         attrs: {
             headline: "string (e.g., 'Welcome to AMODX')",
             subheadline: "string (optional)",
             ctaText: "string (e.g., 'Get Started')",
             ctaLink: "string (e.g., '/contact' or '#pricing')",
-            style: "'center' | 'split' | 'minimal'",
-            imageSrc: "string (optional, image URL)"
+            style: "'center' | 'split' | 'cover' | 'minimal'",
+            imageSrc: "string (optional, image URL; the background in 'cover')",
+            overlayOpacity: "number 0-1 (optional, 'cover' only; default 0.5)",
+            overlayColorToken: "'auto' | 'black' | 'foreground' | 'primary' | 'muted' | 'accent' (optional, 'cover' only)",
+            headlineColorToken: "'auto' | 'white' | 'foreground' | 'primary' | 'primary-foreground' | 'muted-foreground' | 'accent-foreground' (optional, 'cover' only)",
+            subheadlineColorToken: "same values as headlineColorToken (optional, 'cover' only)",
+            eyebrow: "string (optional, every style) — small pill label above the headline, e.g. 'Since 1998'",
+            headlineAccent: "string (optional, every style) — shown inside the headline after it, in a second colour",
+            headlineAccentColorToken: "same values as headlineColorToken (optional; omit or 'auto' = primary colour, or a light tone on an inverse panel)",
+            secondaryCtaText: "string (optional; center, split, cover) — a second, outline button beside the first",
+            secondaryCtaLink: "string (optional) — link of the second button",
+            stats: "array of up to 4 { value: string (max 12 chars), label: string (max 40 chars) } (optional; center, split, cover) — a row of numbers with captions",
+            buttonShape: "'rounded' | 'pill' (optional; default rounded)",
+            splitPanel: "'plain' | 'inverse' (optional, 'split' only) — 'inverse' = dark text panel (page colours swapped)"
         },
         example: {
             type: "hero",

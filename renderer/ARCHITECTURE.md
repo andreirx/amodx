@@ -793,6 +793,14 @@ Three header and footer pieces, each drawn only when set (absent, blank or an em
 Rows `sl1a-header-footer`, `sl1a-blank-as-absent`; unit `test/unit/shop-look-1a-layout.test.ts`,
 `test/unit/shop-look-1a-read.test.ts`.
 
+**SHOP-LOOK-1B (docs/slices/shop-look-1b.md; design docs/slices/shop-look-1.md § 4.2, § 6.5).** No renderer source
+change: the hero options live in the plugin (`packages/plugins` ARCHITECTURE § *The `hero` block's options*) and reach the
+page as stored block attributes through `RenderBlocks` (the second button's link through the injected `_getUrl`). Rows
+`sl1b-hero-options` (a cover hero and a split inverse hero with every option: the HTML equals the twin's after removing
+the new elements and undoing the § 6.5 class swaps; the payload differs by the stored attributes only; the built
+stylesheet holds every new class, e.g. `.bg-foreground`, `.text-background`) and `sl1b-blank-as-absent` (`null` and
+blank options: the twin's HTML byte for byte).
+
 ## Path settings — slice `cdl-2`
 
 Design `docs/slices/catalog-data-labels-1.md` § 7, § 14; record `docs/slices/cdl-2.md`.
