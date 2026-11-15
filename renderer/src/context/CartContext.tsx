@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { linePrice, roundToCents, type LinePriceInputs } from "@amodx/shared";
 
 export interface CartItem {
     productId: string;
@@ -8,10 +9,30 @@ export interface CartItem {
     productImage: string;
     productSlug: string;
     quantity: number;
+    /** The unit price at add time. Read only for an item without `priceInputs` (saved before ORDER-PRICE-1). */
     unitPrice: number;
     currency: string;
     selectedVariant?: string;
-    personalizations: { label: string; value: string; addedCost: number }[];
+    /** `id`: the product's personalization id; absent on an item saved before ORDER-PRICE-1. */
+    personalizations: { id?: string; label: string; value: string; addedCost: number }[];
+    /** ORDER-PRICE-1: the product's price data for the shared rule (`linePrice`); absent on an item saved before. */
+    priceInputs?: LinePriceInputs;
+}
+
+/**
+ * ORDER-PRICE-1 (docs/slices/order-price-1.md § 1 item 4): the line total of a cart item at its CURRENT quantity — the
+ * one browser copy of the line arithmetic (the cart subtotal, the cart page and the checkout read it). An item with
+ * `priceInputs` is priced by the shared rule, the rule the order handler charges (NaN when its price data does not
+ * parse — the order handler refuses that line). An item saved before ORDER-PRICE-1 keeps the arithmetic of that time
+ * on its stored `unitPrice`.
+ */
+export function cartLineTotal(item: CartItem): number {
+    if (item.priceInputs) {
+        const priced = linePrice(item.priceInputs, item.quantity);
+        return priced.kind === "priced" ? priced.lineTotal : NaN;
+    }
+    const personalizationCost = item.personalizations.reduce((s, p) => s + p.addedCost, 0);
+    return (item.unitPrice + personalizationCost) * item.quantity;
 }
 
 interface CouponState {
@@ -109,10 +130,7 @@ export function CartProvider({ children, tenantId, cartPrefix }: { children: Rea
         setCouponState(null);
     }, []);
 
-    const subtotal = items.reduce((sum, item) => {
-        const personalizationCost = item.personalizations.reduce((s, p) => s + p.addedCost, 0);
-        return sum + (item.unitPrice + personalizationCost) * item.quantity;
-    }, 0);
+    const subtotal = roundToCents(items.reduce((sum, item) => sum + cartLineTotal(item), 0));
 
     const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 

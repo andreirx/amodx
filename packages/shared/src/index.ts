@@ -1767,7 +1767,9 @@ export const OrderItemInputSchema = z.object({
     quantity: z.number().int().min(1).max(100),
     selectedVariant: z.string().optional(),
     personalizations: z.array(z.object({
-        id: z.string(),
+        // ORDER-PRICE-1 (§ 1 item 3): optional — a cart saved before ORDER-PRICE-1 holds no `id`; the server then
+        // matches the product's personalization by `label`.
+        id: z.string().optional(),
         label: z.string(),
         value: z.string().max(500)
     })).optional()
@@ -1787,6 +1789,83 @@ export const OrderInputSchema = z.object({
     recaptchaToken: z.string().min(1).optional(), // Optional for backwards compat, enforced in handler when enabled
 });
 export type OrderInput = z.infer<typeof OrderInputSchema>;
+
+// --- ORDER LINE PRICE (ORDER-PRICE-1, docs/slices/order-price-1.md § 1 item 1) ---
+
+/**
+ * The price data of one order line, as the product stores it (money is text). `priceOverride` is the `priceOverride`
+ * of the chosen option of the product's FIRST variant group (absent when nothing is chosen or the option has none).
+ * `addedCosts` are the `addedCost` texts of the personalizations the line carries. The renderer's cart stores this
+ * object as is (a browser-boundary DTO), so it must stay plain JSON.
+ */
+export interface LinePriceInputs {
+    price?: string;
+    salePrice?: string;
+    volumePricing?: readonly VolumePricingTier[];
+    priceOverride?: string;
+    addedCosts?: readonly string[];
+}
+
+/** The input field whose money text did not parse. */
+export type LinePriceSource = "price" | "salePrice" | "volumePricing" | "priceOverride" | "addedCost";
+
+export type LinePriceResult =
+    | { kind: "priced"; unitPrice: number; addedCost: number; lineTotal: number }
+    | { kind: "invalid-price"; source: LinePriceSource; text: string };
+
+/** Money text: digits with an optional decimal point, nothing else (no sign, exponent, comma or currency). */
+const MONEY_TEXT = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+function parseMoney(text: string | undefined): number | undefined {
+    if (typeof text !== "string") return undefined;
+    const trimmed = text.trim();
+    if (!MONEY_TEXT.test(trimmed)) return undefined;
+    const value = Number(trimmed);
+    return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Rounds an amount to cents, half up. `toPrecision(15)` first removes binary float noise (0.1 + 0.2, 1.005 × 100),
+ * so the rounding acts on the decimal value the arithmetic meant. For amounts ≥ 0 (every money value here).
+ */
+export function roundToCents(amount: number): number {
+    return Math.round(Number((amount * 100).toPrecision(15))) / 100;
+}
+
+/**
+ * THE price rule of one order line — the product page, the cart, the checkout and the order handler all use it.
+ * Unit price: the chosen first-group option's `priceOverride` when it is non-empty; else the volume tier with the
+ * largest `minQuantity` ≤ `quantity`; else `salePrice` when non-empty; else `price`. Added cost: the sum of
+ * `addedCosts` (an empty text adds 0). Line total: (unit price + added cost) × quantity, rounded to cents.
+ * Only the money texts the rule selects are parsed; one that does not parse to a finite number ≥ 0 (or is absent where
+ * the rule needs it) gives `invalid-price` with its source — never NaN, never 0. Pure.
+ */
+export function linePrice(inputs: LinePriceInputs, quantity: number): LinePriceResult {
+    let source: LinePriceSource;
+    let text: string | undefined;
+    const tiers = inputs.volumePricing ?? [];
+    const tier = [...tiers].sort((a, b) => b.minQuantity - a.minQuantity).find((t) => quantity >= t.minQuantity);
+    if (inputs.priceOverride) {
+        source = "priceOverride"; text = inputs.priceOverride;
+    } else if (tier) {
+        source = "volumePricing"; text = tier.price;
+    } else if (inputs.salePrice) {
+        source = "salePrice"; text = inputs.salePrice;
+    } else {
+        source = "price"; text = inputs.price;
+    }
+    const unitPrice = parseMoney(text);
+    if (unitPrice === undefined) return { kind: "invalid-price", source, text: text ?? "" };
+
+    let addedCost = 0;
+    for (const costText of inputs.addedCosts ?? []) {
+        if (typeof costText === "string" && costText.trim() === "") continue;
+        const cost = parseMoney(costText);
+        if (cost === undefined) return { kind: "invalid-price", source: "addedCost", text: costText };
+        addedCost += cost;
+    }
+    return { kind: "priced", unitPrice, addedCost, lineTotal: roundToCents((unitPrice + addedCost) * quantity) };
+}
 
 // --- COUPONS ---
 

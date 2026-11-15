@@ -610,6 +610,20 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   `locale-coverage.test.ts` (named `locale-1a-coverage.test.ts` until 1b) checks every slice, and each plural category
   of each count key, per language.
 
+## Cart line price — slice `order-price-1`
+
+Record `docs/slices/order-price-1.md`. One price rule for every line: the shared `linePrice` (`@amodx/shared`), the
+rule `backend/src/orders/create.ts` charges. `AddToCartButton.tsx` shows its line total and stores its inputs in the cart
+item as `priceInputs` (`LinePriceInputs`: `price`, `salePrice`, `volumePricing`, the chosen first-group option's
+`priceOverride`, the chosen personalizations' `addedCost` texts); cart personalizations now carry the product's `id`.
+`context/CartContext.tsx` `cartLineTotal(item)` is the ONE browser line function — the cart `subtotal` (rounded to
+cents), `CartPageView` and `CheckoutPageView` (summary and the request's `totalPrice`) read it — so a line follows its
+CURRENT quantity across volume tiers (also after a merge in `addItem`). An item saved before the slice (no
+`priceInputs`) keeps `(unitPrice + Σ addedCost) × quantity`. Price data that does not parse gives NaN in the browser
+(as before) and a 400 from the server, shown through the checkout's existing error path; no visitor text was added.
+Tests: `test/unit/order-price-1.test.ts`; the mocks of `cmrc-counties-1-checkout` and `locale-1d-client` re-export the
+real `cartLineTotal` (their items have no `priceInputs`, so their captured markup stays the oracle).
+
 ## Checkout region list — slice `cmrc-counties-1`
 
 Record `docs/slices/cmrc-counties-1.md`. `mapTenant` copies `countryCode` (absent stays absent). The checkout branch of

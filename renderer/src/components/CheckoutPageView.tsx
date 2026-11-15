@@ -1,6 +1,6 @@
 "use client";
 
-import { useCart } from "@/context/CartContext";
+import { useCart, cartLineTotal } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, FormEvent } from "react";
@@ -282,8 +282,11 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 productSlug: item.productSlug,
                 quantity: item.quantity,
                 unitPrice: String(item.unitPrice),
-                totalPrice: String((item.unitPrice + item.personalizations.reduce((s, p) => s + p.addedCost, 0)) * item.quantity),
+                totalPrice: String(cartLineTotal(item)),
+                // ORDER-PRICE-1: the id when the cart item has it (an item saved before has none; the server then
+                // matches by label). The server prices from the stored product; it ignores unitPrice/totalPrice/addedCost.
                 personalizations: item.personalizations.map(p => ({
+                    ...(p.id !== undefined ? { id: p.id } : {}),
                     label: p.label,
                     value: p.value,
                     addedCost: String(p.addedCost),
@@ -605,8 +608,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
                             <div className="space-y-3 max-h-64 overflow-y-auto">
                                 {items.map((item) => {
-                                    const personalizationCost = item.personalizations.reduce((s, p) => s + p.addedCost, 0);
-                                    const lineTotal = (item.unitPrice + personalizationCost) * item.quantity;
+                                    const lineTotal = cartLineTotal(item);
                                     return (
                                         <div key={item.selectedVariant ? `${item.productId}__${item.selectedVariant}` : item.productId} className="flex gap-3 text-sm">
                                             <div className="w-12 h-12 bg-muted rounded overflow-hidden shrink-0">

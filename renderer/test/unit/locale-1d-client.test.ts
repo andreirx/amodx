@@ -32,7 +32,12 @@ import { extractVisibleText, textChanges } from "../serving-contract/locale-1/ex
 
 const cart = vi.hoisted(() => ({ state: {} as Record<string, unknown> }));
 const auth = vi.hoisted(() => ({ data: null as null | object, status: "unauthenticated" as string }));
-vi.mock("@/context/CartContext", () => ({ useCart: () => cart.state }));
+// ORDER-PRICE-1: the real `cartLineTotal` (the views' one line function); the captured items have no `priceInputs`, so
+// they take the pre-ORDER-PRICE-1 arithmetic and the 92adbba captures stay the oracle.
+vi.mock("@/context/CartContext", async (importOriginal) => ({
+    cartLineTotal: (await importOriginal<typeof import("@/context/CartContext")>()).cartLineTotal,
+    useCart: () => cart.state,
+}));
 vi.mock("next-auth/react", () => ({ useSession: () => ({ data: auth.data, status: auth.status }), signOut: () => {}, signIn: () => {} }));
 vi.mock("@/lib/routing", () => ({ useTenantUrl: () => ({ getUrl: (p: string) => p }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }), usePathname: () => "/" }));

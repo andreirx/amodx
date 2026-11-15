@@ -5,7 +5,7 @@ import { useCart } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { ShoppingCart, Check, Minus, Plus } from "lucide-react";
 import { trackFBEvent } from "@/lib/fbpixel";
-import { fillTemplate, type LocaleStrings } from "@amodx/shared";
+import { fillTemplate, linePrice, type LinePriceInputs, type LocaleStrings } from "@amodx/shared";
 
 interface VariantOption {
     value: string;
@@ -81,31 +81,21 @@ export function AddToCartButton({
         return v.options.find(o => o.value === selectedVal) || null;
     }, [variants, selectedVariants]);
 
-    // Effective price (considering variant override, sale, volume)
-    const effectiveUnitPrice = useMemo(() => {
-        if (activeVariantOption?.priceOverride) {
-            return parseFloat(activeVariantOption.priceOverride);
-        }
-        // Volume pricing
-        if (volumePricing.length > 0) {
-            const sorted = [...volumePricing].sort((a, b) => b.minQuantity - a.minQuantity);
-            const tier = sorted.find(t => quantity >= t.minQuantity);
-            if (tier) return parseFloat(tier.price);
-        }
-        return parseFloat(salePrice || price);
-    }, [activeVariantOption, salePrice, price, volumePricing, quantity]);
-
-    // Personalization total cost
-    const personalizationCost = useMemo(() => {
-        return personalizations.reduce((sum, p) => {
-            if (personalizationValues[p.id] && parseFloat(p.addedCost) > 0) {
-                return sum + parseFloat(p.addedCost);
-            }
-            return sum;
-        }, 0);
-    }, [personalizations, personalizationValues]);
-
-    const lineTotal = (effectiveUnitPrice + personalizationCost) * quantity;
+    // ORDER-PRICE-1: the personalizations the cart line will carry (a non-blank value) and the price data of the
+    // shared rule — the rule the order handler charges. The cart stores `priceInputs` so the line follows the quantity.
+    const chosenPersonalizations = useMemo(
+        () => personalizations.filter(p => personalizationValues[p.id]?.trim()),
+        [personalizations, personalizationValues],
+    );
+    const priceInputs = useMemo<LinePriceInputs>(() => ({
+        price, salePrice, volumePricing,
+        priceOverride: activeVariantOption?.priceOverride,
+        addedCosts: chosenPersonalizations.map(p => p.addedCost),
+    }), [price, salePrice, volumePricing, activeVariantOption, chosenPersonalizations]);
+    const priced = useMemo(() => linePrice(priceInputs, quantity), [priceInputs, quantity]);
+    // NaN when the product's price data does not parse (as the former arithmetic showed it); the order handler refuses it.
+    const effectiveUnitPrice = priced.kind === "priced" ? priced.unitPrice : NaN;
+    const lineTotal = priced.kind === "priced" ? priced.lineTotal : NaN;
 
     // Check variant availability
     const isOutOfStock = availability !== "in_stock" && availability !== "preorder";
@@ -135,9 +125,9 @@ export function AddToCartButton({
             ? variants.map(v => `${v.name}: ${selectedVariants[v.id]}`).join(", ")
             : undefined;
 
-        const cartPersonalizations = personalizations
-            .filter(p => personalizationValues[p.id]?.trim())
+        const cartPersonalizations = chosenPersonalizations
             .map(p => ({
+                id: p.id,
                 label: p.label,
                 value: personalizationValues[p.id].trim(),
                 addedCost: parseFloat(p.addedCost) || 0,
@@ -152,6 +142,7 @@ export function AddToCartButton({
             currency,
             selectedVariant: variantLabel,
             personalizations: cartPersonalizations,
+            priceInputs,
             quantity,
         });
 

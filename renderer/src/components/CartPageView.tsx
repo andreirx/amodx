@@ -1,6 +1,6 @@
 "use client";
 
-import { useCart } from "@/context/CartContext";
+import { useCart, cartLineTotal } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import Link from "next/link";
 import { Minus, Plus, Trash2, Tag } from "lucide-react";
@@ -93,8 +93,7 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
                 {/* Items */}
                 <div className="lg:col-span-2 space-y-4">
                     {items.map((item) => {
-                        const personalizationCost = item.personalizations.reduce((s, p) => s + p.addedCost, 0);
-                        const lineTotal = (item.unitPrice + personalizationCost) * item.quantity;
+                        const lineTotal = cartLineTotal(item);
                         const itemKey = item.selectedVariant ? `${item.productId}__${item.selectedVariant}` : item.productId;
 
                         return (

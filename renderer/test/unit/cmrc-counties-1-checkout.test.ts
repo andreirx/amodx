@@ -17,7 +17,10 @@ import { BEFORE_FILE, FREE_TEXT, withFreeText, type Snapshot, type StateName } f
  * "use same address for billing" unchecked (the billing county field shown).
  */
 
-vi.mock("@/context/CartContext", () => ({
+// ORDER-PRICE-1: the real `cartLineTotal` (the views' one line function); this item has no `priceInputs`, so it takes
+// the pre-ORDER-PRICE-1 arithmetic and the captured markup stays the oracle.
+vi.mock("@/context/CartContext", async (importOriginal) => ({
+    cartLineTotal: (await importOriginal<typeof import("@/context/CartContext")>()).cartLineTotal,
     useCart: () => ({
         items: [{ productId: "p1", productTitle: "Rug", productSlug: "rug", productImage: "", quantity: 1, unitPrice: 10, currency: "USD", personalizations: [] }],
         subtotal: 10, clearCart: () => {}, coupon: null,

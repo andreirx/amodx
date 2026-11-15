@@ -5,7 +5,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
-import { OrderInputSchema, normalizeEmail } from "@amodx/shared";
+import { OrderInputSchema, normalizeEmail, linePrice, roundToCents } from "@amodx/shared";
 import { formatFromHeader } from "../lib/email-from.js";
 
 const ses = new SESClient({});
@@ -124,19 +124,37 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
 
             const product = productResult.Item;
-            let unitPrice = product.salePrice || product.price;
 
-            // Calculate personalization costs
-            let personalizationCost = 0;
+            // ORDER-PRICE-1 (docs/slices/order-price-1.md § 1 item 2): the chosen option of the FIRST variant group,
+            // read from the display label the cart sends ("<group>: <value>[, <group>: <value>…]"). Needed only when
+            // an option of that group has a priceOverride; then it must match exactly one option — never a guess.
+            const firstGroup = product.variants?.[0];
+            let priceOverride: string | undefined;
+            if (firstGroup?.options?.some((o: any) => o.priceOverride)) {
+                const label = item.selectedVariant;
+                const matches = label ? firstGroup.options.filter((o: any) => {
+                    const choice = `${firstGroup.name}: ${o.value}`;
+                    return label === choice || label.startsWith(`${choice}, `);
+                }) : [];
+                if (matches.length !== 1) {
+                    console.warn("Order refused: variant selection does not match one option", { productId: item.productId, label, matches: matches.length });
+                    return { statusCode: 400, body: JSON.stringify({ error: `Variant selection not recognised for product: ${item.productId}` }) };
+                }
+                priceOverride = matches[0].priceOverride;
+            }
+
+            // Personalizations: the request gives which ones; their costs come from the stored product only.
+            // `pers.id !== undefined` keeps the id comparison meaningful now that the input id is optional.
+            const addedCosts: string[] = [];
             const validatedPersonalizations = [];
 
             if (item.personalizations && Array.isArray(item.personalizations)) {
                 for (const pers of item.personalizations) {
                     const productPers = product.personalizations?.find(
-                        (p: any) => p.id === pers.id || p.label === pers.label
+                        (p: any) => (pers.id !== undefined && p.id === pers.id) || p.label === pers.label
                     );
                     const addedCost = productPers?.addedCost || 0;
-                    personalizationCost += addedCost;
+                    if (productPers?.addedCost !== undefined) addedCosts.push(productPers.addedCost);
                     validatedPersonalizations.push({
                         ...pers,
                         addedCost
@@ -144,15 +162,26 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                 }
             }
 
-            const finalUnitPrice = unitPrice + personalizationCost;
-            const totalPrice = finalUnitPrice * item.quantity;
-            subtotal += totalPrice;
+            const priced = linePrice({
+                price: product.price,
+                salePrice: product.salePrice,
+                volumePricing: product.volumePricing,
+                priceOverride,
+                addedCosts,
+            }, item.quantity);
+            if (priced.kind === "invalid-price") {
+                console.warn("Order refused: product price does not parse", { productId: item.productId, source: priced.source, text: priced.text });
+                return { statusCode: 400, body: JSON.stringify({ error: `Invalid price for product: ${item.productId}` }) };
+            }
+
+            const totalPrice = priced.lineTotal;
+            subtotal = roundToCents(subtotal + totalPrice);
 
             validatedItems.push({
                 productId: item.productId,
                 productTitle: product.title,
                 quantity: item.quantity,
-                unitPrice: finalUnitPrice,
+                unitPrice: roundToCents(priced.unitPrice + priced.addedCost).toFixed(2),
                 totalPrice,
                 selectedVariant: item.selectedVariant || null,
                 personalizations: validatedPersonalizations,

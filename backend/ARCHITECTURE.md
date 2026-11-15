@@ -451,6 +451,15 @@ All entities in one table. Partition key `PK`, sort key `SK`.
   guard refuses with 403 (fail closed). `products/update.ts` writes with `attribute_exists(PK)` (a product deleted meanwhile →
   404, no `CATPROD#` rebuild), reads `imageLink: null` as "remove the image", and both product routes strip
   `importSource` (importer-owned) and answer an invalid body with 400 (was 500)
+- **Order line price (ORDER-PRICE-1, record `docs/slices/order-price-1.md`):** `orders/create.ts` charges each line by
+  the shared `linePrice` (`@amodx/shared`) from the STORED product — the rule the product page and the cart show
+  (option `priceOverride` > volume tier > `salePrice` > `price`, plus the matched personalizations' `addedCost`). It
+  never reads a price or a cost from the request. The chosen option comes from the item's `selectedVariant` label and
+  is needed only when an option of the product's first variant group has a `priceOverride`: an option matches when the
+  label equals `<group>: <value>` or starts with it followed by `, `; not exactly one match → 400 `Variant selection not
+  recognised for product: <id>`. A price text that does not parse → 400 `Invalid price for product: <id>`. Both refuse
+  before any write. Stored item: `unitPrice` string with two decimals (unit + added cost), `totalPrice` number rounded
+  to cents; `subtotal` = their sum, rounded to cents
 
 ## Response Format
 
@@ -517,5 +526,7 @@ test live here, both credential-free:
 `test/unit/catalog-mode.test.ts` (CATALOG-MODE-1) is shape 2: the real tenant, settings, product, WooCommerce and
 order handlers with `lib/db.ts`, `publishAudit`, the cache-revalidation call and the order handler's origin and
 reCAPTCHA helpers mocked; each row inspects the commands that would reach DynamoDB.
+`test/unit/order-price-1.test.ts` (ORDER-PRICE-1) is the same shape for `orders/create.ts` (plus a mocked SES client,
+so the confirmation mail's item lines are read): each row inspects the `TransactWriteCommand`, or that none is sent.
 
 Run: `cd backend && npm run test:unit`.
