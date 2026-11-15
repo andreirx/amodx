@@ -939,6 +939,10 @@ export const CommerceStringsSchema = z.object({
     // LOCALE-1C: the category-showcase block (packages/plugins/src/category-showcase/CategoryShowcaseRender.tsx), a
     // product surface on shops, catalogs and content sites (with `outOfStock`, an existing key above, at a new reader)
     showcaseEmpty: z.string().optional(),       // "No products found in this category."
+    // ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 4, ruling OC1-TEXT = A): the notice of the checkout after a
+    // `price-changed` answer. Resolved by the ORDER HANDLER (orders/create.ts) into the answer's `message` — never part
+    // of the checkout's `strings` prop, so the checkout's first render stays byte-identical. Blank override → pack text.
+    pricesChanged: z.string().optional(),       // "Prices have changed. Check the new total, then place the order again."
 });
 
 export type CommerceStrings = z.infer<typeof CommerceStringsSchema>;
@@ -1807,8 +1811,48 @@ export const OrderInputSchema = z.object({
     requestedDeliveryDate: z.string().optional(),
     couponCode: z.string().max(50).optional(),
     recaptchaToken: z.string().min(1).optional(), // Optional for backwards compat, enforced in handler when enabled
+    // ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 1): the total the Place Order screen showed. A claim the
+    // handler compares with its own total (`sameAmountInCents`), never a price it charges. Absent (a page loaded before
+    // ORDER-CONFIRM-1) → no comparison. zod 4's `z.number()` refuses NaN and ±Infinity.
+    expectedTotal: z.number().min(0).optional(),
 });
 export type OrderInput = z.infer<typeof OrderInputSchema>;
+
+/** ORDER-CONFIRM-1: the figures the order handler charges for one request item. */
+export interface PriceChangedLine {
+    productId: string;
+    /** As the request sent it; absent when the request had none. */
+    selectedVariant?: string;
+    quantity: number;
+    /** Per unit, added costs included, rounded to cents (the stored order's `unitPrice`, as a number). */
+    unitPrice: number;
+    /** The line total (the stored order's `totalPrice`). */
+    totalPrice: number;
+}
+
+/**
+ * ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 2, amended by ruling OC1-TEXT = A): the body of the order
+ * handler's HTTP 409 answer when the request's `expectedTotal` differs from the handler's total in whole cents. Written
+ * by `backend/src/orders/create.ts`, read by `renderer/src/components/CheckoutPageView.tsx` and `CartContext.tsx`. The
+ * figures of the request's own items (`items` in request order) and ONE tenant text, `message`; nothing else of the
+ * product or the tenant. `total` is rounded to cents; it is the value the checkout sends as `expectedTotal` on the next
+ * press.
+ */
+export interface PriceChangedAnswer {
+    code: "price-changed";
+    /** English, for logs and API clients. The checkout shows it only when `message` is absent or blank. */
+    error: string;
+    /**
+     * The tenant's text of the commerce key `pricesChanged` (its Labels override; a blank override or none → the
+     * language pack of the tenant's locale). A public label the tenant's own site shows. The checkout shows it.
+     */
+    message: string;
+    total: number;
+    subtotal: number;
+    shippingCost: number;
+    couponDiscount: number;
+    items: PriceChangedLine[];
+}
 
 // --- ORDER LINE PRICE (ORDER-PRICE-1, docs/slices/order-price-1.md § 1 item 1) ---
 
@@ -1897,6 +1941,15 @@ export function parseMoney(text: string | undefined, locale: string | undefined)
  */
 export function roundToCents(amount: number): number {
     return Math.round(Number((amount * 100).toPrecision(15))) / 100;
+}
+
+/**
+ * ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 2): true when two amounts are the same number of whole cents
+ * after `roundToCents` (75, 75.004 and 75.00000000000001 are equal; 75 and 75.01 are not). The order handler's one
+ * comparison of the visitor's `expectedTotal` with its own total. Pure.
+ */
+export function sameAmountInCents(a: number, b: number): boolean {
+    return roundToCents(a) === roundToCents(b);
 }
 
 /**

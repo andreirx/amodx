@@ -122,6 +122,8 @@ src/
     │                           #   block-chrome keys) and `showcaseEmpty` in "Product pages & search"; content-only
     │                           #   tenants get "Product showcase block" (showcaseEmpty, outOfStock; ruling R4);
     │                           #   CAT-QUOTE-1: Catalog card "Request a quote" (the 7 quote* keys);
+    │                           #   ORDER-CONFIRM-1: `pricesChanged` in "Checkout - Payment & Submit" (the order
+    │                           #   handler sends it in its 409 `message`; not in the checkout's strings prop);
     │                           #   visibleSections() decides the sections per tenant kind (one input per key);
     │                           #   placeholders = language defaults; Reset per
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them

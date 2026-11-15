@@ -876,6 +876,7 @@ export default function Labels() {
                         <F label="Terms Agreement" field="termsAgreement" />
                         <F label="Order failed" field="orderFailed" />
                         <F label="Order failed, with the error code ({status})" field="orderFailedStatus" />
+                        <F label="Prices have changed (the order is not placed; the visitor checks the new total)" field="pricesChanged" />
                     </div>
                 </CardContent>
             </Card>

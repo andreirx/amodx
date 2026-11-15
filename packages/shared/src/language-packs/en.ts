@@ -210,6 +210,8 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         items: "Items",
         // LOCALE-1C: the category-showcase block (the text it renders today)
         showcaseEmpty: "No products found in this category.",
+        // ORDER-CONFIRM-1: the checkout notice after a price-changed answer (sent by the order handler as `message`)
+        pricesChanged: "Prices have changed. Check the new total, then place the order again.",
     },
     // LOCALE-1B — the catalog part (§ 6.3). These English texts are NEW copy (the catalog renders Romanian literals
     // before this slice; ledger row L-EN-CAT): an English catalog tenant sees them, a Romanian one the RO pack.

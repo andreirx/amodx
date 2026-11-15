@@ -118,9 +118,11 @@ describe("Reset to the language defaults", () => {
         expect(SECTION_KEYS.site).toHaveLength(43 + 26 + 1);
         expect(SECTION_KEYS.site).toContain("navCategoryBarLabel");
         // LOCALE-1B: 28 commerce-part keys in "Product pages & search" (21 new + 7 a catalog renders), LOCALE-1C + showcaseEmpty;
-        // the rest are commerce-only: 70 before LOCALE-1D, + its 80 keys = 150 (the commerce part has 179 keys).
+        // the rest are commerce-only: 70 before LOCALE-1D, + its 80 keys = 150, + ORDER-CONFIRM-1's pricesChanged = 151
+        // (the commerce part has 180 keys).
         expect(SECTION_KEYS.product).toHaveLength(29);
-        expect(SECTION_KEYS.commerce).toHaveLength(150);
+        expect(SECTION_KEYS.commerce).toHaveLength(151);
+        expect(SECTION_KEYS.commerce).toContain("pricesChanged");
         // CAT-QUOTE-1: + the 7 keys of the "Request a quote" card. CDL-1: + 9 (the "Import labels" card and 4 mail keys).
         expect(SECTION_KEYS.catalog).toHaveLength(39 + 7 + 9);
     });

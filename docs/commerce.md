@@ -103,6 +103,7 @@ total     = subtotal + shipping - couponDiscount
 | `removeItem(productId, variant?)` | Removes by composite key |
 | `updateQuantity(productId, qty, variant?)` | Auto-removes if qty ≤ 0 |
 | `clearCart()` | Wipes items + coupon from localStorage |
+| `takeServerUnitPrices(lines)` | `order-confirm-1`: after a `price-changed` answer, each item with the same product, variant and quantity as an answer line gets `priceInputs = { price: <server unit price, 2 decimals> }` and `unitPrice` = that number (the server's unit price already holds the added costs). Also an item saved before `order-price-1`, so it never falls back to its old `unitPrice`. The item's volume tiers are not kept |
 | `applyCoupon(code, discount)` | Stores coupon state |
 | `removeCoupon()` | Clears coupon state |
 
@@ -228,9 +229,31 @@ x-tenant-id: <tenantId>
         personalizations: [{ label, value, addedCost }],
         selectedVariant
     }],
-    paymentMethod, currency, couponCode, requestedDeliveryDate
+    paymentMethod, currency, couponCode, requestedDeliveryDate,
+    expectedTotal          // order-confirm-1: the total the Place Order screen shows, rounded to cents
 }
 ```
+
+### Price confirmation (`order-confirm-1`)
+
+**Shop rule: an order is created only with a total the visitor saw.** The cart is a snapshot in the visitor's
+browser, and the checkout page is cached with the delivery figures of its build. When a price, a volume tier, an added
+cost, the delivery settings or a coupon changed after the visitor filled the cart, the server's total differs from the
+total on the screen. Then the server does not create the order. The checkout shows the server's figures (each line
+total, subtotal, shipping, discount, total) and a notice, keeps the cart, and does not go to the confirmation page.
+The notice is the shop's own text of the label `pricesChanged` (Admin > Labels > "Checkout - Payment & Submit"; empty
+→ the default of the shop's language: English "Prices have changed. Check the new total, then place the order
+again.", Romanian in the `ro` pack). The order server reads it from the shop's settings and sends it with the new
+figures; the checkout page does not carry it, so the page itself is unchanged.
+The visitor checks the new total and presses Place Order again; that press sends the shown total, so one confirmation
+is enough when nothing changes again. Honouring the old price is not offered (the server stays the only source of
+prices). Record: `docs/slices/order-confirm-1.md`.
+
+- The shown server figures stay while the cart holds the same items and quantities; a change in the cart drops them
+  and the figures come from the cart again.
+- The cart items take the server's unit prices (`takeServerUnitPrices`), so the cart page shows the same line totals.
+  The cart page still computes shipping and the coupon discount from its own cached figures.
+- A request without `expectedTotal` (a page loaded before this rule) is handled as before: no comparison.
 
 ### Facebook Pixel
 - Fires `InitiateCheckout` on submit: `content_ids`, `num_items`, `value`, `currency`
@@ -268,6 +291,25 @@ Duplicates validation even if client already validated — never trust client st
    - **Percentage**: `(value / 100) * subtotal`, capped by `maximumDiscount`
    - **Fixed amount**: Direct subtraction
    - Never exceeds subtotal
+
+### Total Confirmation (`order-confirm-1`)
+
+After the coupon block, BEFORE any write (the order counter is the first write): when the request has
+`expectedTotal` and `sameAmountInCents(expectedTotal, total)` is false, the handler answers **409** and writes nothing
+(no counter update, no transaction, no mail). Body: the shared `PriceChangedAnswer` —
+
+```
+{ code: "price-changed", error: "Prices have changed. Check the new total, then place the order again.",
+  message /* the tenant's pricesChanged text: override, else the pack of its locale; blank → pack */,
+  total /* rounded to cents */, subtotal, shippingCost, couponDiscount,
+  items: [{ productId, selectedVariant?, quantity, unitPrice /* per unit, added costs included */, totalPrice }] }
+```
+
+`items` are the request's items in request order. Besides them, only `message` (a public label of the tenant's own
+site; ruling OC1-TEXT = A); nothing else of the product or the tenant. `error` stays English; the checkout shows
+`message`, or `error` when `message` is absent or blank. `expectedTotal`
+negative or not a number → 400 `Invalid input` (schema). Equal totals → the order is created exactly as without the
+field.
 
 ### Atomic Order Counter
 

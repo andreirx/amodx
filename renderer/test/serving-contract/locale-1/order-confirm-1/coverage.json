@@ -1,0 +1,18 @@
+{
+  "slice": "order-confirm-1",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for ORDER-CONFIRM-1 (record docs/slices/order-confirm-1.md; ruling OC1-TEXT = A): the one commerce key this slice adds, `pricesChanged`, the checkout's notice after a `price-changed` answer. It is NOT in the checkout's `strings` prop (the first render stays byte-identical): the order handler (backend/src/orders/create.ts) resolves it from the tenant item — override, else the pack of the tenant's locale; a blank override gives the pack text — into the 409 answer's `message`, and CheckoutPageView shows that text. Its checks: the handler's resolution (default, ro pack, override, blank override) and the checkout showing the answer's message. No serving row: the text appears only after a 409, never on a captured page. Not a count key. Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": [],
+    "catalog": [],
+    "commerce": ["pricesChanged"]
+  },
+  "checks": {
+    "commerce.pricesChanged": [
+      { "test": "renderer/test/unit/order-confirm-1.test.ts", "case": "the answer's message (the tenant's pricesChanged text) is shown" },
+      { "test": "backend/test/unit/order-confirm-1.test.ts", "case": "message: tenant locale ro-RO → the ro pack text" },
+      { "test": "backend/test/unit/order-confirm-1.test.ts", "case": "message: a tenant override (Labels page, commerceStrings.pricesChanged)" },
+      { "test": "backend/test/unit/order-confirm-1.test.ts", "case": "message: no locale, no override → the default (the en pack text)" },
+      { "test": "backend/test/unit/order-confirm-1.test.ts", "case": "message: a blank override" }
+    ]
+  }
+}

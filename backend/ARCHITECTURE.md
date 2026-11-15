@@ -454,6 +454,15 @@ All entities in one table. Partition key `PK`, sort key `SK`.
   guard refuses with 403 (fail closed). `products/update.ts` writes with `attribute_exists(PK)` (a product deleted meanwhile →
   404, no `CATPROD#` rebuild), reads `imageLink: null` as "remove the image", and both product routes strip
   `importSource` (importer-owned) and answer an invalid body with 400 (was 500)
+- **Total confirmation (ORDER-CONFIRM-1, record `docs/slices/order-confirm-1.md`):** `orders/create.ts` compares the
+  request's optional `expectedTotal` (the total the checkout showed) with its own `total` by the shared
+  `sameAmountInCents`, after the coupon block and before the first write (the `COUNTER#ORDER` update). Different → 409
+  with the shared `PriceChangedAnswer` (`code: "price-changed"`, an English `error`, `total` rounded to cents,
+  `subtotal`, `shippingCost`, `couponDiscount`, per request item `productId`, `selectedVariant?`, `quantity`,
+  `unitPrice`, `totalPrice`) and no write of any kind. Absent → no comparison (a page from before the slice).
+  Ruling OC1-TEXT = A: the answer also has `message`, the tenant's commerce text `pricesChanged` resolved from the
+  tenant item it already read (`resolveLocaleStrings`; override, else the pack of its locale; a blank override → the
+  pack text, the `catalogServerTexts` rule). `error` stays English.
 - **Order line price (ORDER-PRICE-1, record `docs/slices/order-price-1.md`):** `orders/create.ts` charges each line by
   the shared `linePrice` (`@amodx/shared`) from the STORED product — the rule the product page and the cart show
   (option `priceOverride` > volume tier > `salePrice` > `price`, plus the matched personalizations' `addedCost`). It
@@ -537,6 +546,9 @@ order handlers with `lib/db.ts`, `publishAudit`, the cache-revalidation call and
 reCAPTCHA helpers mocked; each row inspects the commands that would reach DynamoDB.
 `test/unit/order-price-1.test.ts` (ORDER-PRICE-1) is the same shape for `orders/create.ts` (plus a mocked SES client,
 so the confirmation mail's item lines are read): each row inspects the `TransactWriteCommand`, or that none is sent.
+`test/unit/order-confirm-1.test.ts` (ORDER-CONFIRM-1) is the same shape for `orders/create.ts` (delivery config and
+coupon reads added to the mock): each 409 row checks that only `GetCommand`s were sent; the `message` rows cover the
+default, the `ro` pack, an override and a blank override.
 `test/unit/price-locale-1.test.ts` (PRICE-LOCALE-1) is the same shape for `orders/create.ts` and
 `products/bulk-price.ts` (audit, purge and the invalidation wrapper mocked): the tenant item's locale decides how a
 price text is read.

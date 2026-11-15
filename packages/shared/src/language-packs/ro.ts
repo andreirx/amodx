@@ -203,6 +203,9 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         items: "Produse",
         // LOCALE-1C: the category-showcase block (§ 6.2, proposed)
         showcaseEmpty: "Nu s-au găsit produse în această categorie.",
+        // ORDER-CONFIRM-1: the checkout notice after a price-changed answer (proposed; pending the operator's approval
+        // like the other RO texts)
+        pricesChanged: "Prețurile s-au schimbat. Verifică noul total, apoi plasează din nou comanda.",
     },
     catalog: {
         interestListFull: "Lista are deja 50 de produse. Scoateți un produs ca să adăugați altul.",

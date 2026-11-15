@@ -103,13 +103,13 @@ describe("the language packs", () => {
         }
     });
 
-    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c) + navCategoryBarLabel (shop-look-1a); 39 catalog keys and 21 shared commerce keys (1b) + 7 quote keys (cat-quote-1) + 9 server-text keys (cdl-1); 80 commerce-only keys (1d) + showcaseEmpty (1c); the count keys", () => {
+    it("the allocation so far: 51 site keys (1a) + errorTryAgain (1d) + 26 block keys (1c) + navCategoryBarLabel (shop-look-1a); 39 catalog keys and 21 shared commerce keys (1b) + 7 quote keys (cat-quote-1) + 9 server-text keys (cdl-1); 80 commerce-only keys (1d) + showcaseEmpty (1c) + pricesChanged (order-confirm-1); the count keys", () => {
         expect(SITE_KEYS).toHaveLength(52 + 26 + 1);
         expect(Object.keys(SiteStringsSchema.shape).slice(51)).toEqual(["errorTryAgain", ...SITE_1C.map(([k]) => k), "navCategoryBarLabel"]);
         expect(COMMERCE_1D_KEYS).toHaveLength(80);
         expect(new Set(COMMERCE_1D_KEYS).size).toBe(80);
-        expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80 + 1);
-        expect(Object.keys(CommerceStringsSchema.shape).slice(77 + 21)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"]);
+        expect(Object.keys(CommerceStringsSchema.shape)).toHaveLength(77 + 21 + 80 + 1 + 1);
+        expect(Object.keys(CommerceStringsSchema.shape).slice(77 + 21)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty", "pricesChanged"]);
         // CDL-1 (catalog-data-labels-1 § 3.1): + 9 server-text keys after the quote keys (test/cdl-1.test.ts pins them).
         expect(keys(CatalogStringsSchema.shape)).toHaveLength(39 + 7 + 9);
         expect(Object.keys(CatalogStringsSchema.shape).slice(39, 46)).toEqual(["quoteButton", "quoteTitle", "quoteCall", "quoteWhatsApp", "quoteEmail", "quoteMessage", "quoteClose"]);
@@ -120,12 +120,13 @@ describe("the language packs", () => {
         expect(Object.keys(PluralTextsSchema.shape)).toEqual([...PLURAL_CATEGORIES]);
     });
 
-    it("the EN commerce part: the 98 values of the start commit unchanged (key order included), then the 80 literals of 1d; no compatibility export is left (§ 10.2)", () => {
+    it("the EN commerce part: the 98 values of the start commit unchanged (key order included), then the 80 literals of 1d, showcaseEmpty (1c) and pricesChanged (order-confirm-1); no compatibility export is left (§ 10.2)", () => {
         const start = START.languagePacks.en.commerce;
         expect(Object.keys(start)).toHaveLength(98);
         expect(Object.fromEntries(Object.entries(EN_LANGUAGE_PACK.commerce).slice(0, 98))).toEqual(start);
         expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(0, 98)).toEqual(Object.keys(start));
-        expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(98)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"]);
+        expect(Object.keys(EN_LANGUAGE_PACK.commerce).slice(98)).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty", "pricesChanged"]);
+        expect(EN_LANGUAGE_PACK.commerce.pricesChanged).toBe("Prices have changed. Check the new total, then place the order again.");
         expect(EN_LANGUAGE_PACK.commerce.personalizationRequired).toBe('Please fill in "{label}"');
         expect(EN_LANGUAGE_PACK.commerce.orderStepPending).toBe("pending");
         expect(Object.keys(shared).filter((name) => /COMMERCE_STRINGS_DEFAULTS|getCommerceStrings/.test(name))).toEqual([]);
@@ -166,7 +167,7 @@ describe("the language packs", () => {
         expect(pluralCategoriesOf("ro")).toEqual(["one", "few", "other"]);
     });
 
-    it("LOCALE-1D: the RO pack holds the start commit's RO country-pack texts as literals, unchanged; its 1b values unchanged; then the 80 keys of 1d", () => {
+    it("LOCALE-1D: the RO pack holds the start commit's RO country-pack texts as literals, unchanged; its 1b values unchanged; then the 80 keys of 1d, showcaseEmpty (1c) and pricesChanged (order-confirm-1)", () => {
         const c = START.countryPacks.RO;
         const ro = RO_LANGUAGE_PACK.commerce as Record<string, unknown>;
         expect(Object.keys(c.defaultStrings)).toHaveLength(75);
@@ -174,7 +175,7 @@ describe("the language packs", () => {
         // The start commit's RO language pack (75 country-pack values + the 21 keys of 1b): every value unchanged.
         expect(Object.keys(START.languagePacks.ro.commerce)).toHaveLength(96);
         for (const [k, v] of Object.entries(START.languagePacks.ro.commerce)) expect(ro[k], k).toEqual(v);
-        expect(keys(ro).filter((k) => !Object.hasOwn(START.languagePacks.ro.commerce, k))).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty"].sort());
+        expect(keys(ro).filter((k) => !Object.hasOwn(START.languagePacks.ro.commerce, k))).toEqual([...COMMERCE_1D_KEYS, "showcaseEmpty", "pricesChanged"].sort());
         const s = RO_LANGUAGE_PACK.site;
         expect([s.cookieHeadline, s.cookieDescription, s.cookieDenyAll, s.cookieNecessaryOnly, s.cookieAcceptAll])
             .toEqual([c.gdpr.headline, c.gdpr.description, c.gdpr.denyAll, c.gdpr.necessaryOnly, c.gdpr.acceptAll]);

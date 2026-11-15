@@ -5,7 +5,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
-import { OrderInputSchema, normalizeEmail, linePrice, roundToCents } from "@amodx/shared";
+import { OrderInputSchema, normalizeEmail, linePrice, roundToCents, sameAmountInCents, resolveLocaleStrings, type PriceChangedAnswer } from "@amodx/shared";
 import { formatFromHeader } from "../lib/email-from.js";
 
 const ses = new SESClient({});
@@ -315,6 +315,38 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
 
         const total = subtotal + shippingCost - couponDiscount;
+
+        // ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 2): an order is created only with a total the visitor
+        // saw. Before the first write (the order-number counter below): the request's total differs in whole cents →
+        // 409 with this handler's figures for the request's own items, and nothing is written. No expectedTotal → no
+        // comparison (a page loaded before ORDER-CONFIRM-1). `validatedItems[i]` is the line of `items[i]` (the loop
+        // above pushes one line per item, in order, or returns).
+        const { expectedTotal } = parseResult.data;
+        if (expectedTotal !== undefined && !sameAmountInCents(expectedTotal, total)) {
+            // Ruling OC1-TEXT = A: `message` is the tenant's `pricesChanged` text, from the tenant item read above (its
+            // override, else the pack of its locale); a blank override gives the pack text (the rule of the backend's
+            // other locale texts, `catalogServerTexts`).
+            const texts = resolveLocaleStrings(tenantConfig);
+            const answer: PriceChangedAnswer = {
+                code: "price-changed",
+                error: "Prices have changed. Check the new total, then place the order again.",
+                message: texts.strings.commerce.pricesChanged.trim() || texts.defaults.commerce.pricesChanged,
+                total: roundToCents(total),
+                subtotal,
+                shippingCost,
+                couponDiscount,
+                items: validatedItems.map((line, i) => ({
+                    productId: line.productId,
+                    ...(items[i].selectedVariant !== undefined ? { selectedVariant: items[i].selectedVariant } : {}),
+                    quantity: line.quantity,
+                    unitPrice: Number(line.unitPrice),
+                    totalPrice: line.totalPrice,
+                })),
+            };
+            console.warn("Order refused: total differs from the total the visitor saw", { tenantId, expectedTotal, total: answer.total });
+            return { statusCode: 409, body: JSON.stringify(answer) };
+        }
+
         const currency = tenantConfig.currency || "USD";
 
         // --- Generate order number via atomic counter ---

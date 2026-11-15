@@ -624,6 +624,18 @@ CURRENT quantity across volume tiers (also after a merge in `addItem`). An item 
 Tests: `test/unit/order-price-1.test.ts`; the mocks of `cmrc-counties-1-checkout` and `locale-1d-client` re-export the
 real `cartLineTotal` (their items have no `priceInputs`, so their captured markup stays the oracle).
 
+**Total confirmation (slice `order-confirm-1`, record `docs/slices/order-confirm-1.md`).** `CheckoutPageView` sends
+`expectedTotal` = the shown total rounded to cents. On a 409 with `code: "price-changed"` (shared `PriceChangedAnswer`)
+it does not navigate and keeps the cart: it stores the answer with `cartKey` (the items' product, variant and quantity)
+and shows the answer's line totals (`priceChangedLineOf`), subtotal, shipping, discount and total while `cartKey` is
+unchanged — so the next press sends the server's total. A cart change drops them. `CartContext.takeServerUnitPrices`
+sets each matched item's `priceInputs` to `{ price: <server unit price> }` and `unitPrice` to that number, so
+`cartLineTotal` (the cart page) gives the server's line total; an item saved before `order-price-1` also gets
+`priceInputs`. Any other refusal takes the existing error path. The notice shows the answer's `message` (the tenant's
+`pricesChanged` text, resolved by the order handler — ruling OC1-TEXT = A); an answer without a non-blank `message` →
+its `error`. The key is NOT in the checkout's `strings` prop, so the first render is unchanged. Tests:
+`test/unit/order-confirm-1.test.ts`; coverage `test/serving-contract/locale-1/order-confirm-1/coverage.json`.
+
 **Price texts by locale (slice `price-locale-1`, record `docs/slices/price-locale-1.md`).** A price text is read by the
 shared `parseMoney` / `linePrice` with the tenant's locale (a `ro-RO` tenant's `12,50` = 12.5).
 - Product page: `SitePage` passes `AddToCartButton` a `priceLocale` prop — the normalised locale — ONLY when

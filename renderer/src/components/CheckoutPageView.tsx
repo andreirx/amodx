@@ -1,13 +1,13 @@
 "use client";
 
-import { useCart, cartLineTotal } from "@/context/CartContext";
+import { useCart, cartLineTotal, priceChangedLineOf } from "@/context/CartContext";
 import { useTenantUrl } from "@/lib/routing";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { trackFBEvent } from "@/lib/fbpixel";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
-import { fillTemplate, type LocaleStrings } from "@amodx/shared";
+import { fillTemplate, roundToCents, type LocaleStrings, type PriceChangedAnswer } from "@amodx/shared";
 
 /**
  * LOCALE-1D (docs/slices/locale-1.md § 5.2, § 5.3): the texts this view renders, resolved by `SitePage` (the 14 F
@@ -180,7 +180,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
     // Use configured counties, or country pack regions as fallback
     const counties = availableCounties.length > 0 ? availableCounties : defaultRegions;
     const showCountryField = availableCountries.length > 1;
-    const { items, subtotal, clearCart, coupon } = useCart();
+    const { items, subtotal, clearCart, coupon, takeServerUnitPrices } = useCart();
     const { getUrl } = useTenantUrl();
     const router = useRouter();
     const { data: session } = useSession();
@@ -189,7 +189,14 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
     const [error, setError] = useState("");
     const { execute: executeRecaptcha } = useRecaptcha("checkout");
 
-    const couponDiscount = coupon?.discount || 0;
+    // ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 4): the server's figures of the last `price-changed`
+    // answer, shown (instead of the cached page's figures) while the cart holds the items and quantities that answer
+    // priced (`cartKey`). A changed item or quantity → `shown` is null and the figures come from the cart again.
+    const [priceChanged, setPriceChanged] = useState<{ answer: PriceChangedAnswer; cartKey: string } | null>(null);
+    const cartKey = JSON.stringify(items.map(i => [i.productId, i.selectedVariant || "", i.quantity]));
+    const shown = priceChanged?.cartKey === cartKey ? priceChanged.answer : null;
+
+    const couponDiscount = shown ? shown.couponDiscount : (coupon?.discount || 0);
 
     const [form, setForm] = useState({
         customerName: "",
@@ -255,8 +262,9 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
         if (apiUrl && tenantId) fetchDates();
     }, [apiUrl, tenantId]);
 
-    const shippingCost = freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost;
-    const total = subtotal + shippingCost - couponDiscount;
+    const shownSubtotal = shown ? shown.subtotal : subtotal;
+    const shippingCost = shown ? shown.shippingCost : (freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold ? 0 : flatShippingCost);
+    const total = shown ? shown.total : subtotal + shippingCost - couponDiscount;
 
     const update = (field: string, value: string | boolean) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -331,6 +339,9 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 items: orderItems,
                 paymentMethod: form.paymentMethod,
                 currency,
+                // ORDER-CONFIRM-1 (§ 1 item 1): the total this screen shows, rounded to cents — a claim the server
+                // compares with its own total, never a price it charges.
+                expectedTotal: roundToCents(total),
             };
             if (coupon?.code) {
                 body.couponCode = coupon.code;
@@ -367,6 +378,15 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                 // resolved, so an empty stored text stays empty instead of falling to another key's text.
                 const notJson = Symbol("not JSON");
                 const data = await res.json().catch(() => notJson);
+                // ORDER-CONFIRM-1 (§ 1 item 4): the server's total differs from the one shown → show the server's
+                // figures, the cart items take its unit prices; no navigation, the cart is kept. The next press sends
+                // the shown total. Any other refusal takes the path below, as before.
+                if (res.status === 409 && data !== notJson && data?.code === "price-changed") {
+                    const answer = data as PriceChangedAnswer;
+                    setPriceChanged({ answer, cartKey });
+                    takeServerUnitPrices(answer.items);
+                    return;
+                }
                 setError(data === notJson ? strings.orderFailed : (data.error || fillTemplate(strings.orderFailedStatus, { status: res.status })));
                 return;
             }
@@ -609,7 +629,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
 
                             <div className="space-y-3 max-h-64 overflow-y-auto">
                                 {items.map((item) => {
-                                    const lineTotal = cartLineTotal(item);
+                                    const lineTotal = shown ? (priceChangedLineOf(item, shown.items)?.totalPrice ?? cartLineTotal(item)) : cartLineTotal(item);
                                     return (
                                         <div key={item.selectedVariant ? `${item.productId}__${item.selectedVariant}` : item.productId} className="flex gap-3 text-sm">
                                             <div className="w-12 h-12 bg-muted rounded overflow-hidden shrink-0">
@@ -628,7 +648,7 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                             <div className="border-t pt-3 space-y-2 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">{strings.subtotal}</span>
-                                    <span>{subtotal.toFixed(2)} {currency}</span>
+                                    <span>{shownSubtotal.toFixed(2)} {currency}</span>
                                 </div>
                                 {couponDiscount > 0 && (
                                     <div className="flex justify-between text-green-600">
@@ -651,6 +671,14 @@ export function CheckoutPageView({ tenantId, apiUrl, confirmPrefix, cartPrefix, 
                                     <span>{total.toFixed(2)} {currency}</span>
                                 </div>
                             </div>
+
+                            {/* ORDER-CONFIRM-1 (ruling OC1-TEXT = A): the tenant's `pricesChanged` text, resolved by the order handler
+                                into the answer's `message`; an answer without a usable `message` → its `error`, as the other refusals. */}
+                            {shown && (
+                                <div role="status" className="border border-primary bg-primary/5 text-foreground text-sm rounded-md p-3">
+                                    {typeof shown.message === "string" && shown.message.trim() ? shown.message : shown.error}
+                                </div>
+                            )}
 
                             {error && (
                                 <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md p-3">

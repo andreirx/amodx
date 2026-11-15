@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { linePrice, roundToCents, type LinePriceInputs } from "@amodx/shared";
+import { linePrice, roundToCents, type LinePriceInputs, type PriceChangedLine } from "@amodx/shared";
 
 export interface CartItem {
     productId: string;
@@ -51,6 +51,7 @@ interface CartContextType {
     removeItem: (productId: string, selectedVariant?: string) => void;
     updateQuantity: (productId: string, quantity: number, selectedVariant?: string) => void;
     clearCart: () => void;
+    takeServerUnitPrices: (lines: readonly PriceChangedLine[]) => void;
     subtotal: number;
     itemCount: number;
     cartPrefix: string;
@@ -66,6 +67,15 @@ function getCartKey(tenantId: string) {
 
 function getItemKey(item: { productId: string; selectedVariant?: string }) {
     return item.selectedVariant ? `${item.productId}__${item.selectedVariant}` : item.productId;
+}
+
+/**
+ * ORDER-CONFIRM-1: the line of a `price-changed` answer that priced this cart item — same product, same variant (an
+ * absent and an empty variant are the same, as in the cart's item key) and same quantity — or `undefined`. Read by
+ * `takeServerUnitPrices` and by the checkout's order summary.
+ */
+export function priceChangedLineOf(item: Pick<CartItem, "productId" | "selectedVariant" | "quantity">, lines: readonly PriceChangedLine[]): PriceChangedLine | undefined {
+    return lines.find(l => getItemKey(l) === getItemKey(item) && l.quantity === item.quantity);
 }
 
 export function CartProvider({ children, tenantId, cartPrefix }: { children: ReactNode; tenantId: string; cartPrefix: string }) {
@@ -130,6 +140,23 @@ export function CartProvider({ children, tenantId, cartPrefix }: { children: Rea
         ));
     }, [removeItem]);
 
+    /**
+     * ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 4): after a `price-changed` answer, each cart item that
+     * matches an answer line (same product, variant and quantity) takes the server's unit price. `priceInputs` becomes
+     * `{ price: <unit price as machine text> }` — the server's unit price already holds the added costs, so there are no
+     * `addedCosts` — and `unitPrice` the same number. An item saved before ORDER-PRICE-1 (no `priceInputs`) gets
+     * `priceInputs` too, so `cartLineTotal` never falls back to its old `unitPrice` (nor adds its personalization costs
+     * a second time). The item's volume tiers are not kept: the answer has none (a later quantity change across a tier
+     * shows the flat price; the next order then gets one more `price-changed` answer). Other items are not changed.
+     */
+    const takeServerUnitPrices = useCallback((lines: readonly PriceChangedLine[]) => {
+        setItems(prev => prev.map(i => {
+            const line = priceChangedLineOf(i, lines);
+            if (!line) return i;
+            return { ...i, unitPrice: line.unitPrice, priceInputs: { price: line.unitPrice.toFixed(2) } };
+        }));
+    }, []);
+
     const clearCart = useCallback(() => {
         setItems([]);
         setCouponState(null);
@@ -140,7 +167,7 @@ export function CartProvider({ children, tenantId, cartPrefix }: { children: Rea
     const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
     return (
-        <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, subtotal, itemCount, cartPrefix, coupon, setCoupon }}>
+        <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, takeServerUnitPrices, subtotal, itemCount, cartPrefix, coupon, setCoupon }}>
             {children}
         </CartContext.Provider>
     );
