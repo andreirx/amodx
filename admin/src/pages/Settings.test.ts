@@ -54,7 +54,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HeaderTaglineAndCategoryBarControls, FooterBrandAndColumnsControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -155,6 +155,10 @@ const CATALOG = {
  *   HeaderColorControls (Navbar & Layout card, first in the same fragment slot as the two footer groups, so the card's
  *   child count and its Radix ids are unchanged). The captures are NOT re-taken; the controls below include one byte next
  *   to this group.
+ * SHOP-LOOK-1A (docs/slices/shop-look-1a.md; same procedure) adds exactly TWO groups, the new controls:
+ *   HeaderTaglineAndCategoryBarControls (first in the same fragment slot; rendered with `categories: null`, as the page
+ *   renders before its categories load) and FooterBrandAndColumnsControls (last in the slot). The captures are NOT
+ *   re-taken; the controls below include one byte next to each group.
  * The three wider widths in the two width lists are Radix `SelectItem`s, which a closed Select does not render: they add
  * no byte; the lists are pinned below (`HEADER_WIDTH_OPTIONS`, `PAGE_WIDTH_OPTIONS`).
  */
@@ -165,6 +169,8 @@ const THEME_GROUPS = (config: Record<string, any>) => [
     renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} })),
     renderToStaticMarkup(createElement(FooterColorControls, { config, setConfig: () => {} })),
     renderToStaticMarkup(createElement(HeaderColorControls, { config, setConfig: () => {} })),
+    renderToStaticMarkup(createElement(HeaderTaglineAndCategoryBarControls, { config, setConfig: () => {}, categories: null })),
+    renderToStaticMarkup(createElement(FooterBrandAndColumnsControls, { config, setConfig: () => {} })),
 ];
 function withoutCatTheme(html: string, config: Record<string, unknown>): string {
     let out = html;
@@ -257,10 +263,14 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         const footer = THEME_GROUPS(CONTENT)[3];
         const footerColours = THEME_GROUPS(COMMERCE)[4];
         const headerColours = THEME_GROUPS(CONTENT)[5];
+        const taglineAndBar = THEME_GROUPS(COMMERCE)[6];
+        const brandAndColumns = THEME_GROUPS(CONTENT)[7];
         const mutations: [string, "content" | "commerce", Record<string, unknown>][] = [
             [once(commerce, footerColours, `${footerColours}<i></i>`), "commerce", COMMERCE],
             [once(content, headerColours, `${headerColours} `), "content", CONTENT],
             [once(commerce, headerColours, `<b></b>${headerColours}`), "commerce", COMMERCE],
+            [once(commerce, taglineAndBar, `${taglineAndBar}<i></i>`), "commerce", COMMERCE],
+            [once(content, brandAndColumns, ` ${brandAndColumns}`), "content", CONTENT],
             [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT],
             [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT],
             [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE],
@@ -452,6 +462,136 @@ describe("Settings — the header colours (HEADER-COLOURS-1)", () => {
         expect(withHeaderKey(set, "backgroundColor", "").header).toEqual({ showLogo: true, navHeight: "h-20" });
         expect(withHeaderKey({}, "textColor", "")).toEqual({ header: {} });
         expect(config.header).toEqual({ showLogo: true, navHeight: "h-20", textColor: "#1f2937" });   // the draft is not mutated
+    });
+});
+
+// SHOP-LOOK-1A (docs/slices/shop-look-1a.md, taxonomy row "admin: clear a field"): the tagline, the category bar picker,
+// the footer brand text and the footer columns. Every control sets its key; clearing it removes the key (never "" or []).
+describe("Settings — tagline, category bar, footer brand text and columns (SHOP-LOOK-1A)", () => {
+    const CATS = [{ id: "c1", name: "Carpet" }, { id: "c2", name: "Vinyl" }, { id: "c3", name: "Old stock", status: "hidden" }];
+    const header = (config: Record<string, any>, categories: any = CATS) => renderToStaticMarkup(createElement(HeaderTaglineAndCategoryBarControls, { config, setConfig: () => {}, categories }));
+    const footer = (config: Record<string, any>) => renderToStaticMarkup(createElement(FooterBrandAndColumnsControls, { config, setConfig: () => {} }));
+    /** The rendered element tree of a group, with `setConfig` recording what it was given. */
+    const tree = (component: any, props: Record<string, unknown>) => { const saved: any[] = []; return { saved, all: elements(component({ ...props, setConfig: (x: unknown) => saved.push(x) })) }; };
+    const byLabel = (all: any[], label: string) => all.filter((e) => e.props?.["aria-label"] === label);
+
+    it("both groups are in the Navbar & Layout card on every site kind: the header group first in the slot (before Header Colours), the footer group last (after Footer Colours)", () => {
+        for (const config of [CONTENT, COMMERCE, CATALOG]) {
+            const html = renderSettings(config);
+            const card = html.indexOf(">Navbar &amp; Layout<");
+            const first = html.indexOf(renderToStaticMarkup(createElement(HeaderTaglineAndCategoryBarControls, { config, setConfig: () => {}, categories: null })));
+            const colours = renderToStaticMarkup(createElement(HeaderColorControls, { config, setConfig: () => {} }));
+            expect(first, String(config.name)).toBeGreaterThan(card);
+            expect(html.indexOf(colours), String(config.name)).toBe(first + header(config, null).length);
+            const footerColours = renderToStaticMarkup(createElement(FooterColorControls, { config, setConfig: () => {} }));
+            expect(html.indexOf(footer(config)), String(config.name)).toBe(html.indexOf(footerColours) + footerColours.length);
+            for (const label of [">Tagline<", ">Category Bar<", ">Footer Brand Text<", ">Footer Columns<"]) expect(html.split(label).length - 1, `${config.name} ${label}`).toBe(1);
+        }
+    });
+
+    it("absent: empty tagline, no bar row, empty brand text, no column; stored: the values are shown (names from the category list, in the stored order)", () => {
+        const none = header({});
+        expect(none).toContain('maxLength="60" placeholder="e.g. Since 1998" value=""');
+        expect(none).toContain("Add a category…");
+        expect(none).not.toContain('aria-label="Remove"');
+        const set = header({ header: { tagline: "Since 1998", categoryBarIds: ["c2", "c1"] } });
+        expect(set).toContain('value="Since 1998"');
+        expect(set.indexOf(">Vinyl<")).toBeLessThan(set.indexOf(">Carpet<"));
+        expect([...set.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", "c3"]);     // only the categories not picked
+        const empty = footer({});
+        expect(empty).toContain('maxLength="400"></textarea>');
+        expect(empty).not.toContain('aria-label="Remove column"');
+        const columns = footer({ footer: { brandText: "Since 1998.", columns: [{ heading: "Explore", links: [{ label: "Guides", href: "/guides" }] }] } });
+        expect(columns).toContain(">Since 1998.</textarea>");
+        for (const v of ['value="Explore"', 'value="Guides"', 'value="/guides"']) expect(columns).toContain(v);
+    });
+
+    it("a picked id with no category is named as skipped; a hidden one too; before the list loads, the id is shown and the picker is off", () => {
+        const html = header({ header: { categoryBarIds: ["c3", "gone"] } });
+        expect(html).toContain(">Old stock (hidden: skipped on the site)<");
+        expect(html).toContain(">gone (not found: skipped on the site)<");
+        const loading = header({ header: { categoryBarIds: ["c1"] } }, null);
+        expect(loading).toContain(">c1<");
+        expect(loading).toMatch(/<select [^>]*disabled=""[^>]*><option value="" selected="">Categories not loaded<\/option><\/select>/);
+    });
+
+    it("tagline: set → saved under header.tagline; cleared or whitespace only → the key removed; the other header keys kept; the draft not mutated", () => {
+        const config = { header: { navHeight: "h-20", backgroundColor: "#f5f1ea" } };
+        const { saved, all } = tree(HeaderTaglineAndCategoryBarControls, { config, categories: CATS });
+        const input = all.find((e) => e.props?.placeholder === "e.g. Since 1998");
+        input.props.onChange({ target: { value: "Since 1998" } });
+        expect(saved.at(-1).header).toEqual({ navHeight: "h-20", backgroundColor: "#f5f1ea", tagline: "Since 1998" });
+        for (const cleared of ["", "   "]) {
+            input.props.onChange({ target: { value: cleared } });
+            expect(saved.at(-1).header, JSON.stringify(cleared)).toEqual({ navHeight: "h-20", backgroundColor: "#f5f1ea" });
+            expect(Object.hasOwn(saved.at(-1).header, "tagline")).toBe(false);
+        }
+        expect(withHeaderKey({ header: { tagline: "x" } } as any, "tagline", "").header).toEqual({});
+        expect(config.header).toEqual({ navHeight: "h-20", backgroundColor: "#f5f1ea" });
+    });
+
+    it("category bar: pick appends in order; up / down reorder; remove drops; removing the last one removes the key", () => {
+        const config = { header: { navHeight: "h-20", categoryBarIds: ["c1", "c2"] } };
+        const { saved, all } = tree(HeaderTaglineAndCategoryBarControls, { config, categories: CATS });
+        all.find((e) => e.type === "select").props.onChange({ target: { value: "c3" } });
+        expect(saved.at(-1).header).toEqual({ navHeight: "h-20", categoryBarIds: ["c1", "c2", "c3"] });
+        all.find((e) => e.type === "select").props.onChange({ target: { value: "" } });            // the prompt option: no change
+        expect(saved).toHaveLength(1);
+        byLabel(all, "Move down")[0].props.onClick();
+        expect(saved.at(-1).header.categoryBarIds).toEqual(["c2", "c1"]);
+        byLabel(all, "Move up")[1].props.onClick();
+        expect(saved.at(-1).header.categoryBarIds).toEqual(["c2", "c1"]);
+        expect(byLabel(all, "Move up")[0].props.disabled).toBe(true);
+        expect(byLabel(all, "Move down")[1].props.disabled).toBe(true);
+        byLabel(all, "Remove")[0].props.onClick();
+        expect(saved.at(-1).header).toEqual({ navHeight: "h-20", categoryBarIds: ["c2"] });
+        const one = tree(HeaderTaglineAndCategoryBarControls, { config: { header: { navHeight: "h-20", categoryBarIds: ["c2"] } }, categories: CATS });
+        byLabel(one.all, "Remove")[0].props.onClick();
+        expect(one.saved.at(-1).header).toEqual({ navHeight: "h-20" });
+        expect(Object.hasOwn(one.saved.at(-1).header, "categoryBarIds")).toBe(false);
+        expect(config.header.categoryBarIds).toEqual(["c1", "c2"]);
+    });
+
+    it("category bar: at 12 picked ids the picker is off (the limit of PUT /settings)", () => {
+        const twelve = Array.from({ length: 12 }, (_, i) => `x${i}`);
+        const html = header({ header: { categoryBarIds: twelve } });
+        expect(html).toMatch(/<select [^>]*disabled=""[^>]*><option value="" selected="">12 categories is the limit<\/option>/);
+    });
+
+    it("footer brand text: set → footer.brandText; cleared or whitespace only → the key removed; the colours and width kept", () => {
+        const config = { footer: { contentMaxWidth: "max-w-7xl", backgroundColor: "#111111" } };
+        const { saved, all } = tree(FooterBrandAndColumnsControls, { config });
+        const area = all.find((e) => e.type === "textarea");
+        area.props.onChange({ target: { value: "Floors since 1998." } });
+        expect(saved.at(-1).footer).toEqual({ contentMaxWidth: "max-w-7xl", backgroundColor: "#111111", brandText: "Floors since 1998." });
+        for (const cleared of ["", " \n "]) {
+            area.props.onChange({ target: { value: cleared } });
+            expect(saved.at(-1).footer).toEqual({ contentMaxWidth: "max-w-7xl", backgroundColor: "#111111" });
+        }
+    });
+
+    it("footer columns: add a column and a link, edit them, remove the link and the column; removing the last column removes the key; 4 columns and 12 links are the limits", () => {
+        const { saved, all } = tree(FooterBrandAndColumnsControls, { config: { footer: { backgroundColor: "#111111" } } });
+        const addColumn = all.find((e) => Array.isArray(e.props?.children) && e.props.children.includes(" Add Column"));
+        addColumn.props.onClick();
+        expect(saved.at(-1).footer).toEqual({ backgroundColor: "#111111", columns: [{ heading: "", links: [] }] });
+        const config = { footer: { backgroundColor: "#111111", columns: [{ heading: "Explore", links: [{ label: "Guides", href: "/guides" }] }] } };
+        const edit = tree(FooterBrandAndColumnsControls, { config });
+        edit.all.find((e) => e.props?.placeholder === "Heading (e.g. Explore)").props.onChange({ target: { value: "Learn" } });
+        expect(edit.saved.at(-1).footer.columns).toEqual([{ heading: "Learn", links: [{ label: "Guides", href: "/guides" }] }]);
+        edit.all.find((e) => e.props?.placeholder === "URL (e.g. /about)").props.onChange({ target: { value: "/learn" } });
+        expect(edit.saved.at(-1).footer.columns).toEqual([{ heading: "Explore", links: [{ label: "Guides", href: "/learn" }] }]);
+        byLabel(edit.all, "Remove link")[0].props.onClick();
+        expect(edit.saved.at(-1).footer.columns).toEqual([{ heading: "Explore", links: [] }]);
+        byLabel(edit.all, "Remove column")[0].props.onClick();
+        expect(edit.saved.at(-1).footer).toEqual({ backgroundColor: "#111111" });
+        expect(Object.hasOwn(edit.saved.at(-1).footer, "columns")).toBe(false);
+        expect(config.footer.columns[0].heading).toBe("Explore");                                      // the draft is not mutated
+        const full = { footer: { columns: Array.from({ length: 4 }, (_, i) => ({ heading: `H${i}`, links: Array.from({ length: 12 }, (_, j) => ({ label: `L${j}`, href: `/${j}` })) })) } };
+        const html = footer(full);
+        expect(html).toMatch(/disabled=""[^>]*>[^<]*<svg[^>]*>.*?<\/svg> Add Column</);
+        expect(html.split(/disabled=""[^>]*>[^<]*<svg[^>]*>(?:(?!<\/button>).)*? Add Link</).length - 1).toBe(4);
+        expect(withFooterKey({ footer: { columns: [] } } as any, "columns", [])).toEqual({ footer: {} });
     });
 });
 

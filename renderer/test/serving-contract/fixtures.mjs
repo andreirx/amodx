@@ -809,6 +809,47 @@ const CC1_ITEMS = [
     ...cc1Copy(CM1.commerce, "shopMalformed", "rugs", CC1_MALFORMED),
 ];
 
+// ── SHOP-LOOK-1A fixtures (docs/slices/shop-look-1a.md; design docs/slices/shop-look-1.md § 6.3) ───────────────────────
+// Three copies of the CM1 commerce tenant (its pages, products, the Commerce Bar and the search bar), each with a `locale`
+// ("en-US", written out), so none is an en-US subject of the `loc1-*` rows and none is in any `before/` capture: rows
+// `sl1a-*` read the running build only. All three hold the same two extra categories — `sl1a-tiles` (active) and
+// `sl1a-hidden` (status hidden) — and the same stored `header` keys, so the twins differ only by their key fields and the
+// new settings:
+//  - set: every new field (`SL1A_HEADER`, `SL1A_FOOTER`); the bar ids name, in this order, an active category, the hidden
+//    one, the CM1 category `rugs` and an id of no category → the bar shows "SL1A Tiles", then "Rugs";
+//  - plain: none of the new fields (the twin the other two are compared with);
+//  - blank: every new field present but drawn as absent — a whitespace tagline, bar ids that all resolve to nothing (hidden
+//    and missing), a whitespace brand text, an empty column list.
+export const SL1A = {
+    set: { id: "sl1a-set", host: "sl1a-set.serving-contract.test" },
+    plain: { id: "sl1a-plain", host: "sl1a-plain.serving-contract.test" },
+    blank: { id: "sl1a-blank", host: "sl1a-blank.serving-contract.test" },
+};
+export const SL1A_HEADER = { tagline: "SL1A since 1998", categoryBarIds: ["sl1a-tiles", "sl1a-hidden", "rugs", "sl1a-missing"] };
+export const SL1A_FOOTER = {
+    brandText: "SL1A floors since 1998.\nFamily run.",
+    columns: [
+        { heading: "SL1A Explore", links: [{ label: "SL1A Guides", href: "/guides" }, { label: "SL1A Shop", href: "/shop" }] },
+        { heading: "SL1A Company", links: [{ label: "SL1A About", href: "/about" }] },
+    ],
+};
+const SL1A_BLANK_HEADER = { tagline: "   ", categoryBarIds: ["sl1a-hidden", "sl1a-missing"] };
+const SL1A_BLANK_FOOTER = { brandText: "  ", columns: [] };
+const sl1aFields = (header, footer) => ({
+    locale: "en-US", name: "SL1A Shop", header: { showLogo: true, showTitle: true, ...header }, ...(footer ? { footer } : {}),
+    commerceBar: { enabled: true, phone: "+1 555 0177" },
+});
+const sl1aCategories = (tenantId) => [
+    cm1Category(tenantId, "sl1a-tiles", "sl1a-tiles", "SL1A Tiles"),
+    { ...cm1Category(tenantId, "sl1a-hidden", "sl1a-hidden", "SL1A Hidden"), status: "hidden" },
+];
+const SL1A_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.commerce, SL1A.set, sl1aFields(SL1A_HEADER, SL1A_FOOTER)),
+    ...localeCopy(CM1_ITEMS, CM1.commerce, SL1A.plain, sl1aFields()),
+    ...localeCopy(CM1_ITEMS, CM1.commerce, SL1A.blank, sl1aFields(SL1A_BLANK_HEADER, SL1A_BLANK_FOOTER)),
+    ...Object.values(SL1A).flatMap((t) => sl1aCategories(t.id)),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -855,6 +896,8 @@ export const ITEMS = [
     ...HC1_ITEMS,
     // category-content-1: the category-content tenants (above).
     ...CC1_ITEMS,
+    // shop-look-1a: the header and footer tenants (above).
+    ...SL1A_ITEMS,
 ];
 
 /**

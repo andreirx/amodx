@@ -103,6 +103,13 @@ src/
     │                           #   help line) first in the same fragment slot, before FooterWidthControl;
     │                           #   withHeaderKey sets/removes one header colour key and keeps the other header keys.
     │                           #   Compared minus exactly six groups; captures not re-taken.
+    │                           #   SHOP-LOOK-1A: HeaderTaglineAndCategoryBarControls (Tagline; Category Bar: pick from
+    │                           #   GET /categories, order up/down, remove; ≤ 12) first in the same fragment slot, and
+    │                           #   FooterBrandAndColumnsControls (Footer Brand Text; Footer Columns: ≤ 4 headings,
+    │                           #   ≤ 12 links each) last. withHeaderKey / withFooterKey also take tagline,
+    │                           #   categoryBarIds / brandText, columns; "" or an empty list removes the key. The page
+    │                           #   loads the categories beside the settings (`categories`, null until loaded). Compared
+    │                           #   minus exactly eight groups; captures not re-taken.
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings; cdl-1: the "Import labels"

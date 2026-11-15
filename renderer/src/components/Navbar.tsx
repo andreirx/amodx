@@ -42,6 +42,8 @@ export function Navbar({
                            navFont = false,
                            linkArrows = false,
                            colorStyle,
+                           tagline,
+                           categoryBar,
                        }: {
     siteName: string;
     logo?: string;
@@ -86,6 +88,18 @@ export function Navbar({
      * → React writes no `style` attribute, so the markup is unchanged.
      */
     colorStyle?: React.CSSProperties;
+    /**
+     * SHOP-LOOK-1A: `header.tagline`, trimmed, beside the logo or title inside the logo link; hidden below `sm`. Passed by
+     * the layout only when non-blank (conditional spread), so no other site's props or markup change.
+     */
+    tagline?: string;
+    /**
+     * SHOP-LOOK-1A (SHOPLOOK-CATBAR = C): the header's second row, a `<nav>` inside this `<nav>`. `label` = the site key
+     * `navCategoryBarLabel` (its accessible name; it travels here, not in `strings`, so no other site's payload changes);
+     * `links` = the picked categories that resolved, in bar order (`href` = the category path, before `getUrl`). Passed by
+     * the layout only when at least one category resolved (conditional spread).
+     */
+    categoryBar?: { label: string; links: { label: string; href: string }[] };
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -132,6 +146,11 @@ export function Navbar({
                             {showTitle && (
                                 <span className={`font-bold text-foreground tracking-tight transition-all duration-300 ${scrolled ? titleSizeScrolled : titleSize}`}>
                                     {siteName}
+                                </span>
+                            )}
+                            {tagline && (
+                                <span className="hidden sm:inline text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                                    {tagline}
                                 </span>
                             )}
                         </Link>
@@ -228,6 +247,21 @@ export function Navbar({
                     </div>
                 </div>
             </div>
+
+            {/* --- CATEGORY BAR (SHOP-LOOK-1A) — the second row; one scrolling line on a phone --- */}
+            {categoryBar && (
+                <nav aria-label={categoryBar.label} className="border-t">
+                    <ul className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8 flex items-center gap-6 overflow-x-auto whitespace-nowrap py-2${nf}`}>
+                        {categoryBar.links.map((link, i) => (
+                            <li key={i}>
+                                <Link href={getUrl(link.href)} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                                    {link.label}
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </nav>
+            )}
 
             {/* --- MOBILE MENU (Dropdown) --- */}
             {isMobileOpen && (

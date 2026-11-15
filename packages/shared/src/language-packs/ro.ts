@@ -342,5 +342,6 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         reviewsShowLess: "Arată mai puțin",
         postsEmpty: "Nu s-au găsit articole.",
         postsLoadFailed: "Eroare API {status}",
+        navCategoryBarLabel: "Categorii",
     },
 };

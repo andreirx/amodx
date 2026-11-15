@@ -351,5 +351,6 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         reviewsShowLess: "Show less",
         postsEmpty: "No posts found.",
         postsLoadFailed: "API {status}",
+        navCategoryBarLabel: "Categories",
     },
 };

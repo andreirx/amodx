@@ -625,6 +625,13 @@ export const HeaderConfigSchema = z.object({
     // by the renderer's `app/[siteId]/layout.tsx#headerColorStyle`; the Top Bar, Commerce Bar and Search Bar ignore them.
     backgroundColor: CssColorSchema.optional(),
     textColor: CssColorSchema.optional(),
+    // SHOP-LOOK-1A (docs/slices/shop-look-1.md § 4.1): a short text beside the logo or title, inside the logo link; absent
+    // or whitespace only → no element (the navbar before this slice, byte for byte).
+    tagline: z.string().max(60).optional(),
+    // SHOP-LOOK-1A (ruling SHOPLOOK-CATBAR = C): the categories of the header's second row, by id, in bar order. The
+    // renderer reads each category's name and slug at render time and skips a hidden or missing one; absent, empty or no
+    // id that resolves → no second row.
+    categoryBarIds: z.array(z.string().min(1)).max(12).optional(),
 });
 
 // CAT-THEME-1 (§ 3 item 3): the footer's own width, a Tailwind class like `header.contentMaxWidth`; absent → the
@@ -633,10 +640,18 @@ export const HeaderConfigSchema = z.object({
 // BULK-PURGE-FOOTER-1 (Part B): the footer's own background and text colour, one value for the light and the dark
 // theme; absent → the theme's colours (the footer before this slice, byte for byte). Read by the renderer's
 // `app/[siteId]/layout.tsx` footer.
+// SHOP-LOOK-1A (docs/slices/shop-look-1.md § 4.1): `brandText` (a text in its own first column) and `columns` (named link
+// columns, each a heading and its links). Absent, blank or an empty list → today's footer, byte for byte. Links are raw
+// `href`s, as `footerLinks`.
 export const FooterConfigSchema = z.object({
     contentMaxWidth: z.string().optional(),
     backgroundColor: CssColorSchema.optional(),
     textColor: CssColorSchema.optional(),
+    brandText: z.string().max(400).optional(),
+    columns: z.array(z.strictObject({
+        heading: z.string().min(1).max(40),
+        links: z.array(z.strictObject({ label: z.string().min(1).max(60), href: z.string().min(1) })).max(12),
+    })).max(4).optional(),
 }).strict();
 
 // GDPR Cookie Consent Configuration
@@ -1097,6 +1112,9 @@ export const SiteStringsSchema = z.object({
     reviewsShowLess: z.string().optional(),             // "Show less"
     postsEmpty: z.string().optional(),                  // "No posts found."
     postsLoadFailed: z.string().optional(),             // "API {status}" (the browser fetch answered an HTTP error)
+    // SHOP-LOOK-1A (docs/slices/shop-look-1.md § 5): the accessible name of the header's category bar (components/Navbar.tsx
+    // `<nav aria-label>`). Last in the schema so the order of the older keys is unchanged.
+    navCategoryBarLabel: z.string().optional(),         // "Categories"
 });
 export type SiteStrings = z.infer<typeof SiteStringsSchema>;
 

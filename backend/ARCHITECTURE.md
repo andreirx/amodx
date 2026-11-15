@@ -195,8 +195,11 @@ src/
 │                          #   mutedColor/borderColor = shared colour grammar isCssColor, shape, cardImage, cardCategoryLine; older
 │                          #   theme fields stay unvalidated), and `footer` (FooterConfigSchema, strict) → 400 naming
 │                          #   the field before any read (test/unit/cat-theme-settings.test.ts). HEADER-COLOURS-1: on
-│                          #   an object `header`, its two colour keys only (HeaderConfigSchema.pick backgroundColor,
-│                          #   textColor = isCssColor); other header keys and a non-object header: as before.
+│                          #   an object `header`, the keys added since that slice only (HeaderCheckedKeysSchema =
+│                          #   HeaderConfigSchema.pick backgroundColor, textColor = isCssColor; SHOP-LOOK-1A: + tagline
+│                          #   ≤ 60, categoryBarIds ≤ 12 non-empty ids); other header keys and a non-object header: as
+│                          #   before. SHOP-LOOK-1A: footer.brandText ≤ 400 and footer.columns (≤ 4, strict, ≤ 12
+│                          #   links) via FooterConfigSchema (test/unit/shop-look-1a-settings.test.ts).
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/

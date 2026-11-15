@@ -41,6 +41,7 @@ import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesO
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
+    SL1A, SL1A_HEADER, SL1A_FOOTER,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -2968,6 +2969,117 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const [withBlocks, twin] = [await cc1Page("catBlocks", `${URL_PREFIX_DEFAULTS.category}/cf1-many`), await cc1Page("catPlain", `${URL_PREFIX_DEFAULTS.category}/cf1-many`)];
             assert.notDeepEqual(await cc1Resolved(withBlocks.body), await cc1Resolved(twin.body), "control: a category with blocks differs under the resolved comparison");
             console.log("  (cc1-category-no-content) blocks [] (catalog) and a non-array (commerce): page 1 HTML byte-equal to the twin, page 2 <main> byte-equal; payload equal resolved on both");
+        });
+
+        // ── ROWS (sl1a-*) — SHOP-LOOK-1A (docs/slices/shop-look-1a.md). Server HTML and payload of the running build for the
+        // SL1A tenants (fixtures.mjs `SL1A`: three copies of the CM1 commerce tenant). "Absent → today's bytes" for every site
+        // kind is proven by the rows that compare with a capture taken before this slice (cm1-*, loc1-*, ct1-*, cq1-*),
+        // unchanged: their tenants set none of the new fields. These rows prove that the set tenant differs from its twin
+        // EXACTLY by the new elements, and that blank values are drawn as absent.
+        const SL1A_PATHS = ["/", URL_PREFIX_DEFAULTS.shop, `${URL_PREFIX_DEFAULTS.product}/variant-rug`];
+        /** One page of an SL1A copy, its key fields written as the plain twin's (so twins compare byte for byte). */
+        const sl1aPage = async (key, reqPath) => {
+            const res = await request({ port: server.port, path: reqPath, host: SL1A[key].host });
+            assert.equal(res.status, 200, `${key} ${reqPath}: 200`);
+            const asPlain = (t) => t.split(SL1A[key].host).join(SL1A.plain.host).split(SL1A[key].id).join(SL1A.plain.id);
+            const { html } = splitFlight(res.body);
+            // The payload with its build-specific parts masked (client-reference rows → module identity; CM1-A1), so two
+            // renders compare by content: the extra `await` of the bar read shifts the order in which row ids are given.
+            sl1aSide ??= { buildId: (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim(), clientModules: await readClientModules(RENDERER_DIR) };
+            const flight = maskBody(res.body, sl1aSide).masked.split("\n--- flight payload rows, sorted ---\n")[1];
+            return { raw: html, html: asPlain(html), flight: asPlain(flight) };
+        };
+        let sl1aSide;
+        /** The payload as a resolved tree (row ids and row cuts ignored; locale-1/proof.mjs resolveFlight). */
+        const sl1aResolved = (flight) => { const t = resolveFlight(flight.split("\n")); return { root: canon(t.root), others: t.others, hints: t.hints }; };
+        const sl1aDiff = (a, b) => {
+            let i = 0;
+            while (i < a.length && a[i] === b[i]) i++;
+            return i === a.length && i === b.length ? "equal" : `at ${i}: ${JSON.stringify(a.slice(Math.max(0, i - 120), i + 120))} vs ${JSON.stringify(b.slice(Math.max(0, i - 120), i + 120))}`;
+        };
+        /** The text from `start` (included) to the first `end` after it (excluded); asserted to occur. */
+        const between = (text, start, end, what) => {
+            const i = text.indexOf(start);
+            assert.ok(i > -1, `${what}: start`);
+            const j = text.indexOf(end, i);
+            assert.ok(j > i, `${what}: end`);
+            return text.slice(i, j);
+        };
+        const SL1A_TODAY_GRID = '<div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">';
+        const SL1A_FLIGHT_TODAY_GRID = '["$","div",null,{"className":"grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground","children":[';
+        const SL1A_FLIGHT_NEW_GRID = '["$","div",null,{"className":"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-';
+        const SL1A_FLIGHT_COPYRIGHT = ',["$","div",null,{"className":"mt-8 pt-4 border-t';
+
+        test("(sl1a-header-footer) the tagline, the category bar and the footer's brand text and named columns: the set tenant differs from its twin exactly by these elements, in the HTML and in the payload, on the home, shop and product pages", async () => {
+            const tagline = `<span class="hidden sm:inline text-xs font-medium uppercase tracking-widest text-muted-foreground">${SL1A_HEADER.tagline}</span>`;
+            const BAR_OPEN = '<nav aria-label="Categories" class="border-t"><ul class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex items-center gap-6 overflow-x-auto whitespace-nowrap py-2">';
+            const LINK_CLASS = "text-sm font-medium text-muted-foreground hover:text-primary transition-colors";
+            const barProp = `,"categoryBar":${JSON.stringify({ label: "Categories", links: [{ label: "SL1A Tiles", href: `${URL_PREFIX_DEFAULTS.category}/sl1a-tiles` }, { label: "Rugs", href: `${URL_PREFIX_DEFAULTS.category}/rugs` }] })}`;
+            const taglineProp = `,"tagline":${JSON.stringify(SL1A_HEADER.tagline)}`;
+            const columnHtml = (c) => `<div class="space-y-1"><p class="font-semibold text-foreground mb-2">${c.heading}</p>${c.links.map((l) => `<a href="${l.href}" class="block hover:text-foreground">${l.label}</a>`).join("")}</div>`;
+            const brand = `<div><p class="whitespace-pre-line">${SL1A_FOOTER.brandText}</p></div>`;
+            for (const reqPath of SL1A_PATHS) {
+                const [page, plain] = [await sl1aPage("set", reqPath), await sl1aPage("plain", reqPath)];
+                // HTML, header: the tagline inside the logo link, after the title; the bar inside the header <nav>, after row 1.
+                assert.equal(page.html.split(tagline).length - 1, 1, `${reqPath}: the tagline once`);
+                assert.ok(page.html.includes(`>SL1A Shop</span>${tagline}</a>`), `${reqPath}: the tagline after the title, inside the logo link`);
+                assert.equal(page.html.split(BAR_OPEN).length - 1, 1, `${reqPath}: the bar once`);
+                const bar = between(page.html, BAR_OPEN, "</ul></nav>", `${reqPath} bar`) + "</ul></nav>";
+                // The stored ids: sl1a-tiles, sl1a-hidden (skipped), rugs, sl1a-missing (skipped) — links in the stored order.
+                const items = [...bar.slice(BAR_OPEN.length).matchAll(/<li><a ([^>]*)>([^<]*)<\/a><\/li>/g)];
+                assert.equal(items.map((m) => m[0]).join(""), bar.slice(BAR_OPEN.length, -"</ul></nav>".length), `${reqPath}: the bar holds only <li><a> items`);
+                assert.deepEqual(items.map((m) => [/href="([^"]*)"/.exec(m[1])?.[1], /class="([^"]*)"/.exec(m[1])?.[1], m[2]]),
+                    [[`${URL_PREFIX_DEFAULTS.category}/sl1a-tiles`, LINK_CLASS, "SL1A Tiles"], [`${URL_PREFIX_DEFAULTS.category}/rugs`, LINK_CLASS, "Rugs"]], `${reqPath}: links in the stored order, on the category path`);
+                const navStart = page.html.indexOf('<nav class="border-b bg-background/80 backdrop-blur">');
+                assert.ok(page.html.indexOf(bar) > navStart && page.html.indexOf(bar) < page.html.indexOf("</nav>", page.html.indexOf(bar) + bar.length), `${reqPath}: the bar is inside the header <nav>`);
+                for (const t of ["SL1A Hidden", "sl1a-missing"]) assert.ok(!page.raw.includes(t) && !page.flight.includes(t), `${reqPath}: ${t} is not rendered`);
+                // HTML, footer: the new grid replaces today's grid in its slot; brand text, named columns, then today's columns.
+                const todayGrid = between(plain.html, SL1A_TODAY_GRID, '<div class="mt-8', `${reqPath} twin grid`);
+                const todayInner = todayGrid.slice(SL1A_TODAY_GRID.length, -"</div>".length);
+                const todayCount = todayInner.split('<div class="space-y-1">').length - 1;
+                const newGridOpen = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${1 + SL1A_FOOTER.columns.length + todayCount} gap-8 text-sm text-muted-foreground">`;
+                const newGrid = newGridOpen + brand + SL1A_FOOTER.columns.map(columnHtml).join("") + todayInner + "</div>";
+                assert.ok(!page.html.includes(SL1A_TODAY_GRID), `${reqPath}: today's grid element is replaced`);
+                assert.equal(page.html.split(newGrid).length - 1, 1, `${reqPath}: the new grid holds the brand text, the named columns, then today's ${todayCount} column(s), byte for byte`);
+                // HTML: these three elements are the ONLY difference.
+                const htmlBack = page.html.split(tagline).join("").split(bar).join("").split(newGrid).join(todayGrid);
+                assert.equal(htmlBack, plain.html, `${reqPath}: HTML equal to the twin but for the three elements; ${sl1aDiff(htmlBack, plain.html)}`);
+                // Payload: the Navbar's two extra props, and the footer grid element in its slot; nothing else differs.
+                assert.equal(page.flight.split(taglineProp).length - 1, 1, `${reqPath}: the payload carries tagline once`);
+                assert.equal(page.flight.split(barProp).length - 1, 1, `${reqPath}: the payload carries categoryBar once`);
+                assert.ok(!plain.flight.includes('"tagline"') && !plain.flight.includes('"categoryBar"'), `${reqPath}: the twin's payload has neither prop`);
+                const setGrid = between(page.flight, SL1A_FLIGHT_NEW_GRID, SL1A_FLIGHT_COPYRIGHT, `${reqPath} set flight grid`);
+                const twinGrid = between(plain.flight, SL1A_FLIGHT_TODAY_GRID, SL1A_FLIGHT_COPYRIGHT, `${reqPath} twin flight grid`);
+                assert.ok(!page.flight.includes(SL1A_FLIGHT_TODAY_GRID), `${reqPath}: today's payload grid element is replaced`);
+                const twinChildren = twinGrid.slice(SL1A_FLIGHT_TODAY_GRID.length, -"]}]".length);
+                assert.ok(setGrid.endsWith(`,${twinChildren}]}]`), `${reqPath}: the payload grid ends with today's columns`);
+                for (const t of [JSON.stringify(SL1A_FOOTER.brandText), ...SL1A_FOOTER.columns.map((c) => JSON.stringify(c.heading))]) assert.ok(setGrid.includes(t), `${reqPath}: payload grid holds ${t}`);
+                const flightBack = page.flight.split(taglineProp).join("").split(barProp).join("").split(setGrid).join(twinGrid);
+                const [a, b] = [sl1aResolved(flightBack), sl1aResolved(plain.flight)];
+                assert.deepEqual(a, b, `${reqPath}: payload equal to the twin but for the two props and the grid (resolved); ${sl1aDiff(JSON.stringify(a), JSON.stringify(b))}`);
+                assert.notDeepEqual(sl1aResolved(page.flight), b, `${reqPath}: control — without the three substitutions the resolved payloads differ`);
+            }
+            // The compiled CSS has the new classes (literal in the sources, so Tailwind compiled them).
+            const page = await sl1aPage("set", "/");
+            const sheets = [...page.raw.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: SL1A.set.host })))).map((r) => r.body).join("\n");
+            for (const cls of ["sm\\:inline", "tracking-widest", "overflow-x-auto", "whitespace-nowrap", "whitespace-pre-line", "sm\\:grid-cols-2", "lg\\:grid-cols-5", "lg\\:grid-cols-8"]) {
+                assert.ok(css.includes(`.${cls}`), `compiled: .${cls}`);
+            }
+            console.log(`  (sl1a-header-footer) ${SL1A_PATHS.join(", ")}: tagline, bar (SL1A Tiles, Rugs; hidden and missing skipped) and footer grid are the only HTML differences; payload (resolved) differs by tagline, categoryBar and the grid element; ${sheets.length} stylesheet(s) hold the new classes`);
+        });
+
+        test("(sl1a-blank-as-absent) blank values draw as absent: a whitespace tagline, bar ids that are all hidden or missing, a whitespace brand text and an empty column list give the twin's HTML and payload", async () => {
+            for (const reqPath of SL1A_PATHS) {
+                const [page, plain] = [await sl1aPage("blank", reqPath), await sl1aPage("plain", reqPath)];
+                assert.ok(!page.html.includes('aria-label="Categories"') && !page.flight.includes('"categoryBar"') && !page.flight.includes('"tagline"'), `${reqPath}: no bar, no prop`);
+                assert.ok(page.html.includes(SL1A_TODAY_GRID), `${reqPath}: today's footer grid`);
+                assert.equal(page.html, plain.html, `${reqPath}: HTML equal to the twin; ${sl1aDiff(page.html, plain.html)}`);
+                const [a, b] = [sl1aResolved(page.flight), sl1aResolved(plain.flight)];
+                assert.deepEqual(a, b, `${reqPath}: payload equal to the twin (resolved); ${sl1aDiff(JSON.stringify(a), JSON.stringify(b))}`);
+            }
+            console.log(`  (sl1a-blank-as-absent) ${SL1A_PATHS.join(", ")}: HTML byte-equal to the twin; payload equal resolved`);
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

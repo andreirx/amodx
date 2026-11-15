@@ -6,7 +6,7 @@
 // page dynamic and break the ISR cache.
 import "../globals.css";
 import { Providers } from "@/components/Providers";
-import { getTenantConfig, hasActivePopups } from "@/lib/dynamo";
+import { getTenantConfig, hasActivePopups, getActiveCategoriesByIds } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { Navbar } from "@/components/Navbar";
 import { Analytics } from "@/components/Analytics";
@@ -19,7 +19,7 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, type TenantConfig } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, urlPrefixesOf, type TenantConfig } from "@amodx/shared";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { BODY_CLASS_NAME } from "@/lib/document-shell";
@@ -94,6 +94,13 @@ function headerColorStyle(header: TenantConfig["header"]): React.CSSProperties |
         ...(text ? { "--color-foreground": text, "--color-muted-foreground": text } : {}),
     } as React.CSSProperties;
 }
+
+/**
+ * SHOP-LOOK-1A (docs/slices/shop-look-1.md § 6.2) — the `lg:` column class of the footer grid with named columns, one
+ * literal per count (Tailwind compiles only the classes the sources name literally). The count is every column the grid
+ * holds: the brand text, the named columns (≤ 4) and the three existing columns (≤ 3), so at most 8.
+ */
+const FOOTER_LG_COLUMNS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5", "lg:grid-cols-6", "lg:grid-cols-7", "lg:grid-cols-8"];
 
 type Props = {
     children: React.ReactNode;
@@ -195,6 +202,61 @@ export default async function SiteLayout({ children, params }: Props) {
     const navFont = !!sanitizeFontFamily(config.theme?.fontNav as string, "");
     const footerStyle = footerColorStyle(config.footer);
     const headerStyle = headerColorStyle(config.header);
+    // SHOP-LOOK-1A (docs/slices/shop-look-1.md § 4, § 6.3; SHOPLOOK-CATBAR = C). Each new header piece reaches the Navbar
+    // by a conditional spread and only when it draws something, so a tenant without the fields renders the same props.
+    // The category bar reads its categories (≤ 12 GetCommands, `getActiveCategoriesByIds`) only when ids are stored; a hidden or
+    // missing category is skipped, and no resolved category → no bar. Links use the tenant's category path.
+    const tagline = typeof config.header?.tagline === "string" ? config.header.tagline.trim() : "";
+    const barIds = Array.isArray(config.header?.categoryBarIds) ? config.header.categoryBarIds.filter((id) => typeof id === "string" && id !== "") : [];
+    const categoryPrefix = urlPrefixesOf(config.urlPrefixes).category;
+    const barLinks = barIds.length > 0
+        ? (await getActiveCategoriesByIds(config.id, barIds)).map((c) => ({ label: c.name, href: `${categoryPrefix}/${c.slug}` }))
+        : [];
+    // The footer's brand text and named columns: blank text and an empty list draw nothing (today's footer).
+    const brandText = typeof config.footer?.brandText === "string" ? config.footer.brandText.trim() : "";
+    const footerColumns = Array.isArray(config.footer?.columns) ? config.footer.columns : [];
+
+    // Today's three footer columns, as elements (or false), used in either footer grid below (SHOP-LOOK-1A). The same
+    // values as the JSX they were before, so today's grid holds the same children.
+    const companyColumn = (config.companyDetails?.legalName || config.companyDetails?.address || config.companyDetails?.cui) && (
+        <div className="space-y-1">
+            {config.companyDetails?.legalName && (
+                <p className="font-semibold text-foreground">{config.companyDetails.legalName}</p>
+            )}
+            {config.companyDetails?.address && <p>{config.companyDetails.address}</p>}
+            {config.companyDetails?.cui && <p>{fillTemplate(site.footerTaxId, { value: config.companyDetails.cui })}</p>}
+            {config.companyDetails?.tradeRegister && <p>{fillTemplate(site.footerTradeRegister, { value: config.companyDetails.tradeRegister })}</p>}
+            {config.companyDetails?.phone && <p>{fillTemplate(site.footerPhone, { value: config.companyDetails.phone })}</p>}
+            {config.companyDetails?.email && <p>{config.companyDetails.email}</p>}
+        </div>
+    );
+    const linksColumn = (config.footerLinks || []).length > 0 && (
+        <div className="space-y-1">
+            <p className="font-semibold text-foreground mb-2">{site.footerLinksHeading}</p>
+            {(config.footerLinks || []).map((link: any, i: number) => (
+                <a key={i} href={link.href} className="block hover:text-foreground">{link.label}</a>
+            ))}
+        </div>
+    );
+    const legalColumn = (config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (() => {
+        return (
+        <div className="space-y-1">
+            <p className="font-semibold text-foreground mb-2">{site.footerLegalHeading}</p>
+            {config.legalLinks?.termsUrl && (
+                <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">{site.legalTermsLabel}</a>
+            )}
+            {config.legalLinks?.privacyUrl && (
+                <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">{site.legalPrivacyLabel}</a>
+            )}
+            {config.legalLinks?.anpcUrl && (
+                <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{site.legalConsumerProtectionLabel}</a>
+            )}
+            {config.legalLinks?.anpcSalUrl && (
+                <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{site.legalDisputeResolutionLabel}</a>
+            )}
+        </div>
+        );
+    })();
 
     return (
         <html lang={localeLanguageSubtag(config.locale)}>
@@ -309,6 +371,8 @@ export default async function SiteLayout({ children, params }: Props) {
                         {...(navFont ? { navFont: true } : {})}
                         {...(editorial ? { linkArrows: true } : {})}
                         {...(headerStyle ? { colorStyle: headerStyle } : {})}
+                        {...(tagline ? { tagline } : {})}
+                        {...(barLinks.length > 0 ? { categoryBar: { label: site.navCategoryBarLabel, links: barLinks } } : {})}
                     />
 
                 </div>
@@ -327,52 +391,40 @@ export default async function SiteLayout({ children, params }: Props) {
                     BULK-PURGE-FOOTER-1: `footer.backgroundColor` / `footer.textColor` override both shapes (footerColorStyle). */}
                 <footer className={editorial ? "border-t py-12 bg-muted" : "border-t py-12 bg-muted/30"} {...(footerStyle ? { style: footerStyle } : {})}>
                     <div className={`${config.footer?.contentMaxWidth || config.header?.contentMaxWidth || "max-w-7xl"} mx-auto px-6`}>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">
-                            {/* Column 1: Company Details */}
-                            {(config.companyDetails?.legalName || config.companyDetails?.address || config.companyDetails?.cui) && (
-                                <div className="space-y-1">
-                                    {config.companyDetails?.legalName && (
-                                        <p className="font-semibold text-foreground">{config.companyDetails.legalName}</p>
-                                    )}
-                                    {config.companyDetails?.address && <p>{config.companyDetails.address}</p>}
-                                    {config.companyDetails?.cui && <p>{fillTemplate(site.footerTaxId, { value: config.companyDetails.cui })}</p>}
-                                    {config.companyDetails?.tradeRegister && <p>{fillTemplate(site.footerTradeRegister, { value: config.companyDetails.tradeRegister })}</p>}
-                                    {config.companyDetails?.phone && <p>{fillTemplate(site.footerPhone, { value: config.companyDetails.phone })}</p>}
-                                    {config.companyDetails?.email && <p>{config.companyDetails.email}</p>}
-                                </div>
-                            )}
+                        {/* SHOP-LOOK-1A (§ 6.3 rule 1): one slot. With a brand text or named columns, a wider grid replaces
+                            today's grid element whole: brand text, named columns, then today's three columns; else today's
+                            grid element, unchanged. */}
+                        {brandText || footerColumns.length > 0 ? (
+                            <div className={`grid grid-cols-1 sm:grid-cols-2 ${FOOTER_LG_COLUMNS[(brandText ? 1 : 0) + footerColumns.length + [companyColumn, linksColumn, legalColumn].filter(Boolean).length]} gap-8 text-sm text-muted-foreground`}>
+                                {brandText && (
+                                    <div>
+                                        <p className="whitespace-pre-line">{brandText}</p>
+                                    </div>
+                                )}
+                                {footerColumns.map((column, i) => (
+                                    <div key={i} className="space-y-1">
+                                        <p className="font-semibold text-foreground mb-2">{column.heading}</p>
+                                        {(column.links || []).map((link, j) => (
+                                            <a key={j} href={link.href} className="block hover:text-foreground">{link.label}</a>
+                                        ))}
+                                    </div>
+                                ))}
+                                {companyColumn}
+                                {linksColumn}
+                                {legalColumn}
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-muted-foreground">
+                                {/* Column 1: Company Details */}
+                                {companyColumn}
 
-                            {/* Column 2: Footer Links */}
-                            {(config.footerLinks || []).length > 0 && (
-                                <div className="space-y-1">
-                                    <p className="font-semibold text-foreground mb-2">{site.footerLinksHeading}</p>
-                                    {(config.footerLinks || []).map((link: any, i: number) => (
-                                        <a key={i} href={link.href} className="block hover:text-foreground">{link.label}</a>
-                                    ))}
-                                </div>
-                            )}
+                                {/* Column 2: Footer Links */}
+                                {linksColumn}
 
-                            {/* Column 3: Legal Links */}
-                            {(config.legalLinks?.termsUrl || config.legalLinks?.privacyUrl || config.legalLinks?.anpcUrl) && (() => {
-                                return (
-                                <div className="space-y-1">
-                                    <p className="font-semibold text-foreground mb-2">{site.footerLegalHeading}</p>
-                                    {config.legalLinks?.termsUrl && (
-                                        <a href={config.legalLinks.termsUrl} className="block hover:text-foreground">{site.legalTermsLabel}</a>
-                                    )}
-                                    {config.legalLinks?.privacyUrl && (
-                                        <a href={config.legalLinks.privacyUrl} className="block hover:text-foreground">{site.legalPrivacyLabel}</a>
-                                    )}
-                                    {config.legalLinks?.anpcUrl && (
-                                        <a href={config.legalLinks.anpcUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{site.legalConsumerProtectionLabel}</a>
-                                    )}
-                                    {config.legalLinks?.anpcSalUrl && (
-                                        <a href={config.legalLinks.anpcSalUrl} target="_blank" rel="noopener noreferrer" className="block hover:text-foreground">{site.legalDisputeResolutionLabel}</a>
-                                    )}
-                                </div>
-                                );
-                            })()}
-                        </div>
+                                {/* Column 3: Legal Links */}
+                                {legalColumn}
+                            </div>
+                        )}
                         <div className="mt-8 pt-4 border-t text-center text-xs text-muted-foreground">
                             <p>{interpolate(site.footerCopyright, { year: new Date().getFullYear(), name: config.companyDetails?.legalName || config.name })}</p>
                         </div>

@@ -128,16 +128,20 @@ function contactAttributesError(body: Record<string, unknown>): string | null {
  * (review-0 R-CT-1): an object, and a theme sent as a JSON STRING (the legacy form `mapTenant` parses,
  * `renderer/src/lib/dynamo.ts`) — parsed here for the check only; the body is stored as sent, never rewritten. A string
  * that does not parse to an object is not checked (today's behaviour: the renderer reads it as `{}`). `footer`:
- * `FooterConfigSchema` (unknown keys refused). HEADER-COLOURS-1: on an object `header`, only its two colour keys
- * (`HeaderColorsSchema`, the footer's colour rule); the older header keys stay unvalidated and a non-object `header` is
- * stored as sent, as before. Returns the message of the first problem, naming the field (e.g.
+ * `FooterConfigSchema` (unknown keys refused; SHOP-LOOK-1A adds `brandText` and `columns` to it). HEADER-COLOURS-1: on
+ * an object `header`, only the keys added since that slice (`HeaderCheckedKeysSchema`: the two colours, the footer's
+ * colour rule; SHOP-LOOK-1A: `tagline` and `categoryBarIds`); the older header keys stay unvalidated and a non-object
+ * `header` is stored as sent, as before. Returns the message of the first problem, naming the field (e.g.
  * `theme.fontWeights.1: …`); null when there is none.
  */
 const ThemeDetailsSchema = ThemeSchema.pick({
     fontNav: true, fontWeights: true, headingWeight: true, mutedColor: true, borderColor: true,
     shape: true, cardImage: true, cardCategoryLine: true,
 });
-const HeaderColorsSchema = HeaderConfigSchema.pick({ backgroundColor: true, textColor: true });
+// The header keys PUT /settings checks: every key added from HEADER-COLOURS-1 on (renamed from `HeaderColorsSchema` by
+// SHOP-LOOK-1A, when it stopped holding colours only). The older keys are not picked: a stored header with legacy values
+// still saves.
+const HeaderCheckedKeysSchema = HeaderConfigSchema.pick({ backgroundColor: true, textColor: true, tagline: true, categoryBarIds: true });
 /** The theme as the renderer reads it: an object as is, a JSON string parsed; anything else (unparsable included) → null. */
 function themeObjectOf(value: unknown): Record<string, unknown> | null {
     let theme = value;
@@ -147,14 +151,14 @@ function themeObjectOf(value: unknown): Record<string, unknown> | null {
     return theme !== null && typeof theme === "object" && !Array.isArray(theme) ? theme as Record<string, unknown> : null;
 }
 function themeAttributesError(body: Record<string, unknown>): string | null {
-    const checks: [string, unknown, typeof ThemeDetailsSchema | typeof FooterConfigSchema | typeof HeaderColorsSchema][] = [];
+    const checks: [string, unknown, typeof ThemeDetailsSchema | typeof FooterConfigSchema | typeof HeaderCheckedKeysSchema][] = [];
     for (const attribute of ["theme", "darkTheme"] as const) {
         const theme = themeObjectOf(body[attribute]);
         if (theme) checks.push([attribute, theme, ThemeDetailsSchema]);
     }
     if (Object.hasOwn(body, "footer")) checks.push(["footer", body.footer, FooterConfigSchema]);
     const header = body.header;
-    if (header !== null && typeof header === "object" && !Array.isArray(header)) checks.push(["header", header, HeaderColorsSchema]);
+    if (header !== null && typeof header === "object" && !Array.isArray(header)) checks.push(["header", header, HeaderCheckedKeysSchema]);
     for (const [attribute, value, schema] of checks) {
         const parsed = schema.safeParse(value);
         if (!parsed.success) {

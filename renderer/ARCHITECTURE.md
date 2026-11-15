@@ -40,7 +40,7 @@ src/
 │   ├── ProductByIdPage.tsx                    # THE by-ID product render body — both product routes call it
 │   ├── RenderBlocks.tsx                       # Block rendering engine: maps Tiptap JSON → React
 │   ├── ThemeInjector.tsx                      # CSS variable injection + Google Fonts loading
-│   ├── Navbar.tsx                             # Responsive header with logo, title, nav links (HEADER-COLOURS-1: optional `colorStyle` on the <nav>)
+│   ├── Navbar.tsx                             # Responsive header with logo, title, nav links (HEADER-COLOURS-1: optional `colorStyle` on the <nav>; SHOP-LOOK-1A: optional `tagline`, `categoryBar` second row)
 │   ├── CommentsSection.tsx                    # Comment list + form (requires NextAuth session)
 │   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
@@ -731,6 +731,25 @@ passed by a conditional spread only when a valid colour (`isCssColor`) is set �
 bytes. Link hover (`--color-primary`) and the contact button keep the theme. The Top Bar and the Commerce Bar (siblings
 of the `<nav>` in the sticky wrapper) and the Search Bar (rendered by `SitePage`) are not inside the `<nav>`: unchanged.
 Rows `hc1-*`; unit `test/unit/header-colours-1.test.ts`.
+
+**SHOP-LOOK-1A (docs/slices/shop-look-1a.md; design docs/slices/shop-look-1.md § 4-6, ruling SHOPLOOK-CATBAR = C).**
+Three header and footer pieces, each drawn only when set (absent, blank or an empty list = today's bytes):
+- `header.tagline` → the `Navbar` prop `tagline` (trimmed; conditional spread): a `<span>` after the title inside the logo
+  link, `hidden sm:inline`, small uppercase, `text-muted-foreground`.
+- `header.categoryBarIds` → the layout calls `lib/dynamo.ts#getActiveCategoriesByIds(tenantId, ids)` (one `GetCommand` per id
+  on `TENANT#<id>` / `CATEGORY#<id>`, projection `id, #n, slug, description, imageLink, #s`; a category whose `status` is
+  not `active`, or a missing one, is skipped; no request without ids) and passes `categoryBar = { label, links }` only when
+  at least one category resolved. `label` = site key `navCategoryBarLabel` (inside this prop, not in the shared
+  `strings`); `href` = `urlPrefixesOf(urlPrefixes).category + "/" + slug`, then `getUrl` in the Navbar. Drawn as a
+  second row: `<nav aria-label>` inside the header `<nav>`, after row 1, one horizontally scrolling line. Read cost: at
+  most 12 `GetCommand`s per uncached render, only for a tenant that stores ids. The extra `await` changes the order of
+  the RSC row ids for such a tenant (content equal; rows `sl1a-*` compare the payload resolved).
+- `footer.brandText` / `footer.columns` → one slot of the footer: with either, a grid `grid-cols-1 sm:grid-cols-2
+  lg:grid-cols-N` (N = every column drawn, literal classes 1-8 in `FOOTER_LG_COLUMNS`) replaces today's grid element
+  whole: brand text (`whitespace-pre-line`), the named columns (raw `href`, as `footerLinks`), then today's three columns
+  (`companyColumn`, `linksColumn`, `legalColumn`, the same elements as before). Without either: today's grid element.
+Rows `sl1a-header-footer`, `sl1a-blank-as-absent`; unit `test/unit/shop-look-1a-layout.test.ts`,
+`test/unit/shop-look-1a-read.test.ts`.
 
 ## Path settings — slice `cdl-2`
 

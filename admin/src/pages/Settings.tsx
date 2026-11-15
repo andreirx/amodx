@@ -21,7 +21,7 @@ import {
     Save
 } from "lucide-react";
 import { uploadFile } from "@/lib/upload";
-import { Plus, Trash2, Upload, ShoppingBag } from "lucide-react";
+import { Plus, Trash2, Upload, ShoppingBag, ArrowUp, ArrowDown } from "lucide-react";
 import { ShieldCheck, Sparkles } from "lucide-react";
 import { EffectControls } from "@amodx/plugins/common/EffectControls";
 import { SmartLinkInput } from "@/components/ui/smart-link-input";
@@ -171,13 +171,18 @@ export function ShapeAndCards({ theme, onChange }: { theme: ThemeDraft; onChange
     );
 }
 
+/** SHOP-LOOK-1A: a value the settings store; "" and an empty list mean "remove the key" (never stored as "" or []). */
+const isStored = (value: unknown) => value !== undefined && value !== "" && !(Array.isArray(value) && value.length === 0);
+type FooterDraft = NonNullable<SettingsDraft["footer"]>;
+
 /**
- * The draft's `footer` with one key set, or removed when `value` is empty; the other footer keys are kept
- * (BULK-PURGE-FOOTER-1: the width and the two colours share the `footer` attribute).
+ * The draft's `footer` with one key set, or removed when `value` is empty ("" or, SHOP-LOOK-1A, an empty list); the other
+ * footer keys are kept (BULK-PURGE-FOOTER-1: the width and the two colours share the `footer` attribute; SHOP-LOOK-1A:
+ * the brand text and the named columns too).
  */
-export function withFooterKey(config: SettingsDraft, key: "contentMaxWidth" | "backgroundColor" | "textColor", value: string): SettingsDraft {
-    const footer = { ...config.footer };
-    if (value) footer[key] = value;
+export function withFooterKey<K extends "contentMaxWidth" | "backgroundColor" | "textColor" | "brandText" | "columns">(config: SettingsDraft, key: K, value: FooterDraft[K] | ""): SettingsDraft {
+    const footer: FooterDraft = { ...config.footer };
+    if (isStored(value)) footer[key] = value as FooterDraft[K];
     else delete footer[key];
     return { ...config, footer };
 }
@@ -213,13 +218,13 @@ export function FooterColorControls({ config, setConfig }: { config: SettingsDra
 }
 
 /**
- * The draft's `header` with one colour key set, or removed when `value` is empty; the other header keys are kept
- * (HEADER-COLOURS-1). Beside `withFooterKey` rather than shared with it: one generic helper would mean renaming that
- * export and its tests for four lines of logic.
+ * The draft's `header` with one key set, or removed when `value` is empty ("" or an empty list); the other header keys are
+ * kept. HEADER-COLOURS-1: the two colours; SHOP-LOOK-1A: `tagline` and `categoryBarIds`. Beside `withFooterKey` rather
+ * than shared with it: one generic helper would mean renaming that export and its tests for four lines of logic.
  */
-export function withHeaderKey(config: SettingsDraft, key: "backgroundColor" | "textColor", value: string): SettingsDraft {
+export function withHeaderKey<K extends "backgroundColor" | "textColor" | "tagline" | "categoryBarIds">(config: SettingsDraft, key: K, value: NonNullable<SettingsDraft["header"]>[K] | ""): SettingsDraft {
     const header: Partial<NonNullable<SettingsDraft["header"]>> = { ...config.header };
-    if (value) header[key] = value;
+    if (isStored(value)) header[key] = value as NonNullable<SettingsDraft["header"]>[K];
     else delete header[key];
     // A tenant record that never stored a `header` gives a header with only this key, as `updateHeader` already does for
     // its keys; the renderer reads each absent key as the Navbar's default (`showLogo` true, `navHeight` "h-16", …).
@@ -239,6 +244,104 @@ export function HeaderColorControls({ config, setConfig }: { config: SettingsDra
             <ColorInput label="Background" value={config.header?.backgroundColor} onChange={v => setConfig(withHeaderKey(config, "backgroundColor", v))} />
             <ColorInput label="Text" value={config.header?.textColor} onChange={v => setConfig(withHeaderKey(config, "textColor", v))} />
             <p className="text-[10px] text-muted-foreground">Empty = theme default (light and dark).</p>
+        </div>
+    );
+}
+
+/** SHOP-LOOK-1A: one category as GET /categories lists it, for the category bar picker. */
+export type CategoryOption = { id: string; name: string; status?: string };
+
+/**
+ * SHOP-LOOK-1A (docs/slices/shop-look-1.md § 3 rows "1 row 1" and "1 row 2"; SHOPLOOK-CATBAR = C) — Navbar & Layout card,
+ * first in the header and footer slot: the tagline (`header.tagline`) and the category bar (`header.categoryBarIds`:
+ * pick, order, remove; up to 12). `categories` = the tenant's categories (GET /categories), `null` until they are loaded;
+ * a stored id is then shown as is. The renderer reads each category's name and slug at render time and skips a hidden or
+ * missing one. Clearing the tagline or removing the last category removes the key. Native elements, `Input` and `Button`
+ * only (no React `useId`), so the card's other ids are unchanged.
+ */
+export function HeaderTaglineAndCategoryBarControls({ config, setConfig, categories }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void; categories: CategoryOption[] | null }) {
+    const ids = config.header?.categoryBarIds ?? [];
+    const byId = new Map((categories ?? []).map((c) => [c.id, c]));
+    const available = (categories ?? []).filter((c) => !ids.includes(c.id));
+    const setIds = (next: string[]) => setConfig(withHeaderKey(config, "categoryBarIds", next));
+    const swap = (i: number, j: number) => { const next = [...ids]; [next[i], next[j]] = [next[j], next[i]]; setIds(next); };
+    const nameOf = (id: string) => {
+        const category = byId.get(id);
+        if (category) return category.status === "hidden" ? `${category.name} (hidden: skipped on the site)` : category.name;
+        return categories ? `${id} (not found: skipped on the site)` : id;
+    };
+    return (
+        <div className="pt-4 border-t space-y-2">
+            <Label>Tagline</Label>
+            <Input value={config.header?.tagline || ""} maxLength={60} placeholder="e.g. Since 1998"
+                   onChange={e => setConfig(withHeaderKey(config, "tagline", e.target.value.trim() ? e.target.value : ""))} />
+            <p className="text-[10px] text-muted-foreground">A short text beside the logo or site name, up to 60 characters. Hidden on phones. Empty = none.</p>
+            <Label>Category Bar</Label>
+            {ids.map((id, i) => (
+                <div key={id} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">{nameOf(id)}</span>
+                    <Button variant="ghost" size="icon" aria-label="Move up" disabled={i === 0} onClick={() => swap(i, i - 1)}><ArrowUp className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" aria-label="Move down" disabled={i === ids.length - 1} onClick={() => swap(i, i + 1)}><ArrowDown className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" aria-label="Remove" onClick={() => setIds(ids.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                </div>
+            ))}
+            <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm" value=""
+                    disabled={categories === null || ids.length >= 12 || available.length === 0}
+                    onChange={e => { if (e.target.value) setIds([...ids, e.target.value]); }}>
+                <option value="">{categories === null ? "Categories not loaded" : ids.length >= 12 ? "12 categories is the limit" : available.length === 0 ? "No other category" : "Add a category…"}</option>
+                {available.map(c => <option key={c.id} value={c.id}>{c.status === "hidden" ? `${c.name} (hidden)` : c.name}</option>)}
+            </select>
+            <p className="text-[10px] text-muted-foreground">A second header row of category links, in this order, up to 12. A hidden or deleted category is skipped. Empty = no second row.</p>
+        </div>
+    );
+}
+
+/**
+ * SHOP-LOOK-1A (docs/slices/shop-look-1.md § 3 row 10) — Navbar & Layout card, last in the header and footer slot: the
+ * footer's brand text (`footer.brandText`, up to 400 characters) and its named link columns (`footer.columns`: up to 4,
+ * each a heading and up to 12 links). The renderer shows them before the footer's other columns. Clearing the text or
+ * removing the last column removes the key. Native elements, `Input` and `Button` only (no React `useId`).
+ */
+export function FooterBrandAndColumnsControls({ config, setConfig }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void }) {
+    const columns = config.footer?.columns ?? [];
+    type Column = (typeof columns)[number];
+    const setColumns = (next: Column[]) => setConfig(withFooterKey(config, "columns", next));
+    const setColumn = (i: number, column: Column) => setColumns(columns.map((c, j) => (j === i ? column : c)));
+    const setLink = (i: number, j: number, field: "label" | "href", value: string) =>
+        setColumn(i, { ...columns[i], links: columns[i].links.map((l, k) => (k === j ? { ...l, [field]: value } : l)) });
+    return (
+        <div className="pt-4 border-t space-y-2">
+            <Label>Footer Brand Text</Label>
+            <textarea className="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" maxLength={400}
+                      value={config.footer?.brandText || ""}
+                      onChange={e => setConfig(withFooterKey(config, "brandText", e.target.value.trim() ? e.target.value : ""))} />
+            <p className="text-[10px] text-muted-foreground">Shown in the first footer column, up to 400 characters. Empty = none.</p>
+            <div className="flex items-center justify-between">
+                <Label>Footer Columns</Label>
+                <Button variant="outline" size="sm" disabled={columns.length >= 4} onClick={() => setColumns([...columns, { heading: "", links: [] }])}>
+                    <Plus className="h-4 w-4 mr-2" /> Add Column
+                </Button>
+            </div>
+            {columns.map((column, i) => (
+                <div key={i} className="space-y-2 rounded-md border p-3">
+                    <div className="flex gap-2">
+                        <Input value={column.heading} maxLength={40} placeholder="Heading (e.g. Explore)" className="flex-1"
+                               onChange={e => setColumn(i, { ...column, heading: e.target.value })} />
+                        <Button variant="ghost" size="icon" aria-label="Remove column" onClick={() => setColumns(columns.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
+                    {column.links.map((link, j) => (
+                        <div key={j} className="flex gap-2">
+                            <Input value={link.label} maxLength={60} placeholder="Label" className="flex-1" onChange={e => setLink(i, j, "label", e.target.value)} />
+                            <Input value={link.href} placeholder="URL (e.g. /about)" className="flex-1" onChange={e => setLink(i, j, "href", e.target.value)} />
+                            <Button variant="ghost" size="icon" aria-label="Remove link" onClick={() => setColumn(i, { ...column, links: column.links.filter((_, k) => k !== j) })}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                    ))}
+                    <Button variant="ghost" size="sm" disabled={column.links.length >= 12} onClick={() => setColumn(i, { ...column, links: [...column.links, { label: "", href: "" }] })}>
+                        <Plus className="h-4 w-4 mr-2" /> Add Link
+                    </Button>
+                </div>
+            ))}
+            <p className="text-[10px] text-muted-foreground">Up to 4 named link columns, up to 12 links each, shown before the other footer columns. Each heading, label and URL is required.</p>
         </div>
     );
 }
@@ -352,6 +455,8 @@ export default function SettingsPage() {
     const [customThemes, setCustomThemes] = useState<any[]>([]);
     const [isSaveThemeOpen, setIsSaveThemeOpen] = useState(false);
     const [newThemeName, setNewThemeName] = useState("");
+    // SHOP-LOOK-1A: the tenant's categories for the category bar picker; null until loaded (or when the load failed).
+    const [categories, setCategories] = useState<CategoryOption[] | null>(null);
 
     // Get the URL dynamically so it works in Prod and Local
     const rendererUrl = getRendererUrl();
@@ -360,6 +465,7 @@ export default function SettingsPage() {
     useEffect(() => {
         if (currentTenant) {
             loadSettings();
+            loadCategories();
         }
     }, [currentTenant?.id]);
 
@@ -384,6 +490,16 @@ export default function SettingsPage() {
             setError(e.message || "Failed to load settings");
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function loadCategories() {
+        setCategories(null);
+        try {
+            const res = await apiRequest("/categories");
+            setCategories(res.items || []);
+        } catch (e) {
+            console.warn("Failed to load categories", e);
         }
     }
 
@@ -896,11 +1012,14 @@ export default function SettingsPage() {
                                 index in a width set by the parent's CHILD COUNT, so a new sibling here re-numbered the
                                 Radix Select ids earlier in this card (OBSERVED: `_R_962b_` → `_R_i62b_`); a fragment keeps
                                 the count, the fragment adds no element. HEADER-COLOURS-1: the header colours share the
-                                same slot, for the same reason. */}
+                                same slot, for the same reason. SHOP-LOOK-1A: the tagline and category bar first, the footer
+                                brand text and columns last, in the same slot. */}
                             <>
+                                <HeaderTaglineAndCategoryBarControls config={config} setConfig={setConfig} categories={categories} />
                                 <HeaderColorControls config={config} setConfig={setConfig} />
                                 <FooterWidthControl config={config} setConfig={setConfig} />
                                 <FooterColorControls config={config} setConfig={setConfig} />
+                                <FooterBrandAndColumnsControls config={config} setConfig={setConfig} />
                             </>
                         </CardContent>
                     </Card>

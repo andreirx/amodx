@@ -1,0 +1,16 @@
+{
+  "slice": "shop-look-1a",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for SHOP-LOOK-1A (design docs/slices/shop-look-1.md § 5; record docs/slices/shop-look-1a.md): the one site key this slice adds, `navCategoryBarLabel`, the accessible name of the header's category bar (`<nav aria-label>`, components/Navbar.tsx). It travels inside the Navbar's `categoryBar` prop, only when the bar is drawn. Its checks render the real layout and Navbar (the pack value in Romanian, a tenant override) and assert the attribute in the HTML; the serving row asserts it on the running build. Not a count key. Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": ["navCategoryBarLabel"],
+    "catalog": [],
+    "commerce": []
+  },
+  "checks": {
+    "site.navCategoryBarLabel": [
+      { "test": "renderer/test/unit/shop-look-1a-layout.test.ts", "case": "the tenant's own category path (urlPrefixes.category) and the tenant's language (navCategoryBarLabel)" },
+      { "test": "renderer/test/unit/shop-look-1a-layout.test.ts", "case": "a <nav aria-label=\"Categories\"> inside the header <nav>" },
+      { "test": "renderer/test/serving-contract/contract.test.mjs", "case": "(sl1a-header-footer)" }
+    ]
+  }
+}

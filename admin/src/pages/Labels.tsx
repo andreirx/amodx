@@ -364,6 +364,7 @@ export default function Labels() {
                         <F section="site" label="Contact button" field="navContact" />
                         <F section="site" label="Contact button (mobile menu)" field="navContactUs" />
                         <F section="site" label="Menu button (screen readers)" field="navToggleMenu" />
+                        <F section="site" label="Category bar (screen readers)" field="navCategoryBarLabel" />
                         <F section="site" label="Dropdown: all of {label}" field="navAllOf" />
                         <F section="site" label="Dropdown: View All (mobile)" field="navViewAll" />
                         <F section="site" label="Breadcrumb: Home" field="breadcrumbHome" />

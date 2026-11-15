@@ -51,7 +51,7 @@ shape** — a function with its own contract and its own test file.
 |--------|------|---------|
 | TenantConfigSchema | TenantConfig | Complete site configuration (domain, theme, integrations, GDPR, nav, plan); CAT-QUOTE-1: optional `contactChannels` and `interestListEmail` |
 | ThemeSchema | — | Site theme (colours, fonts, radius). CAT-THEME-1 adds eight OPTIONAL fields with no default (absent = the renderer's rendering before the slice): `fontNav`, `fontWeights` (each `FontWeightSchema`, int 100–900), `headingWeight`, `mutedColor`/`borderColor` (`CssColorSchema`), `shape` ("default" \| "editorial"), `cardImage` ("square" \| "landscape"), `cardCategoryLine`. `ContentItem.themeOverride = ThemeSchema.partial()` takes them with the same rules. `THEME_PRESETS` is typed `ThemePreset` (the older string fields only) |
-| FooterConfigSchema | — | CAT-THEME-1: `TenantConfig.footer?` = `{ contentMaxWidth? }` (strict); absent → the footer uses the header's width. BULK-PURGE-FOOTER-1: + `backgroundColor?`, `textColor?` (`CssColorSchema`; no default; absent → the theme's colours; read by the renderer `app/[siteId]/layout.tsx` footer) |
+| FooterConfigSchema | — | CAT-THEME-1: `TenantConfig.footer?` = `{ contentMaxWidth? }` (strict); absent → the footer uses the header's width. BULK-PURGE-FOOTER-1: + `backgroundColor?`, `textColor?` (`CssColorSchema`; no default; absent → the theme's colours; read by the renderer `app/[siteId]/layout.tsx` footer). SHOP-LOOK-1A: + `brandText?` (≤ 400) and `columns?` (≤ 4 strict `{ heading 1-40, links ≤ 12 × strict { label 1-60, href ≥ 1 } }`); no default; absent, blank or `[]` → today's footer |
 | isCssColor / CssColorSchema | — | CAT-THEME-1 (round 2, R-CT-2): the colour GRAMMAR of the new theme colours (hex 3/4/6/8; `rgb`/`rgba`/`hsl`/`hsla` with exact arity, ranges and a numeric alpha; a short name list), used by `PUT /settings`. Every accepted value also passes the renderer's older injection-safety filter `sanitizeCssColor` (renderer `lib/sanitize.ts`, unchanged), which keeps guarding the legacy colour fields |
 | ContactChannelsSchema | ContactChannels | CAT-QUOTE-1: the visitor contact channels `{ phone?, whatsapp?, email? }` (strict; a number = trimmed, digits/`+`/spaces/dashes, ≥ 1 digit — `ContactNumberSchema`); read by the quote dialog and the bar fallbacks, applied by `PUT /settings` |
 | ContentItemSchema | ContentItem | Page/post with blocks, SEO, access policy, theme overrides |
@@ -74,7 +74,7 @@ shape** — a function with its own contract and its own test file.
 | SavedThemeSchema | SavedTheme | Named reusable theme in theme library |
 | IntegrationsSchema | Integrations | Third-party connections (GA, Paddle, OAuth, analytics) |
 | GDPRConfigSchema | GDPRConfig | Cookie consent banner settings |
-| HeaderConfigSchema | HeaderConfig | Navigation header display options. HEADER-COLOURS-1: + `backgroundColor?`, `textColor?` (`CssColorSchema`; no default; absent → the theme's colours; read by the renderer `app/[siteId]/layout.tsx#headerColorStyle` for the navbar only; PUT /settings checks these two keys) |
+| HeaderConfigSchema | HeaderConfig | Navigation header display options. HEADER-COLOURS-1: + `backgroundColor?`, `textColor?` (`CssColorSchema`; no default; absent → the theme's colours; read by the renderer `app/[siteId]/layout.tsx#headerColorStyle` for the navbar only; PUT /settings checks these two keys). SHOP-LOOK-1A: + `tagline?` (≤ 60) and `categoryBarIds?` (≤ 12 non-empty category ids, bar order; the renderer reads each category at render time); no default; PUT /settings checks them too |
 | SignalSchema | Signal | Outbound lead signal (URL, pain score, wallet signal, analysis, draft reply) |
 
 ### Constants
@@ -142,7 +142,7 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   the 77 existing ones, the 21 shared product-surface keys of `1b`, the 80 commerce-only keys of `1d` — cart, checkout,
   account, order confirmation and tracking, add-to-cart, commerce bar, navbar account links — and `showcaseEmpty` of
   `1c`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel, + the 7 `quote*` keys of CAT-QUOTE-1: the "Request a quote" button and dialog, + the 9 server-text keys of `cdl-1`: `import*` and `interestMail*`) and `siteStrings`
-  (`SiteStringsSchema`, 51 keys in `1a` + `errorTryAgain` in `1d` + the 26 block-chrome keys of `1c`). Every key is optional (absent = no override). The nine cookie/legal site keys
+  (`SiteStringsSchema`, 51 keys in `1a` + `errorTryAgain` in `1d` + the 26 block-chrome keys of `1c` + `navCategoryBarLabel` of `shop-look-1a`, last). Every key is optional (absent = no override). The nine cookie/legal site keys
   are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
   in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).
 - **Count keys** (`1b`, § 16.2 item 6): `reviewsSummary`, `productCount`, `searchResultCount`, `facetsCount`,

@@ -336,6 +336,33 @@ export async function getAllCategories(tenantId: string): Promise<Category[]> {
     return allItems.sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0)) as Category[];
 }
 
+/** One category as `getActiveCategoriesByIds` returns it: the projected display fields, without `status`. */
+type CategoryById = Pick<Category, "id" | "name" | "slug" | "description" | "imageLink">;
+
+/**
+ * 7b. SHOP-LOOK-1A (docs/slices/shop-look-1.md § 6.4; ruling SHOPLOOK-CATBAR = C) — the categories an owner picked by id,
+ * in the order of `ids`. One `GetCommand` per id on `TENANT#<tenantId>` / `CATEGORY#<id>` (the key of
+ * `backend/src/categories/create.ts`), so the cost is bounded: at most one request per id, no pagination. A category whose
+ * `status` is not `active` is skipped (the "not listed" meaning of `hidden`, as `getAllCategories`); a missing one is
+ * skipped. No ids → no request. Not `getAllCategories`: that one paginates over every category of the tenant and does not
+ * project `description`. Users: the header's category bar (`app/[siteId]/layout.tsx`); the `categoryGrid` block of
+ * `shop-look-1c` is the second, ratified user.
+ */
+export async function getActiveCategoriesByIds(tenantId: string, ids: string[]): Promise<CategoryById[]> {
+    const tableName = requireTableName();
+    const results = await Promise.all(ids.map((id) => docClient.send(new GetCommand({
+        TableName: tableName,
+        Key: { PK: `TENANT#${tenantId}`, SK: `CATEGORY#${id}` },
+        ProjectionExpression: "id, #n, slug, description, imageLink, #s",
+        ExpressionAttributeNames: { "#n": "name", "#s": "status" },
+    }))));
+    return results.flatMap(({ Item }) => {
+        if (!Item || Item.status !== "active") return [];
+        const { status: _status, ...category } = Item;
+        return [category as CategoryById];
+    });
+}
+
 // 8. Fetch All Active Products (for shop page)
 export async function getActiveProducts(tenantId: string, page: number = 1, limit: number = 24, availability?: string) {
     const tableName = requireTableName();
