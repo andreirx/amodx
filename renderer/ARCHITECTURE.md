@@ -222,8 +222,8 @@ legacy `/products/<id>` route. Steps:
    alone.
 4. **SEO metadata:** generates OpenGraph, canonical URL, JSON-LD (Article, Organization, SoftwareApplication, etc.)
 5. **Block preparation (`prepareBlocks`):** server-side, in place, before `RenderBlocks`: `postGrid` posts, `categoryShowcase`
-   products (+ the catalog-mode reduction, the URL prefixes), `reviewsCarousel` reviews, `categoryGrid` categories
-   (SHOP-LOOK-1C) (avoids client fetches). One
+   products (+ the catalog-mode reduction, the URL prefixes; the card options' data, SHOP-LOOK-1D), `reviewsCarousel`
+   reviews, `categoryGrid` categories (SHOP-LOOK-1C) (avoids client fetches). One
    function, two users: the content page and the category page (CATEGORY-CONTENT-1)
 6. **Theme merge:** applies page-level `themeOverride` on top of site theme
 7. Renders blocks via `<RenderBlocks>` + comments section + social share buttons
@@ -812,6 +812,24 @@ existing row unchanged). The block is drawn on content, commerce and catalog sit
 the admin offers it on commerce and catalog). Rows `sl1c-grid` (the set page = its blank twin + the block's `<section>`,
 byte for byte; the payload differs by the block's attributes only; the built stylesheet holds every class) and
 `sl1c-blank-draws-nothing`; unit `test/unit/shop-look-1c-grid.test.ts`.
+
+**SHOP-LOOK-1D (docs/slices/shop-look-1d.md; design docs/slices/shop-look-1.md § 6.3, § 6.4, § 7).** In the
+`categoryShowcase` branch, after the products are read and only on a non-catalog tenant (SL-D10),
+`withShowcaseCardData(attrs, items, config)` adds the data of the card options that are ON (stored exactly `true`); with
+all three off it returns the same array and reads nothing. Per block: `showCategoryLabel` → one `getAllCategories` call
+(paginating Query, active only) → `_categoryName` = the name of `categoryIds[0]` (hidden or missing → no key);
+`showDescription` → one `getProductById` per product → `_descriptionText` = `cardShortText(description)` (sanitize-html
+with no allowed tag, block tags and literal `\n` → a space, its three escapes undone, white space collapsed, at most 400
+code points; plain text, never HTML); `showRating` → one `getProductReviews` per product (paginating Query, approved only)
+→ `_rating` = `{ average, count, text }` with `text` = the tenant's `reviewsSummary` filled as on the product page (no
+approved review → no key). Only the first 12 products are read (`SHOWCASE_CARD_READ_LIMIT`). A product with no new data is
+the same object; otherwise a copy with only the new keys. `badgeTags` and `eyebrow` need no read. The post grid's options
+need no read; its branch is unchanged. Rows `sl1d-options` (the set page = the plain twin + the new elements, HTML byte
+for byte; the payload = the twin's + the stored options and the added product keys; the built stylesheet holds every
+new class), `sl1d-blank-as-absent` (null, blank and off options: the twin's HTML; no server key) and
+`sl1d-catalog-no-effect` (catalog: the twin's HTML with every card option on); unit
+`test/unit/shop-look-1d-showcase.test.ts` (calls and DynamoDB requests per option; the two-page cases of
+`getAllCategories` and `getProductReviews`).
 
 ## Path settings — slice `cdl-2`
 

@@ -3,9 +3,34 @@ import { LayoutGrid, RefreshCw } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { BlockWidthControl } from '../BlockWidthControl';
 
+/** The most badge tags the block schema accepts (`badgeTags: z.array(z.string()).max(10)`). */
+const MAX_BADGE_TAGS = 10;
+
+/**
+ * SHOP-LOOK-1D: the value a text or tick-box option stores. A cleared option stores null, so the attribute is absent
+ * again (design § 4): blank text → null; an unticked box → null; a ticked box → true; other text unchanged.
+ */
+export function storedShowcaseOption(value: string | boolean): string | true | null {
+    if (typeof value === 'boolean') return value ? true : null;
+    return value.trim() === '' ? null : value;
+}
+
+/**
+ * SHOP-LOOK-1D: the badge tag field → the stored `badgeTags`. Comma-separated; each entry trimmed; blank entries dropped;
+ * the first 10 kept (the schema's limit); nothing left → null (absent). The site matches the stored entries exactly
+ * (case kept), so the owner types them as the products' tags are written.
+ */
+export function badgeTagsFromText(text: string): string[] | null {
+    const tags = text.split(',').map((t) => t.trim()).filter((t) => t !== '').slice(0, MAX_BADGE_TAGS);
+    return tags.length === 0 ? null : tags;
+}
+
 export function CategoryShowcaseEditor(props: any) {
-    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth } = props.node.attrs;
+    const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth, eyebrow, badgeTags, showCategoryLabel, showDescription, showRating } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
+    const updateOption = (field: string, value: string | boolean) => update(field, storedShowcaseOption(value));
+    // The field keeps what the owner types (a trailing comma, a space); the stored list is parsed from it on each change.
+    const [badgeText, setBadgeText] = useState<string>(Array.isArray(badgeTags) ? badgeTags.join(', ') : '');
 
     const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
@@ -114,6 +139,43 @@ export function CategoryShowcaseEditor(props: any) {
                             placeholder="View All Products"
                         />
                     </div>
+
+                    {/* SHOP-LOOK-1D options: each optional; cleared → absent */}
+                    <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-gray-700 shrink-0">Label above the name:</label>
+                        <input
+                            className="flex-1 text-sm border rounded px-2 py-1.5 focus:outline-none focus:border-emerald-400"
+                            value={eyebrow ?? ''}
+                            onChange={e => updateOption('eyebrow', e.target.value)}
+                            placeholder="Optional, e.g. Our picks"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-gray-700 shrink-0">Badge tags:</label>
+                        <input
+                            className="flex-1 text-sm border rounded px-2 py-1.5 focus:outline-none focus:border-emerald-400"
+                            value={badgeText}
+                            onChange={e => { setBadgeText(e.target.value); update('badgeTags', badgeTagsFromText(e.target.value)); }}
+                            placeholder="Optional, comma-separated, e.g. TOP PICK, NEW"
+                        />
+                    </div>
+                    <p className="text-xs text-gray-500">A product with one of these tags shows a badge: the first tag of this list that it has. Tags match exactly, capitals included.</p>
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
+                        <span className="font-medium">On each card:</span>
+                        <label className="flex items-center gap-1.5">
+                            <input type="checkbox" checked={showCategoryLabel === true} onChange={e => updateOption('showCategoryLabel', e.target.checked)} className="accent-emerald-600" />
+                            Category name
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                            <input type="checkbox" checked={showDescription === true} onChange={e => updateOption('showDescription', e.target.checked)} className="accent-emerald-600" />
+                            Short description
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                            <input type="checkbox" checked={showRating === true} onChange={e => updateOption('showRating', e.target.checked)} className="accent-emerald-600" />
+                            Rating (approved reviews)
+                        </label>
+                    </div>
+                    <p className="text-xs text-gray-500">Not shown on a catalog site.</p>
 
                     {/* Preview placeholder */}
                     <div className={`grid gap-3 ${columns === '2' ? 'grid-cols-2' : columns === '3' ? 'grid-cols-3' : 'grid-cols-4'}`}>

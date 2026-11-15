@@ -21,11 +21,11 @@ Block type names are **camelCase** and must match exactly in Tiptap JSON.
 | `table` | Data Table | headers[], rows[] (cells[]), striped, bordered | — |
 | `html` | Raw HTML | content, isSandboxed | — |
 | `faq` | FAQ Accordion | headline, items[] (question, answer) | Generates FAQPage JSON-LD |
-| `postGrid` | Post Grid | headline, filterTag, limit, showImages, layout, columns | grid, list; 2 or 3 cols |
+| `postGrid` | Post Grid | headline, filterTag, limit, showImages, layout, columns; optional (absent = not shown, SHOP-LOOK-1D): eyebrow, asideText, asideQuote, asideButtonText + asideButtonLink (a side panel; see § *Post grid side panel*) | grid, list; 2 or 3 cols |
 | `carousel` | Carousel | headline, items[] (title, description, image, link, linkText), height, style | standard, coverflow |
 | `codeBlock` | Code Block | code, language, filename, showLineNumbers | 19 languages |
 | `reviewsCarousel` | Reviews Carousel | headline, scope (manual \| product-reviews-by-id \| site-reviews), productId, items[] (name, avatarUrl, date, rating, text, source), showSource, autoScroll | google, facebook, manual sources. `scope: product-reviews-by-id` (needs `productId`) / `scope: site-reviews` (rev-4) render approved moderated reviews with approved photos — server-prefetched, assetKey→raw asset URL, never next/image |
-| `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText | 2, 3, 4 columns |
+| `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText; optional (absent = not shown, SHOP-LOOK-1D): eyebrow, badgeTags[] (≤ 10), showCategoryLabel, showDescription, showRating (see § *Category showcase card options*) | 2, 3, 4 columns |
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText (foot text of every tile), chips[] (label, href; ≤ 12), blockWidth (SHOP-LOOK-1C; see § *Category grid*) | 2, 3, 4 columns from large screens; 1 on a phone, 2 from `sm` |
 
 ## Category grid (`categoryGrid`, slice `shop-look-1c`)
@@ -44,6 +44,35 @@ under the grid. Offered in the block inserter on commerce and catalog sites; dra
 - The tile text is on a scrim of the theme's text colour at 75 % opacity, in the theme's background colour: readable on
   any photo (record `docs/slices/shop-look-1c.md` § *Overlay rule*).
 - Without the server pass (the admin editor) the public render draws nothing; the editor shows its own list.
+
+## Category showcase card options (`categoryShowcase`, slice `shop-look-1d`)
+
+Each option is optional and off by default; absent, `null`, blank or `false` draws exactly the card of before.
+
+- `eyebrow` — a small label above the category name (every site kind).
+- `badgeTags` — the tags that act as badges, in precedence order. A card shows **at most one** badge: the first entry of
+  this list that the product's `tags` holds. Exact match — case and spaces count. The order of the product's own tags
+  does not matter. Blank entries are ignored. The badge is an opaque pill (`bg-primary` / `text-primary-foreground`) over
+  the top-left of the photo, so the photo never affects it. No read: the tags are in the card item.
+- `showCategoryLabel` — the name of the product's FIRST category (`categoryIds[0]`) above the title; none when that
+  category is hidden or missing. Read: one `getAllCategories` per block.
+- `showDescription` — the product's description as plain text (tags removed, never HTML), two lines at most, under
+  the title. Read: one `getProductById` per product.
+- `showRating` — `★` (the rounded average, hidden from screen readers) and the tenant's `reviewsSummary` text (for
+  example "4.5/5 (2 reviews)") of the APPROVED reviews; none without an approved review. Read: one `getProductReviews`
+  per product (it pages through every review item of the product).
+- On a catalog site the four card options have no effect and read nothing (SL-D10); the eyebrow shows.
+- Each read runs only when its option is on, only for the products the server pass read (at most 12 per block), and
+  only on an uncached render. The browser fallback fetch (the block without server data) can show the badge only.
+
+## Post grid side panel (`postGrid`, slice `shop-look-1d`)
+
+- `eyebrow` — a small label above the headline.
+- `asideText`, `asideQuote`, `asideButtonText` + `asideButtonLink` — a panel left of the posts from `md` (the posts take
+  the right two thirds), above them on a phone. It shows when the text, the quote or the button text is not blank. The
+  button needs a text; its link goes through the tenant URL helper, and a blank link gives `#`. A link without a text
+  draws no button.
+- No read. The "no posts", error and loading boxes do not show either option.
 
 ## Video embed support
 

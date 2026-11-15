@@ -11,6 +11,11 @@ import type { BlockStrings } from "@amodx/shared";
  */
 type PostsLoadFailure = { kind: "status"; status: number } | { kind: "thrown"; message: string };
 
+/** A non-blank string, trimmed; anything else → null (blank = absent, design § 4). */
+function textOf(value: unknown): string | null {
+    return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
 function failureText(failure: PostsLoadFailure, template: string): string {
     switch (failure.kind) {
         // The only placeholder of `postsLoadFailed`; every occurrence is filled, as `fillTemplate` of @amodx/shared does.
@@ -23,9 +28,26 @@ function failureText(failure: PostsLoadFailure, template: string): string {
  * LOCALE-1C: the fixed texts come from `strings` (the tenant's locale table; RenderBlocks always gives it).
  * Post dates use `strings.dateLocale` — present only for a tenant that is not en-US, so an en-US tenant keeps the runtime
  * default (§ 3.4, § 16.2 item 4).
+ *
+ * SHOP-LOOK-1D (docs/slices/shop-look-1.md § 3 row 8, § 4.2, § 6.2): two options of the section — every text is owner
+ * content, so no `strings` key is read for them.
+ * - `eyebrow`: a small label above the headline.
+ * - The side panel (`asideText`, `asideQuote`, `asideButtonText` + `asideButtonLink`): left third from `md`, above the
+ *   post list on a phone. Shown when the text, the quote or the button text is not blank. The button follows the hero's
+ *   second button (`shop-look-1b`): drawn when its TEXT is not blank; its link goes through the tenant URL helper
+ *   (SL-D14), and a blank link gives `#`. A link without a text draws no button.
+ * Absent, null or blank → the section's HTML is today's. The loading, error and "no posts" boxes are status boxes that
+ * replace the whole section (the headline too, as before); they stay unchanged and show neither option.
  */
 export function PostGridRender({ attrs, tenantId, strings }: { attrs: any, tenantId?: string, strings: BlockStrings }) {
     const { headline, filterTag, limit, showImages, columns, layout, prefetchedPosts, serverDomain } = attrs;
+    const eyebrow = textOf(attrs.eyebrow);
+    const asideText = textOf(attrs.asideText);
+    const asideQuote = textOf(attrs.asideQuote);
+    const asideButtonText = textOf(attrs.asideButtonText);
+    const asideButtonLink = textOf(attrs.asideButtonLink);
+    // URL helper injected by RenderBlocks (handles the /_site/ preview prefix); identity when absent.
+    const getUrl: (path: string) => string = typeof attrs._getUrl === "function" ? attrs._getUrl : (p: string) => p;
 
     // Initialize state with PRE-FETCHED data if available
     const [posts, setPosts] = useState<any[]>(prefetchedPosts || []);
@@ -98,11 +120,9 @@ export function PostGridRender({ attrs, tenantId, strings }: { attrs: any, tenan
         );
     }
 
-    return (
-        <section className="py-16 px-6 max-w-7xl mx-auto">
-            {headline && <h2 className="text-3xl font-bold mb-10 tracking-tight">{headline}</h2>}
-
-            {layout === 'list' ? (
+    // Today's post list (unchanged); the side panel, when set, puts it in the right two thirds.
+    const postsEl = (
+            layout === 'list' ? (
                 // GOOGLE LIST STYLE
                 <div className="max-w-3xl mx-auto space-y-8">
                     {posts.map((post: any) => (
@@ -160,7 +180,29 @@ export function PostGridRender({ attrs, tenantId, strings }: { attrs: any, tenan
                         </a>
                     ))}
                 </div>
+            )
+    );
+    const hasAside = asideText !== null || asideQuote !== null || asideButtonText !== null;
+
+    return (
+        <section className="py-16 px-6 max-w-7xl mx-auto">
+            {eyebrow !== null && (
+                <p className="w-fit rounded-full border px-3 py-1 mb-4 text-xs font-semibold uppercase tracking-widest border-primary/30 text-primary">{eyebrow}</p>
             )}
+            {headline && <h2 className="text-3xl font-bold mb-10 tracking-tight">{headline}</h2>}
+
+            {hasAside ? (
+                <div className="grid gap-10 md:grid-cols-3">
+                    <aside className="space-y-6">
+                        {asideText !== null && <p className="text-lg leading-relaxed text-muted-foreground">{asideText}</p>}
+                        {asideQuote !== null && <blockquote className="border-l-2 border-primary pl-4 italic text-foreground">{asideQuote}</blockquote>}
+                        {asideButtonText !== null && (
+                            <a href={asideButtonLink === null ? "#" : getUrl(asideButtonLink)} className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">{asideButtonText}</a>
+                        )}
+                    </aside>
+                    <div className="md:col-span-2">{postsEl}</div>
+                </div>
+            ) : postsEl}
         </section>
     );
 }

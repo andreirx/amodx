@@ -16,7 +16,7 @@
 //
 // Phase 3.3: getCustomerOrders / getCustomerProfile are deliberately NOT imported here.
 // Customer-private data is fetched via session-validating API routes, not SSR.
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds, getProductById } from "@/lib/dynamo";
 import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from "@/lib/review-images";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
@@ -36,6 +36,7 @@ import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { AccountPageView, type AccountPageStrings } from "@/components/AccountPageView";
 import { SearchBar, type SearchBarLabels } from "@/components/SearchBar";
 import { sanitizeHtml } from "@/lib/sanitize";
+import sanitizeHtmlLib from "sanitize-html";
 import { CelebrationWrapper } from "@/components/CelebrationWrapper";
 import { InterestToggle, InterestListPage, type InterestListStrings, type InterestToggleStrings } from "@/components/InterestShortlist";
 import { QuoteRequest, type QuoteRequestStrings } from "@/components/QuoteRequest";
@@ -770,6 +771,68 @@ function withCommaPriceRange(product: any, locale: string | undefined): any {
     return { ...product, _priceRange: { min: Math.min(...values), max: Math.max(...values) } };
 }
 
+/** SHOP-LOOK-1D (design § 6.4): the card data is read for at most this many products per block — the schema's `limit`
+ *  maximum; a larger stored `limit` (the backend does not check block attributes) shows its extra cards without it. */
+const SHOWCASE_CARD_READ_LIMIT = 12;
+/** SHOP-LOOK-1D (§ 7.2): the most characters of short text a card receives. The card shows two lines (`line-clamp-2`);
+ *  two lines of the widest card (two columns, full width) hold fewer, so the cut never shows; it bounds the payload. */
+const SHORT_TEXT_MAX = 400;
+
+/**
+ * SHOP-LOOK-1D (§ 7.2): a product description as the plain text of a showcase card — never HTML. The stored text may be
+ * HTML (the product page sanitizes and draws it as HTML, and reads a literal `\n` as a line break). Here: a literal `\n`
+ * and each block-level tag become a space (so two paragraphs do not run together), sanitize-html removes every tag (and
+ * the content of `script` / `style`), its three escapes (`&lt;` `&gt;` `&amp;`, the only ones it writes) are undone
+ * because React escapes the text again, white space collapses, and the result is cut to `SHORT_TEXT_MAX` characters
+ * (code points). Not a string, or nothing left → undefined (no element).
+ */
+function cardShortText(description: unknown): string | undefined {
+    if (typeof description !== "string") return undefined;
+    const separated = description.replace(/\\n/g, " ").replace(/<(\/?)(p|div|br|li|h[1-6]|tr|td|th|blockquote|pre|hr)\b/gi, " <$1$2");
+    const text = sanitizeHtmlLib(separated, { allowedTags: [], allowedAttributes: {} })
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+        .replace(/\s+/g, " ").trim();
+    return text === "" ? undefined : Array.from(text).slice(0, SHORT_TEXT_MAX).join("");
+}
+
+/**
+ * SHOP-LOOK-1D (design § 6.3 rule 3, § 6.4, § 7): the showcase card data that the block's options ask for, added to the
+ * products this pass read. Each option reads ONLY when it is on (stored exactly `true`); with all three off the same
+ * array returns and no read is made. Never called for a catalog tenant (SL-D10). Per block, at most:
+ * - `showCategoryLabel`: 1 `getAllCategories` call (paginating Query, active categories only) → `_categoryName` = the
+ *   name of the product's FIRST category (`categoryIds[0]`, SL-D7); a first category that is hidden or missing → no key.
+ * - `showDescription`: 1 `getProductById` (one `GetCommand`) per product → `_descriptionText` (`cardShortText`).
+ * - `showRating`: 1 `getProductReviews` (paginating Query, approved only) per product → `_rating` = `{ average, count,
+ *   text }`, `text` = the tenant's `reviewsSummary` filled as on the product page; no approved review → no key.
+ * Products past the first `SHOWCASE_CARD_READ_LIMIT` are returned as they are. A product without new data is the same
+ * object; one with new data is a copy with only the new keys added.
+ */
+async function withShowcaseCardData(attrs: any, products: any[], config: any): Promise<any[]> {
+    const label = attrs.showCategoryLabel === true;
+    const description = attrs.showDescription === true;
+    const rating = attrs.showRating === true;
+    if (!label && !description && !rating) return products;
+    const names = label ? new Map((await getAllCategories(config.id)).map((c: any) => [c.id, c.name])) : undefined;
+    const summary = rating ? resolveLocaleStrings(config).strings.commerce.reviewsSummary : undefined;
+    return Promise.all(products.map(async (product: any, i: number) => {
+        if (i >= SHOWCASE_CARD_READ_LIMIT) return product;
+        const [item, reviews] = await Promise.all([
+            description ? getProductById(config.id, product.id) : undefined,
+            rating ? getProductReviews(config.id, product.id) : undefined,
+        ]);
+        const categoryName = names?.get(Array.isArray(product.categoryIds) ? product.categoryIds[0] : undefined);
+        const shortText = cardShortText(item?.description);
+        const extra = {
+            ...(typeof categoryName === "string" && categoryName.trim() !== "" ? { _categoryName: categoryName } : {}),
+            ...(shortText !== undefined ? { _descriptionText: shortText } : {}),
+            ...(summary && reviews && reviews.totalReviews > 0 && Number.isFinite(reviews.averageRating)
+                ? { _rating: { average: reviews.averageRating, count: reviews.totalReviews, text: fillTemplate(selectPluralText(summary, reviews.totalReviews), { rating: reviews.averageRating, n: reviews.totalReviews }) } }
+                : {}),
+        };
+        return Object.keys(extra).length > 0 ? { ...product, ...extra } : product;
+    }));
+}
+
 async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
     if (!Array.isArray(blocks)) return;
     await Promise.all(blocks.map(async (block: any) => {
@@ -792,6 +855,9 @@ async function prepareBlocks(blocks: unknown, config: any): Promise<void> {
                     const limit = block.attrs.limit || 4;
                     const { items } = await getProductsByCategory(config.id, category.id, 1, limit);
                     block.attrs.prefetchedProducts = items;
+                    // SHOP-LOOK-1D: the card options' data (`withShowcaseCardData`), only for the products read here and
+                    // only on a non-catalog tenant (SL-D10); with every option off the same array stays (no read).
+                    if (!isCatalogMode(config)) block.attrs.prefetchedProducts = await withShowcaseCardData(block.attrs, items, config);
                 }
             }
             // PRICE-LOCALE-1 (ruling PL1-SHOWCASE = C, narrowed): for a decimal-comma tenant only, each product whose price

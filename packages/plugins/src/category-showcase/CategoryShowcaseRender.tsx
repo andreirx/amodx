@@ -19,6 +19,39 @@ interface Product {
      * a tier price contains a comma (`12,50`); absent otherwise, and then the range is read below exactly as before.
      */
     _priceRange?: { min: number; max: number };
+    tags?: string[];             // in the CATPROD# card item; read only for a badge (SHOP-LOOK-1D, § 7.4)
+    // SHOP-LOOK-1D (§ 6.3 rule 3): each key below is added by the renderer's server pass ONLY when its block option is
+    // on and the data exists; absent otherwise (and always absent on a catalog site, and on the browser fallback fetch).
+    _categoryName?: string;      // `showCategoryLabel`: the name of the product's first category (SL-D7)
+    _descriptionText?: string;   // `showDescription`: the product's short text as plain text (§ 7.2)
+    _rating?: { average: number; count: number; text: string };  // `showRating`: approved reviews; `text` = `reviewsSummary`, filled (§ 7.3)
+}
+
+/**
+ * SHOP-LOOK-1D (docs/slices/shop-look-1.md § 7): the four card options of the block, as the card reads them. On a catalog
+ * site every option is off (SL-D10), whatever is stored.
+ */
+interface CardOptions {
+    badgeTags: string[];
+    showCategoryLabel: boolean;
+    showDescription: boolean;
+    showRating: boolean;
+}
+
+/** A non-blank string, trimmed; anything else → null (blank = absent, design § 4). */
+function textOf(value: unknown): string | null {
+    return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/**
+ * The badge of one card (§ 7.4, § 16 R6): AT MOST ONE — the first entry of the block's `badgeTags`, in the block's order,
+ * that the product's `tags` holds. Exact string match: case and spaces are kept on both sides ("top pick" and "TOP PICK "
+ * do not match "TOP PICK"). The order of the product's own tags never changes the result. The text is the tag as stored
+ * (uppercase is CSS). No match, no list, or `tags` not a list → no badge.
+ */
+function badgeOf(badgeTags: string[], tags: unknown): string | null {
+    if (!Array.isArray(tags)) return null;
+    return badgeTags.find((tag) => tags.includes(tag)) ?? null;
 }
 
 /**
@@ -26,7 +59,7 @@ interface Product {
  * whatever the product data holds and wherever it came from (server prefetch, stale authored attrs, or the browser
  * fallback fetch below) — not emitted, not hidden by CSS. It overrides the block's own `showPrice`.
  */
-function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, strings }: { product: Product; showPrice: boolean; catalogMode: boolean; productPrefix: string; getUrl: (s: string) => string; strings: BlockStrings }) {
+function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, strings, options }: { product: Product; showPrice: boolean; catalogMode: boolean; productPrefix: string; getUrl: (s: string) => string; strings: BlockStrings; options: CardOptions }) {
     const outOfStock = !catalogMode && product.availability === "out_of_stock";
     const hasSale = product.salePrice && product.salePrice !== product.price;
     const hasVolume = product.volumePricing && product.volumePricing.length > 0;
@@ -42,13 +75,20 @@ function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, s
             ({ min, max } = product._priceRange);
         } else {
             // Debt (PRICE-LOCALE-1 record § 8 F-PL1-9): parseFloat on a price text, kept for products without a comma
-            // text; removed with `shop-look-1d`, which re-baselines the showcase payload.
+            // text. Kept by `shop-look-1d` too (operator decision 2026-11-16): removing it changes every commerce
+            // tenant's page bytes for a gain only on malformed data.
             const prices = product.volumePricing!.map(v => parseFloat(v.price));
             min = Math.min(parseFloat(product.price), ...prices);
             max = Math.max(parseFloat(product.price), ...prices);
         }
         if (min !== max) priceDisplay = `${min} – ${max} ${product.currency}`;
     }
+
+    // SHOP-LOOK-1D: each extra is null unless its option is on AND its data is there; null adds nothing to the HTML.
+    const badge = badgeOf(options.badgeTags, product.tags);
+    const categoryLabel = options.showCategoryLabel ? textOf(product._categoryName) : null;
+    const shortText = options.showDescription ? textOf(product._descriptionText) : null;
+    const rating = options.showRating && typeof product._rating?.text === "string" && Number.isFinite(product._rating.average) ? product._rating : null;
 
     return (
         <a href={getUrl(`${productPrefix}/${product.slug}`)} className="group block">
@@ -68,8 +108,22 @@ function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, s
                         <span className="bg-background border border-border px-4 py-2 text-sm font-semibold uppercase tracking-wide">{strings.outOfStock}</span>
                     </div>
                 )}
+                {/* Readability (§ 7.4): an opaque pill in the theme's button pair — the photo never shows through it. After
+                    the out-of-stock overlay, so it is painted above it. */}
+                {badge !== null && (
+                    <span className="absolute top-2 left-2 max-w-[90%] truncate rounded-full bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-foreground">{badge}</span>
+                )}
             </div>
+            {categoryLabel !== null && <p className="text-xs uppercase tracking-wide text-center text-muted-foreground mb-1">{categoryLabel}</p>}
             <h3 className="text-sm font-medium text-center leading-tight mb-1 group-hover:text-primary transition-colors">{product.title}</h3>
+            {shortText !== null && <p className="text-sm text-center text-muted-foreground line-clamp-2 mb-1">{shortText}</p>}
+            {/* The stars are decoration (hidden from screen readers); the text says the same, in the tenant's language. */}
+            {rating !== null && (
+                <p className="text-sm text-center text-muted-foreground mb-1">
+                    <span aria-hidden="true" className="text-primary mr-1">{"★".repeat(Math.min(5, Math.max(0, Math.round(rating.average))))}</span>
+                    {rating.text}
+                </p>
+            )}
             {showPrice && !catalogMode && (
                 <p className="text-sm text-center text-primary font-medium">
                     {hasSale && <span className="line-through text-muted-foreground mr-2">{product.price} {product.currency}</span>}
@@ -83,12 +137,26 @@ function ProductCard({ product, showPrice, catalogMode, productPrefix, getUrl, s
 /**
  * LOCALE-1C (§ 6.2): the fixed texts come from `strings` (the tenant's locale table; RenderBlocks always
  * gives it) — `noImage`, the commerce texts `outOfStock` (absent on a catalog site, where the overlay never shows) and
- * `showcaseEmpty`.
+ * `showcaseEmpty`. SHOP-LOOK-1D (§ 5): the rating text is the tenant's `reviewsSummary`, filled by the server pass and
+ * given only to the products of a block with `showRating` on — not a `strings` key, so no other block's payload changes.
+ * Every other new text is owner content (eyebrow, badge tags) or data (category name, product description).
  */
 export function CategoryShowcaseRender({ attrs, tenantId, strings }: { attrs: any; tenantId?: string; strings: BlockStrings }) {
     const { categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, prefetchedProducts, _getUrl, _productPrefix, _categoryPrefix, _catalogMode } = attrs;
     // Injected by the renderer (`SitePage.tsx`) only for a catalog tenant, on every block of this type; absent otherwise.
     const catalogMode = _catalogMode === true;
+
+    // SHOP-LOOK-1D (§ 4.2, § 7): the block's own options. Each is off unless stored exactly as `true` / a list with a
+    // non-blank entry; the card options are off on a catalog site (SL-D10). The eyebrow is a block option: every site.
+    const eyebrow = textOf(attrs.eyebrow);
+    const options: CardOptions = catalogMode
+        ? { badgeTags: [], showCategoryLabel: false, showDescription: false, showRating: false }
+        : {
+            badgeTags: Array.isArray(attrs.badgeTags) ? attrs.badgeTags.filter((t: unknown): t is string => typeof t === "string" && t.trim() !== "") : [],
+            showCategoryLabel: attrs.showCategoryLabel === true,
+            showDescription: attrs.showDescription === true,
+            showRating: attrs.showRating === true,
+        };
 
     // Client-fetch state — only used when server prefetch is absent (editor preview).
     // When prefetchedProducts exists, these are ignored in favor of the prop directly.
@@ -140,6 +208,9 @@ export function CategoryShowcaseRender({ attrs, tenantId, strings }: { attrs: an
 
     return (
         <section className="my-12">
+            {eyebrow !== null && (
+                <p className="mx-auto w-fit rounded-full border px-3 py-1 mb-4 text-xs font-semibold uppercase tracking-widest border-primary/30 text-primary">{eyebrow}</p>
+            )}
             {categoryName && (
                 <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">{categoryName}</h2>
             )}
@@ -159,6 +230,7 @@ export function CategoryShowcaseRender({ attrs, tenantId, strings }: { attrs: an
                             productPrefix={productPrefix}
                             getUrl={getUrl}
                             strings={strings}
+                            options={options}
                         />
                     ))}
                 </div>

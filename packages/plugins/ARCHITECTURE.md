@@ -62,11 +62,11 @@ render loader. It must stay in sync with that map (perf-1: 20 loaders; 21 since 
 | `table` | Data Table | headers[], rows[] (cells[]), striped, bordered | — |
 | `html` | Raw HTML | content, isSandboxed | — |
 | `faq` | FAQ Accordion | headline, items[] (question, answer) | Generates FAQPage JSON-LD |
-| `postGrid` | Post Grid | headline, filterTag, limit, showImages, layout, columns | grid, list; 2 or 3 cols |
+| `postGrid` | Post Grid | headline, filterTag, limit, showImages, layout, columns; optional (SHOP-LOOK-1D): eyebrow, asideText, asideQuote, asideButtonText, asideButtonLink | grid, list; 2 or 3 cols |
 | `carousel` | Carousel | headline, items[] (title, description, image, link), height, style | standard, coverflow (Swiper) |
 | `codeBlock` | Code Block | code, language, filename, showLineNumbers, blockWidth | 19 languages; dark `<pre><code>` + copy button |
 | `reviewsCarousel` | Reviews Carousel | headline, scope, productId, items[] (name, avatar, date, rating, text, source, photos), showSource, autoScroll, maxLines, blockWidth | manual / product-reviews-by-id / site-reviews (see § *The `reviews-carousel` block's render contract*) |
-| `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth | 2 / 3 / 4 columns |
+| `categoryShowcase` | Category Showcase | categoryId, categoryName, categorySlug, limit, columns, showPrice, ctaText, blockWidth; optional (SHOP-LOOK-1D): eyebrow, badgeTags, showCategoryLabel, showDescription, showRating | 2 / 3 / 4 columns |
 | `categoryGrid` | Category Grid | eyebrow, headline, categoryIds[] (≤ 12, tile order), columns, ctaText, chips[] (label, href; ≤ 12), blockWidth; server data `_categories` (see § *The `category-grid` block*) | 2 / 3 / 4 columns from `lg` |
 | `markdown` | Markdown | content, blockWidth | rendered via `marked` (async chunk) |
 
@@ -298,6 +298,30 @@ A new block (no stored instances): ordinary defaults (`schema.ts`; the Tiptap at
   (no DOM harness); the picked list with photo and name is the editor's preview; a picked id that is missing or not
   active is marked "skipped on the site".
 
+## The `category-showcase` card options and the `post-grid` side panel (slice `shop-look-1d`)
+
+Design `docs/slices/shop-look-1.md` § 3 rows 7-8, § 4.2, § 6.2, § 6.3, § 7; record `docs/slices/shop-look-1d.md`. Ten
+optional attributes (zod `.optional()`, no default; Tiptap `default: null`). **Absent = today's bytes:** absent, `null`,
+blank text, an empty list, a list of blank entries, `false` and malformed values render the HTML of both blocks before the
+slice, character for character — pinned by `test/sectionBlocks.baseline.json` (recorded at 61d965d, before the change;
+cases in `test/sectionBlocksBaselineCases.ts`).
+
+- **Showcase (`CategoryShowcaseRender.tsx`).** `eyebrow`: a pill `<p>` first in the `<section>` (every site). The four
+  card options are resolved once per block into `CardOptions`; on a catalog site (`_catalogMode`) all four are off
+  (SL-D10). `badgeTags` → `badgeOf`: at most one badge, the first entry of the block's list that the product's `tags`
+  holds (exact match; blank entries ignored), an opaque `bg-primary` pill over the photo, after the out-of-stock overlay.
+  `showCategoryLabel` / `showDescription` / `showRating` draw the product keys `_categoryName` / `_descriptionText` /
+  `_rating` that the renderer's server pass adds only when the option is on (`withShowcaseCardData` in
+  `renderer/src/components/SitePage.tsx`); a product without the key draws no element. Rating: `★` × the rounded average
+  (0-5, `aria-hidden`) and the server-filled `reviewsSummary` text. The price code is unchanged (debt F-PL1-9 kept).
+- **Post grid (`PostGridRender.tsx`).** `eyebrow`: a pill `<p>` above the headline. The side panel (text, quote, button)
+  shows when one of text, quote, button text is non-blank: `grid md:grid-cols-3` with `<aside>` first (above on a phone)
+  and today's list element in `md:col-span-2`. The button: drawn with a text; link through `attrs._getUrl`, blank → `#`.
+  The loading, error and empty boxes are unchanged.
+- **Texts:** owner content or data; no new `strings` key; both renders keep a type-only import of `@amodx/shared` (D3).
+- **Editors:** English controls; a cleared option stores `null` — `storedShowcaseOption` and `badgeTagsFromText`
+  (`CategoryShowcaseEditor.tsx`), `storedText` (`PostGridEditor.tsx`), exported pure functions, the test seam.
+
 ## Tests
 
 `npm test -w packages/plugins` → vitest, `test/**/*.test.ts` (`vitest.config.ts`).
@@ -311,6 +335,7 @@ A new block (no stored instances): ordinary defaults (`schema.ts`; the Tiptap at
 | `renderer/test/unit/locale-1c-blocks-client.test.ts` (`locale-1c`; in the RENDERER suite — this package has no DOM harness and no jsdom dependency) | The block texts of every state of the eleven text-bearing blocks (forms sending/sent/failed, copy, read more, post grid loading/failed/empty/dates, showcase): en-US markup equal to a `0c0dbc8` capture, every Romanian change a declared key, the reviews-carousel date cases, the § 5.2 preservation cases at one reader per block (the iframe names pattern F) |
 | `test/hero.test.ts` (`shop-look-1b`) | `RENDER_LOADERS["hero"]`: every case of `test/heroBaselineCases.ts` (four styles × image, rich/legacy subheadline, no button, tokens, Tiptap defaults) renders equal to `test/hero.baseline.json` (HTML recorded at 783e95f; static and streaming renderers) with each new attribute absent, `null`, blank, empty or malformed; each option present → its element, and removing it gives the baseline back; the three § 6.5 inverse cases; schema limits; the editor's controls and `storedOption` |
 | `test/showcasePriceRange.test.ts` (`price-locale-1`) | `RENDER_LOADERS["categoryShowcase"]` price line: a given `_priceRange` is printed (`10 – 12.5 RON`); without it the card's reading is today's (`10 – 12 RON` for a comma text, `75 – 100 USD` for point texts); a range with min = max prints the price text |
+| `test/sectionBlocks.test.ts` (`shop-look-1d`) | `RENDER_LOADERS["categoryShowcase"]` and `["postGrid"]`: every case of `test/sectionBlocksBaselineCases.ts` renders equal to `test/sectionBlocks.baseline.json` (HTML recorded at 61d965d; static and streaming renderers) with the new attributes absent, `null`, blank, off or malformed, and with the card options on but no product key; each option present → its element, and removing it gives the baseline back; the § 7.4 badge cases (zero / one / several matches, both orders of the block list and of the product's tags, case and spaces, blank entries, no tags, catalog); label, short text and rating (HTML escaped, malformed rating); the panel's parts alone and together, a link without a text, phone order; schema and Tiptap defaults; the editors' controls and pure functions; type-only `@amodx/shared` import; no palette colour class |
 | `test/categoryGrid.test.ts` (`shop-look-1c`) | `RENDER_LOADERS["categoryGrid"]`: no `_categories` → nothing; 0 / 1 / 12 tiles in the given order (one tile byte for byte); photo and description fallbacks (no element); the scrim around every tile text and no palette colour class; `columns` 2 / 3 / 4 and unknown → the grid class; `ctaText`, eyebrow, headline blank / set; chips none / valid / without label or href; `_getUrl` on tiles and chips; schema defaults and limits (13th id refused); Tiptap defaults = schema defaults; the render imports only `react`; the editor's options and its three list functions |
 | `test/offeredOn.test.ts` (`cat-admin-2`) | `getPluginList()`'s `offeredOn` per key: `categoryShowcase` and `categoryGrid` both kinds, `reviewsCarousel` commerce, every other block `[]`; the projection's keys (no boolean `commerce`). Imports `src/admin.ts`, so every plugin's admin module loads in `environment: "node"` |
 | `test/renderLoaders.test.ts` (`perf-1`) | The **whole-entry SSR-safety binding**: `await`s every `RENDER_LOADERS` entry in `environment: "node"`, forcing each render module to load, and asserts each resolves to a `{ default: <function component> }`. Catches a module-load `window`/`document` hazard in ANY registered render module (the guarantee eager `RENDER_MAP` gave for free before lazy loaders removed it). Also pins loader count = 21 (20 before `shop-look-1c`), so a new plugin added to the map without its own suite is still covered by this file. Does NOT render the components (no browser-free *render* proof — the per-plugin suites do that) |

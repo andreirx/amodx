@@ -934,6 +934,77 @@ const sl1cTenant = (key, grid) => [
 ];
 const SL1C_ITEMS = [...sl1cTenant("set", SL1C_GRID), ...sl1cTenant("blank", SL1C_BLANK_GRID)];
 
+// ── SHOP-LOOK-1D fixtures (docs/slices/shop-look-1d.md; design docs/slices/shop-look-1.md § 4.2, § 6.3, § 7) ────────────
+// Three copies of the CM1 commerce tenant and two of the CM1 catalog tenant (each with `locale: "en-US"` written out, so
+// none is an en-US subject of the `loc1-*` rows and none is in any `before/` capture: rows `sl1d-*` read the running
+// build only). Every commerce copy holds the same extra data: a hidden category, an active category "SL1D Wool", two
+// extra rugs (`sl1d-first`: first category hidden, tags [POPULAR, wool], an HTML description; `sl1d-second`: first
+// category Wool, tags [wool, POPULAR]) with their `rugs` cards, and reviews (Sale Rug: 5 and 4 approved, 1 pending;
+// Sold Out Rug: 3 approved; `sl1d-first`: 2 rejected). Their page `/sl1d-section` holds a `categoryShowcase` of `rugs`
+// (limit 6) and a `postGrid` (list); the copies differ only in those two blocks' attributes:
+//  - set: every SHOP-LOOK-1D option on (`SL1D_SHOWCASE_OPTIONS`, `SL1D_POST_GRID_OPTIONS`);
+//  - plain: no new attribute (today's block);
+//  - blank: every new attribute null, blank, empty or off, and a button link without a text.
+// The two catalog copies hold a page `/sl1d-section` with a `categoryShowcase` of `floors`: catalog-set with every card
+// option on (and no eyebrow), catalog-plain without — SL-D10: no effect on a catalog site.
+export const SL1D = {
+    set: { id: "sl1d-set", host: "sl1d-set.serving-contract.test" },
+    plain: { id: "sl1d-plain", host: "sl1d-plain.serving-contract.test" },
+    blank: { id: "sl1d-blank", host: "sl1d-blank.serving-contract.test" },
+    catalogSet: { id: "sl1d-catalog-set", host: "sl1d-catalog-set.serving-contract.test" },
+    catalogPlain: { id: "sl1d-catalog-plain", host: "sl1d-catalog-plain.serving-contract.test" },
+};
+export const SL1D_PATH = "/sl1d-section";
+export const SL1D_SHOWCASE = { categorySlug: "rugs", categoryName: "Featured", limit: 6, columns: "4", showPrice: true, ctaText: "See all" };
+export const SL1D_SHOWCASE_OPTIONS = { eyebrow: "Our picks", badgeTags: ["POPULAR", "wool"], showCategoryLabel: true, showDescription: true, showRating: true };
+export const SL1D_SHOWCASE_BLANK = { eyebrow: "  ", badgeTags: [], showCategoryLabel: false, showDescription: null, showRating: null };
+export const SL1D_POST_GRID = { headline: "Journal", filterTag: "", limit: 6, showImages: true, layout: "list", columns: "3", blockWidth: "content" };
+export const SL1D_POST_GRID_OPTIONS = { eyebrow: "From the journal", asideText: "Notes from the workshop.", asideQuote: "Wood is alive.", asideButtonText: "All articles", asideButtonLink: "/blog" };
+export const SL1D_POST_GRID_BLANK = { eyebrow: " ", asideText: null, asideQuote: "", asideButtonText: "  ", asideButtonLink: "/link-without-text" };
+export const SL1D_PRODUCTS = {
+    first: { id: "sl1d-first", title: "SL1D First Rug", slug: "sl1d-first-rug", description: "<p>Hand-<b>woven</b> wool &amp; cotton.</p><p>Second line.</p>", tags: ["POPULAR", "wool"], categoryIds: ["sl1d-hidden", "rugs"] },
+    second: { id: "sl1d-second", title: "SL1D Second Rug", slug: "sl1d-second-rug", tags: ["wool", "POPULAR"], categoryIds: ["sl1d-wool", "rugs"] },
+};
+const sl1dReview = (tenantId, productId, n, rating, status) => ({
+    PK: `TENANT#${tenantId}`, SK: `REVIEW#${productId}#sl1d-r${n}`, id: `sl1d-r${n}`, tenantId, productId, rating, status,
+    authorName: "SL1D Buyer", content: "Fine.", source: "manual", createdAt: `2026-10-0${n}T12:00:00.000Z`,
+});
+const sl1dTenant = (key, showcase, postGrid) => {
+    const { id } = SL1D[key];
+    const products = Object.values(SL1D_PRODUCTS).map((p) => cm1Product(id, { ...p, price: "40.00", imageLink: IMG(p.id) }));
+    return [
+        ...localeCopy(CM1_ITEMS, CM1.commerce, SL1D[key], { locale: "en-US", name: "SL1D Shop" }),
+        { ...cm1Category(id, "sl1d-hidden", "sl1d-hidden", "SL1D Hidden"), status: "hidden" },
+        cm1Category(id, "sl1d-wool", "sl1d-wool", "SL1D Wool"),
+        ...products,
+        ...products.map((p) => cm1CatProd(id, "rugs", p)),
+        sl1dReview(id, "c0000000-0000-4000-8000-000000000001", 1, 5, "approved"),
+        sl1dReview(id, "c0000000-0000-4000-8000-000000000001", 2, 4, "approved"),
+        sl1dReview(id, "c0000000-0000-4000-8000-000000000001", 3, 1, "pending"),
+        sl1dReview(id, "c0000000-0000-4000-8000-000000000003", 4, 3, "approved"),
+        sl1dReview(id, "sl1d-first", 5, 5, "rejected"),
+        sl1dReview(id, "sl1d-first", 6, 4, "rejected"),
+        siteRouteItem(id, SL1D_PATH, "sl1d-section"),
+        siteContentItem(id, "sl1d-section", SL1D_PATH, "SL1D Section", { blocks: [{ type: "categoryShowcase", attrs: showcase }, { type: "postGrid", attrs: postGrid }], createdAt: CM1_AT }),
+    ];
+};
+const sl1dCatalogTenant = (key, showcase) => [
+    // Every card of the copy tagged `wool` (a badge tag of catalog-set), and one approved review: data for every option.
+    ...localeCopy(CM1_ITEMS, CM1.catalog, SL1D[key], { locale: "en-US", name: "SL1D Catalog" })
+        .map((item) => (item.SK.startsWith("CATPROD#") ? { ...item, tags: ["wool"] } : item)),
+    sl1dReview(SL1D[key].id, "e0000000-0000-4000-8000-000000000001", 1, 5, "approved"), // Oak Plank
+    siteRouteItem(SL1D[key].id, SL1D_PATH, "sl1d-section"),
+    siteContentItem(SL1D[key].id, "sl1d-section", SL1D_PATH, "SL1D Section", { blocks: [{ type: "categoryShowcase", attrs: showcase }], createdAt: CM1_AT }),
+];
+const SL1D_CATALOG_SHOWCASE = { categorySlug: "floors", categoryName: "Featured", limit: 6, columns: "4", showPrice: true, ctaText: "See all" };
+const SL1D_ITEMS = [
+    ...sl1dTenant("set", { ...SL1D_SHOWCASE, ...SL1D_SHOWCASE_OPTIONS }, { ...SL1D_POST_GRID, ...SL1D_POST_GRID_OPTIONS }),
+    ...sl1dTenant("plain", SL1D_SHOWCASE, SL1D_POST_GRID),
+    ...sl1dTenant("blank", { ...SL1D_SHOWCASE, ...SL1D_SHOWCASE_BLANK }, { ...SL1D_POST_GRID, ...SL1D_POST_GRID_BLANK }),
+    ...sl1dCatalogTenant("catalogSet", { ...SL1D_CATALOG_SHOWCASE, badgeTags: ["wool"], showCategoryLabel: true, showDescription: true, showRating: true }),
+    ...sl1dCatalogTenant("catalogPlain", SL1D_CATALOG_SHOWCASE),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -986,6 +1057,8 @@ export const ITEMS = [
     ...SL1B_ITEMS,
     // shop-look-1c: the category-grid tenants (above).
     ...SL1C_ITEMS,
+    // shop-look-1d: the showcase-card and post-grid-panel tenants (above).
+    ...SL1D_ITEMS,
 ];
 
 /**

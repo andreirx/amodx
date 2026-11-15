@@ -32,6 +32,12 @@ export const CategoryShowcasePlugin: PluginDefinition = {
                 showPrice: { default: true },
                 ctaText: { default: 'View All Products' },
                 blockWidth: { default: 'content' },
+                // SHOP-LOOK-1D: default null = absent (design § 4; precedent hero `subheadlineRich`).
+                eyebrow: { default: null },
+                badgeTags: { default: null },
+                showCategoryLabel: { default: null },
+                showDescription: { default: null },
+                showRating: { default: null },
             };
         },
 

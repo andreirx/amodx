@@ -495,7 +495,12 @@ const BLOCK_SCHEMAS = {
             limit: "number (default 6)",
             showImages: "boolean (default true)",
             layout: "'grid' | 'list' (default 'list')",
-            columns: "'2' | '3' (default '3', used in grid layout)"
+            columns: "'2' | '3' (default '3', used in grid layout)",
+            eyebrow: "string (optional small label above the headline; omit or '' = none)",
+            asideText: "string (optional; a side panel left of the posts, above them on a phone, shows when asideText, asideQuote or asideButtonText is set)",
+            asideQuote: "string (optional quote in the side panel)",
+            asideButtonText: "string (optional button in the side panel; drawn only with a text)",
+            asideButtonLink: "string (the button's link; without it the button goes to '#'; a link without a text draws no button)"
         },
         example: {
             type: "postGrid",
@@ -611,7 +616,12 @@ const BLOCK_SCHEMAS = {
             limit: "number (1-12, default 4)",
             columns: "'2' | '3' | '4' (default '4')",
             showPrice: "boolean (default true)",
-            ctaText: "string (e.g., 'View All Products')"
+            ctaText: "string (e.g., 'View All Products')",
+            eyebrow: "string (optional small label above the category name; omit or '' = none)",
+            badgeTags: "array of product tags (max 10; optional). A product with one of these tags shows ONE badge over its photo: the first tag of THIS list that the product has. Exact match, capitals and spaces included",
+            showCategoryLabel: "boolean (optional; the name of each product's first category above its title; none when that category is hidden or missing)",
+            showDescription: "boolean (optional; each product's short description as plain text, two lines at most)",
+            showRating: "boolean (optional; the average and count of each product's approved reviews; none without an approved review). badgeTags and the three show* options have no effect on a catalog site"
         },
         example: {
             type: "categoryShowcase",

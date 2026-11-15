@@ -42,6 +42,7 @@ import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
     BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID, CC1, CC1_TWIN, CC1_PARAGRAPH, CC1_MALFORMED,
     SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS, SL1C, SL1C_PATH, SL1C_CATEGORIES, SL1C_GRID, SL1C_BLANK_GRID,
+    SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -3263,6 +3264,126 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.ok(blank.html.includes('<div class="max-w-7xl mx-auto px-6"></div>'), "the block's wrapper, empty");
             for (const t of ['<section class="my-12">', "aspect-[3/4]", SL1C_CATEGORIES.hidden.name, "sl1c-no-label", "Shop category"]) assert.ok(!blank.raw.includes(t), `no ${t}`);
             console.log("  (sl1c-blank-draws-nothing) nothing drawn; the wide wrapper stays empty");
+        });
+
+        // ── ROWS (sl1d-*) — SHOP-LOOK-1D (docs/slices/shop-look-1d.md). Server HTML and payload of the running build for the
+        // SL1D tenants (fixtures.mjs `SL1D`: copies of the CM1 commerce tenant whose page `/sl1d-section` holds a
+        // `categoryShowcase` and a `postGrid`, set / plain / blank; two CM1 catalog copies, set / plain). "A page whose
+        // blocks store no new attribute → today's bytes" is proven by every existing row, unchanged (the CM1 home pages
+        // hold today's showcase; tenant ISO-A's home today's post grid). These rows prove, in the built site: every option
+        // draws exactly its element and nothing else (set vs plain, HTML and payload); null, blank and off options draw
+        // nothing and add no server key (blank vs plain); on a catalog site the card options change nothing (SL-D10).
+        /** The page of an SL1D copy, its key fields written as its twin's (so twins compare byte for byte). */
+        const sl1dPage = async (key, twin) => {
+            const res = await request({ port: server.port, path: SL1D_PATH, host: SL1D[key].host });
+            assert.equal(res.status, 200, `${key}: 200`);
+            const asTwin = (t) => t.split(SL1D[key].host).join(SL1D[twin].host).split(SL1D[key].id).join(SL1D[twin].id);
+            const { html } = splitFlight(res.body);
+            sl1aSide ??= { buildId: (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim(), clientModules: await readClientModules(RENDERER_DIR) };
+            const flight = maskBody(res.body, sl1aSide).masked.split("\n--- flight payload rows, sorted ---\n")[1];
+            return { raw: html, html: asTwin(html), flight: asTwin(flight) };
+        };
+        /** `text` without every occurrence of `part`, asserted to occur exactly `n` times. */
+        const sl1dRemove = (text, part, n, what) => {
+            assert.equal(text.split(part).length - 1, n, `${what}: ${n} × ${part}`);
+            return text.split(part).join("");
+        };
+        /** The stored option keys as they follow the block's other keys in the payload's JSON (`,"k":v` …). */
+        const sl1dStoredKeys = (options) => JSON.stringify(options).slice(1, -1).replace(/^/, ",");
+        // The literals of CategoryShowcaseRender and PostGridRender (as the plugin suite pins them).
+        const SL1D_EYEBROW = (t) => `<p class="mx-auto w-fit rounded-full border px-3 py-1 mb-4 text-xs font-semibold uppercase tracking-widest border-primary/30 text-primary">${t}</p>`;
+        const SL1D_BADGE = (t) => `<span class="absolute top-2 left-2 max-w-[90%] truncate rounded-full bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-foreground">${t}</span>`;
+        const SL1D_LABEL = (t) => `<p class="text-xs uppercase tracking-wide text-center text-muted-foreground mb-1">${t}</p>`;
+        const SL1D_SHORT = (t) => `<p class="text-sm text-center text-muted-foreground line-clamp-2 mb-1">${t}</p>`;
+        const SL1D_RATING = (stars, t) => `<p class="text-sm text-center text-muted-foreground mb-1"><span aria-hidden="true" class="text-primary mr-1">${stars}</span>${t}</p>`;
+        const SL1D_POST_EYEBROW = (t) => `<p class="w-fit rounded-full border px-3 py-1 mb-4 text-xs font-semibold uppercase tracking-widest border-primary/30 text-primary">${t}</p>`;
+        const SL1D_ASIDE = `<div class="grid gap-10 md:grid-cols-3"><aside class="space-y-6">`
+            + `<p class="text-lg leading-relaxed text-muted-foreground">${SL1D_POST_GRID_OPTIONS.asideText}</p>`
+            + `<blockquote class="border-l-2 border-primary pl-4 italic text-foreground">${SL1D_POST_GRID_OPTIONS.asideQuote}</blockquote>`
+            + `<a href="${SL1D_POST_GRID_OPTIONS.asideButtonLink}" class="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">${SL1D_POST_GRID_OPTIONS.asideButtonText}</a>`
+            + `</aside><div class="md:col-span-2">`;
+        // What the set showcase must draw (fixtures.mjs SL1D: cards Sale, Variant, Sold Out, sl1d-first, sl1d-second).
+        // Badge tags [POPULAR, wool]: Sale [wool] → wool; first [POPULAR, wool] and second [wool, POPULAR] → POPULAR.
+        // Label = first category: Rugs ×3, first → hidden → none, second → SL1D Wool. Ratings: approved only.
+        const SL1D_SET_ELEMENTS = [
+            [SL1D_EYEBROW(SL1D_SHOWCASE_OPTIONS.eyebrow), 1, "showcase eyebrow"],
+            [SL1D_BADGE("wool"), 1, "badge wool (Sale Rug)"],
+            [SL1D_BADGE("POPULAR"), 2, "badge POPULAR (first, second: the block's order wins over the product's)"],
+            [SL1D_LABEL("Rugs"), 3, "label Rugs"],
+            [SL1D_LABEL("SL1D Wool"), 1, "label SL1D Wool (second)"],
+            [SL1D_SHORT("Sale Rug description."), 1, "short text Sale"],
+            [SL1D_SHORT("Variant Rug description."), 1, "short text Variant"],
+            [SL1D_SHORT("Sold Out Rug description."), 1, "short text Sold Out"],
+            [SL1D_SHORT("Hand-woven wool &amp; cotton. Second line."), 1, "short text first (HTML → plain text)"],
+            [SL1D_SHORT("SL1D Second Rug description."), 1, "short text second"],
+            [SL1D_RATING("★★★★★", "4.5/5 (2 reviews)"), 1, "rating Sale (approved 5, 4; the pending one not counted)"],
+            [SL1D_RATING("★★★", "3/5 (1 review)"), 1, "rating Sold Out"],
+            [SL1D_POST_EYEBROW(SL1D_POST_GRID_OPTIONS.eyebrow), 1, "post grid eyebrow"],
+            [SL1D_ASIDE, 1, "post grid panel (opening)"],
+        ];
+
+        test("(sl1d-options) every showcase card option and the post grid panel: the set page differs from its plain twin EXACTLY by the new elements (HTML) and the new keys (payload); hidden category and rejected reviews not shown; the stylesheet holds every new class", async () => {
+            const [page, plain] = [await sl1dPage("set", "plain"), await sl1dPage("plain", "plain")];
+            // HTML: remove each new element (asserted count), and the panel's two closing </div> before the post grid's
+            // </section>; the result is the plain twin byte for byte.
+            let html = page.html;
+            for (const [part, n, what] of SL1D_SET_ELEMENTS) html = sl1dRemove(html, part, n, what);
+            const closing = "</div></div></section>";
+            const at = html.indexOf(closing, page.html.indexOf(SL1D_ASIDE) - 2000);
+            assert.ok(at > -1, "the panel's closing tags");
+            html = html.slice(0, at) + "</section>" + html.slice(at + closing.length);
+            assert.equal(html, plain.html, `HTML equal to the twin but for the new elements; ${sl1aDiff(html, plain.html)}`);
+            for (const t of ["SL1D Hidden", "Fine.", "SL1D Buyer"]) assert.ok(!page.raw.includes(t), `HTML: ${t} is not rendered`);
+            // Payload: the stored options and the keys the server pass added to the products; removing them gives the
+            // twin's payload (resolved).
+            const ADDED = [
+                [`,"_categoryName":"Rugs"`, 3], [`,"_categoryName":"SL1D Wool"`, 1],
+                [`,"_descriptionText":"Sale Rug description."`, 1], [`,"_descriptionText":"Variant Rug description."`, 1],
+                [`,"_descriptionText":"Sold Out Rug description."`, 1], [`,"_descriptionText":"Hand-woven wool & cotton. Second line."`, 1],
+                [`,"_descriptionText":"SL1D Second Rug description."`, 1],
+                [`,"_rating":{"average":4.5,"count":2,"text":"4.5/5 (2 reviews)"}`, 1], [`,"_rating":{"average":3,"count":1,"text":"3/5 (1 review)"}`, 1],
+                [sl1dStoredKeys(SL1D_SHOWCASE_OPTIONS), 1], [sl1dStoredKeys(SL1D_POST_GRID_OPTIONS), 1],
+            ];
+            let flight = page.flight;
+            for (const [part, n] of ADDED) flight = sl1dRemove(flight, part, n, "payload");
+            for (const k of ["_categoryName", "_descriptionText", "_rating", "SL1D Hidden"]) assert.ok(!flight.includes(k), `payload: no other ${k}`);
+            assert.deepEqual(sl1aResolved(flight), sl1aResolved(plain.flight), `payload equal to the twin but for the new keys (resolved); ${sl1aDiff(flight, plain.flight)}`);
+            // The compiled CSS has every class the new elements emit (literal in the two renders, which Tailwind scans
+            // through globals.css `@source`).
+            const sheets = [...page.raw.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: SL1D.set.host })))).map((r) => r.body).join("\n");
+            const SL1D_CLASSES = [
+                "mx-auto", "w-fit", "rounded-full", "border-primary\\/30", "tracking-widest", "top-2", "left-2", "max-w-\\[90\\%\\]", "truncate",
+                "bg-primary", "text-primary-foreground", "tracking-wide", "line-clamp-2", "mr-1", "text-primary", "text-muted-foreground",
+                "md\\:grid-cols-3", "md\\:col-span-2", "gap-10", "space-y-6", "border-l-2", "border-primary", "pl-4", "italic",
+                "leading-relaxed", "text-lg", "px-6", "py-3", "hover\\:opacity-90", "inline-flex",
+            ];
+            // `.cls` followed by a character that cannot continue a class name (so `mx-auto` does not match `.mx-auto-x`).
+            const hasRule = (cls) => css.split(`.${cls}`).slice(1).some((rest) => !/^[\w-]/.test(rest));
+            const missing = SL1D_CLASSES.filter((cls) => !hasRule(cls));
+            assert.deepEqual(missing, [], `compiled: every new class has a rule (${sheets.length} stylesheet(s))`);
+            console.log(`  (sl1d-options) ${SL1D_SET_ELEMENTS.length} element kinds; HTML = twin + the elements; payload = twin + the stored options and ${ADDED.length - 2} added product keys; ${SL1D_CLASSES.length} classes compiled`);
+        });
+
+        test("(sl1d-blank-as-absent) every new attribute null, blank, empty or off, and a button link without a text: the plain twin's HTML byte for byte; the payload adds no server key (equal to the twin's but for the stored attributes)", async () => {
+            const [page, plain] = [await sl1dPage("blank", "plain"), await sl1dPage("plain", "plain")];
+            assert.ok(page.flight.includes('"badgeTags":[]') && page.flight.includes('"asideButtonLink":"/link-without-text"'), "precondition: the blank copy stores the attributes");
+            assert.equal(page.html, plain.html, `HTML equal to the twin; ${sl1aDiff(page.html, plain.html)}`);
+            let flight = page.flight;
+            for (const options of [SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_BLANK]) flight = sl1dRemove(flight, sl1dStoredKeys(options), 1, "stored blank options");
+            assert.deepEqual(sl1aResolved(flight), sl1aResolved(plain.flight), `payload equal to the twin but for the stored attributes (resolved); ${sl1aDiff(flight, plain.flight)}`);
+            console.log("  (sl1d-blank-as-absent) null and blank options: HTML byte-equal to the twin; no server key in the payload");
+        });
+
+        test("(sl1d-catalog-no-effect) a catalog site (SL-D10): badge tags, category name, short text and rating on — with the data present (tagged cards, descriptions, an approved review) — draw nothing and add no server key", async () => {
+            const [page, plain] = [await sl1dPage("catalogSet", "catalogPlain"), await sl1dPage("catalogPlain", "catalogPlain")];
+            assert.ok(page.flight.includes('"showRating":true'), "precondition: the set copy stores the options");
+            assert.equal(page.html, plain.html, `HTML equal to the twin; ${sl1aDiff(page.html, plain.html)}`);
+            const flight = sl1dRemove(page.flight, ',"badgeTags":["wool"],"showCategoryLabel":true,"showDescription":true,"showRating":true', 1, "stored options");
+            assert.deepEqual(sl1aResolved(flight), sl1aResolved(plain.flight), `payload equal to the twin but for the stored attributes (resolved); ${sl1aDiff(flight, plain.flight)}`);
+            for (const k of ["_categoryName", "_descriptionText", "_rating", '"tags"']) assert.ok(!page.flight.includes(k), `payload: no ${k}`);
+            console.log("  (sl1d-catalog-no-effect) catalog: HTML byte-equal to the twin; no server key");
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the

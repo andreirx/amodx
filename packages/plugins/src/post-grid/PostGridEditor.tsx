@@ -14,9 +14,25 @@ const Input = ({ value, onChange, placeholder, type = "text", list }: any) => (
     />
 );
 
+/** SHOP-LOOK-1D: the value a text option stores — blank → null, so a cleared option is absent again (design § 4). */
+export function storedText(value: string): string | null {
+    return value.trim() === '' ? null : value;
+}
+
+const TextArea = ({ value, onChange, placeholder }: any) => (
+    <textarea
+        rows={2}
+        className="w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm focus:border-indigo-500 outline-none transition-colors"
+        value={value === undefined || value === null ? "" : value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+    />
+);
+
 export function PostGridEditor(props: any) {
-    const { headline, filterTag, limit, layout, blockWidth } = props.node.attrs;
+    const { headline, filterTag, limit, layout, blockWidth, eyebrow, asideText, asideQuote, asideButtonText, asideButtonLink } = props.node.attrs;
     const update = (field: string, value: any) => props.updateAttributes({ [field]: value });
+    const updateText = (field: string, value: string) => update(field, storedText(value));
 
     // Tag Fetching State
     const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -56,6 +72,10 @@ export function PostGridEditor(props: any) {
 
                 <div className="p-5 space-y-4">
                     <div>
+                        <label className="text-xs font-medium text-gray-500 mb-1.5 block">Label above the headline</label>
+                        <Input value={eyebrow} onChange={(v: string) => updateText('eyebrow', v)} placeholder="Optional" />
+                    </div>
+                    <div>
                         <label className="text-xs font-medium text-gray-500 mb-1.5 block">Section Headline</label>
                         <Input value={headline} onChange={(v: string) => update('headline', v)} />
                     </div>
@@ -81,6 +101,30 @@ export function PostGridEditor(props: any) {
                                 onChange={(v: string) => update('limit', parseInt(v))}
                             />
                         </div>
+                    </div>
+
+                    {/* SHOP-LOOK-1D: the side panel; every field optional, cleared → absent */}
+                    <div className="border-t border-gray-100 pt-4 space-y-3">
+                        <div className="text-xs font-semibold text-gray-600">Side panel (left of the posts; above them on a phone)</div>
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Text</label>
+                            <TextArea value={asideText} onChange={(v: string) => updateText('asideText', v)} placeholder="Optional" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-gray-500 mb-1.5 block">Quote</label>
+                            <TextArea value={asideQuote} onChange={(v: string) => updateText('asideQuote', v)} placeholder="Optional" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Button Text</label>
+                                <Input value={asideButtonText} onChange={(v: string) => updateText('asideButtonText', v)} placeholder="Optional" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Button Link</label>
+                                <Input value={asideButtonLink} onChange={(v: string) => updateText('asideButtonLink', v)} placeholder="/blog" />
+                            </div>
+                        </div>
+                        <p className="text-xs text-gray-400">The panel shows when the text, the quote or the button text is set. A button needs a text; without a link it goes nowhere.</p>
                     </div>
                 </div>
             </div>

@@ -33,6 +33,12 @@ export const PostGridPlugin: PluginDefinition = {
             layout: { default: 'list' },
             columns: { default: '3' },
             blockWidth: { default: 'content' },
+            // SHOP-LOOK-1D: default null = absent (design § 4).
+            eyebrow: { default: null },
+            asideText: { default: null },
+            asideQuote: { default: null },
+            asideButtonText: { default: null },
+            asideButtonLink: { default: null },
         };
     },
 
