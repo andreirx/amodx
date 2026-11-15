@@ -16,7 +16,7 @@ src/
 ├── media.ts            # Upload/MIME classification (classifyMedia, validateUpload, …)
 ├── facets.ts           # Catalog storefront filter rules: buildFacetListing (required `labels`, locale-1b), the URL form, filter modes (cat-facets-1, cat-import-profile-1b)
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
-├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e)
+├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e); catalogServerTexts (cdl-1)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)
 ```
@@ -59,7 +59,7 @@ shape** — a function with its own contract and its own test file.
 | CommentSchema | Comment | User comment with moderation status |
 | ContextItemSchema | ContextItem | Strategy documents with tags and blocks |
 | WorkItemSchema | WorkItem | Automation tasks (social, email, research, audit) |
-| ProductSchema | Product | E-commerce product with pricing, inventory, Paddle integration; importer-owned `importSource`, `facetModes`, `importProfileRevision` (omitted from the authoring input by products/create.ts, update.ts). Variant option (`ProductVariantSchema`): `value`, `priceOverride?`, `imageLink?`, `availability?`, `additionalImageLinks?` (CAT-IMPORT-GALLERY-1: the option's other images, the glam import's column 13). `deriveGallery(options)` (index.ts, pure; test `test/derive-gallery.test.ts`) is the ONE product-gallery rule of an imported product: each option's `imageLink` then its `additionalImageLinks`, in option order, each address once → `imageLink` (first) + `additionalImageLinks` (rest). Callers: backend `lib/catalog-product.ts` `withDerivedGallery`, `import/glam/map.ts`, `import/glam-images.ts` |
+| ProductSchema | Product | E-commerce product with pricing, inventory, Paddle integration; importer-owned `importSource`, `facetModes`, `importProfileRevision`, `importLabels` (omitted from the authoring input by products/create.ts, update.ts). CDL-1: `importLabels` (`ImportLabelsSchema`, strict, four non-empty strings `collection`, `unit`, `packaging`, `minimumOrder`) = the attribute keys the glam import wrote the label columns under; absent or malformed → read as `IMPORT_LABELS_WITHOUT_MARKER` (the four Romanian words the importer wrote before cdl-1; fixed history, not the RO pack; readers: backend `interest/public.ts`, `import/glam-pricelist.ts` `otherLabels`). Variant option (`ProductVariantSchema`): `value`, `priceOverride?`, `imageLink?`, `availability?`, `additionalImageLinks?` (CAT-IMPORT-GALLERY-1: the option's other images, the glam import's column 13). `deriveGallery(options)` (index.ts, pure; test `test/derive-gallery.test.ts`) is the ONE product-gallery rule of an imported product: each option's `imageLink` then its `additionalImageLinks`, in option order, each address once → `imageLink` (first) + `additionalImageLinks` (rest). Callers: backend `lib/catalog-product.ts` `withDerivedGallery`, `import/glam/map.ts`, `import/glam-images.ts` |
 | GlamImportProfileSchema | GlamImportProfile | CAT-IMPORT-PROFILE-1: per-producer import profile (grouping, collection source, `specKeys` rules, `facetModes`); every object STRICT — an unknown key, value or version fails the parse, never stripped. CAT-IMAGE-GATE-1: optional `publishWithoutImages` (absent ≡ false: products start hidden until an image copies); `version` stays 1, so profiles stored before it still parse |
 | SpecKeyRuleSchema | SpecKeyRule | One spec key → `attribute { label, split }` or `prose-only` |
 | FacetModesSchema | FacetModes | Filter modes per stored attribute key (`always` / `never`), `variant: never`; absence = automatic |
@@ -134,7 +134,7 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
 - **Parts and storage.** Three parts, one tenant attribute each: `commerceStrings` (`CommerceStringsSchema`, 179 keys:
   the 77 existing ones, the 21 shared product-surface keys of `1b`, the 80 commerce-only keys of `1d` — cart, checkout,
   account, order confirmation and tracking, add-to-cart, commerce bar, navbar account links — and `showcaseEmpty` of
-  `1c`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel, + the 7 `quote*` keys of CAT-QUOTE-1: the "Request a quote" button and dialog) and `siteStrings`
+  `1c`), `catalogStrings` (`CatalogStringsSchema`, 39 keys in `1b`: interest list and facet panel, + the 7 `quote*` keys of CAT-QUOTE-1: the "Request a quote" button and dialog, + the 9 server-text keys of `cdl-1`: `import*` and `interestMail*`) and `siteStrings`
   (`SiteStringsSchema`, 51 keys in `1a` + `errorTryAgain` in `1d` + the 26 block-chrome keys of `1c`). Every key is optional (absent = no override). The nine cookie/legal site keys
   are stored ONLY in `gdpr.*` / `legalLinks.*Label` (`COOKIE_AND_LEGAL_LABEL_LOCATIONS`); `PUT /settings` refuses them
   in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).
@@ -162,6 +162,13 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   tenant that is not en-US, § 16.2 item 4). Every text as resolved (pattern D), except `BLOCK_FALLBACK_KEYS`
   (`videoTitle`, `videoBackgroundTitle`): pattern F — a stored `""` gives the language default, so an iframe name is
   never empty (ruling LOCALE1C-IFRAME-NAMES = A). The block renderers import only its TYPE (`packages/plugins/ARCHITECTURE.md`).
+- **Server texts** (`cdl-1`, `docs/slices/catalog-data-labels-1.md` § 3; PROTOTYPE until the staging run of § 8.4).
+  `catalogServerTexts(resolved)` → `{ siteLabels, variantName, interestMail }`: the catalog texts the BACKEND writes into
+  products (the four site labels of the glam label columns, the default option name) or mails (the interest-list
+  subject and lines, reusing `interestName` / `Email` / `Phone` / `Message`). Pattern F for every text: a stored `""` or
+  whitespace gives the language default; a non-blank override is used trimmed — an empty attribute key would be dropped
+  by the product page and the facets. Users: backend `import/glam-pricelist.ts`, `interest/public.ts`. The RO values
+  equal the literals the backend wrote before (`test/cdl-1.test.ts`).
 - **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
   (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
   slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.

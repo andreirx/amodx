@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { utcDay } from "@amodx/shared";
+import { utcDay, type ImportLabels } from "@amodx/shared";
 import { ApiError, apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Loader2, Upload } from "lucide-react";
 import {
     ImportPreview, NOT_LOADED, ProfileEditorPanel, baseRevisionOf, confirmChoiceOf, editedEditor, editorAfterConflict,
     editorAfterImport, loadEditor, movedNotice, previewedEditor, storedMoved, type ExecutionProfileReport, type GlamDryRun,
-    type ProfileChoice, type ProfileEdit, type ProfileEditor,
+    type LabelsReportDTO, type OtherLabelsDTO, type ProfileChoice, type ProfileEdit, type ProfileEditor,
 } from "./GlamProfileEditor";
 import { siteContextOf, type SiteContext } from "./glamPreview";
 
@@ -43,6 +43,12 @@ import { siteContextOf, type SiteContext } from "./glamPreview";
  * revision }; "Confirm the import" sends the snapshot the shown preview was made for. A 409 "changed by another
  * import" reloads the stored profile and asks for a new preview (§ 6.6). Editor and preview: GlamProfileEditor.tsx,
  * glamPreview.ts.
+ *
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.3, § 4.5, § 5.3) — "Labels": the import writes the four label
+ * columns under the site labels (default) or under this file's header labels; the choice is part of the checked input
+ * (`labels`), so changing it withdraws the shown preview like any edit, and the import sends the choice of the last
+ * preview. The two sets are shown side by side from the latest dry run (`labelSets`); the preview lists the other lists
+ * that hold other labels (`otherLabelsLine`). The option name starts empty: the backend then writes the site's default.
  */
 
 interface Props {
@@ -58,12 +64,17 @@ const SKIP_REASONS: Record<string, string> = {
 
 // ── The form state (pure; tested in GlamPricelistImport.test.ts) ────────────────────────────────────────────────────
 
+/** CDL-1 § 4.3: which labels the import writes the label columns under. */
+export type LabelChoice = "site" | "file";
+
 export interface GlamInput {
     csvContent: string;
     fileName: string;
     producer: string;
     sheet: string;
+    /** "" = none: the backend writes the site's default option name (CDL-1 § 4.5). */
     variantName: string;
+    labels: LabelChoice;
 }
 
 export interface GlamFormState {
@@ -92,6 +103,8 @@ export type GlamFormEvent =
     | { type: "file-chosen"; fileName: string; fileToken: number }
     | { type: "file-read"; fileToken: number; content: string }
     | { type: "field"; field: "producer" | "sheet" | "variantName"; value: string }
+    /** CDL-1 § 4.3: the label choice changed — an input change like a field edit (the preview is withdrawn). */
+    | { type: "labels"; value: LabelChoice }
     | { type: "check-sent" }
     /** `choice` = the `profileChoice` the dry run was SENT with (`null`: none — the stored profile is loaded). */
     | { type: "check-done"; revision: number; input: GlamInput; choice: ProfileChoice | null; report: any; context: SiteContext | null }
@@ -107,7 +120,7 @@ export type GlamFormEvent =
 
 export const INITIAL_GLAM_FORM: GlamFormState = {
     revision: 0, fileToken: 0, reading: false,
-    input: { csvContent: "", fileName: "", producer: "", sheet: "", variantName: "Variantă" },
+    input: { csvContent: "", fileName: "", producer: "", sheet: "", variantName: "", labels: "site" },
     preview: null, profile: NOT_LOADED, pending: null, result: null, error: null,
 };
 
@@ -125,8 +138,9 @@ export function glamFormReducer(state: GlamFormState, event: GlamFormEvent): Gla
         ({ ...state, ...extra, input, revision: state.revision + 1, preview: null, result: null, error: null });
     switch (event.type) {
         case "file-chosen":
+            // CDL-1 § 4.3: the label choice is not kept — a new file starts a new import with the site labels selected.
             return changed(
-                { ...state.input, csvContent: "", fileName: event.fileName, sheet: event.fileName.replace(/\.csv$/i, "") },
+                { ...state.input, csvContent: "", fileName: event.fileName, sheet: event.fileName.replace(/\.csv$/i, ""), labels: "site" },
                 { fileToken: event.fileToken, reading: true, profile: NOT_LOADED },
             );
         case "file-read":
@@ -134,6 +148,8 @@ export function glamFormReducer(state: GlamFormState, event: GlamFormEvent): Gla
             return changed({ ...state.input, csvContent: event.content }, { reading: false });
         case "field":
             return changed({ ...state.input, [event.field]: event.value }, event.field === "producer" ? { profile: NOT_LOADED } : {});
+        case "labels":
+            return changed({ ...state.input, labels: event.value });
         case "profile-edit":
             return changed(state.input, { profile: editedEditor(state.profile, event.edit) });
         case "check-sent":
@@ -180,14 +196,17 @@ export function canCheck(state: GlamFormState): boolean {
 /**
  * The request a check sends now: none loaded yet → no choice (the stored profile is loaded); editing → the working
  * profile with the loaded stored revision as `baseRevision`; an unsupported stored profile with nothing chosen → none
- * possible (take the proposal first).
+ * possible (take the proposal first) — EXCEPT when the label choice differs from the one that verdict was made under
+ * (CDL-1 § 4.4: a stored profile is checked against the chosen column labels, so it can be supported under the other
+ * set): then a check without a choice re-reads the stored profile under the new labels. Nothing is replaced: the
+ * answer loads the stored profile (supported) or reports it unsupported again (`loadEditor`).
  */
 export function checkRequest(state: GlamFormState): { input: GlamInput; choice: ProfileChoice | null } | null {
     if (!canCheck(state)) return null;
     switch (state.profile.kind) {
         case "not-loaded": return { input: state.input, choice: null };
         case "editing": return { input: state.input, choice: { profile: state.profile.working, baseRevision: baseRevisionOf(state.profile.base) } };
-        case "unsupported": return null;
+        case "unsupported": return state.input.labels !== state.profile.facts.labels.used ? { input: state.input, choice: null } : null;
         default: {
             const unhandled: never = state.profile;
             throw new Error(`Unhandled profile editor ${JSON.stringify(unhandled)}`);
@@ -531,12 +550,44 @@ export function hiddenCauseText(cause: HiddenCause): string[] {
 
 export const HIDDEN_CAUSE_UNKNOWN = "The cause is not known in this session: either the row has no main image address, or its main images failed in an earlier copy. Import the sheet again and copy the images to see the addresses that fail.";
 
-/** The request body; `profileChoice` only when a choice is sent (without it the backend applies the stored profile). */
+/**
+ * The request body; `profileChoice` only when a choice is sent (without it the backend applies the stored profile).
+ * CDL-1: `labels` always; `variantName` "" is sent as is (the backend reads a blank name as none).
+ */
 export const requestBody = (input: GlamInput, choice: ProfileChoice | null) =>
     JSON.stringify({
         csvContent: input.csvContent, producer: input.producer, sheet: input.sheet, variantName: input.variantName,
+        labels: input.labels,
         ...(choice ? { profileChoice: choice } : {}),
     });
+
+/**
+ * CDL-1 § 4.3: the two label sets to show beside the choice — from the latest answered dry run, which the profile editor
+ * keeps as its facts (so a change of the choice, which withdraws the preview, still shows both sets). `null` before the
+ * first answered dry run for this file and producer (the editor is reset when either changes).
+ */
+export function labelSets(state: GlamFormState): LabelsReportDTO | null {
+    switch (state.profile.kind) {
+        case "editing":
+        case "unsupported":
+            return state.profile.facts.labels;
+        case "not-loaded":
+            return null;
+        default: {
+            const unhandled: never = state.profile;
+            throw new Error(`Unhandled profile editor ${JSON.stringify(unhandled)}`);
+        }
+    }
+}
+
+/** The four labels of a set, in column order, for display. */
+export const labelList = (labels: ImportLabels) => [labels.collection, labels.unit, labels.packaging, labels.minimumOrder].join(", ");
+
+/** CDL-1 § 5.3: the preview line for `otherLabels`; `null` when no other list holds other labels. Nothing blocks. */
+export function otherLabelsLine(list: OtherLabelsDTO[]): string | null {
+    if (list.length === 0) return null;
+    return `These lists use other labels: ${list.map((o) => `${o.importSource} (${o.products} products: ${labelList(o.labels)})`).join("; ")}. Import them again to share filters.`;
+}
 
 const explain = (err: any) => {
     const message: string = err?.message || "The import failed.";
@@ -700,10 +751,13 @@ export function GlamPricelistImport({ onImported }: Props) {
                 </div>
                 <div className="space-y-1">
                     <Label htmlFor="glam-variant">What the variants are</Label>
-                    <Input id="glam-variant" value={input.variantName} placeholder="Variantă, Culoare, Format…"
+                    <Input id="glam-variant" value={input.variantName} placeholder="Empty: the site's default option name"
                         onChange={(e) => dispatch({ type: "field", field: "variantName", value: e.target.value })} disabled={busy} />
                 </div>
             </div>
+
+            <LabelChoicePanel choice={input.labels} sets={labelSets(state)} disabled={busy}
+                onChange={(value) => dispatch({ type: "labels", value })} />
 
             <div className="flex gap-2">
                 {checkButton}
@@ -721,6 +775,9 @@ export function GlamPricelistImport({ onImported }: Props) {
 
             {error && <div className="text-sm p-3 rounded-md bg-destructive/10 text-destructive">{error}</div>}
             {preview && <ImportReport report={preview.report} />}
+            {preview && otherLabelsLine(preview.report.otherLabels) && (
+                <div className="text-xs p-2 rounded-md bg-muted">{otherLabelsLine(preview.report.otherLabels)}</div>
+            )}
             {preview && preview.choice === null && (
                 <div className="text-sm p-3 rounded-md bg-destructive/10 text-destructive">
                     This report cannot be imported: the saved profile cannot be applied. Use the proposal below and preview.
@@ -748,6 +805,32 @@ export function GlamPricelistImport({ onImported }: Props) {
                 </div>
             )}
             {images.kind !== "idle" && <ImageCopyReport state={images} importReport={result} />}
+        </div>
+    );
+}
+
+/**
+ * CDL-1 § 4.3: the label choice — "Use the site labels" (default) and "Use this file's labels", each with its four
+ * labels when a dry run has reported them (`labelSets`).
+ */
+function LabelChoicePanel({ choice, sets, disabled, onChange }: { choice: LabelChoice; sets: LabelsReportDTO | null; disabled: boolean; onChange: (value: LabelChoice) => void }) {
+    const option = (value: LabelChoice, title: string, labels: ImportLabels | undefined, note?: string) => (
+        <label className="flex items-start gap-2 text-xs p-2 rounded-md border flex-1">
+            <input type="radio" name="glam-labels" className="mt-0.5" checked={choice === value} disabled={disabled} onChange={() => onChange(value)} />
+            <span className="space-y-0.5">
+                <span className="font-medium block">{title}</span>
+                <span className="block text-muted-foreground">{labels ? labelList(labels) : "Shown after “Check the file”."}</span>
+                {note && <span className="block text-muted-foreground">{note}</span>}
+            </span>
+        </label>
+    );
+    return (
+        <div className="space-y-1">
+            <div className="text-xs font-medium">Labels of the columns collection, unit, packaging and minimum order</div>
+            <div className="flex flex-col sm:flex-row gap-2">
+                {option("site", "Use the site labels", sets?.site)}
+                {option("file", "Use this file's labels", sets?.file, "Products of this list get their own filters, separate from other lists.")}
+            </div>
         </div>
     );
 }

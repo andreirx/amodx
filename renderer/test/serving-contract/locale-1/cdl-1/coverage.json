@@ -1,0 +1,50 @@
+{
+  "slice": "cdl-1",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for CDL-1 (docs/slices/catalog-data-labels-1.md § 3.1; record docs/slices/cdl-1.md): the nine catalog keys this slice adds are SERVER texts — the backend writes them into products at a glam import (import*) or mails them to the site owner (interestMail*); no renderer reads them. Each maps to the checks at its reader: backend/test/unit/glam-import-handler.test.ts (the handler writes the resolved site labels and the default option name), backend/test/unit/interest-integration.test.ts (the whole mail, RO equal to today's literal mail, EN the ruled texts), packages/shared/test/cdl-1.test.ts (catalogServerTexts: pack values and the non-empty rule). No key is a count key. Checked by renderer/test/unit/locale-coverage.test.ts.",
+  "allocatedKeys": {
+    "site": [],
+    "catalog": [
+      "importCollectionAttribute", "importUnitAttribute", "importPackagingAttribute", "importMinimumOrderAttribute", "importVariantName",
+      "interestMailSubject", "interestMailIntro", "interestMailProducts", "interestMailSentAt"
+    ],
+    "commerce": []
+  },
+  "checks": {
+    "catalog.importCollectionAttribute": [
+      { "test": "backend/test/unit/glam-import-handler.test.ts", "case": "labels absent → the site labels (English site): written, recorded as importLabels, and reported with used = site" },
+      { "test": "packages/shared/test/cdl-1.test.ts", "case": "ro-RO without overrides → today's Romanian words" }
+    ],
+    "catalog.importUnitAttribute": [
+      { "test": "backend/test/unit/glam-import-handler.test.ts", "case": "labels absent → the site labels (English site): written, recorded as importLabels, and reported with used = site" },
+      { "test": "packages/shared/test/cdl-1.test.ts", "case": "ro-RO without overrides → today's Romanian words" }
+    ],
+    "catalog.importPackagingAttribute": [
+      { "test": "backend/test/unit/glam-import-handler.test.ts", "case": "tenant catalogStrings: a non-empty override is the site label" },
+      { "test": "packages/shared/test/cdl-1.test.ts", "case": "ro-RO without overrides → today's Romanian words" }
+    ],
+    "catalog.importMinimumOrderAttribute": [
+      { "test": "backend/test/unit/glam-import-handler.test.ts", "case": "tenant catalogStrings: a non-empty override is the site label" },
+      { "test": "packages/shared/test/cdl-1.test.ts", "case": "ro-RO without overrides → today's Romanian words" }
+    ],
+    "catalog.importVariantName": [
+      { "test": "backend/test/unit/glam-import-handler.test.ts", "case": "request option name absent or blank → the site default under labels = site AND labels = file" },
+      { "test": "packages/shared/test/cdl-1.test.ts", "case": "ro-RO without overrides → today's Romanian words" }
+    ],
+    "catalog.interestMailSubject": [
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "ro-RO, no override → equal to today's mail (today's literal text)" },
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "en-US → the English texts of § 3.1" }
+    ],
+    "catalog.interestMailIntro": [
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "ro-RO, no override → equal to today's mail (today's literal text)" },
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "en-US → the English texts of § 3.1" }
+    ],
+    "catalog.interestMailProducts": [
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "ro-RO, no override → equal to today's mail (today's literal text)" },
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "en-US → the English texts of § 3.1" }
+    ],
+    "catalog.interestMailSentAt": [
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "ro-RO, no override → equal to today's mail (today's literal text)" },
+      { "test": "backend/test/unit/interest-integration.test.ts", "case": "en-US → the English texts of § 3.1" }
+    ]
+  }
+}

@@ -119,13 +119,28 @@ describe("Reset to the language defaults", () => {
         // the rest are commerce-only: 70 before LOCALE-1D, + its 80 keys = 150 (the commerce part has 179 keys).
         expect(SECTION_KEYS.product).toHaveLength(29);
         expect(SECTION_KEYS.commerce).toHaveLength(150);
-        // CAT-QUOTE-1: + the 7 keys of the "Request a quote" card.
-        expect(SECTION_KEYS.catalog).toHaveLength(39 + 7);
+        // CAT-QUOTE-1: + the 7 keys of the "Request a quote" card. CDL-1: + 9 (the "Import labels" card and 4 mail keys).
+        expect(SECTION_KEYS.catalog).toHaveLength(39 + 7 + 9);
+    });
+
+    it("CDL-1: the \"Import labels\" card holds the five import keys; the \"Interest list\" card ends with the four mail keys; the catalog Reset removes them", () => {
+        const source = readFileSync(new URL("./Labels.tsx", import.meta.url), "utf8");
+        const fields = (from: string, to: string) => [...source.slice(source.indexOf(from), source.indexOf(to)).matchAll(/field="([^"]+)"/g)].map((m) => m[1]);
+        const importKeys = ["importCollectionAttribute", "importUnitAttribute", "importPackagingAttribute", "importMinimumOrderAttribute", "importVariantName"];
+        const mailKeys = ["interestMailSubject", "interestMailIntro", "interestMailProducts", "interestMailSentAt"];
+        expect(fields(">Import labels</CardTitle>", "Product pages & search (commerce and catalog")).toEqual(importKeys);
+        expect(fields(">Interest list</CardTitle>", ">Filters</CardTitle>").slice(-4)).toEqual(mailKeys);
+        expect(source).toContain("Written into the products at the next import of a list. Products keep their labels until their list is imported again.");
+        expect(SECTION_KEYS.catalog.slice(46)).toEqual([...importKeys, ...mailKeys]);
+        const loaded = { catalogMode: true, catalogStrings: { importCollectionAttribute: "Series", interestMailSubject: "List — {name}" } };
+        const d = draftFromSettings(loaded);
+        expect(overrideCount(d, "catalog")).toBe(2);
+        expect(labelsSaveBody(loaded, resetSection(d, "catalog"))).toEqual({ catalogStrings: {} });
     });
 
     it("CAT-QUOTE-1: the catalog section holds the seven quote keys, each an input of the \"Request a quote\" card; the catalog Reset removes them", () => {
         const quote = ["quoteButton", "quoteTitle", "quoteCall", "quoteWhatsApp", "quoteEmail", "quoteMessage", "quoteClose"];
-        expect(SECTION_KEYS.catalog.slice(39)).toEqual(quote);
+        expect(SECTION_KEYS.catalog.slice(39, 46)).toEqual(quote);
         const source = readFileSync(new URL("./Labels.tsx", import.meta.url), "utf8");
         const card = source.slice(source.indexOf(">Request a quote</CardTitle>"), source.indexOf(">Interest list</CardTitle>"));
         expect([...card.matchAll(/field="([^"]+)"/g)].map((m) => m[1])).toEqual(quote);

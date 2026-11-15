@@ -140,9 +140,12 @@ src/
 │                          #   a consistent chunked BatchGet (UnprocessedKeys ≤ 3 retries → 503, nothing written);
 │                          #   title/slug/option/image recorded from that read; conditional Puts. Mail to
 │                          #   interestListEmail, else integrations.contactEmail (CAT-QUOTE-1; neither → logged,
-│                          #   no fallback; the same mail either way).
+│                          #   no fallback; the same mail either way). CDL-1: the mail's subject and lines are in
+│                          #   the site language with the owner's Labels overrides (shared catalogServerTexts);
+│                          #   the stored system form and each record's formName hold English admin constants.
 │                          #   POST /public/interest/resolve — the list page's identity read: the same BatchGet,
-│                          #   per id active {title, slug, imageLink, collection (attribute `colecție`), optionValues}
+│                          #   per id active {title, slug, imageLink, collection (the attribute keyed by the
+│                          #   product's `importLabels.collection`; no or a malformed marker → `colecție`, CDL-1), optionValues}
 │                          #   | not-available (no fields) | absent; incomplete → 503. No reCAPTCHA (public fields).
 │                          #   forms/update + forms/delete refuse `interest-list` (409); forms/list omits it
 ├── context/
@@ -242,6 +245,17 @@ src/
     │                      #   lock; the dry run's read has no lock, so its list can differ); response member
     │                      #   `crossSheetSuffixed` [{ slug, previousSlug, rowIndex, heldBy }] on the dry run and
     │                      #   the execution
+    │                      #   CDL-1 (docs/slices/catalog-data-labels-1.md § 4): after the mode read, one consistent
+    │                      #   Get of the tenant's `locale` + `catalogStrings` → the SITE labels and the default
+    │                      #   option name (shared catalogServerTexts); the FILE labels = the parser's headerLabels,
+    │                      #   an empty cell → the site label of its column; body `labels` "site" (absent) | "file"
+    │                      #   (other → 400 before any read); two chosen labels equal after norm → 400 (dry run
+    │                      #   too, nothing written); the chosen set is the core's input (planGlamImport,
+    │                      #   checkProfile — a stored profile label equal to one → unsupported → 409) and each
+    │                      #   product's `importLabels`. Answers `labels { site, file, used }` (dry run, execution);
+    │                      #   the dry run also `otherLabels` (other glam: lists whose products hold other labels,
+    │                      #   from the existing PRODUCT# read, + `importLabels` projected). A request without an
+    │                      #   option name gets the site default under both choices (report `variantName`).
     ├── glam-images.ts     # POST /import/glam-pricelist/images (CAT-IMAGES-1) — body { producer, sheet }; copies the
     │                      #   sheet's producer option images into tenant media, ONE BOUNDED BATCH per request (the
     │                      #   admin page repeats until `complete`): set = PRODUCT# query selected by importSource;
@@ -284,6 +298,10 @@ src/
     │                      #   = the http(s) column-13 addresses of the option's rows (`usableGallery`), each once —,
     │                      #   collision-aware labels and slugs; with TakenSlugs the
     │                      #   cross-sheet pass `avoidTakenSlugs`), map.ts (upload identifier rule, importSource,
+    │                      #   CDL-1: the label set and the default option name are INPUTS of planGlamImport, the
+    │                      #   upload's `variantName` is present only when the request gave one, plan `variantName`
+    │                      #   = it or the default, every draft carries `importLabels`; parse.ts returns the header
+    │                      #   cells of columns 0/6/7/8 as `headerLabels`;
     │                      #   GlamStyleDraft DTO, report counts; CAT-IMPORT-GALLERY-1: plan `gallery` (rows,
     │                      #   addresses, non-http(s) parts dropped) only for a 13-column file, the options' extras
     │                      #   stored on the draft, product gallery by deriveGallery; `takenSlugsOf` = the slugs of products outside
@@ -450,7 +468,8 @@ test live here, both credential-free:
    `test/unit/glam-images-core.test.ts`; CAT-IMPORT-PROFILE-1A `profile.ts`, `test/unit/glam-profile.test.ts`,
    incl. the T3 fold corpus `fixtures/glam/cat-import-profile-1a-fold-corpus.json`). The handler's preservation
    is pinned against a golden captured from a base commit — b0a3055, re-captured from b5ef8fb with only the
-   CAT-IMAGE-GATE-1 status change (`test/unit/glam-profile-golden.test.ts`, fixture
+   CAT-IMAGE-GATE-1 status change; CDL-1 adds six named deltas D1–D6, each asserted, no re-capture
+   (`test/unit/glam-profile-golden.test.ts`, fixture
    `fixtures/glam/cat-import-profile-1-baseline.json`, capture `cat-import-profile-1-golden.capture.test.ts`). These exist partly *as* pure test seams,
    extracted from AWS-touching callers precisely so the rule can be pinned here.
 

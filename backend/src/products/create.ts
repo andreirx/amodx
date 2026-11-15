@@ -42,11 +42,11 @@ const _handler: Handler = async (event) => {
         const mode = await readTenantMode(tenantId);
         if (!mode) return { statusCode: 404, body: JSON.stringify({ error: "Site not found" }) };
 
-        // Validate. `importSource`, `facetModes` and `importProfileRevision` are importer-owned: omitted here, so the
-        // body cannot set them (stripped, not refused).
+        // Validate. `importSource`, `facetModes`, `importProfileRevision` and `importLabels` (CDL-1) are importer-owned:
+        // omitted here, so the body cannot set them (stripped, not refused).
         const parsed = ProductSchema.omit({
             id: true, tenantId: true, createdAt: true, updatedAt: true, importSource: true,
-            facetModes: true, importProfileRevision: true,
+            facetModes: true, importProfileRevision: true, importLabels: true,
         }).safeParse(body);
         if (!parsed.success) {
             return { statusCode: 400, body: JSON.stringify({ error: "Invalid product", details: parsed.error.issues }) };

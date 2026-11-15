@@ -89,7 +89,7 @@ describe("CAT-INTEREST-1 integration (in-memory store)", () => {
         const [record] = records();
         expect(records()).toHaveLength(1);
         expect(record).toMatchObject({
-            Type: "FormSubmission", id: res.body.submissionId, tenantId: T1, formId: "interest-list", formName: "Listă de interes",
+            Type: "FormSubmission", id: res.body.submissionId, tenantId: T1, formId: "interest-list", formName: "Interest list",
             submitterEmail: "ana@example.com", status: "new",
         });
         expect(record.SK).toBe(`FORMSUB#interest-list#${res.body.submissionId}`);
@@ -104,7 +104,12 @@ describe("CAT-INTEREST-1 integration (in-memory store)", () => {
         });
         expect(JSON.stringify(record)).not.toContain("SECRET-NOT-PROJECTED");
         // The system form: fixed id, no slug, no FORMSLUG# pointer.
-        expect(table.get(`TENANT#${T1}`, "FORM#interest-list")).toMatchObject({ Type: "Form", id: "interest-list", name: "Listă de interes", status: "active" });
+        // CDL-1 § 6.2: the stored form's name and labels are English admin constants.
+        expect(table.get(`TENANT#${T1}`, "FORM#interest-list")).toMatchObject({ Type: "Form", id: "interest-list", name: "Interest list", status: "active" });
+        expect(table.get(`TENANT#${T1}`, "FORM#interest-list")!.fields).toEqual([
+            { id: "name", label: "Name", type: "text" }, { id: "email", label: "E-mail", type: "email" }, { id: "phone", label: "Phone", type: "phone" },
+            { id: "message", label: "Message", type: "textarea" }, { id: "items", label: "Products", type: "textarea" },
+        ]);
         expect(table.get(`TENANT#${T1}`, "FORM#interest-list")!.slug).toBeUndefined();
         expect(table.all("FORMSLUG#")).toEqual([]);
     });
@@ -186,7 +191,8 @@ describe("CAT-INTEREST-1 integration (in-memory store)", () => {
         expect(mail.Destination!.ToAddresses).toEqual(["office@glam.test"]);
         expect(mail.ReplyToAddresses).toEqual(["ana@example.com"]);
         expect(mail.Source).toContain("noreply@platform.test");
-        expect(mail.Message!.Subject!.Data).toBe("Listă de interes — Ana Pop");
+        // CDL-1 § 6.3: the fixture tenant stores no locale → the English mail (the Romanian one is pinned below).
+        expect(mail.Message!.Subject!.Data).toBe("Interest list — Ana Pop");
         const text = mail.Message!.Body!.Text!.Data!;
         expect(text).toContain("- Title p1 — 120x20 — https://glam.test/product/slug-p1");
         expect(text).toContain("- Title p2 — https://glam.test/product/slug-p2");
@@ -229,5 +235,73 @@ describe("CAT-INTEREST-1 — the system form's protection in the forms routes", 
         const res = await run(listForms, adminEvent(""));
         expect(res.status).toBe(200);
         expect(res.body.items.map((f: any) => f.id)).toEqual(["user-form"]);
+    });
+});
+
+describe("CDL-1 § 6.3 — the interest mail is in the site's language", () => {
+    const TENANT = { PK: "SYSTEM", SK: `TENANT#${T1}`, id: T1, name: "Glam", domain: "glam.test", catalogMode: true, integrations: { contactEmail: "office@glam.test" } };
+    const SENT_AT = "2026-11-15T10:00:00.000Z";
+    const send = async (tenant: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
+        table.put({ ...TENANT, ...tenant });
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date(SENT_AT));
+        try {
+            const res = await submit({ phone: "0700", items: [{ productId: "p1", optionValue: "120x20" }, { productId: "p2" }], ...extra });
+            expect(res.status).toBe(201);
+        } finally {
+            vi.useRealTimers();
+        }
+        expect(mails()).toHaveLength(1);
+        return { subject: mails()[0].Message!.Subject!.Data, text: mails()[0].Message!.Body!.Text!.Data };
+    };
+
+    it("ro-RO, no override → equal to today's mail (today's literal text)", async () => {
+        const mail = await send({ locale: "ro-RO" });
+        expect(mail.subject).toBe("Listă de interes — Ana Pop");
+        expect(mail.text).toBe([
+            "Listă de interes nouă de la Ana Pop",
+            "",
+            "Nume: Ana Pop",
+            "E-mail: ana@example.com",
+            "Telefon: 0700",
+            "Mesaj: —",
+            "",
+            "Produse (2):",
+            "- Title p1 — 120x20 — https://glam.test/product/slug-p1",
+            "- Title p2 — https://glam.test/product/slug-p2",
+            "",
+            `Trimisă: ${SENT_AT}`,
+        ].join("\n"));
+    });
+
+    it("en-US → the English texts of § 3.1", async () => {
+        const mail = await send({ locale: "en-US" }, { message: "Hello" });
+        expect(mail.subject).toBe("Interest list — Ana Pop");
+        expect(mail.text).toBe([
+            "New interest list from Ana Pop",
+            "",
+            "Name: Ana Pop",
+            "E-mail: ana@example.com",
+            "Phone: 0700",
+            "Message: Hello",
+            "",
+            "Products (2):",
+            "- Title p1 — 120x20 — https://glam.test/product/slug-p1",
+            "- Title p2 — https://glam.test/product/slug-p2",
+            "",
+            `Sent: ${SENT_AT}`,
+        ].join("\n"));
+    });
+
+    it("the owner's Labels overrides reach the mail; a blank override gives the language default", async () => {
+        const mail = await send({ locale: "ro-RO", catalogStrings: { interestName: "Numele complet", interestPhone: "  ", interestMailSubject: "Cerere — {name}" } });
+        expect(mail.subject).toBe("Cerere — Ana Pop");
+        expect(mail.text.split("\n").slice(2, 5)).toEqual(["Numele complet: Ana Pop", "E-mail: ana@example.com", "Telefon: 0700"]);
+    });
+
+    it("a visitor name holding a placeholder is inserted as written, never filled again", async () => {
+        const mail = await send({ locale: "en-US" }, { name: "Ana {n} {date}" });
+        expect(mail.subject).toBe("Interest list — Ana {n} {date}");
+        expect(mail.text.split("\n")[0]).toBe("New interest list from Ana {n} {date}");
     });
 });

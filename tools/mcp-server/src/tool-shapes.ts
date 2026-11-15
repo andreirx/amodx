@@ -49,10 +49,12 @@ export function productListLine(p: { title: string; price?: string; currency?: s
 /**
  * CAT-IMPORT-1 — `import_glam_pricelist`: the request of `POST /import/glam-pricelist`. The sheet defaults to the
  * file name without `.csv` (as in the admin form); a dry run is the default — the import replaces the sheet's
- * products, so the caller previews first. Absent `variant_name` → no key (the backend defaults it to "Variantă").
+ * products, so the caller previews first. Absent `variant_name` → no key (default: the site's default option name, CDL-1).
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.3): `labels` "site" | "file" → the request member `labels`; absent
+ * → no key (the backend uses the site labels).
  */
 export function glamPricelistRequest(
-    args: { producer: string; sheet?: string; variant_name?: string; dry_run?: boolean },
+    args: { producer: string; sheet?: string; variant_name?: string; labels?: "site" | "file"; dry_run?: boolean },
     csvContent: string,
     fileName: string,
 ): { dryRun: boolean; body: Record<string, string> } {
@@ -62,8 +64,13 @@ export function glamPricelistRequest(
         sheet: args.sheet || fileName.replace(/\.csv$/i, ""),
     };
     if (args.variant_name) body.variantName = args.variant_name;
+    if (args.labels) body.labels = args.labels;
     return { dryRun: args.dry_run !== false, body };
 }
+
+/** CDL-1: the four column labels of one set, as the backend reports them (`@amodx/shared` `ImportLabels`). */
+type ImportLabelsLine = { collection: string; unit: string; packaging: string; minimumOrder: string };
+const labelsText = (l: ImportLabelsLine) => [l.collection, l.unit, l.packaging, l.minimumOrder].join(", ");
 
 /** The `import_glam_pricelist` result text: counts, the previous set, skipped rows. Nothing about prices exists to print. */
 export function glamPricelistSummary(report: {
@@ -84,6 +91,10 @@ export function glamPricelistSummary(report: {
      * occupied one followed by the sheet's name and/or a number (backend `avoidTakenSlugs`).
      */
     crossSheetSuffixed?: { slug: string; previousSlug: string }[];
+    /** CDL-1 § 4.8: the site and the file's labels and the set used (dry run and import). */
+    labels?: { site: ImportLabelsLine; file: ImportLabelsLine; used: "site" | "file" };
+    /** CDL-1 § 5.3: the other glam lists whose products hold other labels (dry run). */
+    otherLabels?: { importSource: string; labels: ImportLabelsLine; products: number }[];
 }): string {
     const c = report.counts;
     const lines = [
@@ -93,6 +104,12 @@ export function glamPricelistSummary(report: {
         `${report.dryRun ? "Would create" : "Created"} ${c.products} products with ${c.options} variants; ${c.deduped} rows merged; ${report.categoriesCreated} new categories`,
         `Skipped ${c.skipped} rows` + (c.skipped ? `: ${report.rows.filter((r) => r.status === "skipped").map((r) => `row ${r.index} ${r.reason}`).join(", ")}` : ""),
     ];
+    if (report.labels) {
+        lines.push(`Labels: ${report.labels.used === "site" ? "the site labels" : "this file's labels"} — ${labelsText(report.labels[report.labels.used])}`);
+    }
+    if (report.otherLabels?.length) {
+        lines.push(`These lists use other labels: ${report.otherLabels.map((o) => `${o.importSource} (${o.products} products: ${labelsText(o.labels)})`).join("; ")}. Import them again to share filters.`);
+    }
     if (report.profile) {
         // The tool cannot change a profile: it applies the producer's stored one (§ 6.4).
         lines.push(`Profile: ${report.profile.source}, ${report.profile.revision === null ? "no revision" : `revision ${report.profile.revision}`}` +

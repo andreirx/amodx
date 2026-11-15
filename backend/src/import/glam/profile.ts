@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
     GlamImportProfileSchema,
-    type FacetModes, type GlamImportProfile,
+    type FacetModes, type GlamImportProfile, type ImportLabels,
 } from "@amodx/shared";
 import { wholeTokenPattern, type GlamRow } from "./parse.js";
 import { foldTokens, norm } from "./group.js";
@@ -19,17 +19,6 @@ import { foldTokens, norm } from "./group.js";
  * - `analyseSpecKeys` — the dry run's per-key facts (§ 3.5 `specKeys`).
  * The prose (`description`, `longDescription`) is not touched here: ruling CIP1-PROSE = A.
  */
-
-/**
- * The column attribute keys (catalog-mode-1 § 3.4 column table), in the order `map.ts` writes them. A profile cannot
- * rename them or reuse them as a label (§ 2.4): `colecție` is read by name by the interest list (interest/public.ts).
- */
-export const COLUMN_ATTRIBUTE = {
-    collection: "colecție",
-    unit: "unitate",
-    packaging: "împachetare",
-    minimumOrder: "comandă minimă",
-} as const;
 
 /** § 2.8: today's behaviour. With it `applyProfileToRows` returns the rows unchanged and `extractAttributes` nothing. */
 export const DEFAULT_PROFILE: GlamImportProfile = {
@@ -53,12 +42,13 @@ const untrimmed = (text: string) => text !== text.trim() || text.trim() === "";
 
 /**
  * The rules beyond the shape: every key and label is non-empty and has no leading or trailing space (a key is matched
- * exactly, as the file spells it); spec keys are unique; a label is not a column key (compared with `norm`); the
+ * exactly, as the file spells it); spec keys are unique; a label is not one of the import's four column labels
+ * (`labels`, compared with `norm`; CDL-1 § 4.4: the labels this import writes, the site's or the file's); the
  * collection spec key is not also in `specKeys`; each `facetModes.attributes` key is set once (so never both
  * `always` and `never`).
  */
-export function checkProfile(profile: GlamImportProfile): ProfileCheck {
-    const columnKeys = new Set(Object.values(COLUMN_ATTRIBUTE).map(norm));
+export function checkProfile(profile: GlamImportProfile, labels: ImportLabels): ProfileCheck {
+    const columnKeys = new Set(Object.values(labels).map(norm));
     const keys = new Set<string>();
     for (const rule of profile.specKeys) {
         if (untrimmed(rule.key)) return refusedCheck(`The spec key "${rule.key}" is empty or has leading or trailing spaces.`);
@@ -143,10 +133,11 @@ export type StoredProfile =
     | { readonly kind: "unsupported"; readonly revision: number; readonly reason: string };
 
 /**
- * The stored item → its state. A missing or non-positive-integer `revision` means the item was not written by this
- * importer's rule: an internal fault, thrown (the handler answers 500 naming the step).
+ * The stored item → its state, checked against the import's column labels (`checkProfile`): a stored profile whose
+ * label equals one of them reads as `unsupported` (CDL-1 § 4.4). A missing or non-positive-integer `revision` means the
+ * item was not written by this importer's rule: an internal fault, thrown (the handler answers 500 naming the step).
  */
-export function readStoredProfile(item: Record<string, unknown> | undefined): StoredProfile {
+export function readStoredProfile(item: Record<string, unknown> | undefined, labels: ImportLabels): StoredProfile {
     if (!item) return { kind: "none" };
     const revision = item.revision;
     if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 1) {
@@ -154,7 +145,7 @@ export function readStoredProfile(item: Record<string, unknown> | undefined): St
     }
     const parsed = GlamImportProfileSchema.safeParse(item.profile);
     if (!parsed.success) return { kind: "unsupported", revision, reason: describeIssues(parsed.error.issues) };
-    const check = checkProfile(parsed.data);
+    const check = checkProfile(parsed.data, labels);
     switch (check.kind) {
         case "accepted": return { kind: "supported", revision, profile: parsed.data };
         case "refused": return { kind: "unsupported", revision, reason: check.error };
@@ -178,17 +169,16 @@ export type ProfileChoiceParse =
     | { readonly kind: "accepted"; readonly choice: ProfileChoice }
     | { readonly kind: "refused"; readonly error: string };
 
-/** Absent member → `absent`; otherwise the strict shape and `checkProfile`, or a refusal (the handler answers 400). */
+/**
+ * Absent member → `absent`; otherwise the strict shape, or a refusal (the handler answers 400 before any read). The
+ * rules of `checkProfile` need the import's column labels, known only after the tenant read (CDL-1 § 4.4): the handler
+ * applies them then.
+ */
 export function parseProfileChoice(raw: unknown): ProfileChoiceParse {
     if (raw === undefined) return { kind: "absent" };
     const parsed = ProfileChoiceSchema.safeParse(raw);
     if (!parsed.success) return { kind: "refused", error: `profileChoice is not valid: ${describeIssues(parsed.error.issues)}` };
-    const check = checkProfile(parsed.data.profile);
-    switch (check.kind) {
-        case "accepted": return { kind: "accepted", choice: parsed.data };
-        case "refused": return { kind: "refused", error: `The import profile is not valid: ${check.error}` };
-        default: return assertNever(check);
-    }
+    return { kind: "accepted", choice: parsed.data };
 }
 
 /** Which profile an import uses, and whether the profile item must be written first. */

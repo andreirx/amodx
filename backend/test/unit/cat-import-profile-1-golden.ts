@@ -4,6 +4,7 @@ import * as path from "path";
 import type { MemoryTable } from "./memory-table.js";
 import { parseGlamCsv } from "../../src/import/glam/parse.js";
 import { checkUpload, planGlamImport } from "../../src/import/glam/map.js";
+import { catalogServerTexts, resolveLocaleStrings } from "@amodx/shared";
 
 /**
  * CAT-IMPORT-PROFILE-1A — the inputs, the masking and the capture steps of the 1a golden
@@ -11,7 +12,10 @@ import { checkUpload, planGlamImport } from "../../src/import/glam/map.js";
  *  - `cat-import-profile-1-golden.capture.test.ts` runs it on the BASE commit and writes
  *    `fixtures/glam/cat-import-profile-1-baseline.json` (re-capture command in that file's header);
  *  - `glam-profile-golden.test.ts` runs it on the current code and compares with that file.
- * The plan is computed with `planGlamImport(rows, upload)` — the call form the base commit has.
+ * The plan was computed with `planGlamImport(rows, upload)` — the call form the base commit has. CDL-1 delta D6
+ * (docs/slices/catalog-data-labels-1.md § 4.10): `planOf` now passes the Romanian site labels and default option name
+ * (`catalogServerTexts(resolveLocaleStrings({ locale: "ro-RO" }))`), the values the base commit wrote as literals. A
+ * re-capture on a commit before cdl-1 must put the old call form back in its copy of this file.
  */
 
 type Item = Record<string, any>;
@@ -19,12 +23,15 @@ type Item = Record<string, any>;
 /**
  * The response members added after the golden's base commit b0a3055: CAT-IMPORT-PROFILE-1 § 3.5 (`profile` …
  * `specLineRefusals`), CAT-IMAGE-GATE-1 § 3 item 4 (`publication`) and CAT-SLUG-UNIQUE-1 § 2 item 3
- * (`crossSheetSuffixed`; the golden test asserts it is `[]` wherever it is sent — no golden input has a taken slug).
+ * (`crossSheetSuffixed`; the golden test asserts it is `[]` wherever it is sent — no golden input has a taken slug),
+ * CDL-1 § 4.8 (`labels`, `otherLabels`; delta D5 — the golden test asserts their values wherever they are sent).
  * The golden holds the base commit's response shape: the capture leaves these out of every response (a no-op on a
  * commit that does not send them) and the comparison removes them before comparing (`glam-profile-golden.test.ts`).
  * Every other member must equal the golden.
  */
-export const ADDED_MEMBERS = ["profile", "sheets", "specKeys", "drafts", "siteProducts", "specLineRefusals", "publication", "crossSheetSuffixed"] as const;
+export const ADDED_MEMBERS = [
+    "profile", "sheets", "specKeys", "drafts", "siteProducts", "specLineRefusals", "publication", "crossSheetSuffixed", "labels", "otherLabels",
+] as const;
 
 /** `body` without the `ADDED_MEMBERS` (`kept`) and those members alone (`extra`). */
 export function splitAddedMembers(body: Record<string, unknown>): { kept: Record<string, unknown>; extra: Record<string, unknown> } {
@@ -116,13 +123,16 @@ export function goldenInputs(): GoldenInput[] {
     ];
 }
 
+/** CDL-1 D6: the site labels and default option name of a Romanian site without overrides (the golden tenant, D1). */
+export const RO_SITE = catalogServerTexts(resolveLocaleStrings({ locale: "ro-RO" }));
+
 /** The plan today's core makes for one input (the dry run and the execution make the same). */
 export function planOf(input: GoldenInput) {
     const parsed = parseGlamCsv(input.csvContent);
     if (parsed.kind !== "parsed") return { refused: parsed.error };
     const upload = checkUpload(input);
     if (upload.kind !== "accepted") return { refused: upload.error };
-    return planGlamImport(parsed.rows, upload.upload);
+    return planGlamImport(parsed.rows, upload.upload, RO_SITE.siteLabels, RO_SITE.variantName);
 }
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;

@@ -21,10 +21,12 @@ import {
 } from "./glam/map.js";
 import type { TakenSlugs } from "./glam/group.js";
 import {
-    analyseSpecKeys, buildGuard, importStatus, parseProfileChoice, profileReport, profileSortKey, readStoredProfile, resolveProfile,
+    analyseSpecKeys, buildGuard, checkProfile, importStatus, parseProfileChoice, profileReport, profileSortKey, readStoredProfile, resolveProfile,
     DEFAULT_PROFILE, type ProfileChoice, type ProfileReport, type ProfileResolution, type StoredProfile,
 } from "./glam/profile.js";
-import type { GlamImportProfile } from "@amodx/shared";
+import {
+    IMPORT_LABELS_WITHOUT_MARKER, ImportLabelsSchema, catalogServerTexts, resolveLocaleStrings, type GlamImportProfile, type ImportLabels,
+} from "@amodx/shared";
 import { imagesHandler } from "./glam-images.js";
 
 /**
@@ -32,9 +34,10 @@ import { imagesHandler } from "./glam-images.js";
  * per style, REPLACING the sheet's previous product set, for one catalog tenant.
  * Spec: docs/slices/catalog-mode-1.md § 3.4; slice docs/slices/cat-import-1.md § 2 and § 9 (amendment CI1-A2).
  *
- * Body (a JSON object): `{ csvContent, producer, sheet, variantName?, profileChoice? }`. Order of execution:
- *   role + tenant binding → body, upload fields, CSV, `profileChoice` (400) → tenant read, ConsistentRead (404 / 403)
- *   → the producer's stored import profile (CAT-IMPORT-PROFILE-1)
+ * Body (a JSON object): `{ csvContent, producer, sheet, variantName?, profileChoice?, labels? }`. Order of execution:
+ *   role + tenant binding → body, upload fields, CSV, `profileChoice` shape, `labels` (400) → tenant read, ConsistentRead
+ *   (404 / 403) → the tenant's language and catalog texts (CDL-1), the chosen labels, the label check and the
+ *   `profileChoice` rules against them (400) → the producer's stored import profile (CAT-IMPORT-PROFILE-1)
  *   → dry run: category lookup + previous set (reads), report incl. `categoryConflicts`, `profile`, `sheets`,
  *   `specKeys`, `drafts`, `siteProducts`, `crossSheetSuffixed`; nothing written (not even the CDN marker)
  *   → execution: profile refusal (409) / no style in the file (400), nothing written
@@ -57,6 +60,12 @@ import { imagesHandler } from "./glam-images.js";
  * CAT-IMPORT-GALLERY-1 (docs/slices/cat-import-gallery-1.md): a 13-column file gives each option its column-13 images
  * (`additionalImageLinks`, stored on the option only when non-empty) and the report the member `gallery` (counts) and
  * the options' `additionalImageLinks`; a 12-column file gives neither, so its writes and report are unchanged.
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4, § 5.3): the four label columns are written under the SITE labels
+ * (the tenant's language pack + its Labels overrides, `catalogServerTexts`) or under THIS FILE's header cells (an empty
+ * cell takes the site label of its column) — request member `labels`, "site" when absent. Two chosen labels equal after
+ * `norm` refuse the import (400, dry run included). Every product records its set as `importLabels`. A request without
+ * an option name gets the site's default option name, under both choices. The dry run and the execution answer
+ * `labels: { site, file, used }`; the dry run also `otherLabels`: the other glam lists whose products hold other labels.
  * The pure core (`./glam/`) decides what to write; this file only reads and writes. The same function also serves
  * `POST /import/glam-pricelist/images` (CAT-IMAGES-1, `./glam-images.ts`): `handler` dispatches on `routeKey`.
  */
@@ -96,8 +105,11 @@ const EXECUTION_PROJECTION = { expression: "id, title, categoryIds, importSource
 const SITE_PRODUCT_FIELDS = [
     "id", "status", "categoryIds", "availableFrom", "availableUntil", "sortOrder", "brand", "attributes", "variants", "facetModes",
 ] as const;
-/** The dry run's projection: the execution's fields plus `SITE_PRODUCT_FIELDS`, every name through `#n` placeholders. */
-const DRY_RUN_FIELDS = [...new Set(["title", "importSource", "importProfileRevision", "slug", ...SITE_PRODUCT_FIELDS])];
+/**
+ * The dry run's projection: the execution's fields plus `SITE_PRODUCT_FIELDS` plus `importLabels` (CDL-1 § 5.3, for
+ * `otherLabels`), every name through `#n` placeholders.
+ */
+const DRY_RUN_FIELDS = [...new Set(["title", "importSource", "importProfileRevision", "slug", ...SITE_PRODUCT_FIELDS, "importLabels"])];
 const DRY_RUN_PROJECTION = {
     expression: DRY_RUN_FIELDS.map((_, i) => `#f${i}`).join(", "),
     names: Object.fromEntries(DRY_RUN_FIELDS.map((f, i) => [`#f${i}`, f])),
@@ -110,6 +122,11 @@ interface IncompleteCategory {
 }
 
 const json = (statusCode: number, body: unknown) => ({ statusCode, body: JSON.stringify(body) });
+
+/** CDL-1 § 3.4: the admin's English names of the four label columns, for the label-check message. */
+const LABEL_COLUMN_NAMES: Record<keyof ImportLabels, string> = {
+    collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order",
+};
 const isDryRun = (event: Parameters<Handler>[0]) => event.queryStringParameters?.dryRun === "1";
 
 const _handler: Handler = async (event) => {
@@ -142,7 +159,8 @@ const _handler: Handler = async (event) => {
     if (upload.kind === "refused") return json(400, { error: upload.error });
     const parsed = parseGlamCsv(body.csvContent);
     if (parsed.kind === "refused") return json(400, { error: parsed.error });
-    // CAT-IMPORT-PROFILE-1 § 3.5: the optional explicit profile, checked before any read (400).
+    // CAT-IMPORT-PROFILE-1 § 3.5: the optional explicit profile — its SHAPE is checked here, before any read (400). Its
+    // other rules need the import's column labels (CDL-1 § 4.4) and run after the tenant read below (`checkProfile`, 400).
     const choiceParse = parseProfileChoice(body.profileChoice);
     let choice: ProfileChoice | null;
     switch (choiceParse.kind) {
@@ -154,14 +172,11 @@ const _handler: Handler = async (event) => {
             throw new Error(`Unhandled profileChoice parse ${JSON.stringify(unhandled)}`);
         }
     }
+    // CDL-1 § 4.3: which labels the label columns get — "site" when absent; any other value is refused before any read.
+    const labelChoice = body.labels === undefined ? "site" : body.labels;
+    if (labelChoice !== "site" && labelChoice !== "file") return json(400, { error: 'labels must be "site" or "file".' });
     const { rows, codeCells } = parsed;
     const up = upload.upload;
-    /**
-     * The plan for a resolution: profiled only for `stored` / `save` (an unsupported profile is never applied). Without
-     * `taken` its product slugs are unique only within the file: such a plan decides only the refusals and the category
-     * lookup (neither depends on a product slug); the plan that is reported and written is made with `taken`.
-     */
-    const planFor = (resolution: ProfileResolution, taken?: TakenSlugs) => planGlamImport(rows, up, appliedOf(resolution, codeCells), taken);
 
     // Every asynchronous step below runs under `step`, so a failure answers 500 naming it. The lock is released in
     // `finally` only when this job acquired it (`lockOwner`); a step before that holds no lock.
@@ -181,10 +196,56 @@ const _handler: Handler = async (event) => {
             return json(403, { error: "The pricelist import is available only on catalog sites (sites that show products without prices)." });
         }
 
+        // CDL-1 § 4.1-§ 4.3: the site labels and the default option name (the tenant's language + its Labels overrides,
+        // each non-empty), this file's labels (a header cell, else the site label of its column), and the chosen set.
+        step = "labels-read";
+        const tenantTexts = await db.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` },
+            ConsistentRead: true,
+            ProjectionExpression: "#l, catalogStrings",
+            ExpressionAttributeNames: { "#l": "locale" },
+        }));
+        const texts = catalogServerTexts(resolveLocaleStrings(tenantTexts.Item ?? {}));
+        const site = texts.siteLabels;
+        const header = parsed.headerLabels;
+        const file: ImportLabels = {
+            collection: header.collection || site.collection,
+            unit: header.unit || site.unit,
+            packaging: header.packaging || site.packaging,
+            minimumOrder: header.minimumOrder || site.minimumOrder,
+        };
+        const labels = { site, file, used: labelChoice };
+        const chosen = labelChoice === "site" ? site : file;
+        // § 3.4: two columns under one key would merge into one row on the product page, for good — refused, dry run too.
+        const columns = Object.keys(LABEL_COLUMN_NAMES) as (keyof ImportLabels)[];
+        for (const [i, a] of columns.entries()) {
+            for (const b of columns.slice(i + 1)) {
+                if (norm(chosen[a]) === norm(chosen[b])) {
+                    return json(400, {
+                        error: `The labels for ${LABEL_COLUMN_NAMES[a]} and ${LABEL_COLUMN_NAMES[b]} are the same. Change one in Labels, or in the file.`,
+                        labels,
+                    });
+                }
+            }
+        }
+        // CAT-IMPORT-PROFILE-1 § 3.5 rules of an explicit profile, now that the column labels are known (§ 4.4).
+        if (choice) {
+            const check = checkProfile(choice.profile, chosen);
+            if (check.kind === "refused") return json(400, { error: `The import profile is not valid: ${check.error}` });
+        }
+        /**
+         * The plan for a resolution: profiled only for `stored` / `save` (an unsupported profile is never applied). Without
+         * `taken` its product slugs are unique only within the file: such a plan decides only the refusals and the category
+         * lookup (neither depends on a product slug); the plan that is reported and written is made with `taken`.
+         */
+        const planFor = (resolution: ProfileResolution, taken?: TakenSlugs) =>
+            planGlamImport(rows, up, chosen, texts.variantName, appliedOf(resolution, codeCells), taken);
+
         // The stored profile, read before the lock too: a dry run uses this read; an execution uses it only to refuse
         // early (409 / 400, nothing written) and decides on the read it repeats under the lock.
         step = "profile-read";
-        const storedEarly = readStoredProfile(await readProfileItem(tenantId, up.producer));
+        const storedEarly = readStoredProfile(await readProfileItem(tenantId, up.producer), chosen);
         const early = resolveProfile(choice, storedEarly, isDryRun(event) ? "dry-run" : "execution");
 
         // Dry run: no lock, reads only — the category lookup, then the previous set.
@@ -204,6 +265,8 @@ const _handler: Handler = async (event) => {
                 drafts: previewDrafts(tenantId, plan, categories, status),
                 siteProducts: products.filter((p) => p.importSource !== plan.upload.importSource).map(siteProductOf),
                 publication: publicationOf(plan, status),
+                labels,
+                otherLabels: otherLabelsOf(products, plan.upload.importSource, chosen),
             });
         }
 
@@ -220,11 +283,13 @@ const _handler: Handler = async (event) => {
         lockOwner = owner;
 
         // Rule (review-1 R1): every read that decides an execution write is made while this job holds the lock — a
-        // decision read before the lock may describe a store another import has changed since. Only the tenant
-        // mode is read before the lock (spec § 3.4 / CM-D11: a refused import writes nothing, not even a lock); the
-        // early profile read above only refuses.
+        // decision read before the lock may describe a store another import has changed since. Two exceptions are read
+        // before the lock, both tenant settings taken once at the start of the job: the tenant mode (spec § 3.4 / CM-D11:
+        // a refused import writes nothing, not even a lock) and the tenant's language and catalog texts (CDL-1 § 4.1:
+        // they give the site labels and the default option name this import writes; a Labels page edit made while the
+        // import runs takes effect at the next import). The early profile read above only refuses.
         step = "profile-read";
-        const stored = readStoredProfile(await readProfileItem(tenantId, up.producer));
+        const stored = readStoredProfile(await readProfileItem(tenantId, up.producer), chosen);
         const used = resolveProfile(choice, stored, "execution");
         if (!isUsable(used)) return json(409, profileRefusal(used, up.producer));
         const unchecked = planFor(used);
@@ -325,6 +390,7 @@ const _handler: Handler = async (event) => {
             ...result,
             ...profileMembers(plan, profileReport(used, stored), sheetStates(after, up.producer, plan.profile?.revision ?? null)),
             publication: publicationOf(plan, status),
+            labels,
         };
         if (incomplete.length > 0) {
             return json(503, {
@@ -615,6 +681,8 @@ function productItem(tenantId: string, id: string, draft: GlamStyleDraft, catego
         productType: "physical",
         sortOrder: 0,
         importSource: draft.importSource,
+        // CDL-1 § 4.6: the label set this product was written with (the interest list and `otherLabels` read it).
+        importLabels: { ...draft.importLabels },
         // CAT-IMPORT-PROFILE-1 § 3.4: the stamps of a profiled import (absent without a profile: byte identity).
         ...(draft.facetModes !== undefined ? { facetModes: draft.facetModes } : {}),
         ...(draft.importProfileRevision !== undefined ? { importProfileRevision: draft.importProfileRevision } : {}),
@@ -711,7 +779,8 @@ function report(
         dryRun,
         producer: upload.producer,
         sheet: upload.sheet,
-        variantName: upload.variantName,
+        // CDL-1 § 4.5: the name written (the request's, else the site's default option name).
+        variantName: plan.variantName,
         importSource: upload.importSource,
         totalRows: plan.totalRows,
         counts: { deleted: previous.length, ...plan.counts },
@@ -961,6 +1030,29 @@ function previewDrafts(tenantId: string, plan: GlamImportPlan, categories: Categ
         const { PK: _pk, SK: _sk, TenantSlug: _tenantSlug, ...item } = productItem(tenantId, `preview:${draft.slug}`, draft, categoryIds, now, status);
         return item;
     });
+}
+
+/**
+ * CDL-1 § 5.3 `otherLabels[]`: every OTHER glam list (`importSource` starting with `glam:`, not this one) whose products
+ * hold labels other than `chosen` — a product's `importLabels`, or `IMPORT_LABELS_WITHOUT_MARKER` when it has none or a
+ * malformed one (operator ruling). One entry per list and label set, with its product count, sorted by `importSource`.
+ * Facets key on the exact attribute key, so labels are compared exactly. Reports only: nothing blocks.
+ */
+function otherLabelsOf(products: readonly StoredProductRef[], importSource: string, chosen: ImportLabels) {
+    const sameAsChosen = (l: ImportLabels) =>
+        l.collection === chosen.collection && l.unit === chosen.unit && l.packaging === chosen.packaging && l.minimumOrder === chosen.minimumOrder;
+    const entries = new Map<string, { importSource: string; labels: ImportLabels; products: number }>();
+    for (const p of products) {
+        if (typeof p.importSource !== "string" || !p.importSource.startsWith("glam:") || p.importSource === importSource) continue;
+        const marker = ImportLabelsSchema.safeParse(p.importLabels);
+        const labels = marker.success ? marker.data : IMPORT_LABELS_WITHOUT_MARKER;
+        if (sameAsChosen(labels)) continue;
+        const key = JSON.stringify([p.importSource, labels.collection, labels.unit, labels.packaging, labels.minimumOrder]);
+        const entry = entries.get(key) ?? { importSource: p.importSource, labels, products: 0 };
+        entry.products++;
+        entries.set(key, entry);
+    }
+    return [...entries.values()].sort((a, b) => (a.importSource < b.importSource ? -1 : a.importSource > b.importSource ? 1 : 0));
 }
 
 /** § 5.2 `siteProducts[]`: one kept product with exactly the `SITE_PRODUCT_FIELDS` it has. */

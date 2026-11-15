@@ -3,7 +3,8 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { BatchGetCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { createHash } from "node:crypto";
 import {
-    INTEREST_FORM_ID, InterestSubmissionSchema, InterestResolveRequestSchema, URL_PREFIX_DEFAULTS,
+    IMPORT_LABELS_WITHOUT_MARKER, INTEREST_FORM_ID, ImportLabelsSchema, InterestSubmissionSchema, InterestResolveRequestSchema, URL_PREFIX_DEFAULTS,
+    catalogServerTexts, fillTemplate, resolveLocaleStrings,
     type InterestPair, type InterestDropReason, type InterestResolution, type InterestSubmitResult,
 } from "@amodx/shared";
 import { db, TABLE_NAME } from "../lib/db.js";
@@ -31,11 +32,13 @@ import { readTenantMode } from "../lib/catalog-product.js";
  *   5. the system form (created on first use) and the record, both conditional on a new key; title, slug, option and
  *      image are the ones READ in step 4, never the client's. A lost race on the record key → step 3's answer.
  * The notification goes to `interestListEmail` (CAT-QUOTE-1 § 3 item 4: "Send interest lists to"), else to
- * `integrations.contactEmail` — neither → logged, no mail (no platform fallback). Same mail either way.
+ * `integrations.contactEmail` — neither → logged, no mail (no platform fallback). Same mail either way. CDL-1
+ * (docs/slices/catalog-data-labels-1.md § 6.3): its subject and lines are in the site's language, with the owner's
+ * Labels overrides (`catalogServerTexts`); the stored form and the record hold English admin texts (§ 6.2).
  *
  * `POST /public/interest/resolve` — the list page's identity read (§ 8, F3): the stored ids resolved by id, with the
  * SAME BatchGet and retry. No reCAPTCHA (it reads public fields only). Order: origin → body → tenant mode → read.
- * Each id is `active` (display fields, the `colecție` attribute as `collection`, the option values), `not-available`
+ * Each id is `active` (display fields, the collection attribute as `collection`, the option values), `not-available`
  * (no fields) or `absent`; keys still unprocessed → 503 `retryable`, so absence is only ever stated from a complete
  * read.
  */
@@ -53,23 +56,28 @@ const BATCH_GET_MAX_KEYS = 100;
 
 /** Spec § 3.5: the submit read projects exactly what the record and the option check need. */
 const SUBMIT_PROJECTION = "id, title, slug, #s, imageLink, variants";
-/** The resolve read adds `attributes` for the collection (§ 8, F7). */
-const RESOLVE_PROJECTION = "id, title, slug, #s, imageLink, variants, attributes";
-/** The attribute the glam importer writes for the producer's collection (`backend/src/import/glam/map.ts`). */
-const COLLECTION_ATTRIBUTE = "colecție".normalize("NFC");
+/**
+ * The resolve read adds `attributes` for the collection (§ 8, F7) and `importLabels` (CDL-1 § 6.1): the attribute
+ * key the glam import wrote the collection under.
+ */
+const RESOLVE_PROJECTION = "id, title, slug, #s, imageLink, variants, attributes, importLabels";
 
-const FORM_NAME = "Listă de interes";
+/**
+ * CDL-1 § 6.2: the system form's name and labels are admin data (the admin is English); no visitor and no mail shows
+ * them, and the admin's submissions table shows its own English headers for this form, by field id.
+ */
+const FORM_NAME = "Interest list";
 /**
  * The system form's fields (spec § 3.5): the record's `data` keys, in display order. Every type is one of
  * `FormFieldSchema`'s; `items` (a list of products) is typed `textarea` (§ 8, F8) and the admin renders it as a list
  * only for this form's `items` field.
  */
 const FORM_FIELDS = [
-    { id: "name", label: "Nume", type: "text" },
+    { id: "name", label: "Name", type: "text" },
     { id: "email", label: "E-mail", type: "email" },
-    { id: "phone", label: "Telefon", type: "phone" },
-    { id: "message", label: "Mesaj", type: "textarea" },
-    { id: "items", label: "Produse", type: "textarea" },
+    { id: "phone", label: "Phone", type: "phone" },
+    { id: "message", label: "Message", type: "textarea" },
+    { id: "items", label: "Products", type: "textarea" },
 ];
 
 type Dropped = InterestPair & { reason: InterestDropReason };
@@ -158,12 +166,19 @@ function resolvePairs(pairs: InterestPair[], products: Map<string, Product>): { 
     return { items, dropped };
 }
 
-/** One id against the complete read (resolve route). Pure. */
+/**
+ * One id against the complete read (resolve route). Pure. The collection is the value of the attribute whose key is the
+ * product's `importLabels.collection` (CDL-1 § 6.1); a product without a valid marker — written before cdl-1, by hand,
+ * or with a malformed member (operator ruling: never fail a visitor request on bad data) — uses the old importer's key.
+ * Keys compared in NFC, as before.
+ */
 function resolutionOf(productId: string, product: Product | undefined): InterestResolution {
     if (!product) return { productId, status: "absent" };
     if (product.status !== "active") return { productId, status: "not-available" };
+    const marker = ImportLabelsSchema.safeParse(product.importLabels);
+    const collectionKey = (marker.success ? marker.data : IMPORT_LABELS_WITHOUT_MARKER).collection.normalize("NFC");
     const collection = (product.attributes ?? [])
-        .find((a: any) => typeof a?.key === "string" && a.key.normalize("NFC") === COLLECTION_ATTRIBUTE)?.value;
+        .find((a: any) => typeof a?.key === "string" && a.key.normalize("NFC") === collectionKey)?.value;
     return {
         productId, status: "active", title: product.title, slug: product.slug,
         ...(product.imageLink ? { imageLink: product.imageLink } : {}),
@@ -281,18 +296,20 @@ async function submit(event: APIGatewayProxyEventV2, tenantId: string, body: any
     } else {
         const productPrefix = tenantConfig?.urlPrefixes?.product || URL_PREFIX_DEFAULTS.product;
         const lines = items.map((i) => [i.title, i.optionValue, `https://${tenantConfig?.domain}${productPrefix}/${i.slug}`].filter(Boolean).join(" — "));
+        // CDL-1 § 6.3: the site's language and Labels overrides, each text non-empty; today's layout and symbols.
+        const mail = catalogServerTexts(resolveLocaleStrings(tenantConfig ?? {})).interestMail;
         const text = [
-            `Listă de interes nouă de la ${submission.name}`,
+            fillTemplate(mail.intro, { name: submission.name }),
             "",
-            `Nume: ${submission.name}`,
-            `E-mail: ${submission.email}`,
-            `Telefon: ${submission.phone || "—"}`,
-            `Mesaj: ${submission.message || "—"}`,
+            `${mail.name}: ${submission.name}`,
+            `${mail.email}: ${submission.email}`,
+            `${mail.phone}: ${submission.phone || "—"}`,
+            `${mail.message}: ${submission.message || "—"}`,
             "",
-            `Produse (${items.length}):`,
+            fillTemplate(mail.products, { n: items.length }),
             ...lines.map((l) => `- ${l}`),
             "",
-            `Trimisă: ${now}`,
+            fillTemplate(mail.sentAt, { date: now }),
         ].join("\n");
         try {
             await ses.send(new SendEmailCommand({
@@ -300,7 +317,7 @@ async function submit(event: APIGatewayProxyEventV2, tenantId: string, body: any
                 Destination: { ToAddresses: [contactEmail] },
                 ReplyToAddresses: [submission.email],
                 Message: {
-                    Subject: { Data: `${FORM_NAME} — ${submission.name.replace(/[\r\n]+/g, " ")}` },
+                    Subject: { Data: fillTemplate(mail.subject, { name: submission.name.replace(/[\r\n]+/g, " ") }) },
                     Body: { Text: { Data: text } },
                 },
             }));

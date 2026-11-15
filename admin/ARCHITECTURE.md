@@ -89,7 +89,8 @@ src/
     │                           #   exactly five groups now; captures not re-taken.
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
-    │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings) and "Product pages & search"
+    │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings; cdl-1: the "Import labels"
+    │                           #   card and the four interest-mail keys) and "Product pages & search"
     │                           #   (commerce + catalog tenants, the shared commerce keys); a count key has one input
     │                           #   per plural category of the tenant's language (countInputs / setCountText);
     │                           #   commerce cards (commerce tenants; locale-1d: one card per page — product buying,
@@ -104,7 +105,7 @@ src/
     │                           #   to each Reset's scope); pure save helpers pinned by Labels.test.ts.
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)
     ├── Migration.tsx           # WP Migration: Media → Products → Pages; a catalog has Media → Pages (CAT-ADMIN-1 § 4.6)
-    ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists"
+    ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists" and (CDL-1) shows fixed English column headers by field id (`fieldHeader`)
     ├── AuditLog.tsx            # Activity feed with action icons
     └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
@@ -164,6 +165,16 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
 - **Every answer that reports the stored state refreshes the editor**: the execution's 200 and its 503 "incomplete"
   (written, profile saved) carry `profile` and `sheets`; `editorAfterImport` takes both, so sheets a profile change
   made `stale` are listed at once (§ 6.3).
+- **Labels** (CDL-1, `docs/slices/catalog-data-labels-1.md` § 4.3, § 4.7, § 5.3). `GlamInput.labels` ("site" default |
+  "file") is part of the checked input: the `labels` event bumps the revision and withdraws the preview like any edit,
+  and the import sends the choice of the last preview (`requestBody` always sends `labels`). The two sets are shown side
+  by side from the latest dry run (`labelSets` = the editor's `facts.labels`, kept while the choice changes). The editor
+  holds no column words: `pruneModes` (via `applyProfileEdit(profile, edit, columns)`), `collectionHint` and the "Column
+  filters" row read `facts.labels[facts.labels.used]` — one source, the backend. `otherLabelsLine` states the other
+  lists that hold other labels (nothing blocks). The option name starts empty: the backend writes the site's default.
+  A new file starts with "site" again (the choice is not kept). An `unsupported` stored profile is unsupported for the
+  label set it was checked under: when the choice differs from `facts.labels.used`, `checkRequest` allows a check
+  without `profileChoice` that re-reads the stored profile under the new labels (nothing replaced; it loads if supported).
 - **Preview** (`glamPreview.ts`, pure): base sets = `catalogListing(siteProducts ∪ publishedDrafts(drafts), scope, today)` for the
   producer category, one collection and the shop; panel = `buildFacetListing(base, f, catalogListingPath(prefixes,
   slug), facetLabels)` — the renderer's own functions and inputs. `prefixes = urlPrefixes || URL_PREFIX_DEFAULTS` and

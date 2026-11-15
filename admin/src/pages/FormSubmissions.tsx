@@ -35,6 +35,23 @@ export function interestItemRows(formId: string, fieldId: string, value: unknown
 }
 
 /**
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 6.2): the English column headers of the interest-list system form, by
+ * field id. The admin is English; the form stored before cdl-1 holds Romanian labels, which are no longer read.
+ */
+const INTEREST_FIELD_HEADERS: Record<string, string> = {
+    name: "Name", email: "E-mail", phone: "Phone", message: "Message", items: "Products",
+};
+
+/**
+ * The column header of one form field: for the interest-list form, the fixed English header of its id (the stored
+ * label when the id is not one of the five); for every other form, the stored label, as before. Pure.
+ */
+export function fieldHeader(formId: string, field: { id: string; label: string }): string {
+    if (formId !== INTEREST_FORM_ID) return field.label;
+    return Object.hasOwn(INTEREST_FIELD_HEADERS, field.id) ? INTEREST_FIELD_HEADERS[field.id] : field.label;
+}
+
+/**
  * Where the page's back buttons go. A user form → its editor (as before). The interest list (CAT-INTEREST-1) has no
  * editor; it is opened from the sidebar entry "Interest lists" → back to the page the user was on (`-1`), or to
  * the dashboard when the page was opened directly (no in-app history). Pure.
@@ -114,7 +131,7 @@ export default function FormSubmissions() {
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div>
-                    {/* CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.8): the admin is English; the stored form name "Listă de interes" is data. */}
+                    {/* CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.8): the admin is English; the stored form name is data (CDL-1: "Interest list"; "Listă de interes" before). */}
                     <h1 className="text-3xl font-bold tracking-tight">
                         {id === INTEREST_FORM_ID ? "Interest lists" : <>{form?.name || "Form"} - Submissions</>}
                     </h1>
@@ -137,7 +154,7 @@ export default function FormSubmissions() {
                             <TableRow>
                                 <TableHead>Status</TableHead>
                                 {formFields.map(field => (
-                                    <TableHead key={field.id}>{field.label}</TableHead>
+                                    <TableHead key={field.id}>{fieldHeader(id!, field)}</TableHead>
                                 ))}
                                 <TableHead>Email</TableHead>
                                 <TableHead>Submitted At</TableHead>

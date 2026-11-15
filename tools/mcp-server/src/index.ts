@@ -1144,13 +1144,14 @@ server.tool("import_glam_pricelist",
         csv_path: z.string().describe("Local path of the enriched CSV, e.g. pl-tools/out/boen/enriched/PL.csv"),
         producer: z.string().describe("Producer name (becomes the brand and the parent category); no '/'"),
         sheet: z.string().optional().describe("Sheet name (default: the file name without .csv); no '/'"),
-        variant_name: z.string().optional().describe("What the variants are, e.g. Format, Color (default: 'Variantă')"),
+        variant_name: z.string().optional().describe("What the variants are, e.g. Format, Color (default: the site's default option name)"),
+        labels: z.enum(["site", "file"]).optional().describe("Attribute names of the collection, unit, packaging and minimum-order columns: 'site' = the site's labels (Labels page; default), 'file' = this file's header cells (products of this list get their own filters, separate from other lists)"),
         dry_run: z.boolean().optional().describe("Preview only (default true)"),
     },
-    async ({ tenant_id, csv_path, producer, sheet, variant_name, dry_run }) => {
+    async ({ tenant_id, csv_path, producer, sheet, variant_name, labels, dry_run }) => {
         try {
             const csvContent = fs.readFileSync(csv_path, "utf8");
-            const request = glamPricelistRequest({ producer, sheet, variant_name, dry_run }, csvContent, path.basename(csv_path));
+            const request = glamPricelistRequest({ producer, sheet, variant_name, labels, dry_run }, csvContent, path.basename(csv_path));
             const response = await axios.post(`${API_URL}/import/glam-pricelist`, request.body, {
                 headers: getHeaders(tenant_id),
                 params: request.dryRun ? { dryRun: "1" } : undefined,

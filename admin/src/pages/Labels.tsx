@@ -569,6 +569,11 @@ export default function Labels() {
                         <F section="catalog" label="Header: storage notice" field="interestStorageWarning" />
                         <F section="catalog" label="Header: storage notice button" field="interestStorageAck" />
                         <CountF section="catalog" label="Header: list link for screen readers ({n})" field="interestWidgetLabel" example="My list: {n} products" />
+                        {/* CDL-1 (§ 3.1): the mail to the site owner; its lines also use the four "Form:" texts above. */}
+                        <F section="catalog" label="Mail to you: subject ({name})" field="interestMailSubject" />
+                        <F section="catalog" label="Mail to you: first line ({name})" field="interestMailIntro" />
+                        <F section="catalog" label="Mail to you: products heading ({n})" field="interestMailProducts" />
+                        <F section="catalog" label="Mail to you: sent at ({date})" field="interestMailSentAt" />
                     </div>
                 </CardContent>
             </Card>
@@ -589,6 +594,24 @@ export default function Labels() {
                         <F section="catalog" label="Too many filters" field="facetsTooMany" />
                         <F section="catalog" label="Filters in the address too long" field="facetsUrlTooLong" />
                         <CountF section="catalog" label="Product count ({n})" field="facetsCount" example="{n} products" />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Import labels</CardTitle>
+                    <CardDescription>
+                        Written into the products at the next import of a list. Products keep their labels until their list is imported again.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <F section="catalog" label="Collection" field="importCollectionAttribute" />
+                        <F section="catalog" label="Unit" field="importUnitAttribute" />
+                        <F section="catalog" label="Packaging" field="importPackagingAttribute" />
+                        <F section="catalog" label="Minimum order" field="importMinimumOrderAttribute" />
+                        <F section="catalog" label="Default option name" field="importVariantName" />
                     </div>
                 </CardContent>
             </Card>

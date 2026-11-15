@@ -260,6 +260,16 @@ export const EN_LANGUAGE_PACK: CompleteLanguagePack = {
         quoteEmail: "Send an e-mail",
         quoteMessage: "Hello! I would like a quote for {product}[, option {variant}]: {url}",
         quoteClose: "Close",
+        // CDL-1 (docs/slices/catalog-data-labels-1.md § 3.1, ruling § 9 item 6): written at import / mailed to the owner.
+        importCollectionAttribute: "Collection",
+        importUnitAttribute: "Unit",
+        importPackagingAttribute: "Packaging",
+        importMinimumOrderAttribute: "Minimum order",
+        importVariantName: "Option",
+        interestMailSubject: "Interest list — {name}",
+        interestMailIntro: "New interest list from {name}",
+        interestMailProducts: "Products ({n}):",
+        interestMailSentAt: "Sent: {date}",
     },
     site: {
         untitledSiteName: "Untitled Site",

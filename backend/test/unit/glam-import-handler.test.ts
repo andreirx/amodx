@@ -43,7 +43,12 @@ const FILE = csv(
 const SLUGS = ["boen-herringbone-oak-vivo", "boen-herringbone-ash", "boen-chevron-oak-vivo"];
 
 const TENANT_ADMIN = { sub: "u1", email: "admin@t1.test", role: "TENANT_ADMIN", tenantId: "t1" };
-const SYSTEM_TENANT = (extra: Item = {}) => ({ PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "Glam", catalogMode: true, ...extra });
+/**
+ * CDL-1 (catalog-data-labels-1 § 4.1): the site labels come from the tenant's language. The fixture tenant is a Romanian
+ * site, so the tests written before cdl-1 keep pinning the words it writes (`colecție`, `unitate`, …, `Variantă`); the
+ * CDL-1 block below sets other languages and overrides explicitly.
+ */
+const SYSTEM_TENANT = (extra: Item = {}) => ({ PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "Glam", catalogMode: true, locale: "ro-RO", ...extra });
 
 const event = (body: unknown, opts: { dryRun?: boolean; auth?: any; tenant?: string } = {}) => ({
     headers: { "x-tenant-id": opts.tenant ?? "t1" },
@@ -852,14 +857,26 @@ describe("CAT-IMPORT-PROFILE-1A import profile (stored item, acceptance, stamps,
         expect(profileItem()).toMatchObject({ profile: P1, revision: 3 });
     });
 
-    it("an invalid profileChoice → 400 before any read", async () => {
-        for (const bad of [choice({ ...P1, version: 2 }, null), choice(P1, 0), { profileChoice: "x" },
-            choice({ ...DEFAULT, specKeys: [{ key: "Wood", action: "attribute", label: "colecție", split: "none" }] }, null)]) {
+    it("a profileChoice of the wrong shape → 400 before any read", async () => {
+        for (const bad of [choice({ ...P1, version: 2 }, null), choice(P1, 0), { profileChoice: "x" }]) {
             table.commands = [];
             const res = await call(event(body(WOOD, bad)));
             expect(res.status).toBe(400);
             expect(table.commands).toEqual([]);
         }
+    });
+
+    it("CDL-1 § 4.4: a profile label equal to a chosen column label → 400 after the tenant reads, nothing written; another site language accepts it", async () => {
+        const colecție = choice({ ...DEFAULT, specKeys: [{ key: "Wood", action: "attribute", label: "colecție", split: "none" }] }, null);
+        for (const dryRun of [true, false]) {
+            table.commands = [];
+            const res = await call(event(body(WOOD, colecție), { dryRun }));
+            expect(res.status).toBe(400);
+            expect(res.body.error).toMatch(/^The import profile is not valid: .*column attribute/);
+            expect(table.commands.every((c) => c instanceof GetCommand && c.input.Key?.PK === "SYSTEM")).toBe(true);
+        }
+        table.put(SYSTEM_TENANT({ locale: "en-US" }));
+        expect((await call(event(body(WOOD, colecție), { dryRun: true }))).status).toBe(200);
     });
 
     it("O-CODES-4 (handler): a cross-row code in a selected line is refused (row 3, code); no written payload holds it outside images", async () => {
@@ -1037,5 +1054,177 @@ describe("CAT-SLUG-UNIQUE-1 taken slugs through the handler", () => {
         const res = await call(event(body(csv({ c: "", p: "Orphan" }))));
         expect(res.status).toBe(400);
         expect("crossSheetSuffixed" in res.body).toBe(false);
+    });
+});
+
+// ── CDL-1: the site or the file's labels, the marker, the default option name (catalog-data-labels-1 § 4, § 5.3) ──
+
+describe("CDL-1 import labels through the handler", () => {
+    const EN_SITE = { collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" };
+    const RO_SITE = { collection: "colecție", unit: "unitate", packaging: "împachetare", minimumOrder: "comandă minimă" };
+    /** The header cells of `HEADER` (columns 0, 6, 7, 8). */
+    const FILE_SET = { collection: "colectie", unit: "unitate", packaging: "impachetare", minimumOrder: "comanda minima" };
+    const ONE = csv({ c: "Herringbone", p: "Oak Vivo", f: "120", img: img(1) });
+    const en = (extra: Item = {}) => table.put(SYSTEM_TENANT({ locale: "en-US", ...extra }));
+    const keysOf = (p: any) => p.attributes.map((a: any) => a.key);
+
+    it("labels absent → the site labels (English site): written, recorded as importLabels, and reported with used = site", async () => {
+        en();
+        const dry = await call(event(body(ONE), { dryRun: true }));
+        expect(dry.status).toBe(200);
+        expect(dry.body.labels).toEqual({ site: EN_SITE, file: FILE_SET, used: "site" });
+        expect(dry.body.drafts[0].importLabels).toEqual(EN_SITE);
+        const res = await call(event(body(ONE)));
+        expect(res.status).toBe(200);
+        expect(res.body.labels).toEqual({ site: EN_SITE, file: FILE_SET, used: "site" });
+        expect(keysOf(products()[0])).toEqual(["Collection", "Unit"]);
+        expect(products()[0].importLabels).toEqual(EN_SITE);
+    });
+
+    it("labels absent on a Romanian site → today's words; the marker holds them", async () => {
+        const res = await call(event(body(ONE)));
+        expect(keysOf(products()[0])).toEqual(["colecție", "unitate"]);
+        expect(products()[0].importLabels).toEqual(RO_SITE);
+        expect(res.body.labels.used).toBe("site");
+    });
+
+    it.each([["site", EN_SITE], ["file", FILE_SET]] as const)("labels = %s → that set is written and recorded", async (labels, set) => {
+        en();
+        const res = await call(event(body(ONE, { labels })));
+        expect(res.status).toBe(200);
+        expect(res.body.labels).toEqual({ site: EN_SITE, file: FILE_SET, used: labels });
+        expect(keysOf(products()[0])).toEqual([set.collection, set.unit]);
+        expect(products()[0].importLabels).toEqual(set);
+    });
+
+    it.each([["both"], [""], [null], [1], [["site"]]])("labels = %j → 400 before any read", async (labels) => {
+        table.commands = [];
+        const res = await call(event(body(ONE, { labels }), { dryRun: true }));
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('labels must be "site" or "file".');
+        expect(table.commands).toEqual([]);
+    });
+
+    it("an empty or blank header cell → the file label of that column is the site label", async () => {
+        en();
+        const header = HEADER.split(",");
+        header[0] = "";
+        header[7] = "   ";
+        header[8] = "  Min.   order ";
+        const file = [header.join(","), ...ONE.split("\n").slice(1)].join("\n");
+        const res = await call(event(body(file, { labels: "file" })));
+        expect(res.status).toBe(200);
+        expect(res.body.labels.file).toEqual({ collection: "Collection", unit: "unitate", packaging: "Packaging", minimumOrder: "Min. order" });
+        expect(products()[0].importLabels).toEqual({ collection: "Collection", unit: "unitate", packaging: "Packaging", minimumOrder: "Min. order" });
+        expect(keysOf(products()[0])).toEqual(["Collection", "unitate"]);
+    });
+
+    it("two chosen labels equal after norm → 400, nothing written; the dry run shows the refusal; the message of § 3.4", async () => {
+        en({ catalogStrings: { importPackagingAttribute: " unit " } });
+        for (const dryRun of [true, false]) {
+            const res = await call(event(body(ONE), { dryRun }));
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe("The labels for Unit and Packaging are the same. Change one in Labels, or in the file.");
+            expect(res.body.labels).toMatchObject({ used: "site", site: { unit: "Unit", packaging: "unit" } });
+        }
+        expect(dataWrites()).toEqual([]);
+        expect(lockCommands()).toEqual([]);
+        // the file set does not clash: the same file imports with labels = file
+        expect((await call(event(body(ONE, { labels: "file" })))).status).toBe(200);
+        // a file header can clash too
+        const header = HEADER.split(",");
+        header[0] = "Comanda  Minima";
+        const clash = [header.join(","), ...ONE.split("\n").slice(1)].join("\n");
+        const res = await call(event(body(clash, { labels: "file" }), { dryRun: true }));
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe("The labels for Collection and Minimum order are the same. Change one in Labels, or in the file.");
+    });
+
+    it("tenant catalogStrings: a non-empty override is the site label; \"\" or whitespace gives the pack value", async () => {
+        en({ catalogStrings: { importCollectionAttribute: "Series", importUnitAttribute: "", importPackagingAttribute: "  ", importVariantName: "Size" } });
+        const res = await call(event(body(ONE, { variantName: undefined })));
+        expect(res.body.labels.site).toEqual({ collection: "Series", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" });
+        expect(keysOf(products()[0])).toEqual(["Series", "Unit"]);
+        expect(products()[0].variants[0].name).toBe("Size");
+    });
+
+    it("request option name absent or blank → the site default under labels = site AND labels = file", async () => {
+        en();
+        for (const labels of ["site", "file"]) {
+            for (const variantName of [undefined, "", "   "]) {
+                const res = await call(event(body(ONE, { labels, variantName })));
+                expect(res.status).toBe(200);
+                expect(res.body.variantName).toBe("Option");
+                expect(products()[0].variants[0].name).toBe("Option");
+            }
+        }
+        table.put(SYSTEM_TENANT());
+        await call(event(body(ONE, { labels: "file", variantName: undefined })));
+        expect(products()[0].variants[0].name).toBe("Variantă");
+    });
+
+    it("request option name given → that name under both choices", async () => {
+        en();
+        for (const labels of ["site", "file"]) {
+            const res = await call(event(body(ONE, { labels, variantName: " Culoare " })));
+            expect(res.body.variantName).toBe("Culoare");
+            expect(products()[0].variants[0].name).toBe("Culoare");
+        }
+    });
+
+    it("a stored profile label equal to a chosen label → unsupported (today's 409); the other set imports", async () => {
+        en();
+        const DEFAULT = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
+        table.put({ PK: "TENANT#t1", SK: "IMPORTPROFILE#glam#boen", Type: "ImportProfile", producer: "BOEN", revision: 3,
+            profile: { ...DEFAULT, specKeys: [{ key: "Wood", action: "attribute", label: "Collection", split: "none" }] } });
+        const dry = await call(event(body(ONE), { dryRun: true }));
+        expect(dry.status).toBe(200);
+        expect(dry.body.profile).toMatchObject({ source: "unsupported", revision: 3, reason: expect.stringMatching(/column attribute/) });
+        const res = await call(event(body(ONE)));
+        expect(res.status).toBe(409);
+        expect(res.body.profile).toMatchObject({ source: "unsupported", revision: 3 });
+        expect(products()).toEqual([]);
+        const file = await call(event(body(ONE, { labels: "file" })));
+        expect(file.status).toBe(200);
+        expect(file.body.profile).toMatchObject({ source: "stored", revision: 3 });
+    });
+
+    it("otherLabels (§ 5.3): the other glam lists whose labels differ — marker, no marker, malformed marker; never this list or a non-glam product", async () => {
+        en();
+        const put = (id: string, extra: Item) => table.put({ PK: "TENANT#t1", SK: `PRODUCT#${id}`, id, title: id, categoryIds: [], ...extra });
+        put("a1", { importSource: "glam:alpod/a" });                                               // no marker → Romanian words
+        put("a2", { importSource: "glam:alpod/a" });
+        put("b1", { importSource: "glam:alpod/b", importLabels: EN_SITE });                        // same as chosen → not listed
+        put("c1", { importSource: "glam:alpod/c", importLabels: FILE_SET });                       // other set
+        put("d1", { importSource: "glam:alpod/d", importLabels: { collection: "C", unit: "" } });  // malformed → Romanian words
+        put("e1", { importSource: "glam:alpod/e", importLabels: "colecție" });                     // malformed → Romanian words
+        put("own", { importSource: "glam:boen/pl" });                                              // this list
+        put("hand", { status: "active" });                                                         // hand-made, no importSource
+        put("woo", { importSource: "woocommerce:x" });                                             // not a glam list
+        const res = await call(event(body(ONE), { dryRun: true }));
+        expect(res.status).toBe(200);
+        expect(res.body.otherLabels).toEqual([
+            { importSource: "glam:alpod/a", labels: RO_SITE, products: 2 },
+            { importSource: "glam:alpod/c", labels: FILE_SET, products: 1 },
+            { importSource: "glam:alpod/d", labels: RO_SITE, products: 1 },
+            { importSource: "glam:alpod/e", labels: RO_SITE, products: 1 },
+        ]);
+        // with the file's labels chosen, the list that holds them is no longer "other"
+        const file = await call(event(body(ONE, { labels: "file" }), { dryRun: true }));
+        expect(file.body.otherLabels.map((o: any) => o.importSource)).toEqual(["glam:alpod/a", "glam:alpod/b", "glam:alpod/d", "glam:alpod/e"]);
+        // the dry run's product read projects importLabels
+        const queries = table.commands.filter((c) => c instanceof QueryCommand && c.input.ExpressionAttributeValues?.[":sk"] === "PRODUCT#");
+        expect(queries.every((c) => Object.values(c.input.ExpressionAttributeNames ?? {}).includes("importLabels"))).toBe(true);
+    });
+
+    it("the tenant read for the labels is one strongly consistent Get of the tenant's own record, projected", async () => {
+        en();
+        table.commands = [];
+        await call(event(body(ONE), { dryRun: true }));
+        const gets = table.commands.filter((c) => c instanceof GetCommand && c.input.Key?.PK === "SYSTEM");
+        expect(gets.map((c) => c.input)).toContainEqual({
+            TableName: "test-table", Key: { PK: "SYSTEM", SK: "TENANT#t1" }, ConsistentRead: true,
+            ProjectionExpression: "#l, catalogStrings", ExpressionAttributeNames: { "#l": "locale" },
+        });
     });
 });

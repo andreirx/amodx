@@ -19,7 +19,7 @@ vi.mock("react", async (importOriginal) => {
     return { ...React, default: { ...React, useState }, useState };
 });
 
-import FormSubmissions, { interestItemRows, isMissingSystemForm, submissionsBackTarget } from "./FormSubmissions";
+import FormSubmissions, { fieldHeader, interestItemRows, isMissingSystemForm, submissionsBackTarget } from "./FormSubmissions";
 
 /**
  * CAT-INTEREST-1 — the submissions page's pure parts (slice docs/slices/cat-interest-1.md § 2.7; spec
@@ -104,5 +104,25 @@ describe("the page title (CAT-ADMIN-1 § 4.8)", () => {
     it("an ordinary form renders byte-equal to 3912c5d (rule 2)", async () => {
         // The file under __markup__/ was written by the first run of this test on the unchanged tree (3912c5d).
         await expect(renderPage("f-123")).toMatchFileSnapshot("./__markup__/form-submissions.ordinary.html");
+    });
+});
+
+describe("CDL-1 § 6.2 — fieldHeader: fixed English headers for the interest-list form, by field id", () => {
+    const ROMANIAN = [
+        { id: "name", label: "Nume", type: "text" }, { id: "email", label: "E-mail", type: "email" }, { id: "phone", label: "Telefon", type: "phone" },
+        { id: "message", label: "Mesaj", type: "textarea" }, { id: "items", label: "Produse", type: "textarea" },
+    ];
+
+    it("the interest form stored with Romanian labels (before cdl-1) → English headers by field id", () => {
+        expect(ROMANIAN.map((f) => fieldHeader("interest-list", f))).toEqual(["Name", "E-mail", "Phone", "Message", "Products"]);
+    });
+
+    it("the interest form: an id outside the five keeps its stored label (also an id that is an Object prototype key)", () => {
+        expect(fieldHeader("interest-list", { id: "company", label: "Firma" })).toBe("Firma");
+        expect(fieldHeader("interest-list", { id: "constructor", label: "Builder" })).toBe("Builder");
+    });
+
+    it("any other form → its stored labels, as today", () => {
+        expect(ROMANIAN.map((f) => fieldHeader("contact-form", f))).toEqual(["Nume", "E-mail", "Telefon", "Mesaj", "Produse"]);
     });
 });

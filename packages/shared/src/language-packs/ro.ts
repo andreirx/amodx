@@ -251,6 +251,16 @@ export const RO_LANGUAGE_PACK: LanguagePack = {
         quoteEmail: "Trimite un e-mail",
         quoteMessage: "Bună! Aș vrea o ofertă pentru {product}[, varianta {variant}]: {url}",
         quoteClose: "Închide",
+        // CDL-1 (§ 3.1): equal to the literals the importer and the interest mail wrote before cdl-1.
+        importCollectionAttribute: "colecție",
+        importUnitAttribute: "unitate",
+        importPackagingAttribute: "împachetare",
+        importMinimumOrderAttribute: "comandă minimă",
+        importVariantName: "Variantă",
+        interestMailSubject: "Listă de interes — {name}",
+        interestMailIntro: "Listă de interes nouă de la {name}",
+        interestMailProducts: "Produse ({n}):",
+        interestMailSentAt: "Trimisă: {date}",
     },
     site: {
         untitledSiteName: "Site fără nume",

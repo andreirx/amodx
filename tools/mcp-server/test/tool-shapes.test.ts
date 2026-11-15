@@ -145,3 +145,29 @@ test("import_glam_pricelist summary (CAT-SLUG-UNIQUE-1): the count of products w
     assert.ok(!glamPricelistSummary({ ...base, crossSheetSuffixed: [] }).includes("sheet's name"));
     assert.ok(!glamPricelistSummary(base).includes("sheet's name"));
 });
+
+// CDL-1 (docs/slices/catalog-data-labels-1.md § 4.3, § 5.3): the label choice and the summary lines.
+test("import_glam_pricelist: labels is sent as the request member only when given", () => {
+    assert.ok(!("labels" in glamPricelistRequest({ producer: "BOEN" }, "csv", "PL.csv").body));
+    assert.equal(glamPricelistRequest({ producer: "BOEN", labels: "file" }, "csv", "PL.csv").body.labels, "file");
+    assert.equal(glamPricelistRequest({ producer: "BOEN", labels: "site" }, "csv", "PL.csv").body.labels, "site");
+});
+
+test("import_glam_pricelist summary: one line with the label set used and its four labels; the other lists' line", () => {
+    const base = {
+        dryRun: true, producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl", totalRows: 1,
+        counts: { deleted: 0, products: 1, options: 1, deduped: 0, skipped: 0 }, categoriesCreated: 0,
+        previousSet: { count: 0, firstTitles: [] }, rows: [{ status: "created", index: 2 }],
+    };
+    const site = { collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" };
+    const file = { collection: "colectie", unit: "unitate de masura", packaging: "unitate de impachetare", minimumOrder: "comanda minima" };
+    const used = glamPricelistSummary({ ...base, labels: { site, file, used: "site" }, otherLabels: [] }).split("\n");
+    assert.ok(used.includes("Labels: the site labels — Collection, Unit, Packaging, Minimum order"));
+    assert.ok(!used.some((l) => l.startsWith("These lists use other labels")));
+    const fromFile = glamPricelistSummary({
+        ...base, labels: { site, file, used: "file" },
+        otherLabels: [{ importSource: "glam:alpod/a", labels: site, products: 2 }],
+    }).split("\n");
+    assert.ok(fromFile.includes("Labels: this file's labels — colectie, unitate de masura, unitate de impachetare, comanda minima"));
+    assert.ok(fromFile.includes("These lists use other labels: glam:alpod/a (2 products: Collection, Unit, Packaging, Minimum order). Import them again to share filters."));
+});

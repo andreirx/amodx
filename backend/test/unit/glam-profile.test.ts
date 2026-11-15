@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import * as path from "path";
-import { GlamImportProfileSchema, type GlamImportProfile } from "@amodx/shared";
+import { GlamImportProfileSchema, catalogServerTexts, resolveLocaleStrings, type GlamImportProfile } from "@amodx/shared";
 import { parseGlamCsv, parseCsvRecords } from "../../src/import/glam/parse.js";
 import { foldTokens, norm, slugify } from "../../src/import/glam/group.js";
 import { checkUpload, planGlamImport, type GlamImportPlan, type GlamUpload } from "../../src/import/glam/map.js";
@@ -10,6 +10,9 @@ import {
     parseProfileChoice, readStoredProfile, resolveProfile, specLinesOf, splitParts, type SpecLineGuard,
 } from "../../src/import/glam/profile.js";
 import { codeHits } from "./glam-code-hits.js";
+
+/** CDL-1: the site labels and default option name of a Romanian site without overrides — today's words, which these tests pin. */
+const RO = catalogServerTexts(resolveLocaleStrings({ locale: "ro-RO" }));
 
 /**
  * CAT-IMPORT-PROFILE-1A — the pure profile core (docs/slices/cat-import-profile-1.md § 7.4 units, § 4.5 oracles, and
@@ -38,7 +41,7 @@ function uploadOf(producer = "P", sheet = "S", variantName = "Format"): GlamUplo
 const profile = (p: Partial<GlamImportProfile>): GlamImportProfile => GlamImportProfileSchema.parse({ ...DEFAULT_PROFILE, ...p });
 const planWith = (text: string, p: GlamImportProfile | undefined, upload = uploadOf()): GlamImportPlan => {
     const file = parsed(text);
-    return planGlamImport(file.rows, upload, p ? { profile: p, revision: 1, codeCells: file.codeCells } : undefined);
+    return planGlamImport(file.rows, upload, RO.siteLabels, RO.variantName, p ? { profile: p, revision: 1, codeCells: file.codeCells } : undefined);
 };
 const drafts = (plan: GlamImportPlan) => plan.styles.map((s) => s.draft);
 const attrs = (plan: GlamImportPlan, i = 0) => drafts(plan)[i].attributes.map((a) => `${a.key}=${a.value}`);
@@ -52,7 +55,7 @@ const CORPUS: string[] = JSON.parse(readFileSync(path.resolve(__dirname, "fixtur
 describe("CAT-IMPORT-PROFILE-1A schema and checkProfile", () => {
     it("DEFAULT_PROFILE parses and is accepted", () => {
         expect(GlamImportProfileSchema.parse(DEFAULT_PROFILE)).toEqual(DEFAULT_PROFILE);
-        expect(checkProfile(DEFAULT_PROFILE)).toEqual({ kind: "accepted" });
+        expect(checkProfile(DEFAULT_PROFILE, RO.siteLabels)).toEqual({ kind: "accepted" });
     });
 
     it.each([
@@ -64,7 +67,7 @@ describe("CAT-IMPORT-PROFILE-1A schema and checkProfile", () => {
         ["an unknown facet mode", { ...DEFAULT_PROFILE, facetModes: { attributes: [{ key: "k", mode: "sometimes" }] } }],
     ])("strict: %s → the parse fails (never stripped)", (_n, value) => {
         expect(GlamImportProfileSchema.safeParse(value).success).toBe(false);
-        expect(readStoredProfile({ revision: 4, profile: value })).toMatchObject({ kind: "unsupported", revision: 4 });
+        expect(readStoredProfile({ revision: 4, profile: value }, RO.siteLabels)).toMatchObject({ kind: "unsupported", revision: 4 });
         expect(parseProfileChoice({ profile: value, baseRevision: null }).kind).toBe("refused");
     });
 
@@ -74,16 +77,37 @@ describe("CAT-IMPORT-PROFILE-1A schema and checkProfile", () => {
         ["a duplicate spec key", [attribute("Wood", "A"), { key: "Wood", action: "prose-only" as const }], /listed twice/],
         ["an untrimmed label", [attribute("Wood", " Esență")], /leading or trailing/],
     ])("refused: %s", (_n, specKeys, error) => {
-        const check = checkProfile(profile({ specKeys }));
+        const check = checkProfile(profile({ specKeys }), RO.siteLabels);
         expect(check.kind).toBe("refused");
         if (check.kind === "refused") expect(check.error).toMatch(error);
     });
 
     it("refused: the collection spec key also in specKeys; one facet key both always and never", () => {
-        expect(checkProfile(profile({ collection: { kind: "spec", key: "Collection" }, specKeys: [{ key: "Collection", action: "prose-only" }] })))
+        expect(checkProfile(profile({ collection: { kind: "spec", key: "Collection" }, specKeys: [{ key: "Collection", action: "prose-only" }] }), RO.siteLabels))
             .toMatchObject({ kind: "refused", error: expect.stringMatching(/collection source/) });
-        expect(checkProfile(profile({ facetModes: { attributes: [{ key: "Esență", mode: "always" }, { key: "Esență", mode: "never" }] } })))
+        expect(checkProfile(profile({ facetModes: { attributes: [{ key: "Esență", mode: "always" }, { key: "Esență", mode: "never" }] } }), RO.siteLabels))
             .toMatchObject({ kind: "refused", error: expect.stringMatching(/set twice/) });
+    });
+
+    it("CDL-1 § 4.4: a label may not equal one of the CHOSEN column labels (after norm); other sets do not refuse it", () => {
+        const EN = catalogServerTexts(resolveLocaleStrings({ locale: "en-US" }));
+        const FILE = { collection: "colectie", unit: "unitate de masura", packaging: "unitate de impachetare", minimumOrder: "comanda minima" };
+        expect(checkProfile(profile({ specKeys: [attribute("Wood", "colecție")] }), EN.siteLabels)).toEqual({ kind: "accepted" });
+        expect(checkProfile(profile({ specKeys: [attribute("Wood", "collection")] }), EN.siteLabels)).toMatchObject({ kind: "refused", error: expect.stringMatching(/column attribute/) });
+        expect(checkProfile(profile({ specKeys: [attribute("Wood", "Minimum Order")] }), EN.siteLabels)).toMatchObject({ kind: "refused" });
+        expect(checkProfile(profile({ specKeys: [attribute("Wood", "Unitate de Masura")] }), FILE)).toMatchObject({ kind: "refused" });
+        expect(checkProfile(profile({ specKeys: [attribute("Wood", "Unitate de Masura")] }), RO.siteLabels)).toEqual({ kind: "accepted" });
+    });
+
+    it("CDL-1 § 4.4: a stored profile whose label equals a chosen label reads as unsupported; with another set it is supported", () => {
+        const EN = catalogServerTexts(resolveLocaleStrings({ locale: "en-US" }));
+        const item = { revision: 2, profile: profile({ specKeys: [attribute("Wood", "Collection")] }) };
+        expect(readStoredProfile(item, EN.siteLabels)).toMatchObject({ kind: "unsupported", revision: 2, reason: expect.stringMatching(/column attribute/) });
+        expect(readStoredProfile(item, RO.siteLabels)).toMatchObject({ kind: "supported", revision: 2 });
+    });
+
+    it("CDL-1 § 4.4: parseProfileChoice checks the shape only (before any read); the label rule is the handler's, after the tenant read", () => {
+        expect(parseProfileChoice({ profile: profile({ specKeys: [attribute("Wood", "colecție")] }), baseRevision: null }).kind).toBe("accepted");
     });
 
     it("parseProfileChoice: absent → absent; baseRevision must be null or a positive integer; extra members refused", () => {
@@ -231,8 +255,8 @@ describe("CAT-IMPORT-PROFILE-1A extraction", () => {
         const file = parsed(BOEN);
         const keys = [...new Set(file.rows.flatMap((r) => specLinesOf(r.specs).map((l) => l.key)))];
         const everything = profile({ specKeys: keys.map((k) => attribute(k, `L ${k}`, "comma")) });
-        const plain = planGlamImport(file.rows, uploadOf("BOEN", "PL"));
-        const profiled = planGlamImport(file.rows, uploadOf("BOEN", "PL"), { profile: everything, revision: 1, codeCells: file.codeCells });
+        const plain = planGlamImport(file.rows, uploadOf("BOEN", "PL"), RO.siteLabels, RO.variantName);
+        const profiled = planGlamImport(file.rows, uploadOf("BOEN", "PL"), RO.siteLabels, RO.variantName, { profile: everything, revision: 1, codeCells: file.codeCells });
         const prose = (p: GlamImportPlan) => drafts(p).map((d) => [d.slug, d.description, d.longDescription]);
         expect(prose(profiled)).toEqual(prose(plain));
         expect(drafts(profiled).filter((d) => d.attributes.some((a) => a.key.startsWith("L "))).length).toBe(280);
@@ -376,7 +400,7 @@ function derivedViolations(line: string, producer = "P", codes: string[] = []): 
         for (const t of tokens) if (!allowed.has(t)) out.push(`${line} → ${what}: token "${t}" is not a token of a guarded fragment`);
     };
     // (a) collection
-    const a = planGlamImport(file.rows, upload, { profile: profile({ collection: { kind: "spec", key: spec.key } }), revision: 1, codeCells: file.codeCells });
+    const a = planGlamImport(file.rows, upload, RO.siteLabels, RO.variantName, { profile: profile({ collection: { kind: "spec", key: spec.key } }), revision: 1, codeCells: file.codeCells });
     const refused = a.profile!.refused.length > 0;
     const allowedA = fragmentTokens(line, "none");
     const child = a.categories.find((c) => c.parentSlug !== null);
@@ -400,7 +424,7 @@ function derivedViolations(line: string, producer = "P", codes: string[] = []): 
     // (b), (c) attribute values under an author label; (d) the attribute key when the label is the file's key
     for (const split of ["none", "comma"] as const) {
         for (const label of ["Lbl", spec.key]) {
-            const b = planGlamImport(file.rows, upload, { profile: profile({ specKeys: [attribute(spec.key, label, split)] }), revision: 1, codeCells: file.codeCells });
+            const b = planGlamImport(file.rows, upload, RO.siteLabels, RO.variantName, { profile: profile({ specKeys: [attribute(spec.key, label, split)] }), revision: 1, codeCells: file.codeCells });
             const allowed = fragmentTokens(line, split);
             const folds = fragmentFolds(line, split);
             for (const v of b.styles[0].draft.attributes.filter((x) => x.key === label && x.key !== "colecție" && x.key !== "unitate")) {
@@ -468,7 +492,7 @@ describe.each(PRODUCER_FILES)("CAT-IMPORT-PROFILE-1A %s fixtures: O-VALUE-1 and 
             const keys = [...new Set(file.rows.flatMap((r) => specLinesOf(r.specs).map((l) => l.key)))];
             const worst = profile({ specKeys: keys.map((k) => attribute(k, `L ${k}`, "comma")) });
             const sheet = path.basename(name, ".csv");
-            const plan = planGlamImport(file.rows, uploadOf(producer, sheet), { profile: worst, revision: 1, codeCells: file.codeCells });
+            const plan = planGlamImport(file.rows, uploadOf(producer, sheet), RO.siteLabels, RO.variantName, { profile: worst, revision: 1, codeCells: file.codeCells });
             expect(plan.profile!.refused).toEqual([]);
             const rowsByIndex = new Map(file.rows.map((r) => [r.index, r]));
             products += plan.styles.length;
@@ -492,7 +516,7 @@ describe("CAT-IMPORT-PROFILE-1A over the BOEN fixture", () => {
     const file = parsed(BOEN);
     const keys = [...new Set(file.rows.flatMap((r) => specLinesOf(r.specs).map((l) => l.key)))];
     const worst = profile({ specKeys: keys.map((k) => attribute(k, `L ${k}`, "comma")) });
-    const plan = planGlamImport(file.rows, uploadOf("BOEN", "PL"), { profile: worst, revision: 1, codeCells: file.codeCells });
+    const plan = planGlamImport(file.rows, uploadOf("BOEN", "PL"), RO.siteLabels, RO.variantName, { profile: worst, revision: 1, codeCells: file.codeCells });
 
     it("O-CODES-3 (plan level): with every key extracted, split comma, no draft holds a column-2/5 cell of any row", () => {
         const records = parseCsvRecords(BOEN);
@@ -534,7 +558,7 @@ describe("CAT-IMAGE-GATE-1 — importStatus and the publishWithoutImages equival
             .toMatchObject({ kind: "save", revision: 5 });
     });
     it("readStoredProfile: a stored item without the member is supported and reads as off", () => {
-        const stored = readStoredProfile({ profile: { ...DEFAULT_PROFILE }, revision: 1 });
+        const stored = readStoredProfile({ profile: { ...DEFAULT_PROFILE }, revision: 1 }, RO.siteLabels);
         expect(stored).toMatchObject({ kind: "supported", revision: 1 });
         if (stored.kind === "supported") expect(importStatus(stored.profile)).toBe("draft");
     });

@@ -22,6 +22,10 @@ import { handler } from "../../src/import/glam-pricelist.js";
 import { COPY_START_BUDGET_MS } from "../../src/import/glam-images.js";
 import { parseCsvRecords, parseGlamCsv } from "../../src/import/glam/parse.js";
 import { checkUpload, planGlamImport } from "../../src/import/glam/map.js";
+import { catalogServerTexts, resolveLocaleStrings } from "@amodx/shared";
+
+/** CDL-1: the site labels and default option name of a Romanian site without overrides (the plan comparison below needs any valid set). */
+const RO = catalogServerTexts(resolveLocaleStrings({ locale: "ro-RO" }));
 
 const CDN = "https://cdn.test";
 const HEADER = "colectie,produs,cod vechi,pret achizitie,pret lista,cod nou,unitate,impachetare,comanda minima,imagine,specificatii,format";
@@ -663,9 +667,9 @@ describe("CAT-IMPORT-GALLERY-1 end-to-end — real 13-column rows: import report
         const p13 = parseGlamCsv(text13);
         const p12 = parseGlamCsv(text12);
         if (upload.kind !== "accepted" || p13.kind !== "parsed" || p12.kind !== "parsed") throw new Error("fixture must parse");
-        const { gallery, ...plan13 } = planGlamImport(p13.rows, upload.upload);
+        const { gallery, ...plan13 } = planGlamImport(p13.rows, upload.upload, RO.siteLabels, RO.variantName);
         expect(gallery).toEqual({ rows: 0, addresses: 0, dropped: 0 });
-        expect(plan13).toEqual(planGlamImport(p12.rows, upload.upload));
+        expect(plan13).toEqual(planGlamImport(p12.rows, upload.upload, RO.siteLabels, RO.variantName));
     });
 
     it("ALPOD HER: every option stores its column-13 images; the product gallery is col 9 then col 13 of each row, in file order; the copy keeps the order", async () => {

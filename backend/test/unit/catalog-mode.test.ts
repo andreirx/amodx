@@ -248,6 +248,13 @@ describe("CM1 — POST /products write boundary", () => {
         expect(productPuts()[0].input.Item).not.toHaveProperty("facetModes");
         expect(productPuts()[0].input.Item).not.toHaveProperty("importProfileRevision");
     });
+
+    it("CDL-1 (§ 4.6): importLabels is omitted from authoring input (stripped, never stored)", async () => {
+        mockDb({ tenant: CATALOG_TENANT });
+        const importLabels = { collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" };
+        expect((await call(createProduct, event(TENANT_ADMIN, { ...base, importLabels }))).statusCode).toBe(201);
+        expect(productPuts()[0].input.Item).not.toHaveProperty("importLabels");
+    });
 });
 
 describe("CM1 — PUT /products/{id} write boundary and hardening", () => {
@@ -323,6 +330,17 @@ describe("CM1 — PUT /products/{id} write boundary and hardening", () => {
         expect((await put({ ...CATALOG_PRODUCT, importProfileRevision: 9, facetModes: { attributes: [] } })).statusCode).toBe(200);
         expect(productPuts()[0].input.Item).not.toHaveProperty("importProfileRevision");
         expect(productPuts()[0].input.Item).not.toHaveProperty("facetModes");
+    });
+
+    it("CDL-1 (§ 4.6): an admin edit keeps importLabels and cannot set or change it", async () => {
+        const marked = { ...IMPORTED_PRODUCT, importLabels: { collection: "colectie", unit: "u", packaging: "p", minimumOrder: "m" } };
+        mockDb({ tenant: CATALOG_TENANT, product: marked });
+        expect((await put({ ...marked, title: "Rug 2", importLabels: { collection: "X", unit: "u", packaging: "p", minimumOrder: "m" } })).statusCode).toBe(200);
+        expect(productPuts()[0].input.Item).toMatchObject({ title: "Rug 2", importLabels: marked.importLabels });
+        ddbSend.mockClear();
+        mockDb({ tenant: CATALOG_TENANT, product: CATALOG_PRODUCT });
+        expect((await put({ ...CATALOG_PRODUCT, importLabels: marked.importLabels })).statusCode).toBe(200);
+        expect(productPuts()[0].input.Item).not.toHaveProperty("importLabels");
     });
 
     it("importSource product: the derived gallery is recomputed from the options, overwriting a direct edit", async () => {

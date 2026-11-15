@@ -15,7 +15,9 @@ src/
                       #   import_glam_pricelist (glamPricelistRequest / glamPricelistSummary, CAT-IMPORT-1;
                       #   CAT-IMPORT-PROFILE-1A: the summary adds "Profile: <source>, revision <n>", the sheets
                       #   not current and the refused spec lines — the tool sends no profileChoice, so the
-                      #   server applies the producer's stored profile; it cannot change one)
+                      #   server applies the producer's stored profile; it cannot change one; CDL-1: optional
+                      #   `labels` "site" | "file" → request member `labels`; the summary prints the label set
+                      #   used with its four labels and the other lists that hold other labels)
                       #   (cat-mode-1 test seam: index.ts runs dotenv + main() on import, so it cannot be tested)
 
 scripts/
@@ -81,7 +83,7 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 | `get_product` | GET /products/{id} | Read one product |
 | `update_product` | GET + PUT /products/{id} | Read-merge-write update (see Key Patterns) |
 | `delete_product` | DELETE /products/{id} | Delete product and its category links |
-| `import_glam_pricelist` | POST /import/glam-pricelist | Import one glam enriched pricelist sheet (local `csv_path`) into a catalog site, REPLACING that producer + sheet's products; dry run by default (CAT-IMPORT-1) |
+| `import_glam_pricelist` | POST /import/glam-pricelist | Import one glam enriched pricelist sheet (local `csv_path`) into a catalog site, REPLACING that producer + sheet's products; dry run by default (CAT-IMPORT-1); `labels` site (default) / file (CDL-1) |
 
 ### Commerce (commerce track — not changed by mcp-sync-1)
 | Tool | Method | Purpose |

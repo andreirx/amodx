@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import * as path from "path";
 import { MemoryTable } from "./memory-table.js";
-import { GOLDEN_TIME, captureCase, goldenInputs, mask, planOf, splitAddedMembers } from "./cat-import-profile-1-golden.js";
+import { GOLDEN_TIME, RO_SITE, captureCase, goldenInputs, mask, planOf, splitAddedMembers, type GoldenInput } from "./cat-import-profile-1-golden.js";
 
 /**
  * CAT-IMPORT-PROFILE-1A — preservation against the golden captured from a BASE commit
@@ -18,6 +18,15 @@ import { GOLDEN_TIME, captureCase, goldenInputs, mask, planOf, splitAddedMembers
  * golden audit calls and the golden response — after removing ONLY the response members added after b0a3055
  * (`ADDED_MEMBERS`, additive) — and write no `IMPORTPROFILE#` item. CAT-SLUG-UNIQUE-1 added `crossSheetSuffixed`
  * to `ADDED_MEMBERS` with no re-capture: it must be `[]` here (asserted below), so every write is unchanged.
+ *
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.10, slice record docs/slices/cdl-1.md) — the capture is kept, never
+ * re-captured. Only these named deltas, each with its own assertion; no field is stripped by a general rule:
+ *   D1 the comparing run's tenant item has `locale: "ro-RO"` (an input: the site labels are the captured words);
+ *   D2 every PRODUCT# Put payload gains `importLabels` (`withoutProductImportLabels`);
+ *   D3 every `plan.styles[].draft` gains `importLabels` (`withoutPlanDeltas`);
+ *   D4 the plan gains `variantName`; `plan.upload.variantName` is absent when the input sent no name (`withoutPlanDeltas`);
+ *   D5 the responses gain `labels` and `otherLabels` (`ADDED_MEMBERS`; values asserted in `assertLabelMembers`);
+ *   D6 the `planGlamImport` calls pass the Romanian site labels (`planOf`, the call below, `RO_SITE`).
  */
 
 const { holder, mockAudit, nextUuid } = vi.hoisted(() => {
@@ -78,6 +87,85 @@ function withEnglishAuditTitles(goldenCase: any): any {
     return { ...goldenCase, steps };
 }
 
+/** D2, D3: the literal every removed `importLabels` must equal (the four words the capture holds as attribute keys). */
+const RO_LABELS = { "collection": "colecție", "unit": "unitate", "packaging": "împachetare", "minimumOrder": "comandă minimă" };
+
+/** D5: the header cells of each golden input's label columns, as literals. */
+const FILE_LABELS: Record<string, Record<string, string>> = {
+    "synthetic-mixed": { collection: "colectie", unit: "unitate", packaging: "impachetare", minimumOrder: "comanda minima" },
+    "synthetic-no-product": { collection: "colectie", unit: "unitate", packaging: "impachetare", minimumOrder: "comanda minima" },
+    "boen-PL": { collection: "colectie", unit: "unitate de masura", packaging: "unitate de impachetare", minimumOrder: "comanda minima" },
+};
+
+const isProductPut = (w: { command: string; input: any }) => w.command === "PutCommand" && String(w.input?.Item?.SK ?? "").startsWith("PRODUCT#");
+
+/**
+ * D2 — `captured` with `importLabels` removed from every PRODUCT# Put payload of every step, after asserting that each
+ * holds it with the literal value. Throws when a payload of the golden capture already holds the member (the capture
+ * is pre-cdl-1), or when a payload of this run that is not a PRODUCT# Put holds it.
+ */
+function withoutProductImportLabels(captured: any, goldenCase: any): any {
+    for (const step of Object.values(goldenCase.steps) as any[]) {
+        for (const w of step.writes) if (JSON.stringify(w).includes("importLabels")) throw new Error("D2: a captured payload already holds importLabels");
+    }
+    const steps = Object.fromEntries(Object.entries(captured.steps).map(([key, step]: [string, any]) => [key, {
+        ...step,
+        writes: step.writes.map((w: any) => {
+            if (!isProductPut(w)) {
+                if (JSON.stringify(w).includes("importLabels")) throw new Error(`D2: a non-PRODUCT payload holds importLabels (${w.command})`);
+                return w;
+            }
+            const { importLabels, ...item } = w.input.Item;
+            expect(importLabels, `D2 ${key} ${item.SK}`).toEqual(RO_LABELS);
+            return { ...w, input: { ...w.input, Item: item } };
+        }),
+    }]));
+    return { ...captured, steps };
+}
+
+/**
+ * D3 + D4 — the plan without its cdl-1 members, after asserting them: every draft's `importLabels` equals the literal
+ * (D3); `plan.variantName` equals the captured `plan.upload.variantName` (D4), and for an input that sent no name the
+ * new `upload` has no `variantName` — the captured one is compared with `plan.variantName` instead, then left out of
+ * the captured upload for the comparison. Throws when a captured draft already holds `importLabels`. No other member is
+ * touched. Returns the plan to compare and the golden plan to compare it with.
+ */
+function withoutPlanDeltas(plan: any, goldenPlan: any, input: GoldenInput): { plan: any; golden: any } {
+    for (const style of goldenPlan.styles) if ("importLabels" in style.draft) throw new Error("D3: a captured draft already holds importLabels");
+    const { variantName, ...rest } = plan;
+    expect(variantName, `D4 ${input.name}`).toBe(goldenPlan.upload.variantName);
+    const styles = rest.styles.map((style: any) => {
+        const { importLabels, ...draft } = style.draft;
+        expect(importLabels, `D3 ${input.name} ${draft.slug}`).toEqual(RO_LABELS);
+        return { ...style, draft };
+    });
+    if (input.variantName !== undefined) return { plan: { ...rest, styles }, golden: goldenPlan };
+    expect(rest.upload, `D4 ${input.name}`).not.toHaveProperty("variantName");
+    const { variantName: capturedName, ...goldenUpload } = goldenPlan.upload;
+    expect(capturedName, `D4 ${input.name}`).toBe(variantName);
+    return { plan: { ...rest, styles }, golden: { ...goldenPlan, upload: goldenUpload } };
+}
+
+/** D5 — `labels` and `otherLabels` in the answers: in every dry-run answer both; values wherever present. */
+function assertLabelMembers(input: GoldenInput, added: Record<string, Record<string, unknown>>) {
+    const dry = Object.entries(added).filter(([key]) => key.startsWith("dry-"));
+    expect(dry.length, "D5 one dry run").toBe(1);
+    for (const [, extra] of dry) {
+        expect(extra, `D5 ${input.name} dry run`).toHaveProperty("labels");
+        expect(extra, `D5 ${input.name} dry run`).toHaveProperty("otherLabels");
+    }
+    for (const [key, extra] of Object.entries(added)) {
+        if ("labels" in extra) {
+            expect(extra.labels, `D5 ${input.name} ${key}`).toEqual({
+                site: { collection: "colecție", unit: "unitate", packaging: "împachetare", minimumOrder: "comandă minimă" },
+                file: FILE_LABELS[input.name],
+                used: "site",
+            });
+        }
+        if ("otherLabels" in extra) expect(extra.otherLabels, `D5 ${input.name} ${key}`).toEqual([]);
+    }
+}
+
 const VARIANTS = [
     ["(a) no profileChoice", undefined],
     ["(b) profileChoice = DEFAULT_PROFILE, baseRevision null", { profile: DEFAULT_PROFILE, baseRevision: null }],
@@ -94,7 +182,8 @@ describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import equal
             it(`${input.name}: ${name} → plan, write history, audit and response equal the golden; no profile item`, async () => {
                 const table = new MemoryTable();
                 holder.table = table;
-                table.put({ PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "Glam", catalogMode: true });
+                // D1: the tenant is a Romanian site, so its site labels are the words the capture holds.
+                table.put({ PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "Glam", catalogMode: true, locale: "ro-RO" });
                 const added: Record<string, Record<string, unknown>> = {};
                 const call = async (body: Record<string, unknown>, dryRun: boolean) => {
                     const res = (await handler(event(profileChoice ? { ...body, profileChoice } : body, dryRun), {} as any, () => {})) as any;
@@ -104,7 +193,10 @@ describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import equal
                     return { status: res.statusCode as number, body: kept };
                 };
                 const captured = await captureCase(input, table, call, mockAudit);
-                expect(mask(captured)).toEqual(withEnglishAuditTitles(golden.cases[input.name]));
+                const goldenCase = withEnglishAuditTitles(golden.cases[input.name]);
+                const compared = withoutPlanDeltas(captured.plan, goldenCase.plan, input);
+                expect(mask({ ...withoutProductImportLabels(captured, goldenCase), plan: compared.plan })).toEqual({ ...goldenCase, plan: compared.golden });
+                assertLabelMembers(input, added);
 
                 // the plan of the handler's own resolution for this request is today's plan
                 const parsed = parseGlamCsv(input.csvContent);
@@ -112,8 +204,10 @@ describe("CAT-IMPORT-PROFILE-1A golden — no stored profile: every import equal
                 if (parsed.kind !== "parsed" || upload.kind !== "accepted") throw new Error("golden input must parse");
                 const resolution = resolveProfile(profileChoice ?? null, { kind: "none" }, "execution");
                 expect(resolution.kind).toBe("unprofiled");
-                expect(mask(planGlamImport(parsed.rows, upload.upload, undefined))).toEqual(golden.cases[input.name].plan);
-                expect(mask(planOf(input))).toEqual(golden.cases[input.name].plan);
+                const direct = withoutPlanDeltas(planGlamImport(parsed.rows, upload.upload, RO_SITE.siteLabels, RO_SITE.variantName, undefined), golden.cases[input.name].plan, input);
+                expect(mask(direct.plan)).toEqual(direct.golden);
+                const viaHelper = withoutPlanDeltas(planOf(input), golden.cases[input.name].plan, input);
+                expect(mask(viaHelper.plan)).toEqual(viaHelper.golden);
 
                 // inert: no profile item, no stamp, no refusal list; the added members say "default"/"explicit", revision null
                 expect(table.all("IMPORTPROFILE#")).toEqual([]);

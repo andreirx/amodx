@@ -11,8 +11,8 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts.
-export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings } from "./locale-strings.js";
-export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings } from "./locale-strings.js";
+export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings, catalogServerTexts } from "./locale-strings.js";
+export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings, CatalogServerTexts } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
 
@@ -946,6 +946,19 @@ export const CatalogStringsSchema = z.object({
     quoteEmail: z.string().optional(),                  // "Send an e-mail"
     quoteMessage: z.string().optional(),                // "Hello! I would like a quote for {product}[, option {variant}]: {url}" ([…] only with a variant)
     quoteClose: z.string().optional(),                  // "Close"
+    // CDL-1 (docs/slices/catalog-data-labels-1.md § 3.1): the texts the backend WRITES or MAILS for a catalog site, read
+    // through `catalogServerTexts` (locale-strings.ts), each non-empty (a blank override gives the language default).
+    // The four site labels are written as attribute keys at import, so an edit takes effect at the next import of a
+    // list; stored products are never rewritten.
+    importCollectionAttribute: z.string().optional(),   // "Collection" (attribute key of file column 0)
+    importUnitAttribute: z.string().optional(),         // "Unit" (attribute key of file column 6)
+    importPackagingAttribute: z.string().optional(),    // "Packaging" (attribute key of file column 7)
+    importMinimumOrderAttribute: z.string().optional(), // "Minimum order" (attribute key of file column 8)
+    importVariantName: z.string().optional(),           // "Option" (option name written when the import request gives none)
+    interestMailSubject: z.string().optional(),         // "Interest list — {name}" (mail to the site owner)
+    interestMailIntro: z.string().optional(),           // "New interest list from {name}"
+    interestMailProducts: z.string().optional(),        // "Products ({n}):"
+    interestMailSentAt: z.string().optional(),          // "Sent: {date}" ({date} = the ISO time of the submission)
 });
 export type CatalogStrings = z.infer<typeof CatalogStringsSchema>;
 
@@ -1402,6 +1415,32 @@ export const GlamImportProfileSchema = z.strictObject({
 });
 export type GlamImportProfile = z.infer<typeof GlamImportProfileSchema>;
 
+/**
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.6) — the four attribute keys one glam import wrote the file columns
+ * 0, 6, 7 and 8 under (the product member `importLabels`). Strict, four non-empty strings: a stored value of another
+ * shape is malformed, and a reader treats a malformed value as absent (operator ruling, cdl-1 packet § 1).
+ */
+export const ImportLabelsSchema = z.strictObject({
+    collection: z.string().min(1),
+    unit: z.string().min(1),
+    packaging: z.string().min(1),
+    minimumOrder: z.string().min(1),
+});
+export type ImportLabels = z.infer<typeof ImportLabelsSchema>;
+
+/**
+ * CDL-1 § 4.6 — the labels of a product WITHOUT a valid `importLabels` member: the four Romanian words the glam importer
+ * wrote before cdl-1 (it wrote no others). Fixed history, not a language default: an edit of the RO pack must not
+ * change how an old product is read. Readers: the interest list's collection lookup (backend `interest/public.ts`) and
+ * the import dry run's `otherLabels` (backend `import/glam-pricelist.ts`).
+ */
+export const IMPORT_LABELS_WITHOUT_MARKER: ImportLabels = {
+    collection: "colecție",
+    unit: "unitate",
+    packaging: "împachetare",
+    minimumOrder: "comandă minimă",
+};
+
 export const ProductSchema = z.object({
     id: z.string(),
     tenantId: z.string(),
@@ -1487,6 +1526,10 @@ export const ProductSchema = z.object({
     // written with (absent = written without a profile).
     facetModes: FacetModesSchema.optional(),
     importProfileRevision: z.number().int().positive().optional(),
+    // CDL-1 (docs/slices/catalog-data-labels-1.md § 4.6): importer-owned like `importSource` — the four attribute keys
+    // the glam import wrote the file columns under (the site labels or the file's labels, the owner's choice). Absent
+    // = written before cdl-1 or by hand: read as `IMPORT_LABELS_WITHOUT_MARKER`.
+    importLabels: ImportLabelsSchema.optional(),
 
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -2108,7 +2151,8 @@ export type InterestResolveRequest = z.input<typeof InterestResolveRequestSchema
 
 /**
  * One id resolved against the catalogue, from a complete read:
- *  - "active": the product as the visitor can mark it now (`collection` = its `colecție` attribute when present;
+ *  - "active": the product as the visitor can mark it now (`collection` = the value of its attribute keyed by its
+ *    `importLabels.collection`, or by the pre-cdl-1 word when it has no valid marker, when present;
  *    `optionValues` = its variant options, to tell whether a saved option still exists);
  *  - "not-available": the product exists but is not active — no fields, so a draft leaks nothing;
  *  - "absent": no product has this id (an expired shortlist item; reselect, never rebind by slug).

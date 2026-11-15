@@ -3,11 +3,12 @@ import {
     glamFormReducer, canCheck, confirmRequest, brandsOf, INITIAL_GLAM_FORM, type GlamFormState, type GlamFormEvent,
     imageCopyReducer, imageProblems, imageCounts, IDLE_IMAGE_COPY, type ImageCopyState,
     checkRequest, profileChangedRefusal, requestBody, incompleteImportReport, hiddenProducts, hiddenCauseText, HIDDEN_CAUSE_UNKNOWN,
-    crossSheetLine, withinFileLine, galleryLine, extraImageProblems,
+    crossSheetLine, withinFileLine, galleryLine, extraImageProblems, labelSets, otherLabelsLine,
 } from "./GlamPricelistImport";
 import {
     proposeProfile, keyHints, applyProfileEdit, keyActionOf, attributeModeOf, nameNumberHint, collectionHint,
     sheetsToReimport, storedMoved, movedNotice, SAVE_RULE, FILTER_MODE_HELP, VARIANT_MODE_HELP, FACET_VISIBILITY_HELP, PUBLISH_WITHOUT_IMAGES_HELP, type SpecKeyFact, type ProfileEditor,
+    type ProfileEdit,
 } from "./GlamProfileEditor";
 import { buildFacetListing } from "@amodx/shared";
 import { ApiError } from "@/lib/api";
@@ -27,11 +28,17 @@ const fields: GlamFormEvent[] = [
 const snapshot = (s: GlamFormState) => ({ revision: s.revision, input: s.input, choice: null, context: null });
 /** CAT-IMPORT-PROFILE-1C: the default profile as the backend reports it (backend `glam/profile.ts` `DEFAULT_PROFILE`). */
 const DEFAULT = { version: 1 as const, grouping: { kind: "as-is" as const }, collection: { kind: "column" as const }, specKeys: [], facetModes: { attributes: [] } };
-/** A dry-run answer with the members the form reads; `profile` = nothing stored (the default). */
+/** CDL-1: the site labels of a Romanian site (the words the backend writes for it) and the BOEN file's header labels. */
+const RO_LABELS = { collection: "colecție", unit: "unitate", packaging: "împachetare", minimumOrder: "comandă minimă" };
+const FILE_LABELS = { collection: "colectie", unit: "unitate de masura", packaging: "unitate de impachetare", minimumOrder: "comanda minima" };
+/** A dry-run answer with the members the form reads; `profile` = nothing stored (the default). CDL-1: + labels, otherLabels. */
 const dryRun = (over: Record<string, unknown> = {}) => ({
     producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl", products: [], categoryConflicts: [],
-    profile: { source: "default", revision: null, value: DEFAULT }, sheets: [], specKeys: [], drafts: [], siteProducts: [], ...over,
+    profile: { source: "default", revision: null, value: DEFAULT }, sheets: [], specKeys: [], drafts: [], siteProducts: [],
+    labels: { site: RO_LABELS, file: FILE_LABELS, used: "site" }, otherLabels: [], ...over,
 });
+/** CDL-1 § 4.7: `applyProfileEdit` with the Romanian site labels as the import's column labels. */
+const applyEdit = (p: GlamImportProfile, e: ProfileEdit) => applyProfileEdit(p, e, RO_LABELS);
 
 describe("glamFormReducer — file reads", () => {
     it("checking is impossible while a file read is pending, and the old file's content is dropped at once", () => {
@@ -82,7 +89,7 @@ describe("glamFormReducer — dry run bound to its input", () => {
         const sent = snapshot(loaded);
         let s = run([{ type: "check-sent" }, { type: "check-done", ...sent, report: dryRun() }], loaded);
         expect(confirmRequest(s)).toEqual({
-            input: { csvContent: "A", fileName: "A.csv", producer: "BOEN", sheet: "PL", variantName: "Variantă" },
+            input: { csvContent: "A", fileName: "A.csv", producer: "BOEN", sheet: "PL", variantName: "", labels: "site" },
             choice: { profile: DEFAULT, baseRevision: null },
         });
         s = glamFormReducer(s, { type: "field", field: "variantName", value: "Format" });
@@ -426,7 +433,7 @@ describe("1c — every edit withdraws the report; confirm sends the previewed pr
 
     it("the request body carries profileChoice only when a choice is sent", () => {
         const input = loadedFile.input;
-        expect(JSON.parse(requestBody(input, null))).toEqual({ csvContent: "csv", producer: "BOEN", sheet: "PL", variantName: "Variantă" });
+        expect(JSON.parse(requestBody(input, null))).toEqual({ csvContent: "csv", producer: "BOEN", sheet: "PL", variantName: "", labels: "site" });
         expect(JSON.parse(requestBody(input, { profile: DEFAULT, baseRevision: null }))).toHaveProperty("profileChoice", { profile: DEFAULT, baseRevision: null });
     });
 
@@ -536,37 +543,37 @@ describe("1c — applyProfileEdit", () => {
     const P = proposeProfile(BOEN_KEYS.slice(0, 3)); // Product type, Wood, Treatment
 
     it("the collection spec key is consumed: it leaves specKeys and shows as the collection source", () => {
-        const p = applyProfileEdit(P, { kind: "collection", collection: { kind: "spec", key: "Wood" } });
+        const p = applyEdit(P, { kind: "collection", collection: { kind: "spec", key: "Wood" } });
         expect(p.specKeys.map((r) => r.key)).toEqual(["Product type", "Treatment"]);
         expect(keyActionOf(p, "Wood")).toBe("collection");
-        expect(keyActionOf(applyProfileEdit(p, { kind: "collection", collection: { kind: "column" } }), "Wood")).toBe("not-reviewed");
+        expect(keyActionOf(applyEdit(p, { kind: "collection", collection: { kind: "column" } }), "Wood")).toBe("not-reviewed");
     });
 
     it("rules keep their place; prose-only / not-reviewed / attribute again", () => {
-        let p = applyProfileEdit(P, { kind: "key-action", key: "Wood", action: "prose-only" });
+        let p = applyEdit(P, { kind: "key-action", key: "Wood", action: "prose-only" });
         expect(p.specKeys.map((r) => r.key)).toEqual(["Product type", "Wood", "Treatment"]);
         expect(p.specKeys[1]).toEqual({ key: "Wood", action: "prose-only" });
-        p = applyProfileEdit(p, { kind: "key-action", key: "Wood", action: "not-reviewed" });
+        p = applyEdit(p, { kind: "key-action", key: "Wood", action: "not-reviewed" });
         expect(keyActionOf(p, "Wood")).toBe("not-reviewed");
-        p = applyProfileEdit(p, { kind: "key-action", key: "Wood", action: "attribute" });
+        p = applyEdit(p, { kind: "key-action", key: "Wood", action: "attribute" });
         expect(p.specKeys[2]).toEqual({ key: "Wood", action: "attribute", label: "Wood", split: "none" }); // appended, label = key
-        expect(applyProfileEdit(P, { kind: "key-label", key: "Nope", label: "x" })).toEqual(P);
+        expect(applyEdit(P, { kind: "key-label", key: "Nope", label: "x" })).toEqual(P);
     });
 
     it("a label change carries its filter mode; a mode whose rule is gone is dropped; column-key modes stay", () => {
-        let p = applyProfileEdit(P, { kind: "attribute-mode", attributeKey: "Wood", mode: "never" });
-        p = applyProfileEdit(p, { kind: "attribute-mode", attributeKey: "colecție", mode: "always" });
-        p = applyProfileEdit(p, { kind: "key-label", key: "Wood", label: "Esență" });
+        let p = applyEdit(P, { kind: "attribute-mode", attributeKey: "Wood", mode: "never" });
+        p = applyEdit(p, { kind: "attribute-mode", attributeKey: "colecție", mode: "always" });
+        p = applyEdit(p, { kind: "key-label", key: "Wood", label: "Esență" });
         expect(attributeModeOf(p, "Esență")).toBe("never");
         expect(attributeModeOf(p, "Wood")).toBe("auto");
-        p = applyProfileEdit(p, { kind: "key-action", key: "Wood", action: "prose-only" });
+        p = applyEdit(p, { kind: "key-action", key: "Wood", action: "prose-only" });
         expect(p.facetModes.attributes).toEqual([{ key: "colecție", mode: "always" }]);
     });
 
     it("the variant mode is serialised only when enabled (§ 3.3 item 2)", () => {
-        const never = applyProfileEdit(P, { kind: "variant-mode", mode: "never" });
+        const never = applyEdit(P, { kind: "variant-mode", mode: "never" });
         expect(never.facetModes).toEqual({ variant: "never", attributes: [] });
-        const auto = applyProfileEdit(never, { kind: "variant-mode", mode: "auto" });
+        const auto = applyEdit(never, { kind: "variant-mode", mode: "auto" });
         expect(Object.keys(auto.facetModes)).toEqual(["attributes"]);
     });
 });
@@ -703,12 +710,12 @@ describe("1c — copy states only what the mechanism guarantees (review-0 R4, re
 describe("CAT-IMAGE-GATE-1 — the profile checkbox", () => {
     const DEFAULT: GlamImportProfile = { version: 1, grouping: { kind: "as-is" }, collection: { kind: "column" }, specKeys: [], facetModes: { attributes: [] } };
     it("checked → publishWithoutImages: true; unchecked → the member is removed, so the profile equals the default again (nothing to save)", () => {
-        const on = applyProfileEdit(DEFAULT, { kind: "publish-without-images", value: true });
+        const on = applyEdit(DEFAULT, { kind: "publish-without-images", value: true });
         expect(on).toEqual({ ...DEFAULT, publishWithoutImages: true });
-        const off = applyProfileEdit(on, { kind: "publish-without-images", value: false });
+        const off = applyEdit(on, { kind: "publish-without-images", value: false });
         expect(off).toEqual(DEFAULT);
         expect("publishWithoutImages" in off).toBe(false);
-        expect(applyProfileEdit({ ...DEFAULT, publishWithoutImages: false }, { kind: "publish-without-images", value: false })).toEqual(DEFAULT);
+        expect(applyEdit({ ...DEFAULT, publishWithoutImages: false }, { kind: "publish-without-images", value: false })).toEqual(DEFAULT);
     });
     it("the help text states both settings (English)", () => {
         expect(PUBLISH_WITHOUT_IMAGES_HELP).toMatch(/Off \(default\): each imported product stays hidden/);
@@ -886,5 +893,130 @@ describe("CAT-IMPORT-GALLERY-1 — the gallery line and the extra-image holdings
         const s = run2(batch([], { progress: { sourcesAtStart: 3, resolved: 1, remainingOptions: 1, remainingExtras: 2, remainingSources: 3 } }));
         expect(totalsOf(s)).toMatchObject({ remainingOptions: 1, remainingExtras: 2 });
         expect(totalsOf(run2(batch([], done))).remainingExtras).toBeNull();
+    });
+});
+
+// ── CDL-1 (docs/slices/catalog-data-labels-1.md § 4.3, § 4.5, § 4.7, § 5.3) ───────────────────────────────────────────
+
+describe("CDL-1 — the label choice, the editor's column labels, the other lists", () => {
+    const EN_LABELS = { collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" };
+
+    it("the form starts with labels = site and an empty option name (the backend writes the site's default)", () => {
+        expect(INITIAL_GLAM_FORM.input).toMatchObject({ variantName: "", labels: "site" });
+    });
+
+    it("a change of the label choice withdraws the shown preview and needs a new dry run; the import sends the choice of the last preview", () => {
+        let s = answer(loadedFile, dryRun());
+        expect(confirmRequest(s)!.input.labels).toBe("site");
+        const before = s.revision;
+        s = glamFormReducer(s, { type: "labels", value: "file" });
+        expect(s.revision).toBe(before + 1);
+        expect(s.preview).toBeNull();
+        expect(confirmRequest(s)).toBeNull();
+        expect(s.profile.kind).toBe("editing"); // the editor (and its facts) is kept: the file and the producer did not change
+        const req = checkRequest(s)!;
+        expect(req.input.labels).toBe("file");
+        expect(JSON.parse(requestBody(req.input, req.choice))).toMatchObject({ labels: "file" });
+        s = answer(s, explicitReport(null, DEFAULT, { kind: "none" }));
+        expect(confirmRequest(s)!.input.labels).toBe("file");
+        expect(JSON.parse(requestBody(confirmRequest(s)!.input, confirmRequest(s)!.choice)).labels).toBe("file");
+    });
+
+    it("labelSets: none before the first dry run; the reported sets after it, still shown when the choice withdraws the preview", () => {
+        expect(labelSets(loadedFile)).toBeNull();
+        let s = answer(loadedFile, dryRun({ labels: { site: EN_LABELS, file: FILE_LABELS, used: "site" } }));
+        expect(labelSets(s)).toEqual({ site: EN_LABELS, file: FILE_LABELS, used: "site" });
+        s = glamFormReducer(s, { type: "labels", value: "file" });
+        expect(labelSets(s)).toEqual({ site: EN_LABELS, file: FILE_LABELS, used: "site" });
+        expect(labelSets(glamFormReducer(s, { type: "file-chosen", fileName: "B.csv", fileToken: 2 }))).toBeNull();
+    });
+
+    it("the editor reads labels[used]: collectionHint counts the values of the used collection key", () => {
+        const drafts = [["Collection", "A"], ["Collection", "B"], ["colectie", "C"], ["colecție", "D"]].map(([key, value]) => ({ attributes: [{ key, value }] }));
+        expect(collectionHint(dryRun({ drafts, labels: { site: EN_LABELS, file: FILE_LABELS, used: "site" } }) as any)).toEqual({ values: 2 });
+        expect(collectionHint(dryRun({ drafts, labels: { site: EN_LABELS, file: FILE_LABELS, used: "file" } }) as any)).toEqual({ values: 1 });
+    });
+
+    it("the editor reads labels[used]: a profile edit keeps the modes of this import's column labels and drops a mode keyed by another word", () => {
+        const withModes = { ...DEFAULT, facetModes: { attributes: [{ key: "colecție", mode: "always" as const }, { key: "Collection", mode: "never" as const }] } };
+        let s = answer(loadedFile, dryRun({ profile: { source: "stored", revision: 1, value: withModes }, labels: { site: EN_LABELS, file: FILE_LABELS, used: "site" } }));
+        s = glamFormReducer(s, { type: "profile-edit", edit: { kind: "key-action", key: "Wood", action: "prose-only" } });
+        expect(editing(s).working.facetModes.attributes).toEqual([{ key: "Collection", mode: "never" }]);
+        // the same edit with the file's labels used keeps neither (neither word is a column label of that import)
+        let f = answer(loadedFile, dryRun({ profile: { source: "stored", revision: 1, value: withModes }, labels: { site: EN_LABELS, file: FILE_LABELS, used: "file" } }));
+        f = glamFormReducer(f, { type: "profile-edit", edit: { kind: "key-action", key: "Wood", action: "prose-only" } });
+        expect(editing(f).working.facetModes.attributes).toEqual([]);
+        // and with the Romanian site labels, `colecție` is a column label again
+        expect(applyProfileEdit(withModes, { kind: "key-action", key: "Wood", action: "prose-only" }, RO_LABELS).facetModes.attributes)
+            .toEqual([{ key: "colecție", mode: "always" }]);
+    });
+
+    it("the Column filters row lists labels[used] (the source reads the facts, no fixed word list)", async () => {
+        const { readFileSync } = await import("node:fs");
+        const source = readFileSync(new URL("./GlamProfileEditor.tsx", import.meta.url), "utf8");
+        expect(source).toContain("Object.values(facts.labels[facts.labels.used]).map((key) =>");
+        expect(source).not.toMatch(/colecție|unitate|împachetare|comandă minimă/);
+    });
+
+    it("otherLabelsLine: the other lists with their labels and counts; null when there are none", () => {
+        expect(otherLabelsLine([])).toBeNull();
+        expect(otherLabelsLine([{ importSource: "glam:alpod/a", labels: RO_LABELS, products: 2 }])).toBe(
+            "These lists use other labels: glam:alpod/a (2 products: colecție, unitate, împachetare, comandă minimă). Import them again to share filters.");
+    });
+});
+
+// ── CDL-1 review-0 corrections: F-CDL1-LABEL-RECOVERY and F-CDL1-LABEL-RESET ──────────────────────────────────────────
+
+describe("CDL-1 F-CDL1-LABEL-RECOVERY — an unsupported stored profile is checked again under the other label set", () => {
+    const SITE = { site: RO_LABELS, file: FILE_LABELS, used: "site" };
+    const FILE = { ...SITE, used: "file" };
+    const collision = { source: "unsupported", revision: 3, reason: 'The label "colecție" of "Wood" is the name of a column attribute; choose another label.' };
+
+    it("a collision resolved by the other label set: the choice withdraws the report, a check re-reads the stored profile (not replaced), and it imports", () => {
+        let s = answer(loadedFile, dryRun({ profile: collision, specKeys: BOEN_KEYS, labels: SITE }));
+        expect(s.profile.kind).toBe("unsupported");
+        expect(s.preview!.choice).toBeNull();
+        expect(checkRequest(s)).toBeNull(); // same labels: nothing to re-check
+        s = glamFormReducer(s, { type: "labels", value: "file" });
+        expect(s.preview).toBeNull();
+        expect(confirmRequest(s)).toBeNull();
+        expect(s.profile.kind).toBe("unsupported"); // nothing replaced by the choice
+        const req = checkRequest(s)!;
+        expect(req).toEqual({ input: { ...s.input, labels: "file" }, choice: null }); // no profileChoice: the stored profile is re-read
+        s = answer(s, dryRun({ profile: { source: "stored", revision: 3, value: STORED }, specKeys: BOEN_KEYS, labels: FILE }));
+        expect(s.profile).toMatchObject({ kind: "editing", base: { kind: "stored", revision: 3 }, working: STORED });
+        expect(confirmRequest(s)).toEqual({ input: { ...s.input, labels: "file" }, choice: { profile: STORED, baseRevision: 3 } });
+    });
+
+    it("a profile unsupported for another reason stays unsupported under the other set; nothing is importable", () => {
+        let s = answer(loadedFile, dryRun({ profile: { source: "unsupported", revision: 4, reason: "version 2" }, specKeys: BOEN_KEYS, labels: SITE }));
+        s = glamFormReducer(s, { type: "labels", value: "file" });
+        expect(checkRequest(s)!.choice).toBeNull();
+        s = answer(s, dryRun({ profile: { source: "unsupported", revision: 4, reason: "version 2" }, specKeys: BOEN_KEYS, labels: FILE }));
+        expect(s.profile).toMatchObject({ kind: "unsupported", revision: 4, reason: "version 2" });
+        expect(s.preview!.choice).toBeNull();
+        expect(confirmRequest(s)).toBeNull();
+        expect(checkRequest(s)).toBeNull(); // the verdict now holds for the chosen set: take the proposal first
+    });
+});
+
+describe("CDL-1 F-CDL1-LABEL-RESET — a new file starts with the site labels", () => {
+    it("after \"file\" was chosen, choosing a new file selects \"site\" again", () => {
+        let s = glamFormReducer(loadedFile, { type: "labels", value: "file" });
+        expect(s.input.labels).toBe("file");
+        s = glamFormReducer(s, { type: "file-chosen", fileName: "next.csv", fileToken: 2 });
+        expect(s.input.labels).toBe("site");
+        s = glamFormReducer(s, { type: "file-read", fileToken: 2, content: "next" });
+        expect(checkRequest(s)!.input.labels).toBe("site");
+    });
+
+    it("after a finished import made with \"file\", the next file starts with \"site\"", () => {
+        let s = glamFormReducer(loadedFile, { type: "labels", value: "file" });
+        s = answer(s, dryRun({ labels: { site: RO_LABELS, file: FILE_LABELS, used: "file" } }));
+        expect(confirmRequest(s)!.input.labels).toBe("file");
+        s = run([{ type: "import-sent" }, { type: "import-done", result: { profile: { source: "default", revision: null, value: DEFAULT }, sheets: [] } }], s);
+        expect(s.input.labels).toBe("file"); // the finished import's form is unchanged until a new file is chosen
+        s = glamFormReducer(s, { type: "file-chosen", fileName: "next.csv", fileToken: 2 });
+        expect(s.input.labels).toBe("site");
     });
 });

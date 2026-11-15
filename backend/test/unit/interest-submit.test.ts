@@ -232,7 +232,33 @@ describe("POST /public/interest/resolve — the list page's identity read (§ 8 
             { PK: "TENANT#t1", SK: "PRODUCT#p1" }, { PK: "TENANT#t1", SK: "PRODUCT#d1" }, { PK: "TENANT#t1", SK: "PRODUCT#gone" },
         ]);
         expect(req.ConsistentRead).toBe(true);
-        expect(req.ProjectionExpression).toBe("id, title, slug, #s, imageLink, variants, attributes");
+        // CDL-1 § 6.1: + importLabels (the key the collection was written under).
+        expect(req.ProjectionExpression).toBe("id, title, slug, #s, imageLink, variants, attributes, importLabels");
+    });
+
+    it.each([
+        ["marker with the site labels", { importLabels: { collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" } }, "Collection", "Herringbone"],
+        ["marker with the file's labels", { importLabels: { collection: "colectie", unit: "u", packaging: "p", minimumOrder: "m" } }, "colectie", "Herringbone"],
+        ["no marker → colecție", {}, "colecție", "Herringbone"],
+        ["no marker, the key in another normal form (NFD) → still found", {}, "colecție".normalize("NFD"), "Herringbone"],
+        ["malformed marker (not an object) → colecție", { importLabels: "Collection" }, "colecție", "Herringbone"],
+        ["malformed marker (a member missing) → colecție", { importLabels: { collection: "Collection" } }, "colecție", "Herringbone"],
+        ["malformed marker (an empty member) → colecție", { importLabels: { collection: "", unit: "u", packaging: "p", minimumOrder: "m" } }, "colecție", "Herringbone"],
+    ])("CDL-1 § 6.1 collection lookup: %s", async (_name, marker, key, expected) => {
+        ddb.on(BatchGetCommand).resolves({ Responses: { "amodx-table": [
+            { ...PRODUCT, ...marker, attributes: [{ key: "Collection", value: key === "Collection" ? expected : "WRONG-site" }, { key, value: expected }, { key: "colecție", value: key === "colecție" ? expected : "WRONG-old" }] },
+        ] }, UnprocessedKeys: {} });
+        const res = await resolve(["p1"]);
+        expect(res.status).toBe(200);
+        expect(res.body.products[0].collection).toBe(expected);
+    });
+
+    it("CDL-1 § 6.1: a marker whose collection key the product does not hold → no collection (never another label's value)", async () => {
+        ddb.on(BatchGetCommand).resolves({ Responses: { "amodx-table": [
+            { ...PRODUCT, importLabels: { collection: "Collection", unit: "u", packaging: "p", minimumOrder: "m" }, attributes: [{ key: "colecție", value: "Old" }] },
+        ] }, UnprocessedKeys: {} });
+        const res = await resolve(["p1"]);
+        expect(res.body.products[0]).not.toHaveProperty("collection");
     });
 
     it("no colecție attribute → no collection key", async () => {

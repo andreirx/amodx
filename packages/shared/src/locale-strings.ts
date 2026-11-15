@@ -1,4 +1,4 @@
-import type { CatalogStrings, CommerceStrings, CountText, LocaleStrings, PluralTexts, ResolvedPart, SiteStrings } from "./index.js";
+import type { CatalogStrings, CommerceStrings, CountText, ImportLabels, LocaleStrings, PluralTexts, ResolvedPart, SiteStrings } from "./index.js";
 import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
 import { LANGUAGE_PACKS } from "./language-packs/index.js";
 import type { CompletePart, LanguagePack } from "./language-packs/types.js";
@@ -243,6 +243,48 @@ export function blockStrings(resolved: ResolvedLocaleStrings, { catalogMode }: {
     if (!catalogMode) out.outOfStock = resolved.strings.commerce.outOfStock;
     if (resolved.locale !== FALLBACK_LOCALE) out.dateLocale = resolved.locale;
     return out;
+}
+
+/**
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 3.3, § 3.5) — the catalog texts the backend WRITES into products or
+ * MAILS to the site owner, in the tenant's language with its overrides. Every text is non-empty: a stored override
+ * that is "" or only whitespace gives the language default (LOCALE-1 pattern F), because an empty attribute key is
+ * dropped by the product page and the facets, and an empty mail line says nothing. A non-blank override is used
+ * trimmed. `siteLabels` = the four attribute keys of the file columns 0, 6, 7, 8 ("Use the site labels");
+ * `variantName` = the option name written when the import request gives none (both label choices); `interestMail` =
+ * the subject and lines of the interest-list mail (`{name}`, `{n}`, `{date}` filled by the caller).
+ * Users: the glam import handler (`backend/src/import/glam-pricelist.ts`) and the interest route
+ * (`backend/src/interest/public.ts`).
+ */
+export type CatalogServerTexts = {
+    siteLabels: ImportLabels;
+    variantName: string;
+    interestMail: { subject: string; intro: string; products: string; sentAt: string; name: string; email: string; phone: string; message: string };
+};
+
+export function catalogServerTexts(resolved: ResolvedLocaleStrings): CatalogServerTexts {
+    const s = resolved.strings.catalog;
+    const d = resolved.defaults.catalog;
+    const nonBlank = (own: string, languageDefault: string) => own.trim() || languageDefault;
+    return {
+        siteLabels: {
+            collection: nonBlank(s.importCollectionAttribute, d.importCollectionAttribute),
+            unit: nonBlank(s.importUnitAttribute, d.importUnitAttribute),
+            packaging: nonBlank(s.importPackagingAttribute, d.importPackagingAttribute),
+            minimumOrder: nonBlank(s.importMinimumOrderAttribute, d.importMinimumOrderAttribute),
+        },
+        variantName: nonBlank(s.importVariantName, d.importVariantName),
+        interestMail: {
+            subject: nonBlank(s.interestMailSubject, d.interestMailSubject),
+            intro: nonBlank(s.interestMailIntro, d.interestMailIntro),
+            products: nonBlank(s.interestMailProducts, d.interestMailProducts),
+            sentAt: nonBlank(s.interestMailSentAt, d.interestMailSentAt),
+            name: nonBlank(s.interestName, d.interestName),
+            email: nonBlank(s.interestEmail, d.interestEmail),
+            phone: nonBlank(s.interestPhone, d.interestPhone),
+            message: nonBlank(s.interestMessage, d.interestMessage),
+        },
+    };
 }
 
 /**

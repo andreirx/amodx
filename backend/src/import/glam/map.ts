@@ -1,11 +1,11 @@
-import { deriveGallery, type FacetModes, type GlamImportProfile } from "@amodx/shared";
+import { deriveGallery, type FacetModes, type GlamImportProfile, type ImportLabels } from "@amodx/shared";
 import type { GlamRow } from "./parse.js";
 import {
     groupStyles, norm, slugify, usableGallery, KEY_SEPARATOR,
     type GlamOptionPlan, type GlamRowResult, type GlamStylePlan, type TakenSlugs,
 } from "./group.js";
 import {
-    applyProfileToRows, buildGuard, extractAttributes, facetModesOf, COLUMN_ATTRIBUTE,
+    applyProfileToRows, buildGuard, extractAttributes, facetModesOf,
     type SpecLineGuard, type SpecLineRefusal,
 } from "./profile.js";
 
@@ -19,7 +19,11 @@ import {
 export interface GlamUpload {
     readonly producer: string;
     readonly sheet: string;
-    readonly variantName: string;
+    /**
+     * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.5): the option name the request gave, in display form; present
+     * only when it is not blank. Absent = the request gave none: `planGlamImport` then uses the site's default option name.
+     */
+    readonly variantName?: string;
     /** `"glam:" + norm(producer) + "/" + norm(sheet)` — the file's product set is the products carrying it. */
     readonly importSource: string;
 }
@@ -27,8 +31,6 @@ export interface GlamUpload {
 export type GlamUploadCheck =
     | { readonly kind: "accepted"; readonly upload: GlamUpload }
     | { readonly kind: "refused"; readonly error: string };
-
-export const DEFAULT_VARIANT_NAME = "Variantă";
 
 /**
  * The identifier rule (spec § 3.4, C8-2): a separator of an identifier may not occur inside any of its components —
@@ -48,10 +50,11 @@ export function checkUpload(fields: { producer?: unknown; sheet?: unknown; varia
     if (slugify(norm(producer)) === "") {
         return refused("The producer name must give a non-empty slug: after accents are removed it needs at least one letter a–z or digit 0–9.");
     }
-    const variantName = displayForm(fields.variantName) || DEFAULT_VARIANT_NAME;
+    // CDL-1 § 4.5: no default here — absence has one representation (the member is left out).
+    const variantName = displayForm(fields.variantName);
     return {
         kind: "accepted",
-        upload: { producer, sheet, variantName, importSource: `glam:${norm(producer)}/${norm(sheet)}` },
+        upload: { producer, sheet, ...(variantName !== "" ? { variantName } : {}), importSource: `glam:${norm(producer)}/${norm(sheet)}` },
     };
 }
 
@@ -101,6 +104,8 @@ export interface GlamStyleDraft {
     readonly categoryKeys: readonly string[];
     readonly slug: string;
     readonly importSource: string;
+    /** CDL-1 (§ 4.6): the four labels this import writes the label columns under (the chosen set, in full). */
+    readonly importLabels: ImportLabels;
     /** CAT-IMPORT-PROFILE-1 (§ 3.4): present only on a profiled import, and only when the profile's modes are not empty. */
     readonly facetModes?: FacetModes;
     /** CAT-IMPORT-PROFILE-1 (§ 3.4): the profile revision of a profiled import; absent without a profile. */
@@ -124,6 +129,8 @@ export interface GlamStyleOutcome {
 
 export interface GlamImportPlan {
     readonly upload: GlamUpload;
+    /** CDL-1 (§ 4.5): the option name every product gets — `upload.variantName`, else the site's default. Never empty. */
+    readonly variantName: string;
     readonly totalRows: number;
     readonly categories: readonly GlamCategoryDraft[];
     readonly styles: readonly GlamStyleOutcome[];
@@ -203,8 +210,7 @@ export interface AppliedProfile {
     readonly codeCells: ReadonlySet<string>;
 }
 
-/** The attribute names (spec § 3.4 column table), in the order they are written (defined in `./profile.ts`). */
-const ATTRIBUTE = COLUMN_ATTRIBUTE;
+/** The report word of the specs column in `differing` (shown nowhere: catalog-data-labels-1 § 2.2 row 21). */
 const SPECS_FIELD = "specificații tehnice";
 
 /** The plain description: the specs text with whitespace collapsed, at most this many characters. */
@@ -218,8 +224,24 @@ const DESCRIPTION_LIMIT = 300;
  * slug is in `taken` the plan differs from the plan without `taken` only by `crossSheetSuffixed: []` (an intended
  * exception to "today's plan" otherwise). Without `taken` the slugs are only unique within the file and the plan has
  * no `crossSheetSuffixed`.
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.4, § 4.5): `labels` = the four attribute keys of the label columns
+ * (the site's or the file's, chosen by the owner), written in this order and recorded on every product as
+ * `importLabels`; `defaultVariantName` = the site's default option name, used when `upload` has no `variantName`.
+ * Both arrive as data: two sites that need different products give different inputs. Every label and the name must
+ * be non-empty (the handler's rule, `catalogServerTexts`); an empty one is an internal fault and throws.
  */
-export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, applied?: AppliedProfile, taken?: TakenSlugs): GlamImportPlan {
+export function planGlamImport(
+    rows: readonly GlamRow[],
+    upload: GlamUpload,
+    labels: ImportLabels,
+    defaultVariantName: string,
+    applied?: AppliedProfile,
+    taken?: TakenSlugs,
+): GlamImportPlan {
+    const variantName = upload.variantName ?? defaultVariantName;
+    if (variantName === "" || Object.values(labels).some((label) => label === "")) {
+        throw new Error("Internal: the import labels and the option name must not be empty.");
+    }
     const extraction = applied ? { applied, guard: buildGuard(applied.codeCells), refused: [] as SpecLineRefusal[] } : undefined;
     let planned = rows;
     if (extraction) {
@@ -235,9 +257,9 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, app
         const first = style.rows[0];
         const childSlug = slugify(`${norm(upload.producer)} ${norm(first.collection)}`);
         if (!categories.has(producerSlug)) categories.set(producerSlug, { slug: producerSlug, name: upload.producer, parentSlug: null });
-        if (childSlug === producerSlug) return mapStyle(style, upload, [producerSlug], extraction);
+        if (childSlug === producerSlug) return mapStyle(style, upload, labels, variantName, [producerSlug], extraction);
         if (!categories.has(childSlug)) categories.set(childSlug, { slug: childSlug, name: first.collection, parentSlug: producerSlug });
-        return mapStyle(style, upload, [producerSlug, childSlug], extraction);
+        return mapStyle(style, upload, labels, variantName, [producerSlug, childSlug], extraction);
     });
 
     const relabelled: { slug: string; value: string }[] = [];
@@ -249,6 +271,7 @@ export function planGlamImport(rows: readonly GlamRow[], upload: GlamUpload, app
 
     return {
         upload,
+        variantName,
         totalRows: rows.length,
         categories: [...categories.values()],
         styles,
@@ -298,16 +321,23 @@ interface Extraction {
     readonly refused: SpecLineRefusal[];
 }
 
-function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string[], extraction?: Extraction): GlamStyleOutcome {
+function mapStyle(
+    style: GlamStylePlan,
+    upload: GlamUpload,
+    labels: ImportLabels,
+    variantName: string,
+    categoryKeys: string[],
+    extraction?: Extraction,
+): GlamStyleOutcome {
     const first = style.rows[0];
     const specsRow = style.rows.find((r) => r.specs !== "");
 
     const attributes: { key: string; value: string }[] = [];
     const attribute = (key: string, value: string) => { if (value !== "") attributes.push({ key, value }); };
-    attribute(ATTRIBUTE.collection, first.collection);
-    attribute(ATTRIBUTE.unit, first.unit);
-    attribute(ATTRIBUTE.packaging, first.packaging);
-    attribute(ATTRIBUTE.minimumOrder, first.minimumOrder);
+    attribute(labels.collection, first.collection);
+    attribute(labels.unit, first.unit);
+    attribute(labels.packaging, first.packaging);
+    attribute(labels.minimumOrder, first.minimumOrder);
     // CAT-IMPORT-PROFILE-1: the spec-line attributes follow the column attributes (§ 2.4, § 2.5). The prose below is
     // not changed by a profile (ruling CIP1-PROSE = A).
     let stamps: { facetModes?: FacetModes; importProfileRevision: number } | undefined;
@@ -326,9 +356,9 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
     // One rule for idx 6–8 and 10: a field differs when any row's value (empty included) is not the first row's value.
     // The specs compared are the cleaned specs (code lines removed by the parser).
     const differing: string[] = [];
-    if (style.rows.some((r) => r.unit !== first.unit)) differing.push(ATTRIBUTE.unit);
-    if (style.rows.some((r) => r.packaging !== first.packaging)) differing.push(ATTRIBUTE.packaging);
-    if (style.rows.some((r) => r.minimumOrder !== first.minimumOrder)) differing.push(ATTRIBUTE.minimumOrder);
+    if (style.rows.some((r) => r.unit !== first.unit)) differing.push(labels.unit);
+    if (style.rows.some((r) => r.packaging !== first.packaging)) differing.push(labels.packaging);
+    if (style.rows.some((r) => r.minimumOrder !== first.minimumOrder)) differing.push(labels.minimumOrder);
     if (style.rows.some((r) => r.specs !== first.specs)) differing.push(SPECS_FIELD);
 
     const draft: GlamStyleDraft = {
@@ -339,7 +369,7 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
         ...(gallery.imageLink !== undefined ? { imageLink: gallery.imageLink } : {}),
         additionalImageLinks: gallery.additionalImageLinks,
         variants: [{
-            name: upload.variantName,
+            name: variantName,
             options: options.map((o) => ({
                 value: o.value,
                 ...(o.imageLink !== undefined ? { imageLink: o.imageLink } : {}),
@@ -350,6 +380,7 @@ function mapStyle(style: GlamStylePlan, upload: GlamUpload, categoryKeys: string
         categoryKeys,
         slug: style.slug,
         importSource: upload.importSource,
+        importLabels: { ...labels },
         ...(stamps ?? {}),
         rowIndexes: style.rows.map((r) => r.index),
     };

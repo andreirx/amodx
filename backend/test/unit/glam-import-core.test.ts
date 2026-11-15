@@ -5,6 +5,10 @@ import { parseGlamCsv, parseCsvRecords, type GlamRow } from "../../src/import/gl
 import { groupStyles, norm, KEY_SEPARATOR } from "../../src/import/glam/group.js";
 import { checkUpload, planGlamImport, takenSlugsOf, type GlamUpload } from "../../src/import/glam/map.js";
 import { codeHits } from "./glam-code-hits.js";
+import { catalogServerTexts, resolveLocaleStrings } from "@amodx/shared";
+
+/** CDL-1: the site labels and default option name of a Romanian site without overrides — today's words, which these tests pin. */
+const RO = catalogServerTexts(resolveLocaleStrings({ locale: "ro-RO" }));
 
 /**
  * CAT-IMPORT-1 — the pure core (docs/slices/cat-import-1.md § 5 "Unit"; spec docs/slices/catalog-mode-1.md § 3.4).
@@ -38,7 +42,7 @@ function uploadOf(producer = "BOEN", sheet = "PL", variantName = "Format"): Glam
     if (check.kind !== "accepted") throw new Error(check.error);
     return check.upload;
 }
-const plan = (text: string, upload = uploadOf()) => planGlamImport(rowsOf(text), upload);
+const plan = (text: string, upload = uploadOf()) => planGlamImport(rowsOf(text), upload, RO.siteLabels, RO.variantName);
 const img = (n: number) => `https://img.test/${n}.jpg`;
 
 // Codes and prices that a leak would carry.
@@ -269,11 +273,13 @@ describe("CAT-IMPORT-1 key normalisation (spec § 3.4 'Product key'; tests owed 
         expect(checkUpload({ producer: "Ștefan", sheet: "c" })).toMatchObject({ kind: "accepted" });
     });
 
-    it("importSource = 'glam:' + norm(producer) + '/' + norm(sheet); variant name defaults to 'Variantă'", () => {
-        expect(checkUpload({ producer: "  BOEN ", sheet: "PL" })).toEqual({
-            kind: "accepted",
-            upload: { producer: "BOEN", sheet: "PL", variantName: "Variantă", importSource: "glam:boen/pl" },
-        });
+    it("importSource = 'glam:' + norm(producer) + '/' + norm(sheet); CDL-1 § 4.5: no name or a blank one → no variantName member (no default here)", () => {
+        for (const variantName of [undefined, "", "   ", 7]) {
+            expect(checkUpload({ producer: "  BOEN ", sheet: "PL", variantName })).toEqual({
+                kind: "accepted",
+                upload: { producer: "BOEN", sheet: "PL", importSource: "glam:boen/pl" },
+            });
+        }
         expect(checkUpload({ producer: "Alpod  Floors", sheet: "Ștefan", variantName: " Culoare " })).toMatchObject({
             upload: { producer: "Alpod Floors", variantName: "Culoare", importSource: "glam:alpod floors/ștefan" },
         });
@@ -289,12 +295,13 @@ describe("CAT-IMPORT-1 mapper — NO-CODES / NO-PRICES over rows that carry code
 
     it("the draft's keys are exactly the spec's member list (with and without the optional members)", () => {
         const [oak, ash] = plan(text).styles.map((s) => s.draft);
+        // CDL-1 § 4.6: + importLabels (the chosen label set, on every draft).
         expect(Object.keys(oak).sort()).toEqual([
-            "additionalImageLinks", "attributes", "brand", "categoryKeys", "description", "imageLink", "importSource",
+            "additionalImageLinks", "attributes", "brand", "categoryKeys", "description", "imageLink", "importLabels", "importSource",
             "longDescription", "rowIndexes", "slug", "title", "variants",
         ]);
         expect(Object.keys(ash).sort()).toEqual([
-            "additionalImageLinks", "attributes", "brand", "categoryKeys", "description", "importSource",
+            "additionalImageLinks", "attributes", "brand", "categoryKeys", "description", "importLabels", "importSource",
             "rowIndexes", "slug", "title", "variants",
         ]);
         expect(oak.variants).toHaveLength(1);
@@ -479,7 +486,7 @@ describe("CAT-IMPORT-1 acceptance fixture — BOEN PL.csv (launch amendment CI1-
         expect(expected.skipped.blank).toBe(0);
         const records = parseCsvRecords(text);
         expect(records.kind === "records" && records.records.length - 1).toBe(rows.length);
-        const p = planGlamImport(rows, uploadOf(expected.producer, expected.sheet, "Format"));
+        const p = planGlamImport(rows, uploadOf(expected.producer, expected.sheet, "Format"), RO.siteLabels, RO.variantName);
         const options = p.styles.flatMap((s) => s.options);
         const skipped = (reason: string) => p.rows.filter((r) => r.status === "skipped" && r.reason === reason).length;
         expect({
@@ -515,7 +522,7 @@ describe("CAT-IMPORT-1 acceptance fixture — BOEN PL.csv (launch amendment CI1-
         if (records.kind !== "records") throw new Error(records.error);
         const codes = [...new Set(records.records.slice(1).flatMap((r) => [r[2], r[5]]).map((c) => c.trim()).filter(Boolean))];
         expect(codes.length).toBeGreaterThan(400); // the fixture keeps columns 2 and 5 (CI1-A2)
-        const p = planGlamImport(rowsOf(text), uploadOf(expected.producer, expected.sheet, "Format"));
+        const p = planGlamImport(rowsOf(text), uploadOf(expected.producer, expected.sheet, "Format"), RO.siteLabels, RO.variantName);
         const hits = codeHits(p.styles.map((s) => s.draft), codes);
         expect(hits).toEqual([]);
         // the oracle can see a code: the image URLs (the named exclusion) do hold them
@@ -532,7 +539,7 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
     const ASH = "boen-coll-ash";
     const file = () => csv({ name: "Oak", format: "a" }, { name: "Oak", format: "b" }, { name: "Ash" });
     const planWith = (taken: Map<string, string | null>, upload = uploadOf("BOEN", "PL 2")) =>
-        planGlamImport(rowsOf(file()), upload, undefined, taken);
+        planGlamImport(rowsOf(file()), upload, RO.siteLabels, RO.variantName, undefined, taken);
 
     it("a slug another sheet holds → the sheet is appended; draft, rows and the report list carry the new slug", () => {
         const p = planWith(new Map([[OAK, "glam:boen/pl 1"]]));
@@ -564,7 +571,7 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
         const again = planWith(new Map(taken));
         expect(again).toEqual(first);
         // and the other sheet (its file holds only Oak) re-imported keeps its slug: `${OAK}-pl-2` is not its slug
-        const other = planGlamImport(rowsOf(csv({ name: "Oak", format: "a" })), uploadOf("BOEN", "PL 1"), undefined, takenSlugsOf(store, "glam:boen/pl 1"));
+        const other = planGlamImport(rowsOf(csv({ name: "Oak", format: "a" })), uploadOf("BOEN", "PL 1"), RO.siteLabels, RO.variantName, undefined, takenSlugsOf(store, "glam:boen/pl 1"));
         expect(other.styles.map((s) => s.draft.slug)).toEqual([OAK]);
         expect(other.crossSheetSuffixed).toEqual([]);
     });
@@ -576,12 +583,12 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
 
         // the file itself plans "<slug>-pl-2" for another style: the suffixed slug must not take it
         const text = csv({ name: "Oak" }, { name: "Oak PL 2" });
-        const q = planGlamImport(rowsOf(text), uploadOf("BOEN", "PL 2"), undefined, new Map([[OAK, null]]));
+        const q = planGlamImport(rowsOf(text), uploadOf("BOEN", "PL 2"), RO.siteLabels, RO.variantName, undefined, new Map([[OAK, null]]));
         expect(q.styles.map((s) => s.draft.slug)).toEqual([`${OAK}-pl-2-2`, `${OAK}-pl-2`]);
         expect(new Set(q.styles.map((s) => s.draft.slug)).size).toBe(2);
 
         // a within-file `-2` that is taken gets the sheet after its number
-        const r = planGlamImport(rowsOf(csv({ name: "Oak" }, { name: "Oak." })), uploadOf("BOEN", "PL 2"), undefined, new Map([[`${OAK}-2`, null]]));
+        const r = planGlamImport(rowsOf(csv({ name: "Oak" }, { name: "Oak." })), uploadOf("BOEN", "PL 2"), RO.siteLabels, RO.variantName, undefined, new Map([[`${OAK}-2`, null]]));
         expect(r.styles.map((s) => s.draft.slug)).toEqual([OAK, `${OAK}-2-pl-2`]);
         expect(r.suffixedSlugs).toEqual([{ slug: `${OAK}-2-pl-2`, rowIndex: 3 }]);
         expect(r.crossSheetSuffixed).toEqual([{ slug: `${OAK}-2-pl-2`, previousSlug: `${OAK}-2`, rowIndex: 3, heldBy: null }]);
@@ -593,7 +600,7 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
     });
 
     it("no collision → the plan is today's plan plus `crossSheetSuffixed: []`; deterministic", () => {
-        const without = planGlamImport(rowsOf(file()), uploadOf("BOEN", "PL 2"));
+        const without = planGlamImport(rowsOf(file()), uploadOf("BOEN", "PL 2"), RO.siteLabels, RO.variantName);
         expect("crossSheetSuffixed" in without).toBe(false);
         const withTaken = planWith(new Map([["boen-coll-elm", "glam:boen/pl 1"]]));
         const { crossSheetSuffixed, ...rest } = withTaken;
@@ -618,7 +625,7 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
             { text: csv({ name: "Oak" }, { name: "Oak." }), sheet: "PL 2", sheetSlug: "pl-2", taken: new Map([[`${OAK}-2`, null]]), want: [`${OAK}-2-pl-2`] },
         ];
         for (const c of cases) {
-            const p = planGlamImport(rowsOf(c.text), uploadOf("BOEN", c.sheet), undefined, c.taken as Map<string, string | null>);
+            const p = planGlamImport(rowsOf(c.text), uploadOf("BOEN", c.sheet), RO.siteLabels, RO.variantName, undefined, c.taken as Map<string, string | null>);
             expect(p.crossSheetSuffixed!.map((x) => x.slug)).toEqual(c.want);
             for (const x of p.crossSheetSuffixed!) {
                 expect(x.slug).not.toBe(x.previousSlug);
@@ -638,9 +645,9 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
     it("ALPOD ORC-laminate then ORC-wood (the sanitised fixtures, § 1's measure): ORC-wood's colliding slugs get -orc-wood; a re-import keeps them", () => {
         const dir = path.resolve(__dirname, "fixtures/glam/alpod");
         const rows = (sheet: string) => rowsOf(readFileSync(path.join(dir, `${sheet}.csv`), "utf8"));
-        const laminate = planGlamImport(rows("ORC-laminate"), uploadOf("ALPOD", "ORC-laminate", ""), undefined, new Map());
+        const laminate = planGlamImport(rows("ORC-laminate"), uploadOf("ALPOD", "ORC-laminate", ""), RO.siteLabels, RO.variantName, undefined, new Map());
         const store = laminate.styles.map((s) => ({ slug: s.draft.slug, importSource: "glam:alpod/orc-laminate" }));
-        const wood = planGlamImport(rows("ORC-wood"), uploadOf("ALPOD", "ORC-wood", ""), undefined, takenSlugsOf(store, "glam:alpod/orc-wood"));
+        const wood = planGlamImport(rows("ORC-wood"), uploadOf("ALPOD", "ORC-wood", ""), RO.siteLabels, RO.variantName, undefined, takenSlugsOf(store, "glam:alpod/orc-wood"));
         expect(wood.crossSheetSuffixed).toHaveLength(8);
         for (const c of wood.crossSheetSuffixed!) {
             expect(c.slug).toBe(`${c.previousSlug}-orc-wood`);
@@ -651,11 +658,76 @@ describe("CAT-SLUG-UNIQUE-1 — the cross-sheet slug pass", () => {
         expect(new Set(all).size).toBe(all.length);
         // re-import of ORC-wood: its own products are not taken → the same 8 slugs
         const after = [...store, ...wood.styles.map((s) => ({ slug: s.draft.slug, importSource: "glam:alpod/orc-wood" }))];
-        const again = planGlamImport(rows("ORC-wood"), uploadOf("ALPOD", "ORC-wood", ""), undefined, takenSlugsOf(after, "glam:alpod/orc-wood"));
+        const again = planGlamImport(rows("ORC-wood"), uploadOf("ALPOD", "ORC-wood", ""), RO.siteLabels, RO.variantName, undefined, takenSlugsOf(after, "glam:alpod/orc-wood"));
         expect(again.crossSheetSuffixed).toEqual(wood.crossSheetSuffixed);
         // re-import of ORC-laminate: it keeps its own slugs
-        const lamAgain = planGlamImport(rows("ORC-laminate"), uploadOf("ALPOD", "ORC-laminate", ""), undefined, takenSlugsOf(after, "glam:alpod/orc-laminate"));
+        const lamAgain = planGlamImport(rows("ORC-laminate"), uploadOf("ALPOD", "ORC-laminate", ""), RO.siteLabels, RO.variantName, undefined, takenSlugsOf(after, "glam:alpod/orc-laminate"));
         expect(lamAgain.crossSheetSuffixed).toEqual([]);
         expect(lamAgain.styles.map((s) => s.draft.slug)).toEqual(laminate.styles.map((s) => s.draft.slug));
+    });
+});
+
+describe("CDL-1 — the labels and the option name arrive as data (catalog-data-labels-1 § 4.2, § 4.4, § 4.5)", () => {
+    const EN = catalogServerTexts(resolveLocaleStrings({ locale: "en-US" }));
+    const FILE_LABELS = { collection: "colectie", unit: "unitate de masura", packaging: "unitate de impachetare", minimumOrder: "comanda minima" };
+    const one = csv({ collection: "Herringbone", name: "Oak", unit: "mp", packaging: "cutie", minimumOrder: "10", format: "120" });
+
+    it("headerLabels: the header cells of columns 0, 6, 7, 8 in display form", () => {
+        const parsed = parseGlamCsv(one);
+        if (parsed.kind !== "parsed") throw new Error(parsed.error);
+        expect(parsed.headerLabels).toEqual(FILE_LABELS);
+        const spaced = parseGlamCsv(`\uFEFF  My  Collection ,produs,a,b,c,d,  Unit\tof   measure ,,x,y,z,w\n${one.split("\n")[1]}\n`);
+        if (spaced.kind !== "parsed") throw new Error(spaced.error);
+        expect(spaced.headerLabels).toEqual({ collection: "My Collection", unit: "Unit of measure", packaging: "", minimumOrder: "x" });
+    });
+
+    it("headerLabels: an empty, blank or absent header cell is \"\" (a short header, an empty file)", () => {
+        const short = parseGlamCsv("colectie,produs\n");
+        if (short.kind !== "parsed") throw new Error(short.error);
+        expect(short.headerLabels).toEqual({ collection: "colectie", unit: "", packaging: "", minimumOrder: "" });
+        const empty = parseGlamCsv("");
+        if (empty.kind !== "parsed") throw new Error(empty.error);
+        expect(empty.headerLabels).toEqual({ collection: "", unit: "", packaging: "", minimumOrder: "" });
+    });
+
+    it("the plan writes the given labels, in column order, and records them on every draft as importLabels", () => {
+        const p = planGlamImport(rowsOf(one), uploadOf(), EN.siteLabels, EN.variantName);
+        expect(p.styles[0].draft.attributes).toEqual([
+            { key: "Collection", value: "Herringbone" }, { key: "Unit", value: "mp" }, { key: "Packaging", value: "cutie" }, { key: "Minimum order", value: "10" },
+        ]);
+        expect(p.styles[0].draft.importLabels).toEqual(EN.siteLabels);
+        const f = planGlamImport(rowsOf(one), uploadOf(), FILE_LABELS, EN.variantName);
+        expect(f.styles[0].draft.attributes.map((a) => a.key)).toEqual(["colectie", "unitate de masura", "unitate de impachetare", "comanda minima"]);
+        expect(f.styles[0].draft.importLabels).toEqual(FILE_LABELS);
+    });
+
+    it("importLabels holds the full set even when a column is empty in the row (no attribute written for it)", () => {
+        const p = planGlamImport(rowsOf(csv({ collection: "C", name: "Oak", unit: "mp" })), uploadOf(), EN.siteLabels, EN.variantName);
+        expect(p.styles[0].draft.attributes.map((a) => a.key)).toEqual(["Collection", "Unit"]);
+        expect(p.styles[0].draft.importLabels).toEqual(EN.siteLabels);
+    });
+
+    it("differing names the chosen labels of columns 6-8 and keeps the specs report word", () => {
+        const text = csv({ collection: "C", name: "Oak", unit: "mp", packaging: "a", minimumOrder: "1", specs: "x", format: "1" },
+            { collection: "C", name: "Oak", unit: "buc", packaging: "b", minimumOrder: "2", specs: "y", format: "2" });
+        expect(planGlamImport(rowsOf(text), uploadOf(), EN.siteLabels, EN.variantName).styles[0].differing)
+            .toEqual(["Unit", "Packaging", "Minimum order", "specificații tehnice"]);
+    });
+
+    it("§ 4.5: no request name → the default option name; a request name → that name; plan.variantName says which", () => {
+        const none = planGlamImport(rowsOf(one), uploadOf("BOEN", "PL", ""), EN.siteLabels, EN.variantName);
+        expect(none.upload).not.toHaveProperty("variantName");
+        expect(none.variantName).toBe("Option");
+        expect(none.styles[0].draft.variants[0].name).toBe("Option");
+        const named = planGlamImport(rowsOf(one), uploadOf("BOEN", "PL", "Format"), EN.siteLabels, EN.variantName);
+        expect(named.variantName).toBe("Format");
+        expect(named.styles[0].draft.variants[0].name).toBe("Format");
+    });
+
+    it("an empty label or an empty default option name is an internal fault (thrown, never written)", () => {
+        expect(() => planGlamImport(rowsOf(one), uploadOf("BOEN", "PL", ""), EN.siteLabels, "")).toThrow(/Internal/);
+        expect(() => planGlamImport(rowsOf(one), uploadOf(), { ...EN.siteLabels, unit: "" }, EN.variantName)).toThrow(/Internal/);
+        // a request name makes the default unused: no fault
+        expect(planGlamImport(rowsOf(one), uploadOf("BOEN", "PL", "Format"), EN.siteLabels, "").variantName).toBe("Format");
     });
 });

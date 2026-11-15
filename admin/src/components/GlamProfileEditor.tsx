@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { FacetModes, GlamImportProfile, SpecKeyRule, FacetValueView } from "@amodx/shared";
+import type { FacetModes, GlamImportProfile, ImportLabels, SpecKeyRule, FacetValueView } from "@amodx/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -74,6 +74,24 @@ export interface SpecKeyFact {
     rule: SpecKeyRuleReportDTO;
 }
 
+/**
+ * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.3, § 4.8) — `labels`: the site labels (the site language + its Labels
+ * overrides), this file's labels (its header cells; an empty cell takes the site label), and the set the dry run used.
+ * The backend is the one source of the column labels; this file reads `labels[labels.used]`.
+ */
+export interface LabelsReportDTO {
+    site: ImportLabels;
+    file: ImportLabels;
+    used: "site" | "file";
+}
+
+/** CDL-1 § 5.3 — `otherLabels[]`: another glam list whose products hold other labels than this import's. */
+export interface OtherLabelsDTO {
+    importSource: string;
+    labels: ImportLabels;
+    products: number;
+}
+
 /** The members of a glam dry-run answer this file and `glamPreview.ts` read. */
 export interface GlamDryRun {
     producer: string;
@@ -84,6 +102,8 @@ export interface GlamDryRun {
     specKeys: SpecKeyFact[];
     drafts: PreviewItem[];
     siteProducts: PreviewItem[];
+    labels: LabelsReportDTO;
+    otherLabels: OtherLabelsDTO[];
 }
 
 // ── The editor's state (lives in glamFormReducer's state) ──────────────────────────────────────────────────────────
@@ -224,11 +244,14 @@ export function editorAfterConflict(editor: ProfileEditor, storedRevision: numbe
     }
 }
 
-/** A user edit. `unsupported` accepts only `replace` (taking the proposal), which starts editing. */
+/**
+ * A user edit. `unsupported` accepts only `replace` (taking the proposal), which starts editing. The column labels of
+ * the edit's mode pruning are those of the latest dry run (`facts.labels[facts.labels.used]`, CDL-1 § 4.7).
+ */
 export function editedEditor(editor: ProfileEditor, edit: ProfileEdit): ProfileEditor {
     switch (editor.kind) {
         case "editing":
-            return { ...editor, working: applyProfileEdit(editor.working, edit) };
+            return { ...editor, working: applyProfileEdit(editor.working, edit, editor.facts.labels[editor.facts.labels.used]) };
         case "unsupported":
             switch (edit.kind) {
                 case "replace":
@@ -327,14 +350,6 @@ export const FACET_VISIBILITY_HELP = "On a page, a filter is shown if it already
 
 // ── Editing a profile (pure) ───────────────────────────────────────────────────────────────────────────────────────
 
-/**
- * The four column attribute keys (backend `glam/profile.ts` `COLUMN_ATTRIBUTE`). A profile cannot rename them or use
- * them as a label; it can set their filter mode (§ 2.4, § 2.6). Restated here: they are not in `packages/shared`.
- */
-export const COLUMN_ATTRIBUTE_KEYS = ["colecție", "unitate", "împachetare", "comandă minimă"] as const;
-/** The collection column's attribute key — read by name by the interest list (design § 1.1 item 6). */
-const COLLECTION_ATTRIBUTE = COLUMN_ATTRIBUTE_KEYS[0];
-
 export type FilterMode = "auto" | "always" | "never";
 export type KeyAction = "attribute" | "prose-only" | "not-reviewed";
 
@@ -424,20 +439,22 @@ function withMode(modes: FacetModes, attributeKey: string, mode: FilterMode): Fa
 }
 
 /**
- * Modes are kept only for keys a product of this producer can hold: a column key, or the label of an attribute rule.
- * So a mode never outlives the rule it was set on (the stored profile states only what the editor shows).
+ * Modes are kept only for keys a product of this producer can hold: a column label of this import (`columns`, the
+ * dry run's `labels[used]`, CDL-1 § 4.7), or the label of an attribute rule. So a mode never outlives the rule it was
+ * set on (the stored profile states only what the editor shows).
  */
-function pruneModes(profile: GlamImportProfile): GlamImportProfile {
-    const keys = new Set<string>([...COLUMN_ATTRIBUTE_KEYS, ...profile.specKeys.flatMap((r) => labelOf(r) ?? [])]);
+function pruneModes(profile: GlamImportProfile, columns: ImportLabels): GlamImportProfile {
+    const keys = new Set<string>([...Object.values(columns), ...profile.specKeys.flatMap((r) => labelOf(r) ?? [])]);
     return { ...profile, facetModes: { ...profile.facetModes, attributes: profile.facetModes.attributes.filter((m) => keys.has(m.key)) } };
 }
 
 /**
  * One edit, applied. Rules: the collection spec key is consumed — it leaves `specKeys` (the backend refuses it in
  * both); a label change carries the old label's filter mode to the new label when no other rule keeps the old label
- * and the new label has no mode yet; modes of keys no rule writes any more are dropped (`pruneModes`).
+ * and the new label has no mode yet; modes of keys no rule writes any more are dropped (`pruneModes`; `columns` = the
+ * import's column labels, whose modes are always kept).
  */
-export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit): GlamImportProfile {
+export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit, columns: ImportLabels): GlamImportProfile {
     switch (edit.kind) {
         case "replace":
             return edit.profile;
@@ -446,7 +463,7 @@ export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit):
         case "collection":
             switch (edit.collection.kind) {
                 case "column": return { ...profile, collection: edit.collection };
-                case "spec": return pruneModes({ ...profile, collection: edit.collection, specKeys: withRule(profile.specKeys, edit.collection.key, null) });
+                case "spec": return pruneModes({ ...profile, collection: edit.collection, specKeys: withRule(profile.specKeys, edit.collection.key, null) }, columns);
                 default: return assertNever(edit.collection);
             }
         case "key-action": {
@@ -460,7 +477,7 @@ export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit):
                 case "not-reviewed": rule = null; break;
                 default: return assertNever(edit.action);
             }
-            return pruneModes({ ...profile, specKeys: withRule(profile.specKeys, edit.key, rule) });
+            return pruneModes({ ...profile, specKeys: withRule(profile.specKeys, edit.key, rule) }, columns);
         }
         case "key-label": {
             const existing = profile.specKeys.find((r) => r.key === edit.key);
@@ -474,7 +491,7 @@ export function applyProfileEdit(profile: GlamImportProfile, edit: ProfileEdit):
                     if (oldMode !== "auto" && !oldKept && attributeModeOf(profile, edit.label) === "auto") {
                         facetModes = withMode(withMode(facetModes, existing.label, "auto"), edit.label, oldMode);
                     }
-                    return pruneModes({ ...profile, specKeys, facetModes });
+                    return pruneModes({ ...profile, specKeys, facetModes }, columns);
                 }
                 case "prose-only": return profile;
                 default: return assertNever(existing);
@@ -560,15 +577,19 @@ export function nameNumberHint(report: GlamDryRun): { endsInNumber: number; prod
     }
 }
 
-/** Collection hint: with the `column` source, the distinct `colecție` values of the drafts. `null` otherwise. */
+/**
+ * Collection hint: with the `column` source, the distinct values of the drafts' collection attribute (its key = the dry
+ * run's `labels[used].collection`, CDL-1 § 4.7). `null` otherwise.
+ */
 export function collectionHint(report: GlamDryRun): { values: number } | null {
     const collection = plannedOf(report.profile).collection;
     switch (collection.kind) {
         case "column": {
+            const collectionKey = report.labels[report.labels.used].collection;
             const values = new Set<string>();
             for (const d of report.drafts) {
                 for (const a of Array.isArray(d.attributes) ? (d.attributes as { key?: unknown; value?: unknown }[]) : []) {
-                    if (a.key === COLLECTION_ATTRIBUTE && typeof a.value === "string") values.add(a.value);
+                    if (a.key === collectionKey && typeof a.value === "string") values.add(a.value);
                 }
             }
             return { values: values.size };
@@ -746,7 +767,7 @@ function EditingPanel({ editor, onEdit, disabled }: { editor: Extract<ProfileEdi
             <div className="space-y-1">
                 <div className="text-xs font-medium">Column filters</div>
                 <div className="flex flex-wrap gap-3 text-xs">
-                    {COLUMN_ATTRIBUTE_KEYS.map((key) => (
+                    {Object.values(facts.labels[facts.labels.used]).map((key) => (
                         <label key={key} className="flex items-center gap-1">
                             {key}
                             <ModeSelect value={attributeModeOf(working, key)} disabled={disabled} onChange={(mode) => onEdit({ kind: "attribute-mode", attributeKey: key, mode })} />

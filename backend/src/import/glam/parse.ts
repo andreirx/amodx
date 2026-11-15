@@ -3,7 +3,8 @@
  * Pure: text in, rows out. No I/O. Spec: docs/slices/catalog-mode-1.md § 3.4 "Input" and the column table, as
  * amended by docs/slices/cat-import-1.md § 9 (CI1-SPECS-CODES).
  *
- * The frozen layout has twelve columns, read BY INDEX; the first record (the header) is ignored. Columns 3 and 4 hold
+ * The frozen layout has twelve columns, read BY INDEX. The first record (the header) is not a row: its cell count selects
+ * the layout, and its cells of the four label columns are returned as `headerLabels` (CDL-1). Columns 3 and 4 hold
  * prices: they are NEVER read. Columns 2 and 5 hold producer codes: they are read ONLY to remove, from the specs
  * text, every line that contains one of the row's codes as a whole token. `GlamRow` has no field for any of the four
  * columns, so no later stage can store a price or a code cell from this file.
@@ -75,6 +76,13 @@ export type GlamParseResult =
          * never stored, never in a report.
          */
         readonly codeCells: ReadonlySet<string>;
+        /**
+         * CDL-1 (docs/slices/catalog-data-labels-1.md § 4.2): the header cells of the four label columns (indexes 0, 6,
+         * 7, 8), in display form (trimmed, inner whitespace collapsed). "" = the cell is empty, blank or absent (a header
+         * with fewer cells, or no header). The handler builds "this file's labels" from them; an empty one takes the site
+         * label of its column there.
+         */
+        readonly headerLabels: { readonly collection: string; readonly unit: string; readonly packaging: string; readonly minimumOrder: string };
     }
     | { readonly kind: "refused"; readonly error: string };
 
@@ -90,8 +98,16 @@ export function parseGlamCsv(text: string): GlamParseResult {
     const parsed = parseCsvRecords(text);
     if (parsed.kind === "malformed") return { kind: "refused", error: `The file is not a valid CSV: ${parsed.error}` };
     const records = parsed.records;
-    // records[0] is the header: it selects the layout and is otherwise ignored.
+    // records[0] is the header: it selects the layout and gives the label columns' header cells (CDL-1).
     const width = records.length > 0 && records[0].length === GLAM_GALLERY_COLUMN_COUNT ? GLAM_GALLERY_COLUMN_COUNT : GLAM_COLUMN_COUNT;
+    const header = records[0] ?? [];
+    const headerCell = (index: number) => (header[index] ?? "").trim().replace(/\s+/g, " ");
+    const headerLabels = {
+        collection: headerCell(COLUMN.collection),
+        unit: headerCell(COLUMN.unit),
+        packaging: headerCell(COLUMN.packaging),
+        minimumOrder: headerCell(COLUMN.minimumOrder),
+    };
 
     const wrongWidth: string[] = [];
     const rows: GlamRow[] = [];
@@ -130,7 +146,7 @@ export function parseGlamCsv(text: string): GlamParseResult {
             error: `The file is not the 12- or 13-column pricelist layout: every row must have ${width} cells, as its header ${width === GLAM_GALLERY_COLUMN_COUNT ? "has" : "does not have 13"}; ${shown}${more} cells.`,
         };
     }
-    return { kind: "parsed", rows, codeCells };
+    return { kind: "parsed", rows, codeCells, headerLabels };
 }
 
 /** The `galleryUrls` rule (see `GlamRow`): split on `|`, trimmed, no empty part, no part equal to column 9, no repeat. */

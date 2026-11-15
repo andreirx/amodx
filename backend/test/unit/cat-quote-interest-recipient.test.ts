@@ -41,8 +41,9 @@ async function send() {
     expect(res.statusCode).toBe(201);
     return sesMock.commandCalls(SendEmailCommand).map((c) => c.args[0].input);
 }
-/** The mail minus its recipient and its send time (the clock), to compare two sends. */
-const withoutRecipient = (mail: any) => ({ ...mail, Destination: undefined, Message: { ...mail.Message, Body: { Text: { Data: mail.Message.Body.Text.Data.replace(/Trimisă: .*$/, "Trimisă: {now}") } } } });
+/** The mail minus its recipient and its send time (the clock), to compare two sends. CDL-1: the mail is in the site's
+ *  language (this tenant stores none → English), so the time is masked by its ISO form, not by a word before it. */
+const withoutRecipient = (mail: any) => ({ ...mail, Destination: undefined, Message: { ...mail.Message, Body: { Text: { Data: mail.Message.Body.Text.Data.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "{now}") } } } });
 
 beforeEach(() => {
     ddb.reset();
