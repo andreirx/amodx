@@ -671,3 +671,20 @@ end of a file (lines 205 to 215 of `admin-english-2.md`, a file of 213 lines); i
 
 The design is ratified (§ 9). Each impl slice is done when its oracles of § 10 exit 0 on a fresh build and its
 staging evidence of § 8.4 is recorded in its own slice record.
+
+## 14. Addendum 2026-11-15 — two findings join `cdl-2` (human ruling)
+
+The human ruled on two findings of § 12 on 2026-11-15. Both become part of `cdl-2`. This section adds scope; it does
+not change § 1 to § 13.
+
+1. **F-CDL-INTEREST-SLUG — ruled: fix.** The content-slug check (`backend/src/lib/slug-guard.ts:23-29`) reserves five
+   paths (product, category, cart, checkout, shop). It does not reserve the interest, account and search paths, so a
+   content page saved at one of those addresses is accepted and then hidden by the built-in page. `cdl-2` makes the
+   check reserve every path that the renderer serves for that kind of site, and no other. The `cdl-2` packet must
+   first establish, from the renderer's routing, which of the three paths are served on a catalog, a commerce and a
+   content site. The refusal message names the built-in page that owns the address.
+2. **F-CDL-CONFIRMARE — ruled: option B, a setting.** The checkout confirmation segment `confirmare` is fixed at
+   `renderer/src/components/SitePage.tsx:218`, `:221` and `:503`. It becomes a per-tenant path setting like the other
+   URL prefixes, with an English default, shown on the admin Settings page beside them. This is a named exception to
+   the commerce freeze (human 2026-11-15), limited to this segment: the three lines above, the shared prefix schema
+   and defaults, and the Settings field.
