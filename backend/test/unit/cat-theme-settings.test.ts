@@ -156,3 +156,35 @@ describe("PUT /settings — footer colours (BULK-PURGE-FOOTER-1 Part B rule 1)",
         }
     });
 });
+
+// HEADER-COLOURS-1 (docs/slices/header-colours-1.md, taxonomy row "PUT /settings | invalid colour"): the two header colour
+// keys pass the same colour rule as the footer's; the other header keys stay unvalidated (a stored header that predates
+// any rule still saves), and a header that is not an object keeps today's behaviour (stored as sent).
+describe("PUT /settings — header colours (HEADER-COLOURS-1)", () => {
+    it("valid colours are written as sent, alone or with the other header keys", async () => {
+        const header = { showLogo: true, navHeight: "h-20", backgroundColor: "#f5f1ea", textColor: "rgb(31, 41, 55)" };
+        expect((await put({ header })).statusCode).toBe(200);
+        expect(tenantPuts()[0].input.Item.header).toEqual(header);
+        ddbSend.mockClear();
+        expect((await put({ header: { backgroundColor: "navy" } })).statusCode).toBe(200);
+        expect(tenantPuts()[0].input.Item.header).toEqual({ backgroundColor: "navy" });
+    });
+
+    it("a bad colour → 400 naming the field (`header.backgroundColor: …`), nothing read, nothing written", async () => {
+        for (const bad of ["", "#12", "red; x:y", "red;}", "url(x)", "var(--x)", 0]) {
+            await expectRefused({ header: { backgroundColor: bad } }, /^header\.backgroundColor: /);
+            await expectRefused({ header: { textColor: bad } }, /^header\.textColor: /);
+            await expectRefused({ header: { navHeight: "h-16", textColor: bad } }, /^header\.textColor: /);
+        }
+    });
+
+    it("the other header keys are not validated, and a non-object header is stored as sent (today's behaviour)", async () => {
+        const legacy = { navHeight: 64, showLogo: "yes", extra: "kept" };
+        expect((await put({ header: legacy })).statusCode).toBe(200);
+        expect(tenantPuts()[0].input.Item.header).toEqual(legacy);
+        for (const odd of [null, "h-16", [1]]) {
+            ddbSend.mockClear();
+            expect((await put({ header: odd })).statusCode, JSON.stringify(odd)).toBe(200);
+        }
+    });
+});

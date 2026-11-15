@@ -54,7 +54,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -151,6 +151,10 @@ const CATALOG = {
  *   fragment — because React's useId width depends on the parent's child count: a new sibling re-numbered the card's
  *   Radix Select ids, OBSERVED). The captures are NOT re-taken (they hold none of the new controls); the controls below
  *   include one byte next to this group.
+ * HEADER-COLOURS-1 (docs/slices/header-colours-1.md; same procedure) adds exactly ONE group, the new controls:
+ *   HeaderColorControls (Navbar & Layout card, first in the same fragment slot as the two footer groups, so the card's
+ *   child count and its Radix ids are unchanged). The captures are NOT re-taken; the controls below include one byte next
+ *   to this group.
  * The three wider widths in the two width lists are Radix `SelectItem`s, which a closed Select does not render: they add
  * no byte; the lists are pinned below (`HEADER_WIDTH_OPTIONS`, `PAGE_WIDTH_OPTIONS`).
  */
@@ -160,6 +164,7 @@ const THEME_GROUPS = (config: Record<string, any>) => [
     renderToStaticMarkup(createElement(ShapeAndCards, { theme: config.theme, onChange: () => {} })),
     renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} })),
     renderToStaticMarkup(createElement(FooterColorControls, { config, setConfig: () => {} })),
+    renderToStaticMarkup(createElement(HeaderColorControls, { config, setConfig: () => {} })),
 ];
 function withoutCatTheme(html: string, config: Record<string, unknown>): string {
     let out = html;
@@ -251,8 +256,11 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
         const footer = THEME_GROUPS(CONTENT)[3];
         const footerColours = THEME_GROUPS(COMMERCE)[4];
+        const headerColours = THEME_GROUPS(CONTENT)[5];
         const mutations: [string, "content" | "commerce", Record<string, unknown>][] = [
             [once(commerce, footerColours, `${footerColours}<i></i>`), "commerce", COMMERCE],
+            [once(content, headerColours, `${headerColours} `), "content", CONTENT],
+            [once(commerce, headerColours, `<b></b>${headerColours}`), "commerce", COMMERCE],
             [once(content, 'placeholder="owner@client-site.com"', 'placeholder="owner@client-site.co"'), "content", CONTENT],
             [once(content, ">Notifications<", ">Notificatons<"), "content", CONTENT],
             [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE],
@@ -407,6 +415,43 @@ describe("Settings — the footer colours (BULK-PURGE-FOOTER-1 Part B rule 3)", 
             .find((e) => e.type === "select").props.onChange({ target: { value: "" } });
         expect(saved.footer).toEqual({ backgroundColor: "#1f2937" });
         expect(withFooterKey({}, "textColor", "")).toEqual({ footer: {} });
+    });
+});
+
+describe("Settings — the header colours (HEADER-COLOURS-1)", () => {
+    const render = (config: Record<string, any>) => renderToStaticMarkup(createElement(HeaderColorControls, { config, setConfig: () => {} }));
+    const values = (html: string) => [...html.matchAll(/<input class="[^"]*font-mono[^"]*" value="([^"]*)"/g)].map((m) => m[1]);
+    it("the group is mounted in the Navbar & Layout card, directly before the footer width, on every site kind", () => {
+        for (const config of [CONTENT, COMMERCE, CATALOG]) {
+            const html = renderSettings(config);
+            const card = html.indexOf(">Navbar &amp; Layout<"), group = html.indexOf(render(config));
+            expect(card, String(config.name)).toBeGreaterThan(-1);
+            expect(group, String(config.name)).toBeGreaterThan(card);
+            expect(html.split(">Header Colours<").length - 1, String(config.name)).toBe(1);
+            expect(html.indexOf(renderToStaticMarkup(createElement(FooterWidthControl, { config, setConfig: () => {} }))), String(config.name)).toBe(group + render(config).length);
+        }
+    });
+    it("absent: both inputs empty (theme default), with the help line; stored: the values are shown", () => {
+        const none = render({});
+        expect(none).toContain(">Header Colours<");
+        expect(values(none)).toEqual(["", ""]);
+        expect(none).toContain("Empty = theme default (light and dark).");
+        expect(values(render({ header: { backgroundColor: "#f5f1ea", textColor: "#1f2937" } }))).toEqual(["#f5f1ea", "#1f2937"]);
+    });
+    it("set, then cleared: saved under header.backgroundColor / header.textColor; clearing removes the key; the other header keys are kept", () => {
+        let saved: any;
+        const config = { header: { showLogo: true, navHeight: "h-20", textColor: "#1f2937" } } as any;
+        const inputs = elements(HeaderColorControls({ config, setConfig: (x) => { saved = x; } })).filter((e) => typeof e.props?.onChange === "function");
+        expect(inputs.length).toBe(2);                                         // the two ColorInputs: Background, Text
+        inputs[0].props.onChange("#f5f1ea");
+        expect(saved.header).toEqual({ showLogo: true, navHeight: "h-20", textColor: "#1f2937", backgroundColor: "#f5f1ea" });
+        inputs[1].props.onChange("");
+        expect(saved.header).toEqual({ showLogo: true, navHeight: "h-20" });
+        expect(Object.hasOwn(saved.header, "textColor")).toBe(false);
+        const set = withHeaderKey({ header: saved.header }, "backgroundColor", "#f5f1ea");
+        expect(withHeaderKey(set, "backgroundColor", "").header).toEqual({ showLogo: true, navHeight: "h-20" });
+        expect(withHeaderKey({}, "textColor", "")).toEqual({ header: {} });
+        expect(config.header).toEqual({ showLogo: true, navHeight: "h-20", textColor: "#1f2937" });   // the draft is not mutated
     });
 });
 

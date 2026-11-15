@@ -212,6 +212,37 @@ export function FooterColorControls({ config, setConfig }: { config: SettingsDra
     );
 }
 
+/**
+ * The draft's `header` with one colour key set, or removed when `value` is empty; the other header keys are kept
+ * (HEADER-COLOURS-1). Beside `withFooterKey` rather than shared with it: one generic helper would mean renaming that
+ * export and its tests for four lines of logic.
+ */
+export function withHeaderKey(config: SettingsDraft, key: "backgroundColor" | "textColor", value: string): SettingsDraft {
+    const header: Partial<NonNullable<SettingsDraft["header"]>> = { ...config.header };
+    if (value) header[key] = value;
+    else delete header[key];
+    // A tenant record that never stored a `header` gives a header with only this key, as `updateHeader` already does for
+    // its keys; the renderer reads each absent key as the Navbar's default (`showLogo` true, `navHeight` "h-16", …).
+    return { ...config, header: header as NonNullable<SettingsDraft["header"]> };
+}
+
+/**
+ * HEADER-COLOURS-1 — Navbar & Layout card, before the footer groups: the navbar's background and text colour
+ * (`header.backgroundColor`, `header.textColor`), the palette's colour input; empty = the theme's colours. One value for
+ * the light and the dark theme. The renderer applies them to the navbar and its dropdown and mobile panels only, not to
+ * the Top Bar, the Commerce Bar or the Search Bar (`app/[siteId]/layout.tsx#headerColorStyle`).
+ */
+export function HeaderColorControls({ config, setConfig }: { config: SettingsDraft; setConfig: (c: SettingsDraft) => void }) {
+    return (
+        <div className="pt-4 border-t space-y-2">
+            <Label>Header Colours</Label>
+            <ColorInput label="Background" value={config.header?.backgroundColor} onChange={v => setConfig(withHeaderKey(config, "backgroundColor", v))} />
+            <ColorInput label="Text" value={config.header?.textColor} onChange={v => setConfig(withHeaderKey(config, "textColor", v))} />
+            <p className="text-[10px] text-muted-foreground">Empty = theme default (light and dark).</p>
+        </div>
+    );
+}
+
 // ── CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 items 1 and 4): the "Contact channels" card. ──────────────────────
 
 /** The page's config state: the loaded settings, where `interestListEmail: null` = "send to the contact e-mail" chosen. */
@@ -864,8 +895,10 @@ export default function SettingsPage() {
                             {/* BULK-PURGE-FOOTER-1: one child slot for both footer groups. React's `useId` encodes a child's
                                 index in a width set by the parent's CHILD COUNT, so a new sibling here re-numbered the
                                 Radix Select ids earlier in this card (OBSERVED: `_R_962b_` → `_R_i62b_`); a fragment keeps
-                                the count, the fragment adds no element. */}
+                                the count, the fragment adds no element. HEADER-COLOURS-1: the header colours share the
+                                same slot, for the same reason. */}
                             <>
+                                <HeaderColorControls config={config} setConfig={setConfig} />
                                 <FooterWidthControl config={config} setConfig={setConfig} />
                                 <FooterColorControls config={config} setConfig={setConfig} />
                             </>

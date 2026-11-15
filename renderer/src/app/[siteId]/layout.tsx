@@ -67,6 +67,34 @@ function footerColorStyle(footer: TenantConfig["footer"]): React.CSSProperties |
     } as React.CSSProperties;
 }
 
+/**
+ * HEADER-COLOURS-1 — the navbar `<nav>`'s inline style for `header.backgroundColor` / `header.textColor` (one value for
+ * the light and the dark theme); `undefined` when neither is set, and then the layout passes NO `colorStyle` prop to the
+ * Navbar (a conditional spread), so the HTML and the RSC payload keep today's bytes. The Top Bar, the Commerce Bar and
+ * the Search Bar are siblings of the `<nav>`, not inside it: they keep the theme's colours.
+ * - Background: re-declares `--color-background`, which the navbar's three background utilities read (`bg-background/80`
+ *   on the `<nav>`, `bg-background` on the desktop dropdown panel and on the mobile panel; compiled
+ *   `background-color: var(--color-background)` and, where `color-mix` exists,
+ *   `color-mix(in oklab, var(--color-background) 80%, transparent)`). So the bar keeps its 80 % translucency and blur,
+ *   and both panels — DOM descendants of the `<nav>` — take the same colour, full and scrolled. Not `background-color`
+ *   (as the footer does): that would make the bar opaque and leave the panels on the theme's background.
+ * - Text: the same two variables as the footer (`--color-foreground`, `--color-muted-foreground`; see `footerColorStyle`
+ *   for why not `--foreground`): the title, the links, the icons (`currentColor`) and the menu button. `hover:text-primary`
+ *   reads `--color-primary` and the contact button `--color-primary` / `--color-primary-foreground`: both unchanged.
+ * A different function from `footerColorStyle` because the background mechanism differs (a variable here, the property
+ * there); one function would need a flag that changes what it emits.
+ * A value outside the shared colour rule (`isCssColor`) is ignored, as for the footer.
+ */
+function headerColorStyle(header: TenantConfig["header"]): React.CSSProperties | undefined {
+    const background = isCssColor(header?.backgroundColor) ? header.backgroundColor : undefined;
+    const text = isCssColor(header?.textColor) ? header.textColor : undefined;
+    if (!background && !text) return undefined;
+    return {
+        ...(background ? { "--color-background": background } : {}),
+        ...(text ? { "--color-foreground": text, "--color-muted-foreground": text } : {}),
+    } as React.CSSProperties;
+}
+
 type Props = {
     children: React.ReactNode;
     params: Promise<{ siteId: string }>;
@@ -166,6 +194,7 @@ export default async function SiteLayout({ children, params }: Props) {
     const editorial = config.theme?.shape === "editorial";
     const navFont = !!sanitizeFontFamily(config.theme?.fontNav as string, "");
     const footerStyle = footerColorStyle(config.footer);
+    const headerStyle = headerColorStyle(config.header);
 
     return (
         <html lang={localeLanguageSubtag(config.locale)}>
@@ -279,6 +308,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         strings={{ navAllOf: site.navAllOf, navContact: site.navContact, navToggleMenu: site.navToggleMenu, navViewAll: site.navViewAll, navContactUs: site.navContactUs }}
                         {...(navFont ? { navFont: true } : {})}
                         {...(editorial ? { linkArrows: true } : {})}
+                        {...(headerStyle ? { colorStyle: headerStyle } : {})}
                     />
 
                 </div>

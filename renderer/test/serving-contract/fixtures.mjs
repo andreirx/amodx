@@ -748,6 +748,36 @@ export const CDL2 = { partial: { id: "cdl2-partial-prefixes", host: "cdl2-partia
 export const CDL2_STORED_PREFIXES = { interest: "/lista-mea" };
 const CDL2_ITEMS = localeCopy(CM1_ITEMS, CM1.catalog, CDL2.partial, { locale: "en-US", urlPrefixes: CDL2_STORED_PREFIXES });
 
+// ── HEADER-COLOURS-1 fixtures (docs/slices/header-colours-1.md) ─────────────────────────────────────────────────────
+// Three copies of the CM1 commerce tenant (its pages, products and the search bar), each with a `locale` ("en-US",
+// written out), so none is an en-US subject of the `loc1-*` rows and none is in any `before/` capture: rows `hc1-*` read
+// the running build only. All three show the Top Bar and the Commerce Bar (the header parts beside the Navbar), the same
+// site name and the same nav links, so the twins differ only by their key fields and their header colours:
+//  - colours: `header.backgroundColor` AND `header.textColor` (`HC1_HEADER`, a light tint with dark text);
+//  - plain: no header colour (the twin the other two are compared with);
+//  - invalid: two stored values outside the colour rule (`HC1_INVALID`) — ignored, as absent.
+export const HC1 = {
+    colours: { id: "hc1-colours", host: "hc1-colours.serving-contract.test" },
+    plain: { id: "hc1-plain", host: "hc1-plain.serving-contract.test" },
+    invalid: { id: "hc1-invalid", host: "hc1-invalid.serving-contract.test" },
+};
+export const HC1_HEADER = { backgroundColor: "#f5f1ea", textColor: "#1f2937" };
+export const HC1_INVALID = { backgroundColor: "red; x:y", textColor: "url(https://x.serving-contract.test/a.png)" };
+// The same stored `header` keys on all three (mapTenant substitutes `{ showLogo: true, showTitle: true }` only when the
+// attribute is absent), so the colours are the twins' only header difference.
+const hc1Fields = (colours) => ({
+    locale: "en-US", name: "HC1 Header", header: { showLogo: true, showTitle: true, ...colours },
+    // A dropdown link (the desktop panel) and a plain link: the header texts the colours reach.
+    navLinks: [{ label: "Rooms", href: "/shop", children: [{ label: "Rugs", href: "/category/rugs" }] }, { label: "About", href: "/about" }],
+    topBar: { show: true, content: "HC1 announcement" },
+    commerceBar: { enabled: true, phone: "+1 555 0199", ctaButton: { text: "HC1 offer", url: "/shop" } },
+});
+const HC1_ITEMS = [
+    ...localeCopy(CM1_ITEMS, CM1.commerce, HC1.colours, hc1Fields(HC1_HEADER)),
+    ...localeCopy(CM1_ITEMS, CM1.commerce, HC1.plain, hc1Fields()),
+    ...localeCopy(CM1_ITEMS, CM1.commerce, HC1.invalid, hc1Fields(HC1_INVALID)),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -790,6 +820,8 @@ export const ITEMS = [
     ...CVG1_ITEMS,
     // cdl-2: the partial-prefix tenant (above).
     ...CDL2_ITEMS,
+    // header-colours-1: the header-colour tenants (above).
+    ...HC1_ITEMS,
 ];
 
 /**

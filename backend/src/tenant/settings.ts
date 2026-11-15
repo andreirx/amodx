@@ -7,7 +7,7 @@ import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -128,13 +128,16 @@ function contactAttributesError(body: Record<string, unknown>): string | null {
  * (review-0 R-CT-1): an object, and a theme sent as a JSON STRING (the legacy form `mapTenant` parses,
  * `renderer/src/lib/dynamo.ts`) — parsed here for the check only; the body is stored as sent, never rewritten. A string
  * that does not parse to an object is not checked (today's behaviour: the renderer reads it as `{}`). `footer`:
- * `FooterConfigSchema` (unknown keys refused). Returns the message of the first problem, naming the field (e.g.
+ * `FooterConfigSchema` (unknown keys refused). HEADER-COLOURS-1: on an object `header`, only its two colour keys
+ * (`HeaderColorsSchema`, the footer's colour rule); the older header keys stay unvalidated and a non-object `header` is
+ * stored as sent, as before. Returns the message of the first problem, naming the field (e.g.
  * `theme.fontWeights.1: …`); null when there is none.
  */
 const ThemeDetailsSchema = ThemeSchema.pick({
     fontNav: true, fontWeights: true, headingWeight: true, mutedColor: true, borderColor: true,
     shape: true, cardImage: true, cardCategoryLine: true,
 });
+const HeaderColorsSchema = HeaderConfigSchema.pick({ backgroundColor: true, textColor: true });
 /** The theme as the renderer reads it: an object as is, a JSON string parsed; anything else (unparsable included) → null. */
 function themeObjectOf(value: unknown): Record<string, unknown> | null {
     let theme = value;
@@ -144,12 +147,14 @@ function themeObjectOf(value: unknown): Record<string, unknown> | null {
     return theme !== null && typeof theme === "object" && !Array.isArray(theme) ? theme as Record<string, unknown> : null;
 }
 function themeAttributesError(body: Record<string, unknown>): string | null {
-    const checks: [string, unknown, typeof ThemeDetailsSchema | typeof FooterConfigSchema][] = [];
+    const checks: [string, unknown, typeof ThemeDetailsSchema | typeof FooterConfigSchema | typeof HeaderColorsSchema][] = [];
     for (const attribute of ["theme", "darkTheme"] as const) {
         const theme = themeObjectOf(body[attribute]);
         if (theme) checks.push([attribute, theme, ThemeDetailsSchema]);
     }
     if (Object.hasOwn(body, "footer")) checks.push(["footer", body.footer, FooterConfigSchema]);
+    const header = body.header;
+    if (header !== null && typeof header === "object" && !Array.isArray(header)) checks.push(["header", header, HeaderColorsSchema]);
     for (const [attribute, value, schema] of checks) {
         const parsed = schema.safeParse(value);
         if (!parsed.success) {

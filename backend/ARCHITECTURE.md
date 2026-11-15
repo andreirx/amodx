@@ -184,7 +184,9 @@ src/
 │                          #   NEW fields only (shared ThemeSchema.pick: fontNav, fontWeights 100–900, headingWeight,
 │                          #   mutedColor/borderColor = shared colour grammar isCssColor, shape, cardImage, cardCategoryLine; older
 │                          #   theme fields stay unvalidated), and `footer` (FooterConfigSchema, strict) → 400 naming
-│                          #   the field before any read (test/unit/cat-theme-settings.test.ts).
+│                          #   the field before any read (test/unit/cat-theme-settings.test.ts). HEADER-COLOURS-1: on
+│                          #   an object `header`, its two colour keys only (HeaderConfigSchema.pick backgroundColor,
+│                          #   textColor = isCssColor); other header keys and a non-object header: as before.
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/

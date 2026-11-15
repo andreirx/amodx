@@ -73,7 +73,7 @@ shape** — a function with its own contract and its own test file.
 | SavedThemeSchema | SavedTheme | Named reusable theme in theme library |
 | IntegrationsSchema | Integrations | Third-party connections (GA, Paddle, OAuth, analytics) |
 | GDPRConfigSchema | GDPRConfig | Cookie consent banner settings |
-| HeaderConfigSchema | HeaderConfig | Navigation header display options |
+| HeaderConfigSchema | HeaderConfig | Navigation header display options. HEADER-COLOURS-1: + `backgroundColor?`, `textColor?` (`CssColorSchema`; no default; absent → the theme's colours; read by the renderer `app/[siteId]/layout.tsx#headerColorStyle` for the navbar only; PUT /settings checks these two keys) |
 | SignalSchema | Signal | Outbound lead signal (URL, pain score, wallet signal, analysis, draft reply) |
 
 ### Constants

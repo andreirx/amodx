@@ -620,6 +620,11 @@ export const HeaderConfigSchema = z.object({
     contentMaxWidth: z.string().default("max-w-7xl"),
     // Content page max width — constrains prose blocks, titles, comments (not full-bleed blocks)
     contentPageMaxWidth: z.string().default("max-w-4xl"),
+    // HEADER-COLOURS-1: the navbar's own background and text colour, one value for the light and the dark theme; absent →
+    // the theme's colours (the navbar before this slice, byte for byte). Same type and rule as the footer's colours. Read
+    // by the renderer's `app/[siteId]/layout.tsx#headerColorStyle`; the Top Bar, Commerce Bar and Search Bar ignore them.
+    backgroundColor: CssColorSchema.optional(),
+    textColor: CssColorSchema.optional(),
 });
 
 // CAT-THEME-1 (§ 3 item 3): the footer's own width, a Tailwind class like `header.contentMaxWidth`; absent → the

@@ -41,6 +41,7 @@ export function Navbar({
                            strings,
                            navFont = false,
                            linkArrows = false,
+                           colorStyle,
                        }: {
     siteName: string;
     logo?: string;
@@ -79,6 +80,12 @@ export function Navbar({
      * injector's editorial rule follows with "↗" (CSS generated content, not DOM text). Passed only under the shape.
      */
     linkArrows?: boolean;
+    /**
+     * HEADER-COLOURS-1: the `<nav>`'s inline style from `layout.tsx#headerColorStyle` (the header's own background and
+     * text colour, as re-declared colour variables). Passed only when a header colour is set (conditional spread); absent
+     * → React writes no `style` attribute, so the markup is unchanged.
+     */
+    colorStyle?: React.CSSProperties;
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -108,7 +115,7 @@ export function Navbar({
     }, []);
 
     return (
-        <nav className="border-b bg-background/80 backdrop-blur">
+        <nav className="border-b bg-background/80 backdrop-blur" style={colorStyle}>
             <div className={`mx-auto ${contentMaxWidth} px-4 sm:px-6 lg:px-8`}>
                 <div className={`flex justify-between items-center transition-all duration-300 ${scrolled ? navHeightScrolled : navHeight}`}>
 

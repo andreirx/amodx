@@ -89,6 +89,10 @@ src/
     │                           #   ONE fragment slot of the card (useId width follows the parent's child count);
     │                           #   withFooterKey sets/removes one footer key and keeps the others. Compared minus
     │                           #   exactly five groups now; captures not re-taken.
+    │                           #   HEADER-COLOURS-1: HeaderColorControls (Header Colours: Background, Text; same
+    │                           #   help line) first in the same fragment slot, before FooterWidthControl;
+    │                           #   withHeaderKey sets/removes one header colour key and keeps the other header keys.
+    │                           #   Compared minus exactly six groups; captures not re-taken.
     ├── Labels.tsx              # The tenant locale table (locale-1a; every tenant, System section): Site group,
     │                           #   "Cookie banner & legal links" (saved into gdpr / legalLinks, other fields kept),
     │                           #   locale-1b: "Catalog" (catalog tenants, catalogStrings; cdl-1: the "Import labels"

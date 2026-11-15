@@ -40,7 +40,7 @@ src/
 │   ├── ProductByIdPage.tsx                    # THE by-ID product render body — both product routes call it
 │   ├── RenderBlocks.tsx                       # Block rendering engine: maps Tiptap JSON → React
 │   ├── ThemeInjector.tsx                      # CSS variable injection + Google Fonts loading
-│   ├── Navbar.tsx                             # Responsive header with logo, title, nav links
+│   ├── Navbar.tsx                             # Responsive header with logo, title, nav links (HEADER-COLOURS-1: optional `colorStyle` on the <nav>)
 │   ├── CommentsSection.tsx                    # Comment list + form (requires NextAuth session)
 │   ├── SocialShare.tsx                        # Twitter, LinkedIn, Facebook, Email, Copy link
 │   ├── Analytics.tsx                          # Consent-gated: GA4, Umami, Plausible, or custom
@@ -687,6 +687,15 @@ light and dark): `layout.tsx#footerColorStyle` puts `background-color` and the r
 `@theme` resolves it on `:root`) in the `<footer>`'s `style`, added by a conditional spread only when a valid colour
 (`isCssColor`) is set — absent → today's bytes (an RSC payload would encode `style: undefined` as `"$undefined"`).
 Rows `bpf1-*`.
+
+**HEADER-COLOURS-1 (docs/slices/header-colours-1.md).** `header.backgroundColor` / `header.textColor` (one value for
+light and dark): `layout.tsx#headerColorStyle` re-declares `--color-background` (read by the navbar's `bg-background/80`
+and by the `bg-background` of its desktop dropdown and mobile panels — the bar keeps its translucency and blur, the
+panels follow it) and the footer's two text variables. The style reaches the client `Navbar` as the `colorStyle` prop,
+passed by a conditional spread only when a valid colour (`isCssColor`) is set — absent → no prop, no `style`, today's
+bytes. Link hover (`--color-primary`) and the contact button keep the theme. The Top Bar and the Commerce Bar (siblings
+of the `<nav>` in the sticky wrapper) and the Search Bar (rendered by `SitePage`) are not inside the `<nav>`: unchanged.
+Rows `hc1-*`; unit `test/unit/header-colours-1.test.ts`.
 
 ## Path settings — slice `cdl-2`
 

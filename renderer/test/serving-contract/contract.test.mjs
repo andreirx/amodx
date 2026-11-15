@@ -40,7 +40,7 @@ import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_
 import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
 import {
     CM1, CM1_STALE_SLUG, CF1, CIP1B, ITEMS, CIG1_COMMERCE_HIDDEN, LOC1, LOC1E, CQ1, CQ1_CHANNELS, CT1, CT1_THEME, CT1_HERO_SLUG,
-    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES,
+    BPF1, BPF1_FOOTER, BPF1_BACKGROUND_ONLY, CDL2, CDL2_STORED_PREFIXES, HC1, HC1_HEADER, HC1_INVALID,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -2783,6 +2783,78 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const both = await bpf1Footer("colours");
             assert.equal(bgOnly.inner, both.inner, "the footer's content is the same markup with or without the colours");
             console.log(`  (bpf1-footer-background-only) editorial footer background ${BPF1_BACKGROUND_ONLY}; texts keep today's classes; content markup identical to the both-colours tenant`);
+        });
+
+        // ── ROWS (hc1-*) — HEADER-COLOURS-1 (docs/slices/header-colours-1.md). Server HTML and payload of the running build
+        // for the HC1 tenants (fixtures.mjs `HC1`: three copies of the CM1 commerce tenant with the Top Bar, the Commerce
+        // Bar and the search bar). "Absent → today's bytes" for every site kind is proven by the rows that compare with a
+        // capture taken before this slice (cm1-*, loc1-*, ct1-*, cq1-*), unchanged: their tenants set no header colour.
+        const HC1_NAV_OPEN = '<nav class="border-b bg-background/80 backdrop-blur">';
+        /** One page of an HC1 copy, its key fields written as the plain twin's (so twins compare byte for byte). */
+        const hc1Page = async (key, reqPath) => {
+            const res = await request({ port: server.port, path: reqPath, host: HC1[key].host });
+            assert.equal(res.status, 200, `${key} ${reqPath}: 200`);
+            const asPlain = (t) => t.split(HC1[key].host).join(HC1.plain.host).split(HC1[key].id).join(HC1.plain.id);
+            const { html, flight } = splitFlight(res.body);
+            return { raw: html, html: asPlain(html), flight: asPlain(flight), navOpen: /<nav[^>]*>/.exec(html)?.[0] };
+        };
+        /** The payload as a sorted list of rows (the encoder emits rows in async order; ids are assigned in that order). */
+        const rowsOf = (flight) => flight.split("\n").sort();
+        /** Where two texts first differ, with 120 characters of context on each side (for a failure message). */
+        const firstDiff = (a, b) => {
+            let i = 0;
+            while (i < a.length && a[i] === b[i]) i++;
+            return i === a.length && i === b.length ? "equal" : `at ${i}: ${JSON.stringify(a.slice(Math.max(0, i - 120), i + 120))} vs ${JSON.stringify(b.slice(Math.max(0, i - 120), i + 120))}`;
+        };
+        const HC1_PATHS = ["/", URL_PREFIX_DEFAULTS.shop];
+
+        test("(hc1-header-colours) both header colours set: the <nav> re-declares --color-background and the two text variables; the compiled background and text utilities read them; every other byte of the page (Top Bar, Commerce Bar, search bar, page, footer) equals the twin without colours", async () => {
+            const { backgroundColor: bg, textColor: fg } = HC1_HEADER;
+            const style = `--color-background:${bg};--color-foreground:${fg};--color-muted-foreground:${fg}`;
+            const prop = `,"colorStyle":{"--color-background":"${bg}","--color-foreground":"${fg}","--color-muted-foreground":"${fg}"}`;
+            for (const reqPath of HC1_PATHS) {
+                const [page, plain] = [await hc1Page("colours", reqPath), await hc1Page("plain", reqPath)];
+                assert.equal(page.navOpen, `<nav class="border-b bg-background/80 backdrop-blur" style="${style}">`, reqPath);
+                assert.equal(plain.navOpen, HC1_NAV_OPEN, `${reqPath}: the twin keeps today's <nav>`);
+                assert.equal(page.html.split("--color-").length - 1, 3, `${reqPath}: the variables occur on the <nav> only`);
+                for (const part of ["HC1 announcement", "+1 555 0199", "HC1 offer"]) assert.ok(page.html.includes(part), `${reqPath}: the header part ${part} is in the compared HTML`);
+                if (reqPath !== "/") assert.ok(page.html.includes('<div class="bg-primary w-full">'), `${reqPath}: the search bar is in the compared HTML`);
+                // HTML: the <nav> opening tag is the ONLY difference.
+                assert.equal(page.html.split(page.navOpen).join(HC1_NAV_OPEN), plain.html, `${reqPath}: HTML equal to the twin but for the <nav> tag; ${firstDiff(page.html.split(page.navOpen).join(HC1_NAV_OPEN), plain.html)}`);
+                // Payload: the Navbar's props carry the one extra prop; nothing else differs.
+                assert.equal(page.flight.split(prop).length - 1, 1, `${reqPath}: the payload carries colorStyle once`);
+                assert.ok(!plain.flight.includes("colorStyle"), `${reqPath}: the twin's payload has no colorStyle`);
+                assert.deepEqual(rowsOf(page.flight.split(prop).join("")), rowsOf(plain.flight), `${reqPath}: payload equal to the twin but for colorStyle; ${firstDiff(rowsOf(page.flight.split(prop).join("")).join("\n"), rowsOf(plain.flight).join("\n"))}`);
+            }
+            // The compiled CSS: the three background utilities of the navbar read --color-background (translucent bar and
+            // both panels), the text utilities read the two re-declared variables; hover and the contact button read Primary.
+            const page = await hc1Page("colours", "/");
+            const sheets = [...page.raw.matchAll(/<link rel="stylesheet" href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]);
+            assert.ok(sheets.length > 0, "precondition: the page's stylesheets");
+            const css = (await Promise.all(sheets.map((href) => request({ port: server.port, path: href, host: HC1.colours.host })))).map((r) => r.body).join("\n");
+            assert.match(css, /[},]\.bg-background(,[^{]*)?\{background-color:var\(--color-background\)\}/, "compiled: .bg-background (both panels) reads --color-background");
+            assert.match(css, /[},]\.bg-background\\\/80\{background-color:var\(--color-background\)\}/, "compiled: .bg-background/80 (the bar) reads --color-background without color-mix");
+            assert.ok(css.includes("@supports (color:color-mix(in lab, red, red)){.bg-background\\/80{background-color:color-mix(in oklab,var(--color-background)80%,transparent)}"), "compiled: .bg-background/80 keeps 80 % of --color-background with color-mix");
+            assert.match(css, /[},]\.backdrop-blur\{/, "compiled: the bar's blur");
+            assert.match(css, /[},]\.text-foreground(,[^{]*)?\{color:var\(--color-foreground\)\}/, "compiled: .text-foreground reads --color-foreground");
+            assert.match(css, /[},]\.text-muted-foreground(,[^{]*)?\{color:var\(--color-muted-foreground\)\}/, "compiled: .text-muted-foreground reads --color-muted-foreground");
+            for (const decl of ["--color-background:var(--background)", "--color-foreground:var(--foreground)", "--color-muted-foreground:var(--muted-foreground)"]) assert.ok(css.includes(decl), `compiled: ${decl}`);
+            assert.match(css, /\.hover\\:text-primary:hover\{color:var\(--color-primary\)\}/, "compiled: link hover reads --color-primary (not re-declared)");
+            assert.match(css, /[},]\.bg-primary(,[^{]*)?\{background-color:var\(--color-primary\)\}/, "compiled: the contact button's fill reads --color-primary");
+            assert.match(css, /[},]\.text-primary-foreground(,[^{]*)?\{color:var\(--color-primary-foreground\)\}/, "compiled: the contact button's text reads --color-primary-foreground");
+            console.log(`  (hc1-header-colours) <nav> ${style}; ${HC1_PATHS.join(", ")} equal to the twin but for the <nav> tag and colorStyle; ${sheets.length} stylesheet(s): .bg-background, .bg-background/80 (both forms) read --color-background`);
+        });
+
+        test("(hc1-header-invalid) stored header colours outside the colour rule are ignored, as absent: today's <nav>, no colorStyle, the page equal to the twin without colours", async () => {
+            for (const reqPath of HC1_PATHS) {
+                const [page, plain] = [await hc1Page("invalid", reqPath), await hc1Page("plain", reqPath)];
+                assert.equal(page.navOpen, HC1_NAV_OPEN, reqPath);
+                assert.ok(!page.html.includes("--color-") && !page.flight.includes("colorStyle"), `${reqPath}: no variable, no prop`);
+                for (const v of Object.values(HC1_INVALID)) assert.ok(!page.raw.includes(v) && !page.flight.includes(v), `${reqPath}: ${v} is not rendered`);
+                assert.equal(page.html, plain.html, `${reqPath}: HTML equal to the twin; ${firstDiff(page.html, plain.html)}`);
+                assert.deepEqual(rowsOf(page.flight), rowsOf(plain.flight), `${reqPath}: payload equal to the twin; ${firstDiff(rowsOf(page.flight).join("\n"), rowsOf(plain.flight).join("\n"))}`);
+            }
+            console.log(`  (hc1-header-invalid) ${JSON.stringify(HC1_INVALID)} ignored on ${HC1_PATHS.join(", ")}: byte-equal to the twin`);
         });
 
         // LOCALE-1D: the en-US order pages reach the states the coverage rule names (§ 16.2 item 5; positive control of the
