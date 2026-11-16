@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockClient } from "aws-sdk-client-mock";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
@@ -54,7 +54,8 @@ const call = async (body: unknown, opts: { slug?: string; tenant?: string; origi
         requestContext: { http: { sourceIp: "127.0.0.1" } },
         body: opts.raw ?? JSON.stringify(body),
     } as any, {} as any, () => {})) as any;
-    return { status: res.statusCode as number, body: JSON.parse(res.body) };
+    // `headers` is undefined on the answers that set none; `toEqual` ignores an undefined property.
+    return { status: res.statusCode as number, body: JSON.parse(res.body), headers: res.headers as Record<string, string> | undefined };
 };
 
 const puts = () => ddb.commandCalls(PutCommand).map((c) => c.args[0].input.Item!);
@@ -98,11 +99,21 @@ describe("the three defects of the handler as found (reproduced red on 5b3c1be, 
         expect(mails()[0].ReplyToAddresses).toEqual(["ana@example.com"]);
     });
 
-    it("defect 3 — keys that are not labels of the form are dropped; nothing else of the request is stored (was: body.data stored as sent)", async () => {
-        await call(payload({ Name: "Ana", "E-mail": "a@b.co", injected: { deep: ["x".repeat(1000)] }, "__proto__": "p", constructor: "c" }, { extra: "top", submitterEmail: "a@b.co" }));
+    it("defect 3 — keys that are not labels of the form are dropped, an OWN \"__proto__\" key (JSON text) included; nothing else of the request is stored; Object.prototype unchanged (was: body.data stored as sent)", async () => {
+        // FORM-SUBMIT-2 (finding D): built from JSON TEXT. An object literal `{ "__proto__": … }` sets the prototype and
+        // creates no own key; JSON.parse — what the handler runs — creates an own key "__proto__".
+        const raw = `{"data": {"Name": "Ana", "E-mail": "a@b.co", "injected": {"deep": ["${"x".repeat(1000)}"]}, "__proto__": {"polluted": "data"}, "constructor": "c"},`
+            + ` "__proto__": {"polluted": "top"}, "extra": "top", "submitterEmail": "a@b.co", "recaptchaToken": null}`;
+        const sent = JSON.parse(raw);
+        expect([Object.hasOwn(sent, "__proto__"), Object.hasOwn(sent.data, "__proto__")]).toEqual([true, true]); // the test sends what its title says
+        const res = await call(undefined, { raw });
+        expect(res.status).toBe(201);
         const item = puts()[0];
         expect(item.data).toEqual({ Name: "Ana", "E-mail": "a@b.co", "Primary interest": "", Message: "" });
         expect(Object.keys(item).sort()).toEqual(["PK", "SK", "Type", "createdAt", "data", "formId", "formName", "id", "status", "submitterEmail", "tenantId"]);
+        expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+        expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+        expect(Object.getPrototypeOf(item.data)).toBe(Object.prototype);
     });
 
     it("a malformed body → 400, nothing read past the origin check, nothing stored (was 500)", async () => {
@@ -111,6 +122,7 @@ describe("the three defects of the handler as found (reproduced red on 5b3c1be, 
             const res = await call(undefined, { raw });
             expect({ raw, status: res.status, error: res.body.error }).toEqual({ raw, status: 400, error: "Invalid request body" });
             expect(formReads()).toEqual([]);
+            expect(ddb.commandCalls(GetCommand)).toHaveLength(0); // FORM-SUBMIT-2 (class of finding D): no read at all past the origin query, as the title says
             expect(puts()).toEqual([]);
         }
     });
@@ -278,6 +290,7 @@ describe("the answer, statuses and key shapes stay as they were", () => {
     it("201 { message: the form's success text, submissionId }, no-store; the record under TENANT#<tenant> FORMSUB#<formId>#<id>", async () => {
         const res = await call(payload({ Name: "A", "E-mail": "a@b.co" }));
         expect(res.status).toBe(201);
+        expect(res.headers).toEqual({ "Cache-Control": "no-store" }); // FORM-SUBMIT-2 (finding D): the title's "no-store", asserted
         expect(Object.keys(res.body).sort()).toEqual(["message", "submissionId"]);
         expect(res.body.message).toBe("Thanks, we will call you.");
         const item = puts()[0];
@@ -357,5 +370,84 @@ describe("labels are the key", () => {
         form("t1", "odd", "form-odd", [{ id: "x", type: "text" } as any, field("y", "Kind", "radio"), field("z", "Name", "text")]);
         await call(payload({ Name: "A", Kind: "k", undefined: "u" }), { slug: "odd" });
         expect(puts()[0].data).toEqual({ Name: "A" });
+    });
+});
+
+describe("FORM-SUBMIT-2 — the second review (record docs/slices/form-submit-2.md)", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("A — the values \"invalid\" and \"too-long\" in a text field and as a select option are stored (were 400: the internal refusal markers)", async () => {
+        form("t1", "marker", "form-marker", [field("a", "Note", "text"), field("b", "Pick", "select", { options: ["invalid", "too-long"] })]);
+        for (const value of ["invalid", "too-long"]) {
+            const res = await call(payload({ Note: value, Pick: value }), { slug: "marker" });
+            expect({ value, status: res.status }).toEqual({ value, status: 201 });
+        }
+        expect(puts().map((p) => p.data)).toEqual([{ Note: "invalid", Pick: "invalid" }, { Note: "too-long", Pick: "too-long" }]);
+    });
+
+    it("B — DynamoDB fails → 500 with the fixed text \"Internal error\"; the failure text is not in the answer; the failure is logged with the handler's name", async () => {
+        const failure = new Error("User: arn:aws:sts::123456789012:assumed-role/x is not authorized to perform: dynamodb:PutItem on resource: arn:aws:dynamodb:eu-central-1:123456789012:table/amodx-table");
+        ddb.on(PutCommand).rejects(failure);
+        const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+        const res = await call(payload({ Name: "A", "E-mail": "a@b.co" }));
+        expect(res).toEqual({ status: 500, body: { error: "Internal error" } });
+        expect(JSON.stringify(res.body)).not.toContain("arn:");
+        expect(JSON.stringify(res.body)).not.toContain("amodx-table");
+        expect(logged).toHaveBeenCalledWith(expect.stringContaining("forms/public-submit"), failure);
+        expect(mails()).toEqual([]);
+    });
+
+    it("C — a number text longer than 500 characters after trimming → 400 \"Value too long\" (was accepted: \"0\" × 100 000 + \"1\" → 1); 500 characters are accepted", async () => {
+        form("t1", "num", "form-num", [field("a", "Count", "number")]);
+        const res = await call(payload({ Count: `${"0".repeat(100000)}1` }), { slug: "num" });
+        expect(res).toEqual({ status: 400, body: { error: "Value too long", fields: ["Count"] } });
+        expect(puts()).toEqual([]);
+        expect((await call(payload({ Count: `  ${"0".repeat(499)}1  ` }), { slug: "num" })).status).toBe(201);
+        expect(puts()[0].data.Count).toBe(1);
+    });
+
+    describe("reCAPTCHA refusals (the tenant has keys; the provider answer is stubbed at fetch)", () => {
+        beforeEach(() => {
+            ddb.on(GetCommand, { Key: { PK: "SYSTEM", SK: "TENANT#t1" } }).resolves({ Item: { id: "t1", recaptcha: { siteKey: "site-key", secretKey: "secret-key", threshold: 0.5 } } });
+        });
+        const provider = (answer: Record<string, unknown>) =>
+            vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(answer), { status: 200 }));
+
+        it("the provider refuses the token → 403; no form read, nothing written, no mail", async () => {
+            provider({ success: false, "error-codes": ["invalid-input-response"] });
+            vi.spyOn(console, "warn").mockImplementation(() => {});
+            expect(await call(payload({ Name: "A", "E-mail": "a@b.co" }, { recaptchaToken: "tok" }))).toEqual({ status: 403, body: { error: "Verification failed. Please try again." } });
+            expect(formReads()).toEqual([]);
+            expect(puts()).toEqual([]);
+            expect(mails()).toEqual([]);
+        });
+
+        it("a score under the threshold → 403; no form read, nothing written, no mail; a score at the threshold passes", async () => {
+            provider({ success: true, score: 0.4, action: "form_submit" });
+            vi.spyOn(console, "warn").mockImplementation(() => {});
+            expect(await call(payload({ Name: "A", "E-mail": "a@b.co" }, { recaptchaToken: "tok" }))).toEqual({ status: 403, body: { error: "Verification failed due to low score." } });
+            expect(formReads()).toEqual([]);
+            expect(puts()).toEqual([]);
+            expect(mails()).toEqual([]);
+            vi.restoreAllMocks();
+            provider({ success: true, score: 0.5, action: "form_submit" });
+            vi.spyOn(console, "log").mockImplementation(() => {});
+            expect((await call(payload({ Name: "A", "E-mail": "a@b.co" }, { recaptchaToken: "tok" }))).status).toBe(201);
+        });
+    });
+
+    it("no slug in the path → 400 \"Missing form slug\"; no form read, nothing written", async () => {
+        const res = (await handler({ headers: { "x-tenant-id": "t1", origin: "https://site.test" }, requestContext: { http: { sourceIp: "127.0.0.1" } }, body: JSON.stringify(payload({ Name: "A" })) } as any, {} as any, () => {})) as any;
+        expect({ status: res.statusCode, body: JSON.parse(res.body) }).toEqual({ status: 400, body: { error: "Missing form slug" } });
+        expect(formReads()).toEqual([]);
+        expect(puts()).toEqual([]);
+    });
+
+    it("a slug pointer whose form record is missing → 404 \"Form not found\"; nothing written, no mail", async () => {
+        ddb.on(GetCommand, { Key: { PK: "TENANT#t1", SK: "FORMSLUG#orphan" } }).resolves({ Item: { formId: "form-gone" } });
+        expect(await call(payload({ Name: "A" }), { slug: "orphan" })).toEqual({ status: 404, body: { error: "Form not found" } });
+        expect(formReads()).toEqual([{ PK: "TENANT#t1", SK: "FORMSLUG#orphan" }, { PK: "TENANT#t1", SK: "FORM#form-gone" }]);
+        expect(puts()).toEqual([]);
+        expect(mails()).toEqual([]);
     });
 });

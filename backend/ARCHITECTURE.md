@@ -156,12 +156,16 @@ src/
 │                          #   JSON object → 400), reCAPTCHA, the form read under TENANT#<verified tenant> (FORMSLUG#
 │                          #   → FORM#; 404 / disabled 403). SHOP-LOOK-1E: `data` read BY FIELD LABEL for exactly the
 │                          #   stored form's fields (FormFieldSchema-valid, first field of each label); per type cleaned
-│                          #   (strings trimmed, ≤ 500 / textarea ≤ 5 000; number finite or ""; checkbox boolean;
+│                          #   (strings trimmed, ≤ 500 / textarea ≤ 5 000; number finite or "", as text ≤ 500 — FORM-SUBMIT-2;
+│                          #   checkbox boolean;
 │                          #   select "" or an option) — wrong type / option 400 "Invalid value", too long 400 "Value
 │                          #   too long", bad email 400 "Invalid email format", blank required 400 "Missing required
 │                          #   fields", each with the labels; submitter email = body.submitterEmail else the first
 │                          #   email field (CR/LF removed, pattern checked). Stores and mails only the cleaned values
-│                          #   (mail value CR/LF → space). Unit: test/unit/forms-public-submit.test.ts
+│                          #   (mail value CR/LF → space). FORM-SUBMIT-2: a refusal is a separate result variant (a
+│                          #   value "invalid" / "too-long" is stored); an exception (DynamoDB, reCAPTCHA fetch) →
+│                          #   console.error, 500 "Internal error" — its text never goes to the caller (a mail
+│                          #   failure stays logged only, 201). Unit: test/unit/forms-public-submit.test.ts
 ├── interest/
 │   └── public.ts          # CAT-INTEREST-1: the interest list's two PUBLIC routes, one Lambda (dispatch on routeKey).
 │                          #   POST /public/interest — a catalog visitor's shortlist as ONE submission of the system

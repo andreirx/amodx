@@ -49,34 +49,45 @@ function formFields(stored: unknown): FormField[] {
     return out;
 }
 
-/** One field's value: the cleaned value, or "invalid" / "too-long". An absent key is the blank value. */
-function cleanValue(field: FormField, raw: unknown): FieldValue | "invalid" | "too-long" {
+/**
+ * FORM-SUBMIT-2 (finding A): the result of cleaning one value. A refusal is a separate variant, so no field value (a
+ * visitor's text "invalid", a select option "too-long") can be read as a refusal.
+ */
+type CleanedValue = { ok: true; value: FieldValue } | { ok: false; reason: "invalid" | "too-long" };
+const accepted = (value: FieldValue): CleanedValue => ({ ok: true, value });
+const INVALID: CleanedValue = { ok: false, reason: "invalid" };
+const TOO_LONG: CleanedValue = { ok: false, reason: "too-long" };
+
+/** One field's value: the cleaned value, or a refusal ("invalid" / "too-long"). An absent key is the blank value. */
+function cleanValue(field: FormField, raw: unknown): CleanedValue {
     switch (field.type) {
         case "text":
         case "email":
         case "phone":
         case "textarea": {
-            if (raw === undefined) return "";
-            if (typeof raw !== "string") return "invalid";
+            if (raw === undefined) return accepted("");
+            if (typeof raw !== "string") return INVALID;
             const value = field.type === "email" ? cleanEmail(raw) : raw.trim();
-            if (value.length > (field.type === "textarea" ? MAX_TEXTAREA : MAX_TEXT)) return "too-long";
-            return value;
+            if (value.length > (field.type === "textarea" ? MAX_TEXTAREA : MAX_TEXT)) return TOO_LONG;
+            return accepted(value);
         }
         case "number": {
-            if (raw === undefined) return "";
-            if (typeof raw === "number") return Number.isFinite(raw) ? raw : "invalid";
-            if (typeof raw !== "string") return "invalid";
+            if (raw === undefined) return accepted("");
+            if (typeof raw === "number") return Number.isFinite(raw) ? accepted(raw) : INVALID;
+            if (typeof raw !== "string") return INVALID;
             const text = raw.trim();
-            if (text === "") return "";
+            if (text === "") return accepted("");
+            // FORM-SUBMIT-2 (finding C): the same limit as a text field, before the pattern test and the conversion.
+            if (text.length > MAX_TEXT) return TOO_LONG;
             const n = Number(text);
-            return NUMBER_TEXT.test(text) && Number.isFinite(n) ? n : "invalid";
+            return NUMBER_TEXT.test(text) && Number.isFinite(n) ? accepted(n) : INVALID;
         }
         case "checkbox":
-            if (raw === undefined) return false;
-            return typeof raw === "boolean" ? raw : "invalid";
+            if (raw === undefined) return accepted(false);
+            return typeof raw === "boolean" ? accepted(raw) : INVALID;
         case "select":
-            if (raw === undefined || raw === "") return "";
-            return typeof raw === "string" && (field.options ?? []).includes(raw) ? raw : "invalid";
+            if (raw === undefined || raw === "") return accepted("");
+            return typeof raw === "string" && (field.options ?? []).includes(raw) ? accepted(raw) : INVALID;
         default: {
             const unhandled: never = field.type;
             return unhandled;
@@ -100,9 +111,18 @@ function cleanSubmission(storedFields: unknown, body: Record<string, unknown>): 
     const invalid: string[] = [], tooLong: string[] = [], badEmail: string[] = [], missing: string[] = [];
     const entries: [string, FieldValue][] = [];
     for (const field of fields) {
-        const value = cleanValue(field, ownValue(rawData, field.label));
-        if (value === "invalid") { invalid.push(field.label); continue; }
-        if (value === "too-long") { tooLong.push(field.label); continue; }
+        const result = cleanValue(field, ownValue(rawData, field.label));
+        if (!result.ok) {
+            switch (result.reason) {
+                case "invalid": invalid.push(field.label); continue;
+                case "too-long": tooLong.push(field.label); continue;
+                default: {
+                    const unhandled: never = result.reason;
+                    return unhandled;
+                }
+            }
+        }
+        const value = result.value;
         if (field.type === "email" && value !== "" && !isEmail(String(value))) badEmail.push(field.label);
         if (field.required && isBlank(value)) missing.push(field.label);
         entries.push([field.label, value]);
@@ -277,7 +297,11 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
                 submissionId,
             })
         };
-    } catch (e: any) {
-        return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+    } catch (e) {
+        // FORM-SUBMIT-2 (finding B): the caller is anonymous — the failure (a DynamoDB or reCAPTCHA-fetch text with
+        // table names, ARNs, regions; an SES failure is caught above) goes to the log only; the answer is the fixed text of
+        // system/invalidation.ts:80.
+        console.error("[forms/public-submit] Error:", e);
+        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
     }
 };
