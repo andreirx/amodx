@@ -150,13 +150,54 @@ describe("categoryShowcase — badge (§ 7.4: at most one per card, the block's 
         expect(pine.indexOf(BADGE("POPULAR"))).toBeLessThan(pine.indexOf("<h3"));
     });
 
-    it("exact match: a tag that differs only by case or by spaces does not match (no trimming, no case folding)", () => {
-        for (const badgeTags of [["top pick"], ["Top Pick"], ["TOP PICK "], [" TOP PICK"], ["TOPPICK"]]) {
+    // BADGE-CASE-1 (docs/slices/badge-case-1.md; amends § 7.4): the two strings match when they are equal after
+    // `toLowerCase()` on both sides. Spaces still count. The text drawn is the block's entry as stored.
+
+    it("letter case does not count: the block's entry in any case matches the product's tag; the text is the block's entry as stored", () => {
+        // p1 [TOP PICK, oak] and p4 [POPULAR, TOP PICK] hold the tag; removing the two badges gives today's HTML
+        for (const entry of ["top pick", "Top Pick"]) {
+            const html = showcase({ ...SHOWCASE_BASE, badgeTags: [entry] });
+            expect(badges(html), entry).toEqual([entry, null, null, entry, null]);
+            expect(html.split(BADGE(entry)).join(""), entry).toBe(B.showcase.html["tiptap-defaults"]);
+        }
+        // and the other way round: a lower-case product tag matches the upper-case block entry
+        expect(badges(showcase(withProducts([{ ...PRODUCTS[0], tags: ["top pick"] }], { badgeTags: ["TOP PICK"] })))).toEqual(["TOP PICK"]);
+    });
+
+    it("spaces count: a tag that differs by a space does not match (no trimming)", () => {
+        for (const badgeTags of [["TOP PICK "], [" TOP PICK"], ["TOPPICK"]]) {
             expect(showcase({ ...SHOWCASE_BASE, badgeTags }), JSON.stringify(badgeTags)).toBe(B.showcase.html["tiptap-defaults"]);
         }
         // and the other way round: a product tag with a space does not match the clean block entry
-        const html = showcase(withProducts([{ ...PRODUCTS[0], tags: ["TOP PICK "] }], { badgeTags: ["TOP PICK"] }));
+        const spaced = withProducts([{ ...PRODUCTS[0], tags: ["TOP PICK "] }]);
+        expect(showcase({ ...spaced, badgeTags: ["TOP PICK"] })).toBe(showcase(spaced));
+        expect(count(showcase(spaced), BADGE_OPEN)).toBe(0);
+    });
+
+    it("letter case does not change the precedence: the block's first matching entry wins, in both orders", () => {
+        for (const tags of [["POPULAR", "TOP PICK"], ["TOP PICK", "POPULAR"]]) {
+            const products = [{ ...PRODUCTS[0], tags }];
+            expect(badges(showcase(withProducts(products, { badgeTags: ["popular", "Top pick"] }))), JSON.stringify(tags)).toEqual(["popular"]);
+            expect(badges(showcase(withProducts(products, { badgeTags: ["Top pick", "popular"] }))), JSON.stringify(tags)).toEqual(["Top pick"]);
+        }
+    });
+
+    it("two block entries that differ only by case: one badge, the first entry", () => {
+        for (const tags of [["SALE"], ["sale"], ["Sale"]]) {
+            const html = showcase(withProducts([{ ...PRODUCTS[0], tags }], { badgeTags: ["Sale", "SALE"] }));
+            expect(badges(html), JSON.stringify(tags)).toEqual(["Sale"]);
+            expect(count(html, BADGE_OPEN), JSON.stringify(tags)).toBe(1);
+        }
+    });
+
+    it("a product tag that is not a string never matches and never throws; a string beside it still matches", () => {
+        const mixed = [{ ...PRODUCTS[0], tags: [42, null, { a: 1 }, "top pick"] }];
+        expect(badges(showcase(withProducts(mixed, { badgeTags: ["TOP PICK"] })))).toEqual(["TOP PICK"]);
+        // only non-strings: the block entries spell what `String(value)` would give, so a conversion would match them
+        const odd = withProducts([{ ...PRODUCTS[0], tags: [42, null, { a: 1 }, true, undefined] }]);
+        const html = showcase({ ...odd, badgeTags: ["42", "null", "[object Object]", "true", "undefined"] });
         expect(count(html, BADGE_OPEN)).toBe(0);
+        expect(html).toBe(showcase(odd));
     });
 
     it("a blank entry of badgeTags is ignored (never matches a blank product tag); the next entry still counts", () => {

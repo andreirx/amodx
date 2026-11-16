@@ -618,7 +618,7 @@ const BLOCK_SCHEMAS = {
             showPrice: "boolean (default true)",
             ctaText: "string (e.g., 'View All Products')",
             eyebrow: "string (optional small label above the category name; omit or '' = none)",
-            badgeTags: "array of product tags (max 10; optional). A product with one of these tags shows ONE badge over its photo: the first tag of THIS list that the product has. Exact match, capitals and spaces included",
+            badgeTags: "array of product tags (max 10; optional). A product with one of these tags shows ONE badge over its photo: the first tag of THIS list that the product has. Letter case does not count (\"top pick\" matches \"TOP PICK\"); spaces do count. The badge shows the tag as written in THIS list",
             showCategoryLabel: "boolean (optional; the name of each product's first category above its title; none when that category is hidden or missing)",
             showDescription: "boolean (optional; each product's short description as plain text, two lines at most)",
             showRating: "boolean (optional; the average and count of each product's approved reviews; none without an approved review). badgeTags and the three show* options have no effect on a catalog site"

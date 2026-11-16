@@ -45,13 +45,16 @@ function textOf(value: unknown): string | null {
 
 /**
  * The badge of one card (§ 7.4, § 16 R6): AT MOST ONE — the first entry of the block's `badgeTags`, in the block's order,
- * that the product's `tags` holds. Exact string match: case and spaces are kept on both sides ("top pick" and "TOP PICK "
- * do not match "TOP PICK"). The order of the product's own tags never changes the result. The text is the tag as stored
- * (uppercase is CSS). No match, no list, or `tags` not a list → no badge.
+ * that the product's `tags` holds. Letter case does not count, spaces do (BADGE-CASE-1): the two strings match when they
+ * are equal after `toLowerCase()` on both sides, so "top pick" matches "TOP PICK" and "TOP PICK " does not. A product
+ * tag that is not a string never matches. The order of the product's own tags never changes the result. The text is the
+ * block's entry as stored (uppercase is CSS), so every card of one block shows one spelling. No match, no list, or
+ * `tags` not a list → no badge.
  */
 function badgeOf(badgeTags: string[], tags: unknown): string | null {
     if (!Array.isArray(tags)) return null;
-    return badgeTags.find((tag) => tags.includes(tag)) ?? null;
+    const own = tags.filter((t): t is string => typeof t === "string").map((t) => t.toLowerCase());
+    return badgeTags.find((tag) => own.includes(tag.toLowerCase())) ?? null;
 }
 
 /**

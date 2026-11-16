@@ -17,8 +17,8 @@ export function storedShowcaseOption(value: string | boolean): string | true | n
 
 /**
  * SHOP-LOOK-1D: the badge tag field → the stored `badgeTags`. Comma-separated; each entry trimmed; blank entries dropped;
- * the first 10 kept (the schema's limit); nothing left → null (absent). The site matches the stored entries exactly
- * (case kept), so the owner types them as the products' tags are written.
+ * the first 10 kept (the schema's limit); nothing left → null (absent). The site ignores letter case but not spaces when
+ * it matches an entry to a product's tag (BADGE-CASE-1), and draws the entry as typed here.
  */
 export function badgeTagsFromText(text: string): string[] | null {
     const tags = text.split(',').map((t) => t.trim()).filter((t) => t !== '').slice(0, MAX_BADGE_TAGS);
@@ -159,7 +159,7 @@ export function CategoryShowcaseEditor(props: any) {
                             placeholder="Optional, comma-separated, e.g. TOP PICK, NEW"
                         />
                     </div>
-                    <p className="text-xs text-gray-500">A product with one of these tags shows a badge: the first tag of this list that it has. Tags match exactly, capitals included.</p>
+                    <p className="text-xs text-gray-500">A product with one of these tags shows a badge: the first tag of this list that it has. Capital letters do not count: TOP PICK matches Top pick. The badge shows the tag as you type it here.</p>
                     <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
                         <span className="font-medium">On each card:</span>
                         <label className="flex items-center gap-1.5">

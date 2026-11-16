@@ -873,3 +873,19 @@ fixed, so the three are fixed together.
 
 `order-price-1` → `shop-look-1a` → `1b` → `1c` → `1d` → `1e`. The other findings of § 13 stay open and are reported
 to the human for ordering.
+
+### 17.6 Amendment 2026-11-16 — badge letter case (slice `badge-case-1`)
+
+Human ruling 2026-11-16 (question: "Badge letter case: treat "Top pick" and "TOP PICK" as the same?"; answer: "ok
+yes"). Closes F-1D-BADGE-CASE (`docs/slices/shop-look-1d.md`, operator closeout). This entry amends two places; their
+text above stays as ratified and is superseded only in the match rule:
+
+- § 4.2, row `categoryShowcase` / `badgeTags`: "exact match, case kept" becomes "letter case ignored, spaces kept".
+- § 7.4: "exact string match, case kept" becomes the rule below.
+
+New match rule: a block entry matches a product tag when the two strings are equal after `toLowerCase()` on both
+sides. Spaces still count on both sides (`"TOP PICK "` does not match `"TOP PICK"`; no trimming). A product tag that
+is not a string never matches. Cardinality and precedence do not change: at most one badge per card; the first entry
+of `badgeTags`, in the block's order, that matches; the order of the product's own tags never changes the result. The
+text drawn is the block's entry as stored, so every card of one block shows one spelling. Every other rule of § 7.4
+stays. Record: `docs/slices/badge-case-1.md`.

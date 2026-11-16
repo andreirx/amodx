@@ -75,7 +75,9 @@ Each option is optional and off by default; absent, `null`, blank or `false` dra
 
 - `eyebrow` — a small label above the category name (every site kind).
 - `badgeTags` — the tags that act as badges, in precedence order. A card shows **at most one** badge: the first entry of
-  this list that the product's `tags` holds. Exact match — case and spaces count. The order of the product's own tags
+  this list that the product's `tags` holds. Letter case does not count, spaces do (slice `badge-case-1`): `top pick`
+  matches `TOP PICK`, `TOP PICK ` does not. The badge shows the entry of this list as stored, so every card of one block
+  shows one spelling. A product tag that is not a string never matches. The order of the product's own tags
   does not matter. Blank entries are ignored. The badge is an opaque pill (`bg-primary` / `text-primary-foreground`) over
   the top-left of the photo, so the photo never affects it. No read: the tags are in the card item.
 - `showCategoryLabel` — the name of the product's FIRST category (`categoryIds[0]`) above the title; none when that
