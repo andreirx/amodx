@@ -243,6 +243,20 @@ by three writers). `service-account-1` waits on `tenant-bind-1`: `GET /leads`, `
 `GET /audit`, `GET /signals`, `GET /assets` never call `requireRole` — cross-tenant read proven on
 staging.
 
+## Content-site gaps — DRAFTS (2026-11-18, not ratified, not scheduled)
+
+Source: `docs/plan-site-move-satulbanului.md` (what a four-language guesthouse site needs to run as a tenant).
+Written by the satulbanului session from one read-only pass; the move is not decided. Prefixes `gallery-`,
+`redirect-`, `stay-`, `lang-` are registered in `docs/documentation.md` when the first one is admitted.
+
+| Slice | Scope | Status |
+|-------|-------|--------|
+| `gallery-1` | A photo gallery block with a viewer (native `<dialog>`, plain links without script). No such block exists. Plugin-local. `docs/slices/gallery-1.md` | DRAFT — no ruling needed |
+| `redirect-1` | An owner adds a redirect from an old address: `POST`/`DELETE /redirects`, a list screen, MCP. The record and the renderer side exist; only a slug rename writes one today. `docs/slices/redirect-1.md` | DRAFT — no ruling needed |
+| `stay-1` part A | A `date` field type for stored forms plus a "B later than A" rule, so a "Request a stay" form mails room, dates and guests. Starts after `public-harden-1` lands (same handler). `docs/slices/stay-1.md` § 2 | DRAFT — no ruling needed |
+| `stay-1` part B | Amendment to the Track D plan: a stay (a run of nights on one room) next to the timed appointment; one lock per night. Specification only. `docs/slices/stay-1.md` § 3 | DRAFT — rulings STAY1-GUEST-IDENTITY, STAY1-PRICE; input to Track D when it opens |
+| `lang-1` | More than one language on one site: page language, `hreflang`, menu per language, language switch, German and French packs. Specification, then `lang-1a`…`1d`. Changes the ratified "the language setting is per tenant" of `locale-1.md`. `docs/slices/lang-1.md` | DRAFT — ruling LANG1-SCOPE; open design point LANG1-HTML-LANG needs a spike |
+
 ## Track E — Admin AI (deferred)
 
 Source: `docs/plan-ai-admin.md`. **DEFERRED** — LLM provider undecided; even the
@@ -258,6 +272,7 @@ Hygiene work, not a feature track.
 |-------|-------|--------|
 | `dep-1` | Dependency-audit remediation for the **non-backend** workspaces — renderer (`next` → `postcss`/`sharp`, `open-next`/`esbuild` — the `open-next`/`esbuild` item closed by `opennext-1b` 2026-10-15, which adds one dev-only `glob` HIGH via `@node-minify/core`, `docs/TECH-DEBT.md` § opennext-1b), infra (`aws-cdk-lib` → bundled `fast-uri`/`yaml`), admin (`react-router` 8.x), and the repo-wide `brace-expansion` tooling leaf. No `--force`. Detail, owners and ordering in `docs/TECH-DEBT.md`. *2026-10-26 re-triage (advisories of 2026-10-22): `next` 16.3.8 → 16.4.3 on open-next 4.1.9, `zod` 4.1.13 → 4.6.7, four lockfile-only bumps, no new acceptance; `docs/TECH-DEBT.md` § Dependency Audit Remediation.* | PLANNED |
 | `mcp-sync-1` | `tools/mcp-server` brought up to the **non-commerce** backend (45 → 73 tools: content history/restore, context, product get/update/delete, leads, signals, themes, private resources, CDN invalidation marker, audit, email DNS check, forms/popups CRUD; `search_web` via `POST /research/search`) + a mechanical drift oracle (`routes.json` + `npm test` route coverage). Users list and WordPress/media import deferred until the backend scopes them to the tenant (`docs/TECH-DEBT.md` BACKEND-TENANT-SCOPE-1 candidate). Commerce coverage (incl. the broken `/delivery` tools) stays with the commerce track. Slice doc: `docs/slices/mcp-sync-1.md` | IMPLEMENTED |
+| `next-patch-1` | Next.js security patch 16.4.3 → 16.4.6 (advisory GHSA-mfr8-8qww-v76h, moderate, range 16.3.0–16.4.4; the renderer source does not use the named feature). Since 2026-11-18 the build stops once per run on the advisory when an agent runs it; `deploy.sh staging` builds twice, so **the operator cannot deploy to staging until this ships**. Lockfile + the declared floor in two `package.json` files; `@opennextjs/aws` stays 4.1.9; proofs = serving suite, bundle suite, patch guard, 51 staging URLs identical. Record `docs/slices/next-patch-1.md` | PLANNED (written 2026-11-18; human: "leave next.js for now") — blocks the staging run of `public-harden-1` (reviewed, gates green, uncommitted) |
 
 > Backend's 2 critical `vitest`/`@vitest/ui` advisories were fixed first (`vitest ^4.1.8`,
 > 0 backend vulnerabilities, tests green). A non-breaking `npm audit fix` (2026-06-29) then cleared

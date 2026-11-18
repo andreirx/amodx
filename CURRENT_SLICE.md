@@ -1,30 +1,36 @@
 # CURRENT_SLICE.md
 
-## Current Priority
+Rewritten 2026-11-18 (the earlier text described 2026-10-15). `docs/ROADMAP.md` holds the full rows.
 
-**Awaiting the human's GO for Track B (`cmrc-1`, commerce-private table).** Before any
-data copy: fix F-SHARED-1 (hardcoded "Romania" country default — persisted in orders)
-and author the `cmrc-*` slice docs around the PARTIALLY PRE-EXISTING migration script
-(`scripts/migrate-commerce-private-table.ts` — do not rebuild it).
+## In the worktree
 
-Also in flight / queued (order per `docs/ROADMAP.md`): `opennext-1` (adapter upgrade
-open-next 3.1.3 → `@opennextjs/aws` 4.1.9) — `opennext-1b` BUILT 2026-10-15 (bundle suite
-58/58 on 4.1.9, guard OK; `docs/slices/opennext-1b.md`), review then the operator's staging
-run plan (spec § 9.1 step 3) and the human's prod GO pending; image optimizer stays parked
-(OPENNEXT1-IMAGE = A). `cache-4` (instant per-page go-live), `fnd-2` (normalizeEmail
-call-site migration, inventory in the fnd-1 build report).
+`public-harden-1` — reviewed (gpt-6.1-sol, third cycle), ten gates green, **not on staging, not committed**.
+A reCAPTCHA answer without a score is refused; 14 public handlers answer a server failure with a fixed text.
+Record `docs/slices/public-harden-1.md`.
 
-## Shipped 2026-07-28 (production, human-deployed, probe-verified)
+## Blocked
 
-Tracks CACHE (1,2,3,6), TEST (1–4), A (vid-1..3), `fnd-1`, `sec-1` — slice docs in
-`docs/shipped/slices/`. Serving contract live: tenant pages cached at edge + ISR
-(zero-DB hits), poisoning/leak vectors closed, deployed ISR purging working for the
-first time, admin edits refresh caches, CI gates green.
+The operator's staging deploy. The Next.js build stops on a security advisory when an agent runs it, and the
+deploy builds twice. Fix = `next-patch-1` (`docs/slices/next-patch-1.md`), PLANNED; human 2026-11-18: "leave
+next.js for now".
 
-## Known-open (tracked in docs/TECH-DEBT.md)
+## Waiting for the human's production deploy
 
-- Optimized images 500 (image handler vs next 16) — pre-existing, no regression; parked by
-  ruling OPENNEXT1-IMAGE = A (the 4.1.9 upgrade does not fix it: `_assets` prefix, no
-  `remotePatterns` — `docs/TECH-DEBT.md` § `opennext-1`).
-- F-SHARED-1 "Romania" default (blocks Track B data copy), F-BACKEND-2 UTC
-  availability, stale playwright specs, weekly audit red until upstream Next patch.
+Everything on `main` after `bulk-purge-footer-1` (prod 2026-11-14): `admin-english-1/2`, `cdl-1/2`,
+`header-colours-1`, `category-content-1`, `cat-variant-gallery-1`, `order-price-1`, `order-checkout-1`,
+`order-email-1`, `price-locale-1`, `order-confirm-1`, `shop-look-1a`…`1e`, `small-fixes-1`, `badge-case-1`,
+`form-submit-2`. After it: set the locale on shops with comma prices; one real order with a price change in the
+cart; one real custom-form submission; `/lista-mea` on the Romanian site.
+
+## Not started, by track
+
+- **B commerce-private** (`cmrc-1`…`6`): waits for the human's GO. Backlog behind it: `cmrc-reviews-ask`,
+  `cmrc-withdrawal`.
+- **C customer sign-in** (`auth-1`…`7`), **D scheduling** (`appt-1`…`7`): planned, no code.
+- **Content-site gaps** (drafts 2026-11-18): `gallery-1`, `redirect-1`, `stay-1`, `lang-1`.
+- **Maintenance**: `next-patch-1`, `dep-1`.
+- **Plans waiting for rulings**: STATIC (`D-STATIC-1`…`5`), EMAIL (`D-EMAIL-1`, `D-EMAIL-6`), AI (provider).
+
+## Known-open
+
+`docs/TECH-DEBT.md`. Optimised images stay parked (OPENNEXT1-IMAGE = A).
