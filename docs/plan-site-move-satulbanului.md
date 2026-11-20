@@ -34,3 +34,10 @@ to every tenant and carry no ruling. `lang-1` decides if this site can move at a
   `LodgingBusiness`, `HotelRoom`, `TouristAttraction`, `FAQPage` and breadcrumbs are not there. No slice yet.
 - **Static HTML track.** `docs/plan-static-html-pages.md` serves uploaded HTML in a sandboxed frame. A framed
   page is not indexed as the tenant's own page, so that track does not fit a site that lives from search.
+
+## Update 2026-11-20 (human)
+
+- Languages: LANG1-SCOPE = A (`docs/slices/lang-1.md` § 8).
+- Booking: an external booking service integrated in the site (`docs/slices/booking-embed-1.md`); `stay-1` part
+  B withdrawn.
+- The joint order with the second client's slices: `docs/plan-courses-group-sessions.md` § 5.

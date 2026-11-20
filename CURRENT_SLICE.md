@@ -24,10 +24,14 @@ cart; one real custom-form submission; `/lista-mea` on the Romanian site.
 
 ## Not started, by track
 
-- **B commerce-private** (`cmrc-1`…`6`): waits for the human's GO. Backlog behind it: `cmrc-reviews-ask`,
-  `cmrc-withdrawal`.
-- **C customer sign-in** (`auth-1`…`7`), **D scheduling** (`appt-1`…`7`): planned, no code.
-- **Content-site gaps** (drafts 2026-11-18): `gallery-1`, `redirect-1`, `stay-1`, `lang-1`.
+- **B commerce-private** (`cmrc-1`…`6`): mandatory (human 2026-11-20; a client with real orders is named).
+  Slice docs not yet written. Backlog behind it: `cmrc-reviews-ask`, `cmrc-withdrawal`.
+- **C customer sign-in** (`auth-1`…`7`): planned, no code; Google sign-in exists.
+- **D scheduling**: draft `course-1` proposes seats in course runs first; `appt-1`…`7` unscheduled.
+- **Languages**: `lang-1` mandatory (human 2026-11-20); next is the `<html lang>` spike.
+- **Two client sites** (drafts; map in `docs/plan-courses-group-sessions.md` § 5): `gallery-1`, `redirect-1`,
+  `landing-1`, `tags-1`, `coupon-fix-1`, `newsletter-1`, `import-paths-1`, `booking-embed-1`, `pay-1`, `pay-2`,
+  `invoice-1`, `voucher-1`, `loyalty-1`, `contract-1`.
 - **Maintenance**: `next-patch-1`, `dep-1`.
 - **Plans waiting for rulings**: STATIC (`D-STATIC-1`…`5`), EMAIL (`D-EMAIL-1`, `D-EMAIL-6`), AI (provider).
 

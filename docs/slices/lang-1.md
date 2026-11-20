@@ -93,3 +93,10 @@ the new fields are ignored by the old code. No data migration in any slice (all 
 
 LANG1-SCOPE answered; if A, the spike result recorded, § 3 reviewed against `docs/caching-architecture.md`
 § *Serving contract*, and the four rows of § 4 registered in `docs/ROADMAP.md`.
+
+## 8. Ruling (human, 2026-11-20)
+
+LANG1-SCOPE = **A**. Multi-language sites are mandatory: a second named client, galeriilevoicu.ro, has Romanian
+and English (`docs/plan-courses-group-sessions.md` § 1). The condition of § 2 ("when a second multi-language
+client is named") is met. Next step: the LANG1-HTML-LANG spike, then the review of § 3. For galeriilevoicu the
+existing EN and RO packs are enough; `lang-1d` (German, French) is needed by satulbanului only.

@@ -254,8 +254,31 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 | `gallery-1` | A photo gallery block with a viewer (native `<dialog>`, plain links without script). No such block exists. Plugin-local. `docs/slices/gallery-1.md` | DRAFT — no ruling needed |
 | `redirect-1` | An owner adds a redirect from an old address: `POST`/`DELETE /redirects`, a list screen, MCP. The record and the renderer side exist; only a slug rename writes one today. `docs/slices/redirect-1.md` | DRAFT — no ruling needed |
 | `stay-1` part A | A `date` field type for stored forms plus a "B later than A" rule, so a "Request a stay" form mails room, dates and guests. Starts after `public-harden-1` lands (same handler). `docs/slices/stay-1.md` § 2 | DRAFT — no ruling needed |
-| `stay-1` part B | Amendment to the Track D plan: a stay (a run of nights on one room) next to the timed appointment; one lock per night. Specification only. `docs/slices/stay-1.md` § 3 | DRAFT — rulings STAY1-GUEST-IDENTITY, STAY1-PRICE; input to Track D when it opens |
-| `lang-1` | More than one language on one site: page language, `hreflang`, menu per language, language switch, German and French packs. Specification, then `lang-1a`…`1d`. Changes the ratified "the language setting is per tenant" of `locale-1.md`. `docs/slices/lang-1.md` | DRAFT — ruling LANG1-SCOPE; open design point LANG1-HTML-LANG needs a spike |
+| `stay-1` part B | Amendment to the Track D plan: a stay (a run of nights on one room) next to the timed appointment; one lock per night. Specification only. `docs/slices/stay-1.md` § 3 | WITHDRAWN 2026-11-20 (human: room booking by an external service — `booking-embed-1`) |
+| `lang-1` | More than one language on one site: page language, `hreflang`, menu per language, language switch, German and French packs. Specification, then `lang-1a`…`1d`. Changes the ratified "the language setting is per tenant" of `locale-1.md`. `docs/slices/lang-1.md` | DRAFT — LANG1-SCOPE = A (human 2026-11-20: mandatory, two named clients); next: the LANG1-HTML-LANG spike, then review of the design |
+
+## Courses, payments and growth — DRAFTS (2026-11-20, not ratified)
+
+Source: `docs/plan-courses-group-sessions.md` — requirement table, **dependency map (§ 5)**, decisions (§ 6),
+defects found (§ 7). Named client: galeriilevoicu.ro (courses, workshops, vouchers; Romanian and English).
+Human directions 2026-11-20: multi-language is mandatory; **Track B (`cmrc-1`…`6`) is mandatory** before the
+school's orders; the school's scheduling is new work; the guesthouse books through an external service.
+
+| Slice | Scope | Depends | Status |
+|-------|-------|---------|--------|
+| `course-1` (SPEC) | A seat in a course run: runs with several meetings, capacity, proposal of the partly filled run, run language, moves, roster, calendar feed. Amends Track D: seats first, `appt-*` unscheduled. Decisions COURSE-FIRST-SHAPE, -TABLE, -PAYMENT-PATH, -CALENDAR. Build slices `course-1a`…`1g` listed inside. `docs/slices/course-1.md` | — | DRAFT — four decisions |
+| `contract-1` | A contract accepted on the site per enrolment (version hash, signer, time); a guardian accepts for a participant under 18. `docs/slices/contract-1.md` | `course-1d` | DRAFT — legal text to be confirmed by the client's lawyer |
+| `pay-1` | "Paid" as a real order transition: its own route with allowed transitions, an admin control, a domain event, a "payment received" mail. `docs/slices/pay-1.md` | — | DRAFT |
+| `pay-2` | Online card payment: hosted page, verified webhook, then the `pay-1` transition. `docs/slices/pay-2.md` | `pay-1` | DRAFT — PAY-PROVIDER |
+| `invoice-1` | A SmartBill invoice when an order becomes paid; idempotent; a failure never blocks the paid state. `docs/slices/invoice-1.md` | `pay-1` | DRAFT |
+| `coupon-fix-1` | Three coupon defects: the per-customer limit is not enforced; product and category limits are not checked when the order is written; the usage count has no condition. `docs/slices/coupon-fix-1.md` | — | DRAFT — defects, fixable now |
+| `voucher-1` | A gift voucher product (amount or one course) issues a one-use code when paid; a printable page with a QR code. `docs/slices/voucher-1.md` | `coupon-fix-1`, `pay-1` | DRAFT |
+| `loyalty-1` | Discount levels by total spent; counters follow paid orders. `docs/slices/loyalty-1.md` | `cmrc-4` | DRAFT |
+| `tags-1` | Google Ads id, GA4 purchase and Ads conversion on the confirmation page, Consent Mode; the Facebook pixel goes behind the consent (defect). `docs/slices/tags-1.md` | — | DRAFT |
+| `newsletter-1` | A newsletter signup that stores the address with consent and pushes it to MailerLite; the `newsletter` popup collects nothing today. `docs/slices/newsletter-1.md` | — | DRAFT — NEWSLETTER-SENDER |
+| `landing-1` | `hideNav` / `hideFooter` hide the site's own bars and nothing inside blocks. `docs/slices/landing-1.md` | — | DRAFT |
+| `import-paths-1` | The WordPress importer keeps the old addresses (it flattens them today), writes redirects for the ones it cannot keep, resolves featured images; WooCommerce CSV with quoted line breaks. `docs/slices/import-paths-1.md` | — | DRAFT |
+| `booking-embed-1` | A block that shows an external booking service on a guesthouse page. `docs/slices/booking-embed-1.md` | — | DRAFT — BOOKING-SERVICE (the client names it) |
 
 ## Track E — Admin AI (deferred)
 
