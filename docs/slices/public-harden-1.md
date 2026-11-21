@@ -227,3 +227,23 @@ stubbed `fetch`.
 | `docs/slices/public-harden-1.md` | this record |
 
 ## Operator closeout
+
+Operator, 2026-11-21. Review-2 approved (reviewer `gpt-6.1-sol`, builder `claude-opus-5-5`, three cycles; reviews 0
+and 1 asked for corrections to this record only).
+
+**Decision PH1-NEXT-UPGRADE.** Answered by the human on 2026-11-21 ("ok start the next.js patch"): the upgrade ran
+as slice `next-patch-1`. This slice was committed before its staging run (`839eaab`, not pushed) so that the
+worktree was clean for that slice; one staging deploy carried both.
+
+**Gates (operator run, 2026-11-18, on the approved tree).** build 0, typecheck 0, shared 0, plugins 0, renderer 0,
+serving 0, admin unit 0, backend unit 0, mcp 0, `git diff --check` 0. Run again on 2026-11-21 with `next-patch-1`
+on top: all 0.
+
+**Staging (2026-11-21).** Diff: the 15 public handler functions change by code only. Smoke, one call per handler
+with the tenant's origin: products list 200, product 404, categories 200, category 404, popups 200, reviews 200,
+order 404, delivery dates 200, coupon 400, order 400, interest 400, interest resolve 400, form submit 400. No 5xx.
+`POST /contact`, `/leads`, `/consent` answer 401 at the authorizer without the renderer's key, so those three
+were not reached; their change is the same two lines and is unit-proven.
+
+**Not proven on staging.** Both fixes. Staging cannot pass reCAPTCHA, and a handler cannot be made to fail from
+outside. They rest on the unit tests (`recaptcha-verify.test.ts`, `public-harden-1-errors.test.ts`).

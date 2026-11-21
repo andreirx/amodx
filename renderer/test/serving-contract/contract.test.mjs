@@ -22,19 +22,20 @@
 // major has none.
 import { describe, test as nodeTest, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readdir, readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { readdir, readFile, mkdtemp, writeFile, rm, mkdir, copyFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import {
     buildRenderer, startRenderer, startStubs, request, rendererEnv, probeEnvLoading,
     readAudit, resetAudit, AUDIT_PATH, NO_DOTENV_PRELOAD, RENDERER_DIR,
-    BUNDLE, versionedExpectation, operationInventory,
+    BUNDLE, versionedExpectation, operationInventory, servedResponses,
 } from "./harness.mjs";
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
 import { execFile } from "node:child_process";
 import {
     CM1_BASELINE_DIR, CM1_CONTROL_DIR, captureCm1, compareTenant, maskBody, readCaptures, readClientModules, splitFlight, writeCaptures,
+    bootstrapChunks, bootstrapChunkProblems, bootstrapChunkProblemsOfJournal, readRootNotFoundScript,
 } from "./cm1-byte-identity.mjs";
 import { CONFIRMATION_ADDRESS, PRE_CDL2_CONFIRMATION_ADDRESS, CQ1_REQUESTS, CT1_REQUESTS, EN_US_REQUESTS, LOC1_DIR, LOC1_REQUESTS, LOC1E_404_REQUESTS, LOC1E_PROBE_REQUESTS, cacheFields, canon, resolveFlight, captureLoc1, captureRequests, checkExpected, expectedFor, liveSiteIdReference, extractVisibleText, preCdl2Address, renderItem, textChanges, textMismatches } from "./locale-1/proof.mjs";
 import { URL_PREFIX_DEFAULTS, getCountryPack, resolveLocaleStrings, urlPrefixesOf } from "@amodx/shared";
@@ -1138,8 +1139,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             if (!cm1Candidate) {
                 const buildId = (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim();
                 const clientModules = await readClientModules(RENDERER_DIR);
+                // NEXT-PATCH-1 rule 3: the root-layout script category 4 checks in the after head, named by this build.
+                const rootNotFoundScript = await readRootNotFoundScript(RENDERER_DIR);
                 const captures = await captureCm1(request, server.port, ["commerce", "content", "catalog"]);
-                cm1Candidate = { buildId, clientModules, captures };
+                cm1Candidate = { buildId, clientModules, rootNotFoundScript, captures };
                 if (process.env.CM1_CAPTURE_DIR) await writeCaptures(process.env.CM1_CAPTURE_DIR, cm1Candidate);
             }
             return cm1Candidate;
@@ -1873,7 +1876,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const cm1 = await cm1Set();
                 const fromCm1 = cm1.captures.filter((c) => Object.hasOwn(EN_US_REQUESTS, c.tenant) && EN_US_REQUESTS[c.tenant].some((r) => r.path === c.path));
                 const rest = await captureRequests(request, server.port, Object.values(EN_US_REQUESTS).flat().filter((r) => !fromCm1.some((c) => c.tenant === r.tenant && c.path === r.path)));
-                loc1En = { buildId: cm1.buildId, clientModules: cm1.clientModules, captures: [...fromCm1, ...rest] };
+                loc1En = { buildId: cm1.buildId, clientModules: cm1.clientModules, rootNotFoundScript: cm1.rootNotFoundScript, captures: [...fromCm1, ...rest] };
             }
             return loc1En;
         }
@@ -2169,13 +2172,15 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // The `[siteId]` segment's first script: the element right after the moved stylesheet link.
             const siteScript = /"rel":"stylesheet","href":"[^"]+","precedence":"next","crossOrigin":"\$undefined","nonce":"\$undefined"\}\],\["\$","script","script-0",\{"src":"([^"]+)"/.exec(flightA)?.[1];
             assert.ok(siteScript, "mutation precondition: the [siteId] script src");
-            // The removed root-layout script: a payload script src of the before side that the after payload no longer has
-            // and that the after head still loads (a [siteId] script renamed by a later client-bundle change is also gone
-            // from the after payload, but not in the after head — locale-1e.md § 18).
+            // The removed root-layout script as the after head loads it, named by THIS build (NEXT-PATCH-1 ruling R-NP1-F1
+            // rule 3: `readRootNotFoundScript`, the root 404 boundary's JS entry in the build's manifests). Before next
+            // 16.4.6 it was found as "the before payload script the after head still loads" — that pinned the content hash
+            // of a chunk of Next's own client code, a name that can change with a framework update (it did from 16.4.3
+            // to 16.4.6).
             const srcs = (f) => [...f.matchAll(/"src":"(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]);
-            const rootScripts = srcs(flightB).filter((x) => !srcs(flightA).includes(x) && a.body.includes(`<script src="${x}" async="">`));
-            assert.equal(new Set(rootScripts).size, 1, "mutation precondition: exactly one removed payload script stays in the after head");
-            const rootScript = rootScripts[0];
+            assert.equal(cand.rootNotFoundScript?.kind, "script", `precondition: the build names the root-layout script (${cand.rootNotFoundScript?.problem})`);
+            const rootScript = cand.rootNotFoundScript.src;
+            assert.ok(!srcs(flightA).includes(rootScript) && a.body.includes(`<script src="${rootScript}" async="">`), `mutation precondition: ${rootScript} is no after payload script and the after head loads it`);
             // The tenant wrapper is the `html` element whose `body` holds a client component (`Providers`); the root 404
             // boundary's `html` holds a list (title, 404 UI). Exactly one occurrence must change.
             const WRAPPER = /(\[\\"\$\\",\\"html\\",null,\{\\"lang\\":\\")en(\\",\\"children\\":\[\\"\$\\",\\"body\\",null,\{\\"className\\":\\"[^\\]*\\",\\"children\\":\[\\"\$\\",\\"\$L)/g;
@@ -2268,8 +2273,15 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.equal(noPage.kind, "problem", "a set without a 200 page gave a reference");
             rawReported("a set without a live 200 page", shellCheck(as.body, noPage));
             rawReported("a shell checked without a reference", checkExpected(before, bs.body, cand, as.body, shellMove));
+            // NEXT-PATCH-1 rule 3, fail closed: the after root-layout script comes only from the build's own name.
+            const rootControls = {
+                "an after set without a build-derived root-layout script": { ...cand, rootNotFoundScript: undefined },
+                "an after set whose build named no root-layout script": { ...cand, rootNotFoundScript: { kind: "problem", problem: "control" } },
+                "a build-derived root-layout script the after head does not load": { ...cand, rootNotFoundScript: { kind: "script", src: "/_next/static/chunks/loc1e-other.js" } },
+            };
+            for (const [name, set] of Object.entries(rootControls)) rawReported(name, checkExpected(before, b.body, set, a.body, move));
             const extra = ["an expected lang ro", "an extra entry field", "a preload removal on a 200 page", "a shell missing another href", "a shell missing two preloads",
-                ...Object.keys(shellControls), "a set whose 200 pages disagree", "a set without a live 200 page", "a shell checked without a reference"];
+                ...Object.keys(shellControls), "a set whose 200 pages disagree", "a set without a live 200 page", "a shell checked without a reference", ...Object.keys(rootControls)];
             console.log(`  (loc1e-category-controls) 3 positive controls exact (one: a consistently renamed stylesheet, F-CQ-3); ${Object.keys(refusals).length + extra.length} refusals reported (${[...Object.keys(refusals), ...extra].join("; ")}); ${Object.keys(liveControls).length} § 18 live-document controls reported by the raw rule (${Object.keys(liveControls).join("; ")})`);
         });
 
@@ -3658,7 +3670,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const reference = liveSiteIdReference(await loc1EnSet());
             assert.equal(reference.kind, "resources", `precondition: a live 200 reference (${reference.problem})`);
             const buildId = (await readFile(path.join(RENDERER_DIR, ".next", "BUILD_ID"), "utf8")).trim();
-            const clientModules = (await cm1Set()).clientModules;
+            const { clientModules, rootNotFoundScript } = await cm1Set();
             assert.deepEqual([...new Set(before.captures.map((c) => `${c.tenant} ${c.path}`))], LOC1E_404_REQUESTS.map((r) => `${r.tenant} ${r.path}`), "before-404/ holds exactly LOC1E_404_REQUESTS");
             const lines = [];
             for (const r of LOC1E_404_REQUESTS) {
@@ -3666,7 +3678,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 const matched = new Set();
                 for (let i = 0; i < 8; i++) {
                     const [a] = await captureRequests(request, server.port, [r]);
-                    const cand = { buildId, clientModules, captures: [a] };
+                    const cand = { buildId, clientModules, rootNotFoundScript, captures: [a] };
                     assert.equal(a.status, 404, `${r.tenant} ${r.path}`);
                     assert.ok(a.body.startsWith(ERROR_SHELL), `${r.tenant}: the error shell`);
                     const move = [{ ...LOC1_EN_MOVE, lang: r.lang }];
@@ -3695,10 +3707,67 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log(`  (loc1e-404-document) ${lines.join("; ")}`);
         });
 
+        // ── ROWS (np1-*) — NEXT-PATCH-1 (docs/slices/next-patch-1.md; operator ruling R-NP1-F1 = A, 2026-11-21; CM1-A3 in
+        // docs/slices/catalog-mode-1.md § 8.21). Turbopack's `<script id="_R_">` bootstrap names the framework chunks by
+        // content hash, WITHOUT the `/_next/` prefix the CM1-A1 asset mask matches. Such names can change with a framework
+        // update; from 16.4.3 to 16.4.6 all of them changed and the byte-identity rows failed. CM1-A3 masks those names inside that element only (`maskBody`); these rows prove that the
+        // mask is that narrow (np1-bootstrap-mask-controls) and check on the current build what the names gave by accident
+        // — that the listed chunks exist and load (np1-bootstrap-chunks).
+        test("(np1-bootstrap-mask-controls) CM1-A3 masks only the static/chunks tokens inside <script id=\"_R_\">: every token renamed there compares equal; one token more or fewer, another byte there, or a renamed token outside it is reported", async () => {
+            const set = await cm1Set();
+            const page = set.captures.find((c) => c.tenant === "content" && c.path === "/");
+            const [el, ...more] = page.body.match(/<script id="_R_">[^<]*<\/script>/g) ?? [];
+            assert.ok(el && more.length === 0, "precondition: the page has exactly one bootstrap element");
+            const tokens = bootstrapChunks(page.body);
+            assert.ok(tokens.length >= 2, `precondition: the bootstrap lists at least two chunks (${tokens.length})`);
+            const withEl = (next) => page.body.replace(el, next);
+            const masked = (body) => maskBody(body, set).masked;
+            const locale = (body) => checkExpected(set, page.body, set, body, []);
+            // Positive control: every token renamed — what a new framework build does — is equal under both comparators.
+            let k = 0;
+            const renamed = withEl(el.replace(/static\/chunks\/[A-Za-z0-9_-]+\.js/g, () => `static/chunks/np1-renamed-${k++}.js`));
+            assert.notEqual(renamed, page.body, "mutation precondition: the rename changed the body");
+            assert.equal(masked(renamed), masked(page.body), "positive control: renamed bootstrap chunks compare equal (CM1-A1/A3, cm1-identity)");
+            assert.deepEqual(locale(renamed), [], "positive control: renamed bootstrap chunks compare equal (locale-1 checkExpected)");
+            const first = JSON.stringify(tokens[0]);
+            const once = (from, to) => { assert.equal(el.split(from).length - 1, 1, `mutation precondition: ${from} once in the bootstrap`); return withEl(el.replace(from, to)); };
+            const outside = (token) => page.body.replace("</body>", `<script id="np1-outside">self.np1=${JSON.stringify(token)}</script></body>`);
+            const refusals = {
+                "(a) one bootstrap chunk more": [page.body, once(first, `${first},${first}`)],
+                "(a) one bootstrap chunk fewer": [page.body, once(`${first},`, "")],
+                "(b) a non-token byte inside the bootstrap (a key)": [page.body, once('"otherChunks"', '"otherChunkz"')],
+                "(b) a non-token byte inside the bootstrap (the runtime module ids)": [page.body, once('"runtimeModuleIds":[', '"runtimeModuleIds":[1,')],
+                "(c) a static/chunks token renamed OUTSIDE the bootstrap": [outside("static/chunks/np1-outside-a.js"), outside("static/chunks/np1-outside-b.js")],
+            };
+            for (const [name, [from, to]] of Object.entries(refusals)) {
+                assert.notEqual(from, to, `${name}: the mutation did not change the body`);
+                assert.notEqual(maskBody(from, set).masked, maskBody(to, set).masked, `${name} was not reported (CM1-A1/A3, cm1-identity)`);
+                assert.notDeepEqual(checkExpected(set, from, set, to, []), [], `${name} was not reported (locale-1 checkExpected)`);
+            }
+            console.log(`  (np1-bootstrap-mask-controls) content /: ${tokens.length} bootstrap chunks; 1 positive control equal under both comparators; ${Object.keys(refusals).length} refusals reported by both (${Object.keys(refusals).join("; ")})`);
+        });
+
+
         // Packet § 1 item 4: status, cache-control, content-type and vary of every serving fixture URL (the en-US subjects,
         // the RO copies, the LOC1E fixtures and the not-found probes) equal the d9999d2 answers in 1e/before-headers.json
         // (captured with the cm1-byte-identity/README.md worktree procedure; each URL was requested twice there and both
         // answers agreed). Runs last in this block: its requests come after every row that depends on cache state.
+        // NEXT-PATCH-1 (operator ruling R-NP1-F2 = A, 2026-11-21) — the named, version-explicit allowance of this row.
+        // next 16.4.6 compresses route-handler responses (PR #101280, `server/base-http/node.ts`) when Next's `compress`
+        // is on, and `next start` keeps Next's default (on); the compression adds the token `Accept-Encoding` to `Vary`.
+        // OBSERVED 2026-11-21 on next 16.4.6: 24 responses, the four [siteId] route handlers on six hosts (cm1-commerce,
+        // cm1-content, cm1-catalog, loc1-ro-commerce, loc1-ro-content, loc1-ro-catalog), status, cache-control and
+        // content-type unchanged. Allowed — on a request to one of these route handlers ONLY, and only when the installed
+        // next is 16.4.6 or later: `Vary` equal to the stored value, or the stored value + exactly ", Accept-Encoding".
+        // Every other field and every other `Vary` token is compared as before. The deployed Lambda is not measured here
+        // (OpenNext 4.1.9 sets `compress: false`): its header is the operator's staging check.
+        const ROUTE_HANDLER_VARY_16_4_6 = { since: [16, 4, 6], token: "Accept-Encoding", paths: ["/sitemap.xml", "/openai-feed", "/robots.txt", "/llms.txt"] };
+        /** `version` (x.y.z…) is `min` or later. */
+        const versionAtLeast = (version, min) => {
+            const v = String(version).split(/[.-]/).slice(0, 3).map(Number);
+            for (let i = 0; i < 3; i++) if (v[i] !== min[i]) return v[i] > min[i];
+            return true;
+        };
         test("(loc1e-cache-headers) every fixture URL and not-found probe answers the status, cache-control, content-type and vary of d9999d2", async () => {
             const doc = JSON.parse(await readFile(path.join(LOC1_DIR, "1e", "before-headers.json"), "utf8"));
             const want = [...Object.values(EN_US_REQUESTS).flat(), ...Object.values(LOC1_REQUESTS).flat(), ...LOC1E_PROBE_REQUESTS];
@@ -3707,15 +3776,36 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             // Each record is compared with the answer of the CURRENT address of the same request.
             assert.deepEqual(doc.requests.map((r) => `${r.host}${r.path}`), want.map((r) => `${r.host}${preCdl2Address(r.path)}`), "before-headers.json lists exactly the current request list (moved requests at their pre-cdl-2 address)");
             const fields = (r) => ({ status: r.status, cacheControl: r.cacheControl, contentType: r.contentType, vary: r.vary });
-            const mismatches = (expected, got) => expected.flatMap((e, i) => (JSON.stringify(fields(e)) === JSON.stringify(got[i]) ? [] : [`${e.host}${e.path}: ${JSON.stringify(fields(e))} → ${JSON.stringify(got[i])}`]));
+            // ROUTE_HANDLER_VARY_16_4_6 (above): the listed paths are route handlers of THIS build, so the allowance cannot
+            // reach a page; it applies only on next 16.4.6 or later.
+            const A = ROUTE_HANDLER_VARY_16_4_6;
+            const nextVersion = createRequire(path.join(RENDERER_DIR, "package.json"))("next/package.json").version;
+            const allowance = versionAtLeast(nextVersion, A.since);
+            assert.ok(!versionAtLeast("16.4.5", A.since) && versionAtLeast("16.4.6", A.since) && versionAtLeast("16.5.0", A.since) && versionAtLeast("17.0.0", A.since), "versionAtLeast");
+            const routes = Object.keys(JSON.parse(await readFile(path.join(RENDERER_DIR, ".next", "app-path-routes-manifest.json"), "utf8")));
+            for (const p of A.paths) assert.ok(routes.includes(`/[siteId]${p}/route`), `${p} is a route handler of the build`);
+            const allowedVary = (e) => (e.vary == null ? A.token : `${e.vary}, ${A.token}`);
+            const varyOk = (e, g) => g.vary === e.vary || (allowance && A.paths.includes(e.path) && g.vary === allowedVary(e));
+            const same = (e, g) => e.status === g.status && e.cacheControl === g.cacheControl && e.contentType === g.contentType && varyOk(e, g)
+                && JSON.stringify(Object.keys(g)) === JSON.stringify(Object.keys(fields(e)));
+            const mismatches = (expected, got) => expected.flatMap((e, i) => (same(e, got[i]) ? [] : [`${e.host}${e.path}: ${JSON.stringify(fields(e))} → ${JSON.stringify(got[i])}`]));
             const got = [];
             for (const r of want) got.push(cacheFields(await request({ port: server.port, path: r.path, host: r.host })));
             assert.deepEqual(mismatches(doc.requests, got), []);
             // Bound mutation: one changed field on one URL is reported.
             const mutated = doc.requests.map((r, i) => (i === 0 ? { ...r, cacheControl: "private, no-store" } : r));
             assert.equal(mismatches(mutated, got).length, 1, "a changed cache-control was not reported");
+            // Controls of the allowance (ruling R-NP1-F2): another added token, and the token on a page, are reported.
+            const rh = doc.requests.findIndex((r) => A.paths.includes(r.path) && r.vary != null);
+            const page = doc.requests.findIndex((r) => !A.paths.includes(r.path) && r.vary != null);
+            assert.ok(rh >= 0 && page >= 0, "control precondition: a route-handler record and a page record with a Vary");
+            const gotWith = (i, vary) => got.map((g, j) => (j === i ? { ...g, vary } : g));
+            assert.equal(mismatches(doc.requests, gotWith(rh, `${allowedVary(doc.requests[rh])}, Cookie`)).length, 1, "a token added after Accept-Encoding on a route handler was not reported");
+            assert.equal(mismatches(doc.requests, gotWith(rh, `${doc.requests[rh].vary}, Cookie`)).length, 1, "another added Vary token on a route handler was not reported");
+            assert.equal(mismatches(doc.requests, gotWith(page, allowedVary(doc.requests[page]))).length, 1, "Accept-Encoding added on a page (not a route handler) was not reported");
+            const allowed = doc.requests.filter((e, i) => got[i].vary !== e.vary);
             const byStatus = got.reduce((n, g) => ({ ...n, [g.status]: (n[g.status] ?? 0) + 1 }), {});
-            console.log(`  (loc1e-cache-headers) ${got.length} URLs equal to d9999d2 on status, cache-control, content-type, vary: ${JSON.stringify(byStatus)}`);
+            console.log(`  (loc1e-cache-headers) ${got.length} URLs equal to d9999d2 on status, cache-control, content-type, vary: ${JSON.stringify(byStatus)}; ROUTE_HANDLER_VARY_16_4_6 (next ${nextVersion}, ${allowance ? "on" : "off"}) used by ${allowed.length} responses on ${new Set(allowed.map((e) => e.host)).size} hosts (${[...new Set(allowed.map((e) => e.path))].join(", ")}); controls reported: a token after Accept-Encoding, another token, Accept-Encoding on a page`);
         });
 
         // ── ROW (cmrc-counties-diff) — RETIRED by locale-1d (docs/slices/locale-1d.md): it compared the commerce and content
@@ -3735,6 +3825,84 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // since cat-theme-1 it was loc1-diff-theme-1 (the 0865ac6 capture, the same comparison, nothing listed); since
         // cat-variant-gallery-1 it is loc1-diff-variant-gallery-1 (the 27fa7ca capture, the same comparison; the catalog
         // product pages list the CVG1-GALLERY change, the text rows its listed removals).
+
+        // ── ROW (np1-bootstrap-chunks) — NEXT-PATCH-1 ruling R-NP1-F1 rule 2. The LAST row of the `next` target on purpose:
+        // its population is EVERY response the suite's server sent in this run (harness.mjs `servedResponses`, the journal
+        // of the suite's only HTTP client), so no row's documents stay unchecked — review-1 found that an enumerated list
+        // of capture sets left the HC1, CC1, SL1*, BPF1 … rows out. Its own requests (static chunks) do not touch the ISR
+        // cache. The baseline rule ("no `_R_` where the baseline has one") applies where a stored baseline exists: a plain
+        // GET (no request header — how the stored sets were captured, `captureRequests`) of a URL of cdl-2/before or
+        // 1e/before-404.
+        test("(np1-bootstrap-chunks) every chunk the _R_ bootstrap of every document the suite served lists is in the build's static output and answers 200; a plain GET without the bootstrap where its stored baseline has one fails; a bad chunk is reported, also in a response of the HC1, CC1, SL1A and BPF1 rows", async () => {
+            const hasBootstrap = (body) => /<script id="_R_">/.test(body);
+            const cdl2 = await loc1BeforeSet();
+            const before404 = await readCaptures(path.join(LOC1_DIR, "1e", "before-404"));
+            const baseline = new Map();
+            for (const r of [...Object.values(EN_US_REQUESTS), ...Object.values(LOC1_REQUESTS), ...Object.values(CQ1_REQUESTS), ...Object.values(CT1_REQUESTS)].flat()) {
+                const b = cdl2.captures.find((x) => x.tenant === r.tenant && x.path === r.path);
+                assert.ok(b, `${r.tenant} ${r.path}: no cdl-2/before capture`);
+                baseline.set(`${r.host} ${r.path}`, hasBootstrap(b.body));
+            }
+            for (const r of LOC1E_404_REQUESTS) {
+                const variants = before404.captures.filter((x) => x.tenant === r.tenant && x.path === r.path);
+                assert.ok(variants.length > 0, `${r.tenant} ${r.path}: no before-404 variant`);
+                baseline.set(`${r.host} ${r.path}`, variants.some((v) => hasBootstrap(v.body)));
+            }
+            const plainGet = (r) => r.method === "GET" && r.requestHeaders.length === 0;
+            const toDocument = (r, i) => ({ where: `#${i} ${r.method} ${r.host}${r.path} → ${r.status}`, body: r.body, baselineHasBootstrap: plainGet(r) && baseline.get(`${r.host} ${r.path}`) === true, host: r.host });
+            const journal = () => servedResponses().filter((r) => r.port === server.port);
+            const staticDir = path.join(RENDERER_DIR, ".next", "static");
+            const statusOf = async (p) => (await request({ port: server.port, path: p, host: FIXTURE_HOST })).status;
+            // CONTROLS FIRST (review-2): every response they cause joins the journal BEFORE the final check below reads it.
+            const docsNow = journal().map(toDocument);
+            const sample = docsNow.find((d) => d.baselineHasBootstrap && hasBootstrap(d.body));
+            assert.ok(sample, "control precondition: a baseline-anchored document with a bootstrap");
+            const sampleChunks = bootstrapChunks(sample.body);
+            assert.ok(sampleChunks.length > 1, "control precondition: the sample lists more than one chunk");
+            // (d) a copy of the static output without the sample's first chunk; the build the rows use is untouched.
+            const copy = await mkdtemp(path.join(os.tmpdir(), "np1-bootstrap-static-"));
+            try {
+                await mkdir(path.join(copy, "chunks"));
+                for (const t of new Set(sampleChunks.slice(1))) await copyFile(path.join(staticDir, t.slice("static/".length)), path.join(copy, t.slice("static/".length)));
+                assert.deepEqual((await bootstrapChunkProblems([sample], copy, statusOf)).problems, [`${sample.where}: ${sampleChunks[0]} is not in the build's static output`], "(d) a chunk missing from the static output was not reported (exactly)");
+            } finally {
+                await rm(copy, { recursive: true, force: true });
+            }
+            // A chunk the build does not have, in a served document of each family the enumerated population of cycle 2
+            // missed: reported by both halves (a missing `/_next/static` file answers 307 under `next start`, as the
+            // d9999d2 probe `/_next/static/loc1e-missing.js` in 1e/before-headers.json records — any answer but 200 counts).
+            const foreign = (d) => ({ ...d, body: d.body.replace(/(<script id="_R_">[^<]*?)static\/chunks\/[A-Za-z0-9_-]+\.js/, "$1static/chunks/np1-no-such-chunk.js") });
+            const families = { HC1, CC1, SL1A, BPF1 };
+            for (const [family, tenants] of Object.entries(families)) {
+                const hosts = new Set(Object.values(tenants).map((t) => t.host));
+                const d = docsNow.find((x) => hosts.has(x.host) && hasBootstrap(x.body));
+                assert.ok(d, `${family}: the suite served no document with a bootstrap from its hosts — it is not in the population`);
+                const p = (await bootstrapChunkProblems([foreign(d)], staticDir, statusOf)).problems;
+                assert.ok(p.some((x) => x.endsWith("is not in the build's static output")) && p.some((x) => /answers (?!200$)\d+$/.test(x)), `${family}: a bad chunk in ${d.where} was not reported by both halves: ${JSON.stringify(p)}`);
+            }
+            const stripped = { ...sample, body: sample.body.replace(/<script id="_R_">[^<]*<\/script>/, "") };
+            assert.deepEqual((await bootstrapChunkProblems([stripped], staticDir, statusOf)).problems, [`${sample.where}: no <script id="_R_"> where the baseline has one`], "a document without the bootstrap where its baseline has one was not reported");
+            // A document that joins the journal AFTER the first read (review-2's reproduction): a fake journal of one good
+            // document whose first status probe appends a document with a chunk the build does not have — reported.
+            const fake = [{ ...sample, where: "fake #0" }];
+            const late = { where: "fake late document", body: sample.body.replace(/(<script id="_R_">[^<]*?)static\/chunks\/[A-Za-z0-9_-]+\.js/, "$1static/chunks/np1-late-document.js"), baselineHasBootstrap: false };
+            const fakeStatus = async (p) => { if (fake.length === 1) fake.push(late); return p.endsWith("/np1-late-document.js") ? 404 : 200; };
+            const drained = await bootstrapChunkProblemsOfJournal(() => fake, (d) => d, staticDir, fakeStatus);
+            assert.ok(drained.problems.includes("fake late document: static/chunks/np1-late-document.js is not in the build's static output") && drained.passes === 2, `a document added after the first read was not checked: ${JSON.stringify(drained)}`);
+            const endless = [sample];
+            const growing = await bootstrapChunkProblemsOfJournal(() => endless, (d) => d, staticDir, async () => { endless.push(sample); return 200; }, 3);
+            assert.ok(growing.problems.some((x) => x.startsWith("the journal still grows after 3 passes")), `a journal that keeps growing did not fail closed: ${JSON.stringify(growing.problems)}`);
+            // THE CHECK: every response of the run — the rows' and the controls' above — until the journal stops growing
+            // (its own status probes add entries).
+            const result = await bootstrapChunkProblemsOfJournal(journal, toDocument, staticDir, statusOf);
+            assert.deepEqual(result.problems, []);
+            assert.ok(result.withBootstrap > 0 && result.chunks.length > 0, "precondition: the served documents list bootstrap chunks");
+            const all = journal().slice(0, result.entries);
+            const html = all.filter((r) => r.contentType.startsWith("text/html")).length;
+            const docs = all.map(toDocument);
+            const hosts = new Set(docs.filter((d) => hasBootstrap(d.body)).map((d) => d.host)).size;
+            console.log(`  (np1-bootstrap-chunks) ${result.entries} HTTP responses served by the suite's server, controls included, checked in ${result.passes} passes until the journal stopped growing (${html} text/html); ${result.withBootstrap} documents with a bootstrap on ${hosts} hosts; ${docs.filter((d) => d.baselineHasBootstrap).length} plain GETs anchored to a stored baseline with the element; ${result.chunks.length} distinct chunks, each in .next/static and 200 (${result.chunks.join(", ")}); controls reported: a chunk missing from a copy of the static output, a bad chunk in a served HC1, CC1, SL1A and BPF1 document (file + non-200), a missing bootstrap, a document added after the first read, a journal that keeps growing`);
+        });
     }
 
     // ── ROW (journals) — bundle target only ─────────────────────────────────────────────

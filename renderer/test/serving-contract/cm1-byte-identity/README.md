@@ -39,10 +39,19 @@ Applied to both sides by `maskBody`, each counted and printed **per compared URL
    resolved to the name and that row is removed with its client reference — only when nothing else references it
    (`clientRefExportRows`; cycle 3);
 4. the footer year `© <four digits>` (from the clock);
-plus the ratified masks: `/_next/static/…` asset paths and the build id.
+plus the ratified masks: `/_next/static/…` asset paths and the build id; and, since `next-patch-1` (amendment CM1-A3,
+`docs/slices/catalog-mode-1.md` § 8.21, operator ruling R-NP1-F1 = A), inside the element `<script id="_R_">` ONLY —
+Turbopack's bootstrap, which names the framework chunks by content hash without the `/_next/` prefix — each
+`static/chunks/<name>.js` token becomes one placeholder (`bootstrapChunks`). The number of tokens and every other byte
+of the element stay compared; a token outside the element is not touched (row `np1-bootstrap-mask-controls`). That the
+listed chunks exist in the build and answer 200 is row `np1-bootstrap-chunks`, on the current build, for every document
+the suite serves.
 
 **Not compared** (stated, CM1-A1): the order of rows inside the hydration payload, where the stream cut it into
-chunks, and the four digits of the footer year. Why: two builds of ONE tree differed only there (EXECUTED, 5 of 46
+chunks, and the four digits of the footer year; (CM1-A3) the framework chunk names inside `<script id="_R_">` — content
+hashes, which can change with a framework update (next 16.4.3 → 16.4.6 renamed all of them and moved all 39 HTML URLs of
+this set on that element alone, EXECUTED;
+the CM1-A3 rule is a ruled amendment that removes that pin, and the resource check above replaces what it gave). Why: two builds of ONE tree differed only there (EXECUTED, 5 of 46
 bodies, build-0); with the canonicalisations, three independent builds of the current tree differ on 0 of 51 URLs and
 each matches the baseline on all 32 commerce/content URLs (cycle 3).
 
@@ -69,7 +78,7 @@ row pass.
 | 2026-11-01 | `locale-1e` | the `locale-1e` candidate tree, with `node test/serving-contract/cm1-byte-identity.mjs capture test/serving-contract/cm1-byte-identity/baseline` (run from `renderer/`), after rows `loc1-diff-1e` and `loc1e-category-controls` passed | The slice only (fixtures: two new tenants with a `locale`, `LOC1E`, which no CM1 request reaches): `../locale-1/1e/expected-diff.json` — against the immutable start-commit capture `../locale-1/1e/before/` (from `d9999d2`; EXECUTED: CM1-A1-equal to the previous `baseline/` on all 32 commerce/content URLs), every commerce/content page with a payload differs ONLY by the category-4 root-layout move (`docs/slices/locale-1e.md` § 4: `<html>`/`<body>` moved from the deleted `app/layout.tsx` into `app/[siteId]/layout.tsx`, the root 404 boundary `app/not-found.tsx` writes its own document; the content `/cart` and `/checkout` 307 shells also lose one stylesheet preload). The first serving run of the candidate failed exactly `cm1-identity-commerce` and `cm1-identity-content` (93/95). EXECUTED after the re-capture: `checkExpected` with the listed entries reports nothing on all 32 URLs; `client-modules.json` unchanged; the moved CM1-A1 lines are listed by kind in `docs/slices/locale-1e.md` § 7. |
 | 2026-11-15 | `cdl-2` | the `cdl-2` candidate tree, with `node test/serving-contract/cm1-byte-identity.mjs capture test/serving-contract/cm1-byte-identity/baseline` (run from `renderer/`), after rows `loc1-diff-cdl-2` and `cdl2-*` passed | The slice only: `../locale-1/cdl-2/expected-diff.json` — against the immutable start-commit capture `../locale-1/cdl-2/before/` (from `7bd3d51`; EXECUTED: CM1-A1-equal to the previous `baseline/` on all 32 commerce/content URLs), the commerce and content URLs differ ONLY on commerce `/checkout`, in the `CheckoutPageView` prop `confirmPrefix` `/checkout/confirmare` → `/checkout/confirmation` (row CDL2-CONFIRMATION; design `docs/slices/catalog-data-labels-1.md` § 14 item 2). The first serving run of the candidate failed exactly `cm1-identity-commerce`, on exactly `/checkout` (108/109). EXECUTED after the re-capture: the new `baseline/` differs from `before/` under CM1-A1 on commerce `/checkout` only, and `checkExpected` with the listed entry reports nothing on all 32 URLs; then 109/109. `client-modules.json` gains one entry, `QuoteRequest.tsx` (added by `cat-quote-1`, after the previous re-capture; `before/` holds the same 34 modules). The catalog captures (not identity subjects) now hold `/my-list` (row CDL2-INTEREST-PATH). |
 
-The `cm1-identity-*` rows keep the CM1-A1 canonicalisations exactly. The locale rows (`loc1-diff-*`) add ONE ruled
+The `cm1-identity-*` rows keep the CM1-A1 canonicalisations exactly (with the CM1-A3 bootstrap-chunk mask). The locale rows (`loc1-diff-*`) add ONE ruled
 comparison on top of CM1-A1 for the payload: since `locale-1b` the resolved-tree comparison (`../locale-1/proof.mjs`
 `resolveFlight`; operator ruling LOCALE1B-ROW-CUT = A, 2026-11-01), which replaced the `locale-1a` row renumbering
 (LOCALE1A-ROW-IDS = A, 2026-10-31) — every outlined row is resolved into the place that references it, so row labels and

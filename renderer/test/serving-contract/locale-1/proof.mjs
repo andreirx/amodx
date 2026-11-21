@@ -506,7 +506,10 @@ function stripProp(node, identity, prop, value, hits) {
 //    build (`liveSiteIdReference`: all such pages pass the live-head rule and agree; fail closed — no reference, a failing
 //    reference or a disagreement is a problem). (Before § 18 they had to equal the before names;
 //    Next names client files by a hash of their content, so that pinned every later client-bundle byte.) Unchanged: the
-//    before `G[1]` equals the before root LINK; the removed SCRIPT's `src` is in the document head on both sides; the
+//    before `G[1]` equals the before root LINK; the removed SCRIPT's `src` is in the BEFORE document head, and the after
+//    head loads the CURRENT build's root-layout script (NEXT-PATCH-1 rule 3: the root 404 boundary's JS entry from the
+//    build's manifests, `afterSet.rootNotFoundScript`; until next 16.4.6 the two names were equal, so the stored before
+//    name was checked on both sides and pinned the framework chunk's content hash; fail closed); the
 //    head's `/_next/static` stylesheets are as many before as after, the before ones each equal the before LINK's href
 //    and the after ones each equal the live LINK's href (CAT-QUOTE-1, F-CQ-3: no before/after name equality);
 //  - the error-shell preload (ruling LOC1E-404-SHELL-PRELOAD = A): on a page whose RAW response starts with the
@@ -655,8 +658,15 @@ function moveRootLayoutRaw(beforeSet, beforeBody, afterSet, afterBody, beforeHtm
         if (why) return fail(why);
     }
     if (canon(after.notFoundRes) !== canon([res[0]])) return fail("the root 404 boundary does not link the live [siteId] stylesheet");
+    // The removed root-layout script (NEXT-PATCH-1 ruling R-NP1-F1 rule 3): BEFORE, the before payload's root script
+    // is in the before head (the stored side checked against itself); AFTER, the script the after head must load is
+    // named by the CURRENT build — `afterSet.rootNotFoundScript` (cm1-byte-identity.mjs `readRootNotFoundScript`: the
+    // root 404 boundary's JS entry in the build's manifests), never the stored name and never a position. Fail closed.
     const rootScript = unraw(before.script?.[3]?.src);
-    if (!headScripts(htmlB).includes(rootScript) || !headScripts(htmlA).includes(rootScript)) return fail(`the removed root-layout script ${rootScript} is not in the document head on both sides`);
+    if (!headScripts(htmlB).includes(rootScript)) return fail(`the removed root-layout script ${rootScript} is not in the before document head`);
+    const current = afterSet.rootNotFoundScript;
+    if (current?.kind !== "script") return fail(`the current build names no root-layout script (${current?.problem ?? "no manifest-derived name on the after set"})`);
+    if (!headScripts(htmlA).includes(current.src)) return fail(`the current build's root-layout script ${current.src} is not in the after document head`);
     // CAT-QUOTE-1 (F-CQ-3, locale-1e.md § 18 appended 2026-11-02): no before-vs-after NAME equality — Next names the
     // stylesheet by a hash of its content, so any new class would fail every page. On EACH side every head stylesheet
     // is that side's payload stylesheet, and both sides have the same number of them.

@@ -519,6 +519,18 @@ export function probeEnvLoading(stubUrl, { dir = RENDERER_DIR, viaGrandchild = f
  * socket is destroyed (row B-CASE: open-next 3.1.3 `proxyRequest` never answers when its
  * outbound call fails — it attaches no `error` listener).
  */
+/**
+ * Every response `request` received in this process, in order — the population of row `np1-bootstrap-chunks`
+ * (NEXT-PATCH-1 ruling R-NP1-F1 rule 2: "every document the suite serves"). It is the suite's only HTTP client to the
+ * renderer (2026-11-21: `http.request` occurs only here in serving-contract/; every row of contract.test.mjs, its
+ * `get` helpers and the capture helpers call this function); a new client elsewhere would bypass the journal.
+ * Entry: `{ port, host, path, method, requestHeaders (names),
+ * status, contentType, body }`.
+ */
+const SERVED = [];
+/** A copy of the journal above (entries are shared, not cloned). */
+export const servedResponses = () => [...SERVED];
+
 export function request({ port, path: reqPath, host, headers = {}, method = "GET", body, timeoutMs }) {
     return new Promise((resolve, reject) => {
         const sent = body === undefined ? headers : { ...headers, "content-length": Buffer.byteLength(body) };
@@ -527,15 +539,17 @@ export function request({ port, path: reqPath, host, headers = {}, method = "GET
             (res) => {
                 const chunks = [];
                 res.on("data", (c) => chunks.push(c));
-                res.on("end", () =>
+                res.on("end", () => {
+                    const text = Buffer.concat(chunks).toString("utf8");
+                    SERVED.push({ port, host, path: reqPath, method, requestHeaders: Object.keys(headers), status: res.statusCode, contentType: res.headers["content-type"] ?? "", body: text });
                     resolve({
                         status: res.statusCode,
                         headers: res.headers,
                         rawHeaders: res.rawHeaders,
-                        body: Buffer.concat(chunks).toString("utf8"),
+                        body: text,
                         header: (n) => res.headers[n.toLowerCase()],
-                    }),
-                );
+                    });
+                });
             },
         );
         req.on("error", reject);

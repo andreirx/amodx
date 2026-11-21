@@ -51,6 +51,24 @@ not in terms of the Next.js documentation.
 > `e1`, EXECUTED 2026-10-15; open-next 3.1.3 sent none). The contract is "a thrown render is
 > never stored" — both forms satisfy it. The 3.1.3 → 4.1.9 row diff is in
 > `docs/slices/opennext-1b.md` § Row table.
+>
+> **Re-measured on `next@16.4.6` (2026-11-21, slice `next-patch-1`; operator rulings R-NP1-F1 = A and
+> R-NP1-F2 = A).** No status and no `Cache-Control` changed. Three rules of the executable form changed with it:
+> (1) **`Vary` on route handlers, `next start` only.** Next 16.4.6 compresses route-handler responses when Next's
+> `compress` is on (PR #101280), and adds `Accept-Encoding` to `Vary`. Row `loc1e-cache-headers` allows exactly
+> that one token, on the four `[siteId]` route handlers only and only on next ≥ 16.4.6 (named allowance
+> `ROUTE_HANDLER_VARY_16_4_6`; another token, or the token on a page, is reported). OpenNext 4.1.9 sets
+> `compress: false`, so the deployed Lambda's header is checked on staging, not by the suite.
+> (2) **Framework chunk names (amendment CM1-A3, `docs/slices/catalog-mode-1.md` § 8.21).** Turbopack's
+> `<script id="_R_">` bootstrap names the framework chunks by content hash, without the `/_next/` prefix that the
+> asset mask matches. Content-hashed names can change with a framework update (measured: all of them changed from
+> 16.4.3 to 16.4.6), so the byte-identity rows mask each `static/chunks/<name>.js`
+> token inside that element only (the token count and every other byte stay compared). Row `np1-bootstrap-chunks`
+> checks on the current build, for every document the suite serves, what the names gave by accident: every listed
+> chunk exists in `.next/static` and
+> answers 200, and a document that lost the element fails.
+> (3) **The root-layout script of the locale-1e move** that the after document head must load is named by the current
+> build (the root 404 boundary's JS entry in the client-reference manifests), never by a stored name; fail closed.
 
 > **A route serves cacheable HTML if and only if BOTH hold:**
 > 1. it exports `generateStaticParams()` (returning `[]` is enough — it opts the route into

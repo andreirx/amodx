@@ -9,8 +9,10 @@
 //
 // WHAT IT DOES NOT COMPARE (CM1-A1, stated so nobody mistakes the gate for the original wording): the ORDER of the
 // rows inside the RSC flight payload (compared as a sorted set), where the stream cut that payload into chunks, the
-// four digits of the footer year, and the build-derived bytes the ratified masks already covered (asset paths, build
-// id, client-module ids and chunk lists). Everything else is compared: the HTML outside the payload unsorted byte
+// four digits of the footer year, the build-derived bytes the ratified masks already covered (asset paths, build
+// id, client-module ids and chunk lists), and — CM1-A3, § 8.21 — the framework chunk NAMES inside Turbopack's
+// `<script id="_R_">` bootstrap (their count is compared; their existence is row `np1-bootstrap-chunks`).
+// Everything else is compared: the HTML outside the payload unsorted byte
 // for byte, every flight row's bytes, and which client component each element mounts (module path + export).
 //
 // Users: contract.test.mjs (rows `cm1-*`) and this file's CLI (`node cm1-byte-identity.mjs capture <dir>`), which
@@ -79,6 +81,21 @@ export const CM1_REQUESTS = {
  */
 export async function readClientModules(rendererDir) {
     const map = {};
+    for (const manifest of await clientReferenceManifests(rendererDir)) {
+        for (const [modulePath, entry] of Object.entries(manifest.clientModules ?? {})) {
+            const id = String(entry.id);
+            if (map[id] !== undefined && map[id] !== modulePath) {
+                throw new Error(`client module id ${id} names two modules: ${map[id]} and ${modulePath}`);
+            }
+            map[id] = modulePath;
+        }
+    }
+    return map;
+}
+
+/** Every manifest object of every `*_client-reference-manifest.js` under `<rendererDir>/.next/server`. */
+async function clientReferenceManifests(rendererDir) {
+    const out = [];
     async function walk(dir) {
         for (const e of await readdir(dir, { withFileTypes: true })) {
             const full = path.join(dir, e.name);
@@ -86,20 +103,34 @@ export async function readClientModules(rendererDir) {
             else if (e.name.endsWith("_client-reference-manifest.js")) {
                 const sandbox = {};
                 vm.runInNewContext(await readFile(full, "utf8"), sandbox);
-                for (const manifest of Object.values(sandbox.__RSC_MANIFEST ?? {})) {
-                    for (const [modulePath, entry] of Object.entries(manifest.clientModules ?? {})) {
-                        const id = String(entry.id);
-                        if (map[id] !== undefined && map[id] !== modulePath) {
-                            throw new Error(`client module id ${id} names two modules: ${map[id]} and ${modulePath}`);
-                        }
-                        map[id] = modulePath;
-                    }
-                }
+                out.push(...Object.values(sandbox.__RSC_MANIFEST ?? {}));
             }
         }
     }
     await walk(path.join(rendererDir, ".next", "server"));
-    return map;
+    return out;
+}
+
+/** The client entry of the root 404 boundary `app/not-found.tsx`, as the manifests name it. */
+const ROOT_NOT_FOUND_ENTRY = "[project]/renderer/src/app/not-found";
+
+/**
+ * NEXT-PATCH-1 (ruling R-NP1-F1 rule 3; catalog-mode-1.md § 8.21 CM1-A3; next-patch-1.md § Build record): the
+ * script that the d9999d2 root layout loaded and that the
+ * after document head still loads, named by THIS build — the one JS entry file of the root 404 boundary
+ * (`entryJSFiles["[project]/renderer/src/app/not-found"]`) in the build's client-reference manifests. The chunk holds
+ * Next's own client code, so its content-hashed name can change with a framework update (it did from 16.4.3 to 16.4.6).
+ * @returns `{ kind: "script", src: "/_next/static/chunks/<name>.js" }`, or `{ kind: "problem", problem }` (fail closed)
+ *          when no manifest names the entry, the manifests disagree, or the entry is not exactly one file.
+ */
+export async function readRootNotFoundScript(rendererDir) {
+    const lists = (await clientReferenceManifests(rendererDir)).map((m) => m.entryJSFiles?.[ROOT_NOT_FOUND_ENTRY]).filter((l) => l !== undefined);
+    if (lists.length === 0) return { kind: "problem", problem: `no client-reference manifest of the build names ${ROOT_NOT_FOUND_ENTRY}` };
+    if (lists.some((l) => JSON.stringify(l) !== JSON.stringify(lists[0]))) return { kind: "problem", problem: `the manifests disagree on the JS entry of ${ROOT_NOT_FOUND_ENTRY}` };
+    if (!Array.isArray(lists[0]) || lists[0].length !== 1 || !/^static\/chunks\/[^/]+\.js$/.test(lists[0][0])) {
+        return { kind: "problem", problem: `the JS entry of ${ROOT_NOT_FOUND_ENTRY} is not exactly one static/chunks file: ${JSON.stringify(lists[0])}` };
+    }
+    return { kind: "script", src: `/_next/${lists[0][0]}` };
 }
 
 /**
@@ -144,6 +175,77 @@ export async function readCaptures(dir) {
 
 const FLIGHT_CHUNK = /<script>self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)<\/script>/g;
 
+/** CM1-A3: Turbopack's bootstrap element and, inside it only, one framework chunk token (rule 1 of R-NP1-F1). */
+const BOOTSTRAP_SCRIPT = /<script id="_R_">([^<]*)<\/script>/g;
+const BOOTSTRAP_CHUNK = /static\/chunks\/[A-Za-z0-9_-]+\.js/g;
+
+/** The `static/chunks/<name>.js` tokens of every `<script id="_R_">` element of a body, in order (none → `[]`). */
+export function bootstrapChunks(body) {
+    return [...body.matchAll(BOOTSTRAP_SCRIPT)].flatMap((m) => m[1].match(BOOTSTRAP_CHUNK) ?? []);
+}
+
+/**
+ * Row `np1-bootstrap-chunks` (NEXT-PATCH-1 ruling R-NP1-F1 rule 2) — what the CM1-A3 mask no longer compares, checked
+ * on the CURRENT build: every chunk a document's `_R_` bootstrap lists exists in the build's static output AND answers
+ * 200 at `/_next/<token>`. Fail closed: a document without an `_R_` element where its baseline has one is a problem.
+ * @param documents `{ where, body, baselineHasBootstrap }[]`
+ * @param staticDir the build's `.next/static` (or a copy of it — a control)
+ * @param statusOf  `async (urlPath) => HTTP status` of the server under test
+ * @returns {Promise<{ problems: string[], documents: number, withBootstrap: number, chunks: string[] }>}
+ */
+export async function bootstrapChunkProblems(documents, staticDir, statusOf) {
+    const problems = [], seen = new Map();
+    let withBootstrap = 0;
+    for (const d of documents) {
+        const has = new RegExp(BOOTSTRAP_SCRIPT.source).test(d.body);
+        if (!has) {
+            if (d.baselineHasBootstrap) problems.push(`${d.where}: no <script id="_R_"> where the baseline has one`);
+            continue;
+        }
+        withBootstrap += 1;
+        for (const token of bootstrapChunks(d.body)) {
+            if (!seen.has(token)) {
+                const file = path.join(staticDir, token.slice("static/".length));
+                const exists = await readFile(file).then(() => true, () => false);
+                seen.set(token, { exists, status: await statusOf(`/_next/${token}`) });
+            }
+            const r = seen.get(token);
+            if (!r.exists) problems.push(`${d.where}: ${token} is not in the build's static output`);
+            if (r.status !== 200) problems.push(`${d.where}: /_next/${token} answers ${r.status}`);
+        }
+    }
+    return { problems, documents: documents.length, withBootstrap, chunks: [...seen.keys()] };
+}
+
+/**
+ * `bootstrapChunkProblems` over a GROWING journal (NEXT-PATCH-1 review-2): checks every entry `read()` returns, then
+ * every entry added since — the check's own status probes add entries (a missing chunk answers a 307 HTML document) —
+ * until a pass finds no new entry. Fails closed when the journal still grows after `maxPasses` passes.
+ * @param read       `() => entries`, the journal in order (entries are only appended)
+ * @param toDocument `(entry, index) => { where, body, baselineHasBootstrap }`
+ * @returns {Promise<{ problems: string[], entries: number, passes: number, withBootstrap: number, chunks: string[] }>}
+ */
+export async function bootstrapChunkProblemsOfJournal(read, toDocument, staticDir, statusOf, maxPasses = 10) {
+    const problems = [], chunks = new Set();
+    let checked = 0, passes = 0, withBootstrap = 0;
+    for (;;) {
+        const entries = read();
+        if (entries.length === checked) break;
+        if (passes === maxPasses) {
+            problems.push(`the journal still grows after ${maxPasses} passes (${entries.length - checked} entries unchecked)`);
+            break;
+        }
+        const batch = entries.slice(checked).map((e, i) => toDocument(e, checked + i));
+        checked = entries.length;
+        passes += 1;
+        const r = await bootstrapChunkProblems(batch, staticDir, statusOf);
+        problems.push(...r.problems);
+        withBootstrap += r.withBootstrap;
+        for (const c of r.chunks) chunks.add(c);
+    }
+    return { problems, entries: checked, passes, withBootstrap, chunks: [...chunks] };
+}
+
 /** Splits a page into its HTML without the flight chunks and the decoded, joined flight payload text. */
 export function splitFlight(body) {
     const chunks = [];
@@ -174,14 +276,24 @@ export function splitFlight(body) {
  *                            content `/product/plain-rug`, `21:` in the baseline vs `22:` in the candidate.)
  *  4. footer year            `© <four digits>` from the clock (`app/[siteId]/layout.tsx`), HTML and decoded row.
  *                            Count: `footerYear`.
- * Plus the two ratified masks: `/_next/static/…` asset paths (`assetPath`) and the build id (`buildId`).
- * Nothing else is masked.
+ * Plus the two ratified masks: `/_next/static/…` asset paths (`assetPath`) and the build id (`buildId`), and the
+ * CM1-A3 bootstrap-chunk mask (spec § 8.21, NEXT-PATCH-1 ruling R-NP1-F1 rule 1): inside the element
+ * `<script id="_R_">…</script>` ONLY — Turbopack's bootstrap, which names the framework chunks by content hash and
+ * WITHOUT the `/_next/` prefix the asset mask matches — each `static/chunks/<name>.js` token becomes one fixed
+ * placeholder. Every other byte of that element, and the NUMBER of tokens, stays compared; a token outside the element
+ * is not touched. Count: `bootstrapChunks`. That the named chunks exist and load is row `np1-bootstrap-chunks`
+ * (`bootstrapChunkProblems`), not this comparison. Nothing else is masked.
  *
  * @param side `{ buildId, clientModules }` of the capture set the body belongs to.
  */
 export function maskBody(body, { buildId, clientModules }) {
-    const counts = { flightChunks: 0, clientRefRows: 0, clientRefUses: 0, clientRefExportRows: 0, assetPath: 0, buildId: 0, footerYear: 0 };
-    const { html, chunks, flight } = splitFlight(body);
+    const counts = { flightChunks: 0, clientRefRows: 0, clientRefUses: 0, clientRefExportRows: 0, assetPath: 0, buildId: 0, footerYear: 0, bootstrapChunks: 0 };
+    const split = splitFlight(body);
+    const { chunks, flight } = split;
+    const html = split.html.replace(BOOTSTRAP_SCRIPT, (_m, inner) => `<script id="_R_">${inner.replace(BOOTSTRAP_CHUNK, () => {
+        counts.bootstrapChunks += 1;
+        return "static/chunks/<bootstrap-chunk>";
+    })}</script>`);
     counts.flightChunks = chunks;
     const allRows = flight.split("\n");
     const rowById = new Map();

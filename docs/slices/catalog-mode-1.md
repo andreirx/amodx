@@ -2317,3 +2317,36 @@ now on passes them explicitly; follow-up `BUILD-ENV-1` makes the stage's values 
 **Tooling.** The canonicaliser and capture/compare scripts are operator tooling this day (local copies under
 `.agent-manager/slices/CAT-MODE-1/layer2/`); follow-up `LAYER2-CANON-1` brings them into
 `renderer/test/serving-contract/` under review, with the same-build proof as its gate.
+
+### 8.21 Amendment CM1-A3 — framework chunk names in the Turbopack bootstrap (operator, 2026-11-21, ruling R-NP1-F1 = A)
+
+Slice: `next-patch-1` (`docs/slices/next-patch-1.md` § Build record). Under CM1-A1 / CM1-A2 above.
+
+**What was wrong.** Every HTML page carries Turbopack's bootstrap element
+`<script id="_R_">…{"otherChunks":["static/chunks/<hash>.js",…]}</script>`. The names are content hashes of Next's own
+client code, written WITHOUT the `/_next/` prefix that the CM1-A1 asset mask matches. All 1247 HTML captures stored
+in the suite carry the same three names (EXECUTED 2026-11-21), so the gate pinned them by accident. Content-hashed names can change with a framework update; next 16.4.3 → 16.4.6 renamed all of them:
+39 of the 51 Layer 1 URLs differed, each ONLY by these tokens inside that element (EXECUTED, the unchanged comparator
+of CM1-A1; the 12 others are route handlers without the element).
+
+**Ruling (operator, 2026-11-21, option A of three: B = re-capture every stored capture; C = do not ship the patch).**
+1. **Mask.** Inside the element `<script id="_R_">` ONLY, each `static/chunks/<name>.js` token is replaced by one fixed
+   placeholder, on both sides of every comparison that uses the CM1-A1 form (`maskBody`; count `bootstrapChunks`).
+   Nothing outside that element is masked by this rule; nothing else inside it is masked. The NUMBER of tokens stays
+   compared.
+2. **Resource identity replaces the pin.** Row `np1-bootstrap-chunks` (current build): for every document the suite
+   serves — every response of the run, read from the journal of the suite's only HTTP client (`harness.mjs`
+   `servedResponses`), the row running last and reading the journal after its controls and again until it stops
+   growing — every chunk its bootstrap lists exists in the build's static output and
+   answers 200 at `/_next/static/chunks/<name>.js`; a plain GET without the element where its stored baseline has one
+   fails (fail closed).
+3. **Bound controls** (rows `np1-bootstrap-mask-controls`, `np1-bootstrap-chunks`): every token renamed compares
+   equal; one token more or fewer, a non-token byte inside the element, a renamed token outside it, and a chunk removed
+   from a copy of the static output are each reported.
+
+**What this weakens, stated.** The framework chunk NAMES of the bootstrap are no longer compared byte for byte; their
+count, their existence in the build and their 200 answer are. The stored captures were not re-captured.
+
+**Layer 2.** CM1-A2's canonicaliser (operator tooling, `LAYER2-CANON-1`) masks only `/_next/static/…`. It needs the
+same rule 1 before a Layer 2 comparison across a Next.js version; without it the staging comparison 16.4.3 → 16.4.6
+shows the same 39 differences (INFERRED from its code, not run).

@@ -39,6 +39,8 @@ Items tracked here are known issues that don't block production but should be ad
   `--omit=dev` the root job always had. The workflow had been red since 2026-07-27 on accepted or
   dev-only findings, which buries new real ones.
 
+**2026-11-21 (`next-patch-1`, built, not on staging):** `next ~16.4.3 → ~16.4.6` (lockfile: `next`, `@next/env`, `@next/swc-*` only; `@opennextjs/aws` 4.1.9 + patch unchanged) for GHSA-mfr8-8qww-v76h and the six other 16.4.5 advisories; the agent build guard no longer stops. The 10 `test:serving` rows of cycle 1 pass since cycle 2 (126/126: CM1-A3 bootstrap-chunk mask with the resource row `np1-bootstrap-chunks`, the build-named root-layout script, the route-handler `Vary` allowance) — `docs/slices/next-patch-1.md` § Build record.
+
 **2026-10-26 re-triage — weekly audit red on advisories published 2026-10-22.** No code change
 caused it (the same commit `cae563e` passed on 2026-10-19). Human ruling 2026-10-26 (option 1 of the
 operator's report): fix everything at the cause, accept nothing new.

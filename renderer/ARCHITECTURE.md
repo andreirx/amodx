@@ -604,7 +604,12 @@ Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/local
   (`resolveFlight`, LOCALE1B-ROW-CUT = A; it replaced the 1a row renumbering, LOCALE1A-ROW-IDS = A): every outlined row
   (plain `$<id>`, or the encoder's element outline `$L<id>` to an element tuple) is resolved into its place on both sides, so
   row labels, their render-to-render order (F-LOCALE-ROW-IDS) and the size-based row cuts are ignored; every other typed
-  reference stays a typed leaf; an unknown form fails closed; no URL is excluded.
+  reference stays a typed leaf; an unknown form fails closed; no URL is excluded. Since `next-patch-1` (CM1-A3,
+  `docs/slices/catalog-mode-1.md` § 8.21) the framework chunk names inside Turbopack's `<script id="_R_">` bootstrap are
+  masked (that element only; their count stays compared), and rows `np1-bootstrap-mask-controls` / `np1-bootstrap-chunks`
+  prove the mask is that narrow and that every listed chunk exists in `.next/static` and answers 200; category 4's
+  after-head root-layout script is named by the build's manifests (`readRootNotFoundScript`), and `loc1e-cache-headers`
+  allows exactly `Accept-Encoding` added to `Vary` on the four `[siteId]` route handlers on next ≥ 16.4.6.
   The en-US subjects are, by rule, every `fixtures.mjs` tenant without `locale` (`proof.mjs` `EN_US_REQUESTS`), so a new
   locale-less fixture joins the gate; fixtures `LOC1` are the RO copies of the CM1 commerce/content/catalog tenants. The strict `cm1-byte-identity/baseline/` was advanced from
   the 1a, 1b, cmrc-counties-1, 1d, 1c, reviews-date-1 and 1e trees (history in its README); `cm1-control` reads the preserved `control-de4ad52/`. Unit:
