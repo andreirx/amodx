@@ -485,13 +485,29 @@ All entities in one table. Partition key `PK`, sort key `SK`.
   `importSource` (importer-owned) and answer an invalid body with 400 (was 500)
 - **Total confirmation (ORDER-CONFIRM-1, record `docs/slices/order-confirm-1.md`):** `orders/create.ts` compares the
   request's optional `expectedTotal` (the total the checkout showed) with its own `total` by the shared
-  `sameAmountInCents`, after the coupon block and before the first write (the `COUNTER#ORDER` update). Different → 409
-  with the shared `PriceChangedAnswer` (`code: "price-changed"`, an English `error`, `total` rounded to cents,
-  `subtotal`, `shippingCost`, `couponDiscount`, per request item `productId`, `selectedVariant?`, `quantity`,
-  `unitPrice`, `totalPrice`) and no write of any kind. Absent → no comparison (a page from before the slice).
+  `sameAmountInCents`, after the coupon block. Different → 409 with the shared `PriceChangedAnswer` (`code:
+  "price-changed"`, an English `error`, `total` rounded to cents, `subtotal`, `shippingCost`, `couponDiscount`, per
+  request item `productId`, `selectedVariant?`, `quantity`, `unitPrice`, `totalPrice`). On an initial total mismatch
+  (the first pass) the comparison runs before the first write (the `COUNTER#ORDER` update) and the 409 writes nothing
+  of any kind. On the COUPON-FIX-1 second pass (the coupon lost a race) the `COUNTER#ORDER` update has already run and
+  the first transaction was cancelled (none of its items applied); that 409 leaves the order number unused. Absent →
+  no comparison (a page from before the slice).
   Ruling OC1-TEXT = A: the answer also has `message`, the tenant's commerce text `pricesChanged` resolved from the
   tenant item it already read (`resolveLocaleStrings`; override, else the pack of its locale; a blank override → the
   pack text, the `catalogServerTexts` rule). `error` stays English.
+- **Coupon limits at order time (COUPON-FIX-1, record `docs/slices/coupon-fix-1.md`):** `orders/create.ts` applies
+  the shared `evaluateCoupon` to its own lines (server line totals in cents, the STORED product `categoryIds`); a
+  coupon that does not apply is silently not applied, and the `expectedTotal` comparison tells the visitor. A `type`
+  outside the schema enum (`isCouponType`) → not applied, one `console.warn`. When `perCustomerLimit` > 0 the handler
+  reads `COUPONUSE#<couponId>#<sha256 hex of the normalized email>` (consistent) BEFORE the totals and passes its
+  `count` to the rule (`customer-limit`). In the order transaction the `COUPON#` `usageCount` update is conditional
+  on the stored `usageLimit` / `usageCount`, and the `COUPONUSE#` counter is raised under "absent or
+  `count < perCustomerLimit`". A cancellation whose reason on one of those two items is `ConditionalCheckFailed` →
+  one second pass without the coupon (same order id and order number; 409 when `expectedTotal` differs, else the
+  order without the discount); any other cancellation is rethrown (500). The advisory pre-check
+  `coupons/public-validate.ts` uses the same rule on the cart's lines (`productId`, `quantity`, `lineTotal`; ≤ 50,
+  else 400) with each product's `categoryIds` from one tenant-scoped `BatchGet` (`UnprocessedKeys` ≤ 3 retries, then
+  500); an old body without line totals is one line of the `subtotal`; it passes no customer count.
 - **Order line price (ORDER-PRICE-1, record `docs/slices/order-price-1.md`):** `orders/create.ts` charges each line by
   the shared `linePrice` (`@amodx/shared`) from the STORED product — the rule the product page and the cart show
   (option `priceOverride` > volume tier > `salePrice` > `price`, plus the matched personalizations' `addedCost`). It
@@ -588,6 +604,11 @@ so the confirmation mail's item lines are read): each row inspects the `Transact
 `test/unit/order-confirm-1.test.ts` (ORDER-CONFIRM-1) is the same shape for `orders/create.ts` (delivery config and
 coupon reads added to the mock): each 409 row checks that only `GetCommand`s were sent; the `message` rows cover the
 default, the `ro` pack, an override and a blank override.
+`test/unit/coupon-fix-1.test.ts` (COUPON-FIX-1) is the same shape for `orders/create.ts` and
+`coupons/public-validate.ts`; its DynamoDB fake keeps the stored coupon and the per-customer counters apart from what
+a read returns (a stale counter read models a race), answers the pre-check's `BatchGet` (with injectable
+`UnprocessedKeys`), evaluates only the two coupon condition texts the handler sends (any other condition throws) and
+cancels a transaction with a real `TransactionCanceledException` carrying one reason per item.
 `test/unit/price-locale-1.test.ts` (PRICE-LOCALE-1) is the same shape for `orders/create.ts` and
 `products/bulk-price.ts` (audit, purge and the invalidation wrapper mocked): the tenant item's locale decides how a
 price text is read.

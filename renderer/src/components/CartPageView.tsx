@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Minus, Plus, Trash2, Tag } from "lucide-react";
 import { useState } from "react";
 import { useRecaptcha } from "@/hooks/useRecaptcha";
-import type { LocaleStrings } from "@amodx/shared";
+import type { CouponPrecheckItem, LocaleStrings } from "@amodx/shared";
 
 /** LOCALE-1D (docs/slices/locale-1.md § 5.3): the commerce texts this view renders, resolved by `SitePage`. */
 export type CartPageStrings = Pick<LocaleStrings["commerce"],
@@ -50,7 +50,9 @@ export function CartPageView({ checkoutPrefix, shopPrefix, freeDeliveryThreshold
             const res = await fetch(`${apiUrl}/public/coupons/validate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
-                body: JSON.stringify({ code: couponCode.trim(), subtotal: String(subtotal), items: items.map(i => ({ productId: i.productId })), recaptchaToken }),
+                // COUPON-FIX-1 (ruling CF1-PRECHECK-LINES = B): per line the product, the quantity and the line total
+                // this page shows; the pre-check reads the categories from the tenant's own records.
+                body: JSON.stringify({ code: couponCode.trim(), subtotal: String(subtotal), items: items.map((i): CouponPrecheckItem => ({ productId: i.productId, quantity: i.quantity, lineTotal: cartLineTotal(i) })), recaptchaToken }),
             });
             const data = await res.json();
             if (data.valid) {

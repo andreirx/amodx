@@ -45,6 +45,11 @@ export {
 export {
     utcDay, isProductAvailable, catalogListing, type CatalogListingItem,
 } from "./catalog-listing.js";
+// COUPON-FIX-1: the coupon rule of the order handler and the coupon pre-check.
+export {
+    evaluateCoupon, amountInCents, isCouponType, CouponPrecheckItemSchema, COUPON_PRECHECK_MAX_LINES,
+    type CouponRuleRecord, type CouponCartLine, type CouponRefusal, type CouponOutcome, type CouponPrecheckItem,
+} from "./coupon.js";
 
 // ==========================================
 // 1. GLOBAL ENUMS & CONSTANTS

@@ -41,6 +41,7 @@ All under `PK = TENANT#<tenantId>`.
 | Customer | `CUSTOMER#<email>` | Profile with orderCount, totalSpent, loyaltyPoints, defaultAddress |
 | Coupon | `COUPON#<uuid>` | Full coupon definition |
 | Coupon Code | `COUPONCODE#<UPPERCASE_CODE>` | Points to couponId. O(1) code lookup via dual-write |
+| Coupon Use | `COUPONUSE#<couponId>#<sha256 hex of normalized email>` | Per-customer use `count`; written by the order transaction only when `perCustomerLimit` > 0 (`coupon-fix-1`). Not removed when the coupon is deleted |
 | Review | `REVIEW#<productId>#<uuid>` | Individual product review |
 | Order Counter | `COUNTER#ORDER` | Atomic counter, format `PPB-XXXX` |
 | Delivery Config | `TENANT#<id>` SK `TENANT#<id>` | Stored in TenantConfig (not separate entity) |
@@ -285,18 +286,78 @@ prices). Record: `docs/slices/order-confirm-1.md`.
 Duplicates validation even if client already validated — never trust client state:
 
 1. Lookup `COUPONCODE#{upperCode}` → get `couponId`
-2. Fetch `COUPON#{couponId}`
-3. Check: `status === "active"`, date range, usage limit, minimum order amount
-4. Calculate discount:
-   - **Percentage**: `(value / 100) * subtotal`, capped by `maximumDiscount`
-   - **Fixed amount**: Direct subtraction
-   - Never exceeds subtotal
+2. Fetch `COUPON#{couponId}`. A `type` outside the schema enum (`isCouponType` false) → the coupon does not apply
+   (one `console.warn` with the coupon id); never a 500
+3. When `perCustomerLimit` > 0: read the customer's counter `COUPONUSE#…` (consistent read, the tenant's key) and
+   pass its `count` to the rule
+4. Apply the coupon rule `evaluateCoupon` (shared, `packages/shared/src/coupon.ts`; `coupon-fix-1`) to the order
+   lines. Each line is the server's line total in whole cents and the STORED product's `categoryIds`; nothing about
+   coverage comes from the request. A coupon that does not apply is not applied (no refusal of its own); the
+   `expectedTotal` comparison below tells the visitor.
+
+**The coupon rule (shop behaviour).** Checks in this order; the first that fails is the reason (`not-active`,
+`not-yet-valid`, `expired`, `usage-limit`, `customer-limit`, `below-minimum`, `no-covered-line`):
+
+- `status` is `active`;
+- `validFrom` / `validUntil` are compared as text with the current time in ISO form; a time equal to either bound is
+  inside. A date-only `validUntil` (`2026-11-21`, what the admin date field stores) is therefore already past at
+  `2026-11-21T00:00:00.000Z` — the coupon ends at the START of that day (known, not changed by `coupon-fix-1`);
+- `usageLimit` > 0 and `usageCount` ≥ `usageLimit` → used up;
+- only when the caller gives the customer's use count (the order handler): `perCustomerLimit` > 0 and the count ≥ it
+  → `customer-limit`;
+- `minimumOrderAmount` is compared with the WHOLE subtotal;
+- covered lines: no product and no category limit → every line. Otherwise a line is covered when its product is in
+  `applicableProducts` OR one of its categories is in `applicableCategories`. No covered line → the coupon does not
+  apply.
+
+Discount, on the sum of the covered lines only, in whole cents: **percentage** → `value` % of it, rounded half up,
+then capped by `maximumDiscount` when > 0; **fixed amount** → `value`. Never more than the covered lines' sum.
+
+**Money rule (ruling CF1-MONEY-PRESERVATION = B).** Every coupon money text — `value` of a fixed coupon,
+`maximumDiscount`, `minimumOrderAmount` — is read with `parseFloat` and converted to whole cents, rounded half up,
+when it is read. A percentage discount is the percent of the covered sum in cents, rounded half up. Every comparison
+(minimum, cap, covered sum) is in cents. Compared with the float arithmetic before `coupon-fix-1`, four classes of
+outcome change, each by at most one cent or at a third-decimal threshold:
+
+| Class | Witness | Before | Now |
+|---|---|---|---|
+| percentage tie | 50 % of 0.29 | 0.14 | 0.15 |
+| fixed value with a third decimal | `value` `"0.145"` | 0.14 | 0.15 |
+| cap with a third decimal | `maximumDiscount` `"0.145"` | 0.14 | 0.15 |
+| minimum with a third decimal | subtotal 1.00, `minimumOrderAmount` `"1.004"` | does not apply | applies |
+
+Coupons without limits and with money texts of at most two decimals give the figures they gave before, except the
+percentage tie.
+
+**Per-customer limit.** When `perCustomerLimit` > 0, the handler reads the counter item
+`COUPONUSE#<couponId>#<sha256 hex of the normalized email>` (consistent read) BEFORE the totals: a counter at the
+limit → the coupon does not apply, so the first answer (201, or 409 when `expectedTotal` included the discount) is
+already without it and no order number is taken for that 409. When the coupon applies, the order transaction raises
+the same item with the condition "absent or `count < perCustomerLimit`" — the authority when two orders race. The key
+holds a hash, not the address (no plain address in a new key of the main table; Track B decides the item's final
+table). 0 or absent → no read and no counter item. The pre-check does not know the customer
+and does not check this limit.
+
+**Losing the race.** The `usageCount` update has the condition `attribute_not_exists(usageLimit) OR usageLimit = :zero
+OR attribute_not_exists(usageCount) OR usageCount < usageLimit`, evaluated on the stored item. When the transaction
+is cancelled with `ConditionalCheckFailed` on the coupon item or on the counter item, the coupon does not apply: the
+handler computes the totals again without it, compares them with `expectedTotal` (409 when they differ) and else
+writes the order without the discount. At most one such second pass; any other cancellation is rethrown (500). The
+cancelled attempt writes nothing. Its order number (taken before the transaction) is kept for the second pass; when
+the second pass answers 409, that number stays unused (a gap in the `PPB-` sequence).
 
 ### Total Confirmation (`order-confirm-1`)
 
-After the coupon block, BEFORE any write (the order counter is the first write): when the request has
-`expectedTotal` and `sameAmountInCents(expectedTotal, total)` is false, the handler answers **409** and writes nothing
-(no counter update, no transaction, no mail). Body: the shared `PriceChangedAnswer` —
+After the coupon block: when the request has `expectedTotal` and `sameAmountInCents(expectedTotal, total)` is false,
+the handler answers **409**. What was written before that 409 depends on the pass (`coupon-fix-1`):
+
+- **First pass (an initial total mismatch)** — the comparison runs BEFORE any write (the order counter is the first
+  write): nothing is written (no counter update, no transaction, no mail).
+- **Second pass (the coupon lost a race, see *Losing the race*)** — the order counter was already raised in the first
+  pass and the first transaction was cancelled (none of its items applied). The 409 then leaves that order number
+  unused (a gap in the `PPB-` sequence); nothing else is written, no mail.
+
+Body: the shared `PriceChangedAnswer` —
 
 ```
 { code: "price-changed", error: "Prices have changed. Check the new total, then place the order again.",
@@ -322,15 +383,16 @@ UpdateCommand({
 // Format: "PPB-0001", "PPB-0002", ...
 ```
 
-### TransactWrite (5 Items)
+### TransactWrite (3 to 5 Items)
 
 | # | Key | What |
 |---|-----|------|
 | 1 | `ORDER#<uuid>` | Full order record: items, addresses, totals, status="placed", paymentStatus="pending", statusHistory=[{status:"placed"}] |
 | 2 | `CUSTORDER#<email>#<orderId>` | Lightweight reference: orderNumber, total, status, createdAt |
 | 3 | `CUSTOMER#<email>` | Upsert: increment orderCount + totalSpent, add loyalty points (1 per currency unit), update lastOrderDate + defaultAddress. Sets birthday + defaultBillingDetails if provided |
-| 4 | `COUPON#<couponId>` | Increment `usageCount` (only if coupon applied) |
-| 5 | `COUNTER#ORDER` | Already incremented before TransactWrite (separate UpdateCommand with ReturnValues) |
+| 4 | `COUPON#<couponId>` | Increment `usageCount` (only if coupon applied), conditional on the stored `usageLimit` / `usageCount` |
+| 5 | `COUPONUSE#<couponId>#<sha256(email)>` | Per-customer counter `count` (only if coupon applied and `perCustomerLimit` > 0), conditional |
+| — | `COUNTER#ORDER` | Already incremented before TransactWrite (separate UpdateCommand with ReturnValues); not part of the transaction |
 
 ### Post-Creation
 
@@ -474,21 +536,36 @@ CouponSchema = {
 
 ### Public Validation (`POST /public/coupons/validate`)
 
-Request: `{ code, subtotal, customerEmail?, items: [{ productId, categoryIds }] }`
+Request (`coupon-fix-1`, ruling CF1-PRECHECK-LINES = B):
+`{ code, subtotal, items: [{ productId, quantity, lineTotal }], recaptchaToken }` — `lineTotal` is the line total the
+cart shows (shared `CouponPrecheckItemSchema`; other fields such as `categoryIds` are dropped).
 
 Validation steps:
 1. Uppercase code → lookup `COUPONCODE#`
-2. Fetch `COUPON#` record
-3. Check: active, date range, usage limit, minimum order
-4. Scope: if `applicableCategories` or `applicableProducts` set, at least one item must match
-5. Calculate discount (percentage capped by maximumDiscount, or fixed amount)
+2. Fetch `COUPON#` record; a `type` outside the schema enum → `{ valid: false, reason: "Coupon cannot be used" }`
+   and one `console.warn` with the coupon id
+3. Lines: more than 50 → 400 `Too many items`; a line that does not parse → 400 `Invalid items`. The categories of
+   each product come from the tenant's own `PRODUCT#` records (one `BatchGet`, projection `SK, categoryIds`,
+   `UnprocessedKeys` retried at most 3 times, then 500). An old cart body (no `lineTotal` on any item) is one line
+   holding the whole `subtotal` with no product and no category: a coupon without limits gets the answer it got
+   before; a limited coupon gets `valid: false` "Coupon does not apply to any items in cart"
+4. The shared rule `evaluateCoupon` without a customer count (the per-customer limit is not checked here)
 
-Response: `{ valid: true, discount: 15.50, couponId, type, value }` or `{ valid: false, reason: "..." }`
+Response: `{ valid: true, discount: 15.50, couponId, type, value }` or `{ valid: false, reason: "..." }`. `discount`
+is the covered-lines discount. The reasons keep their texts: `not-active` "Coupon is not active", `not-yet-valid`
+"Coupon is not yet valid", `expired` "Coupon has expired", `usage-limit` "Coupon usage limit reached", `below-minimum`
+"Minimum order amount is <n>", `no-covered-line` "Coupon does not apply to any items in cart" (`customer-limit` is
+never produced here).
+
+**Advisory only.** The amounts are the browser's; the order handler prices every line itself and is the authority
+(see *Coupon Validation (Server-Side)*). When the cart's discount differs, the checkout gets the 409 with the server's
+figures. The cart shows `reason` to the visitor as it comes (English; finding recorded in `coupon-fix-1`).
 
 ### Checkout Integration
 
 - Client validates coupon via API → stores in CartContext (localStorage)
-- Server re-validates during order creation → atomically increments `usageCount`
+- Server re-validates during order creation → increments `usageCount` (and the per-customer counter) in the order
+  transaction, each under its own condition
 
 ## Product Variants & Personalizations
 

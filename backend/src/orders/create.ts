@@ -1,11 +1,12 @@
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { createHash } from "node:crypto";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { getDefaultTemplates, renderTemplate, STATUS_LABELS } from "../lib/order-email.js";
 import { verifyRecaptcha, resolveRecaptchaConfig } from "../lib/recaptcha.js";
 import { verifyTenantFromOrigin } from "../lib/tenant-verify.js";
-import { OrderInputSchema, normalizeEmail, linePrice, roundToCents, sameAmountInCents, resolveLocaleStrings, type PriceChangedAnswer } from "@amodx/shared";
+import { OrderInputSchema, normalizeEmail, linePrice, roundToCents, sameAmountInCents, resolveLocaleStrings, evaluateCoupon, amountInCents, isCouponType, type PriceChangedAnswer, type CouponCartLine, type CouponRuleRecord } from "@amodx/shared";
 import { formatFromHeader } from "../lib/email-from.js";
 
 const ses = new SESClient({});
@@ -13,6 +14,16 @@ const FROM_EMAIL = process.env.SES_FROM_EMAIL || "";
 
 // Email rate limiting: max emails per address per hour
 const EMAIL_RATE_LIMIT = 5;
+
+/**
+ * COUPON-FIX-1 rule 7: true when a cancelled order transaction names `ConditionalCheckFailed` as the reason of one of
+ * the coupon items (`indexes` are their positions in TransactItems; DynamoDB gives one reason per item, in order).
+ */
+function couponConditionFailed(e: unknown, indexes: readonly number[]): boolean {
+    if (!(e instanceof Error) || e.name !== "TransactionCanceledException") return false;
+    const reasons = (e as { CancellationReasons?: { Code?: string }[] }).CancellationReasons ?? [];
+    return indexes.some((i) => reasons[i]?.Code === "ConditionalCheckFailed");
+}
 
 const _handler: APIGatewayProxyHandlerV2 = async (event) => {
     try {
@@ -112,6 +123,8 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         // --- Server-side price validation ---
         const validatedItems = [];
         let subtotal = 0;
+        // COUPON-FIX-1 rule 3: the coupon rule's lines, one per item, with the STORED product's categories.
+        const couponLines: CouponCartLine[] = [];
 
         for (const item of items) {
             const productResult = await db.send(new GetCommand({
@@ -176,6 +189,11 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
 
             const totalPrice = priced.lineTotal;
             subtotal = roundToCents(subtotal + totalPrice);
+            couponLines.push({
+                productId: item.productId,
+                categoryIds: Array.isArray(product.categoryIds) ? product.categoryIds : [],
+                lineTotalCents: amountInCents(totalPrice),
+            });
 
             validatedItems.push({
                 productId: item.productId,
@@ -248,12 +266,13 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }
 
-        // --- Server-side coupon validation ---
+        // --- Server-side coupon validation (COUPON-FIX-1: the shared coupon rule on the server's lines) ---
         let couponDiscount = 0;
         let couponId: string | null = null;
-        let couponType: string | null = null;
-        let couponValue: number | null = null;
         let validatedCouponCode: string | null = null;
+        let perCustomerLimit = 0;
+        // COUPON-FIX-1 rule 6: the per-customer counter's sort key; set only when the applied coupon has a limit.
+        let couponUseSk: string | null = null;
 
         if (couponCode && typeof couponCode === "string") {
             const upperCode = couponCode.toUpperCase();
@@ -273,39 +292,39 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
                     Key: { PK: `TENANT#${tenantId}`, SK: `COUPON#${couponId}` }
                 }));
 
-                if (couponResult.Item) {
+                if (couponResult.Item && !isCouponType(couponResult.Item.type)) {
+                    // COUPON-FIX-1 § 6: a record whose type is outside the schema enum is a coupon that does not apply
+                    console.warn("Coupon not applied: unknown coupon type", { tenantId, couponId, type: couponResult.Item.type });
+                    couponId = null;
+                } else if (couponResult.Item) {
                     const coupon = couponResult.Item;
 
-                    // Validate: active, date range, usage limit, minimum order
-                    const isActive = coupon.status === "active";
-                    const inDateRange = (!coupon.validFrom || now >= coupon.validFrom) &&
-                                        (!coupon.validUntil || now <= coupon.validUntil);
-                    const usageLimit = coupon.usageLimit as number || 0;
-                    const usageCount = coupon.usageCount as number || 0;
-                    const withinUsage = usageLimit === 0 || usageCount < usageLimit;
-                    const minimumOrderAmount = parseFloat(coupon.minimumOrderAmount as string) || 0;
-                    const meetsMinimum = subtotal >= minimumOrderAmount;
+                    // COUPON-FIX-1 § 6 (finding 1): a counter already at the per-customer limit is known BEFORE the
+                    // totals, so the first answer is already without the discount. Consistent read of the tenant's own
+                    // key; the conditional write in the transaction below stays the authority for a race.
+                    let customerUseCount: number | undefined;
+                    const limit = (coupon.perCustomerLimit as number) || 0;
+                    const useSk = `COUPONUSE#${couponId}#${createHash("sha256").update(normalizedEmail).digest("hex")}`;
+                    if (limit > 0) {
+                        const useResult = await db.send(new GetCommand({
+                            TableName: TABLE_NAME,
+                            Key: { PK: `TENANT#${tenantId}`, SK: useSk },
+                            ConsistentRead: true,
+                        }));
+                        customerUseCount = (useResult.Item?.count as number) || 0;
+                    }
 
-                    if (isActive && inDateRange && withinUsage && meetsMinimum) {
-                        couponType = coupon.type as string;
-                        couponValue = parseFloat(coupon.value as string);
+                    // Status, dates, usage limit (the value read here; the write below re-checks the stored value),
+                    // per-customer limit, minimum on the whole subtotal, product/category limits; discount on the
+                    // covered lines only.
+                    const outcome = evaluateCoupon(coupon as CouponRuleRecord, couponLines, new Date(now), customerUseCount);
+                    if (outcome.applies) {
                         validatedCouponCode = upperCode;
-
-                        if (couponType === "percentage") {
-                            couponDiscount = (couponValue / 100) * subtotal;
-                            const maximumDiscount = coupon.maximumDiscount ? parseFloat(coupon.maximumDiscount as string) : 0;
-                            if (maximumDiscount > 0 && couponDiscount > maximumDiscount) {
-                                couponDiscount = maximumDiscount;
-                            }
-                        } else if (couponType === "fixed_amount") {
-                            couponDiscount = couponValue;
-                        }
-
-                        // Never discount more than subtotal
-                        if (couponDiscount > subtotal) couponDiscount = subtotal;
-                        couponDiscount = Math.round(couponDiscount * 100) / 100;
+                        couponDiscount = outcome.discountCents / 100;
+                        perCustomerLimit = limit;
+                        if (limit > 0) couponUseSk = useSk;
                     } else {
-                        // Coupon invalid — silently ignore (client already validated)
+                        // Coupon does not apply — silently ignore; the expectedTotal comparison below tells the visitor
                         couponId = null;
                     }
                 } else {
@@ -314,164 +333,208 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             }
         }
 
-        const total = subtotal + shippingCost - couponDiscount;
-
-        // ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 2): an order is created only with a total the visitor
-        // saw. Before the first write (the order-number counter below): the request's total differs in whole cents →
-        // 409 with this handler's figures for the request's own items, and nothing is written. No expectedTotal → no
-        // comparison (a page loaded before ORDER-CONFIRM-1). `validatedItems[i]` is the line of `items[i]` (the loop
-        // above pushes one line per item, in order, or returns).
         const { expectedTotal } = parseResult.data;
-        if (expectedTotal !== undefined && !sameAmountInCents(expectedTotal, total)) {
-            // Ruling OC1-TEXT = A: `message` is the tenant's `pricesChanged` text, from the tenant item read above (its
-            // override, else the pack of its locale); a blank override gives the pack text (the rule of the backend's
-            // other locale texts, `catalogServerTexts`).
-            const texts = resolveLocaleStrings(tenantConfig);
-            const answer: PriceChangedAnswer = {
-                code: "price-changed",
-                error: "Prices have changed. Check the new total, then place the order again.",
-                message: texts.strings.commerce.pricesChanged.trim() || texts.defaults.commerce.pricesChanged,
-                total: roundToCents(total),
-                subtotal,
-                shippingCost,
-                couponDiscount,
-                items: validatedItems.map((line, i) => ({
-                    productId: line.productId,
-                    ...(items[i].selectedVariant !== undefined ? { selectedVariant: items[i].selectedVariant } : {}),
-                    quantity: line.quantity,
-                    unitPrice: Number(line.unitPrice),
-                    totalPrice: line.totalPrice,
-                })),
-            };
-            console.warn("Order refused: total differs from the total the visitor saw", { tenantId, expectedTotal, total: answer.total });
-            return { statusCode: 409, body: JSON.stringify(answer) };
-        }
-
         const currency = tenantConfig.currency || "USD";
 
-        // --- Generate order number via atomic counter ---
-        const counterResult = await db.send(new UpdateCommand({
-            TableName: TABLE_NAME,
-            Key: { PK: `TENANT#${tenantId}`, SK: `COUNTER#ORDER` },
-            UpdateExpression: "SET currentValue = if_not_exists(currentValue, :zero) + :one",
-            ExpressionAttributeValues: {
-                ":zero": 0,
-                ":one": 1
-            },
-            ReturnValues: "UPDATED_NEW"
-        }));
+        // COUPON-FIX-1 rule 7: at most two passes. When the order transaction is cancelled because the condition of the
+        // coupon item or of the per-customer counter failed (another order used the coupon first), the coupon does
+        // not apply: the second pass computes the totals without it, compares them with expectedTotal again, and
+        // writes the order without the discount. A cancelled transaction writes none of its items (no order, no
+        // customer, no coupon count). The order number taken in the first pass is kept, so it is consumed once; when
+        // the second pass answers 409, that number stays unused. The second pass has no coupon item, so it cannot
+        // loop again: any failure there is rethrown.
+        let orderNumber: string | undefined;
+        let total: number;
+        for (;;) {
+            total = subtotal + shippingCost - couponDiscount;
 
-        const counterValue = counterResult.Attributes?.currentValue || 1;
-        const orderNumber = `PPB-${String(counterValue).padStart(4, "0")}`;
+            // ORDER-CONFIRM-1 (docs/slices/order-confirm-1.md § 1 item 2): an order is created only with a total the visitor
+            // saw. The request's total differs in whole cents → 409 with this handler's figures for the request's own
+            // items. First pass: this runs before the first write (the order-number counter below), so nothing is
+            // written. Second pass (COUPON-FIX-1 rule 7): the counter was raised in the first pass and the first
+            // transaction was cancelled, so this 409 leaves that order number unused. No expectedTotal → no comparison
+            // (a page loaded before ORDER-CONFIRM-1). `validatedItems[i]` is the line of `items[i]` (the loop above
+            // pushes one line per item, in order, or returns).
+            if (expectedTotal !== undefined && !sameAmountInCents(expectedTotal, total)) {
+                // Ruling OC1-TEXT = A: `message` is the tenant's `pricesChanged` text, from the tenant item read above (its
+                // override, else the pack of its locale); a blank override gives the pack text (the rule of the backend's
+                // other locale texts, `catalogServerTexts`).
+                const texts = resolveLocaleStrings(tenantConfig);
+                const answer: PriceChangedAnswer = {
+                    code: "price-changed",
+                    error: "Prices have changed. Check the new total, then place the order again.",
+                    message: texts.strings.commerce.pricesChanged.trim() || texts.defaults.commerce.pricesChanged,
+                    total: roundToCents(total),
+                    subtotal,
+                    shippingCost,
+                    couponDiscount,
+                    items: validatedItems.map((line, i) => ({
+                        productId: line.productId,
+                        ...(items[i].selectedVariant !== undefined ? { selectedVariant: items[i].selectedVariant } : {}),
+                        quantity: line.quantity,
+                        unitPrice: Number(line.unitPrice),
+                        totalPrice: line.totalPrice,
+                    })),
+                };
+                console.warn("Order refused: total differs from the total the visitor saw", { tenantId, expectedTotal, total: answer.total });
+                return { statusCode: 409, body: JSON.stringify(answer) };
+            }
 
-        // --- Build transaction items ---
-        const transactItems: any[] = [
-            // 1. Full order item
-            {
-                Put: {
+            // --- Generate order number via atomic counter (once: a second pass keeps the number of the first) ---
+            if (orderNumber === undefined) {
+                const counterResult = await db.send(new UpdateCommand({
                     TableName: TABLE_NAME,
-                    Item: {
-                        PK: `TENANT#${tenantId}`,
-                        SK: `ORDER#${orderId}`,
-                        id: orderId,
-                        tenantId,
-                        orderNumber,
-                        items: validatedItems,
-                        customerEmail: normalizedEmail,
-                        customerName,
-                        customerPhone: customerPhone || null,
-                        shippingAddress: shippingAddress || null,
-                        billingDetails: billingDetails || null,
-                        paymentMethod: paymentMethod || null,
-                        requestedDeliveryDate: requestedDeliveryDate || null,
-                        subtotal,
-                        shippingCost,
-                        couponCode: validatedCouponCode,
-                        couponId,
-                        couponDiscount,
-                        total,
-                        currency,
-                        status: "placed",
-                        paymentStatus: "pending",
-                        statusHistory: [{ status: "placed", timestamp: now, note: "Order placed" }],
-                        createdAt: now,
-                        updatedAt: now,
-                        Type: "Order"
-                    }
-                }
-            },
-            // 2. Customer order reference (lightweight)
-            {
-                Put: {
-                    TableName: TABLE_NAME,
-                    Item: {
-                        PK: `TENANT#${tenantId}`,
-                        SK: `CUSTORDER#${normalizedEmail}#${orderId}`,
-                        orderNumber,
-                        total,
-                        status: "placed",
-                        createdAt: now,
-                        Type: "CustomerOrder"
-                    }
-                }
-            },
-            // 3. Customer upsert (Phase 1.2: use if_not_exists for PII to prevent overwrite attacks)
-            {
-                Update: {
-                    TableName: TABLE_NAME,
-                    Key: {
-                        PK: `TENANT#${tenantId}`,
-                        SK: `CUSTOMER#${normalizedEmail}`
-                    },
-                    UpdateExpression: [
-                        // Only set name/phone/address on FIRST order (protect existing customer data)
-                        "SET #n = if_not_exists(#n, :name)",
-                        "phone = if_not_exists(phone, :phone)",
-                        "defaultAddress = if_not_exists(defaultAddress, :address)",
-                        // Always increment counters
-                        "orderCount = if_not_exists(orderCount, :zero) + :one",
-                        "totalSpent = if_not_exists(totalSpent, :zero) + :total",
-                        "loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points",
-                        "lastOrderDate = :now",
-                        "#t = :type",
-                        // Only set birthday/billingDetails if provided AND not already set
-                        ...(customerBirthday ? ["birthday = if_not_exists(birthday, :birthday)"] : []),
-                        ...(billingDetails?.isCompany ? ["defaultBillingDetails = if_not_exists(defaultBillingDetails, :billing)"] : []),
-                    ].join(", "),
-                    ExpressionAttributeNames: {
-                        "#n": "name",
-                        "#t": "Type"
-                    },
+                    Key: { PK: `TENANT#${tenantId}`, SK: `COUNTER#ORDER` },
+                    UpdateExpression: "SET currentValue = if_not_exists(currentValue, :zero) + :one",
                     ExpressionAttributeValues: {
-                        ":name": customerName,
-                        ":phone": customerPhone || null,
                         ":zero": 0,
-                        ":one": 1,
-                        ":total": total,
-                        ":points": Math.floor(total), // 1 loyalty point per currency unit spent
-                        ":now": now,
-                        ":address": shippingAddress || null,
-                        ":type": "Customer",
-                        ...(customerBirthday ? { ":birthday": customerBirthday } : {}),
-                        ...(billingDetails?.isCompany ? { ":billing": billingDetails } : {}),
+                        ":one": 1
+                    },
+                    ReturnValues: "UPDATED_NEW"
+                }));
+
+                const counterValue = counterResult.Attributes?.currentValue || 1;
+                orderNumber = `PPB-${String(counterValue).padStart(4, "0")}`;
+            }
+
+            // --- Build transaction items ---
+            const transactItems: any[] = [
+                // 1. Full order item
+                {
+                    Put: {
+                        TableName: TABLE_NAME,
+                        Item: {
+                            PK: `TENANT#${tenantId}`,
+                            SK: `ORDER#${orderId}`,
+                            id: orderId,
+                            tenantId,
+                            orderNumber,
+                            items: validatedItems,
+                            customerEmail: normalizedEmail,
+                            customerName,
+                            customerPhone: customerPhone || null,
+                            shippingAddress: shippingAddress || null,
+                            billingDetails: billingDetails || null,
+                            paymentMethod: paymentMethod || null,
+                            requestedDeliveryDate: requestedDeliveryDate || null,
+                            subtotal,
+                            shippingCost,
+                            couponCode: validatedCouponCode,
+                            couponId,
+                            couponDiscount,
+                            total,
+                            currency,
+                            status: "placed",
+                            paymentStatus: "pending",
+                            statusHistory: [{ status: "placed", timestamp: now, note: "Order placed" }],
+                            createdAt: now,
+                            updatedAt: now,
+                            Type: "Order"
+                        }
                     }
+                },
+                // 2. Customer order reference (lightweight)
+                {
+                    Put: {
+                        TableName: TABLE_NAME,
+                        Item: {
+                            PK: `TENANT#${tenantId}`,
+                            SK: `CUSTORDER#${normalizedEmail}#${orderId}`,
+                            orderNumber,
+                            total,
+                            status: "placed",
+                            createdAt: now,
+                            Type: "CustomerOrder"
+                        }
+                    }
+                },
+                // 3. Customer upsert (Phase 1.2: use if_not_exists for PII to prevent overwrite attacks)
+                {
+                    Update: {
+                        TableName: TABLE_NAME,
+                        Key: {
+                            PK: `TENANT#${tenantId}`,
+                            SK: `CUSTOMER#${normalizedEmail}`
+                        },
+                        UpdateExpression: [
+                            // Only set name/phone/address on FIRST order (protect existing customer data)
+                            "SET #n = if_not_exists(#n, :name)",
+                            "phone = if_not_exists(phone, :phone)",
+                            "defaultAddress = if_not_exists(defaultAddress, :address)",
+                            // Always increment counters
+                            "orderCount = if_not_exists(orderCount, :zero) + :one",
+                            "totalSpent = if_not_exists(totalSpent, :zero) + :total",
+                            "loyaltyPoints = if_not_exists(loyaltyPoints, :zero) + :points",
+                            "lastOrderDate = :now",
+                            "#t = :type",
+                            // Only set birthday/billingDetails if provided AND not already set
+                            ...(customerBirthday ? ["birthday = if_not_exists(birthday, :birthday)"] : []),
+                            ...(billingDetails?.isCompany ? ["defaultBillingDetails = if_not_exists(defaultBillingDetails, :billing)"] : []),
+                        ].join(", "),
+                        ExpressionAttributeNames: {
+                            "#n": "name",
+                            "#t": "Type"
+                        },
+                        ExpressionAttributeValues: {
+                            ":name": customerName,
+                            ":phone": customerPhone || null,
+                            ":zero": 0,
+                            ":one": 1,
+                            ":total": total,
+                            ":points": Math.floor(total), // 1 loyalty point per currency unit spent
+                            ":now": now,
+                            ":address": shippingAddress || null,
+                            ":type": "Customer",
+                            ...(customerBirthday ? { ":birthday": customerBirthday } : {}),
+                            ...(billingDetails?.isCompany ? { ":billing": billingDetails } : {}),
+                        }
+                    }
+                }
+            ];
+
+            // 4. Increment coupon usage if applied. COUPON-FIX-1 rule 5: the condition reads the STORED attributes, so
+            // two orders at the same moment cannot both pass a limit the earlier read allowed.
+            // 5. COUPON-FIX-1 rule 6: the per-customer counter, raised in the same transaction under its own condition.
+            // The key holds the SHA-256 of the normalized email, not the address (Track B decides the item's final table).
+            const couponItemIndexes: number[] = [];
+            if (couponId) {
+                couponItemIndexes.push(transactItems.push({
+                    Update: {
+                        TableName: TABLE_NAME,
+                        Key: { PK: `TENANT#${tenantId}`, SK: `COUPON#${couponId}` },
+                        UpdateExpression: "SET usageCount = if_not_exists(usageCount, :zero) + :one",
+                        ConditionExpression: "attribute_not_exists(usageLimit) OR usageLimit = :zero OR attribute_not_exists(usageCount) OR usageCount < usageLimit",
+                        ExpressionAttributeValues: { ":zero": 0, ":one": 1 }
+                    }
+                }) - 1);
+                if (couponUseSk) {
+                    couponItemIndexes.push(transactItems.push({
+                        Update: {
+                            TableName: TABLE_NAME,
+                            Key: { PK: `TENANT#${tenantId}`, SK: couponUseSk },
+                            UpdateExpression: "SET #c = if_not_exists(#c, :zero) + :one, #t = :type",
+                            ConditionExpression: "attribute_not_exists(#c) OR #c < :limit",
+                            ExpressionAttributeNames: { "#c": "count", "#t": "Type" },
+                            ExpressionAttributeValues: { ":zero": 0, ":one": 1, ":limit": perCustomerLimit, ":type": "CouponUse" }
+                        }
+                    }) - 1);
                 }
             }
-        ];
 
-        // 4. Increment coupon usage if applied
-        if (couponId) {
-            transactItems.push({
-                Update: {
-                    TableName: TABLE_NAME,
-                    Key: { PK: `TENANT#${tenantId}`, SK: `COUPON#${couponId}` },
-                    UpdateExpression: "SET usageCount = if_not_exists(usageCount, :zero) + :one",
-                    ExpressionAttributeValues: { ":zero": 0, ":one": 1 }
+            try {
+                await db.send(new TransactWriteCommand({ TransactItems: transactItems }));
+                break;
+            } catch (e) {
+                if (couponId && couponConditionFailed(e, couponItemIndexes)) {
+                    console.warn("Coupon not applied: its condition failed at write time", { tenantId, couponId });
+                    couponId = null;
+                    validatedCouponCode = null;
+                    couponDiscount = 0;
+                    continue;
                 }
-            });
+                throw e;
+            }
         }
-
-        await db.send(new TransactWriteCommand({ TransactItems: transactItems }));
 
         // --- Send confirmation emails via templates ---
         if (FROM_EMAIL && customerEmail) {
