@@ -90,8 +90,22 @@ export async function verifyRecaptcha(
         body: params.toString(),
     });
 
-    const result = await response.json();
-    return result as RecaptchaVerifyResult;
+    const result: unknown = await response.json();
+
+    // PUBLIC-HARDEN-1 (A): the callers refuse on `!result.success || result.score < threshold`. A success answer without
+    // a finite numeric score (a v2 key pair answers `{ success: true }`) makes that comparison false and passes, so such an
+    // answer, and an answer that is not an object, is returned as a refusal. Every other answer is returned unchanged.
+    // `success` is read by truthiness, as the callers read it. The log names the case only: no token, no secret.
+    if (typeof result !== "object" || result === null) {
+        console.warn("[recaptcha] Provider answer is not an object; treated as a refusal", { answerType: result === null ? "null" : typeof result });
+        return { success: false, score: 0 };
+    }
+    const answer = result as RecaptchaVerifyResult;
+    if (answer.success && !Number.isFinite(answer.score)) {
+        console.warn("[recaptcha] Provider answer has success without a finite numeric score; treated as a refusal", { scoreType: answer.score === null ? "null" : typeof answer.score });
+        return { success: false, score: 0 };
+    }
+    return answer;
 }
 
 /**

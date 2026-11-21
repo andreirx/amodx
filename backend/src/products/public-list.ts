@@ -86,6 +86,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             })
         };
     } catch (e: any) {
-        return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+        console.error("[products/public-list] Error:", e);
+        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
     }
 };

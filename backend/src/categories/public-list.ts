@@ -37,6 +37,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             body: JSON.stringify({ items })
         };
     } catch (e: any) {
-        return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+        console.error("[categories/public-list] Error:", e);
+        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
     }
 };

@@ -434,6 +434,15 @@ describe("FORM-SUBMIT-2 — the second review (record docs/slices/form-submit-2.
             vi.spyOn(console, "log").mockImplementation(() => {});
             expect((await call(payload({ Name: "A", "E-mail": "a@b.co" }, { recaptchaToken: "tok" }))).status).toBe(201);
         });
+
+        it("PUBLIC-HARDEN-1 A — a success answer without a score (a v2 key pair) → 403; no form read, nothing written, no mail (was 201)", async () => {
+            provider({ success: true });
+            vi.spyOn(console, "warn").mockImplementation(() => {});
+            expect(await call(payload({ Name: "A", "E-mail": "a@b.co" }, { recaptchaToken: "tok" }))).toEqual({ status: 403, body: { error: "Verification failed. Please try again." } });
+            expect(formReads()).toEqual([]);
+            expect(puts()).toEqual([]);
+            expect(mails()).toEqual([]);
+        });
     });
 
     it("no slug in the path → 400 \"Missing form slug\"; no form read, nothing written", async () => {

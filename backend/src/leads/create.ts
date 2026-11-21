@@ -105,8 +105,8 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         };
 
     } catch (e: any) {
-        console.error(e);
-        return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+        console.error("[leads/create] Error:", e);
+        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
     }
 };
 

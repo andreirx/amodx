@@ -76,7 +76,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         };
 
     } catch (e: any) {
-        console.error("Consent handler error:", e);
+        console.error("[consent/create] Consent handler error:", e);
         // FIX: Robust check for ZodError using name property
         if (e instanceof z.ZodError || e.name === 'ZodError') {
             return {
@@ -89,7 +89,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: e.message })
+            body: JSON.stringify({ error: "Internal error" })
         };
     }
 };

@@ -613,8 +613,8 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
             body: JSON.stringify({ orderId, orderNumber, couponDiscount })
         };
     } catch (e: any) {
-        console.error("Order creation failed:", e);
-        return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+        console.error("[orders/create] Order creation failed:", e);
+        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
     }
 };
 

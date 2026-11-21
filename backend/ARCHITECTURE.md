@@ -39,7 +39,8 @@ src/
 │   │                      #   writeCategoryProjections (one category, UnprocessedItems resent ≤ 5×, returns the
 │   │                      #   count left) — used only by the glam importer's reconciliation
 │   ├── events.ts          # EventBridge publishAudit() helper
-│   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha()
+│   ├── recaptcha.ts       # reCAPTCHA v3: resolveRecaptchaConfig() + verifyRecaptcha() (a success answer without a
+│   │                      #   finite numeric score, or an answer that is not an object → refusal; PUBLIC-HARDEN-1)
 │   ├── invalidate-cdn.ts  # Two invalidation classes (cache-4a): withInvalidation() HOF → bulk `/*`
 │   │                      #   debounce marker; enqueueEdgeInvalidation() → ordinary edits' targeted
 │   │                      #   fast-lane paths (String Set + `rev`) drained by the debounce Lambda;
@@ -424,7 +425,17 @@ Public endpoints are unauthenticated but protected by reCAPTCHA v3. The `resolve
 
 Deployment-level protection is mandatory. Tenants can override with their own keys or adjust the score threshold, but cannot disable.
 
-Protected public endpoints: `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/interest`, `POST /public/orders`, `POST /coupons/validate`.
+Protected public endpoints: `POST /contact`, `POST /leads`, `POST /public/forms/{slug}/submit`, `POST /public/interest`, `POST /public/orders`, `POST /public/coupons/validate`.
+
+Each of these handlers refuses on `!result.success || result.score < threshold`. `verifyRecaptcha()` checks the provider
+answer so that this comparison holds (PUBLIC-HARDEN-1): when the answer's `success` is truthy and its `score` is not a
+finite number (absent — a v2 key pair answers `{ success: true }` —, a string, `null`, `NaN`), or the answer is not an
+object, it returns the refusal `{ success: false, score: 0 }` and logs one `console.warn` that names the case (never
+the token or the secret). The handler then answers 403 with its own refusal text, unchanged by this rule:
+`getRecaptchaErrorMessage()` ("Verification failed. Please try again." for this refusal) in `forms/public-submit`,
+`contact/send`, `leads/create`, `interest/public`; the fixed "Verification failed. Please try again." in
+`orders/create`; the fixed "Verification failed" in `coupons/public-validate`. Every other answer is returned
+unchanged. Unit: `test/unit/recaptcha-verify.test.ts`. The answer's `action` and `hostname` are not checked.
 
 Logs include `[deployment]` or `[tenant]` tag for tracing which key source was used.
 
@@ -506,6 +517,16 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 // Error
 { statusCode: 400 | 403 | 404 | 409 | 500, body: JSON.stringify({ error: "message" }) }
 ```
+
+**Public routes — a 500 has a fixed text (PUBLIC-HARDEN-1).** A public route accepts a caller with no credential:
+the three routes the authorizer allows as `anonymous` when the request has no master, renderer or service key (the
+renderer proxies call them with the renderer key, as `RENDERER`), and the `noAuth: true` routes of `api-commerce.ts` /
+`api-engagement.ts` (no authorizer runs). None of their handlers has a role gate. The
+outer `catch` of each of their 15 handlers logs `console.error("[<dir>/<file>] …", e)` and answers
+`500 { error: "Internal error" }`; the exception text (it can carry ARNs, table names, regions) never goes to the
+caller. The list of routes and handlers: `docs/slices/public-harden-1.md` § 3. Unit:
+`test/unit/public-harden-1-errors.test.ts` (one row per route), `test/unit/forms-public-submit.test.ts`. Many handlers
+of authenticated routes still answer the exception text (the review finding "46 handlers"; not re-counted, not changed here).
 
 ## Testing
 

@@ -122,8 +122,8 @@ const _handler: APIGatewayProxyHandlerV2 = async (event) => {
         return { statusCode: 200, body: JSON.stringify({ message: "Sent" }) };
 
     } catch (e: any) {
-        console.error("❌ Fatal Error:", e);
-        return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
+        console.error("[contact/send] ❌ Fatal Error:", e);
+        return { statusCode: 500, body: JSON.stringify({ error: "Internal error" }) };
     }
 };
 

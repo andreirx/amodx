@@ -366,6 +366,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             default: return json(404, { error: "Unknown route" });
         }
     } catch (e: any) {
-        return json(500, { error: e.message });
+        console.error("[interest/public] Error:", e);
+        return json(500, { error: "Internal error" });
     }
 };
