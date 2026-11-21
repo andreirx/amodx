@@ -2178,3 +2178,23 @@ rows C33, D14).
   until the target Monday, duplicates possible); the Sunday mail only for tenants with a resource that has
   weekly hours; the booking horizon (default 8 weeks) limits slots only, not seats in a run.
 - Not run: builds, tests, synth (documents only).
+
+## 25. Build records
+
+### `sched-1a` — shipped to `main` 2026-11-21 (operator closeout)
+
+- Scope as § 17.1: `packages/shared/src/scheduling.ts`, `zoned-time.ts`, exports and three optional `TenantConfig`
+  fields in `index.ts`, tests for rows A1…A26. Pure code; no handler, no table, no screen uses it yet, so there
+  is nothing to deploy or to see until `sched-1b`…`1e`. Maturity: PROTOTYPE.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations, not independent providers). Operator gates on the accepted tree, all exit 0: build, typecheck,
+  shared, plugins, renderer unit, serving suite, admin unit, backend unit, MCP, `git diff --check`.
+- Differences from the specification, as built:
+  - `embedOrigins` is not in the settings schema (it belongs to `sched-frame-1`);
+  - `schedulingEnabled` is optional with no default (absent = off), so a tenant saved earlier parses unchanged;
+  - a resource with a `retiring` fence offers no slots in `availableSlots` (the specification stated the refusal
+    in `slotDecision` only);
+  - three broken caller preconditions throw (programming errors), all domain refusals are result values;
+  - row A14: no `switch` over `HistoryEntry` exists yet, so that part shows no compile error until `sched-1e`
+    renders history.
+- Deferred: `packages/shared/ARCHITECTURE.md` gets its scheduling entry with `sched-1c`, the first consumer.

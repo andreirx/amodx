@@ -52,6 +52,33 @@ export {
 } from "./coupon.js";
 // PAY-1: the payment-state transition rule of PUT /orders/{id}.
 export { paymentTransition, type PaymentTransition } from "./payment-transition.js";
+// SCHED-1A (docs/slices/sched-1.md § 4, § 5): the scheduling kernel, both shapes and the week planner. PROTOTYPE.
+export {
+    localToInstant, instantToLocal, localDaySpan,
+    type Instant, type LocalDate, type LocalTime, type TimeZone, type Result,
+} from "./zoned-time.js";
+export {
+    InstantSchema, LocalDateSchema, LocalTimeSchema, TimeZoneSchema,
+    ResourceSchema, EligibilitySchema, ServiceSchema, AvailabilityRuleSchema, AvailabilityRulesSchema, LocalWindowSchema,
+    DayOverrideSchema, DayOverridesSchema, DaySettingSchema, DaysEditSchema,
+    CourseSchema, MeetingSchema, RunLanguageSchema, RunStatusSchema, RunSchema,
+    BookingWhatSchema, ActorSchema, BookingStateSchema, PlacementSchema, HistoryEntrySchema, BookingSourceSchema,
+    PersonSchema, BookingSchema, ResDayEntrySchema, SeatEntrySchema,
+    SchedulingSettingsSchema, SchedulingEmailKeySchema, SchedulingEmailTemplateSchema, SchedulingEmailConfigSchema,
+    availableSlots, slotDecision, overlapCheck, pickResource,
+    isActive, holdExpiry, confirmDecision, changeDecision, tokenView, appendHistory, bookingBase,
+    activeSeats, seatDecision, propose, validateMeetings, cancelRunEffects,
+    dayWindows, lastBookableDate, activeEntries, planDay, editDays, weekMailDue,
+    type Resource, type Eligibility, type Service, type AvailabilityRule, type LocalWindow,
+    type DayOverride, type DayOverrides, type DaySetting, type DaysEdit,
+    type Course, type Meeting, type RunLanguage, type RunStatus, type Run,
+    type BookingWhat, type Actor, type BookingState, type Placement, type HistoryEntry, type BookingSource,
+    type Person, type Booking, type ContainerEntry, type SeatEntry,
+    type SchedulingSettings, type SchedulingEmailKey, type SchedulingEmailTemplate, type SchedulingEmailConfig,
+    type SlotRefusal, type ConfirmRefusal, type ChangeRefusal, type SeatRefusal, type Proposal, type MeetingError,
+    type PlannedDay, type DaysEditError,
+} from "./scheduling.js";
+import { SchedulingSettingsSchema, SchedulingEmailConfigSchema } from "./scheduling.js";
 
 // ==========================================
 // 1. GLOBAL ENUMS & CONSTANTS
@@ -1189,6 +1216,13 @@ export const TenantConfigSchema = z.object({
 
     // Commerce toggle — enables cart, checkout, orders flow. Products/categories/Paddle still work without it.
     commerceEnabled: z.boolean().default(false),
+
+    // SCHED-1A (docs/slices/sched-1.md § 4.1): scheduling settings. OPTIONAL with no default here, so a tenant saved
+    // before the slice parses exactly as before. Absent `schedulingEnabled` = off; inside `scheduling` the schema
+    // fills its own defaults (holdMinutes 30, changeCutoffHours 24, reminderHours 24, bookingHorizonWeeks 8).
+    schedulingEnabled: z.boolean().optional(),
+    scheduling: SchedulingSettingsSchema.optional(),
+    schedulingEmailConfig: SchedulingEmailConfigSchema.optional(),
 
     // CATALOG-MODE-1 (CM-D11): a catalog site shows products without any price, availability or ordering
     // control. Chosen ONLY at POST /tenants and never changed online (PUT /settings refuses a change);
