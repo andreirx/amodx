@@ -27,11 +27,12 @@ cart; one real custom-form submission; `/lista-mea` on the Romanian site.
 - **B commerce-private** (`cmrc-1`…`6`): mandatory (human 2026-11-20; a client with real orders is named).
   Slice docs not yet written. Backlog behind it: `cmrc-reviews-ask`, `cmrc-withdrawal`.
 - **C customer sign-in** (`auth-1`…`7`): planned, no code; Google sign-in exists.
-- **D scheduling**: draft `course-1` proposes seats in course runs first; `appt-1`…`7` unscheduled.
+- **D scheduling**: draft `sched-1` — two shapes (a slot with a practitioner, a seat in a group), booking by
+  emailed link; `sched-frame-1` offers it to sites that are not on AMODX. Four decisions open.
 - **Languages**: `lang-1` mandatory (human 2026-11-20); next is the `<html lang>` spike.
 - **Two client sites** (drafts; map in `docs/plan-courses-group-sessions.md` § 5): `gallery-1`, `redirect-1`,
   `landing-1`, `tags-1`, `coupon-fix-1`, `newsletter-1`, `import-paths-1`, `booking-embed-1`, `pay-1`, `pay-2`,
-  `invoice-1`, `voucher-1`, `loyalty-1`, `contract-1`.
+  `invoice-1`, `voucher-1`, `loyalty-1`, `contract-1`, `wp-export-1`.
 - **Maintenance**: `next-patch-1`, `dep-1`.
 - **Plans waiting for rulings**: STATIC (`D-STATIC-1`…`5`), EMAIL (`D-EMAIL-1`, `D-EMAIL-6`), AI (provider).
 

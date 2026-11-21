@@ -96,4 +96,4 @@ when that track opens, so the kernel is not written for appointments only and th
 The guesthouse's room booking is done by an existing external booking service that the site integrates:
 `docs/slices/booking-embed-1.md`. **Part B (§ 3) is withdrawn**; STAY1-GUEST-IDENTITY and STAY1-PRICE need no
 answer. Part A (§ 2, a date field for stored forms) stays a draft for owners with no booking service; it is not
-needed for satulbanului if the service is integrated. Track D gets the seat shape first (`docs/slices/course-1.md`).
+needed for satulbanului if the service is integrated. Track D gets the seat shape first (`docs/slices/sched-1.md`).

@@ -1,7 +1,7 @@
 # PAY-1 — "paid" becomes a real order transition, with an event
 
 Status: **PLANNED (draft 2026-11-20, not ratified)**. Track: commerce. Depends: none. Prerequisite of `pay-2`,
-`invoice-1`, `voucher-1`, `course-1d`. Maturity target: PROTOTYPE.
+`invoice-1`, `voucher-1`, `sched-1h`. Maturity target: PROTOTYPE.
 
 ## Purpose / risk retired
 

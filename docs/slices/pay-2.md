@@ -31,7 +31,7 @@ Recommendation: A, written as one module; a port is added when a second processo
    — and is not a model), idempotent by the processor's payment id, tenant and order taken from the
    server-created reference, then the `pending → paid` transition of `pay-1`.
 4. Return page: shows the order state read from the server; never trusts the return parameters.
-5. Abandoned payment: the order stays `pending`; a seat held by `course-1` follows that track's hold rule.
+5. Abandoned payment: the order stays `pending`; a seat held by `sched-1` follows that track's hold rule.
 
 ## Evidence taxonomy (minimum)
 
