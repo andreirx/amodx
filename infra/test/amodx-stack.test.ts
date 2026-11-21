@@ -82,6 +82,16 @@ const MANAGED_CACHING_OPTIMIZED = '658327ea-f89d-4fab-a63d-7e88639e58f6';
 
 const NO_DOTENV_PRELOAD = path.join(__dirname, 'no-dotenv.cjs');
 
+/**
+ * Fixed per-stage overhead the domains:{} test synth omits but a real stage adds: the
+ * Route53/ACM/DomainName/ApiMapping domain resources, the parent's own CDK::Metadata, and the
+ * domain custom-resource satellites (fn/role/policy/log-group). Calibrated whole at the split
+ * commit, when deployedParent equalled the real staging synth (infra/cdk.out parent = 446);
+ * the overhead is fixed, the parent count is not (see the counts in (split1-5)). Not pure domain
+ * — hence not named DOMAIN_OVERHEAD. Used by (split1-5) and (sched1b-4).
+ */
+const PARENT_STAGE_OVERHEAD = 13;
+
 let auditPath: string;
 let scratchDir: string;
 
@@ -1206,15 +1216,10 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         // added only the log groups (catalogFns) and so undercounted the deployed nested template by
         // exactly this one AWS::CDK::Metadata — the bug that made the (since removed, see below)
         // pre-split reconstruction read 500 instead of the documented 501. The parent's own CDK::Metadata is likewise omitted by
-        // the test synth but is folded into PARENT_STAGE_OVERHEAD below (which is calibrated whole).
+        // the test synth but is folded into PARENT_STAGE_OVERHEAD (module scope; calibrated whole).
         const NESTED_METADATA = 1;
-        // Fixed per-stage overhead the domains:{} test synth omits but a real stage adds: the
-        // Route53/ACM/DomainName/ApiMapping domain resources, the parent's own CDK::Metadata, and the
-        // domain custom-resource satellites (fn/role/policy/log-group). Calibrated whole at the split
-        // commit, when deployedParent equalled the real staging synth (infra/cdk.out parent = 446);
-        // the overhead is fixed, the parent count is not (see the counts below). Not pure domain
-        // — hence not named DOMAIN_OVERHEAD.
-        const PARENT_STAGE_OVERHEAD = 13;
+        // PARENT_STAGE_OVERHEAD (module scope, shared with (sched1b-4)): the fixed per-stage overhead
+        // this synth omits; its accounting is at its declaration.
 
         // Counts in this synth (opennext-1c, 2026-10-15): 377 + 50 + 13 = 440 and 42 + 14 + 1 = 57.
         // The cdk.out staging template still shows 446 until the opennext-1c deploy; expected 440
@@ -1225,7 +1230,9 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         // Counts in this synth (CAT-IMAGES-1, 2026-10-30): 401 + 53 + 13 = 467 and 45 + 15 + 1 = 61 — the image
         // copy route added Route + Integration + Permission to the parent; CatalogApi gained no resource (the bucket
         // grant is statements in the function's existing Policy, the variables are function properties).
-        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 401 + 53 + 13 = 467
+        // Counts in this synth (SCHED-1B, 2026-11-21): 402 + 53 + 13 = 468 and 45 + 15 + 1 = 61 — the scheduling-private
+        // table added one AWS::DynamoDB::Table to the parent and nothing else (see (sched1b-3), (sched1b-4)).
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 402 + 53 + 13 = 468
         const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 45 + 15 + 1 = 61
 
         // Pre-split parent (email-2, measured 2026-08-10 against the real staging synth) = 501 = 446
@@ -1534,5 +1541,407 @@ describe('CAT-INTEREST-1 — POST /public/interest and POST /public/interest/res
         const interestSes = sesStatements('PublicInterestFunc');
         expect(interestSes.length).toBe(1);
         expect(interestSes).toEqual(sesStatements('PublicSubmitFormFunc'));
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// (sched1b) SCHED-1B — the inert scheduling-private table (docs/slices/sched-1.md § 6.1; § 17.3 rows B1…B4).
+//     Customer booking data gets a table that the renderer's role cannot read; `sched-1c` tests against it.
+//     "Inert": in this slice no function has the table's name or a grant on it; `sched-1c`/`1d` wire it into the
+//     scheduling functions only.
+//
+//     B2 and B3 are absence claims, so their checks must never pass by not understanding a value. One rule:
+//       Every IAM value the checks read is matched AS A WHOLE against a closed list of exact shapes; a value of any
+//       other shape is a violation — never skipped, never interpreted by what it contains. No intrinsic function
+//       is accepted except in the shapes listed below, so a conditional (Fn::If, Fn::Select, …) anywhere the
+//       checks read is a violation, whatever its branches hold.
+//     The shapes:
+//       policy       PolicyDocument = { Statement: [statement…] | statement }; each statement a plain object
+//                    (no intrinsic) with Effect "Allow" | "Deny" and Action / NotAction a string or a string list.
+//       attachment   Roles = [{ Ref: <role> }…]; inline Policies = [{ PolicyDocument }…]; each ManagedPolicyArns
+//                    entry is { Ref: <ManagedPolicy of the same template> } or EXACTLY one of KNOWN_NO_DYNAMODB.
+//       table        an Allow statement whose Action can name DynamoDB (NotAction, or a service glob matching
+//                    `dynamodb`) must have each Resource EXACTLY one of the shapes CDK emits for a table grant:
+//                    { "Fn::GetAtt": [<table>, "Arn"] }; in a nested template { Ref: <parameter> } that the parent
+//                    fills with exactly that GetAtt; either one alone or as { "Fn::Join": ["", [<it>, "/index/*"]] }.
+//                    The table it denotes must not be the scheduling table. NotResource is a violation.
+//     Positive controls (docs/testing-strategy.md § Invariants): on the real tree the rule resolves the main table
+//     where amodx-stack.ts and renderer-hosting.ts grant it; on fixtures it flags every unrecognised shape listed in
+//     the tests, including a conditional whose other branch is the main table, and accepts the two table shapes.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('SCHED-1B — the inert scheduling-private table', () => {
+    // stage 'test' → suffix '-test' (amodx-stack.ts); names from infra/lib/database.ts.
+    const SCHEDULING = 'AmodxSchedulingTable-test';
+    const MAIN = 'AmodxTable-test';
+    /**
+     * AWS-managed policy attachments the test cannot read, matched EXACTLY (the value CDK emits), each with the
+     * reason it grants no DynamoDB action. AWSLambdaBasicExecutionRole: logs:CreateLogGroup, logs:CreateLogStream,
+     * logs:PutLogEvents (AWS managed-policy reference; INFERRED, not read from the template).
+     */
+    const KNOWN_NO_DYNAMODB: unknown[] = [
+        { 'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']] },
+    ];
+
+    /** CloudFormation templates as JSON: index 0 is the parent, the rest are its nested stacks. */
+    type Tree = Array<Record<string, any>>;
+    /** A table: its parent logical id and, when the template holds it as a literal, its physical name. */
+    type TableRef = { logicalId: string; name?: string };
+    /** A statement, where it is, its template index, and the roles of that template it reaches by attachment. */
+    type Located = { where: string; template: number; roles: string[]; statement: any };
+
+    const realTree = (): Tree => allTemplates.map((t) => t.toJSON());
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const isObject = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v);
+    /** An intrinsic function or a Ref: an object one of whose keys is `Ref` or starts with `Fn::`. */
+    const isIntrinsic = (v: unknown) => isObject(v) && Object.keys(v).some((k) => k === 'Ref' || k.startsWith('Fn::'));
+    /** `{ [key]: value }` with exactly that one key. */
+    const only = (v: unknown, key: string): v is Record<string, any> =>
+        isObject(v) && Object.keys(v).length === 1 && Object.keys(v)[0] === key;
+    const isRefTo = (v: unknown): v is { Ref: string } => only(v, 'Ref') && typeof v.Ref === 'string';
+
+    /** The one table with physical name `name`, which must be in the PARENT template and in no nested one. */
+    function parentTable(name: string): TableRef & { resource: any } {
+        const everywhere = allTemplates
+            .flatMap((t) => Object.values(t.findResources('AWS::DynamoDB::Table')))
+            .filter((r: any) => r.Properties.TableName === name);
+        expect({ name, inStackTree: everywhere.length }).toEqual({ name, inStackTree: 1 });
+        const inParent = Object.entries(template.findResources('AWS::DynamoDB::Table'))
+            .filter(([, r]) => (r as any).Properties.TableName === name);
+        expect({ name, inParent: inParent.length }).toEqual({ name, inParent: 1 });
+        return { logicalId: inParent[0][0], name, resource: inParent[0][1] };
+    }
+
+    /**
+     * MENTION detector, used only where a mention FAILS the check (the referrer scan of (sched1b-3)), never to accept:
+     * the logical id as a whole token (Ref, Fn::GetAtt in both forms, Fn::Sub `${Id}` / `${Id.Arn}`, DependsOn) or
+     * the physical name.
+     */
+    function namesTable(value: unknown, table: TableRef): boolean {
+        const json = JSON.stringify(value) ?? '';
+        const token = new RegExp(`(^|[^A-Za-z0-9])${table.logicalId}([^A-Za-z0-9]|$)`).test(json);
+        return token || (table.name !== undefined && json.includes(table.name));
+    }
+
+    /** Nested-stack parameter name → the value the parent passes (across every AWS::CloudFormation::Stack). */
+    function parentParameterValues(tree: Tree): Map<string, unknown> {
+        const values = new Map<string, unknown>();
+        for (const r of Object.values(tree[0].Resources ?? {}) as any[]) {
+            if (r.Type !== 'AWS::CloudFormation::Stack') continue;
+            for (const [param, value] of Object.entries(r.Properties?.Parameters ?? {})) {
+                if (values.has(param) && !same(values.get(param), value)) {
+                    throw new Error(`nested-stack parameter ${param} has two different values in the parent`);
+                }
+                values.set(param, value);
+            }
+        }
+        return values;
+    }
+
+    /** The table logical id `resource` denotes as a WHOLE, or undefined when it is not one of the table shapes. */
+    function tableOf(resource: unknown, templateIndex: number, tree: Tree): string | undefined {
+        const tableIds = Object.entries(tree[0].Resources ?? {})
+            .filter(([, r]: [string, any]) => r.Type === 'AWS::DynamoDB::Table')
+            .map(([id]) => id);
+        const getAttArn = (v: unknown) =>
+            only(v, 'Fn::GetAtt') && Array.isArray(v['Fn::GetAtt']) && v['Fn::GetAtt'].length === 2 &&
+            v['Fn::GetAtt'][1] === 'Arn' && tableIds.includes(v['Fn::GetAtt'][0]) ? (v['Fn::GetAtt'][0] as string) : undefined;
+        const tableArn = (v: unknown) => {
+            if (templateIndex === 0) return getAttArn(v);
+            return isRefTo(v) ? getAttArn(parentParameterValues(tree).get(v.Ref)) : undefined;
+        };
+        const direct = tableArn(resource);
+        if (direct !== undefined) return direct;
+        if (!only(resource, 'Fn::Join')) return undefined;
+        const join = resource['Fn::Join'];
+        const indexes = Array.isArray(join) && join.length === 2 && join[0] === '' && Array.isArray(join[1]) &&
+            join[1].length === 2 && join[1][1] === '/index/*';
+        return indexes ? tableArn(join[1][0]) : undefined;
+    }
+
+    const actionsOf = (statement: any, key: 'Action' | 'NotAction'): string[] | undefined => {
+        const v = statement[key];
+        if (typeof v === 'string') return [v];
+        return Array.isArray(v) && v.every((a) => typeof a === 'string') ? v : undefined;
+    };
+    const serviceMatchesDynamodb = (action: string) => {
+        const glob = action.split(':')[0].toLowerCase().replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+        return new RegExp(`^${glob}$`).test('dynamodb');
+    };
+
+    /**
+     * Read every policy of the tree by the shapes of the rule. Returns the statements (with the roles each reaches by
+     * attachment in its own template) and every shape violation.
+     */
+    function readIam(tree: Tree): { located: Located[]; violations: string[] } {
+        const located: Located[] = [];
+        const violations: string[] = [];
+        const statementsOf = (document: unknown, where: string): any[] => {
+            if (!isObject(document) || isIntrinsic(document) || document.Statement === undefined) {
+                violations.push(`${where}: PolicyDocument is not a plain document`);
+                return [];
+            }
+            const list = Array.isArray(document.Statement) ? document.Statement : [document.Statement];
+            return list.filter((s: unknown) => {
+                const plain = isObject(s) && !isIntrinsic(s);
+                if (!plain) violations.push(`${where}: a statement is not a plain object: ${JSON.stringify(s)}`);
+                return plain;
+            });
+        };
+        tree.forEach((t, i) => {
+            const resources = Object.entries(t.Resources ?? {}) as Array<[string, any]>;
+            for (const [id, r] of resources) {
+                const where = `template[${i}].${id}`;
+                const isPrincipal = ['AWS::IAM::Role', 'AWS::IAM::User', 'AWS::IAM::Group'].includes(r.Type);
+                if (isPrincipal) {
+                    const arns = r.Properties?.ManagedPolicyArns ?? [];
+                    if (!Array.isArray(arns)) violations.push(`${where}: ManagedPolicyArns is not a list`);
+                    else for (const arn of arns) {
+                        const local = isRefTo(arn) && t.Resources?.[arn.Ref]?.Type === 'AWS::IAM::ManagedPolicy';
+                        if (!local && !KNOWN_NO_DYNAMODB.some((known) => same(known, arn))) {
+                            violations.push(`${where}: unread ManagedPolicyArns entry ${JSON.stringify(arn)}`);
+                        }
+                    }
+                    const inline = r.Properties?.Policies ?? [];
+                    if (!Array.isArray(inline)) violations.push(`${where}: Policies is not a list`);
+                    else for (const p of inline) {
+                        const roles = r.Type === 'AWS::IAM::Role' ? [id] : [];
+                        statementsOf(isObject(p) && !isIntrinsic(p) ? p.PolicyDocument : p, `${where}.Policies`)
+                            .forEach((statement) => located.push({ where: `${where}.Policies`, template: i, roles, statement }));
+                    }
+                }
+                if (r.Type !== 'AWS::IAM::Policy' && r.Type !== 'AWS::IAM::ManagedPolicy') continue;
+                const byRoles = r.Properties?.Roles ?? [];
+                if (!Array.isArray(byRoles) || !byRoles.every(isRefTo)) {
+                    violations.push(`${where}: Roles is not a list of { Ref }: ${JSON.stringify(byRoles)}`);
+                }
+                const roles = Array.isArray(byRoles) ? byRoles.filter(isRefTo).map((x) => x.Ref) : [];
+                for (const [roleId, role] of resources) {
+                    const arns = role.Properties?.ManagedPolicyArns;
+                    if (Array.isArray(arns) && arns.some((a: unknown) => isRefTo(a) && a.Ref === id)) roles.push(roleId);
+                }
+                statementsOf(r.Properties?.PolicyDocument, where)
+                    .forEach((statement) => located.push({ where, template: i, roles, statement }));
+            }
+        });
+        return { located, violations };
+    }
+
+    /** Apply the table shapes to every statement. `resolved` lists the tables the grants denote (control signal). */
+    function checkDynamodbGrants(located: Located[], tree: Tree, scheduling: TableRef): { violations: string[]; resolved: string[] } {
+        const violations: string[] = [];
+        const resolved = new Set<string>();
+        for (const { where, template: i, statement } of located) {
+            if (statement.Effect !== 'Allow' && statement.Effect !== 'Deny') {
+                violations.push(`${where}: Effect is not "Allow" or "Deny": ${JSON.stringify(statement.Effect)}`);
+                continue;
+            }
+            if (statement.Effect === 'Deny') continue;
+            let canGrantDynamodb = statement.NotAction !== undefined;
+            if (!canGrantDynamodb) {
+                const actions = actionsOf(statement, 'Action');
+                if (actions === undefined) {
+                    violations.push(`${where}: Action is not a string or a string list: ${JSON.stringify(statement.Action)}`);
+                    continue;
+                }
+                canGrantDynamodb = actions.some(serviceMatchesDynamodb);
+            }
+            if (!canGrantDynamodb) continue;
+            if (statement.NotResource !== undefined) violations.push(`${where}: NotResource`);
+            for (const resource of ([] as unknown[]).concat(statement.Resource ?? [])) {
+                const table = tableOf(resource, i, tree);
+                if (table === undefined) violations.push(`${where}: not a table ARN shape: ${JSON.stringify(resource)}`);
+                else if (table === scheduling.logicalId) violations.push(`${where}: denotes the scheduling table`);
+                else resolved.add(table);
+            }
+        }
+        return { violations, resolved: [...resolved].sort() };
+    }
+
+    /** Both checks on a tree: shape violations of the IAM reading, then of the table grants of `located`. */
+    function violationsOf(tree: Tree, scheduling: TableRef, select: (l: Located) => boolean = () => true): string[] {
+        const read = readIam(tree);
+        return [...read.violations, ...checkDynamodbGrants(read.located.filter(select), tree, scheduling).violations];
+    }
+
+    /**
+     * A one-template fixture: the two real tables, a role `FixtureRole` that reaches `statement` through a
+     * ManagedPolicy attached ONLY by the role's ManagedPolicyArns (the form CDK emits for `role.addManagedPolicy`:
+     * no `Roles` on the policy), the extra `ManagedPolicyArns` entries given, and `policyOverride` merged into the
+     * ManagedPolicy's properties.
+     */
+    function fixture(statement: any, extraArns: unknown[] = [], policyOverride: Record<string, unknown> = {}): Tree {
+        const scheduling = parentTable(SCHEDULING);
+        const main = parentTable(MAIN);
+        return [{
+            Resources: {
+                [scheduling.logicalId]: { Type: 'AWS::DynamoDB::Table', Properties: { TableName: SCHEDULING } },
+                [main.logicalId]: { Type: 'AWS::DynamoDB::Table', Properties: { TableName: MAIN } },
+                FixturePolicy: { Type: 'AWS::IAM::ManagedPolicy', Properties: { PolicyDocument: { Statement: [statement] }, ...policyOverride } },
+                FixtureRole: { Type: 'AWS::IAM::Role', Properties: { ManagedPolicyArns: [{ Ref: 'FixturePolicy' }, ...extraArns] } },
+            },
+        }];
+    }
+
+    test('(sched1b-1) B1: one parent table, PAY_PER_REQUEST, PITR, TTL `ttl`, Retain on delete and replace, PK/SK strings, no index, no stream', () => {
+        const { resource } = parentTable(SCHEDULING);
+        const p = resource.Properties;
+        expect(p.BillingMode).toBe('PAY_PER_REQUEST');
+        expect(p.PointInTimeRecoverySpecification).toEqual({ PointInTimeRecoveryEnabled: true });
+        expect(p.TimeToLiveSpecification).toEqual({ AttributeName: 'ttl', Enabled: true });
+        expect(p.KeySchema).toEqual([
+            { AttributeName: 'PK', KeyType: 'HASH' },
+            { AttributeName: 'SK', KeyType: 'RANGE' },
+        ]);
+        expect(p.AttributeDefinitions).toEqual([
+            { AttributeName: 'PK', AttributeType: 'S' },
+            { AttributeName: 'SK', AttributeType: 'S' },
+        ]);
+        expect(p.GlobalSecondaryIndexes).toBeUndefined();
+        expect(p.LocalSecondaryIndexes).toBeUndefined();
+        expect(p.StreamSpecification).toBeUndefined();
+        expect(resource.DeletionPolicy).toBe('Retain');
+        expect(resource.UpdateReplacePolicy).toBe('Retain');
+    });
+
+    test("(sched1b-2) B2: every DynamoDB grant reaching the renderer server function's role has a table shape, and none is the scheduling table", () => {
+        const tree = realTree();
+        const scheduling = parentTable(SCHEDULING);
+        const main = parentTable(MAIN);
+        const fns = Object.entries(template.findResources('AWS::Lambda::Function'))
+            .filter(([id]) => id.includes('RendererHostingRendererServer'));
+        expect(fns).toHaveLength(1);
+        const roleId = (fns[0][1] as any).Properties.Role['Fn::GetAtt'][0] as string;
+
+        const read = readIam(tree);
+        // Every attachment in the tree has a recognised shape, so the role's statements below are all of them.
+        expect(read.violations).toEqual([]);
+        const reaching = read.located.filter((l) => l.template === 0 && l.roles.includes(roleId));
+        const result = checkDynamodbGrants(reaching, tree, scheduling);
+        // Positive control: the rule resolves the main table in this role (renderer-hosting.ts grantReadData).
+        expect(result.resolved).toContain(main.logicalId);
+        expect(result.violations).toEqual([]);
+
+        // Positive controls on the attachment forms of FixtureRole.
+        const toFixtureRole = (l: Located) => l.roles.includes('FixtureRole');
+        const getAtt = (t: TableRef) => ({ 'Fn::GetAtt': [t.logicalId, 'Arn'] });
+        const grant = (resource: unknown) => ({ Effect: 'Allow', Action: 'dynamodb:GetItem', Resource: resource });
+        // A ManagedPolicy reached only through the role's ManagedPolicyArns is read.
+        expect(violationsOf(fixture(grant(getAtt(scheduling))), scheduling, toFixtureRole))
+            .toEqual(['template[0].FixturePolicy: denotes the scheduling table']);
+        // The same attachment with the main table passes (the rule does not flag everything).
+        expect(violationsOf(fixture(grant(getAtt(main))), scheduling, toFixtureRole)).toEqual([]);
+        // An AWS-managed policy the test cannot read, and a conditional attachment whose OTHER branch is the known
+        // policy (review-1's case), are each one violation; the known policy alone is not.
+        const arn = (name: string) => ({ 'Fn::Join': ['', ['arn:', { Ref: 'AWS::Partition' }, `:iam::aws:policy/${name}`]] });
+        const unknown = arn('AmazonDynamoDBReadOnlyAccess');
+        const conditional = { 'Fn::If': ['UseMainTable', KNOWN_NO_DYNAMODB[0], unknown] };
+        for (const extra of [unknown, conditional]) {
+            expect(violationsOf(fixture(grant(getAtt(main)), [extra, KNOWN_NO_DYNAMODB[0]]), scheduling, toFixtureRole))
+                .toEqual([`template[0].FixtureRole: unread ManagedPolicyArns entry ${JSON.stringify(extra)}`]);
+        }
+        // A Roles entry that is not { Ref } is a violation (B2 could not see the attachment otherwise).
+        const roles = { Roles: [{ 'Fn::If': ['C', { Ref: 'FixtureRole' }, { Ref: 'AWS::NoValue' }] }] };
+        expect(violationsOf(fixture(grant(getAtt(main)), [], roles), scheduling).some((v) => v.includes('Roles is not a list of { Ref }'))).toBe(true);
+    });
+
+    test('(sched1b-3) B3: no function has SCHEDULING_TABLE_NAME; nothing names the table but itself; every DynamoDB grant has a table shape, none the scheduling table', () => {
+        const tree = realTree();
+        const scheduling = parentTable(SCHEDULING);
+        const main = parentTable(MAIN);
+
+        const variables = allTemplates
+            .flatMap((t) => Object.entries(t.findResources('AWS::Lambda::Function')))
+            .map(([id, fn]) => ({ id, vars: (fn as any).Properties.Environment?.Variables ?? {} }));
+        // Positive control for the key lookup: TABLE_NAME (the main table) is found on functions.
+        expect(variables.some((f) => Object.prototype.hasOwnProperty.call(f.vars, 'TABLE_NAME'))).toBe(true);
+        expect(variables.filter((f) => Object.prototype.hasOwnProperty.call(f.vars, 'SCHEDULING_TABLE_NAME')).map((f) => f.id))
+            .toEqual([]);
+
+        // Referrer scan: a MENTION fails. Every resource, output and parameter of every template except the table.
+        const referrers = (table: TableRef): string[] =>
+            tree.flatMap((t, i) =>
+                (['Resources', 'Outputs', 'Parameters'] as const).flatMap((section) =>
+                    Object.entries(t[section] ?? {})
+                        .filter(([id, value]) => !(i === 0 && section === 'Resources' && id === table.logicalId) && namesTable(value, table))
+                        .map(([id]) => `template[${i}].${section}.${id}`),
+                ),
+            );
+        // Positive control: the same scan finds the main table's referrers (grants, TABLE_NAME, the TableName output).
+        expect(referrers(main).length).toBeGreaterThan(0);
+        expect(referrers(scheduling)).toEqual([]);
+        // ...and it finds the Fn::Sub form outside any policy (for example a variable).
+        const subVariable = { Type: 'AWS::Lambda::Function', Properties: { Environment: { Variables: { X: { 'Fn::Sub': `\${${scheduling.logicalId}}` } } } } };
+        expect(namesTable(subVariable, scheduling)).toBe(true);
+
+        // The rule over every policy of the stack tree.
+        const read = readIam(tree);
+        expect(read.violations).toEqual([]);
+        const result = checkDynamodbGrants(read.located, tree, scheduling);
+        // Positive control: grants in the nested stacks resolve to the main table through their parameters.
+        expect(result.resolved).toContain(main.logicalId);
+        expect(result.violations).toEqual([]);
+        // No grant on the table's own side either.
+        expect(scheduling.resource.Properties.ResourcePolicy).toBeUndefined();
+
+        // Positive controls, statement level: each unrecognised shape is flagged with each action form.
+        const id = scheduling.logicalId;
+        const mainArn = { 'Fn::GetAtt': [main.logicalId, 'Arn'] };
+        const resources: Array<[string, Record<string, unknown>]> = [
+            ['GetAtt of the scheduling table', { Resource: { 'Fn::GetAtt': [id, 'Arn'] } }],
+            ['its /index/*', { Resource: { 'Fn::Join': ['', [{ 'Fn::GetAtt': [id, 'Arn'] }, '/index/*']] } }],
+            ['Fn::Sub ${Id.Arn}', { Resource: { 'Fn::Sub': `\${${id}.Arn}` } }],
+            ['Fn::Sub ${Id}', { Resource: { 'Fn::Sub': `arn:aws:dynamodb:eu-central-1:111111111111:table/\${${id}}` } }],
+            ['Fn::GetAtt string form', { Resource: { 'Fn::GetAtt': `${id}.Arn` } }],
+            ['literal ARN', { Resource: `arn:aws:dynamodb:eu-central-1:111111111111:table/${SCHEDULING}` }],
+            ['wildcard *', { Resource: '*' }],
+            ['wildcard table/*', { Resource: 'arn:aws:dynamodb:*:*:table/*' }],
+            ['NotResource', { NotResource: 'arn:aws:s3:::x' }],
+            ['Fn::If(main table, "*") (review-1)', { Resource: { 'Fn::If': ['UseMainTable', mainArn, '*'] } }],
+            ['Fn::If(main table, main table)', { Resource: { 'Fn::If': ['C', mainArn, mainArn] } }],
+            ['main ARN joined to another suffix', { Resource: { 'Fn::Join': ['', [mainArn, '*']] } }],
+        ];
+        for (const [label, part] of resources) {
+            for (const action of ['dynamodb:Query', 'dynamodb:*', '*', 'dynamo*:Get*']) {
+                const flagged = violationsOf(fixture({ Effect: 'Allow', Action: action, ...part }), scheduling).length > 0;
+                expect({ label, action, flagged }).toEqual({ label, action, flagged: true });
+            }
+        }
+        const statements: Array<[string, unknown]> = [
+            ['Effect as Fn::If', { Effect: { 'Fn::If': ['C', 'Allow', 'Deny'] }, Action: 'dynamodb:GetItem', Resource: '*' }],
+            ['Action as Ref', { Effect: 'Allow', Action: { Ref: 'ActionParam' }, Resource: '*' }],
+            ['NotAction', { Effect: 'Allow', NotAction: 's3:*', Resource: '*' }],
+            ['statement as Fn::If', { 'Fn::If': ['C', { Effect: 'Allow', Action: 'dynamodb:*', Resource: '*' }, { Ref: 'AWS::NoValue' }] }],
+        ];
+        for (const [label, statement] of statements) {
+            expect({ label, flagged: violationsOf(fixture(statement), scheduling).length > 0 }).toEqual({ label, flagged: true });
+        }
+        const documentIf = { PolicyDocument: { 'Fn::If': ['C', { Statement: [{ Effect: 'Allow', Action: '*', Resource: '*' }] }, {}] } };
+        expect(violationsOf(fixture({}, [], documentIf), scheduling)).toEqual(['template[0].FixturePolicy: PolicyDocument is not a plain document']);
+        // Accepted shapes (the rule does not flag everything): the main table and its indexes, and a non-DynamoDB grant.
+        for (const resource of [mainArn, { 'Fn::Join': ['', [mainArn, '/index/*']] }]) {
+            expect(violationsOf(fixture({ Effect: 'Allow', Action: ['dynamodb:GetItem', 'dynamodb:Query'], Resource: resource }), scheduling)).toEqual([]);
+        }
+        expect(violationsOf(fixture({ Effect: 'Allow', Action: 's3:GetObject', Resource: '*' }), scheduling)).toEqual([]);
+        // A nested-stack parameter that the parent fills with the table denotes it inside the nested template.
+        const nestedTree = (passed: unknown): Tree => [
+            { Resources: { [id]: { Type: 'AWS::DynamoDB::Table', Properties: { TableName: SCHEDULING } },
+                           [main.logicalId]: { Type: 'AWS::DynamoDB::Table', Properties: { TableName: MAIN } },
+                           N: { Type: 'AWS::CloudFormation::Stack', Properties: { Parameters: { referencetoXArn: passed } } } } },
+            { Resources: { P: { Type: 'AWS::IAM::Policy', Properties: { PolicyDocument: { Statement: [{ Effect: 'Allow', Action: 'dynamodb:GetItem', Resource: { Ref: 'referencetoXArn' } }] } } } } },
+        ];
+        expect(violationsOf(nestedTree({ 'Fn::GetAtt': [id, 'Arn'] }), scheduling)).toEqual(['template[1].P: denotes the scheduling table']);
+        expect(violationsOf(nestedTree(mainArn), scheduling)).toEqual([]);
+        expect(violationsOf(nestedTree({ 'Fn::If': ['C', mainArn, '*'] }), scheduling)).toEqual([`template[1].P: not a table ARN shape: {"Ref":"referencetoXArn"}`]);
+    });
+
+    test('(sched1b-4) B4: the DEPLOYED parent count with the table is logged and < 500 (as (split1-5))', () => {
+        const rawParent = Object.keys(template.toJSON().Resources ?? {}).length;
+        const parentFns = Object.keys(template.findResources('AWS::Lambda::Function')).length;
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD;
+        console.log(
+            `(sched1b-4) DEPLOYED parent ≈ ${deployedParent} (raw ${rawParent} + ${parentFns} managed log groups + ` +
+                `${PARENT_STAGE_OVERHEAD} stage overhead), scheduling table included. < 500.`,
+        );
+        expect(deployedParent).toBeLessThan(500);
     });
 });

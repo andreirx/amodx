@@ -8,6 +8,12 @@ interface AmodxDatabaseProps {
 
 export class AmodxDatabase extends Construct {
     public readonly table: dynamodb.Table;
+    /**
+     * Scheduling-private table (docs/slices/sched-1.md § 6.1, SCHED-TABLE = A). Holds customer booking data, so
+     * the renderer's role gets no statement on it. Inert since `sched-1b`: no function has its name or a grant;
+     * `sched-1c`/`1d` wire it into the scheduling functions only.
+     */
+    public readonly schedulingTable: dynamodb.Table;
 
     constructor(scope: Construct, id: string, props?: AmodxDatabaseProps) {
         super(scope, id);
@@ -49,6 +55,20 @@ export class AmodxDatabase extends Construct {
             indexName: 'GSI_Slug',
             partitionKey: { name: 'TenantSlug', type: dynamodb.AttributeType.STRING },
             projectionType: dynamodb.ProjectionType.ALL,
+        });
+
+        // Scheduling-private table (sched-1.md § 6.1). Same scope and name pattern as AmodxTable. No GSI and no
+        // stream: every access pattern is a Get/Query on PK = TENANT#<tenantId> (§ 6.3). TTL attribute `ttl` is
+        // set only on items with no customer data (§ 6.1 TTL rule). RETAIN emits DeletionPolicy and
+        // UpdateReplacePolicy Retain, so neither a stack delete nor a revert of this declaration deletes bookings.
+        this.schedulingTable = new dynamodb.Table(scope, 'SchedulingTable', {
+            tableName: `AmodxSchedulingTable${suffix}`,
+            partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+            sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+            pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+            timeToLiveAttribute: 'ttl',
         });
     }
 }

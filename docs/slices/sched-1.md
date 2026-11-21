@@ -2198,3 +2198,17 @@ rows C33, D14).
   - row A14: no `switch` over `HistoryEntry` exists yet, so that part shows no compile error until `sched-1e`
     renders history.
 - Deferred: `packages/shared/ARCHITECTURE.md` gets its scheduling entry with `sched-1c`, the first consumer.
+
+### `sched-1b` — shipped to `main` and to staging 2026-11-21 (operator closeout)
+
+- Scope: one table `AmodxSchedulingTable<suffix>` in `infra/lib/database.ts` (on-demand, point-in-time recovery,
+  TTL attribute `ttl`, Retain on delete and on replace, `PK`/`SK`, no index, no stream) and assertions
+  `(sched1b-1)`…`(sched1b-4)` in `infra/test/amodx-stack.test.ts`. `infra/lib/amodx-stack.ts` needed no change.
+  Inert: no function has the table's name or a grant.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Operator gates, all exit 0: build, typecheck, infra suite, backend unit, `git diff --check`.
+- Staging (operator, OBSERVED): diff read before deploy — one table added, function code bundles changed
+  (they carry `sched-1a`), no IAM change; deploy succeeded; the table is ACTIVE, 0 items, PAY_PER_REQUEST,
+  recovery ENABLED, TTL `ttl` ENABLED; `https://staging.amodx.net/` and `/sitemap.xml` answer 200.
+- Production: arrives with the human's next `./deploy.sh prod` as one added table. Rollback: a revert after a
+  deploy leaves the table in the account (Retain); a later re-apply must import or rename it (INFERRED).
