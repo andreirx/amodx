@@ -18,6 +18,12 @@ src/
 ├── catalog-listing.ts  # Catalog listing rule: catalogListing, isProductAvailable(p, today), utcDay, catalogListingPath (cat-import-profile-1b)
 ├── coupon.ts           # The coupon rule: evaluateCoupon(coupon, lines, now, customerUseCount?), amountInCents, isCouponType, CouponPrecheckItemSchema (coupon-fix-1)
 ├── payment-transition.ts # The payment-state rule: paymentTransition(previous, requested) (pay-1)
+├── scheduling.ts       # SCHED-1A kernel (docs/slices/sched-1.md § 4, § 5; PROTOTYPE): the booking domain types as Zod
+│                       #   schemas (one definition for stored items and request bodies) and the pure rules of both
+│                       #   shapes and of the week planner (slotDecision, overlapCheck, seatDecision, confirmDecision,
+│                       #   changeDecision, activeEntries, planDay, editDays, …). No I/O, no clock. Persistence and
+│                       #   concurrency live in its first consumer, backend/src/lib/scheduling-db.ts (sched-1c)
+├── zoned-time.ts       # Local wall time ↔ UTC instant on Intl (spring gap refused, ambiguous = earlier), for scheduling.ts
 ├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e); catalogServerTexts (cdl-1)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)

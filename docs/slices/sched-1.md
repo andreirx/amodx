@@ -2212,3 +2212,25 @@ rows C33, D14).
   recovery ENABLED, TTL `ttl` ENABLED; `https://staging.amodx.net/` and `/sitemap.xml` answer 200.
 - Production: arrives with the human's next `./deploy.sh prod` as one added table. Rollback: a revert after a
   deploy leaves the table in the account (Retain); a later re-apply must import or rename it (INFERRED).
+
+### `sched-1c` — shipped to `main` 2026-11-22 (operator closeout)
+
+- Scope: `backend/src/lib/scheduling-db.ts` (the only code that names the scheduling table: keys and item
+  codecs, the reads of § 6.3, every transaction of §§ 7, 8.4, 13, 14, `DAYS#`, `WEEKMAIL#`), its unit tests (79,
+  fake client that records command inputs) and an integration file (36 tests). No handler uses it yet; nothing
+  is deployed by this slice. Maturity: PROTOTYPE.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), two cycles, approved (separate
+  invocations). Review-0 findings closed: booking updates write only changed attributes (a mail mark survives a
+  concurrent token mint); a run move removes counted-expired seats; consistent reads on two lookups; an admin
+  move uses the current service duration.
+- Operator gates, all exit 0: build, typecheck, shared, backend unit, infra, MCP, `git diff --check`.
+- Integration (operator-run, OBSERVED): `cd backend && SCHEDULING_TABLE_NAME=AmodxSchedulingTable-staging npx
+  vitest run test/scheduling-db.integration.test.ts` → 36 passed; the table holds 0 items after the run. The file
+  refuses any table name that does not end with `-staging` and is not part of `npm run test:unit`.
+- Differences from the specification:
+  - § 17.3 names `cd backend && npm test` for the integration rows; that command runs the whole live-staging
+    suite and is not used. The rows run through the dedicated command above.
+  - Invalid stored data throws `StoredDataInvalidError` (an unrecoverable state), it is not a refusal value.
+  - A write removes the expired entries it reads and counts; `updateRun` reads none and removes none.
+  - The route parts of rows C5-C7 (HTTP codes, mail, reCAPTCHA) belong to `sched-1d`; the tenant selection of
+    C29 belongs to the slice that owns the daily job.

@@ -11,8 +11,31 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 18 files in total)
+├── lib/                   # (selected modules; 19 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
+│   ├── scheduling-db.ts   # SCHED-1C (docs/slices/sched-1.md § 6-§ 8.4, § 13, § 14, § 23; PROTOTYPE): the ONLY code
+│   │                      #   that names the scheduling-private table. Every function takes a SchedulingStore
+│   │                      #   (client, table, sleep); handlers use schedulingStoreFromEnv() (SCHEDULING_TABLE_NAME,
+│   │                      #   the one read). Decisions are the @amodx/shared kernel's. Reads that a write decides
+│   │                      #   on are ConsistentRead; display reads (readIntervals, listRuns, getBookingViews,
+│   │                      #   listResources(…, false)) are not. Each booking or container change is ONE
+│   │                      #   TransactWriteItems; cancellation reasons are mapped by item position to the spec's
+│   │                      #   refusal unions (Result values). Not one transaction by design: cancelRun (the run
+│   │                      #   transaction, then one token-cleanup transaction per held booking it cancelled,
+│   │                      #   § 7.6), removeResource (fence update, check, release or delete, § 13), the per-booking
+│   │                      #   transactions of cleanupExpiredHolds/eraseCustomer, and single-item writes (mail
+│   │                      #   mark, WEEKMAIL# claim/sent, DAYS# Put, configuration Puts). Two version rules in one
+│   │                      #   loop (`versioned`, ≤ 3 attempts, then busy): a write that reads a container's
+│   │                      #   entries (RESDAY#, RUN#.seats, HOLDS#) rewrites the map under `v` without the entries
+│   │                      #   its clock counts as expired (updateRun reads no seat and leaves `seats` as stored);
+│   │                      #   a BOOKING# change is conditioned on `rev` and sets only the attributes it changes
+│   │                      #   (+ rev, updatedAt, history with an entry). A stored item that fails its schema
+│   │                      #   throws StoredDataInvalidError (500 storedDataInvalid).
+│   │                      #   No Scan. Tests: test/unit/scheduling-db.test.ts (rows C1-C35 against an in-memory
+│   │                      #   fake that evaluates the emitted expressions); test/scheduling-db.integration.test.ts
+│   │                      #   (operator-run on the staging table: skipped without SCHEDULING_TABLE_NAME, refuses a
+│   │                      #   name not ending in -staging, one random tenant per test; every concurrent group
+│   │                      #   settles before the `finally` purge, and the partition is read back empty)
 │   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
 │   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
 │   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
