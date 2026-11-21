@@ -30,7 +30,9 @@ const ORDER_STATUSES: string[] = OrderSchema.shape.status.unwrap().options;
 
 describe("status coverage — schema ↔ labels ↔ default templates", () => {
     /**
-     * INVARIANT: the three lists are the SAME set. Asserted in both directions, because the
+     * INVARIANT: the three lists are the SAME set, except that the default templates also hold
+     * the payment key `paid` (PAY-1: the mail of the payment change pending → paid, which is not an
+     * order status). Asserted in both directions, because the
      * two failures differ: a missing entry is a broken email at runtime; an extra entry is
      * dead configuration that the admin Email-Templates page will nonetheless render as an
      * editable status.
@@ -45,8 +47,15 @@ describe("status coverage — schema ↔ labels ↔ default templates", () => {
         expect(Object.keys(STATUS_LABELS).sort()).toEqual([...ORDER_STATUSES].sort());
     });
 
-    it("getDefaultTemplates() covers every schema status and nothing else", () => {
-        expect(Object.keys(getDefaultTemplates()).sort()).toEqual([...ORDER_STATUSES].sort());
+    it("getDefaultTemplates() covers every schema status, plus the payment key 'paid' (PAY-1), and nothing else", () => {
+        expect(Object.keys(getDefaultTemplates()).sort()).toEqual([...ORDER_STATUSES, "paid"].sort());
+    });
+
+    it("PAY-1: the 'paid' default has the flags of 'confirmed' (customer yes, admin no, processing no)", () => {
+        const { paid, confirmed } = getDefaultTemplates();
+        expect({ c: paid.sendToCustomer, a: paid.sendToAdmin, p: paid.sendToProcessing })
+            .toEqual({ c: confirmed.sendToCustomer, a: confirmed.sendToAdmin, p: confirmed.sendToProcessing });
+        expect({ c: paid.sendToCustomer, a: paid.sendToAdmin, p: paid.sendToProcessing }).toEqual({ c: true, a: false, p: false });
     });
 
     it("every default template has a non-empty subject and body", () => {

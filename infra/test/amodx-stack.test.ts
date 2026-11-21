@@ -975,6 +975,61 @@ describe('ReviewImportFunc — rev-2b import least-privilege', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
+// (pay1) UpdateOrderFunc — PAY-1 "paid" order mail
+//     PUT /orders/{id} (backend/src/orders/update.ts) sends the "paid" mail on pending → paid. The handler
+//     sends no mail when SES_FROM_EMAIL is absent, and SES refuses the send without ses:SendEmail. These
+//     assertions pin both on the function, with the grant scoped to the sender identity (not `*`) and
+//     equal to the neighbour UpdateOrderStatusFunc's. They prove the template, not a delivered mail.
+//     Prose: docs/slices/pay-1.md § Build record — revision 1.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+describe('UpdateOrderFunc — PAY-1 paid-mail wiring', () => {
+    /** The one Lambda whose logical id holds `UpdateOrderFunc` (not `UpdateOrderStatusFunc`), across the stack tree. */
+    function orderFunc(name: 'UpdateOrderFunc' | 'UpdateOrderStatusFunc'): { template: Template; roleLogicalId: string; props: any } {
+        for (const t of allTemplates) {
+            const fns = Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) => id.includes(name));
+            if (fns.length === 0) continue;
+            if (fns.length !== 1) throw new Error(`expected 1 ${name}, found ${fns.length}`);
+            const props = (fns[0][1] as any).Properties;
+            return { template: t, roleLogicalId: props.Role['Fn::GetAtt'][0] as string, props };
+        }
+        throw new Error(`${name} not found in any template`);
+    }
+
+    /** Every statement naming an `ses:` action on the function's role, resources serialized. */
+    function sesStatements(name: 'UpdateOrderFunc' | 'UpdateOrderStatusFunc'): Array<{ actions: string[]; resources: string[] }> {
+        const { template: t, roleLogicalId } = orderFunc(name);
+        const out: Array<{ actions: string[]; resources: string[] }> = [];
+        for (const [, policy] of Object.entries(t.findResources('AWS::IAM::Policy'))) {
+            const roles = ((policy as any).Properties.Roles as any[]).map((r) => String(r.Ref));
+            if (!roles.includes(roleLogicalId)) continue;
+            for (const st of (policy as any).Properties.PolicyDocument.Statement as any[]) {
+                const actions: string[] = (Array.isArray(st.Action) ? st.Action : [st.Action]).map(String);
+                if (!actions.some((a) => a.startsWith('ses:'))) continue;
+                const resources = (Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((r: unknown) => JSON.stringify(r));
+                out.push({ actions, resources });
+            }
+        }
+        return out;
+    }
+
+    test('(pay1-1) SES_FROM_EMAIL is wired on UpdateOrderFunc, with the value of UpdateOrderStatusFunc', () => {
+        const vars = orderFunc('UpdateOrderFunc').props.Environment.Variables;
+        expect(Object.prototype.hasOwnProperty.call(vars, 'SES_FROM_EMAIL')).toBe(true);
+        expect(vars.SES_FROM_EMAIL).toEqual(orderFunc('UpdateOrderStatusFunc').props.Environment.Variables.SES_FROM_EMAIL);
+    });
+
+    test('(pay1-2) one ses:SendEmail statement, scoped to the sender identity (not *), equal to the neighbour\'s', () => {
+        const ses = sesStatements('UpdateOrderFunc');
+        expect(ses).toHaveLength(1);
+        expect(ses[0].actions).toEqual(['ses:SendEmail']);
+        expect(ses[0].resources).toHaveLength(1);
+        expect(ses[0].resources[0]).not.toBe(JSON.stringify('*'));
+        expect(ses[0].resources[0]).toContain(':identity/');
+        expect(ses).toEqual(sesStatements('UpdateOrderStatusFunc'));
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
 // (split1) INFRA-SPLIT-1 v2 — the catalog FUNCTIONS-ONLY move, as a synthesized-template invariant
 //     Ratified by docs/slices/infra-split-1-catalog-nested-stack.md § "Design v2". The move exists
 //     to relieve CloudFormation's hard 500-resource ceiling by relocating the catalog group's heavy

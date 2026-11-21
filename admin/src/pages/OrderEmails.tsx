@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Save, RotateCcw, Mail } from "lucide-react";
 
-const ALL_STATUSES = ["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"];
+/** The template keys: the seven order statuses, then `paid` (PAY-1: the payment change pending → paid, not a status). */
+const TEMPLATE_KEYS = ["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled", "paid"];
 
-const STATUS_LABELS: Record<string, string> = {
+const TEMPLATE_LABELS: Record<string, string> = {
     placed: "Placed",
     confirmed: "Confirmed",
     prepared: "Prepared",
@@ -18,9 +19,10 @@ const STATUS_LABELS: Record<string, string> = {
     delivered: "Delivered",
     cancelled: "Cancelled",
     annulled: "Annulled",
+    paid: "Paid",
 };
 
-const STATUS_DESCRIPTIONS: Record<string, string> = {
+const TEMPLATE_DESCRIPTIONS: Record<string, string> = {
     placed: "Sent when a customer submits a new order.",
     confirmed: "Sent when you confirm/acknowledge the order.",
     prepared: "Sent when the order is packed and ready for shipping.",
@@ -28,6 +30,7 @@ const STATUS_DESCRIPTIONS: Record<string, string> = {
     delivered: "Sent when the order has been delivered.",
     cancelled: "Sent when the customer cancels the order.",
     annulled: "Sent when you annul the order (fraud, out of stock, etc.).",
+    paid: "Sent when you mark the order as paid (order page, Payment card). Not sent on a refund.",
 };
 
 interface EmailTemplate {
@@ -88,6 +91,13 @@ const DEFAULT_TEMPLATES: Record<string, EmailTemplate> = {
         sendToAdmin: false,
         sendToProcessing: false,
     },
+    paid: {
+        subject: "Order {{orderNumber}} – Payment Received",
+        body: "Hi {{customerName}},\n\nWe have received the payment for your order {{orderNumber}}: {{total}} {{currency}}.\n\nThank you!\n\nBest regards,\n{{siteName}}",
+        sendToCustomer: true,
+        sendToAdmin: false,
+        sendToProcessing: false,
+    },
 };
 
 const TEMPLATE_VARS = [
@@ -103,7 +113,7 @@ export default function OrderEmails() {
     const [templates, setTemplates] = useState<Record<string, EmailTemplate>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeStatus, setActiveStatus] = useState("placed");
+    const [activeKey, setActiveKey] = useState("placed");
 
     useEffect(() => {
         if (currentTenant) loadTemplates();
@@ -116,8 +126,8 @@ export default function OrderEmails() {
             const saved = data.orderEmailConfig?.templates || {};
             // Merge saved templates with defaults
             const merged: Record<string, EmailTemplate> = {};
-            for (const status of ALL_STATUSES) {
-                merged[status] = saved[status] || DEFAULT_TEMPLATES[status];
+            for (const key of TEMPLATE_KEYS) {
+                merged[key] = saved[key] || DEFAULT_TEMPLATES[key];
             }
             setTemplates(merged);
         } catch (e) {
@@ -143,24 +153,24 @@ export default function OrderEmails() {
         }
     }
 
-    function resetTemplate(status: string) {
+    function resetTemplate(key: string) {
         setTemplates(prev => ({
             ...prev,
-            [status]: { ...DEFAULT_TEMPLATES[status] },
+            [key]: { ...DEFAULT_TEMPLATES[key] },
         }));
     }
 
-    function updateTemplate(status: string, field: keyof EmailTemplate, value: any) {
+    function updateTemplate(key: string, field: keyof EmailTemplate, value: any) {
         setTemplates(prev => ({
             ...prev,
-            [status]: { ...prev[status], [field]: value },
+            [key]: { ...prev[key], [field]: value },
         }));
     }
 
     if (!currentTenant) return <div className="p-8">Select a site.</div>;
     if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
-    const current = templates[activeStatus];
+    const current = templates[activeKey];
     if (!current) return null;
 
     return (
@@ -171,7 +181,7 @@ export default function OrderEmails() {
                         <Mail className="h-7 w-7" /> Order Email Templates
                     </h1>
                     <p className="text-muted-foreground">
-                        Configure email notifications sent at each order status change.
+                        Configure email notifications sent at each order status change and when an order is marked as paid.
                     </p>
                 </div>
                 <Button onClick={handleSave} disabled={saving}>
@@ -181,19 +191,19 @@ export default function OrderEmails() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Status tabs (sidebar) */}
+                {/* Template key tabs (sidebar) */}
                 <div className="space-y-1">
-                    {ALL_STATUSES.map(s => (
+                    {TEMPLATE_KEYS.map(k => (
                         <button
-                            key={s}
-                            onClick={() => setActiveStatus(s)}
+                            key={k}
+                            onClick={() => setActiveKey(k)}
                             className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                                activeStatus === s
+                                activeKey === k
                                     ? "bg-primary text-primary-foreground"
                                     : "hover:bg-muted text-muted-foreground"
                             }`}
                         >
-                            {STATUS_LABELS[s]}
+                            {TEMPLATE_LABELS[k]}
                         </button>
                     ))}
                 </div>
@@ -202,15 +212,15 @@ export default function OrderEmails() {
                 <div className="lg:col-span-3 space-y-6">
                     <Card>
                         <CardHeader>
-                            <CardTitle>{STATUS_LABELS[activeStatus]} Email</CardTitle>
-                            <CardDescription>{STATUS_DESCRIPTIONS[activeStatus]}</CardDescription>
+                            <CardTitle>{TEMPLATE_LABELS[activeKey]} Email</CardTitle>
+                            <CardDescription>{TEMPLATE_DESCRIPTIONS[activeKey]}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
                                 <Label>Subject</Label>
                                 <Input
                                     value={current.subject}
-                                    onChange={e => updateTemplate(activeStatus, "subject", e.target.value)}
+                                    onChange={e => updateTemplate(activeKey, "subject", e.target.value)}
                                     placeholder="Order {{orderNumber}} — Status"
                                 />
                             </div>
@@ -219,7 +229,7 @@ export default function OrderEmails() {
                                 <Label>Body</Label>
                                 <Textarea
                                     value={current.body}
-                                    onChange={e => updateTemplate(activeStatus, "body", e.target.value)}
+                                    onChange={e => updateTemplate(activeKey, "body", e.target.value)}
                                     rows={12}
                                     className="font-mono text-sm"
                                     placeholder="Email body with {{variables}}..."
@@ -234,7 +244,7 @@ export default function OrderEmails() {
                                         <input
                                             type="checkbox"
                                             checked={current.sendToCustomer}
-                                            onChange={e => updateTemplate(activeStatus, "sendToCustomer", e.target.checked)}
+                                            onChange={e => updateTemplate(activeKey, "sendToCustomer", e.target.checked)}
                                             className="rounded"
                                         />
                                         Customer
@@ -243,7 +253,7 @@ export default function OrderEmails() {
                                         <input
                                             type="checkbox"
                                             checked={current.sendToAdmin}
-                                            onChange={e => updateTemplate(activeStatus, "sendToAdmin", e.target.checked)}
+                                            onChange={e => updateTemplate(activeKey, "sendToAdmin", e.target.checked)}
                                             className="rounded"
                                         />
                                         Admin (contactEmail)
@@ -252,7 +262,7 @@ export default function OrderEmails() {
                                         <input
                                             type="checkbox"
                                             checked={current.sendToProcessing}
-                                            onChange={e => updateTemplate(activeStatus, "sendToProcessing", e.target.checked)}
+                                            onChange={e => updateTemplate(activeKey, "sendToProcessing", e.target.checked)}
                                             className="rounded"
                                         />
                                         Processing (orderProcessingEmail)
@@ -261,7 +271,7 @@ export default function OrderEmails() {
                             </div>
 
                             <div className="flex items-center gap-2 pt-2">
-                                <Button variant="outline" size="sm" onClick={() => resetTemplate(activeStatus)}>
+                                <Button variant="outline" size="sm" onClick={() => resetTemplate(activeKey)}>
                                     <RotateCcw className="mr-2 h-3 w-3" /> Reset to Default
                                 </Button>
                             </div>

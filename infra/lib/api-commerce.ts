@@ -261,8 +261,16 @@ export class CommerceApi extends NestedStack {
             ...nodeProps,
             entry: path.join(__dirname, '../../backend/src/orders/update.ts'),
             handler: 'handler',
+            environment: {
+                ...nodeProps.environment,
+                SES_FROM_EMAIL: sesEmail, // PAY-1: the "paid" order mail (orders/update.ts sendPaidMail)
+            },
         });
         table.grantReadWriteData(updateOrderFunc);
+        updateOrderFunc.addToRolePolicy(new iam.PolicyStatement({
+            actions: ['ses:SendEmail'],
+            resources: [sesIdentityArn],
+        }));
 
         const publicGetOrderFunc = new nodejs.NodejsFunction(this, 'PublicGetOrderFunc', {
             ...nodeProps,

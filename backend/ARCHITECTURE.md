@@ -508,6 +508,21 @@ All entities in one table. Partition key `PK`, sort key `SK`.
   `coupons/public-validate.ts` uses the same rule on the cart's lines (`productId`, `quantity`, `lineTotal`; ≤ 50,
   else 400) with each product's `categoryIds` from one tenant-scoped `BatchGet` (`UnprocessedKeys` ≤ 3 retries, then
   500); an old body without line totals is one line of the `subtotal`; it passes no customer count.
+- **Payment state (PAY-1, record `docs/slices/pay-1.md`):** `PUT /orders/{id}` (`orders/update.ts`) with
+  `paymentStatus` in the body is a transition, not a field: `changePaymentStatus` validates the body (enum; only
+  `paymentStatus` and an optional `note` ≤ 500 characters, else 400), reads the order (tenant key; absent → 404),
+  applies the shared `paymentTransition` (refused → 409 with the reason and the current state; no-op → 200, nothing
+  written), then sends ONE `UpdateCommand` conditional on `attribute_exists(SK)` and the state read
+  (`#paymentStatus = :previous`, or `attribute_not_exists` when the field was absent) that sets `paymentStatus`,
+  `updatedAt` and `paidAt`/`refundedAt`; a failed condition → 409. After the write: audit `UPDATE_ORDER_PAYMENT`
+  and, on `pending → paid` only, the `paid` order mail (template `orderEmailConfig.templates.paid`, else the default
+  of `lib/order-email.ts`; sender, recipients and failure handling of `update-status.ts`). The function
+  `UpdateOrderFunc` has `SES_FROM_EMAIL` and `ses:SendEmail` on the sender identity since PAY-1 revision 1
+  (`infra/lib/api-commerce.ts`, pinned by `(pay1-1)`/`(pay1-2)` in `infra/test/amodx-stack.test.ts`); without the
+  variable the handler sends no mail. A stored value outside the enum, `null` included → 409 (no write). A body without `paymentStatus` is the field patch of before (`trackingNumber`,
+  `internalNotes`, `estimatedDeliveryDate`), byte for byte. This handler's 500 answers the fixed "Internal error"
+  and logs `[orders/update] Error:`. Future consumers of "the order was paid" attach in `changePaymentStatus` after
+  the audit entry.
 - **Order line price (ORDER-PRICE-1, record `docs/slices/order-price-1.md`):** `orders/create.ts` charges each line by
   the shared `linePrice` (`@amodx/shared`) from the STORED product — the rule the product page and the cart show
   (option `priceOverride` > volume tier > `salePrice` > `price`, plus the matched personalizations' `addedCost`). It
@@ -609,6 +624,9 @@ default, the `ro` pack, an override and a blank override.
 a read returns (a stale counter read models a race), answers the pre-check's `BatchGet` (with injectable
 `UnprocessedKeys`), evaluates only the two coupon condition texts the handler sends (any other condition throws) and
 cancels a transaction with a real `TransactionCanceledException` carrying one reason per item.
+`test/unit/pay-1.test.ts` (PAY-1) is the same shape for `orders/update.ts` (`db.js`, `publishAudit`, SES mocked;
+the clock fixed): one row per taxonomy row of the slice, including a golden of the field patch's `UpdateCommand` input
+that was also run against the handler before the slice.
 `test/unit/price-locale-1.test.ts` (PRICE-LOCALE-1) is the same shape for `orders/create.ts` and
 `products/bulk-price.ts` (audit, purge and the invalidation wrapper mocked): the tenant item's locale decides how a
 price text is read.

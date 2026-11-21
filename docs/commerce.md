@@ -423,6 +423,48 @@ Seven statuses: `placed`, `confirmed`, `prepared`, `shipped`, `delivered`, `canc
 6. Publishes audit event: `previousStatus → newStatus`
 7. Sends email if status changed and template exists for new status
 
+## Payment States (`pay-1`)
+
+**Files**: rule `packages/shared/src/payment-transition.ts` (`paymentTransition`); writer `backend/src/orders/update.ts`
+(`changePaymentStatus`, the only code that changes an order's `paymentStatus` after creation).
+
+An order is created `paymentStatus: "pending"` (`orders/create.ts`). The payment state is separate from the order status:
+the status route does not change it, and it does not change the status.
+
+```
+pending → paid → refunded        (refunded is final)
+```
+
+| From \ To | pending | paid | refunded |
+|---|---|---|---|
+| pending (or field absent) | no-op | **apply** | refused: "Only a paid order can be refunded." |
+| paid | refused: "A paid order cannot go back to pending." | no-op | **apply** |
+| refunded | refused: "A refunded order cannot change its payment state." | refused (same text) | no-op |
+
+**Who changes it**: a user with role `EDITOR` or `TENANT_ADMIN` (or `GLOBAL_ADMIN`) of the tenant, through
+`PUT /orders/{id}` with body `{ "paymentStatus": "paid" | "refunded", "note"?: string ≤ 500 }` and no other field. In
+the admin: the order page, Payment card, "Mark as paid" (state `pending`, or the field absent) / "Mark as refunded"
+(state `paid`), with a confirmation; no button for `refunded` or an invalid stored value. Online payment (`pay-2`) is not built; nothing changes the state automatically.
+
+`PUT /orders/{id}` answers for a request with `paymentStatus`:
+
+| Case | Answer | Effect |
+|---|---|---|
+| value not `pending`/`paid`/`refunded` | 400 | the order is not read |
+| another field than `note`, or `note` not text / > 500 characters | 400 "Send the payment state alone…" / note text | none |
+| order not found (or another tenant's id) | 404 | none |
+| stored value outside the enum, `null` included (written by the field patch before `pay-1`) | 409 with the stored value | none |
+| refused | 409 `{ error: <reason>, paymentStatus: <current> }` | none |
+| no-op (same state) | 200 "Payment status unchanged" | none: no write, no audit, no mail |
+| apply | 200 "Payment status updated" | one `UpdateCommand` conditional on the state read (`#paymentStatus = :previous`, or `attribute_not_exists` when the field was absent) and `attribute_exists(SK)`; sets `paymentStatus`, `updatedAt` and `paidAt` or `refundedAt` (ISO time) |
+| the condition fails (another change between read and write) | 409 "The payment state changed; read the order again." | none: no audit, no mail |
+
+On apply: audit entry `UPDATE_ORDER_PAYMENT` (actor email, title = order number, details `{ previous, next, note }`).
+On `pending → paid` only: the `paid` order mail (see Email Templates). No mail on a refund. A mail failure is logged and
+does not fail the request. The Lambda `UpdateOrderFunc` has the sender (`SES_FROM_EMAIL`) and `ses:SendEmail` on the
+sender identity (`infra/lib/api-commerce.ts`). A request without `paymentStatus` is the field patch of before (tracking number, internal
+notes, estimated delivery date), unchanged.
+
 ## Email Templates
 
 **File**: `backend/src/lib/order-email.ts`
@@ -439,7 +481,12 @@ interface OrderEmailTemplate {
 }
 ```
 
-Stored in `TenantConfig.orderEmailConfig.templates` — one template per status. Admin can customize via Order Emails page. `getDefaultTemplates()` provides English-language fallbacks for all 7 statuses.
+Stored in `TenantConfig.orderEmailConfig.templates` — one template per key. The keys are the 7 statuses and `paid`
+(`pay-1`: sent on the payment change `pending → paid`, by `orders/update.ts`; default flags: customer yes, admin no,
+processing no). `templates` is an open record: a stored config without the `paid` key uses the default. Admin can
+customize via Order Emails page. `getDefaultTemplates()` provides English-language fallbacks for all 8 keys (backend
+text, not the tenant's language pack). In the `paid` mail, `{{status}}` is `paid`, `{{statusLabel}}` is `Paid` and
+`{{note}}` is the payment note.
 
 ### Variable Placeholders
 
@@ -825,7 +872,7 @@ Commerce routes live in `infra/lib/api-commerce.ts` (NestedStack, ~234 resources
 | PUT | `/categories/{id}/products` | categories/catprod |
 | GET | `/orders` | orders/list |
 | GET | `/orders/{id}` | orders/get |
-| PUT | `/orders/{id}` | orders/update |
+| PUT | `/orders/{id}` | orders/update (field patch; with `paymentStatus`: the payment transition, see Payment States) |
 | PUT | `/orders/{id}/status` | orders/update-status |
 | GET | `/customers` | customers/list |
 | GET/PUT | `/customers/{email}` | customers/get, update |

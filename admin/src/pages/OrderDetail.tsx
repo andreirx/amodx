@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { useTenant } from "@/context/TenantContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,34 @@ const PAYMENT_LABELS: Record<string, string> = {
 
 const ALL_STATUSES = ["placed", "confirmed", "prepared", "shipped", "delivered", "cancelled", "annulled"];
 
+/** PAY-1: the email sentence of the "Mark as paid" confirmation. It promises no delivery (ruling R3). */
+const PAID_EMAIL_NOTICE = "The Paid email follows your Email Templates settings. A failed email does not undo the payment change.";
+
+/**
+ * PAY-1: the payment button the order page shows for a payment state. `pending`, or absent (`undefined`: an order
+ * written without the field) → mark as paid; `paid` → mark as refunded; `refunded`, `null` or any other value → no
+ * button (the server refuses `null` and values outside the enum too). The server's rule (`paymentTransition` in
+ * @amodx/shared) stays the authority; this only chooses what to offer.
+ */
+export function paymentAction(paymentStatus: unknown): { next: "paid" | "refunded"; label: string; confirmText: string } | null {
+    if (paymentStatus === undefined || paymentStatus === "pending") {
+        return { next: "paid", label: "Mark as paid", confirmText: `Mark this order as paid? ${PAID_EMAIL_NOTICE}` };
+    }
+    if (paymentStatus === "paid") {
+        return { next: "refunded", label: "Mark as refunded", confirmText: "Mark this order as refunded? This cannot be undone." };
+    }
+    return null;
+}
+
+/** PAY-1: the text shown when the payment change fails. A 409 shows the server's reason as it is; other errors keep the message. */
+export function paymentErrorText(e: unknown): string {
+    if (e instanceof ApiError && e.status === 409) {
+        const reason = (e.body as { error?: unknown } | null)?.error;
+        if (typeof reason === "string" && reason) return reason;
+    }
+    return "Failed to update payment: " + (e instanceof Error ? e.message : String(e));
+}
+
 export default function OrderDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -60,6 +88,9 @@ export default function OrderDetail() {
     const [newStatus, setNewStatus] = useState("");
     const [statusNote, setStatusNote] = useState("");
     const [updatingStatus, setUpdatingStatus] = useState(false);
+
+    // Payment management (PAY-1)
+    const [updatingPayment, setUpdatingPayment] = useState(false);
 
     // Tracking management
     const [trackingNumber, setTrackingNumber] = useState("");
@@ -101,6 +132,22 @@ export default function OrderDetail() {
         }
     }
 
+    async function handleChangePayment(next: "paid" | "refunded", confirmText: string) {
+        if (!confirm(confirmText)) return;
+        setUpdatingPayment(true);
+        try {
+            await apiRequest(`/orders/${id}`, {
+                method: "PUT",
+                body: JSON.stringify({ paymentStatus: next }),
+            });
+            await loadOrder();
+        } catch (e: unknown) {
+            alert(paymentErrorText(e));
+        } finally {
+            setUpdatingPayment(false);
+        }
+    }
+
     async function handleSaveTracking() {
         setSavingTracking(true);
         try {
@@ -132,6 +179,7 @@ export default function OrderDetail() {
     const shipping = order.shippingAddress || {};
     const items = order.items || [];
     const statusHistory = order.statusHistory || [];
+    const payment = paymentAction(order.paymentStatus);
 
     const subtotal = items.reduce((sum: number, item: any) => {
         const price = parseFloat(item.unitPrice || item.price || 0);
@@ -330,6 +378,17 @@ export default function OrderDetail() {
                                     {order.paymentStatus || "pending"}
                                 </span>
                             </div>
+                            {payment && (
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    onClick={() => handleChangePayment(payment.next, payment.confirmText)}
+                                    disabled={updatingPayment}
+                                >
+                                    {updatingPayment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    {payment.label}
+                                </Button>
+                            )}
                             <div className="flex items-center justify-between">
                                 <span className="text-muted-foreground">Order #</span>
                                 <span className="font-mono text-xs">{order.orderNumber || order.id?.slice(0, 8)}</span>

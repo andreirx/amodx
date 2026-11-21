@@ -131,6 +131,15 @@ src/
     │                           #   Sidebar.test.ts: Labels in the System section for every tenant (server render)
     ├── Migration.tsx           # WP Migration: Media → Products → Pages; a catalog has Media → Pages (CAT-ADMIN-1 § 4.6)
     ├── FormSubmissions.tsx     # Submissions of one form; the interest-list system form is titled "Interest lists" and (CDL-1) shows fixed English column headers by field id (`fieldHeader`)
+    ├── OrderDetail.tsx         # One order: items, totals, customer, payment, status, tracking, history. PAY-1: the
+    │                           #   Payment card offers "Mark as paid" (pending, or field absent) or "Mark as refunded"
+    │                           #   (paid), none for refunded/null/other (paymentAction); confirm() (the text promises
+    │                           #   no mail delivery), then PUT /orders/{id}
+    │                           #   { paymentStatus } and the order is read again; a 409 alerts the server's reason
+    │                           #   (paymentErrorText). OrderDetail.test.ts: pure-logic tests of both helpers
+    ├── OrderEmails.tsx         # Order mail templates per template key (TEMPLATE_KEYS: the 7 statuses + `paid`, PAY-1;
+    │                           #   TEMPLATE_LABELS, TEMPLATE_DESCRIPTIONS, activeKey); the page's DEFAULT_TEMPLATES
+    │                           #   text differs from backend getDefaultTemplates() (known)
     ├── AuditLog.tsx            # Activity feed with action icons
     └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them

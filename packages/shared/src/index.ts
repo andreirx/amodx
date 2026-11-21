@@ -50,6 +50,8 @@ export {
     evaluateCoupon, amountInCents, isCouponType, CouponPrecheckItemSchema, COUPON_PRECHECK_MAX_LINES,
     type CouponRuleRecord, type CouponCartLine, type CouponRefusal, type CouponOutcome, type CouponPrecheckItem,
 } from "./coupon.js";
+// PAY-1: the payment-state transition rule of PUT /orders/{id}.
+export { paymentTransition, type PaymentTransition } from "./payment-transition.js";
 
 // ==========================================
 // 1. GLOBAL ENUMS & CONSTANTS
@@ -1739,6 +1741,10 @@ export const StatusHistorySchema = z.object({
     note: z.string().default(""),
 });
 
+/** PAY-1: an order's payment state. Set to `pending` at creation; after that changed only by `orders/update.ts` through `paymentTransition`. */
+export const PaymentStatusSchema = z.enum(["pending", "paid", "refunded"]);
+export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
+
 export const OrderSchema = z.object({
     id: z.string(),
     tenantId: z.string(),
@@ -1757,7 +1763,7 @@ export const OrderSchema = z.object({
     couponCode: z.string().optional(),
     couponDiscount: z.string().default("0"),
     paymentMethod: z.enum(["cash_on_delivery", "bank_transfer"]).default("cash_on_delivery"),
-    paymentStatus: z.enum(["pending", "paid", "refunded"]).default("pending"),
+    paymentStatus: PaymentStatusSchema.default("pending"),
     requestedDeliveryDate: z.string().optional(),
     estimatedDeliveryDate: z.string().optional(),
     trackingNumber: z.string().optional(),

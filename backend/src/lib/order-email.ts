@@ -16,6 +16,10 @@ export const STATUS_LABELS: Record<string, string> = {
     annulled: "Annulled",
 };
 
+/**
+ * The default mail per template key. The keys are the seven order statuses (orders/create.ts, orders/update-status.ts)
+ * and `paid` (PAY-1, orders/update.ts). A tenant's `orderEmailConfig.templates[key]` replaces the default.
+ */
 export function getDefaultTemplates(): Record<string, OrderEmailTemplate> {
     return {
         placed: {
@@ -63,6 +67,14 @@ export function getDefaultTemplates(): Record<string, OrderEmailTemplate> {
         annulled: {
             subject: "Order {{orderNumber}} Annulled",
             body: "Your order {{orderNumber}} has been annulled. {{note}}",
+            sendToCustomer: true,
+            sendToAdmin: false,
+            sendToProcessing: false,
+        },
+        // PAY-1: not an order status. Sent by PUT /orders/{id} (orders/update.ts) on the payment change pending → paid.
+        paid: {
+            subject: "Order {{orderNumber}} – Payment Received",
+            body: "We have received the payment for your order {{orderNumber}}. Thank you!",
             sendToCustomer: true,
             sendToAdmin: false,
             sendToProcessing: false,
