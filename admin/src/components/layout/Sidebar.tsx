@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/api";
 import {Shield, Users, ArrowRightLeft} from "lucide-react";
-import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages, Heart, Upload } from "lucide-react";
+import { ShoppingBag, FolderTree, Package, Truck, Ticket, Star, Megaphone, ClipboardList, Mail, BarChart3, Languages, Heart, Upload, CalendarClock } from "lucide-react";
 import { INTEREST_FORM_ID, isCatalogMode } from "@amodx/shared";
 import {
     LayoutDashboard, Target, Settings, LogOut, ChevronsUpDown, Plus, Globe, Loader2, Activity, FileBox, MessageSquare, GitGraph, Radar
@@ -94,6 +94,14 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             items: [
                 { name: "Popups", href: "/popups", icon: Megaphone },
                 { name: "Forms", href: "/forms", icon: ClipboardList },
+            ]
+        },
+        // SCHED-1D1 (docs/slices/sched-1.md § 17.1): listed for every site. The tenant list does not carry
+        // `schedulingEnabled`, so the page itself shows a short "not enabled" state (with the switch) when it is off.
+        {
+            label: "Scheduling",
+            items: [
+                { name: "Scheduling", href: "/scheduling", icon: CalendarClock },
             ]
         },
         {

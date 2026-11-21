@@ -2234,3 +2234,31 @@ rows C33, D14).
   - A write removes the expired entries it reads and counts; `updateRun` reads none and removes none.
   - The route parts of rows C5-C7 (HTTP codes, mail, reCAPTCHA) belong to `sched-1d`; the tenant selection of
     C29 belongs to the slice that owns the daily job.
+
+### `sched-1d1` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Operator split of `sched-1d` along admin / visitor (content unchanged). This half: nested stack
+  `infra/lib/api-scheduling.ts` with ten admin functions and routes (booking read and cancel, customer lookup and
+  erasure, resources list/create/rename/delete, feed secret, mail templates); `backend/src/lib/scheduling-email.ts`
+  (seven keys); audit per § 6.5; `backend/src/tenant/settings.ts` (scheduling settings validated; no `ip` on a
+  save with a scheduling key); `packages/shared/src/client-address.ts` (pure); admin page `Scheduling.tsx`
+  (settings, resources, mail templates); MCP route list. `sched-1d2` = every visitor route, reCAPTCHA, limits.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Operator gates, all exit 0: build, typecheck, shared, plugins, renderer unit, serving suite,
+  admin unit, backend unit, infra, MCP, `git diff --check`.
+- Operator rulings (the human may override):
+  - **S1D1-R02:** the bound of 200 resources (§ 4.5) is not strict: sequential creates are refused above 200;
+    two simultaneous creates at 199 can both succeed. No reader breaks above 200.
+  - **S1D1-R03 (amends § 10.3):** in `BookingAdminDTO`, `courseName` and `firstStart` are `string | null`;
+    `null` only when the course or run item no longer exists.
+- Known limit: an admin cancel reads names for the mail after the cancellation commits; a failure of that read
+  answers 500 with the booking already cancelled.
+- `tools/mcp-server/routes.json` marks the ten routes as local additions; refresh the snapshot after the
+  production deploy.
+- Staging (operator, OBSERVED): diff read first — additions only (one nested stack; table grants per function,
+  read-only functions without write actions; `ses:SendEmail` on the cancel function only, on the sender
+  identity; `events:PutEvents` on five functions); deployed; script of 19 checks under tenant `cm1-content`
+  all pass (create/rename/delete a resource, feed secret, templates, cross-tenant 404, no `ip` in the audit
+  entry, table count back to 0).
+- Production: arrives with the human's next `./deploy.sh prod` (one new nested stack; admin sidebar gains
+  "Scheduling", which shows "not enabled" for tenants without the switch).

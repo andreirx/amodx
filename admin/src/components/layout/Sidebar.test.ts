@@ -76,6 +76,7 @@ const COMMON = {
     Content: ["Pages", "Content Graph", "Media"],
     Growth: ["Strategy", "Signals", "Leads"],
     Engagement: ["Popups", "Forms"],
+    Scheduling: ["Scheduling"],
     System: ["Comments", "Audit Log", "Resources", "Team", "WP Migration", "Email DNS", "Labels", "Settings"],
 };
 const COMMERCE_ONLY = ["Reports", "Orders", "Customers", "Coupons", "Reviews", "Delivery", "Email Templates"];
@@ -83,10 +84,14 @@ const BEFORE = {
     content: { Content: COMMON.Content, Commerce: ["Products", "Digital Products", "Categories"], Growth: COMMON.Growth, Engagement: COMMON.Engagement, System: COMMON.System },
     commerce: { Content: COMMON.Content, Commerce: ["Products", "Digital Products", "Categories", ...COMMERCE_ONLY], Growth: COMMON.Growth, Engagement: COMMON.Engagement, System: COMMON.System },
 };
-/** BEFORE with the one ratified difference applied: Digital Products moves to "Digital sales", placed after Commerce. */
-function withDigitalSalesGroup(before: Record<string, string[]>): Record<string, string[]> {
+/**
+ * BEFORE with the ratified differences applied: Digital Products moves to "Digital sales", placed after Commerce
+ * (CAT-ADMIN-1); SCHED-1D1 adds the "Scheduling" group, placed before System, for every site.
+ */
+function withRatifiedChanges(before: Record<string, string[]>): Record<string, string[]> {
     const out: Record<string, string[]> = {};
     for (const [group, items] of Object.entries(before)) {
+        if (group === "System") out.Scheduling = COMMON.Scheduling;
         out[group] = group === "Commerce" ? items.filter((n) => n !== "Digital Products") : items;
         if (group === "Commerce") out["Digital sales"] = ["Digital Products"];
     }
@@ -98,9 +103,9 @@ const hrefOf = (html: string, name: string) =>
 
 describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => {
     for (const [kind, t, before] of [["content", CONTENT_T, BEFORE.content], ["commerce", COMMERCE_T, BEFORE.commerce]] as const) {
-        it(`${kind} tenant: exactly the 3912c5d nav, except Digital Products in its own "Digital sales" group`, () => {
+        it(`${kind} tenant: exactly the 3912c5d nav, except Digital Products in its own "Digital sales" group and the Scheduling group (SCHED-1D1)`, () => {
             const nav = render(t);
-            const expected = withDigitalSalesGroup(before);
+            const expected = withRatifiedChanges(before);
             expect(nav).toEqual(expected);
             expect(Object.keys(nav)).toEqual(Object.keys(expected));   // the group order too
         });
@@ -114,15 +119,27 @@ describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => 
             "Digital sales": ["Digital Products"],
             Growth: COMMON.Growth,
             Engagement: COMMON.Engagement,
+            Scheduling: COMMON.Scheduling,
             System: COMMON.System,
         });
-        expect(Object.keys(nav)).toEqual(["Content", "Catalog", "Digital sales", "Growth", "Engagement", "System"]);
+        expect(Object.keys(nav)).toEqual(["Content", "Catalog", "Digital sales", "Growth", "Engagement", "Scheduling", "System"]);
     });
 
     it("catalog tenant: the two catalog entries go to the pricelist import page and the interest-list submissions", () => {
         const html = markup(CATALOG_T);
         expect(hrefOf(html, "Pricelist import")).toBe("/catalog-import");
         expect(hrefOf(html, "Interest lists")).toBe("/forms/interest-list/submissions");
+    });
+});
+
+describe("Sidebar — Scheduling (SCHED-1D1)", () => {
+    it("every site kind lists Scheduling once, in its own group, linking to /scheduling", () => {
+        for (const t of [CONTENT_T, COMMERCE_T, CATALOG_T]) {
+            const html = markup(t);
+            expect(sections(html).Scheduling).toEqual(["Scheduling"]);
+            expect(Object.values(sections(html)).flat().filter((n) => n === "Scheduling")).toHaveLength(1);
+            expect(hrefOf(html, "Scheduling")).toBe("/scheduling");
+        }
     });
 });
 

@@ -140,6 +140,21 @@ src/
     ├── OrderEmails.tsx         # Order mail templates per template key (TEMPLATE_KEYS: the 7 statuses + `paid`, PAY-1;
     │                           #   TEMPLATE_LABELS, TEMPLATE_DESCRIPTIONS, activeKey); the page's DEFAULT_TEMPLATES
     │                           #   text differs from backend getDefaultTemplates() (known)
+    ├── Scheduling.tsx          # SCHED-1D1 (docs/slices/sched-1.md § 4.1, § 10.3, § 11.1; PROTOTYPE): the minimal
+    │                           #   scheduling screen, English. GET /settings decides: schedulingEnabled off → a short
+    │                           #   "not enabled" card (TENANT_ADMIN/GLOBAL_ADMIN: time zone + "Turn on scheduling";
+    │                           #   editors: text only); on → Scheduling settings (time zone, hold, change cutoff,
+    │                           #   reminder, booking horizon; "Turn off"), Resources (GET/POST/PUT/DELETE
+    │                           #   /scheduling/admin/resources; "Create calendar link" = feed secret, T only, URL shown
+    │                           #   once), Mail templates (the seven keys; defaults from GET
+    │                           #   /scheduling/admin/email-templates — no copy in the page). Saves through PUT /settings
+    │                           #   with ONLY the scheduling attributes (settingsPayload: shared SchedulingSettingsSchema
+    │                           #   + "enabling needs a time zone"; templatesPayload: an override only for a key that
+    │                           #   differs from its default, weekAhead without sendToCustomer). Save buttons hidden for
+    │                           #   editors (PUT /settings is TENANT_ADMIN; apiRequest signs out on 403). DELETE answers
+    │                           #   204: deleteRequest treats apiRequest's JSON SyntaxError after a 2xx as success.
+    │                           #   Scheduling.test.ts: pure-logic tests of the payload and error-text helpers.
+    │                           #   Sidebar: group "Scheduling" for every site (the tenant list has no schedulingEnabled)
     ├── AuditLog.tsx            # Activity feed with action icons
     └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
@@ -170,6 +185,7 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 | `/resources` | Resources | Private files |
 | `/users` | Users | Team management |
 | `/email` | Email | Guided DNS for mailbox providers + read-only DNS checker (slice `email-2`). Provider selector, copyable record table (static / domain-derived / console-generated rows), MX destructive-advice warning, per-record check verdict (theme-token status via icon, not colour). Reads `EMAIL_PROVIDER_RECIPES` from `@amodx/shared`; POSTs `/email/dns-check`. |
+| `/scheduling` | Scheduling | Scheduling settings, resources, mail templates (SCHED-1D1); a short "not enabled" state when `schedulingEnabled` is off |
 | `/settings` | Settings | Site configuration |
 
 ## State Management

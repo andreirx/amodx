@@ -43,6 +43,7 @@ import Reports from "@/pages/Reports";
 import MigrationPage from "@/pages/Migration";
 import CatalogImport from "@/pages/CatalogImport";
 import EmailPage from "@/pages/Email";
+import SchedulingPage from "@/pages/Scheduling";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
@@ -127,6 +128,7 @@ const router = createBrowserRouter([
             { path: "signals", element: <Signals /> },
             { path: "migration", element: <MigrationPage /> },
             { path: "email", element: <EmailPage /> },
+            { path: "scheduling", element: <SchedulingPage /> },
             { path: "settings", element: <SettingsPage /> },
         ],
     },

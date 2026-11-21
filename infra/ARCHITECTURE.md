@@ -16,6 +16,7 @@ lib/
 ├── amodx-stack.ts              # Main stack: composes all constructs, wires dependencies
 ├── api.ts                      # HTTP API Gateway + authorizer + all routes; wires catalog routes to CatalogApi's functions (passed in)
 ├── api-catalog.ts              # NestedStack: content/products/import FUNCTIONS (routes stay in api.ts; instantiated in amodx-stack.ts)
+├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: the 10 admin routes; L1 routes, own authorizer)
 ├── auth.ts                     # Two Cognito User Pools (Admin invite-only, Public self-signup)
 ├── database.ts                 # DynamoDB single table with 3 GSIs
 ├── uploads.ts                  # S3 buckets (public assets + private resources) + CloudFront CDN
@@ -46,6 +47,7 @@ AmodxStack
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
 ├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
 ├── EngagementApi (NestedStack — popups, forms)
+├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; after AdminHosting)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
 ├── AmodxAdminHosting (S3 + CloudFront)
 ├── AmodxDomains (Route53 + ACM certs)
@@ -96,6 +98,19 @@ Functions moved to the `CatalogApi` NestedStack (`api-catalog.ts`, INFRA-SPLIT-1
 checker. One `NodejsFunction` + one route + `table.grantReadData` (it Gets the tenant record
 to derive the domain server-side; the DNS lookups themselves write nothing). Within the
 "route + grant" ceiling — no NestedStack, no SES/IAM identity change (that is `email-2a`).
+
+`SchedulingApi` NestedStack (`api-scheduling.ts`, SCHED-1D1; docs/slices/sched-1.md § 11.2, § 17): functions AND
+routes (L1 `CfnRoute`/`CfnIntegration`, its own `CfnAuthorizer` on the parent's authorizer function, as CommerceApi).
+This slice: the 10 admin routes under `/scheduling/admin/…`. Wiring per function, pinned by `infra/test` rows I1, I2,
+I4, I5 and the amended `(sched1b-3)`: every function has `SCHEDULING_TABLE_NAME` and `TABLE_NAME` (read on the main
+table); on the scheduling-private table read only for the GET routes and the customer lookup, read-write for the
+writers, no grant for the templates route; `EVENT_BUS_NAME` + `events:PutEvents` ONLY on the functions that publish a
+main-table audit event (resource writes, feed secret, erasure — never a booking function, SCHED-AUDIT-PII = C);
+`SES_FROM_EMAIL` + one `ses:SendEmail` on the sender identity on the mailing function (admin booking cancel);
+`RENDERER_CLOUDFRONT_ORIGIN` on the mailing function and the feed-secret route. The scheduling table is granted to no
+function outside this nested stack, and the renderer's role has no statement on it. Counts (credential-free synth,
+2026-11-22): parent deployed ≈ 469 (< 500; the nested stack adds its one `AWS::CloudFormation::Stack`), SchedulingApi
+≈ 73.
 
 Custom Lambda authorizer validates Cognito JWT or master API key. Public routes (`POST /leads`, `/contact`, `/consent`) bypass auth.
 

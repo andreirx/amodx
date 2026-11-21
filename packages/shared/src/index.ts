@@ -79,6 +79,8 @@ export {
     type PlannedDay, type DaysEditError,
 } from "./scheduling.js";
 import { SchedulingSettingsSchema, SchedulingEmailConfigSchema } from "./scheduling.js";
+// SCHED-1D1 (docs/slices/sched-1.md § 9.2): the client address of a booking request (renderer proxy and hold route).
+export { viewerAddress, addressKey } from "./client-address.js";
 
 // ==========================================
 // 1. GLOBAL ENUMS & CONSTANTS

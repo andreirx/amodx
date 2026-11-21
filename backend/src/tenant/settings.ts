@@ -7,7 +7,7 @@ import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -170,6 +170,46 @@ function themeAttributesError(body: Record<string, unknown>): string | null {
 }
 
 /**
+ * SCHED-1D1 (docs/slices/sched-1.md § 4.1, § 6.5 point 4, § 10.3) — the three scheduling attributes of the tenant
+ * record. The LOCALE-1A kind: each is checked AS SENT and only when the body contains it, so no save without them is
+ * refused for them; the body is stored as sent (defaults are applied when the record is read, as the shared schema
+ * does). `schedulingEnabled`: a boolean. `scheduling`: `SchedulingSettingsSchema` with no unknown key (ranges of
+ * § 4.5: `holdMinutes` 5-1440, `changeCutoffHours` and `reminderHours` 0-168, `bookingHorizonWeeks` 1-52; a timezone
+ * must be an IANA name). `schedulingEmailConfig`: `SchedulingEmailConfigSchema` with no unknown key (the seven keys of
+ * § 11.1; each template needs `subject` and `body`). The rule "enabling needs a timezone" is checked on the merged
+ * record (`schedulingTimezoneError`). Returns the message of the first problem, naming the field; null when none.
+ */
+const SCHEDULING_ATTRIBUTES = ["schedulingEnabled", "scheduling", "schedulingEmailConfig"] as const;
+const SchedulingAttributeSchemas = {
+    schedulingEnabled: z.boolean(),
+    scheduling: SchedulingSettingsSchema.strict(),
+    schedulingEmailConfig: SchedulingEmailConfigSchema.strict(),
+} as const;
+/** True when the body names at least one scheduling attribute (§ 6.5 point 4: such a save publishes no `ip`). */
+function hasSchedulingAttribute(body: Record<string, unknown>): boolean {
+    return SCHEDULING_ATTRIBUTES.some((attribute) => Object.hasOwn(body, attribute));
+}
+function schedulingAttributesError(body: Record<string, unknown>): string | null {
+    for (const attribute of SCHEDULING_ATTRIBUTES) {
+        if (!Object.hasOwn(body, attribute)) continue;
+        const parsed = SchedulingAttributeSchemas[attribute].safeParse(body[attribute]);
+        if (!parsed.success) {
+            const issue = parsed.error.issues[0];
+            return `${[attribute, ...issue.path.map(String)].join(".")}: ${issue.message}`;
+        }
+    }
+    return null;
+}
+/** § 4.1: "enabling without [a timezone] → 400". Checked on the merged record when the body names a scheduling attribute. */
+function schedulingTimezoneError(merged: Record<string, any>): string | null {
+    if (merged.schedulingEnabled !== true) return null;
+    const timezone = merged.scheduling?.timezone;
+    return typeof timezone === "string" && timezone !== ""
+        ? null
+        : "scheduling.timezone: a time zone is required when scheduling is enabled.";
+}
+
+/**
  * Strips secret fields from tenant config before returning to any caller.
  * Secrets are served exclusively via GET /settings/secrets (TENANT_ADMIN/GLOBAL_ADMIN only).
  *
@@ -264,6 +304,10 @@ const _updateHandler: AmodxHandler = async (event) => {
         // CAT-THEME-1: same place and kind — before any read.
         const themeError = themeAttributesError(body);
         if (themeError) return { statusCode: 400, body: JSON.stringify({ error: themeError }) };
+        // SCHED-1D1: same place and kind — before any read.
+        const schedulingError = schedulingAttributesError(body);
+        if (schedulingError) return { statusCode: 400, body: JSON.stringify({ error: schedulingError }) };
+        const savesScheduling = hasSchedulingAttribute(body);
 
         // CATALOG-MODE-1 (CM-D11 accepted refinement): the mode read is authoritative. Strongly consistent, and a
         // missing tenant record answers 404 with nothing written. Before, a miss became `{ name: "Unknown" }` and this
@@ -311,6 +355,12 @@ const _updateHandler: AmodxHandler = async (event) => {
         if (flags.data.catalogMode && flags.data.commerceEnabled) {
             return { statusCode: 400, body: JSON.stringify({ error: "A catalog site has no cart or checkout, so commerce cannot be enabled." }) };
         }
+        // SCHED-1D1 (§ 4.1): enabling scheduling needs a timezone (on the merged record: the body may enable a site whose
+        // timezone is already stored, or set the timezone of a site already enabled).
+        if (savesScheduling) {
+            const timezoneError = schedulingTimezoneError(merged);
+            if (timezoneError) return { statusCode: 400, body: JSON.stringify({ error: timezoneError }) };
+        }
 
         // SETTINGS-KEYS-1B — best-effort hostname claim check: reject a new hostname when another tenant's record is
         // visible in GSI_Domain now. Two identity resolvers (renderer getTenantConfig, lib/tenant-verify
@@ -355,7 +405,9 @@ const _updateHandler: AmodxHandler = async (event) => {
             }
         }));
 
-        // AUDIT LOG
+        // AUDIT LOG. SCHED-1D1 (docs/slices/sched-1.md § 6.5 point 4, SCHED-AUDIT-PII = C): no scheduling audit event
+        // carries `ip`, so a save whose body names a scheduling attribute omits it — for the whole event, also when the
+        // same body changes other settings (one event per save). A body without one sends `ip` as before.
         await publishAudit({
             tenantId: tenantId, // TS is happy now because of the early return above
             actor: { id: auth.sub, email: auth.email },
@@ -365,7 +417,7 @@ const _updateHandler: AmodxHandler = async (event) => {
                 updatedFields: Object.keys(body),
                 ...(rejectedFields.length > 0 ? { rejectedFields } : {}),
             },
-            ip: event.requestContext.http.sourceIp
+            ...(savesScheduling ? {} : { ip: event.requestContext.http.sourceIp }),
         });
 
         // BULK-PURGE-FOOTER-1 (rules A1, A4): every stored page of the tenant shows the old settings. Both the domain

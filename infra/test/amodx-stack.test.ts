@@ -103,6 +103,8 @@ let allTemplates: Template[];
 let catalogTemplate: Template;
 /** The EngagementApi NestedStack template alone (CAT-INTEREST-1 route assertion). */
 let engagementTemplate: Template;
+/** The SchedulingApi NestedStack template alone (SCHED-1D1 rows I1, I2, I5; the amended (sched1b-3)). */
+let schedulingTemplate: Template;
 
 /**
  * Replace this process's environment with one that carries no credential and no project
@@ -239,6 +241,11 @@ beforeAll(() => {
     const engagementNested = byId.get('EngagementApi');
     if (!engagementNested) throw new Error('EngagementApi NestedStack not found in the stack tree');
     engagementTemplate = engagementNested;
+    // The instance INSIDE `allTemplates` (built from the same `findAll()` order), so `allTemplates.indexOf(schedulingTemplate)`
+    // is its position in the stack tree (the IAM reading rule of the SCHED-1B block addresses templates by position).
+    const schedulingAt = nestedStacks.findIndex((n) => n.node.id === 'SchedulingApi');
+    if (schedulingAt < 0) throw new Error('SchedulingApi NestedStack not found in the stack tree');
+    schedulingTemplate = allTemplates[1 + schedulingAt];
 
     // Labeled per-template resource counts, logged once as INFRA-SPLIT-1 evidence. The parent count
     // is the CFN-500 gate; the nested counts let a reviewer see at a glance that CommerceApi/
@@ -246,7 +253,7 @@ beforeAll(() => {
     const count = (t: Template) => Object.keys(t.toJSON().Resources ?? {}).length;
     const fns = (t: Template) => Object.keys(t.findResources('AWS::Lambda::Function')).length;
     const parts = [`AmodxStack(parent)=${count(template)}/${fns(template)}fn`];
-    for (const id of ['CatalogApi', 'CommerceApi', 'EngagementApi']) {
+    for (const id of ['CatalogApi', 'CommerceApi', 'EngagementApi', 'SchedulingApi']) {
         const t = byId.get(id);
         if (t) parts.push(`${id}=${count(t)}/${fns(t)}fn`);
     }
@@ -1232,7 +1239,9 @@ describe('INFRA-SPLIT-1 v2 — catalog functions-only move (the deploy-safety in
         // grant is statements in the function's existing Policy, the variables are function properties).
         // Counts in this synth (SCHED-1B, 2026-11-21): 402 + 53 + 13 = 468 and 45 + 15 + 1 = 61 — the scheduling-private
         // table added one AWS::DynamoDB::Table to the parent and nothing else (see (sched1b-3), (sched1b-4)).
-        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 402 + 53 + 13 = 468
+        // Counts in this synth (SCHED-1D1, 2026-11-22): 403 + 53 + 13 = 469 — the SchedulingApi nested stack added its one
+        // AWS::CloudFormation::Stack to the parent; its own template is 62 raw + 10 log groups + 1 = 73 (see (I5)).
+        const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD; // 403 + 53 + 13 = 469
         const deployedCatalog = rawCatalog + catalogFns + NESTED_METADATA;    // 45 + 15 + 1 = 61
 
         // Pre-split parent (email-2, measured 2026-08-10 against the real staging synth) = 501 = 446
@@ -1547,8 +1556,9 @@ describe('CAT-INTEREST-1 — POST /public/interest and POST /public/interest/res
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // (sched1b) SCHED-1B — the inert scheduling-private table (docs/slices/sched-1.md § 6.1; § 17.3 rows B1…B4).
 //     Customer booking data gets a table that the renderer's role cannot read; `sched-1c` tests against it.
-//     "Inert": in this slice no function has the table's name or a grant on it; `sched-1c`/`1d` wire it into the
-//     scheduling functions only.
+//     "Inert" in `sched-1b`: no function had the table's name or a grant on it. SCHED-1D1 wires it into the functions
+//     of the SchedulingApi nested stack and nowhere else; (sched1b-3) is amended to that rule (its name says so), and
+//     the rows I1, I2, I4, I5 of `sched-1d` are in the nested describe at the end of this block.
 //
 //     B2 and B3 are absence claims, so their checks must never pass by not understanding a value. One rule:
 //       Every IAM value the checks read is matched AS A WHOLE against a closed list of exact shapes; a value of any
@@ -1844,18 +1854,24 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
         expect(violationsOf(fixture(grant(getAtt(main)), [], roles), scheduling).some((v) => v.includes('Roles is not a list of { Ref }'))).toBe(true);
     });
 
-    test('(sched1b-3) B3: no function has SCHEDULING_TABLE_NAME; nothing names the table but itself; every DynamoDB grant has a table shape, none the scheduling table', () => {
+    test('(sched1b-3) B3 as amended by SCHED-1D1: SCHEDULING_TABLE_NAME and every grant on the scheduling table only in the SchedulingApi nested stack; outside it nothing names the table but itself and the pointer to that stack; every DynamoDB grant has a table shape', () => {
         const tree = realTree();
         const scheduling = parentTable(SCHEDULING);
         const main = parentTable(MAIN);
+        const schedIndex = allTemplates.indexOf(schedulingTemplate);
+        expect(schedIndex).toBeGreaterThan(0);
 
         const variables = allTemplates
-            .flatMap((t) => Object.entries(t.findResources('AWS::Lambda::Function')))
-            .map(([id, fn]) => ({ id, vars: (fn as any).Properties.Environment?.Variables ?? {} }));
+            .flatMap((t, i) => Object.entries(t.findResources('AWS::Lambda::Function')).map(([id, fn]) => ({ template: i, id, fn })))
+            .map(({ template: i, id, fn }) => ({ template: i, id, vars: (fn as any).Properties.Environment?.Variables ?? {} }));
         // Positive control for the key lookup: TABLE_NAME (the main table) is found on functions.
         expect(variables.some((f) => Object.prototype.hasOwnProperty.call(f.vars, 'TABLE_NAME'))).toBe(true);
-        expect(variables.filter((f) => Object.prototype.hasOwnProperty.call(f.vars, 'SCHEDULING_TABLE_NAME')).map((f) => f.id))
-            .toEqual([]);
+        const named = variables.filter((f) => Object.prototype.hasOwnProperty.call(f.vars, 'SCHEDULING_TABLE_NAME'));
+        // Outside the SchedulingApi nested stack: none. Inside it: every function (§ 11.2 "every scheduling function").
+        expect(named.filter((f) => f.template !== schedIndex).map((f) => f.id)).toEqual([]);
+        const inScheduling = variables.filter((f) => f.template === schedIndex).map((f) => f.id).sort();
+        expect(inScheduling.length).toBeGreaterThan(0);
+        expect(named.map((f) => f.id).sort()).toEqual(inScheduling);
 
         // Referrer scan: a MENTION fails. Every resource, output and parameter of every template except the table.
         const referrers = (table: TableRef): string[] =>
@@ -1868,18 +1884,29 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             );
         // Positive control: the same scan finds the main table's referrers (grants, TABLE_NAME, the TableName output).
         expect(referrers(main).length).toBeGreaterThan(0);
-        expect(referrers(scheduling)).toEqual([]);
+        // The one referrer outside the table: the parent's resource of the SchedulingApi nested stack, which passes the
+        // table's name and ARN as nested-stack parameters (inside the nested template they are parameter Refs).
+        const schedulingStackIds = Object.entries(tree[0].Resources ?? {})
+            .filter(([id, r]: [string, any]) => r.Type === 'AWS::CloudFormation::Stack' && id.startsWith('SchedulingApi'))
+            .map(([id]) => id);
+        expect(schedulingStackIds).toHaveLength(1);
+        expect(referrers(scheduling)).toEqual([`template[0].Resources.${schedulingStackIds[0]}`]);
         // ...and it finds the Fn::Sub form outside any policy (for example a variable).
         const subVariable = { Type: 'AWS::Lambda::Function', Properties: { Environment: { Variables: { X: { 'Fn::Sub': `\${${scheduling.logicalId}}` } } } } };
         expect(namesTable(subVariable, scheduling)).toBe(true);
 
-        // The rule over every policy of the stack tree.
+        // The rule over every policy of the stack tree: outside the SchedulingApi nested stack no grant denotes the
+        // scheduling table; inside it every DynamoDB grant has a table shape and denotes one of the two tables.
         const read = readIam(tree);
         expect(read.violations).toEqual([]);
-        const result = checkDynamodbGrants(read.located, tree, scheduling);
+        const result = checkDynamodbGrants(read.located.filter((l) => l.template !== schedIndex), tree, scheduling);
         // Positive control: grants in the nested stacks resolve to the main table through their parameters.
         expect(result.resolved).toContain(main.logicalId);
         expect(result.violations).toEqual([]);
+        const inside = checkDynamodbGrants(read.located.filter((l) => l.template === schedIndex), tree, scheduling);
+        expect(inside.resolved).toEqual([main.logicalId]);
+        expect(inside.violations.filter((v) => !v.endsWith(': denotes the scheduling table'))).toEqual([]);
+        expect(inside.violations.length).toBeGreaterThan(0);   // positive: the scheduling functions ARE granted the table
         // No grant on the table's own side either.
         expect(scheduling.resource.Properties.ResourcePolicy).toBeUndefined();
 
@@ -1943,5 +1970,156 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 `${PARENT_STAGE_OVERHEAD} stage overhead), scheduling table included. < 500.`,
         );
         expect(deployedParent).toBeLessThan(500);
+    });
+
+    // ────────────────────────────────────────────────────────────────────────────────────────────
+    // SCHED-1D1 — rows I1, I2, I4, I5 of `sched-1d` (docs/slices/sched-1.md § 11.2, § 17.3) for the functions this
+    // slice creates (the admin routes). The visitor functions of `sched-1d2` (and I3, the hold's reCAPTCHA secret) are
+    // added to these lists by that slice. Inside the SCHED-1B block so the IAM reading rule above is the one used.
+    // ────────────────────────────────────────────────────────────────────────────────────────────
+    describe('SCHED-1D1 — the SchedulingApi nested stack (admin routes)', () => {
+        /** Construct ids of this slice's functions, by role in § 11.2. */
+        const MAILING = ['AdminCancelBookingFunc'];
+        const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc'];
+        const READ_ONLY = ['AdminGetBookingFunc', 'AdminListResourcesFunc', 'AdminEmailTemplatesFunc', 'AdminLookupCustomerFunc'];
+        const ALL = ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminEraseCustomerFunc',
+            'AdminListResourcesFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc',
+            'AdminFeedSecretFunc', 'AdminEmailTemplatesFunc'];
+        const DYNAMODB_WRITE = /^dynamodb:(PutItem|UpdateItem|DeleteItem|BatchWriteItem|\*)$|^\*$/;
+
+        type Fn = { construct: string; logicalId: string; vars: Record<string, unknown>; statements: any[] };
+        /** The template's functions, each with its variables and every statement of a policy attached to its role. */
+        function functions(t: Template): Fn[] {
+            const json = t.toJSON();
+            const policies = Object.values(json.Resources ?? {}).filter((r: any) => r.Type === 'AWS::IAM::Policy') as any[];
+            return Object.entries(t.findResources('AWS::Lambda::Function')).map(([logicalId, fn]) => {
+                const roleId = (fn as any).Properties.Role['Fn::GetAtt'][0] as string;
+                const statements = policies
+                    .filter((p) => (p.Properties.Roles ?? []).some((r: any) => r.Ref === roleId))
+                    .flatMap((p) => [].concat(p.Properties.PolicyDocument.Statement));
+                const construct = ALL.find((c) => logicalId.startsWith(c)) ?? logicalId;
+                return { construct, logicalId, vars: (fn as any).Properties.Environment?.Variables ?? {}, statements };
+            });
+        }
+        const actions = (st: any): string[] => [].concat(st.Action ?? []);
+        const byConstruct = (name: string) => {
+            const found = functions(schedulingTemplate).filter((f) => f.construct === name);
+            expect({ name, found: found.length }).toEqual({ name, found: 1 });
+            return found[0];
+        };
+        const parameterOf = (v: unknown) => (isRefTo(v) ? parentParameterValues(realTree()).get(v.Ref) : undefined);
+
+        test('I2 (inventory) the nested stack holds exactly the ten admin functions of this slice, each behind a route with the authorizer', () => {
+            expect(functions(schedulingTemplate).map((f) => f.construct).sort()).toEqual([...ALL].sort());
+            const routes = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties);
+            expect(routes.map((r) => r.RouteKey).sort()).toEqual([
+                'DELETE /scheduling/admin/resources/{resourceId}',
+                'GET /scheduling/admin/bookings/{bookingId}',
+                'GET /scheduling/admin/email-templates',
+                'GET /scheduling/admin/resources',
+                'POST /scheduling/admin/bookings/{bookingId}/cancel',
+                'POST /scheduling/admin/customers/erase',
+                'POST /scheduling/admin/customers/lookup',
+                'POST /scheduling/admin/resources',
+                'POST /scheduling/admin/resources/{resourceId}/feed-secret',
+                'PUT /scheduling/admin/resources/{resourceId}',
+            ]);
+            for (const r of routes) expect({ key: r.RouteKey, auth: r.AuthorizationType }).toEqual({ key: r.RouteKey, auth: 'CUSTOM' });
+            // No visitor route in this slice (`sched-1d2`).
+            expect(routes.some((r) => String(r.RouteKey).includes('/scheduling/visitor'))).toBe(false);
+        });
+
+        test('I1 every mailing function: SES_FROM_EMAIL and exactly one ses:SendEmail, on the sending identity (not *); no other function has an SES action', () => {
+            for (const name of MAILING) {
+                const f = byConstruct(name);
+                expect(f.vars.SES_FROM_EMAIL).toBe('contact@bijuterie.software');
+                const ses = f.statements.filter((st) => actions(st).some((a) => a.toLowerCase().startsWith('ses:')));
+                expect({ name, ses: ses.length }).toEqual({ name, ses: 1 });
+                expect(actions(ses[0])).toEqual(['ses:SendEmail']);
+                expect(ses[0].Resource).not.toBe('*');
+                expect(JSON.stringify(ses[0].Resource)).toContain(':identity/contact@bijuterie.software');
+                expect(Object.hasOwn(f.vars, 'RENDERER_CLOUDFRONT_ORIGIN')).toBe(true);
+            }
+            for (const f of functions(schedulingTemplate).filter((x) => !MAILING.includes(x.construct))) {
+                expect({ fn: f.construct, ses: f.statements.some((st) => actions(st).some((a) => a.toLowerCase().startsWith('ses:'))) })
+                    .toEqual({ fn: f.construct, ses: false });
+                expect({ fn: f.construct, from: Object.hasOwn(f.vars, 'SES_FROM_EMAIL') }).toEqual({ fn: f.construct, from: false });
+            }
+        });
+
+        test('I2 every scheduling function: SCHEDULING_TABLE_NAME = the scheduling table, TABLE_NAME = the main table with read', () => {
+            const scheduling = parentTable(SCHEDULING);
+            const main = parentTable(MAIN);
+            for (const f of functions(schedulingTemplate)) {
+                expect({ fn: f.construct, value: parameterOf(f.vars.SCHEDULING_TABLE_NAME) }).toEqual({ fn: f.construct, value: { Ref: scheduling.logicalId } });
+                expect({ fn: f.construct, value: parameterOf(f.vars.TABLE_NAME) }).toEqual({ fn: f.construct, value: { Ref: main.logicalId } });
+            }
+        });
+
+        test('I2 the GET functions and the customer lookup have no write action; the writers have one on the scheduling table; the templates route has no grant on it', () => {
+            const tree = realTree();
+            const schedIndex = allTemplates.indexOf(schedulingTemplate);
+            expect(schedIndex).toBeGreaterThan(0);
+            const scheduling = parentTable(SCHEDULING);
+            const denotes = (st: any) => ([] as unknown[]).concat(st.Resource ?? []).map((r) => tableOf(r, schedIndex, tree));
+            for (const name of READ_ONLY) {
+                const writes = byConstruct(name).statements.filter((st) => actions(st).some((a) => DYNAMODB_WRITE.test(a)));
+                expect({ name, writes }).toEqual({ name, writes: [] });
+            }
+            for (const name of ALL.filter((n) => !READ_ONLY.includes(n))) {
+                const writesScheduling = byConstruct(name).statements.some((st) =>
+                    actions(st).some((a) => DYNAMODB_WRITE.test(a)) && denotes(st).includes(scheduling.logicalId));
+                expect({ name, writesScheduling }).toEqual({ name, writesScheduling: true });
+            }
+            const templates = byConstruct('AdminEmailTemplatesFunc');
+            expect(templates.statements.some((st) => denotes(st).includes(scheduling.logicalId))).toBe(false);
+            // Positive control of the reading: a read-only function still reads the scheduling table.
+            expect(byConstruct('AdminGetBookingFunc').statements.some((st) =>
+                actions(st).includes('dynamodb:GetItem') && denotes(st).includes(scheduling.logicalId))).toBe(true);
+        });
+
+        test('I2 events:PutEvents and EVENT_BUS_NAME exactly on the functions that publish a main-table audit event; none on a booking function', () => {
+            for (const f of functions(schedulingTemplate)) {
+                const puts = f.statements.some((st) => actions(st).includes('events:PutEvents'));
+                const bus = Object.hasOwn(f.vars, 'EVENT_BUS_NAME');
+                const expected = AUDITING.includes(f.construct);
+                expect({ fn: f.construct, puts, bus }).toEqual({ fn: f.construct, puts: expected, bus: expected });
+            }
+            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc']) {
+                expect(byConstruct(name).statements.some((st) => actions(st).some((a) => a.startsWith('events:')))).toBe(false);
+            }
+        });
+
+        test("I4 the renderer server function's role has no statement on the scheduling table (with the scheduling functions present)", () => {
+            const tree = realTree();
+            const scheduling = parentTable(SCHEDULING);
+            const fns = Object.entries(template.findResources('AWS::Lambda::Function')).filter(([id]) => id.includes('RendererHostingRendererServer'));
+            expect(fns).toHaveLength(1);
+            const roleId = (fns[0][1] as any).Properties.Role['Fn::GetAtt'][0] as string;
+            const read = readIam(tree);
+            expect(read.violations).toEqual([]);
+            const reaching = read.located.filter((l) => l.template === 0 && l.roles.includes(roleId));
+            expect(reaching.length).toBeGreaterThan(0);
+            const result = checkDynamodbGrants(reaching, tree, scheduling);
+            expect(result.violations).toEqual([]);
+            expect(result.resolved).not.toContain(scheduling.logicalId);
+            // No statement of that role names the table in any form (a mention fails, as in (sched1b-3)).
+            expect(reaching.filter((l) => namesTable(l.statement, scheduling))).toEqual([]);
+        });
+
+        test('I5 template counts: the SchedulingApi nested stack count logged; the DEPLOYED parent count logged and < 500', () => {
+            const rawParent = Object.keys(template.toJSON().Resources ?? {}).length;
+            const parentFns = Object.keys(template.findResources('AWS::Lambda::Function')).length;
+            const deployedParent = rawParent + parentFns + PARENT_STAGE_OVERHEAD;
+            const rawNested = Object.keys(schedulingTemplate.toJSON().Resources ?? {}).length;
+            const nestedFns = Object.keys(schedulingTemplate.findResources('AWS::Lambda::Function')).length;
+            const deployedNested = rawNested + nestedFns + 1; // + managed log groups + CDK::Metadata, as (split1-5)
+            console.log(
+                `(I5) DEPLOYED parent ≈ ${deployedParent} (raw ${rawParent} + ${parentFns} managed log groups + ${PARENT_STAGE_OVERHEAD} stage overhead); ` +
+                    `DEPLOYED SchedulingApi ≈ ${deployedNested} (raw ${rawNested} + ${nestedFns} log groups + 1 CDK::Metadata). Both < 500.`,
+            );
+            expect(deployedParent).toBeLessThan(500);
+            expect(deployedNested).toBeLessThan(500);
+        });
     });
 });

@@ -11,7 +11,7 @@ The API layer. All Lambda functions behind API Gateway HTTP API. Handles CRUD fo
 
 ```
 src/
-├── lib/                   # (selected modules; 19 files in total)
+├── lib/                   # (selected modules; 20 files in total)
 │   ├── db.ts              # DynamoDB DocumentClient singleton + TABLE_NAME
 │   ├── scheduling-db.ts   # SCHED-1C (docs/slices/sched-1.md § 6-§ 8.4, § 13, § 14, § 23; PROTOTYPE): the ONLY code
 │   │                      #   that names the scheduling-private table. Every function takes a SchedulingStore
@@ -36,6 +36,12 @@ src/
 │   │                      #   (operator-run on the staging table: skipped without SCHEDULING_TABLE_NAME, refuses a
 │   │                      #   name not ending in -staging, one random tenant per test; every concurrent group
 │   │                      #   settles before the `finally` purge, and the partition is read back empty)
+│   ├── scheduling-email.ts # SCHED-1D1 (sched-1.md § 11.1; PROTOTYPE): the seven scheduling mails — keys, English
+│   │                      #   defaults (defaultSchedulingTemplates), the tenant override rule (resolveTemplate: an
+│   │                      #   override replaces subject and body; an absent sendTo… flag keeps the default's),
+│   │                      #   storedOverrides (a stored schedulingEmailConfig that fails its schema → null → 500
+│   │                      #   storedDataInvalid, never "no override"), rendering via order-email.ts renderTemplate.
+│   │                      #   Users: scheduling/admin/bookings-cancel.ts (mail `cancelled`), email-templates.ts
 │   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
 │   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
 │   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
@@ -242,6 +248,44 @@ src/
 │                          #   ≤ 60, categoryBarIds ≤ 12 non-empty ids); other header keys and a non-object header: as
 │                          #   before. SHOP-LOOK-1A: footer.brandText ≤ 400 and footer.columns (≤ 4, strict, ≤ 12
 │                          #   links) via FooterConfigSchema (test/unit/shop-look-1a-settings.test.ts).
+│                          #   SCHED-1D1 (sched-1.md § 4.1, § 6.5 point 4): `schedulingEnabled` (boolean), `scheduling`
+│                          #   (shared SchedulingSettingsSchema, strict: § 4.5 ranges, IANA time zone) and
+│                          #   `schedulingEmailConfig` (SchedulingEmailConfigSchema, strict: the seven keys, subject +
+│                          #   body) checked as sent, same place → 400 naming the field; stored as sent. On the merged
+│                          #   record: schedulingEnabled true without scheduling.timezone → 400. A body that names any of
+│                          #   the three omits `ip` from the UPDATE_SETTINGS event (whole event, also for a mixed body);
+│                          #   other bodies send `ip` as before (test/unit/scheduling-settings.test.ts, rows D13/D14/D17).
+├── scheduling/
+│   └── admin/             # SCHED-1D1 (sched-1.md § 10.3; PROTOTYPE): the admin routes shared by both shapes, in the
+│                          #   SchedulingApi nested stack (infra/lib/api-scheduling.ts). Every handler goes through
+│                          #   common.ts adminRoute (x-tenant-id; requireRole E+T = EDITOR/TENANT_ADMIN, T =
+│                          #   TENANT_ADMIN, GLOBAL_ADMIN passes; StoredDataInvalidError → 500 storedDataInvalid logged
+│                          #   by key; errors `{ error, code, ...context }`; logs carry ids only) and calls
+│                          #   lib/scheduling-db.ts — never DynamoDB for scheduling data (the tenant record is read
+│                          #   from the main table). Admin routes work whether schedulingEnabled is on or off.
+│                          #   A handler that USES a stored scheduling attribute reads the tenant only through
+│                          #   common.ts readSchedulingTenant (`scheduling` and `schedulingEmailConfig` parsed by their
+│                          #   shared schemas → StoredDataInvalidError keyed TENANT#<id>.<attribute>), BEFORE any
+│                          #   write; the mail after a commit cannot change the answer (one exception, recorded in
+│                          #   bookings-cancel.ts: a names re-read after a concurrent move); the catch-all logs the
+│                          #   error name only (review S1D1-R01). A read whose result decides whether a write runs is
+│                          #   consistent — readTenantRecord / readSchedulingTenant take `consistent` like the store
+│                          #   (cancel: tenant + booking; feed secret: tenant); display reads stay eventual (S1D1-R07).
+│                          #   bookings-get (GET …/bookings/{id} → BookingAdminDTO with `history`, booking-dto.ts),
+│                          #   bookings-cancel (POST …/cancel: cancelBooking with the admin Actor — the history entry
+│                          #   is in the cancel's own write, NO audit event; then mail `cancelled` to the customer, no
+│                          #   link, no owner copy; a caller without a valid email → 403), customers-lookup and
+│                          #   customers-erase (email in the body, normalized; erase T-only, audit
+│                          #   SCHEDULING_CUSTOMER_ERASED with the two counts, title "Scheduling customer erasure"),
+│                          #   resources-list/create/update/delete (bound 200, read-then-create: sequential creates
+│                          #   are refused above 200; two simultaneous creates at 199 can both succeed — no reader
+│                          #   breaks above 200, ruling S1D1-R02; delete = removeResource's three steps:
+│                          #   409 resourceInUse / resourceRemovalInProgress), resources-feed-secret (T; 32 random
+│                          #   bytes, SHA-256 stored, URL answered once: <bookingBase>/_booking/feed/<r>/<secret>.ics),
+│                          #   email-templates (GET: defaults + resolved overrides; writes go through PUT /settings).
+│                          #   Main-table audit (no `ip`, no customer data) only on resource writes, feed rotation and
+│                          #   erasure (§ 6.5): target.title = the resource name (or the fixed erasure title); the only
+│                          #   `details` are the erasure's two counts. Tests: test/unit/scheduling-admin.test.ts (rows D7, D10, D12, D13, D16)
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/
@@ -637,6 +681,11 @@ test live here, both credential-free:
 `test/unit/catalog-mode.test.ts` (CATALOG-MODE-1) is shape 2: the real tenant, settings, product, WooCommerce and
 order handlers with `lib/db.ts`, `publishAudit`, the cache-revalidation call and the order handler's origin and
 reCAPTCHA helpers mocked; each row inspects the commands that would reach DynamoDB.
+`test/unit/scheduling-admin.test.ts` and `test/unit/scheduling-settings.test.ts` (SCHED-1D1) are shape 2: the real
+handlers, `requireRole`, `events.ts` and `scheduling-email.ts`, with the EventBridge and SES clients replaced by
+recorders (so the "no `ip`, no customer data in any audit event" rows read the real `PutEvents` input) and, for the
+admin routes, the store functions of `scheduling-db.ts` replaced (their transactions are the `sched-1c` rows of
+`scheduling-db.test.ts`).
 `test/unit/order-price-1.test.ts` (ORDER-PRICE-1) is the same shape for `orders/create.ts` (plus a mocked SES client,
 so the confirmation mail's item lines are read): each row inspects the `TransactWriteCommand`, or that none is sent.
 `test/unit/order-confirm-1.test.ts` (ORDER-CONFIRM-1) is the same shape for `orders/create.ts` (delivery config and

@@ -8,6 +8,7 @@ import { AmodxApi } from './api';
 import { CatalogApi } from './api-catalog';
 import { CommerceApi } from './api-commerce';
 import { EngagementApi } from './api-engagement';
+import { SchedulingApi } from './api-scheduling';
 import { AdminHosting } from './admin-hosting';
 import { RendererHosting } from './renderer-hosting';
 import { AmodxUploads } from './uploads';
@@ -500,6 +501,21 @@ export class AmodxStack extends cdk.Stack {
         target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(admin.distribution)),
       });
     }
+
+    // 5b. Scheduling API (NestedStack — docs/slices/sched-1.md § 10.3, § 11.2, § 17; SCHED-1D1: the admin routes).
+    // Constructed after the renderer (its CloudFront origin is the link base of a tenant without a domain, § 8.2) and
+    // after AdminHosting (§ 11.2: `sched-1g` passes the admin URL to the reminder job from here). Parent → nested
+    // references only, as CommerceApi/EngagementApi: no cycle. The scheduling table is granted to this stack's
+    // functions only; the renderer's role has no statement on it (I4).
+    new SchedulingApi(this, 'SchedulingApi', {
+      httpApiId: api.httpApi.apiId,
+      authorizerFuncArn: api.authorizerFuncArn,
+      table: db.table,
+      schedulingTable: db.schedulingTable,
+      eventBus: amodxEvents.bus,
+      sesEmail: sesEmail,
+      rendererCloudFrontOrigin: cloudFrontUrl,
+    });
 
 
     // ============================================================
