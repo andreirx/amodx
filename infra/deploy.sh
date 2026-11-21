@@ -9,6 +9,12 @@
 # NEXT_PUBLIC_USER_POOL_CLIENT_ID into the bundle. A deploy without them ships a renderer that cannot reach the API.
 # The values are the Outputs of the stage's own deployed stack, so the script reads them from there. They are not
 # printed. A first deploy of a new stage has no stack yet: deploy once by hand, then use this script.
+#
+# Cleanup: after a diff or a deploy that ended well, the script removes old build output from cdk.out. Every run
+# writes each bundled function and the site to cdk.out/asset.<content hash> and nothing ever removes one (18 GB by
+# 2026-11-21). Entries older than 24 hours are removed: none of them belongs to this run, and a second run at the same
+# time (another stage) keeps its own fresh entries. A removed entry that is still current is written again by the
+# next run. A direct `npx cdk ...` does not clean.
 set -euo pipefail
 
 stage="${1:-}"
@@ -43,12 +49,27 @@ done
 export NEXT_PUBLIC_API_URL NEXT_PUBLIC_USER_POOL_ID NEXT_PUBLIC_USER_POOL_CLIENT_ID
 
 cd "$(dirname "$0")"
+
+prune_old_build_output() {
+  [ -d cdk.out ] || return 0
+  # Each old entry is first moved (one atomic rename) into a trash folder, then the trash is deleted. A delete that
+  # stops half way (Finder writes .DS_Store files while it runs) then leaves its rest in the trash, never a
+  # half-empty asset.<hash> that the next run would take for a complete one.
+  local trash="cdk.out/.prune-trash" removed=0 entry
+  mkdir -p "$trash"
+  while IFS= read -r entry; do
+    if mv "$entry" "$trash/"; then removed=$((removed + 1)); fi
+  done < <(find cdk.out -maxdepth 1 -name 'asset.*' -mmin +1440)
+  rm -rf "$trash" || echo "deploy.sh: a rest of old build output stays in $trash; the next run removes it."
+  echo "deploy.sh: removed $removed build output entries older than 24 hours from cdk.out."
+}
 echo "deploy.sh: stage $stage, stack $stack, region $region; the three public variables are set from the stack outputs."
 
 npx cdk diff "${cdk_args[@]}"
-if [ "$action" = "diff" ]; then exit 0; fi
+if [ "$action" = "diff" ]; then prune_old_build_output; exit 0; fi
 
 printf "Deploy this diff to %s? Type the stage name to continue: " "$stage"
 read -r answer
 if [ "$answer" != "$stage" ]; then echo "deploy.sh: not deployed."; exit 1; fi
 npx cdk deploy "${cdk_args[@]}"
+prune_old_build_output
