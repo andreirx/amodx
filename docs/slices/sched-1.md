@@ -1,11 +1,12 @@
 # SCHED-1 — scheduling with two booking shapes: a slot with a practitioner, a seat in a group (SPECIFICATION slice)
 
-Status: **PLANNED (specification, reviewed and approved as a document 2026-11-21, not ratified; § 22) — DECISIONS REQUIRED before any build**
-(§ 15). Track: D (Scheduling), prefix `sched-`. Written 2026-11-20 as `course-1` (seats only); rewritten 2026-11-21
-after the human's directions of that day (§ 1); expanded the same day into a buildable specification (operator
-packet 2026-11-21); revised after review-0 (findings SCHED-R01…R12, closure table § 21). Source plan:
-`docs/plan-courses-group-sessions.md`; base plan `docs/plan-appointments-private-table-extension.md` (ratified;
-this slice proposes amendments, § 16). This slice writes the specification; it changes no code.
+Status: **PLANNED (specification) — RATIFIED by the human 2026-11-21 (nine decisions, § 15); AMENDED 2026-11-21
+(SCHED-1R: ratification applied, week planner added, § 23; amendment reviewed, § 24).** Next: `sched-1a`. Track: D (Scheduling), prefix `sched-`. Written 2026-11-20 as `course-1` (seats only);
+rewritten 2026-11-21 after the human's directions of that day (§ 1); expanded the same day into a buildable
+specification (operator packet 2026-11-21); revised after review-0 (findings SCHED-R01…R12, closure table § 21);
+document approved by review-4 (§ 22). Source plan: `docs/plan-courses-group-sessions.md`; base plan
+`docs/plan-appointments-private-table-extension.md` (ratified; amended by § 16.1, applied 2026-11-21). This slice
+writes the specification; it changes no code.
 
 Named clients: galeriilevoicu.ro (courses and workshops in groups) and a practitioner client (individual
 appointments, "like a dentist or a psychologist") named by the human on 2026-11-21.
@@ -24,6 +25,13 @@ documentation, not seen in this repository), **NOT VERIFIED** (cannot be checked
    such tenants today).
 4. **AMODX provides the scaffolding.** The text of a contract and the lawfulness of what a tenant asks its
    customers are the tenant's responsibility (`docs/slices/contract-1.md`).
+5. **AMODX holds the calendar; the admin gets a week planner** (ratification of 2026-11-21, verbatim in
+   `.agent-manager/slices/SCHED-1/human-ratification.md`): "good admin tools around it, for the schedule enabled
+   tenants, with clear open slots and unavailable times - per week planner, with defaults ... send out an email to
+   the admin reminding them they can manually tweak those - and we can tweak individual days, disable whole days
+   ... pre-fill ahead of time by weeks and months". Ruling **SCHED-PLANNER = B** ("ok B"): nothing is materialized
+   per week; every week is open from the defaults; the admin edits any week; a tenant setting limits how far ahead
+   visitors can book. Its specification is § 23.
 
 ## 2. The problem
 
@@ -54,6 +62,9 @@ no statement gives is a **technical limit** and is listed in § 4.5 with its tri
 | D13 | The booking screens are a hosted page that also works in a frame; a tenant with no domain is ordinary | § 1 item 3 |
 | D14 | Trainers and practitioners see their schedule in their own calendar (feed) | draft § 6 SCHED-CALENDAR |
 | D15 | Customer-private scheduling data is outside the renderer's reach; customer actions are renderer-proxied | VISION guarantee 2; PD-002; base plan lines 52-54 |
+| D16 | The admin plans each resource's weeks: weekly defaults; any date edited to other hours or a whole day off; weeks and months ahead; nothing is materialized per week — a date with no edit follows the defaults | § 1 item 5 (SCHED-PLANNER = B) |
+| D17 | A visitor books a slot at most a tenant-set number of weeks ahead; the admin is not limited by it; a seat in a group run is not limited (operator decision, § 15) | § 1 item 5; default 8 weeks (operator decision, 2026-11-21: the human gave no number) |
+| D18 | Each Sunday the admin gets one mail with the next week per resource and a link to the planner | § 1 item 5 |
 
 ## 3. Fact check of the draft, and findings in the code
 
@@ -83,7 +94,7 @@ Findings in the code that shape this specification:
 |---|---|---|---|
 | G1 | Renderer `/api/*` proxies take the tenant from `Host`; `/api/*` is not rewritten by the middleware, so on `<distribution>.cloudfront.net` no tenant is found | `renderer/src/app/api/contact/route.ts:32-35`; `renderer/middleware.ts:181-189`; `renderer/src/lib/dynamo.ts:87-117` (OBSERVED); consequence INFERRED | § 10.1: booking routes are reached through a middleware rewrite that binds the tenant |
 | G2 | **Corrected in cycle 2.** Cycle 1 said the visitor's address cannot reach the renderer. Not established: CloudFront adds `X-Forwarded-For` to origin requests (AWS documentation, INFERRED) and the installed OpenNext converter keeps every request header (`node_modules/@opennextjs/aws/dist/overrides/converters/aws-apigw-v2.js:44-56`, OBSERVED); `remoteAddress` is the Lambda URL's `sourceIp`, i.e. CloudFront (`:67`, OBSERVED). What the renderer receives in production is **NOT RUN** | — | § 9.2: extraction rules for both header candidates; a staging witness in `sched-1g` chooses (operator ruling SCHED-ADDR-WITNESS-STAGE = B); its success gates every visitor exposure of a hosted or framed booking page |
-| G3 | Audit entries are written to the main table, which the renderer reads | `backend/src/audit/worker.ts:22-41`; `infra/lib/renderer-hosting.ts:272`; precedent with a visitor's email: `backend/src/contact/send.ts:113-120` (OBSERVED) | decision SCHED-AUDIT-PII |
+| G3 | Audit entries are written to the main table, which the renderer reads | `backend/src/audit/worker.ts:22-41`; `infra/lib/renderer-hosting.ts:272`; precedent with a visitor's email: `backend/src/contact/send.ts:113-120` (OBSERVED) | SCHED-AUDIT-PII = C (ratified): booking events go to `BOOKING#.history` in the private table (§ 4.4, § 6.5) |
 | G4 | reCAPTCHA fails open when the function has no secret | `backend/src/lib/recaptcha.ts:41-53`; `backend/src/orders/create.ts:95-96`; per-function wiring `infra/lib/api-commerce.ts:220`, `:394` (OBSERVED) | § 9.1 infra assertion |
 | G5 | The root layout `app/[siteId]/layout.tsx` injects analytics, Paddle, the Facebook pixel, reCAPTCHA, the cookie banner and popups into every page under it | `renderer/src/app/[siteId]/layout.tsx:281-302`, `:446` (OBSERVED) | § 10.1; decision SCHED-PAGE-LAYOUT |
 | G6 | Preview pages are always rewritten to the `%5Fdyn` twin; query-bearing production pages too | `renderer/middleware.ts:219-299` (OBSERVED) | § 10.1: the booking rewrite runs before these branches |
@@ -102,7 +113,7 @@ validate stored items and request bodies.
 
 Time types: `Instant` = epoch **milliseconds** (number) in the kernel and in stored maps; UTC ISO-8601 with `Z`
 and milliseconds (`YYYY-MM-DDTHH:mm:ss.sssZ`, fixed width, so string order = time order) in keys and DTOs;
-DynamoDB `ttl` = epoch **seconds** (`Math.floor(ms / 1000)`), used only on the four item kinds § 6.2 marks. `LocalDate` = `"YYYY-MM-DD"`, `LocalTime` =
+DynamoDB `ttl` = epoch **seconds** (`Math.floor(ms / 1000)`), used only on the five item kinds § 6.2 marks. `LocalDate` = `"YYYY-MM-DD"`, `LocalTime` =
 `"HH:MM"`, `TimeZone` = an IANA name accepted by `Intl.DateTimeFormat(undefined, { timeZone })`.
 
 ### 4.1 Tenant settings (main table, `TenantConfig`; not customer data)
@@ -114,8 +125,9 @@ DynamoDB `ttl` = epoch **seconds** (`Math.floor(ms / 1000)`), used only on the f
 | `scheduling.holdMinutes` | integer | 30 | life of a hold | D12; draft § 4 |
 | `scheduling.changeCutoffHours` | integer | 24 | cancel or move allowed until this many hours before the start | D12 ("inside the tenant's window") |
 | `scheduling.reminderHours` | integer | 24 | reminder this many hours before the start; 0 = none | draft § 7 |
+| `scheduling.bookingHorizonWeeks` | integer | 8 | a visitor slot may start on a local date up to `today + 7 × weeks` days (§ 5.5 `lastBookableDate`); admin writes are not limited by it, and seats in group runs are not (operator decision, § 15; § 23.3) | D17 |
 | `scheduling.embedOrigins` | string[] | `[]` | owned by `sched-frame-1` | `sched-frame-1.md` item 2 |
-| `schedulingEmailConfig.templates` | record key → template | `{}` | tenant overrides of the six mails (§ 11) | F6 pattern |
+| `schedulingEmailConfig.templates` | record key → template | `{}` | tenant overrides of the seven mails (§ 11) | F6 pattern |
 
 ### 4.2 Appointment side (scheduling-private table)
 
@@ -125,7 +137,11 @@ type Resource = { id: string; name: string; feedSecretHash?: string;            
 type Eligibility = { kind: "all" } | { kind: "only"; resourceIds: [string, ...string[]] };   // D2
 type Service = { id: string; name: string; durationMin: number; eligibility: Eligibility };  // D1, D2
 type AvailabilityRule = { weekday: 1|2|3|4|5|6|7; start: LocalTime; end: LocalTime };        // D3 (ISO weekday)
-type ClosedTime = { id: string; start: Instant; end: Instant; note?: string };               // SCHED-CALENDAR A
+type LocalWindow = { start: LocalTime; end: LocalTime };                                     // D16
+type DayOverride =                                                                           // D16; § 23.2
+  | { kind: "dayOff"; note?: string }
+  | { kind: "dayHours"; windows: [LocalWindow, ...LocalWindow[]]; note?: string };
+type DayOverrides = Record<LocalDate, DayOverride>;   // per resource; a date with no key follows the defaults
 ```
 
 - `Eligibility`: "all" and "this list" exclude each other; the base plan's `eligibleResourceIds[] OR
@@ -136,6 +152,12 @@ type ClosedTime = { id: string; start: Instant; end: Instant; note?: string };  
   resource carries the **resource guard**: ConditionCheck `RESOURCE#<r>` `attribute_exists(SK) AND
   attribute_not_exists(retiring)` — the resource exists and no removal is under way.
 - `feedSecretHash`: § 12. `note`: shown to the admin only.
+- **Defaults** of a resource = its `AvailabilityRule[]` (one weekly pattern). **`DayOverride`** replaces the
+  defaults of one local date for one resource: `dayOff` = no window that day; `dayHours` = exactly these windows
+  that day (non-empty by type, so "no hours" has one representation, `dayOff`). Windows of one day: `end > start`,
+  5-minute boundaries, sorted, no overlap, ≤ 8. The former `ClosedTime` (an instant interval with a note) is
+  **removed**: a partial block inside a day is a `dayHours` whose windows leave the blocked part out, and a span of
+  days is `dayOff` on each date (reason in § 23.2).
 - Not modelled (no client stated a use): price, description, buffer, customer notes. Free text at a practitioner
   invites health data into a field nobody asked for.
 
@@ -172,8 +194,18 @@ type BookingWhat =
 type BookingState =
   | { kind: "held"; expiresAt: Instant; mail: "pending" | "sent" | "failed" }                          // D12; § 7.2
   | { kind: "confirmed"; at: Instant }
-  | { kind: "cancelled"; at: Instant; by: CancelledBy };
-type CancelledBy = { kind: "customer" } | { kind: "admin"; email: string };
+  | { kind: "cancelled"; at: Instant; by: Actor };
+type Actor = { kind: "customer" } | { kind: "admin"; email: string };     // the customer acts only by link token
+
+type Placement =                                                           // SCHED-AUDIT-PII = C
+  | { kind: "slot"; resourceId: string; start: Instant; end: Instant }
+  | { kind: "seat"; runId: string }
+  | { kind: "unplaced" };
+type HistoryEntry =                                                        // SCHED-AUDIT-PII = C, § 22 point 1
+  | { action: "created"; at: Instant; state: "held" | "confirmed"; placement: Placement }
+  | { action: "confirmed"; at: Instant }
+  | { action: "cancelled"; at: Instant; by: Actor }
+  | { action: "moved"; at: Instant; by: Actor; from: Placement; to: Placement };
 
 type BookingSource =
   | { kind: "visitor" }                                                                               // D12
@@ -185,7 +217,7 @@ type Person = { email: string /* normalizeEmail() form */; name: string; phone?:
 type Booking = { id: string; ref: string; rev: number; what: BookingWhat; state: BookingState;
                  source: BookingSource; who: Person; tokenHashes: string[];
                  intentId?: string; heldUntil?: Instant; reminderSentFor?: Instant; createdAt: Instant;
-                 updatedAt: Instant };
+                 updatedAt: Instant; history: HistoryEntry[] /* 1-50, oldest first */ };
 ```
 
 | Type or field | Rule it encodes | Statement |
@@ -198,7 +230,10 @@ type Booking = { id: string; ref: string; rev: number; what: BookingWhat; state:
 | `Person.email` | stored only as `normalizeEmail()` output, validated after normalization | PD-001 (`docs/platform-decisions.md:72-84`) |
 | `phone` | optional, shown to the admin | draft § 3 |
 | `language` | the person's language for the proposal; absent = no preference | D7 |
-| `ref` | first 8 hex characters of `id`, upper case (`B-1A2B3C4D`): display only | audit titles, mails (SCHED-AUDIT-PII) |
+| `ref` | first 8 hex characters of `id`, upper case (`B-1A2B3C4D`): display only; never written to the main table (§ 6.5) | mails, admin screens, conflict lists, feed `SUMMARY` (§ 12) |
+| `Actor` | who acted on a booking: the customer (by link token) or an admin (by email). Used by `cancelled` state and by history. Replaces the earlier name `CancelledBy` (same variants; the type now serves history too) | D8, D12 |
+| `history` | the creating Put writes `[created]`; then one entry per change of `what` or `state`, appended **in the same `rev`-conditioned write** that makes the change (§ 7.1 booking rule), so the list and the booking cannot disagree. 1-50 entries, oldest first; a write that would make 51 drops the oldest (technical limit, § 4.5), so after 50 changes the `created` entry is gone: the stored-item rule is **non-empty**, not "starts with `created`" (`createdAt` and `source` keep the creation facts). Not recorded: token mints, `state.mail`, `reminderSentFor` (mails, not changes of the booking), and a run move (it changes `RUN#.meetings`, not the booking; the run's main-table audit records it, § 6.5) | SCHED-AUDIT-PII = C (§ 22 point 1) |
+| `HistoryEntry` variants | `created` — the hold (`held`), an admin manual entry or an order line (`confirmed`); who created it is `source`, stored once on the booking. `confirmed` — only by link token, so no actor field. `cancelled` — by the customer or an admin (a held seat of a cancelled run: the admin who cancelled the run). `moved` — slot → slot, seat → seat, unplaced → seat, seat → unplaced (an admin move out, or a run cancel: `by` = that admin); carries the old and new placement | § 22 point 1 |
 | `rev` | optimistic version of the booking: every change of `what`, `state` or `tokenHashes` is conditioned on it and increments it (§ 7.1) | — (concurrency, technical) |
 | `tokenHashes` | hashes of every `TOKEN#` item of this booking that may still exist, oldest first, 0-20. A hash leaves the list only in the transaction that deletes its item, or after that item was deleted; so the list is never missing an existing token. Empty after a cancel (§ 8.4) | D12; operator ruling R01 |
 | `intentId` | the booking intent that created it (§ 7.2) | base plan lines 139-143 |
@@ -209,12 +244,16 @@ type Booking = { id: string; ref: string; rev: number; what: BookingWhat; state:
 
 | Bound | Value | Kind | Reason | Trigger to change | How it is lifted |
 |---|---|---|---|---|---|
-| Run capacity | 1-45 | **technical limit of this version** (SCHED-SEAT-BOUND) | cancelling a run is one transaction of `2 + 2 × capacity` items under DynamoDB's 100-item limit (§ 7.6) | a named client with a group above 45 | resumable two-phase cancel: status `cancelled` first, then batches of ≤ 45 bookings, idempotent, retried until the seat map is empty |
+| Run capacity | 1-45 | **technical limit of this version** (SCHED-SEAT-BOUND = A, ratified 2026-11-21; the human: "groups are max 10-12 people") | cancelling a run is one transaction of `2 + 2 × capacity` items under DynamoDB's 100-item limit (§ 7.6) | a named client with a group above 45 | resumable two-phase cancel: status `cancelled` first, then batches of ≤ 45 bookings, idempotent, retried until the seat map is empty |
 | Meetings per run | 1-60 | technical | item size and admin screen | a course with more than 60 meetings | raise: the run item holds hundreds |
 | Trainers per run | 1-10 | lower bound domain (D4), upper technical | one condition check per trainer in run writes (§ 7.6) | a run with more than 10 trainers | raise to the transaction budget |
 | `durationMin` | 5-480, multiple of 5 | technical | 5-minute admin grid; one working day | a service longer than 8 h or off the grid | raise; the container (§ 7.3) has no grid |
 | Availability rules per resource | ≤ 50 | technical | one item (§ 6.2) | more than 50 windows a week | split by weekday |
-| Future closed times per resource | ≤ 200 | technical | one item; ended ones are pruned on each write | more than 200 future closed times | one item per year |
+| Day overrides per resource (stored, from local today − 6 on) | ≤ 366 | technical | one item `DAYS#<r>` (§ 6.2); dates before the tenant's local today − 6 are pruned on each write (§ 5.5) | an admin plans more than 366 edited dates ahead | one item per resource and month (O3, § 23.6) |
+| Windows per `dayHours` | 1-8 | technical | item size (366 × 8 windows fit, § 6.2) | a day with more than 8 separate open windows | raise |
+| One day-edit request | ≤ 366 dates (`from`…`to`); copy-week ≤ 52 target weeks | technical | the result must fit the 366 bound | — | — |
+| `bookingHorizonWeeks` | 1-52 | technical sanity range (default 8 is the operator's) | one year of open weeks; the visitor slot range stays ≤ 62 days per request | a tenant takes bookings more than a year ahead | raise |
+| `history` entries per booking | ≤ 50, oldest dropped | technical (SCHED-AUDIT-PII = C, § 22) | item size of `BOOKING#` (50 × ~150 B ≈ 7.5 KB) | a booking with more than 50 real changes | raise; or move older entries to a `HIST#` item |
 | Course languages | ≤ 10 | technical | form size | a course offered in more languages | raise |
 | Resources, services, courses per tenant | ≤ 200 each | technical | admin lists are returned whole | a tenant above 200 | page the list (§ 6.4 rule 1) |
 | `holdMinutes` | 5-1440 | technical sanity range | — | a tenant needs a longer hold | raise |
@@ -227,7 +266,7 @@ type Booking = { id: string; ref: string; rev: number; what: BookingWhat; state:
 | Live link tokens per booking | 20 | operator ruling R01 | § 8.4 | — | — |
 | Token view after the end | 30 days | specification choice | data minimisation | a tenant asks for longer access | raise |
 | Expired holds kept | 7 days | specification choice | § 14.1 | — | — |
-| Text lengths | name ≤ 200, phone ≤ 40, note ≤ 500, channel ≤ 40, URL ≤ 500 | technical | item size and logs | — | raise |
+| Text lengths | name ≤ 200, phone ≤ 40, note ≤ 200 (day override), channel ≤ 40, URL ≤ 500 | technical | item size and logs (366 notes in one `DAYS#` item) | — | raise |
 | Request body | ≤ 8 KB (renderer) | technical | abuse | — | raise |
 
 ## 5. Kernel rules (pure functions; clock and timezone passed in)
@@ -235,7 +274,8 @@ type Booking = { id: string; ref: string; rev: number; what: BookingWhat; state:
 Location: `packages/shared/src/scheduling.ts` (types, rules) and `packages/shared/src/zoned-time.ts` (wall time ↔
 instant), beside `payment-transition.ts` and `coupon.ts`. No I/O, no `Date.now()`, no ambient zone. `Result<T,
 E>` = `{ ok: true; value: T } | { ok: false; error: E }`. Notation: `bookingId` and `resourceId` = string;
-`SeatEntry` = `{ x?: Instant }`; `ContainerEntry` = `{ bookingId; s: Instant; e: Instant; x?: Instant }` (§ 6.2).
+`SeatEntry` = `{ x?: Instant }`; `ContainerEntry` = `{ bookingId; s: Instant; e: Instant; x?: Instant; rev: number }` (§ 6.2; `rev` = the booking's
+`rev` written in the same transaction, § 7.3).
 
 Worked examples use `Europe/Bucharest` (UTC+2 winter, UTC+3 summer; 2026-10-25 04:00 summer → 03:00; 2027-03-28
 03:00 winter → 04:00).
@@ -260,42 +300,51 @@ resources, rules, existing bookings, timezone and an injected `now`; storage use
 wall time; the kernel detects, the database enforces; "any available" is discover-then-conditionally-write with
 a deterministic pick and a retry on the next candidate.
 
-**Changed** (amendment § 16.1): closed times are an input; existing bookings are busy intervals (held unexpired +
-confirmed); a submitted start is re-checked at write time (`slotDecision`); the guard is the resource-day
-container (§ 7.3), not a lock per start; the customer is identified by a link token, not a session; a move keeps
-the booking id (§ 8.5).
+**Changed** (amendment § 16.1): the windows of a day come from the defaults or that date's override (`dayWindows`,
+§ 5.5); existing bookings are busy intervals (held unexpired + confirmed); a visitor start must fall on or before
+the tenant's last bookable date (§ 5.5); a submitted start is re-checked at write time (`slotDecision`); the guard
+is the resource-day container (§ 7.3), not a lock per start; the customer is identified by a link token, not a
+session; a move keeps the booking id (§ 8.5).
 
 ```ts
 availableSlots(input: {
   service: Service; resources: Resource[]; rules: Record<resourceId, AvailabilityRule[]>;
-  closed: Record<resourceId, ClosedTime[]>; busy: { resourceId: string; start: Instant; end: Instant }[];
-  from: LocalDate; to: LocalDate; tz: TimeZone; now: Instant;
+  days: Record<resourceId, DayOverrides>; busy: { resourceId: string; start: Instant; end: Instant }[];
+  from: LocalDate; to: LocalDate; lastBookableDate: LocalDate; tz: TimeZone; now: Instant;
 }): Result<{ day: LocalDate; starts: { start: Instant; freeResourceIds: string[] }[] }[],
            { kind: "rangeInverted" } | { kind: "rangeTooLong"; maxDays: 62 }>
 
-slotDecision(input: { service: Service; resource: Resource; rules: AvailabilityRule[]; closed: ClosedTime[];
-                      start: Instant; tz: TimeZone; now: Instant }): Result<{ end: Instant }, SlotRefusal>
-type SlotRefusal = { kind: "inPast" } | { kind: "notEligible" } | { kind: "resourceUnavailable" }
-                 | { kind: "notOnGrid" } | { kind: "outsideAvailability" } | { kind: "closedTime"; closedId: string }
+slotDecision(input: { service: Service; resource: Resource; rules: AvailabilityRule[]; days: DayOverrides;
+                      start: Instant; lastBookableDate: LocalDate; tz: TimeZone; now: Instant })
+  : Result<{ end: Instant }, SlotRefusal>
+type SlotRefusal = { kind: "inPast" } | { kind: "beyondHorizon"; lastBookableDate: LocalDate }
+                 | { kind: "notEligible" } | { kind: "resourceUnavailable" }
+                 | { kind: "notOnGrid" } | { kind: "outsideAvailability" }
 
 overlapCheck(candidate: { start: Instant; end: Instant }, entries: ContainerEntry[], now: Instant,
              self?: string): Result<void, { kind: "overlap"; bookingId: string }>
 pickResource(freeResourceIds: string[]): string        // lowest id in string order; the caller retries the next
 ```
 
-- **Slots**: for each eligible resource and each local day, each window of that weekday gives starts at
-  `windowStart + k × duration` while `start + duration <= windowEnd`; kept when after `now`, not overlapping a
-  closed time or a busy interval of that resource, and the local time exists. Intervals are half-open
-  `[start, end)`. Example: 60 min, Monday 09:00-12:00, day 2026-12-07, busy `08:00Z-09:00Z`, `now` 2026-12-01 →
-  `07:00Z`, `09:00Z`.
-- **slotDecision** (visitor holds and visitor moves): the submitted start must be exactly a start that
-  `availableSlots` would offer for that resource, busy intervals aside (they are the container's job). Examples:
+- **Slots**: for each eligible resource and each local day `d` with `from <= d <= min(to, lastBookableDate)`, each
+  window of `dayWindows(rules, days[d], d)` gives starts at `windowStart + k × duration` while
+  `start + duration <= windowEnd`; kept when after `now`, not overlapping a busy interval of that resource, and the
+  local time exists. Days after `lastBookableDate` are returned with no starts (the range check of 62 days is on
+  `from`…`to` as sent). Intervals are half-open `[start, end)`. Example: 60 min, Monday 09:00-12:00, day
+  2026-12-07, busy `08:00Z-09:00Z`, `now` 2026-12-01 → `07:00Z`, `09:00Z`. The same day with the override
+  `dayHours [09:00-10:00, 11:00-12:00]` and no busy interval → `07:00Z`, `09:00Z`; with `dayOff` → none.
+- **slotDecision** (visitor holds and visitor moves): checks in this order — `inPast` (`start <= now`);
+  `beyondHorizon` (the start's local date `> lastBookableDate`); `notEligible`; `resourceUnavailable`; then the
+  start must be exactly a start that `availableSlots` would offer for that resource, busy intervals aside (they are
+  the container's job): a start inside the day's windows but off their grid → `notOnGrid`; any other start (on a
+  `dayOff` date, outside every window of the day, or in a part an edit removed) → `outsideAvailability`. Examples:
   the same service and window, start `07:30Z` → `notOnGrid`; start `2026-11-30T07:00Z` with `now` 2026-12-01 →
-  `inPast`; a resource outside `only` → `notEligible`.
+  `inPast`; a resource outside `only` → `notEligible`; `dayOff` on 2026-12-07 and start `07:00Z` →
+  `outsideAvailability`; `lastBookableDate` 2027-01-26 and start `2027-01-27T07:00Z` → `beyondHorizon`.
 - **Admin writes** (manual booking, admin move) skip `slotDecision`: the admin may book outside the windows, off
-  the grid, in a closed time or for any resource. They are bound by: a known service (its duration), a known,
-  resource that passes the resource guard (§ 4.2), and `overlapCheck`. Decided here: the practitioner's own entries must not be blocked by
-  the visitor rules.
+  the grid, on a day off, beyond the horizon or for any resource. They are bound by: a known service (its duration),
+  a known resource that passes the resource guard (§ 4.2), and `overlapCheck`. Decided here: the practitioner's own
+  entries must not be blocked by the visitor rules.
 - **overlapCheck** example: entries `{A: 07:00Z-08:00Z held, x 2026-12-01T10:00Z}`, candidate `07:30Z-08:00Z`,
   `now` 09:59Z → `overlap(A)`; `now` 10:00Z → ok (A expired).
 
@@ -311,6 +360,7 @@ changeDecision(b: Booking, startOf: Instant | null, now: Instant, cutoffHours: n
 type ChangeRefusal = { kind: "tooLate"; cutoff: Instant } | { kind: "notActive"; state: "expired" | "cancelled" }
                    | { kind: "notConfirmed" } | { kind: "paidContactTenant" }
 tokenView(b: Booking, endOf: Instant | null, now: Instant): "valid" | "gone"
+appendHistory(h: HistoryEntry[], e: HistoryEntry): HistoryEntry[]   // h + e, keeping the newest 50 (§ 4.4)
 bookingBase(tenant: { id: string; domain?: string }, cloudFrontOrigin: string): string
 ```
 
@@ -352,11 +402,51 @@ cancelRunEffects(seats: Record<bookingId, SeatEntry>, now: Instant): { toUnplace
 | **Move a run**: `validateMeetings` on the new list; people stay | D8 | — |
 | **Cancel a run**: confirmed seats → `unplaced`; held unexpired seats → cancelled (`by admin`); expired entries ignored | D8 | A confirmed, B held, C expired → `toUnplace [A]`, `toCancel [B]` |
 
+### 5.5 Week planner (D16-D18; § 23)
+
+```ts
+dayWindows(rules: AvailabilityRule[], override: DayOverride | undefined, date: LocalDate)
+  : { source: "default" | "dayHours" | "dayOff"; windows: LocalWindow[] }
+lastBookableDate(now: Instant, tz: TimeZone, horizonWeeks: number): LocalDate
+activeEntries(raw: ContainerEntry[], span: { start: Instant; end: Instant }, now: Instant): ContainerEntry[]
+                                 // raw = every entry of the RESDAY# items one AP3 query returned; no error case
+planDay(input: { rules: AvailabilityRule[]; days: DayOverrides; date: LocalDate;
+                 entries: ContainerEntry[] /* activeEntries(raw, that local day, now) */; tz: TimeZone; now: Instant })
+  : PlannedDay
+type PlannedDay =
+  | { kind: "past"; date: LocalDate; entries: string[] }      // older than the kept range: overrides pruned
+  | { kind: "planned"; date: LocalDate; source: "default" | "dayHours" | "dayOff"; windows: LocalWindow[];
+      removed: LocalWindow[]; note?: string; entries: string[]; open: { start: Instant; end: Instant }[];
+      outsideHours: string[] };
+type DaySetting = DayOverride | { kind: "default" };          // "default" = remove the override of that date
+type DaysEdit =
+  | { kind: "set"; from: LocalDate; to: LocalDate; value: DaySetting }
+  | { kind: "copyWeek"; sourceStart: LocalDate; targetStart: LocalDate; weeks: number };
+editDays(current: DayOverrides, edit: DaysEdit, today: LocalDate)
+  : Result<{ next: DayOverrides; changed: LocalDate[] }, DaysEditError>
+type DaysEditError = { kind: "rangeInverted" } | { kind: "rangeTooLong"; maxDays: 366 }
+                   | { kind: "startsInPast"; today: LocalDate } | { kind: "sourceTooOld"; oldest: LocalDate }
+                   | { kind: "weekdayMismatch" } | { kind: "targetOverlapsSource" }
+                   | { kind: "tooManyDays"; max: 366 };
+weekMailDue(now: Instant, tz: TimeZone): { kind: "due"; weekStart: LocalDate } | { kind: "notDue" }
+```
+
+| Rule | Statement | Example (`Europe/Bucharest`) |
+|---|---|---|
+| **Precedence** (one rule, used by `availableSlots`, `slotDecision` and `planDay`): an override of date `d` replaces the defaults of `d` entirely — `dayOff` → no window; `dayHours` → exactly its windows; no override → the rules whose `weekday` is the ISO weekday of `d`. Overrides never merge with the defaults. Then, for visitors only, the horizon; then busy intervals | D16 | defaults Mon 09:00-17:00; override of Mon 2026-12-07 `dayHours [09:00-12:00]` → that Monday 09:00-12:00; Mon 2026-12-14 (no override) → 09:00-17:00; override `dayHours [10:00-12:00]` on Sun 2026-12-13 (no Sunday default) → Sunday open 10:00-12:00 |
+| **Horizon**: `lastBookableDate = localDate(now, tz) + 7 × horizonWeeks` days; a visitor start is allowed when its local date `<= lastBookableDate` | D17 | `now` 2026-12-01T10:00Z, 8 weeks → `2027-01-26`; a slot on 2027-01-26 23:00 local → allowed; 2027-01-27 09:00 → `beyondHorizon` |
+| **activeEntries** (pure; the one normalization of an interval read, used by the four display consumers: planner week, all-resource appointments read, day-edit answer, weekly mail; operator scope freeze after review-2): (1) group `raw` by `bookingId`; (2) in each group keep only the entries with the **highest `rev`**; (3) keep those whose `[s, e)` intersects `span`; (4) keep the active ones (`x` absent, or `now < x`); one entry per booking remains (copies with the same `rev` were written in one transaction, § 7.3, and are equal; the function keeps the first in key order). No reread, no retry, no `busy`, no corruption report: the read path reports nothing. **Why `rev` decides**: every write that adds or changes an entry also changes the booking and writes the booking's new `rev` into the entry in the same transaction (§ 7.3), so among the copies one query saw, the highest `rev` is the newest committed placement. A `Query` over several `RESDAY#` items has no snapshot across items (AWS transaction isolation documentation, INFERRED), so a confirm or a move that commits during the query can show an old copy and a new one; step 2 keeps the new one. **Limit** (accepted for displays): a read made during concurrent writes can show a booking in an older state — for example a booking cancelled during the read still shown (the cancel removes the entries; the query saw one before removal), or a booking moved during the read shown in its old place when the query saw no new copy. The guarantee is only: the highest `rev` the query returned; there is no bound on how old that is, and a later read (eventually consistent) can still be stale. No write decides on these reads: every writer decides on its own `ConsistentRead` of the container under the versions of § 7 | § 7.3; D16 | local 01:30-02:30 on 2026-12-07 (Bucharest) = `2026-12-06T23:30Z`-`2026-12-07T00:30Z`: in `RESDAY#<r>#2026-12-06` and `#2026-12-07`, both `rev 3`; the planner day 2026-12-07 reads both UTC dates (the local day is `2026-12-06T22:00Z`-`2026-12-07T22:00Z`) → one entry. A query that saw the held copy `{s,e,x, rev 3}` in one day and the confirmed copy `{s,e, rev 4}` in the other → the confirmed one |
+| **planDay** (`entries` = `activeEntries(raw, D, now)` with the local day `D = [localStart(date), localStart(date + 1))` as instants, so a booking across local midnight belongs to both days): `kind: "past"` when `date < today − 6` (the kept range ends there, see `editDays`), with only the entry ids. Otherwise: `entries` = the ids of the given entries; `windows` = `dayWindows`; `removed` = default windows minus `windows` (the parts an edit took away; `[]` for `default`); `open` = `windows` as instants minus those entries; `outsideHours` = ids of those entries whose **part inside `D`**, `[max(s, start of D), min(e, end of D))`, is not inside one window of `date`. A window bound in a spring gap is taken at the first local minute that exists after it | D16 | defaults Mon 09:00-17:00; Mon 2026-12-07 `dayHours [09:00-12:00, 13:00-17:00]`; a confirmed entry 12:00-13:00 local → `removed [12:00-13:00]`, `outsideHours [that id]`, `open` 07:00Z-10:00Z and 11:00Z-15:00Z. An admin booking local 2026-12-07 23:30 - 2026-12-08 00:30 with 2026-12-08 set to `dayOff` → in `entries` of both days, in `outsideHours` of 2026-12-08 (its part 00:00-00:30 has no window) and of 2026-12-07 when 23:30-24:00 is outside that day's windows |
+| **editDays `set`**: `from <= to` else `rangeInverted`; `to − from + 1 <= 366` else `rangeTooLong`; `from >= today` else `startsInPast`; each date of the range gets `value` (`default` removes its key) | D16 | `set 2026-12-24…2026-12-27 dayOff` with today 2026-12-01 → 4 keys `dayOff` |
+| **editDays `copyWeek`**: `sourceStart` and `targetStart` have the same ISO weekday, else `weekdayMismatch`; `sourceStart >= today − 6`, else `sourceTooOld` (older dates may be pruned, so the source would read as defaults); `targetStart >= today`, else `startsInPast`; the 7 source dates and the `7 × weeks` target dates are disjoint, else `targetOverlapsSource`; for `k` in `0…weeks−1` and `i` in `0…6`, date `targetStart + 7k + i` takes the state of `sourceStart + i` (its override copied, or its key removed when the source date has none). The source is read once, before any target is written | D16 | source Mon 2026-12-07 (Mon `dayHours [09:00-12:00]`, other days default), target Mon 2026-12-14, 3 weeks → Mondays 14, 21, 28 Dec get `dayHours [09:00-12:00]`; the other 18 target dates lose any override |
+| **Pruning and bound** (both edits): keys with a date `< today − 6` are removed from `next` (the kept range always holds the whole current week, so "copy this week" on a Wednesday still copies Monday's edit); then more than 366 keys → `tooManyDays`. `changed` = the dates whose state differs between `current` and `next`, pruned keys excluded | — (technical, § 4.5) | — |
+| **weekMailDue**: due when the local weekday of `now` is Sunday (ISO 7) and the local time is 09:00 or later; `weekStart` = the next local date (the Monday). So it stops being due when the target Monday starts (local 00:00), which ends the retries of § 11.4 | D18 | `2026-12-06T06:59Z` (08:59 local) → `notDue`; `07:00Z` → `due 2026-12-07`; `2026-12-06T21:59Z` (Sun 23:59 local) → `due 2026-12-07`; `2026-12-06T22:00Z` (Mon 00:00 local) → `notDue`; `2026-12-05T23:00Z` (Sun 01:00 local) → `notDue` |
+
 ## 6. Storage
 
 ### 6.1 Table
 
-One scheduling-private DynamoDB table (if SCHED-TABLE = A): `PAY_PER_REQUEST`, point-in-time recovery, TTL
+One scheduling-private DynamoDB table (SCHED-TABLE = A, ratified 2026-11-21): `PAY_PER_REQUEST`, point-in-time recovery, TTL
 attribute `ttl` (epoch seconds), `RemovalPolicy.RETAIN`, no GSI, keys `PK`/`SK` strings. Every item has
 `PK = TENANT#<tenantId>`. The renderer's role gets no statement on it. Variable `SCHEDULING_TABLE_NAME` on the
 scheduling functions only.
@@ -378,12 +468,12 @@ operation creates or deletes either.
 | `RESOURCE#<resourceId>` | name, feedSecretHash?, retiring? | admin (`1d`) | no |
 | `SERVICE#<serviceId>` | name, durationMin, eligibility | admin (`1e`) | no |
 | `AVAILABILITY#<resourceId>` | `rules` (list ≤ 50) | admin (`1e`); one Put replaces the list | no |
-| `CLOSED#<resourceId>` | `v`, `items` (list ≤ 200 of `{id, start, end, note?}`; ended ones pruned on write) | admin (`1e`) | no |
+| `DAYS#<resourceId>` | `v` (integer ≥ 1, server-side only), `days` (map `LocalDate` → `DayOverride`, ≤ 366 keys; keys before the tenant's local today − 6 pruned on each write, § 5.5) | admin day edits (`1e`): one Put replaces the map, conditioned on the `v` the server read (one retry after a lost condition, § 10.3; no container rule: nothing counts entries in it) | no |
 | `COURSE#<courseId>` | name, defaultCapacity, languages | admin (`1f`) | no |
 | `RUN#<courseId>#<runId>` | meetings, timezone, capacity, trainerIds, language, groupLink?, status, firstStartIso, lastEndIso, `v`, `seats` (map bookingId → `{ x? }`) | admin; seat writes | booking ids only |
 | `RUNSPAN#<lastEndIso>#<courseId>#<runId>` | `firstStartIso` only (its one copied attribute, which changes only with the meetings) | run create (put), run move (delete old + put new), run cancel (delete) — each in the same transaction as `RUN#`; no other run write changes the meetings | no |
-| `RESDAY#<resourceId>#<utcDate>` | `v`, `entries` (map bookingId → `{ s, e, x? }`, ms) | slot writes | booking ids only |
-| `BOOKING#<bookingId>` | the `Booking` record (§ 4.4); no TTL | every booking write | **yes** |
+| `RESDAY#<resourceId>#<utcDate>` | `v`, `entries` (map bookingId → `{ s, e, x?, rev }`; `s`, `e`, `x` in ms; `rev` = the booking's `rev` after the same transaction, § 7.3) | slot writes | booking ids only |
+| `BOOKING#<bookingId>` | the `Booking` record (§ 4.4), including `history`; no TTL | every booking write | **yes** |
 | `TOKEN#<sha256hex(token)>` | bookingId, createdAt; no TTL | every mail with a link; deleted by cancel, by the expiry cleanup and by erasure | no (a hash). A token item that outlives its booking can do nothing: the lookup finds no `BOOKING#` and answers 404 |
 | `CUST#<normalizedEmail>#<bookingId>` | keys only; no TTL | created with its `BOOKING#`; removed with it (§ 14) | **yes** (email in key) |
 | `HELD#<expiresAtIso>#<bookingId>` | keys only; no TTL | put by the hold transaction; deleted by confirm (same transaction) and by the expiry cleanup | no (a booking id). It exists exactly while the booking was never confirmed, and exactly while `BOOKING#.heldUntil` is present (its key is built from that value) |
@@ -391,11 +481,14 @@ operation creates or deletes either.
 | `HOLDS#<sha256hex(normalizedEmail)>` | `v`, `entries` (map bookingId → `{ x }`), `ttl` = latest `x` + 1 day | hold, confirm, cancel | no plaintext (an email hash). **TTL safe**: when it expires every entry has expired; its loss only resets an abuse count |
 | `INTENT#<uuid>` | fingerprint (a hash), bookingId, `ttl` (24 h) | hold; deleted with its booking (§ 14) | no. **TTL safe**: after 24 h a replay of the same form is treated as a new request; nothing else reads it |
 | `LIMIT#EMAIL#<sha256hex(normalizedEmail)>#<hourNumber>` | count, `ttl` (2 h) | hold, resend | no plaintext (an email hash, pseudonymous; eligible for TTL deletion 2 h after its hour, deleted by DynamoDB some time after). **TTL safe**: a counter of a past hour |
-| `LIMIT#ADDR#<sha256hex(addressKey)>#<hourNumber>` | count, `ttl` (2 h) | hold (only if SCHED-ADDR-LIMIT = A) | no plaintext (an address hash). **TTL safe**: a counter of a past hour |
+| `LIMIT#ADDR#<sha256hex(addressKey)>#<hourNumber>` | count, `ttl` (2 h) | hold (SCHED-ADDR-LIMIT = A, ratified) | no plaintext (an address hash). **TTL safe**: a counter of a past hour |
+| `WEEKMAIL#<weekStart>` | `claimedAt` (first send attempt), `sentAt?` (written only after SES accepted the mail), `ttl` = `weekStart` + 14 days | the weekly mail (§ 11.4): claim before the first attempt, `sentAt` after acceptance | no. **TTL safe**: only the runs of the Sunday before `weekStart` read it; after that week nothing does |
 
 `x` present = held until `x`; absent = confirmed. `v` = container version (§ 7.1). `hourNumber` =
 `Math.floor(ms / 3600000)`. Item sizes (INFERRED from attribute lengths): `RUN#` ≤ 60 × ~50 B + 45 × ~50 B ≈ 6 KB;
-`RESDAY#` ≤ 96 entries × ~70 B ≈ 7 KB; `CLOSED#` ≤ 200 × ~120 B ≈ 24 KB; all far under 400 KB.
+`RESDAY#` ≤ 96 entries × ~80 B ≈ 8 KB; `DAYS#` ≤ 366 × (date ~12 B + kind ~15 B + 8 windows × ~35 B + note
+≤ 200 B) ≈ 186 KB at the worst case of every bound at once, typically under 5 KB; `BOOKING#` with 50 history
+entries ≈ 10 KB; all under 400 KB.
 
 ### 6.3 Access patterns (all `PK = TENANT#<tenantId>`; no scan)
 
@@ -414,10 +507,11 @@ characters); an open upper end is `<prefix>\uffff`.
 | AP7 | Roster of a run | AP5 → BatchGet `BOOKING#<id>` for the keys of `seats` (≤ 45, one call) | `id, ref, who, state, source` |
 | AP8 | Unplaced people of a course | Query `begins_with(SK, UNPLACED#<courseId>#)` → BatchGet AP1 | keys; then `id, ref, who, source, createdAt` |
 | AP9 | All bookings of one person | Query `begins_with(SK, CUST#<email>#)` → AP1 | keys |
-| AP10 | Config | Query `begins_with(SK, RESOURCE#)`, `SERVICE#`, `COURSE#`; Get `AVAILABILITY#<r>`, `CLOSED#<r>` | resources: `SK, name, feedSecretHash` (→ `hasFeed`); `retiring` never in a DTO |
+| AP10 | Config | Query `begins_with(SK, RESOURCE#)`, `SERVICE#`, `COURSE#`; Get `AVAILABILITY#<r>`, `DAYS#<r>` (for several resources: one BatchGet of both keys per resource, § 6.4 rule 2) | resources: `SK, name, feedSecretHash` (→ `hasFeed`); `retiring` never in a DTO; `AVAILABILITY#`: `rules`; `DAYS#`: `v, days` |
 | AP11 | Idempotency | Get `INTENT#<uuid>` | whole item |
-| AP12 | All tenants (the reminder job then keeps those with the switch on; the daily cleanup keeps all) | main table Query `PK = SYSTEM, begins_with(SK, TENANT#)` (pattern `backend/src/tenant/list.ts:17-20`) | `id, name, domain, Domain, schedulingEnabled, scheduling, schedulingEmailConfig` |
+| AP12 | All tenants (the reminder job and the weekly mail then keep those with the switch on; the daily cleanup keeps all) | main table Query `PK = SYSTEM, begins_with(SK, TENANT#)` (pattern `backend/src/tenant/list.ts:17-20`) | `id, name, domain, Domain, schedulingEnabled, scheduling, schedulingEmailConfig, integrations.contactEmail` |
 | AP13 | Holds expired more than 7 days (daily cleanup, § 14.1) | Query `SK BETWEEN HELD# AND HELD#<now − 7 days, ISO>#\uffff` | keys (`bookingId` from the key) |
+| AP14 | Weekly-mail marker (§ 11.4) | `UpdateItem WEEKMAIL#<weekStart>` `SET claimedAt = if_not_exists(claimedAt, :now), ttl = :ttl`, `ReturnValues: ALL_NEW` (the update is the read); after SES acceptance `SET sentAt = :now` | `sentAt` |
 
 Projections checked against every consumer (a consumer reads nothing that is not listed here):
 
@@ -428,8 +522,13 @@ Projections checked against every consumer (a consumer reads nothing that is not
 | Daily cleanup (§ 14.1) | AP12 (`id`), every tenant whatever the switch; AP13; Get `BOOKING#` (`rev, who, tokenHashes, intentId, heldUntil, state`) | `CUST#` key from `who.email`; `HELD#` key from the query; tokens and intent to delete |
 | Resource removal check (§ 13) | AP3; AP6 → BatchGet `RUN#` (`trainerIds, status, meetings`) | future entries; trainer use in runs not ended |
 | Proposal and runs DTOs (§ 10.2) | AP4 (all attributes) | `timezone`, `meetings`, `language`, `status`, `capacity`, `seats` counts |
+| Visitor slots, hold and move of a slot (§ 10.2) | tenant Get (`schedulingEnabled`, `scheduling`); AP10 `SERVICE#<s>` and `RESOURCE#` (eligible ones); BatchGet `AVAILABILITY#<r>` (`rules`) + `DAYS#<r>` (`days`) per eligible resource; AP3 per eligible resource over the UTC dates of the range | `lastBookableDate` from `scheduling.timezone` and `scheduling.bookingHorizonWeeks` (absent → 8); windows from `rules` + `days` (§ 5.5 precedence); busy from `entries`. Writes decide on `ConsistentRead` (§ 6.4 rule 4) |
+| Planner week (§ 10.3, `sched-1e`) | tenant Get (`scheduling`); Get `RESOURCE#<r>` (`name`); Get `AVAILABILITY#<r>` (`rules`), `DAYS#<r>` (`days`); AP3 for `<r>` over the UTC dates that touch the 7 local days (projection `SK, entries`), then `activeEntries` per local day (§ 5.5); BatchGet `BOOKING#` (`id, ref, what, state, who.#name`) for the entry ids | windows, `removed`, `open`, `entries`, `outsideHours` from `planDay`; entry times from `RESDAY#.entries`; ref, service name and customer name from `BOOKING#` (admin screen, private table only) |
+| All-resource appointments (§ 10.3, `GET /scheduling/admin/appointments`, `sched-1e`) | tenant Get (`scheduling.timezone`); AP10 `RESOURCE#` (`SK, name`); per resource AP3 over the UTC dates that touch the local days `from`…`to`, then `activeEntries` with the span of those local days (§ 5.5); BatchGet `BOOKING#` (`id, ref, what, state, who.#name`) for the entry ids (§ 6.4 rule 2) | per resource: `resourceId` and `name` from `RESOURCE#`; per entry `bookingId`, `start`/`end` from the entry's `s`/`e`, `state` from `x` (present = held), `ref` from `BOOKING#` (equal to the id prefix), `customerName` from `who.name`, `serviceName` from `what.serviceName`; entries kept when they intersect a local day of the range; an id that BatchGet does not return is skipped (§ 14.1) |
+| Day edits (§ 10.3, `sched-1e`) | tenant Get (`scheduling.timezone`); Get `DAYS#<r>` consistent (`v, days`); Get `AVAILABILITY#<r>` (`rules`); after commit, AP3 for `<r>` over the UTC dates that touch the changed local dates → `activeEntries` per changed date (§ 5.5) → `planDay` per changed date | `today` from the timezone; `editDays` on `days` (`v` stays server-side, § 10.3); `outsideHours` = the union of the days' `outsideHours`, each id once, as refs derived from entry ids (`ref` is the id prefix, § 4.4: no BatchGet) |
+| Weekly mail (§ 11.4, `sched-1g`) | AP12 (as AP12, plus `integrations.contactEmail`); per tenant due, in this order: `contactEmail` check; `RESOURCE#` (`SK, name`); BatchGet `AVAILABILITY#` (`rules`; no resource with a non-empty list → no mail); AP14 (`sentAt` returned → stop); BatchGet `DAYS#` per resource; AP3 per resource over the UTC dates of the week's local days, then `activeEntries` per local day (§ 5.5) | `weekMailDue` from `scheduling.timezone`; per resource and day `planDay` (source, windows, entry count, open time); recipient `integrations.contactEmail`; template `schedulingEmailConfig.templates.weekAhead` else the default; no `BOOKING#` read: the mail carries counts, no customer data |
 
-The base plan's `APPTDATE#` index is not needed (AP3 per resource serves the day view and reminders). Its
+The base plan's `APPTDATE#` index is not needed (AP3 per resource serves the planner week and reminders). Its
 time-ordered `APPTCUSTOMER#…#<startIso>#` becomes `CUST#<email>#<bookingId>`: no reader needs the order, and a
 move would rewrite the key. A run is indexed by its **last** meeting (`RUNSPAN#`) and filtered by its first, so a
 run that started before a window and still has meetings inside it is found.
@@ -446,8 +545,33 @@ run that started before a window and still has meetings inside it is found.
 ### 6.5 Main table
 
 Written to the main table by scheduling: the `TenantConfig` fields of § 4.1 (existing settings route) and audit
-entries (existing event bus; content per SCHED-AUDIT-PII). **No `CUSTOMER#`, no `LEAD#`, no `EMAILLIMIT#`.** A
-booking does not create a commerce customer.
+entries (existing event bus, `publishAudit`) under **SCHED-AUDIT-PII = C** (ratified 2026-11-21; the four points of
+§ 22):
+
+1. **No booking event goes to the main table.** Rule (one, for the whole class): a write that changes one booking's
+   `what` or `state` — hold, confirm, cancel, move, admin manual entry, a seat unplaced by a run cancel, by a visitor
+   or by an admin — publishes **no** audit event; it appends a `history` entry to that `BOOKING#` in the same
+   conditional write (§ 4.4). The admin sees the history on the booking screen (`BookingAdminDTO.history`, § 10.3).
+2. **Main-table audit stays for writes that carry no customer data**: settings, services, resources (and feed
+   secret rotation), default availability, day edits, courses, runs (create, update, move, cancel), mail templates.
+   Their `target.title` is the name of the thing (service, resource, course) or, for a run, the course name and the
+   run's first local date; `details` hold counts and dates only — **never** a booking id, ref, customer name, email or
+   phone (a run cancel reports `{ unplaced, cancelled }`; a day edit reports the dates and the kind, not the
+   `outsideHours` refs). `actor.email` is the admin's email (Critical Rule 7).
+3. **Erasure** publishes `SCHEDULING_CUSTOMER_ERASED` with the two counts only (§ 14.2); `target.title` is the
+   fixed text "Scheduling customer erasure" (Critical Rule 7 asks for a readable title; the email would be
+   customer data).
+4. **No `ip` field** on any scheduling audit event (`AuditParams.ip` is optional, `backend/src/lib/events.ts:6-19`,
+   OBSERVED). New scheduling handlers never set it. One **existing** writer does: `PUT /settings` publishes
+   `UPDATE_SETTINGS` with `ip: event.requestContext.http.sourceIp` on every save
+   (`backend/src/tenant/settings.ts:359-368`, OBSERVED), and scheduling settings are saved through it. Change
+   (allocated to `sched-1d`): when the request body has at least one scheduling key (`schedulingEnabled`,
+   `scheduling`, `schedulingEmailConfig`), the event omits `ip` — for the whole event, also when the same body
+   changes other settings (one event per save; it cannot be split). Everything else stays as today: a body with no
+   scheduling key still sends `ip`; `details.updatedFields` (key names only, no values) and `rejectedFields`, the
+   `Put`, `target.title` and the page purge are unchanged.
+
+**No `CUSTOMER#`, no `LEAD#`, no `EMAILLIMIT#`.** A booking does not create a commerce customer.
 
 ## 7. Write-time guards and their concurrency argument
 
@@ -467,7 +591,8 @@ container:
    position, as `couponConditionFailed` does (`backend/src/orders/create.ts:22-26`).
 
 **Booking rule.** Every change of a booking's `what`, `state` or `tokenHashes` conditions on
-`attribute_exists(SK) AND rev = :rev` (the value read) and sets `rev = :rev + 1`. Token minting (§ 8.4), confirm,
+`attribute_exists(SK) AND rev = :rev` (the value read) and sets `rev = :rev + 1`; a change of `what` or `state`
+also sets `history` to the read list plus its entry, oldest dropped above 50 (§ 4.4), in the same update. Token minting (§ 8.4), confirm,
 cancel, moves, run operations and erasure therefore form one sequence per booking: two of them at once — one
 commits; the other fails, reads the new item, and decides again from there (an admin route that received a `rev`
 answers 409 `stale` instead; a mail sent to the customer also changes `rev`, so the admin screen re-reads). The
@@ -529,9 +654,13 @@ with the same fingerprint, and answers by the table.
 `…#07:00Z`); visitor B holds 09:30-10:00 with a 30-minute service (key `…#07:30Z`). Both `attribute_not_exists`
 conditions pass; the bookings overlap. Kernel detection does not help: both read before either wrote.
 
-**Mechanism (SCHED-SLOT-GUARD = B, recommended).** Container `RESDAY#<resourceId>#<utcDate>`; entry
-`bookingId → { s, e, x? }`; a slot touches each UTC date it covers (one, or two across UTC midnight: two updates
-in one transaction). Rule on the snapshot: `overlapCheck`.
+**Mechanism (SCHED-SLOT-GUARD = B, ratified 2026-11-21).** Container `RESDAY#<resourceId>#<utcDate>`; entry
+`bookingId → { s, e, x?, rev }`; a slot touches each UTC date it covers (one, or two across UTC midnight: two
+updates in one transaction). Rule on the snapshot: `overlapCheck`. **Entry `rev`**: every write that adds or
+changes a booking's entry (hold, confirm, move, manual appointment) also changes that `BOOKING#` under the booking
+rule (§ 7.1) and writes the booking's new `rev` into each entry it adds or changes, in the same transaction. Writes
+that only remove an entry (cancel, erasure, removal of a counted-expired entry) write no `rev`. Only display reads
+use it (`activeEntries`, § 5.5); `overlapCheck` ignores it.
 
 | Operation | Container change | Other items, with conditions | Items |
 |---|---|---|---|
@@ -635,9 +764,11 @@ remove the entry. The cap is exact under concurrency by § 7.1.
 
 ### 7.7 Not guarded at write time (recorded, accepted)
 
-- A closed time added, or an availability rule removed, while a visitor holds an affected slot: the hold stands;
-  the closed-time answer lists the conflicting refs (§ 10.3). Guarding would put every config write into the
-  containers' version chain for a rare case.
+- A day turned off or shortened (day edit), or an availability rule removed, while a visitor holds or has booked
+  an affected slot: the edit is allowed and the booking stands; the day-edit answer lists the refs of the active
+  bookings outside the new hours (`outsideHours`, § 5.5), and the planner keeps showing them on that day until the
+  admin moves or cancels them (§ 23.4). Guarding would put every config write into the containers' version chain
+  for a rare case.
 - `LIMIT#` counters are fixed hourly windows: up to twice the limit can pass across an hour boundary.
 
 ## 8. The emailed link
@@ -721,8 +852,9 @@ Answers:
 ### 8.5 Moves keep the booking id
 
 A move updates `BOOKING#.what` in place. The base plan's open item "reschedule = cancel + create" (lines 413-415)
-is decided the other way: its reasons (clean history, simple slot accounting) are met by the audit entries and the
-container write; one id keeps every link working across moves.
+is decided the other way: its reasons (clean history, simple slot accounting) are met by the booking's `history`
+(a `moved` entry with the old and new placement, § 4.4; SCHED-AUDIT-PII = C) and the container write; one id keeps
+every link working across moves.
 
 ### 8.6 What the mailbox proves (PD-001)
 
@@ -864,7 +996,7 @@ The query string is kept. No `%5Fdyn` twin, no `amodx_preview_base` cookie, no d
 production branch does). Target tree: `renderer/src/app/%5Fbook/[siteId]/` (G9). The `[siteId]` value is a host or
 a tenant id; `getTenantConfig` resolves both (`renderer/src/lib/dynamo.ts:87-117`).
 
-**Layout** (decision SCHED-PAGE-LAYOUT, recommended A): `%5Fbook/[siteId]/layout.tsx` is a **second root layout**
+**Layout** (SCHED-PAGE-LAYOUT = A, ratified 2026-11-21): `%5Fbook/[siteId]/layout.tsx` is a **second root layout**
 (`<html lang>` from the tenant locale, `<body>`, the tenant theme through `ThemeInjector`). It renders none of
 `Analytics`, `PaddleLoader`, `FBPixel`, `CookieConsent`, `PopupManager`, navbar, footer, cart `Providers`. The book
 page alone renders `RecaptchaProvider` with `config.recaptcha?.siteKey || process.env.RECAPTCHA_SITE_KEY`; the
@@ -892,14 +1024,18 @@ Role: `requireRole(auth, ["RENDERER"])`. The renderer key resolves to `tenantId:
 `x-tenant-id` header the renderer sets; `GLOBAL_ADMIN` also passes `requireRole` (policy) and is treated the same
 way. Not anonymous, not `CUSTOMER`. Switch off → 403 `notAvailable` on every route **except the feed**, which
 answers 404 `linkNotValid` for every failure (one body for a URL holder: no state leak). Errors:
-`{ error: string, code: <refusal>, ...context }`; the page maps `code` to locale strings.
+`{ error: string, code: <refusal>, ...context }`; the page maps `code` to locale strings. A stored item that fails
+its Zod schema (§ 4), or a stored `bookingHorizonWeeks` outside 1-52, → 500 `storedDataInvalid` (logged with the
+key, no value) on visitor and admin routes alike: it is never read as absent or replaced by a default, because
+an unreadable `DAYS#` read as "no override" would open a day the admin closed. A display read of intervals never
+answers `storedDataInvalid` or `busy` because copies disagree: `activeEntries` resolves that by `rev` (§ 5.5).
 
 | Method, path | Renderer op | Request | Response | Errors |
 |---|---|---|---|---|
 | GET `/scheduling/visitor/offer` | `offer` | — | `OfferDTO` | 403 |
 | GET `/scheduling/visitor/slots?serviceId&from&to` | `slots` | query | `SlotsDTO` | 400 `rangeInverted`/`rangeTooLong`, 403, 404 service |
 | GET `/scheduling/visitor/courses/{courseId}/runs?language&all` | `runs` | query | `ProposalDTO` | 403, 404 course |
-| POST `/scheduling/visitor/holds` | `hold` | `HoldRequest` | 201 / 200 `HoldResult` (§ 7.2) | 400, 403, 409 `slotTaken`/`notOnGrid`/`inPast`/`notEligible`/`outsideAvailability`/`closedTime`/`resourceUnavailable`/`runFull`/`runClosed`/`runCancelled`/`runStarted`/`languageMismatch`/`intentReused`/`intentClosed`, 429, 503 `busy`/`mailFailed` |
+| POST `/scheduling/visitor/holds` | `hold` | `HoldRequest` | 201 / 200 `HoldResult` (§ 7.2) | 400, 403, 409 `slotTaken`/`notOnGrid`/`inPast`/`beyondHorizon`/`notEligible`/`outsideAvailability`/`resourceUnavailable`/`runFull`/`runClosed`/`runCancelled`/`runStarted`/`languageMismatch`/`intentReused`/`intentClosed`, 429, 503 `busy`/`mailFailed` |
 | POST `/scheduling/visitor/bookings/view` | `view` | `{ token }` | `BookingViewDTO` | 403, 404, 410 |
 | POST `/scheduling/visitor/bookings/confirm` | `confirm` | `{ token }` | `BookingViewDTO` | 403, 404, 409 `cancelled`, 410 |
 | POST `/scheduling/visitor/bookings/cancel` | `cancel` | `{ token }` | `{ ref, state: "cancelled" }` | 403, 404, 409 `tooLate`/`paidContactTenant` |
@@ -910,6 +1046,7 @@ answers 404 `linkNotValid` for every failure (one body for a URL holder: no stat
 type OfferDTO = { timezone: string; services: { id: string; name: string; durationMin: number }[];
                   courses: { id: string; name: string; languages: string[] }[] };
 type SlotsDTO = { timezone: string; serviceId: string; durationMin: number;
+                  lastBookableDate: LocalDate;                  // § 5.5; the page stops forward navigation there
                   days: { date: LocalDate; starts: string[] /* UTC ISO */ }[] };     // no resource id or name
 type RunDTO = { runId: string; courseId: string; timezone: string; language: string | null;
                 meetings: { date: LocalDate; start: LocalTime; end: LocalTime }[]; seatsLeft: number };
@@ -936,7 +1073,9 @@ The derived availability DTOs (`OfferDTO`, `SlotsDTO`, `RunDTO`, `ProposalDTO`) 
 Role oracle: `requireRole(auth, roles, tenantId)` with `tenantId = x-tenant-id`; `GLOBAL_ADMIN` passes before the
 list is read (`backend/src/auth/policy.ts:39`). `E+T` = `["EDITOR", "TENANT_ADMIN"]` (as
 `backend/src/orders/list.ts:17`); `T` = `["TENANT_ADMIN"]`. Admin routes work whether the switch is on or off.
-Every write publishes an audit entry (SCHED-AUDIT-PII). Common errors: 400 `invalid` (zod issues), 401
+Audit (SCHED-AUDIT-PII = C, § 6.5): a write that changes a booking appends a `history` entry and publishes no
+audit event; every other write publishes a main-table audit entry without customer data. Common errors: 400
+`invalid` (zod issues), 401
 (authorizer), 403 `forbidden`, 404 `notFound`, 503 `busy`; route-specific 409 codes below. Identifiers: a booking
 is addressed by its id alone (`BOOKING#<id>`); a run by `courseId + runId` in the path; a person move stays inside
 the booking's own course (D8), so the request carries only `runId` and the course comes from the stored booking.
@@ -947,7 +1086,6 @@ Common DTOs:
 type WhoInput = { email: string; name: string; phone?: string; language?: string };      // § 4.5 lengths
 type ResourceDTO = { id: string; name: string; hasFeed: boolean };
 type ServiceDTO = { id: string; name: string; durationMin: number; eligibility: Eligibility };
-type ClosedDTO = { id: string; start: string; end: string; note?: string };
 type CourseDTO = { id: string; name: string; defaultCapacity: number; languages: string[] };
 type RunAdminDTO = { id: string; courseId: string; meetings: Meeting[]; timezone: string; capacity: number;
                      taken: number; overCapacityBy: number; trainerIds: string[]; language: string | null;
@@ -961,8 +1099,19 @@ type BookingAdminDTO = { id: string; ref: string; rev: number;
       | { kind: "seat"; courseId: string; courseName: string; runId: string; firstStart: string }
       | { kind: "unplaced"; courseId: string; courseName: string };
   state: { kind: "held"; expiresAt: string; mail: "pending" | "sent" | "failed" } | { kind: "confirmed"; at: string }
-       | { kind: "cancelled"; at: string; by: "customer" | string /* admin email */ };
-  source: BookingSource; who: Person; createdAt: string; updatedAt: string };
+       | { kind: "cancelled"; at: string; by: Actor };
+  source: BookingSource; who: Person; createdAt: string; updatedAt: string;
+  history: HistoryEntryDTO[] };            // § 4.4 HistoryEntry with every Instant as UTC ISO; oldest first
+type DayDTO = { date: LocalDate } & (
+  | { kind: "past"; entries: PlannerEntry[] }
+  | { kind: "planned"; source: "default" | "dayHours" | "dayOff"; windows: LocalWindow[]; removed: LocalWindow[];
+      note?: string; entries: PlannerEntry[]; open: { start: string; end: string }[];
+      outsideHours: string[] /* refs */ });
+type PlannerEntry = { bookingId: string; ref: string; start: string; end: string; state: "held" | "confirmed";
+                      expiresAt?: string; customerName: string; serviceName: string };
+type WeekPlanDTO = { timezone: string; resourceId: string; resourceName: string; lastBookableDate: LocalDate;
+                     defaults: AvailabilityRule[]; days: DayDTO[] /* 7, from start */ };
+type DayEditResult = { changed: LocalDate[]; outsideHours: string[] /* refs, union over the changed dates, each once */ };  // the screen re-reads the week
 type EmailTemplate = { subject: string; body: string; sendToCustomer: boolean; sendToAdmin: boolean };
 ```
 
@@ -970,7 +1119,7 @@ Routes of `sched-1d` (shared by both lines):
 
 | Route | Role | Request | Response | Validation, rules | 409 codes |
 |---|---|---|---|---|---|
-| GET `/scheduling/admin/bookings/{bookingId}` | E+T | — | `BookingAdminDTO` | — | — |
+| GET `/scheduling/admin/bookings/{bookingId}` | E+T | — | `BookingAdminDTO` (with `history`) | — | — |
 | POST `/scheduling/admin/bookings/{bookingId}/cancel` | E+T | `{}` | `BookingAdminDTO` | admin `changeDecision`; mail `cancelled` | `notActive` |
 | POST `/scheduling/admin/customers/lookup` | E+T | `{ email }` | `{ bookings: BookingAdminDTO[] }` | email normalized; in the body, never the URL (base plan line 259) | — |
 | POST `/scheduling/admin/customers/erase` | T | `{ email }` | `{ removedBookings: number; remainingBookings: number }` | § 14.2; idempotent; the screen shows the acceptance boundary text | — |
@@ -979,8 +1128,8 @@ Routes of `sched-1d` (shared by both lines):
 | PUT `/scheduling/admin/resources/{resourceId}` | E+T | `{ name }` | `ResourceDTO` | — | — |
 | DELETE `/scheduling/admin/resources/{resourceId}` | E+T | — | 204 | § 13 three steps | `resourceInUse { activeBookings: number; runs: number }`, `resourceRemovalInProgress` |
 | POST `/scheduling/admin/resources/{resourceId}/feed-secret` | T | `{}` | `{ feedUrl: string }` (shown once) | a new secret replaces the old | — |
-| GET `/scheduling/admin/email-templates` | E+T | — | `{ defaults: Record<key, EmailTemplate>; overrides: Record<key, EmailTemplate> }` | keys § 11.1 | — |
-| (existing) `PUT /settings` | as today | `schedulingEnabled`, `scheduling.*`, `schedulingEmailConfig` | as today | timezone required when enabling; ranges § 4.5 | — |
+| GET `/scheduling/admin/email-templates` | E+T | — | `{ defaults: Record<key, EmailTemplate>; overrides: Record<key, EmailTemplate> }` | the seven keys of § 11.1 | — |
+| (existing) `PUT /settings` | as today | `schedulingEnabled`, `scheduling.*` (incl. `bookingHorizonWeeks`), `schedulingEmailConfig` | as today | timezone required when enabling; ranges § 4.5 | — |
 
 Routes of `sched-1e` (appointments):
 
@@ -991,11 +1140,11 @@ Routes of `sched-1e` (appointments):
 | PUT `/scheduling/admin/services/{serviceId}` | E+T | same | `ServiceDTO` | bookings keep their stored end (§ 13) | — |
 | DELETE `/scheduling/admin/services/{serviceId}` | E+T | — | 204 | bookings keep `serviceName` (§ 13) | — |
 | GET `/scheduling/admin/resources/{resourceId}/availability` | E+T | — | `{ rules: AvailabilityRule[] }` | — | — |
-| PUT `/scheduling/admin/resources/{resourceId}/availability` | E+T | `{ rules: AvailabilityRule[] }` | `{ rules }` | ≤ 50; 5-minute boundaries; `end > start`; one Put | — |
-| GET `/scheduling/admin/resources/{resourceId}/closed` | E+T | — | `{ closed: ClosedDTO[] }` (future only) | — | — |
-| POST `/scheduling/admin/resources/{resourceId}/closed` | E+T | `{ start, end, note? }` | 201 `{ closed: ClosedDTO; conflicts: string[] /* refs */ }` | `end > start`; ≤ 200 future; versioned item | — |
-| DELETE `/scheduling/admin/resources/{resourceId}/closed/{closedId}` | E+T | — | 204 | versioned item | — |
-| GET `/scheduling/admin/appointments?from&to` | E+T | query (ISO dates) | `{ timezone; resources: { resourceId; name; entries: { bookingId; ref; start; end; state: "held" \| "confirmed"; customerName; serviceName }[] }[] }` | ≤ 31 days; AP3 + BatchGet (§ 6.4) | — |
+| PUT `/scheduling/admin/resources/{resourceId}/availability` | E+T | `{ rules: AvailabilityRule[] }` | `{ rules }` | the defaults (D16); ≤ 50; 5-minute boundaries; `end > start`; one Put; dates with an override keep it (§ 23.2) | — |
+| GET `/scheduling/admin/resources/{resourceId}/week?start` | E+T | `start`: LocalDate (the screen sends Mondays; any date is accepted) | `WeekPlanDTO` (7 days from `start`) | one read per week: § 6.3 consumer row "Planner week"; `planDay` per day; works with the switch off | — |
+| PUT `/scheduling/admin/resources/{resourceId}/days` | E+T | `{ from: LocalDate; to: LocalDate; value: DaySetting }` | `DayEditResult` | one day = `from = to`; a range = `from`…`to`; `editDays` `set` (§ 5.5) with `today` = local today; windows per § 4.2; conditional Put of `DAYS#<r>` on the version the server read (`v = :v`, or `attribute_not_exists(SK)` when absent; `v` never leaves the server); on a lost condition the server re-reads, re-applies the same edit and writes once more; a second loss → 503 `busy`. Same date edited by two admins at the same instant: the later write wins (limit, § 18). 400 with the `DaysEditError` kind; the edit stands when bookings are outside the new hours (§ 23.4) | — |
+| POST `/scheduling/admin/resources/{resourceId}/days/copy-week` | E+T | `{ sourceStart: LocalDate; targetStart: LocalDate; weeks: 1-52 }` | `DayEditResult` | `editDays` `copyWeek` (§ 5.5); same write, retry and errors as the PUT | — |
+| GET `/scheduling/admin/appointments?from&to` | E+T | query (ISO dates) | `{ timezone; resources: { resourceId; name; entries: { bookingId; ref; start; end; state: "held" \| "confirmed"; customerName; serviceName }[] }[] }` | ≤ 31 days; AP3 + BatchGet (§ 6.4); entries per resource through `activeEntries` (§ 5.5: each booking once, at the highest `rev` the query saw, active only) and kept when they intersect a local day of `from`…`to`; the reviewed all-resource read, kept beside the per-resource planner (operator ruling, § 15) | — |
 | POST `/scheduling/admin/appointments` | E+T | `{ serviceId, resourceId, start, who: WhoInput, channel }` | 201 `BookingAdminDTO` | admin rules § 5.2; confirmed, `manual`; token + mail `confirmed` | `slotTaken`, `resourceUnavailable` |
 | POST `/scheduling/admin/bookings/{bookingId}/move-slot` | E+T | `{ start, resourceId, rev }` | `BookingAdminDTO` | slot booking, confirmed; condition `rev`; resource guard; mail `moved` | `slotTaken`, `notConfirmed`, `stale`, `resourceUnavailable` |
 
@@ -1022,7 +1171,7 @@ routes in `routes.json` (CLAUDE.md Definition of Done); visitor routes are rende
 
 ## 11. Mails and reminders
 
-### 11.1 Mails (all six keys are defined, defaulted and editable in `sched-1d`)
+### 11.1 Mails (all seven keys are defined, defaulted and editable in `sched-1d`)
 
 | Key | When | To | Link (new token, § 8.4) |
 |---|---|---|---|
@@ -1032,6 +1181,7 @@ routes in `routes.json` (CLAUDE.md Definition of Done); visitor routes are rende
 | `moved` | slot move, person move, run move | customer | yes |
 | `unplaced` | run cancelled; admin moves a person out of a run | customer | yes (the page shows the new proposal) |
 | `reminder` | § 11.3 (`sched-1g`) | customer | yes |
+| `weekAhead` | § 11.4 (`sched-1g`): local Sunday, the next week's plan | the admin address only (`integrations.contactEmail`); `sendToCustomer` is not read for this key (no customer) and the admin screen hides it; `sendToAdmin: false` in the tenant override turns the mail off | no booking token; a link to the planner when the deployment has an admin URL (§ 11.4) |
 
 Mechanism: the per-tenant template pattern of `order-email.ts` (F6): `{subject, body, sendTo…}` templates,
 `{{variable}}` substitution (`renderTemplate`, `backend/src/lib/order-email.ts:89-97`), tenant overrides in a record
@@ -1041,7 +1191,9 @@ two-language school writes one text; trigger: `lang-1a`). Scheduling adds `backe
 no second copy (`pay-1.md` F2 is not repeated). It imports `renderTemplate` from `order-email.ts` (the function is
 generic; the module name is narrower than this use — recorded, no rename). Variables: `{{ref}}`,
 `{{customerName}}`, `{{serviceName}}`, `{{courseName}}`, `{{when}}` (local date and time in the booking's zone,
-with the zone name), `{{expiresAt}}`, `{{link}}`, `{{groupLink}}`, `{{siteName}}`. Sender: `formatFromHeader`
+with the zone name), `{{expiresAt}}`, `{{link}}`, `{{groupLink}}`, `{{siteName}}`; `weekAhead` only: `{{weekStart}}`,
+`{{weekEnd}}` (local dates), `{{summary}}` (plain-text lines, as the order mail's `{{items}}`,
+`backend/src/orders/create.ts:596-598`), `{{plannerLink}}`. Sender: `formatFromHeader`
 (`backend/src/lib/email-from.ts:112`).
 
 Mail failure: the `hold` mail → `state.mail = "failed"`, 503 `mailFailed`, recovery by replay (§ 7.2). Other
@@ -1055,8 +1207,17 @@ hold, visitor confirm, visitor cancel, visitor move, admin booking cancel, admin
 slot, admin run move, admin run cancel, admin manual seat, admin move seat, reminder job.
 
 Every scheduling function: `SCHEDULING_TABLE_NAME` and the grant it uses (read-only for GET routes); `TABLE_NAME`
-with read on the main table; `EVENT_BUS_NAME` and `events:PutEvents`. `RENDERER_CLOUDFRONT_ORIGIN` on the twelve
-mailing functions and the feed-secret route. `RECAPTCHA_SECRET_KEY` on the visitor hold.
+with read on the main table. `EVENT_BUS_NAME` and `events:PutEvents` **only** on functions that publish a
+main-table audit event (§ 6.5): the admin write routes for settings-side data (resources, feed secret, services,
+availability, day edits, courses, runs incl. move and cancel, templates) and erasure. Not on the visitor routes, the
+admin booking routes (cancel, manual appointment, move slot, manual seat, move seat) or the reminder function:
+under SCHED-AUDIT-PII = C they publish nothing, so they get no permission to. `RENDERER_CLOUDFRONT_ORIGIN` on the twelve
+mailing functions and the feed-secret route. `RECAPTCHA_SECRET_KEY` on the visitor hold. `ADMIN_URL` on the
+reminder job only, always set, to the expression of the `AdminUrl` output (`infra/lib/amodx-stack.ts:691`,
+OBSERVED): `https://admin.<rootDomain>` with a root domain, else `https://<admin distribution domain>`. The
+scheduling nested stack is constructed after `AdminHosting` (`:486`) so the distribution exists in code; the value is
+passed as a nested-stack property. No cycle (INFERRED): `AdminHosting` reads the parent `httpApi` URL, not the
+nested stack.
 
 ### 11.3 Reminder job (`sched-1g`)
 
@@ -1079,6 +1240,50 @@ mailing functions and the feed-secret route. `RECAPTCHA_SECRET_KEY` on the visit
   moved A → B → A after reminders for A and for B gets a second reminder for A (accepted: each move was mailed, and
   the second A is a new appointment for the customer). A crash between mark and send loses that reminder (chosen
   over a duplicate every 15 minutes). A moved booking gets a new reminder without a reset step (new `S`).
+
+### 11.4 Weekly planner mail (`sched-1g`; D18)
+
+- **Sender**: the reminder function of § 11.3 — the scheduled job that also runs the daily cleanup. No new rule,
+  no new function. Why not inside the daily cleanup pass itself: that pass runs at 03:00-03:14 UTC, which is still
+  Saturday local time for a tenant west of UTC−3 (INFERRED from the offsets); "the tenant's local Sunday" needs a
+  check in the tenant's zone, and the 15-minute runs of the same function provide it.
+- **Selection**, on every run (operator decision, § 15): AP12 tenants with `schedulingEnabled === true` (a
+  switched-off tenant gets none), `scheduling.timezone` set, `weekMailDue(now, timezone)` = `due` (local Sunday from
+  09:00 until the target Monday starts, § 5.5), the effective `weekAhead` template has `sendToAdmin = true`, and
+  **at least one resource with weekly hours** (an `AVAILABILITY#<r>` item with a non-empty `rules` list). A tenant
+  with group runs only gets none: the mail reminds the admin to adjust the planner, and such a tenant has no planner
+  content. (On a deployment line without `sched-1e` no `AVAILABILITY#` item is written — its route is in `1e` — so
+  no mail is sent there, § 17.1.)
+- **Recipient**: `integrations.contactEmail`. Absent → no mail and no marker; logged on each due run as
+  `[scheduling] weekly mail: no contactEmail` with the tenant id (at most ~60 lines per Sunday).
+- **Delivery (SCHED-WEEKMAIL-DELIVERY = B, operator decision, § 15)**, per selected tenant and run, target week
+  `W = weekStart`:
+  1. **Claim**: `UpdateItem WEEKMAIL#<W>` `SET claimedAt = if_not_exists(claimedAt, :now), ttl = :ttl`,
+     `ReturnValues: ALL_NEW` (AP14). The result has `sentAt` → this week's mail was accepted already: stop. A
+     `sentAt` that is not a number is logged and read as "not sent" (a duplicate is the harmless side, row C34).
+  2. Read (§ 6.3 consumer row "Weekly mail"), build, send through SES.
+  3. **SES accepted** → `UpdateItem WEEKMAIL#<W>` `SET sentAt = :now`. SES refused or the call failed → logged; no
+     write; the next run tries again.
+  4. The retries end by themselves: `weekMailDue` is `notDue` once the target Monday (tenant local) has started,
+     so no run sends for week `W` after that.
+- **Guarantee** (what the marker proves): `sentAt` present = SES accepted at least one copy for that tenant and
+  week. Until then, **every due run makes one send attempt**. Duplicates are possible after an uncertain result: SES
+  accepted but the `sentAt` write did not happen (a crash, a timeout), or two runs overlapped. A failure that lasts
+  until Monday 00:00 local loses that week's mail (logged on each attempt). `claimedAt` records the first attempt
+  only; it is not proof of a send.
+- **Content** (`weekAhead` template, English default in `scheduling-email.ts`): subject "Your week from
+  {{weekStart}}: hours and bookings"; body: a sentence that every week is open from the weekly defaults and can be
+  changed in the planner; `{{summary}}`; `{{plannerLink}}`. `{{summary}}` = per resource with weekly hours or with an
+  override in the week (by name, in name order), per day Monday-Sunday: the local date, the source (`default` /
+  `edited` / `day off`), the windows (`09:00-12:00, 13:00-17:00`), the number of distinct active bookings that
+  intersect the day (`planDay.entries`, § 5.5: a booking across midnight counts on both days), and `N outside hours`
+  when `outsideHours` is not empty. **No customer name, email, phone or booking ref** in the mail (it goes to an
+  address the tenant may share; the planner shows the details after sign-in).
+- **Planner link** (R03): `{{plannerLink}}` = `<ADMIN_URL>/scheduling/planner?tenant=<tenantId>&week=<W>`.
+  `ADMIN_URL` is the value `infra/lib/amodx-stack.ts:691` already resolves for the `AdminUrl` output (OBSERVED), in
+  both deployment configurations: with a root domain `https://admin.<rootDomain>`; without one
+  `https://` + `admin.distribution.distributionDomainName` (a value such as `https://d1abc.cloudfront.net`). What the link
+  does after a click — sign-in return and tenant selection — is specified in § 23.5.
 
 ## 12. Calendar feed
 
@@ -1108,7 +1313,9 @@ mailing functions and the feed-secret route. `RECAPTCHA_SECRET_KEY` on the visit
 | A meeting date changed (move a run) | Allowed unless `cancelled`; people stay; every active booking gets `moved`; reminders follow the new start (§ 11.3). |
 | A service duration changed | Allowed. Existing bookings keep their stored start, end and `serviceName`; new slots use the new duration. |
 | A service deleted | Allowed. Bookings keep `serviceId` and `serviceName`; the service no longer appears in `offer`; an admin move of such a booking keeps its stored duration (`end − start`). |
-| A resource removed | Three steps, one attempt id `A` per request: (1) **acquire**: `UpdateItem RESOURCE#` `SET retiring = {attemptId: A, at: now}`, condition `attribute_exists(SK) AND (attribute_not_exists(retiring) OR retiring.at < :now − 10 min)` (a fence older than 10 minutes belongs to a crashed attempt and is taken over); failure → 409 `resourceRemovalInProgress` (or 404 when the resource is gone). (2) **check**, with consistent reads after the fence committed: AP3 from today on, and AP6 with `t = now` → BatchGet `RUN#` (`trainerIds`). (3a) anything active → `REMOVE retiring` with condition `retiring.attemptId = :A`, 409 `resourceInUse`; (3b) nothing → one transaction: delete `RESOURCE#` with condition `retiring.attemptId = :A`, delete `AVAILABILITY#<r>`, `CLOSED#<r>`; 204. A step 3 whose condition fails (its fence was taken over) answers 409 `resourceRemovalInProgress` and changes nothing: one attempt never clears or uses another's fence. **Concurrency**: every inventory writer carries the resource guard (§ 4.2). A writer that commits before (1) is seen by (2); a writer that commits after (1) fails the guard (`retiring` present); a writer that read the resource earlier and commits after (3b) fails the guard (`attribute_exists`) → 409 `resourceUnavailable`. |
+| A day turned off or shortened, or a default window removed (§ 23.4) | Allowed. Bookings on it stand (held ones can still be confirmed); nobody is mailed; the day-edit answer lists their refs (`outsideHours`) and the planner shows them on that day until the admin moves or cancels them. New visitor slots follow the new hours at once. |
+| The defaults changed while dates have overrides | Allowed. A date with an override keeps it (the override replaces the defaults of that date, § 5.5); the planner marks such dates `dayHours` / `dayOff`, and "reset to defaults" (`value: { kind: "default" }`) removes the override. |
+| A resource removed | Three steps, one attempt id `A` per request: (1) **acquire**: `UpdateItem RESOURCE#` `SET retiring = {attemptId: A, at: now}`, condition `attribute_exists(SK) AND (attribute_not_exists(retiring) OR retiring.at < :now − 10 min)` (a fence older than 10 minutes belongs to a crashed attempt and is taken over); failure → 409 `resourceRemovalInProgress` (or 404 when the resource is gone). (2) **check**, with consistent reads after the fence committed: AP3 from today on, and AP6 with `t = now` → BatchGet `RUN#` (`trainerIds`). (3a) anything active → `REMOVE retiring` with condition `retiring.attemptId = :A`, 409 `resourceInUse`; (3b) nothing → one transaction: delete `RESOURCE#` with condition `retiring.attemptId = :A`, delete `AVAILABILITY#<r>`, `DAYS#<r>`; 204. A step 3 whose condition fails (its fence was taken over) answers 409 `resourceRemovalInProgress` and changes nothing: one attempt never clears or uses another's fence. **Concurrency**: every inventory writer carries the resource guard (§ 4.2). A writer that commits before (1) is seen by (2); a writer that commits after (1) fails the guard (`retiring` present); a writer that read the resource earlier and commits after (3b) fails the guard (`attribute_exists`) → 409 `resourceUnavailable`. |
 
 ## 14. Data removal and retention
 
@@ -1132,7 +1339,7 @@ attempt-owned fence: it guards inventory writes, holds no customer data, and rev
 - A failed condition → re-read the booking: absent → another pass removed it, skip; present → retry ≤ 3 times
   with the new `rev`.
 - The container entry of the expired hold is not touched: it holds a booking id only, counts as free (expired),
-  and the next writer of that container removes it (§ 7.1). Readers that meet such an id (day view, feed) skip a
+  and the next writer of that container removes it (§ 7.1). Readers that meet such an id (planner week, feed) skip a
   booking that BatchGet does not return.
 
 ### 14.2 Erasure of one customer (`POST /scheduling/admin/customers/erase`, TENANT_ADMIN)
@@ -1183,6 +1390,9 @@ Trigger to add a retention period for confirmed and past bookings: a tenant's or
 - SCHED-SHAPES = both shapes (2026-11-21); the order of the two build lines is by client date.
 - Hosted page that also works in a frame; a tenant with no domain is ordinary (2026-11-21) → § 8.2, § 9.1, § 10.1.
 - Scaffolding; the tenant owns its contract text (2026-11-21) → none here (`contract-1`).
+- SCHED-PLANNER = B (2026-11-21): AMODX holds the calendar; a week planner on the weekly defaults, nothing
+  materialized per week; a Sunday mail to the admin; a tenant setting for how far ahead visitors book → § 1 item 5,
+  D16-D18, § 23. Operator decision the same day (the human gave no number): `bookingHorizonWeeks` default 8.
 
 ### Operator rulings (2026-11-21)
 
@@ -1207,7 +1417,55 @@ booking id and every token. An expired hold is not revived. Admin writes skip th
 `closed` / started / language seat rules, never `cancelled` or capacity. Customers move confirmed bookings only. No
 `Completed` / `Done`. Seat mechanism S4.
 
-### Open (the human's) — each repeated as a `DECISION_REQUIRED` block in the build report
+Week planner (SCHED-1R, 2026-11-21; reasons in § 23): per-date overrides replace `ClosedTime` (one mechanism, as
+the packet asks); an override replaces the defaults of its date, never merges; the horizon does not limit admin
+writes (the packet's rule); day edits are allowed with bookings present and list them; the planner route is per
+resource; overrides live in one `DAYS#<r>` item; the weekly mail is sent by the reminder function from local Sunday
+09:00 to `integrations.contactEmail`; AP3 entries are normalized once (`activeEntries`: highest `rev` per booking,
+local-day intersection, active filter, § 5.5); `CancelledBy` is renamed `Actor` (spec-only name, no code exists).
+
+### Operator decisions after SCHED-1R review-0 (2026-11-21) — the human may override each
+
+- **SCHED-WEEKMAIL-DELIVERY = B.** The packet's word "exactly-once" was wrong for a mail and is withdrawn. The mail
+  is a reminder: a second copy is harmless, a lost one is not. Marker `claimedAt`; `sentAt` only after SES accepts;
+  a run that finds a claim without `sentAt` sends again until the target Monday (tenant local) starts. Guarantee: at
+  least one send attempt per job run until accepted; duplicates possible after an uncertain result (§ 11.4).
+- **Weekly-mail population**: a scheduling-enabled tenant with at least one resource with weekly hours. A tenant
+  with group runs only gets none: the mail reminds the admin to adjust the planner, and such a tenant has no planner
+  content (§ 11.4).
+- **Horizon population**: the booking horizon limits slot bookings only; a seat in a run is not limited (the admin
+  sets each run's dates on purpose, and a course is sold months ahead) (§ 23.3).
+- **All-resource appointments read restored** (`GET /scheduling/admin/appointments`, row E6): removing it was not
+  asked (§ 10.3, § 23.5).
+- **Planner link** (R03): the admin URL `infra/lib/amodx-stack.ts:691` resolves, in both deployment configurations;
+  the login keeps a validated same-origin return path; the planner selects the link's tenant when the user may
+  access it, else shows a "no access" state (§ 11.4, § 23.5).
+- **No client version on day edits** (R06): the server writes conditionally and retries once on a lost condition;
+  two admins editing the same date at the same instant → the later write wins (limit, § 18).
+- **Interval reads for displays (scope freeze after review-2, R04)**: each `RESDAY#` entry carries the booking's
+  `rev` (§ 7.3); `activeEntries` keeps, per booking, the copies with the highest `rev` among what one query returned,
+  then intersects with the day and drops inactive entries. No reread, retry, `busy` or corruption report on this read
+  path. Limit: a display read shows the highest `rev` the query returned; it has no freshness bound and a later read
+  can still be stale
+  (§ 5.5, § 18). The earlier transactional-reread procedure is withdrawn.
+
+### Ratified by the human (2026-11-21) — no longer open
+
+Ruling, in the human's words: "otherwise, ratify as recommended"
+(`.agent-manager/slices/SCHED-1/human-ratification.md`). The outcome of each decision is the **Ratified** line
+under its table; the tables stay as the record of what was weighed.
+
+| Decision | Ratified |
+|---|---|
+| SCHED-TABLE | A |
+| SCHED-PAYMENT-PATH | A |
+| SCHED-CALENDAR | A |
+| SCHED-PD-AMENDMENT | accept (§ 16.3, applied to PD-002 2026-11-21) |
+| SCHED-SLOT-GUARD | B |
+| SCHED-AUDIT-PII | C in the corrected form of § 22 (applied: § 4.4, § 4.5, § 6.5 incl. the settings writer, § 7.1, § 8.5, § 10.3, § 11.2, § 16.1, § 16.2, rows D10, D17) |
+| SCHED-ADDR-LIMIT | A |
+| SCHED-SEAT-BOUND | A (the human: groups are 10-12 people) |
+| SCHED-PAGE-LAYOUT | A |
 
 **SCHED-TABLE**
 
@@ -1216,7 +1474,7 @@ booking id and every token. An expired hold is not revived. Admin writes skip th
 | A. One scheduling-private table for both shapes | one boundary, one IAM rule, one backup, one removal path; one resource entity for practitioners and trainers | both shapes share one partition per tenant — not a limit at booking volumes (INFERRED) |
 | B. A table per shape | hard separation | two tables, two grant sets, two removal paths for data of one sensitivity; resources duplicated or cross-table |
 
-Recommended: A.
+Recommended: A. **Ratified: A** (2026-11-21).
 
 **SCHED-PAYMENT-PATH**
 
@@ -1225,7 +1483,7 @@ Recommended: A.
 | A. A course is a product sold through the checkout; the order creates the booking (`sched-1h`, its own specification, § 17.2) | coupons, vouchers, loyalty, order mails, invoices, online payment apply once | waits for `cmrc-4`; the order route is anonymous today (`/public/orders`), so its fit with the PD-002 amendment is an open question of `sched-1h`; a frame tenant reaches the checkout as a full page (`sched-frame-1.md` item 4) |
 | B. Scheduling takes payments itself | no commerce dependency | a second checkout, invoices and coupon rules |
 
-Free bookings and "pay at the practice" need neither. Recommended: A.
+Free bookings and "pay at the practice" need neither. Recommended: A. **Ratified: A** (2026-11-21).
 
 **SCHED-CALENDAR**
 
@@ -1234,12 +1492,15 @@ Free bookings and "pay at the practice" need neither. Recommended: A.
 | A. AMODX holds the schedule; staff subscribe to a read-only feed (§ 12) | one source of truth; small; no third-party token | a private busy time is typed in as a closed time |
 | B. AMODX reads the practitioners' Google calendars | no double booking with private events | Google access per person, token storage, a second source of truth |
 
-Recommended: A; ask the practitioner client whether its private calendar is full.
+Recommended: A; ask the practitioner client whether its private calendar is full. **Ratified: A** (2026-11-21),
+with the week planner (§ 1 item 5, § 23). Since § 23 the Risk cell's "closed time" is a day edit: `ClosedTime` is
+removed and a private busy time is typed in the planner as a `dayHours` edit or a day off.
 
 **SCHED-PD-AMENDMENT** — PD-002 names "appointment booking / list / cancel" by session
 (`docs/platform-decisions.md:155`). Wording in § 16.3: four access classes (public derived reads, the initial hold,
 token-authorized booking actions, feed-secret access), the tenant from the URL the renderer serves, no backend
-route anonymous. Recommended: accept.
+route anonymous. Recommended: accept. **Ratified: accept** (2026-11-21); applied to `docs/platform-decisions.md`
+PD-002 on 2026-11-21.
 
 **SCHED-SLOT-GUARD**
 
@@ -1248,7 +1509,7 @@ route anonymous. Recommended: accept.
 | A. One conditional lock item per 5-minute cell a booking covers | the base plan's lock idea; exclusion by item ownership | durations ≤ 240 min (≤ 48 cells + other items under 100 per transaction); up to 48 writes per booking |
 | B. Resource-day container with version (§ 7.3) | one mechanism for slots, seats and open holds; durations to 480 min; one item per day | writes to one practitioner's day serialize (retries at contention; invisible at practitioner volumes, INFERRED) |
 
-Recommended: B.
+Recommended: B. **Ratified: B** (2026-11-21).
 
 **SCHED-AUDIT-PII**
 
@@ -1258,7 +1519,11 @@ Recommended: B.
 | B. Customer email and name in audit entries (as `backend/src/contact/send.ts:113-120`) | the audit page shows who directly | customer data in the renderer-readable table for every booking |
 | C. A scheduling audit trail in the private table | full detail, private | a second audit reader and page |
 
-Recommended: A.
+Recommended: A — **withdrawn** in the decision review (§ 22: A still writes booking refs, offer names and local
+times into the renderer-readable table). **Ratified: C in the corrected form of § 22** (2026-11-21): `history` on
+`BOOKING#` (§ 4.4), no booking event in the main table, main-table audit only for writes without customer data,
+no `ip` (§ 6.5). The "second audit reader and page" of the Risk cell is the booking screen's history list, no new
+page. Consequence accepted with the ratification: booking actions are not on the tenant-wide audit page.
 
 **SCHED-ADDR-LIMIT** (basis corrected: no infra change rests on it)
 
@@ -1267,7 +1532,7 @@ Recommended: A.
 | A. Build the per-address limit (§ 9.2) on the header the `sched-1g` staging witness proves (`sched-1d` counts whatever address the renderer sends; until `sched-1g` none arrives) | a real per-address limit and a correct `remoteip`, most likely without infra | the witness may show neither header usable as specified; IPv6 counted per /64 can group neighbours |
 | B. No per-address limit: reCAPTCHA + per-email limits + open-hold cap + short holds | nothing to verify | one machine with many addresses or emails past reCAPTCHA can hold many slots for `holdMinutes` |
 
-Recommended: A.
+Recommended: A. **Ratified: A** (2026-11-21); the staging witness G13 still gates visitor exposure (§ 9.2).
 
 **SCHED-SEAT-BOUND** (operator recommendation A; kept for the decision review)
 
@@ -1276,7 +1541,8 @@ Recommended: A.
 | A. A run holds at most 45 people in this version (technical limit, § 4.5; the admin refuses more with a text that says so) | atomic run cancel in one transaction; small code | a client group above 45 is refused until the two-phase cancel is built |
 | B. No maximum; build the resumable two-phase cancel now | no product limit from storage | more code and recovery evidence for a case no named client has |
 
-Recommended: A (the named clients' groups are bench courses and workshops).
+Recommended: A (the named clients' groups are bench courses and workshops). **Ratified: A** (2026-11-21); the
+human: "45 seats is fine, groups are max 10-12 people".
 
 **SCHED-PAGE-LAYOUT** (keeping third-party scripts off the booking pages needs a structural route change)
 
@@ -1286,28 +1552,33 @@ Recommended: A (the named clients' groups are bench courses and workshops).
 | B. Keep the pages under `app/[siteId]/` and its layout | no middleware or layout change | every tenant script (analytics, Facebook pixel, Paddle, popups, cookie banner) runs on the manage page, which reads the token from the address before it removes it (INFERRED exposure: such scripts read `location.href` when they load); site chrome inside frames, hidden only by CSS (as `landing-1`) |
 | C. Move every existing route under `app/[siteId]/(site)/` with today's layout, and the booking pages under `app/[siteId]/(booking)/` with their own | no new rewrite target | moves every live route file of the serving tree; preview twin rewrites still need a middleware rule for the booking paths |
 
-Recommended: A.
+Recommended: A. **Ratified: A** (2026-11-21).
 
-## 16. Proposed amendment text (applied only after the human ratifies; not edited here)
+## 16. Amendment text (ratified 2026-11-21)
+
+Applied 2026-11-21 by SCHED-1R: § 16.1 and § 16.2 as a dated amendment section at the top of the base plan (its
+ratified text is kept below the amendment); § 16.3 to PD-002. **Not yet applied**: § 16.4 (those files are outside
+the SCHED-1R allocation).
 
 ### 16.1 Base plan `docs/plan-appointments-private-table-extension.md`
 
-> **Amendment 2026-11-xx (SCHED-1, ratified by the human on <date>).** Two booking shapes and an emailed link.
+> **Amendment 2026-11-21 (SCHED-1, ratified by the human on 2026-11-21).** Two booking shapes, an emailed link and
+> a week planner.
 > Read this section before the rest of the plan; where they differ, this section wins.
 >
 > **Goal** (replaces the first bullet "Authenticated booking only"): *Booking by emailed link.* A visitor books
 > without an account; the booking is held, and an emailed link with a one-booking token confirms it and later
-> shows, cancels or moves it. Booking calls stay renderer-proxied (PD-002 as amended). The other Goal bullets
-> stand; the flag is `schedulingEnabled` (both shapes).
+> shows, cancels or moves it. Booking calls stay renderer-proxied (PD-002 as amended, *Booking-token variant*). The
+> other Goal bullets stand; the flag is `schedulingEnabled` (both shapes).
 >
 > **Non-Goals** (replaces "No anonymous bookings; a session is required" and "No numeric per-service pooled
 > capacity"): no account and no session are required; link tokens replace them. Pooled capacity is in scope as a
 > *seat in a group run* (`docs/slices/sched-1.md` § 4.3); per-service pooled capacity without runs stays out.
-> Calendar sync stays out (SCHED-CALENDAR).
+> Calendar sync stays out (SCHED-CALENDAR = A: AMODX holds the calendar; staff subscribe to a read-only feed).
 >
 > **Capacity model**: an appointment reserves one named resource (unchanged), is re-checked against the offered
 > slots at write time, and is guarded by the resource-day container `RESDAY#<resourceId>#<utcDate>` with a version
-> (SCHED-SLOT-GUARD), which replaces `SLOT#<resourceId>#<startIso>`: one lock per start does not stop overlapping
+> (SCHED-SLOT-GUARD = B), which replaces `SLOT#<resourceId>#<startIso>`: one lock per start does not stop overlapping
 > bookings of different durations. A group seat is guarded by the seat map and version on `RUN#<courseId>#<runId>`.
 > "Any available" stays discover-then-conditionally-write. The booking intent stays, with the replay rules of
 > `sched-1.md` § 7.2.
@@ -1320,6 +1591,21 @@ Recommended: A.
 > **Status values**: held, confirmed, cancelled; "expired" and "past" are derived. The admin status update
 > "completed" is withdrawn (no reader).
 >
+> **Availability**: weekly rules per resource are the defaults; an override of one local date per resource
+> (`dayOff`, or `dayHours` with its own windows) replaces the defaults of that date; nothing is materialized per
+> week; a visitor books a slot at most `scheduling.bookingHorizonWeeks` ahead (default 8; seats in group runs and
+> admin writes are not limited); the admin edits days, ranges and copies of a week in a week planner and gets a
+> weekly mail on the tenant's local Sunday (`sched-1.md` § 5.5, § 11.4, § 23). There is no separate closed-time
+> entity.
+>
+> **Notifications and Audit** (replaces the first bullet "Lifecycle events … call `publishAudit()`"): a lifecycle
+> event of a booking (created, confirmed, cancelled, moved) appends an entry to the booking's `history` in the
+> private table, in the same conditional write as the change (at most 50 entries, oldest dropped); it publishes no
+> main-table audit event. Main-table audit (`publishAudit`) stays for writes with no customer data (settings,
+> services, resources, availability and day edits, courses, runs, templates) and for erasure (two counts only); no
+> scheduling audit event carries `ip` (SCHED-AUDIT-PII = C; `sched-1.md` § 6.5). The status update "completed" is
+> withdrawn (**Status values**, above). The SES template bullet stands, with the keys of `sched-1.md` § 11.1.
+>
 > **Slices**: S1-S7 are replaced by `sched-1a` … `sched-1i` (`docs/slices/sched-1.md` § 17). The open items
 > "reschedule semantics", "timezone source" and "slot granularity" are decided in `sched-1.md` § 15.
 
@@ -1328,17 +1614,20 @@ Recommended: A.
 The problem statement; tenant isolation; the private table outside renderer IAM; derived availability DTOs only;
 the kernel/persistence split with injected clock and timezone; UTC instants in storage; the two-step "any
 available"; the booking intent; the flag default false with route-specific enforcement; the dormant `CUSTOMER`
-branch; no anonymous-bypass paths; audit on every lifecycle event; the migration discipline for prototypes.
+branch; no anonymous-bypass paths; the migration discipline for prototypes. **Changed** by SCHED-AUDIT-PII = C:
+"audit on every lifecycle event" becomes "a history entry on every lifecycle event, in the private table" (§ 16.1
+Notifications and Audit).
 
 ### 16.3 `docs/platform-decisions.md` PD-002
 
 > In **Applies to**, replace "appointment booking / list / cancel in Phase 1" with:
 > "scheduling (appointments and group seats): availability reads, booking, view, confirm, cancel and move, under
-> the *Booking-token variant* below".
+> the *Booking-token variant* above" (corrected 2026-11-21 from "below": the variant is added after **Trust cost**,
+> which comes before **Applies to** in PD-002).
 >
 > Add after **Trust cost (accepted)**:
 >
-> ### Booking-token variant (amendment 2026-11-xx, SCHED-1)
+> ### Booking-token variant (amendment 2026-11-21, SCHED-1)
 >
 > For scheduling the customer has no session. The chain stays two hops: the browser talks only to the renderer; the
 > renderer calls the backend with the `RENDERER` key. The tenant is derived from the URL the renderer serves — the
@@ -1357,7 +1646,7 @@ branch; no anonymous-bypass paths; audit on every lifecycle event; the migration
 > Choosing a tenant by URL grants nothing private: private data needs a token issued under that tenant. No backend
 > route becomes anonymous; the `CUSTOMER` branch stays dormant (PD-003).
 
-### 16.4 Documents updated at ratification (ripple list; not edited in this slice)
+### 16.4 Documents updated at ratification (ripple list; not yet edited — outside the SCHED-1R allocation)
 
 `docs/ROADMAP.md` (Track D table lines 171-183 → `sched-1a`…`1i`; line 110 "depends on C" removed; lines 325-327
 `appt-*` → `sched-*`; the `sched-1` row status); `docs/documentation.md` (prefix `sched-` replaces `appt-`, line
@@ -1375,7 +1664,8 @@ assertions. Maturity target: PROTOTYPE until `sched-1i` passes on staging.
 construct, `RETAIN`); the nested stack adds 1. Everything else lives in `infra/lib/api-scheduling.ts` (pattern of
 `api-commerce.ts`: L1 `CfnRoute`/`CfnIntegration`, its own `CfnAuthorizer` on the parent's authorizer function).
 Estimate (INFERRED; 4 resources per function, 3 per route): ≈ 45 functions × 4 + 44 routes × 3 + authorizer +
-reminder rule and permission ≈ 315 of 500.
+reminder rule and permission ≈ 315 of 500. § 23 removes 3 admin routes (the closed-time routes) and adds 3
+(week, day edit, copy week): the estimate stays ≈ 315 of 500; the weekly mail adds no resource.
 
 Abstraction line: **nested stack `api-scheduling.ts`** — users: every scheduling function and route; axis: the
 CloudFormation 500-resource ceiling (demonstrated, F5); rejected: routes in the parent (≈ 467 + ≈ 315 > 500).
@@ -1384,18 +1674,20 @@ CloudFormation 500-resource ceiling (demonstrated, F5); rejected: routes in the 
 
 | Slice | Scope | Allocation sketch | Depends | Infra (named gain) |
 |---|---|---|---|---|
-| `sched-1a` | Types, Zod schemas, kernel of both shapes, `zoned-time`, `bookingBase`, `TenantConfig` fields | `packages/shared/src/scheduling.ts`, `packages/shared/src/zoned-time.ts`, `packages/shared/src/index.ts`, `packages/shared/test/scheduling.test.ts` | — | none |
+| `sched-1a` | Types, Zod schemas, kernel of both shapes, `zoned-time`, `bookingBase`, `TenantConfig` fields (incl. `bookingHorizonWeeks`); week-planner kernel (§ 5.5: `dayWindows`, `lastBookableDate`, `planDay`, `editDays`, `weekMailDue`); `HistoryEntry`, `appendHistory` | `packages/shared/src/scheduling.ts`, `packages/shared/src/zoned-time.ts`, `packages/shared/src/index.ts`, `packages/shared/test/scheduling.test.ts` | — | none |
 | `sched-1b` | Inert scheduling-private table | `infra/lib/database.ts`, `infra/lib/amodx-stack.ts`, `infra/test/amodx-stack.test.ts` | `1a` (order only) | the table: `1c` tests against it; customer data outside the renderer's IAM |
-| `sched-1c` | `scheduling-db.ts`: container and booking rules, every transaction of §§ 7, 8.4, 13, 14, refusal mapping, § 6.4 query rules | `backend/src/lib/scheduling-db.ts`, `backend/test/unit/scheduling-db.test.ts`, `backend/test/scheduling-db.integration.test.ts` | `1b` | none |
-| `sched-1d` | Nested stack; visitor backend routes (not the feed); shared admin routes (bookings, customers, resources, feed secret, mail templates); `scheduling-email.ts` with the six keys; reCAPTCHA; limits, with `client-address.ts` (the address limit counts what the renderer sends); minimal admin screen (scheduling settings, resources, mail templates) | `packages/shared/src/client-address.ts`, `backend/src/scheduling/visitor/*.ts`, `backend/src/scheduling/admin/{bookings,customers,resources,email}-*.ts`, `backend/src/lib/scheduling-email.ts`, `infra/lib/api-scheduling.ts`, `infra/lib/amodx-stack.ts`, `infra/test/amodx-stack.test.ts`, `admin/src/pages/Scheduling.tsx`, sidebar, `tools/mcp-server/routes.json` | `1c` | nested stack + routes: no route fits in the parent |
-| `sched-1e` | Appointments admin: services, availability, closed times, day/week view, manual slot, move slot; admin pages | `backend/src/scheduling/admin/appt-*.ts`, `admin/src/pages/SchedulingAppointments*.tsx`, `api-scheduling.ts` (own routes) | `1d` | routes inside the nested stack |
+| `sched-1c` | `scheduling-db.ts`: container and booking rules (with the `history` append), every transaction of §§ 7, 8.4, 13, 14, refusal mapping, § 6.4 query rules; entry `rev` written by every write that adds or changes an entry (§ 7.3); `DAYS#` conditional read and write; the `WEEKMAIL#` claim and `sentAt` mark (AP14) | `backend/src/lib/scheduling-db.ts`, `backend/test/unit/scheduling-db.test.ts`, `backend/test/scheduling-db.integration.test.ts` | `1b` | none |
+| `sched-1d` | Nested stack; visitor backend routes (not the feed; slots and holds read `DAYS#` and the horizon); shared admin routes (bookings with `history`, customers, resources, feed secret, mail templates); `scheduling-email.ts` with the seven keys (the `weekAhead` default is defined here, sent in `1g`); audit per § 6.5; reCAPTCHA; limits, with `client-address.ts` (the address limit counts what the renderer sends); minimal admin screen (scheduling settings, resources, mail templates) | `packages/shared/src/client-address.ts`, `backend/src/scheduling/visitor/*.ts`, `backend/src/scheduling/admin/{bookings,customers,resources,email}-*.ts`, `backend/src/lib/scheduling-email.ts`, `backend/src/tenant/settings.ts` (omit `ip` on saves with a scheduling key, § 6.5 point 4), `infra/lib/api-scheduling.ts`, `infra/lib/amodx-stack.ts`, `infra/test/amodx-stack.test.ts`, `admin/src/pages/Scheduling.tsx`, sidebar, `tools/mcp-server/routes.json` | `1c` | nested stack + routes: no route fits in the parent |
+| `sched-1e` | Appointments admin: services, default availability, **week planner** (week route, day edits, copy week; § 23), manual slot, move slot; admin pages incl. the planner screen (§ 23.5) | `backend/src/scheduling/admin/appt-*.ts`, `admin/src/pages/SchedulingAppointments*.tsx`, `admin/src/pages/SchedulingPlanner.tsx`, `admin/src/App.tsx` (one route; the guard's `next` return path), `admin/src/pages/Login.tsx` (go to a safe `next` after sign-in, § 23.5), `api-scheduling.ts` (own routes), `tools/mcp-server/routes.json` | `1d` | routes inside the nested stack |
 | `sched-1f` | Groups admin: courses, runs, move run, cancel run, roster, unplaced list, manual entry, move person, CSV export, group link; admin pages | `backend/src/scheduling/admin/group-*.ts`, `admin/src/pages/SchedulingCourses*.tsx`, `admin/src/pages/SchedulingRoster.tsx`, `api-scheduling.ts` (own routes) | `1d` | routes inside the nested stack |
-| `sched-1g` | Hosted pages and proxies (§ 10.1) with the client-address extraction and its staging witness (§ 9.2; a gate before any visitor exposure), middleware branch, `mapTenant` reCAPTCHA mapping, locale keys EN + RO, reminder job, calendar feed | `renderer/middleware.ts`, `renderer/src/app/%5Fbook/[siteId]/**`, `renderer/src/lib/dynamo.ts`, `renderer/test/serving-contract/*`, `packages/shared/src/language-packs/*`, `backend/src/scheduling/reminders.ts`, `backend/src/scheduling/visitor/feed.ts`, `api-scheduling.ts` | `1d` | one schedule rule: reminders cannot run otherwise |
+| `sched-1g` | Hosted pages and proxies (§ 10.1) with the client-address extraction and its staging witness (§ 9.2; a gate before any visitor exposure), middleware branch, `mapTenant` reCAPTCHA mapping, locale keys EN + RO, reminder job, weekly planner mail (§ 11.4), calendar feed | `renderer/middleware.ts`, `renderer/src/app/%5Fbook/[siteId]/**`, `renderer/src/lib/dynamo.ts`, `renderer/test/serving-contract/*`, `packages/shared/src/language-packs/*`, `backend/src/scheduling/reminders.ts` (reminders, daily cleanup, weekly mail § 11.4), `backend/src/scheduling/visitor/feed.ts`, `api-scheduling.ts` (incl. `ADMIN_URL` on the reminder function) | `1d` | one schedule rule: reminders cannot run otherwise; the weekly mail adds none |
 | `sched-1h` | **Needs its own specification after SCHED-PAYMENT-PATH and `cmrc-4`** (§ 17.2) | — | `1f`, `pay-1`, `cmrc-4`, its specification | — |
 | `sched-1i` | Validation on staging of every guarantee | tests and a staging runbook only | all in use | none |
 
 `sched-1e` and `sched-1f` each depend on `sched-1d` only; they touch disjoint files except `api-scheduling.ts`
-(each appends its own routes) and the admin sidebar (one line each). The practitioner line: `1a`-`1e`, `1g`,
+(each appends its own routes) and the admin sidebar (one line each). The weekly mail of `sched-1g` links to the
+planner of `sched-1e`; on a line without `1e` no `AVAILABILITY#` item is written, so no tenant has a resource with
+weekly hours and the mail is never sent (§ 11.4 selection). The practitioner line: `1a`-`1e`, `1g`,
 `sched-frame-1`. The school line: `1a`-`1d`, `1f`, `1g`, then `1h` and `contract-1`.
 
 ### 17.2 Boundary of the paid-course path (not designed here)
@@ -1423,13 +1715,31 @@ fits the PD-002 amendment (§ 16.3 classes).
 
 ### 17.3 Evidence taxonomies (rows a builder binds tests to)
 
+**Field evidence inventory (SCHED-1R).** Every field this amendment adds, with the rows that cover absent, valid
+and malformed values. A field with no malformed case states why.
+
+| Field | Where | Absent | Valid | Malformed |
+|---|---|---|---|---|
+| `scheduling.bookingHorizonWeeks` | `TenantConfig` (§ 4.1) | A23, D14 (→ 8) | A23, D14, A17 | A23, D14 (request → 400; stored → `storedDataInvalid`) |
+| `DayOverride` (`kind`, `windows`, `note`) and its map keys | `DAYS#.days` (§ 4.2, § 6.2) | A22, A16 (date → defaults) | A22, A16 | A22 (shape and keys), C33 (stored) |
+| `RESDAY#` entry `rev` | container entry (§ 6.2, § 7.3) | C35 (4) (stored → schema refuses; no legacy entries exist: the table is new) | C35 (1)-(3), A25 | C35 (4) (`0`, `1.5`) |
+| `DAYS#.v` | server-side version (§ 6.2) | C33 (no item → created with `v = 1`; item without `v` → `storedDataInvalid`) | C31 | C33 (`0`, `1.5`) |
+| `Booking.history` | `BOOKING#` (§ 4.4) | A24 (absent or empty refused) | A24, A26 (after truncation, without `created`), C32, D16 | A24 |
+| `schedulingEmailConfig.templates.weekAhead` | `TenantConfig` (§ 11.1) | D13 (→ default) | D13, G15 | D13 (no `subject` → 400) |
+| `WEEKMAIL#` `claimedAt`, `sentAt`, `ttl` | scheduling table (§ 6.2) | C34 (no item → claim) | C34, G14 | C34 (`sentAt` not a number → "not sent"); `claimedAt` and `ttl` are written only by the claim, never read for a decision, so a malformed value changes nothing |
+| `GET …/week` `start` | admin route (§ 10.3) | E22 | E22, E16 | E22 |
+| `PUT …/days` `from`, `to`, `value` | admin route (§ 10.3) | E23 | E23, E9, A19 | E23, E9 |
+| `POST …/copy-week` `sourceStart`, `targetStart`, `weeks` | admin route (§ 10.3) | E23 | E23, E10, A20 | E23, E10 |
+| Planner page `tenant`, `week` | admin URL query (§ 23.5) | E24 | E17, E19, E24 | E20 (tenant not allowed), E24 |
+| Login `next` | admin URL query (§ 23.5) | E18 (→ `/`) | E18, E21 | E21 |
+
 **`sched-1a`** (pure, `packages/shared` vitest)
 
 | Row | Input | Expected |
 |---|---|---|
 | A1 | § 5.2 slots example | `07:00Z`, `09:00Z` |
 | A2 | `2027-03-29 09:00` / `2027-03-28 03:30` / `2026-10-25 03:30` Bucharest | `06:00Z` / `nonexistentLocalTime` / `00:30Z` |
-| A3 | `slotDecision`: past, off grid, ineligible, outside window, closed, resource fenced | each `SlotRefusal` variant |
+| A3 | `slotDecision`: past; beyond the horizon; off grid; ineligible; outside every window; on a `dayOff` date; in the part a `dayHours` edit removed; resource fenced | `inPast`; `beyondHorizon(lastBookableDate)`; `notOnGrid`; `notEligible`; `outsideAvailability` (three rows); `resourceUnavailable` — every `SlotRefusal` variant |
 | A4 | `overlapCheck` with a held entry before and after `x` | `overlap`; ok |
 | A5 | seats example; admin into `closed`; admin into `cancelled` | taken 7 then `runFull(8)`; ok; `runCancelled` |
 | A6 | proposal example | `proposed(R4)`, others `[R1, R2]`, R3 absent |
@@ -1440,8 +1750,19 @@ fits the PD-002 amendment (§ 16.3 classes).
 | A11 | meetings errors | each `MeetingError` variant |
 | A12 | cancel-run effects example | `toUnplace [A]`, `toCancel [B]` |
 | A13 | `bookingBase` with `x.example`, `x.localhost`, absent | `https://x.example`; preview base; preview base |
-| A14 | a fourth `BookingWhat` variant in a temporary copy | compile errors at every `switch` (recorded, removed) |
+| A14 | in a temporary copy: a fourth `BookingWhat` variant; a third `DayOverride` kind; a fifth `HistoryEntry` action | compile errors at every `switch` over that union (recorded, removed) |
 | A15 | Zod: email valid only after normalization; capacity 46; duration 7; `trainerIds: []` | normalized accepted; 46, 7 and `[]` refused |
+| A16 | precedence (§ 5.5 table): Monday with `dayHours [09:00-12:00]`; Monday without override; Sunday `dayHours [10:00-12:00]` with no Sunday default; Monday `dayOff`; `availableSlots` over these days | `dayWindows` source and windows as the table; slots only inside the effective windows; the § 5.2 `dayHours` example → `07:00Z`, `09:00Z`; `dayOff` → none |
+| A17 | `lastBookableDate`: `now` 2026-12-01T10:00Z, 8 weeks; `availableSlots` with `to` after it; `slotDecision` on 2027-01-26 23:00 local and 2027-01-27 09:00 local | `2027-01-26`; days after it present with no starts; allowed; `beyondHorizon(2027-01-26)` |
+| A18 | `planDay`: the § 5.5 example; a held entry after its `x` (expired) on that day; a date `< today − 6`; a window bound inside the 2027-03-28 spring gap (`dayHours [03:30-06:00]`) | `removed [12:00-13:00]`, `outsideHours [id]`, `open` as the table; the expired entry neither cuts `open` nor appears in `outsideHours`; `kind: "past"` with entry ids only; the window starts at 04:00 local (`01:00Z`) |
+| A25 | `activeEntries` (pure), the cases of the operator ruling: (a) the 01:30-02:30 local booking given twice, both copies `rev 3` (UTC-midnight case); (b) the admin booking local 2026-12-07 23:30 - 2026-12-08 00:30 with 2026-12-08 `dayOff`, through `planDay` for both dates (local-midnight case); (c) two copies of one booking, `rev 3` held and `rev 4` confirmed; (d) a move seen half-way: the old placement `rev 5` in day A and the new placement `rev 6` in day B; (e) overlapping bookings A and B, where the query saw B's copy in day D1 at `rev 2` (held) and in day D2 at `rev 3` (confirmed during the read), and A's two copies at `rev 7`; (f) one active copy and one expired copy of another booking | (a) one entry; (b) the booking in `entries` of both days and in `outsideHours` of 2026-12-08; (c) only the `rev 4` copy (confirmed); (d) only the new placement; (e) no error, A once at `rev 7`, B once at `rev 3` — A is never affected by B; (f) the expired one is dropped (after step 2, by the active filter) |
+| A19 | `editDays set`: the § 5.5 example; `value: default` on a date with an override; `from > to`; 367 dates; `from` = yesterday; a result with 367 keys; keys at `today − 7` and `today − 6` in `current` | 4 `dayOff` keys, `changed` = those 4; the key removed; `rangeInverted`; `rangeTooLong(366)`; `startsInPast(today)`; `tooManyDays(366)`; the `today − 7` key pruned and not in `changed`, the `today − 6` key kept |
+| A20 | `editDays copyWeek`: the § 5.5 example; a Tuesday source with a Monday target; target week = source week; `sourceStart = today − 7`; `targetStart` = yesterday | the 3 Mondays set, the other 18 target overrides removed; `weekdayMismatch`; `targetOverlapsSource`; `sourceTooOld(today − 6)`; `startsInPast` |
+| A21 | `weekMailDue`: the five § 5.5 examples; a Monday 10:00 local | `notDue`; `due 2026-12-07`; `due 2026-12-07`; `notDue`; `notDue`; `notDue` |
+| A22 | Zod `DayOverride` (evidence taxonomy: absent / valid / malformed): no key for a date; `dayOff`; `dayOff` with a 200-character note; `dayHours` with 1 and with 8 windows; malformed: `dayHours` with `[]`, with 9 windows, `end <= start`, two overlapping windows, `09:03`, unsorted windows, a 201-character note, `kind: "closed"` | absent → the date follows the defaults; valid ones accepted; every malformed one refused with an issue that names the field; map keys `2026-13-01`, `2026-12-7`, `2026-02-30`, `tomorrow` refused (a key must be a real `YYYY-MM-DD` date) |
+| A23 | Zod `scheduling.bookingHorizonWeeks`: absent; 1; 52; malformed 0, 53, 2.5, `"8"` | absent → 8 by default; 1 and 52 accepted; the four malformed refused |
+| A24 | Zod `HistoryEntry` and `appendHistory` (evidence taxonomy of `Booking.history`): absent `history`; `history: []`; each of the four actions; malformed: unknown `action`, `moved` without `from`, `cancelled` with `by: { kind: "admin" }` without `email`, `at` not a number, a list of 51; `appendHistory` on 50 entries | absent and `[]` refused (the stored list is **non-empty**: the creating Put writes one entry and no write removes the last one); each valid one accepted; each malformed one refused; the result has 50 entries, the oldest dropped, the new one last |
+| A26 | history after truncation: a booking whose 50 entries start with `created`, then one more change through `appendHistory`; the resulting list validated by the stored-item schema of `Booking` (the one used on every read); a list of 50 `moved` entries with no `created` at all | 50 entries, `created` gone, the new entry last; the schema **accepts** it; the schema accepts the all-`moved` list (no rule requires `created` to stay: the booking's `createdAt` and `source` keep that fact, § 4.4) |
 
 **`sched-1b`** (infra assertions; staging `cdk diff`)
 
@@ -1479,7 +1800,12 @@ injected clocks, `cd backend && npm test`)
 | C27 | two erasures of one email at once | both answer 200; total removed = bookings that existed; no transaction error surfaces; read-back 0 |
 | C28 | a `TOKEN#` item whose booking was removed (left by injecting a fault into a test-only path, or written directly) | the link answers 404 `linkNotValid`; view, confirm, cancel and move change nothing |
 | C29 | daily cleanup: a hold expired 8 days ago, one expired 6 days ago, a confirmed booking, a hold cancelled while held 8 days after expiry; a second cleanup run the same day; a missed day; a hold made, then scheduling switched off for the tenant, 8 days later | the 8-day hold and the cancelled-while-held are removed (≤ 24 items each); the others stay; the second run changes nothing; the next day catches up; the switched-off tenant's hold is removed and no reminder was sent |
-| C30 | items with `ttl` | only `INTENT#`, `LIMIT#EMAIL#`, `LIMIT#ADDR#`, `HOLDS#` carry `ttl`; no `BOOKING#`, `CUST#`, `TOKEN#`, `HELD#` does |
+| C30 | items with `ttl` | only `INTENT#`, `LIMIT#EMAIL#`, `LIMIT#ADDR#`, `HOLDS#`, `WEEKMAIL#` carry `ttl`; no `BOOKING#`, `CUST#`, `TOKEN#`, `HELD#`, `DAYS#` does |
+| C31 | `DAYS#` writes: two day edits of one resource at once on different dates; two at once on the same date with different values; three at once (the condition lost twice); the first edit of a resource (no item) | both dates stored (the loser re-reads, re-applies and writes again: no lost update); the value of the write that commits last; one 503 `busy` and nothing of it stored; the item created with `attribute_not_exists(SK)`, `v = 1` |
+| C32 | `history` in the same write, one row per operation of C16 (create ×3, confirm, move ×3, cancel ×3) and a run cancel of 45, with a fault after each transaction; a booking changed 51 times | after each: exactly one new entry of the right variant (`moved` carries the old and new `Placement`), or none when the transaction did not commit; the run cancel stays ≤ 92 items; 50 entries, the oldest gone |
+| C33 | stored-data evidence for `DAYS#` (absent / valid / malformed): no item; a valid item; items written directly with a `dayHours` of `[]` windows, a key `2026-13-01`, no `v`, `v = 0`, `v = 1.5` | the defaults (and the first write creates the item); the overrides; each malformed item → the read fails Zod and the caller gets `storedDataInvalid` (never "no override", which would open a day the admin closed); `v` must be an integer ≥ 1 |
+| C34 | `WEEKMAIL#` marker (`claimedAt`, `sentAt`, `ttl`; absent / valid / malformed): a first claim; a second claim of the same week (no `sentAt`); a claim after `sentAt` was written; two claims at once; a claim for the next week; a stored marker with `sentAt` not a number | `claimedAt` set, `sentAt` absent → send; `claimedAt` unchanged, `sentAt` absent → send again; `sentAt` returned → stop; both return without `sentAt` (both send: the documented duplicate case); a new item; every item has `ttl = weekStart + 14 days`; the malformed marker is logged and read as "not sent" (send again: a duplicate is harmless under SCHED-WEEKMAIL-DELIVERY = B) |
+| C35 | entry `rev` in persistence (staging table, injected clock): (1) after a hold, a confirm, a slot move (same day; to another day; across UTC midnight) and a manual appointment, read both `RESDAY#` copies and `BOOKING#`; (2) after a token mint and a reminder mark; (3) the list function of `scheduling-db.ts` that the four consumers call, with a mocked client whose one `Query` returns the A25 (c), (d) and (e) items; (4) field evidence of the entry `rev` (absent / valid / malformed), items written directly: an entry without `rev`; `rev` 1; `rev` 0; `rev` 1.5 | (1) every entry of the booking has `rev` = `BOOKING#.rev`; (2) the entries are unchanged (their `rev` is now one or more below `BOOKING#.rev`, and the copies stay equal); (3) the A25 results, exactly one `Query` per resource and range, no other read, no error, no `busy`; (4) the absent and malformed ones fail the `RESDAY#` item schema → `storedDataInvalid` by the stored-item rule of § 10.2 (schema validation, not a comparison of copies); `rev` 1 accepted |
 | C17 | a run that started before a window, with a meeting inside it | found by AP6 |
 | C18 | a query with more than one page; a BatchGet with `UnprocessedKeys` (mocked) | all pages read; retried; 503 after 5 attempts |
 | C19 | a booking id or token of tenant A under tenant B | not found |
@@ -1500,25 +1826,56 @@ injected clocks, `cd backend && npm test`)
 | D5 | hold | 201 without token or id; one mail whose link has `#t=`; booking held, `mail = sent` |
 | D6 | confirm with a valid / expired / unknown / other tenant's token | 200 / 410 / 404 / 404 |
 | D7 | admin cancel, invoked later than and apart from the hold call | `cancelled` mail without link; every token → 404 |
-| D8 | arbitrary start submitted to the hold | `notOnGrid` / `outsideAvailability` / `inPast` |
+| D8 | arbitrary start submitted to the hold: off grid; outside the windows; past; after `lastBookableDate`; on a date with a `dayOff` override (written through `scheduling-db.ts`) | `notOnGrid` / `outsideAvailability` / `inPast` / `beyondHorizon` / `outsideAvailability` |
 | D9 | offer, slots, runs DTOs | no resource id or name, email, phone or customer name in the JSON |
-| D10 | audit entries of hold, confirm, cancel | no customer email or name in `actorEmail`, `entityTitle`, `details` (if SCHED-AUDIT-PII = A) |
+| D10 | SCHED-AUDIT-PII = C oracle, with a mocked EventBridge client that records every `PutEvents`: a visitor hold, confirm, cancel and move; an admin manual entry, cancel and move; a resource create; an erasure | (1) **no booking event in the main table**: the booking operations send no `PutEvents` at all; (2) **`history` present on `BOOKING#`**: after each booking operation the stored item has the matching `HistoryEntry` as its last entry; (3) the resource create sends one event with the admin's `actor.email` and the resource name as `target.title`; the erasure sends `SCHEDULING_CUSTOMER_ERASED` with the two counts only; (4) **no `ip`**: no recorded event has an `ip` key; and no recorded event contains a booking id, ref, customer name, email or phone anywhere in its JSON |
 | D11 | `client-address.ts` unit rows: every example and every invalid form of § 9.2, with `k = 1` and `k = 2`; `addressKey` of IPv4, IPv6, mapped IPv4; the hold route with `x-viewer-address` from a RENDERER call, from another role, and absent | the § 9.2 tables exactly; another role's header ignored; absent or invalid → no address limit |
-| D12 | resource delete with a future booking; without | 409 `resourceInUse`; 204, availability and closed items gone |
-| D13 | email templates: defaults served; an override used; feed secret answers the URL once | as stated |
+| D12 | resource delete with a future booking; without | 409 `resourceInUse`; 204, `AVAILABILITY#` and `DAYS#` items gone |
+| D13 | email templates: defaults served for all seven keys; an override used; `schedulingEmailConfig.templates.weekAhead` absent / valid / malformed (no `subject`) through `PUT /settings`; feed secret answers the URL once | as stated; `weekAhead` default has `sendToAdmin: true`; absent → default, valid → stored and used, malformed → 400 |
+| D14 | `scheduling.bookingHorizonWeeks` through `PUT /settings`: absent, 1, 52, 0, 53, 2.5, `"8"`; a stored 0 written directly | default 8 used; stored; stored; 400 ×4; visitor slots → 500 `storedDataInvalid` |
+| D15 | `slots` with `to` after `lastBookableDate`; `slots` with `from` after it | 200, `lastBookableDate` in the DTO, the days after it with no starts; 200 with every day empty |
+| D16 | `GET /scheduling/admin/bookings/{id}` after a hold, a confirm and a move | `history` = `created`, `confirmed`, `moved` in that order, instants as UTC ISO |
+| D17 | `PUT /settings` audit (mocked EventBridge) with a body of: only `scheduling` keys; `scheduling` + `name` (mixed); only `name`; the mixed body again after a reload of the record | `UPDATE_SETTINGS` without an `ip` key; without an `ip` key, `updatedFields` lists both keys; **with** `ip` = the source address (preservation of today's behaviour); in all four cases the record is saved, `rejectedFields` and the page purge behave as before (the existing settings tests still pass) |
 | I1 | every mailing function of § 11.2 (synth) | `SES_FROM_EMAIL` and exactly one `ses:SendEmail` on the identity (not `*`) |
-| I2 | every scheduling function (synth) | `SCHEDULING_TABLE_NAME`; GET functions have no write action |
+| I2 | every scheduling function (synth) | `SCHEDULING_TABLE_NAME`; GET functions have no write action; `events:PutEvents` and `EVENT_BUS_NAME` exactly on the functions § 11.2 lists, on no visitor or admin booking function |
 | I3 | the hold function (synth) | `RECAPTCHA_SECRET_KEY` equal to the commerce order function's |
 | I4 | renderer role (synth) | no statement on the table |
 | I5 | template counts (synth) | nested stack count logged; parent `< 500` |
 | Staging | operator | hold → mail (a real test mailbox: the SES simulator discards the link) → confirm → cancel through the backend with the renderer key; items read back; cleanup |
 
-**`sched-1e`**: E1 eligibility `only` limits slots; E2 a closed time removes overlapping starts and the POST answer
-lists conflicting refs; E3 service deleted → its bookings keep `serviceName`, offer omits it; E4 duration change
-keeps an existing booking; E5 manual booking outside the windows → confirmed, mail with a working link; E6 day view
-returns every resource's intervals with summaries; E7 move slot keeps id and tokens, an old link opens the moved
-booking; E8 move slot with a stale `rev` → 409 `stale`. Staging: a practitioner configuration on a staging tenant,
-one booking made and moved in the admin.
+**`sched-1e`** (backend unit + admin build + staging)
+
+| Row | Input | Expected |
+|---|---|---|
+| E1 | eligibility `only` | limits slots to the listed resources |
+| E2 | `PUT …/days` with `dayOff`, and with a shorter `dayHours`, on a date with one confirmed and one held booking; `dayOff` on 2026-12-08 with an admin booking local 2026-12-07 23:30 - 2026-12-08 00:30; a range edit over two days that both contain the same cross-midnight booking | the affected starts leave `slots` at once; 200 with both refs in `outsideHours`; both bookings unchanged (the held one can still be confirmed), no mail sent; the cross-midnight booking's ref in `outsideHours`; its ref listed once |
+| E3 | service deleted | its bookings keep `serviceName`; `offer` omits it |
+| E4 | duration change | an existing booking keeps its start and end |
+| E5 | manual booking outside the windows; on a `dayOff` date; after `lastBookableDate` | confirmed in each case (the admin is not bound by § 5.5); mail with a working link |
+| E6 | `GET /scheduling/admin/appointments?from&to` over 3 days with two resources (the reviewed day view); a booking local 01:30-02:30 on 2026-12-07 in `Europe/Bucharest` (stored in two `RESDAY#` items, § 7.3); 32 days | every resource's intervals with ref, customer name and service name; that booking listed **once**; 400 `rangeTooLong` |
+| E7 | move slot | keeps id and tokens; an old link opens the moved booking |
+| E8 | move slot with a stale `rev` | 409 `stale` |
+| E9 | `PUT …/days`: 366 dates; 367 dates; `from` yesterday; `value: default` on an edited date; windows of A22's malformed list | 200; 400 `rangeTooLong`; 400 `startsInPast`; the date in `changed` and the week read shows it `source: default`; 400 per field |
+| E10 | `POST …/days/copy-week`: A20's example and refusals; `weeks` 0 and 53 | as A20; 400, 400 |
+| E11 | two `PUT …/days` at once on different dates; on the same date; a body that carries a `v` field | both applied; the later write's value stored; 400 `invalid` (unknown key: the client sends no version) |
+| E12 | audit of a day edit and of a default-availability change (mocked EventBridge) | one event each, `actor.email` = the admin, `target.title` = the resource name, `details` = dates and kind; no ref, no `ip` (§ 6.5) |
+| E13 | `PUT …/availability` changes Monday's defaults while one Monday has a `dayHours` override | that Monday keeps its override; the other Mondays follow the new defaults |
+| E14 | removed routes: `GET/POST/DELETE …/closed…` | not in `api-scheduling.ts`, not in `routes.json` (MCP route coverage test); `GET /scheduling/admin/appointments` is present |
+| E15 | planner screen (admin build; staging by the operator, English UI) | open time, bookings and unavailable time are distinct on the week grid; edit hours of a day; day off; reset a day; apply to a range; copy this week to the next 4 weeks; previous / next week, ±4 weeks, jump to a date; the horizon date is shown; entries outside hours are marked; no hard-coded colour in `SchedulingPlanner.tsx` (CSS variables only, CLAUDE.md Critical Rule 6: a search for hex and `rgb(` colour literals in the file finds none) |
+| E16 | `GET …/week?start=<Monday>` for a resource with a default day, a `dayHours` day, a `dayOff` day with a booking, a held entry, and today − 8 inside the week; the same with the switch off; another tenant's resource id | 7 `DayDTO`s: `source`, `windows`, `removed`, `open`, `entries` (ref, customer name, service name, state) and `outsideHours` as `planDay`; the old day `kind: "past"` with its entries; same answer with the switch off; 404 |
+| E17 | planner link, signed in, current tenant = the link's tenant | the week of `week` is shown; no reload |
+| E18 | planner link, signed out | `/login?next=…` (encoded path and query); after sign-in by password, and after the new-password step, the planner opens with the same `tenant` and `week`; a sign-in without `next` goes to `/` as today |
+| E19 | planner link, signed in, current tenant B, link tenant A in the user's tenant list | `selectTenant(A)` once; after the reload the week of tenant A is shown; no reload loop |
+| E20 | planner link, signed in, link tenant C not in the user's tenant list | "You do not have access to this site."; the current tenant stays B; no scheduling request is sent |
+| E21 | `isSafeReturnPath` unit rows: the seven examples of § 23.5, plus `/%2F%2Fevil.example` (encoded slashes stay a path inside the app), a string with a newline, 2001 characters | the first accepted; the six others rejected; `/%2F%2Fevil.example` accepted (it is a same-origin path; the router does not decode it into another origin); newline and 2001 rejected |
+| E22 | `GET …/week` field `start`: absent; `2026-12-07`; `2026-12-09` (a Wednesday); malformed `2026-12-32`, `12/07/2026`, `x`; path `resourceId` unknown | 400 `invalid`; 7 days from Monday; 7 days from Wednesday; 400 ×3; 404 |
+| E23 | edit request fields (absent / valid / malformed): `PUT …/days` without `from`, without `to`, without `value`; `value` of each `DaySetting` kind; `from` `2026-02-30`; `value: { kind: "closed" }`; `POST …/copy-week` without `sourceStart`, `targetStart` or `weeks`; `weeks` 1 and 52; `weeks` 0, 53, 2.5, `"3"`; an unknown extra key | 400 per missing field; 200 per kind; 400; 400; 400 per missing field; 200; 400 ×4; 400 (strict schema) |
+| E24 | planner page query (absent / valid / malformed): no `tenant` and no `week`; `week=2026-12-07`; `week=2026-12-09`; `week=garbage`; `tenant=` empty | the current tenant's current week; that week; the week that contains it (Monday 2026-12-07); the current week; treated as absent (no switch) |
+| E25 | the three `sched-1e` interval consumers — planner week, all-resource appointments, day-edit answer — each with the mocked client of C35 (3) | each answer shows the A25 (c), (d), (e) results: the confirmed copy, the new placement only, A and B once each; no 500 or 503; each consumer normalizes through `activeEntries` and sends no `Query` of its own on `RESDAY#` outside `scheduling-db.ts` (a unit test that counts such calls: zero) |
+
+Staging: a practitioner configuration on a staging tenant; one week edited (a day off, a short day) and copied two
+weeks ahead; one booking made and moved in the admin; the visitor page shows the edited hours and stops at the
+horizon.
 
 **`sched-1f`**: F1 run create with invalid meetings → each `MeetingError`; `trainerIds: []` → 400; capacity 46 →
 400 with the 45 text; F2 roster lists exactly the active seats; F3 admin move across languages → ok, run language
@@ -1545,6 +1902,10 @@ one course, two runs; a person moved and a run cancelled in the admin.
 | G11 | feed: valid `text/calendar`, UTC times, a meeting of a run that started before the window, no customer field, old secret 404 after rotation; a run whose trainers change from R1 to R2; a run created in `Europe/Bucharest` after the tenant setting changes to another zone | as stated; after the change the run is in R2's feed and not in R1's; the run's meetings keep their original UTC instants |
 | G12 | locale keys EN and RO complete (coverage rule of `locale-1`) | as stated |
 | G13 | staging witness of § 9.2 (the six cases) through the booking proxy | one `k` chooses the tester's real address in every case, never a forged value; `k` recorded; the temporary log line removed; until it passes, no tenant's booking page is exposed to visitors |
+| G14 | weekly mail population and delivery (§ 11.4), injected clock and a mocked SES client: a `Europe/Bucharest` tenant with one resource with weekly hours at Sunday 08:59 and 09:00 local, then a run at 09:15; a tenant with the switch off; a tenant with group runs only (no resource with weekly hours); a tenant with no `contactEmail`; a `weekAhead` override with `sendToAdmin: false`; an `America/Los_Angeles` tenant at the 03:00 UTC run of a Sunday (Saturday local) and at Sunday 09:00 local; SES refuses at 09:00, accepts at 09:15; a fault after SES accepts and before `sentAt`; SES refuses every run until Monday 00:00 local, then a run at Monday 00:15 | none; one mail and `sentAt`; none (`sentAt` present); none; none; none and the log line; none; none, then one mail on its own Sunday; one attempt each run, `sentAt` after 09:15, two attempts in total; a second mail at the next run (the documented duplicate); no send at 00:15 and no `sentAt` for that week (the documented loss) |
+| G15 | weekly mail content: one resource with a default day, a `dayHours` day, a `dayOff` day with a booking outside hours, and a booking local 23:30-00:30 across two days; a resource with no weekly hours and no override in the week | `{{summary}}` lists every day of the first resource with its source, windows, the count of distinct active bookings (the cross-midnight booking counted on both days) and `1 outside hours` where it applies; the second resource is not listed; the body has no customer name, email, phone or booking ref; the link is `<ADMIN_URL>/scheduling/planner?tenant=<id>&week=<Monday>` |
+| G16 | the reminder function (synth), with and without a root domain in the stack config | `ADMIN_URL` = `https://admin.<rootDomain>`; `ADMIN_URL` = `https://<admin distribution domain>` (the same value as the `AdminUrl` output) |
+| G17 | the weekly mail with the mocked client of C35 (3) for one resource | each day's count includes each booking once, at the placement of its highest `rev` (the moved booking counted on its new day only); the mail is sent; no error |
 
 **`sched-1i`**: tenant isolation (A's token, id and feed refused under B); the renderer role has no permission on
 the table (deployed policy read back); switch off removes every visitor surface and the reminder job sends nothing for
@@ -1561,7 +1922,7 @@ refused for another; the frame from an unlisted origin shows nothing (`sched-fra
 | Visitor chooses the practitioner | the named practitioner client is one person | a client with several practitioners chosen by name |
 | Customer free-text notes | not stated; invites health data | a client names the field and its legal basis |
 | Conflict check between a trainer's runs and appointments | not stated | one person works in both shapes at one tenant |
-| External calendar read | SCHED-CALENDAR = A recommended | the practitioner's private calendar is full |
+| External calendar read | SCHED-CALENDAR = A (ratified 2026-11-21) | the practitioner's private calendar is full |
 | Public developer API, metering | `sched-frame-1.md` Non-scope | a paying client's developer needs it |
 | Paid-course booking | § 17.2 | SCHED-PAYMENT-PATH decided and `cmrc-4` shipped |
 | Runs above 45 people | § 4.5 | a named client with a larger group |
@@ -1570,7 +1931,16 @@ refused for another; the frame from an unlisted origin shows nothing (`sched-fra
 | Platform-wide per-email counter | per-tenant isolation | an abuse report across tenants |
 | Feed secret in CloudFront logs | calendar apps send no headers | access logs turned on |
 | Mails in the person's language | one template per key per tenant | `lang-1a` ships |
-| A closed time added during a hold is not guarded | rare; the admin sees the conflict list | a double booking reported from this path |
+| A day edit during a hold is not guarded (§ 7.7) | rare; the admin sees `outsideHours` in the answer and in the planner | a double booking reported from this path |
+| Weeks materialized ahead (a Sunday fill of the next week, "fill only when empty") | SCHED-PLANNER = B: every week is open from the defaults | — (ruled) |
+| Group runs and trainer meetings in the planner | the planner plans appointment hours; § 18 "conflict check between runs and appointments" stays out | one person works in both shapes at one tenant |
+| Horizon on group runs | operator decision (§ 15): the admin sets each run's dates on purpose and a course is sold months ahead (§ 23.3) | a school asks to limit how early people enrol |
+| Per-tenant send time or weekday of the weekly mail | fixed: local Sunday from 09:00 | a tenant asks for another time |
+| A display read shows the highest `rev` the query returned, with no freshness bound; a later read can still be stale (a cancelled booking still shown; a moved one in its old place) | operator scope freeze after review-2: the displays (planner, edit answer's conflict list, weekly summary, all-resource read) decide nothing; every writer is guarded by the versions of § 7 | an admin acts on a stale display and the write is refused or does harm |
+| Same date edited by two admins at the same instant | operator ruling (R06): no client version; the server re-applies an edit once after a lost condition, so the later write wins for that date (different dates both stay) | an admin reports a lost day edit |
+| Duplicate weekly mail after an uncertain SES result | SCHED-WEEKMAIL-DELIVERY = B: a second copy of a reminder is harmless, a lost one is not | a tenant reports duplicates as a problem |
+| Weekly mail lost when sending fails every run until Monday 00:00 local | the retries end with the week they announce | a tenant reports a missing weekly mail |
+| A recurring rule for overrides ("every second Friday off") | ranges and copy-week cover the stated need | an admin enters the same pattern by hand every month |
 | Reminder lost on a crash between mark and send | at-most-once chosen | reminders reported missing |
 | reCAPTCHA scores in frames with third-party cookies blocked | measured in `sched-frame-1` | refusals above the tenant's tolerance |
 | A no-domain tenant is served in preview mode, which renders drafts of content pages (`renderer/middleware.ts:262`) | the human ruled such a tenant ordinary; its visitors reach `/_booking` only | a no-domain tenant publishes content pages for visitors → it gets a domain |
@@ -1587,14 +1957,22 @@ refused for another; the frame from an unlisted origin shows nothing (`sched-fra
   boundary of the base plan (lines 305-317); rejected: DynamoDB calls inline in handlers (the transactions of § 7
   repeated).
 - `scheduling-email.ts` — users: the twelve mailing functions and the templates route; axis: a second template
-  record with its own keys; rejected: keys added to `getDefaultTemplates()` (the order mail page would list them).
+  record with its own keys (seven since § 23); rejected: keys added to `getDefaultTemplates()` (the order mail page
+  would list them).
 - `api-scheduling.ts` nested stack — § 17.
-- Second root layout `app/%5Fbook/[siteId]/` (if SCHED-PAGE-LAYOUT = A) — users: the book page, the manage page, the
+- Second root layout `app/%5Fbook/[siteId]/` (SCHED-PAGE-LAYOUT = A) — users: the book page, the manage page, the
   proxy handlers, the feed; axis: pages that must carry no tenant script; rejected: the existing root layout (G5; it
   cannot see the page).
 
 No interface, registry, adapter or plugin is introduced: every growth axis is a closed set of variants (shapes,
 states, sources, containers), handled by sum types and exhaustive matches.
+
+The week planner and SCHED-AUDIT-PII = C add **no** abstraction: `DayOverride`, `DaysEdit`, `PlannedDay`,
+`HistoryEntry`, `Placement` and `Actor` are domain sum types (variants fixed, operations growing → exhaustive
+`switch`); `dayWindows`, `planDay`, `editDays`, `lastBookableDate`, `weekMailDue`, `appendHistory` are kernel
+functions in `scheduling.ts`; `DAYS#` takes the place of `CLOSED#` in `scheduling-db.ts`; the weekly mail is code
+inside the existing reminder function. Rejected for the planner: a materialized `WEEK#` item per resource and week
+(ruled out by SCHED-PLANNER = B) and a closed-time list beside the overrides (two mechanisms for one effect).
 
 ## 20. Exit criterion
 
@@ -1604,6 +1982,14 @@ decision of § 15 raised. It edits no other file.
 **Later work, not part of this slice's acceptance**: the human answers the decisions; then a separate ratification
 change applies § 16 by dated sections, registers `sched-1a`…`1i` in `docs/ROADMAP.md` in place of `appt-1`…`7`, and
 registers the prefix `sched-` in `docs/documentation.md`.
+
+**SCHED-1R amendment (2026-11-21)** is accepted when the reviewer finds: the nine ratified outcomes recorded (§ 15,
+status line); SCHED-AUDIT-PII = C applied in every section § 22 names; § 16.1-16.3 applied to the base plan (dated
+amendment section, ratified text kept) and to PD-002; the week planner (§ 23 with § 4.1, § 4.2, § 4.5, § 5.5, § 6.2,
+§ 6.3, § 10.3, § 11.4, § 17) checkable against the code it cites; every new field with absent / valid / malformed
+rows. It edits only `docs/slices/sched-1.md`, the PD-002 text of § 16.3 in `docs/platform-decisions.md`, and the
+amendment section of `docs/plan-appointments-private-table-extension.md`. Still open after it: § 16.4 (ROADMAP,
+`documentation.md`, `plan-courses-group-sessions.md`, `CURRENT_SLICE.md`).
 
 ## 21. Closure of review findings (review-0, review-1, review-2; 2026-11-21)
 
@@ -1652,6 +2038,143 @@ one pass), not one entry per finding as the packet asked. Cycles 3 and 4 log one
   Consequence the human must accept: booking actions are not shown on the tenant-wide audit page; the admin sees
   them on the booking screen. The base plan's rule "every lifecycle event is audited" becomes "a history entry
   on every lifecycle event, in the private table".
-- Not yet applied to the text above (applied in one pass after ratification): § 4.4, § 4.5, § 6.5, § 8.5, § 10.3,
-  § 15, § 16.1, § 16.2 and row D10.
-- State: waits for the human's ratification of the nine decisions. No build slice starts before it.
+- Applied 2026-11-21 by SCHED-1R (one pass after ratification): § 4.4 (`history`, `HistoryEntry`, `Actor`), § 4.5
+  (history bound), § 6.5 (the four points), § 8.5, § 10.3 (audit sentence, `BookingAdminDTO.history`), § 15,
+  § 16.1, § 16.2 and row D10 (oracle: no booking event in the main table; `history` on `BOOKING#`; no `ip`).
+- State: **ratified** by the human 2026-11-21 (§ 15). The SCHED-1R amendment (ratification applied; week planner,
+  § 23) waits for review. No build slice starts before that review.
+
+## 23. Week planner (SCHED-1R, 2026-11-21; SCHED-PLANNER = B)
+
+Source: § 1 item 5, D16-D18. Mechanics live in their home sections (types § 4.2, bounds § 4.5, kernel § 5.5,
+storage § 6.2-6.3, routes § 10.3, mail § 11.4, slices § 17); this section records the design and why it is the
+smallest one that meets the ruling. Not yet reviewed.
+
+### 23.1 What is built
+
+| Need (the human's words) | Mechanism |
+|---|---|
+| "with defaults" | the existing `AvailabilityRule[]` per resource (`AVAILABILITY#<r>`), unchanged |
+| "tweak individual days, disable whole days" | one `DayOverride` per resource and local date: `dayHours(windows)` or `dayOff` (§ 4.2) |
+| "pre-fill ahead of time by weeks and months" | ruling B: nothing to pre-fill — every week is open from the defaults; the admin edits a range of dates or copies one week onto the next 1-52 weeks (§ 5.5 `editDays`) |
+| "clear open slots and unavailable times - per week planner" | one read per resource and week (`WeekPlanDTO`): effective windows, what an edit removed, open time, bookings and holds, bookings outside hours (§ 5.5 `planDay`, § 10.3) |
+| "send out an email to the admin reminding them they can manually tweak those" | the `weekAhead` mail on the tenant's local Sunday (§ 11.4) |
+| "a tenant setting limits how far ahead visitors can book" (addendum) | `scheduling.bookingHorizonWeeks`, default 8, on slot bookings (seats: operator decision, § 15) (§ 4.1, § 5.5, § 23.3) |
+
+Not built (§ 18): materialized weeks, the "fill only if empty" Sunday job (both removed by ruling B), runs in the
+planner, recurring override rules.
+
+### 23.2 One mechanism: overrides replace `ClosedTime`
+
+The reviewed text had `ClosedTime` (an instant interval with a note, `CLOSED#<r>`). With per-date overrides the two
+would do the same thing — make part of a resource's time unbookable — by two paths: two items to read on every
+visitor request, two admin screens, two conflict rules, and a precedence question between them. Every closed time
+is expressible as overrides, because availability exists only inside one local day: a block 12:00-13:00 inside
+09:00-17:00 is `dayHours [09:00-12:00, 13:00-17:00]`; a closed span over several days is `dayOff` on the inner days
+and `dayHours` on the first and last. Overrides can also do what a closed time could not: open hours on a day with
+no default (a Saturday clinic).
+
+Trade-off, accepted and shown on the screen: an override **replaces** the defaults of its date, so a later change of
+the defaults does not reach a date that has an override (§ 13). The planner marks such dates (`source`), and "reset
+to defaults" removes the override. A merge rule (defaults minus blocks plus extra hours) would follow default
+changes, but it needs two lists per date and a rule for their overlap — more state and more rules for a case the
+admin sees and fixes in one click.
+
+The note of a closed time moves to the override (`note`, ≤ 200 characters, admin only). `SCHED-CALENDAR = A`'s risk
+"a private busy time is typed in as a closed time" now reads "… as a day edit" (§ 15).
+
+### 23.3 Booking horizon
+
+- `lastBookableDate = local today + 7 × bookingHorizonWeeks` days; a visitor slot whose local start date is after it
+  is refused (`beyondHorizon`, 409) and not offered (`SlotsDTO.lastBookableDate`; days after it are empty). It
+  applies to visitor holds and visitor moves (both use `slotDecision`).
+- Default 8 weeks (operator decision; the human gave no number); range 1-52 (§ 4.5).
+- **Not limited**: admin writes (manual booking, admin move — the practitioner books its own entries anywhere, as
+  § 5.2 already rules for windows; the packet's rule), and **seats in group runs** (operator decision after
+  review-0, § 15; the human may override): a run is not "open from the defaults"; the admin sets each run's dates on
+  purpose, and a course is sold months ahead. Recorded in § 18 with its trigger.
+- Why "weeks" and not a date: ruling B keeps every week open, so the horizon is the only thing that stops a visitor
+  from booking a far week the admin has not looked at yet; a rolling count of weeks needs no upkeep.
+
+### 23.4 Edits with bookings present
+
+Rule (the same as the reviewed rule for closed times, § 7.7): **the edit is allowed, the bookings stand, the answer
+lists them**. A day turned off or shortened keeps its confirmed and held bookings; `DayEditResult.outsideHours`
+lists their refs; the planner shows them on that day, marked, until the admin moves or cancels each one (with the
+existing routes, which mail the customer). Nobody is mailed by the edit itself.
+
+Alternatives considered: refusing the edit while bookings exist (the admin then cannot mark a sick day until every
+booking is handled, the opposite of what the planner is for); cancelling the bookings automatically (an
+irreversible customer-facing action hidden in a configuration change). The listed rule keeps the admin in control
+and loses nothing.
+
+### 23.5 API and screen
+
+- One read per resource and week (`GET …/resources/{r}/week?start`), three writes: a day or a range (`PUT …/days`),
+  a copy of a week (`POST …/days/copy-week`), and the existing defaults route. All E+T, all in `sched-1e`.
+- The reviewed all-resource read `GET /scheduling/admin/appointments?from&to` (≤ 31 days) **stays** (operator
+  ruling after review-0, § 15): it gives the day view across resources (row E6); the planner gives one resource's
+  week with its hours. Both normalize entries with the same pure function (`activeEntries`, § 5.5).
+- Admin screen `SchedulingPlanner.tsx` (English UI, CSS variables only): resource selector; a Monday-Sunday grid of
+  the week; per day the open time, the bookings (held ones marked with their expiry), the unavailable time (outside
+  the windows) with the part an edit removed shown apart from the default closed hours, and bookings outside hours
+  marked; actions per day: edit hours, day off, reset to defaults; actions on a selection: apply to a range of dates;
+  "copy this week to the next N weeks"; navigation: previous / next week, ±4 weeks, jump to a date; a line at the
+  horizon date ("visitors can book until …"). A booking opens the booking detail view of `sched-1e` (`SchedulingAppointments*.tsx`, from
+  `GET /scheduling/admin/bookings/{id}`), which lists its `history` (SCHED-AUDIT-PII = C).
+- The planner works with the switch off (admin routes do, § 10.3), so a tenant prepares its weeks before it opens.
+- **Opening the mail's link** (`/scheduling/planner?tenant=<id>&week=<Monday>`, § 11.4; operator ruling R03):
+  - **Signed out.** Today the guard sends the user to `/login` and both successful sign-in paths go to `/`
+    (`admin/src/App.tsx:69-70`; `admin/src/pages/Login.tsx:42`, `:63`, OBSERVED), so the destination is lost.
+    Change (smallest): the guard redirects to `/login?next=<encodeURIComponent(pathname + search)>`; after a
+    successful sign-in (both paths: password, and new password) the login goes to `next` when it passes
+    `isSafeReturnPath`, else to `/` as today. Without `next` the behaviour is unchanged.
+  - **`isSafeReturnPath(p)`** — one rule for the whole class "the string must not be able to name another origin":
+    `p` is a path only; it starts with exactly one `/` (the second character is neither `/` nor `\`); it contains
+    no `//`, no `\` anywhere (browsers read `\` as `/`, so `/\evil.example` would be `//evil.example`), no
+    scheme (a path that starts with `/` has none by construction; checked by the first rule), and no control or
+    whitespace character; length ≤ 2000. Navigation uses the router's in-app `navigate(p)`, never
+    `window.location`. Examples: `/scheduling/planner?tenant=a&week=2026-12-07` → accepted;
+    `//evil.example`, `/\evil.example`, `https://evil.example`, `javascript:alert(1)`, `/a//b`, the empty string →
+    rejected, go to `/`.
+  - **Signed in, other current tenant.** The planner page waits for the tenant list, then: `tenant` is in the
+    user's `tenants` list (`TenantContext`, which lists what `GET /tenants` allows) and differs from the current
+    tenant → `selectTenant(tenant)`, which stores it and reloads the same path once
+    (`admin/src/context/TenantContext.tsx:62-84`, OBSERVED); after the reload the two are equal and the week is
+    shown. `tenant` not in the list → a plain state "You do not have access to this site." with no scheduling
+    request and no tenant switch. The backend still checks the role per tenant, so the parameter grants nothing.
+  - **Signed in, same tenant** → the week of `week` (a malformed `week` → the current week).
+
+### 23.6 Storage choice for overrides
+
+| | **O1 one item per resource `DAYS#<r>`** (chosen) | O2 one item per resource and date `DAY#<r>#<date>` | O3 one item per resource and month |
+|---|---|---|---|
+| Visitor read (slots, hold) | one Get per eligible resource, batched with `AVAILABILITY#` | one Query per eligible resource over the range | one Query per eligible resource over ≤ 3 months |
+| Range or copy write | one versioned Put: atomic for any size | one item per date: > 100 dates need several transactions, so a failure leaves part of the range applied | ≤ 13 items in one transaction |
+| Pruning | on every write, inside the same Put | per date: TTL or a sweep | per month item: delete or keep |
+| Resource removal (§ 13) | delete one key (as `CLOSED#` before) | Query and delete every date | Query and delete every month |
+| Bound | 366 dates per item (§ 4.5); worst case ≈ 186 KB, typical < 5 KB | none | none |
+
+O1 is the reviewed `CLOSED#` pattern with new content: one atomic write per edit, one key to remove, one read per
+resource. Its cost is item size at the extreme of every bound; the trigger to move to O3 is the § 4.5 bound.
+
+### 23.7 Reading rule for stored overrides
+
+A `DAYS#` item that fails its Zod schema is an error (500 `storedDataInvalid`), never "no override": read as absent,
+it would reopen a day the admin closed. The same rule holds for a stored `bookingHorizonWeeks` outside 1-52 (§ 10.2,
+rows C33, D14).
+
+## 24. Review record of the amendment SCHED-1R (operator, 2026-11-21)
+
+- Builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), four build cycles. Separate invocations, not
+  assurance by independent providers. Findings SCHED1R-R01…R07: R01-R03 and R05-R07 closed by review-1 and
+  review-2; the R04 mechanism (highest observed `rev`, no reconciliation) accepted by review-3.
+- Review-3 did not give "approved": its one remaining point was the freshness wording that the operator's own
+  packet prescribed ("one step old; the next read corrects it"), which claims more than the mechanism gives.
+  Operator closeout: the wording is corrected in § 5.5, § 17 and § 18 to the reviewer's option A (highest `rev`
+  the query returned; no freshness bound; a later read can still be stale). No mechanism changed after
+  review-3. Decision SCHED-DISPLAY-FRESHNESS = A (operator; the human may override).
+- Operator decisions recorded in § 15, each open to the human's override: SCHED-WEEKMAIL-DELIVERY = B (retry
+  until the target Monday, duplicates possible); the Sunday mail only for tenants with a resource that has
+  weekly hours; the booking horizon (default 8 weeks) limits slots only, not seats in a run.
+- Not run: builds, tests, synth (documents only).

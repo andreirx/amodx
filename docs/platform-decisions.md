@@ -149,10 +149,32 @@ reads. The mitigation is to keep renderer routes narrow (self-service only) and 
 move private data out of renderer IAM reach (see `plan-commerce-private-table.md`),
 not to pretend the renderer is untrusted.
 
+### Booking-token variant (amendment 2026-11-21, SCHED-1)
+
+Ratified by the human on 2026-11-21 (SCHED-PD-AMENDMENT = accept; text of `docs/slices/sched-1.md` § 16.3).
+
+For scheduling the customer has no session. The chain stays two hops: the browser talks only to the renderer; the
+renderer calls the backend with the `RENDERER` key. The tenant is derived from the URL the renderer serves — the
+host for a tenant with a domain, the `/_site/<tenantId>` path on a preview host for a tenant without one — never
+from the request body or a browser-set header. Four access classes, and nothing else:
+
+1. **Public derived reads** (offer, free times, runs): no token; they return no customer data.
+2. **The initial hold**: no token; verified by reCAPTCHA and limited per email (and per client address when
+   built); it creates a held booking and mails its first link.
+3. **Token-authorized booking actions** (view, confirm, cancel, move): the renderer forwards a link token the
+   browser received by mail; the backend accepts it only as the lookup `TENANT#<tenantId>` +
+   `TOKEN#<sha256(token)>`, which reaches exactly one booking of that tenant.
+4. **Calendar feed**: a per-resource secret in the feed URL, compared by hash; it returns the resource's schedule
+   without customer names, emails or phones.
+
+Choosing a tenant by URL grants nothing private: private data needs a token issued under that tenant. No backend
+route becomes anonymous; the `CUSTOMER` branch stays dormant (PD-003).
+
 ### Applies to
 
 - commerce account / profile / order self-service
-- appointment booking / list / cancel in Phase 1
+- scheduling (appointments and group seats): availability reads, booking, view, confirm, cancel and move, under
+  the *Booking-token variant* above (amendment 2026-11-21; replaces "appointment booking / list / cancel in Phase 1")
 
 Direct Public Cognito JWT verification is reserved for future high-sensitivity flows
 (money movement, stored payment instruments, identity documents, irreversible PII

@@ -1,5 +1,60 @@
 # Appointments-Private Table & Scheduling Extension Plan
 
+## Amendment 2026-11-21 (SCHED-1, ratified by the human on 2026-11-21)
+
+Two booking shapes, an emailed link and a week planner. Read this section before the rest of the plan; where they
+differ, this section wins. The ratified text below is kept unchanged as the record. Source and detail:
+`docs/slices/sched-1.md` (§ 16.1 and § 16.2 are the text applied here).
+
+**Goal** (replaces the first bullet "Authenticated booking only"): *Booking by emailed link.* A visitor books
+without an account; the booking is held, and an emailed link with a one-booking token confirms it and later shows,
+cancels or moves it. Booking calls stay renderer-proxied (PD-002 as amended, *Booking-token variant*). The other
+Goal bullets stand; the flag is `schedulingEnabled` (both shapes).
+
+**Non-Goals** (replaces "No anonymous bookings; a session is required" and "No numeric per-service pooled
+capacity"): no account and no session are required; link tokens replace them. Pooled capacity is in scope as a
+*seat in a group run* (`docs/slices/sched-1.md` § 4.3); per-service pooled capacity without runs stays out. Calendar
+sync stays out (SCHED-CALENDAR = A: AMODX holds the calendar; staff subscribe to a read-only feed).
+
+**Capacity model**: an appointment reserves one named resource (unchanged), is re-checked against the offered slots
+at write time, and is guarded by the resource-day container `RESDAY#<resourceId>#<utcDate>` with a version
+(SCHED-SLOT-GUARD = B), which replaces `SLOT#<resourceId>#<startIso>`: one lock per start does not stop overlapping
+bookings of different durations. A group seat is guarded by the seat map and version on `RUN#<courseId>#<runId>`.
+"Any available" stays discover-then-conditionally-write. The booking intent stays, with the replay rules of
+`sched-1.md` § 7.2.
+
+**Table name and keys**: the "appointments-private table" is the **scheduling-private table**;
+`SCHEDULING_TABLE_NAME`; items and access patterns as `docs/slices/sched-1.md` § 6. `APPOINTMENT#`,
+`APPTCUSTOMER#`, `APPTDATE#`, `SLOT#` are not used. Support module `backend/src/lib/scheduling-db.ts` (was
+`appointments-db.ts`).
+
+**Status values**: held, confirmed, cancelled; "expired" and "past" are derived. The admin status update
+"completed" is withdrawn (no reader).
+
+**Availability**: weekly rules per resource are the defaults; an override of one local date per resource
+(`dayOff`, or `dayHours` with its own windows) replaces the defaults of that date; nothing is materialized per week;
+a visitor books a slot at most `scheduling.bookingHorizonWeeks` ahead (default 8; seats in group runs and admin
+writes are not limited); the admin edits days, ranges and copies of a week in a week planner and gets a weekly mail
+on the tenant's local Sunday (`sched-1.md` § 5.5, § 11.4, § 23). There is no separate closed-time entity.
+
+**Notifications and Audit** (replaces the first bullet "Lifecycle events … call `publishAudit()`"): a lifecycle
+event of a booking (created, confirmed, cancelled, moved) appends an entry to the booking's `history` in the private
+table, in the same conditional write as the change (at most 50 entries, oldest dropped); it publishes no main-table
+audit event. Main-table audit (`publishAudit`) stays for writes with no customer data (settings, services,
+resources, availability and day edits, courses, runs, templates) and for erasure (two counts only); no scheduling
+audit event carries `ip` (SCHED-AUDIT-PII = C; `sched-1.md` § 6.5). The status update "completed" is withdrawn
+(**Status values**, above). The SES template bullet stands, with the keys of `sched-1.md` § 11.1.
+
+**Slices**: S1-S7 are replaced by `sched-1a` … `sched-1i` (`docs/slices/sched-1.md` § 17). The open items
+"reschedule semantics", "timezone source" and "slot granularity" are decided in `sched-1.md` § 15.
+
+**What this plan keeps unchanged** (`sched-1.md` § 16.2): the problem statement; tenant isolation; the private
+table outside renderer IAM; derived availability DTOs only; the kernel/persistence split with injected clock and
+timezone; UTC instants in storage; the two-step "any available"; the booking intent; the flag default false with
+route-specific enforcement; the dormant `CUSTOMER` branch; no anonymous-bypass paths; the migration discipline for
+prototypes. **Changed** by SCHED-AUDIT-PII = C: "audit on every lifecycle event" becomes "a history entry on every
+lifecycle event, in the private table" (Notifications and Audit, above).
+
 ## Status
 
 - PLANNED
