@@ -594,6 +594,34 @@ their own e2e evidence.
 
 `security-audit.yml` is unaffected: it already used `npm ci` and only installs, never builds.
 
+### Orphan and archived `TRANSLATION#` membership items are never removed
+**Found:** `lang-1` specification § 6.1, § 15 (carried by the operator from `lang-1a`); entered by `lang-1c`, the first
+reader (2026-11-22). **Priority:** low (inert data; a read cost, not a wrong output).
+
+A membership item `PK = TENANT#<id>, SK = TRANSLATION#<key>#<nodeId>` (`docs/database-patterns.md` § Translation Sets)
+can outlive its truth: the page was archived (there is no `DELETE /content`; archiving is a `PUT` with
+`status: "Archived"`, which writes no membership item), the page item is gone, or the page now holds another key or
+none (for example a whole-item write by the WordPress importer that lost a race against a link, § 6.3). Nothing
+removes such an item.
+
+**What the reader does when it meets one** (the rule is in `renderer/src/lib/dynamo.ts`, the membership rule of § 6.2:
+an item counts only when `CONTENT#<nodeId>#LATEST` is `Published`, its `slug` is a string, and it holds `<key>` now):
+it skips the item — no alternate in the head, none in the sitemap, no write. Bound tests: rows
+`lang1c-hreflang-member-invalid` (an Archived and a Draft member, an item whose page is missing, an SK without a node
+id) and `lang1c-member-not-owner` (an item whose page holds another key, or none) in
+`renderer/test/serving-contract/contract.test.mjs`; unit cases of the same names in
+`renderer/test/unit/lang-1c-membership.test.ts`. The admin editor applies the same rule (`hasTranslationItem`,
+`lang-1a`); the backend's C3 check counts Draft and Archived members on purpose (they can be published again).
+
+**Cost of leaving it:** each stale item of a set costs one `GetItem` on every head render of that set's pages (the
+render reads the set's items, then each member's LATEST). In the sitemap, stale items increase membership-query volume
+but cause no per-item GetItem; the join runs in memory. Stored pages are re-rendered only after a purge, so the cost
+is per origin render, not per visitor.
+
+**Trigger for a cleanup:** a set whose stale items outnumber its members on a live site, or a measured render cost.
+A cleanup would be a writer that deletes `TRANSLATION#<key>#<nodeId>` when it archives the page or removes its key —
+a new write in the content handlers, with its own condition on the key, to be specified first.
+
 ## Low Priority
 
 ### RecaptchaConfigSchema.enabled field is deprecated

@@ -1903,3 +1903,220 @@ serving runs preceded the `bundle.test.mjs` change; `test:serving` does not load
 - NOT RUN: F-LANG-TILDE on production data (the operator has no read access to production; the human checks the site
   list before the production deploy). A stored-page (`x-cache: Hit`) check on a wired domain: no such staging tenant.
 - Next: `lang-1c`.
+
+## Appendix G. Build record — `lang-1c` (builder, 2026-11-22, base `d940fc1`)
+
+Status: built in the worktree, not committed, waiting for review. Maturity: PROTOTYPE. Every file of § 12 `lang-1c` was read
+again at `d940fc1` before use. The footer links are rendered by `renderer/src/app/[siteId]/layout.tsx` (`linksColumn`, OBSERVED),
+a path of the allocation, so no footer component was touched.
+
+**Suite at HEAD (EXECUTED, clean tree, after `npm run build` 0).** `npm run test:serving` 152 / 152; `npm run test:serving-bundle`
+60 / 60; renderer `npm test` 876; backend `npm run test:unit` 2059 + 1 skipped. Row names: relay directory `evidence/head-names.txt`.
+
+**Changed paths.** Renderer: `src/lib/dynamo.ts` (the membership rule and reads), `src/components/SitePage.tsx` (head),
+`src/app/[siteId]/sitemap.xml/route.ts`, `src/app/[siteId]/layout.tsx` (menu, footer, switch prop), `src/components/Navbar.tsx`
+(switch); `test/serving-contract/{contract.test.mjs,ddb-stub.mjs,fixtures.mjs,README.md}`, `test/serving-contract/lang-1c-sitemap-before.json`
+(new), `test/unit/lang-1c-{membership,switch-client}.test.ts` (new); `ARCHITECTURE.md`. Backend: `src/content/{create,update}.ts`,
+`test/unit/lang-1c-purge.test.ts` (new), `ARCHITECTURE.md`. Docs: `docs/caching-architecture.md`, `docs/TECH-DEBT.md`, this
+appendix. No infra, no dependency, no folder under `renderer/src/app/`, no change in `renderer/middleware.ts`,
+`renderer/src/lib/site-segment.ts` or the booking tree.
+
+**Output by case of the translation set (the spec's answer; bound tests).**
+
+| Case | Head of the page (§ 8.4) | Sitemap (§ 8.5) | Tests |
+|---|---|---|---|
+| no set (no key), any language | today's head, no `hreflang` | no `xhtml:link` | `lang1c-no-set`, identity rows |
+| key `""` or not a string | treated as absent, no read | no link | `lang1c-key-malformed` (serving + unit) |
+| every member Published | one link per member, default first then `languages`; `x-default` = the default member | the same lines on each member's `<url>` | `lang1c-hreflang`, `lang1c-sitemap` |
+| a member Draft or Archived | that member left out | left out | `lang1c-hreflang-member-invalid` |
+| an item whose page is missing; an SK without a node id | skipped | skipped | `lang1c-hreflang-member-invalid` |
+| an item whose page holds another key or none | skipped | skipped | `lang1c-member-not-owner` |
+| a page that holds the key without its item | absent from its siblings' heads | no link, listed nowhere | `lang1c-set-missing-item` |
+| two members in one language | that language left out (and `x-default` when it is the default) | the same | `lang1c-same-language-pair`, `lang1c-default-subtag-listed` |
+| a member in a language no longer listed | derives the default language → collides with the default member → neither listed, no `x-default`; re-added → the earlier alternates; no write | the same | `lang1c-language-removed`, `lang1c-language-readded` |
+| the default home member (`homePageSlug`) | advertised at `/` (Next writes `https://<domain>`, as today's canonical of `/`) | `https://<domain>/` | `lang1c-hreflang-home` |
+| fewer than two listed | today's head | no link | unit `listedAlternates` |
+| more items than one query page | every page read | every page read | `lang1c-pagination` (stub `pageQueries`) |
+
+**Reads added (EXECUTED, `renderer/test/unit/lang-1c-membership.test.ts`, every command the real code sends counted).**
+One-language tenant: page render 0 (tenant, route, page — as before; also for a page that holds a key); sitemap 0 (the same
+two queries; one more projected attribute). Two-language tenant: a content page in a set of `m` members: 1 Query per 1 MB page
+of membership items + `m` GetItem; a page in no set: 0; the sitemap: 1 Query per 1 MB page, no GetItem. No scan.
+
+**Rows (EXECUTED, final tree).** Serving (`next`): the 19 `lang1c-*` rows of § 11 (each a test named by its row id) —
+`lang1c-hreflang`, `-hreflang-home`, `-hreflang-member-invalid`, `-same-language-pair`, `-set-missing-item`, `-member-not-owner`,
+`-no-set`, `-key-malformed`, `-pagination`, `-default-subtag-listed`, `-language-removed`, `-language-readded`, `-sitemap`,
+`-sitemap-identity` (every one of the 59 fixture tenants of `d940fc1` answers `/sitemap.xml` with the bytes captured from a
+build of `d940fc1` in a throwaway worktree, headers included), `-menu`, `-menu-fallback`, `-menu-malformed-entries`, `-switch`,
+`-switch-identity`. Renderer unit: `lang-1c-membership.test.ts` 19 (the rule, the conditions, the reads, the read counts, XML
+escaping), `lang-1c-switch-client.test.ts` 5 (jsdom: the head's alternates replace the homes, read again when the head changes,
+the preview form, no switch and no observer without the prop). Backend unit: `L1C-PURGE-SIBLINGS-SITEMAP` ×12
+(`lang-1c-purge.test.ts`: keyless edit, rename and create → today's targets and no set read; a malformed key → today's; content
+edit, rename, publish, archive, join, join on create, leave, move → siblings + `/sitemap.xml`; reads after the write strongly
+consistent; a failed set read → 200, own slug + `/sitemap.xml`; restore and import still wrapped by
+`withInvalidation(…, purgeStoredPagesOfRequestTenant)`). Mutation checks (EXECUTED, restored byte for byte): same-language rule
+removed → 4 unit tests fail; membership condition 3 removed → 3; the purge ignores the read key → 3; the home guard ignores the
+language → 1.
+
+**Gates (EXECUTED on the final tree, exit codes read bare).** `npm run build` 0; `npm run typecheck` 0; `packages/shared` `npm test`
+0 (601); `renderer` `npm test` 0 (900 = 876 + 24); `tools/mcp-server` `npm test` 0 (17, route coverage PASS; no route added);
+`backend` `npm run test:unit` 0 (2071 + 1 skipped = 2059 + 12); `admin` `npm run test:unit` 0 (441, unchanged).
+`cd renderer && npm run test:serving` five consecutive runs: **171 / 171** each, exit 0 (wall 22.1 / 21.9 / 21.9 / 20.9 / 19.7 s);
+each run holds all 152 row names of `d940fc1`, passing, plus the 19 `lang1c-*` rows. `npm run test:serving-bundle` 0: 60 / 60.
+`git diff --check` 0. NOT RUN: `cd backend && npm test` (forbidden), staging, production, any AWS call.
+
+**One-language tenants: before = after.** No membership read, no `hreflang`, no `x-default`, no alternate, no switch, the same
+menu and footer values, the same sitemap bytes. Proof: every byte-identity row of `d940fc1` unchanged (`cm1-identity-*`,
+`loc1-*`, `loc1e-*`, `cq1-*`, `ct1-*`, `sl1*`, `hc1-*`, `bpf1-*`, `cc1-*`, `sched1g-preserve`), `lang1b-one-language-identity`,
+`lang1c-sitemap-identity`, `lang1c-switch-identity`, and the read counts above.
+
+**Finding F-LANG1C-CHUNK-SPLIT (new; OBSERVED on Next 16.4.6 / Turbopack; mitigated, not closed).** The first form of the switch
+turned 11 identity rows red (first serving run: 158 / 170) with no visible change: every page of every tenant had one more
+`<script src>` — a 250-byte async-loader chunk split out of the root layout's own 31 KB client chunk. The ratified masks do
+not cover the number of these scripts (§ 7.4 rule 2: no new allowance). Measured one variable at a time in a throwaway worktree
+at `d940fc1`: Turbopack splits that chunk at a size threshold measured BEFORE minification (comments count) — HEAD's `Navbar.tsx`
++ 1 500 characters → 2 chunks, + 2 000 → 3; a two-argument `new URL(…)` and long doc comments each crossed it. The final
+`Navbar.tsx` keeps short comments (the explanation is in `renderer/ARCHITECTURE.md` § *Languages in the page* and in the
+server-side layout) and no `new URL`: 2 chunks, and 400–800 characters of room remain. Any later client growth of the
+layout's components can cross the threshold and turn the identity rows red without a defect. Proposed follow-up for the human
+(not built; outside this allocation): either a ruled comparator rule for the layout's chunk-script count, or a row that
+reports the remaining margin.
+
+**Differences from the specification (local decisions, recorded).**
+1. `getPublishedContent` takes the node id from the key `CONTENT#<nodeId>#LATEST` (the key § 6.2 names) instead of projecting
+   a `nodeId` attribute; `translationKey` is projected as specified. Each writer that was read writes the same id in both places
+   (INFERRED from `content/create.ts`, `import/wordpress.ts`, `tenant/create.ts`; no stored data checked).
+2. § 8.4 takes "the page's set": a page that holds the key but is not listed (a same-language member, a page without its item,
+   a Draft on preview) still carries the set's listed alternates in its head; its sitemap `<url>` carries none (§ 8.5 "each
+   `<url>` of a listed member"). Applied literally; logged by rows `lang1c-same-language-pair` and `lang1c-set-missing-item`.
+   The alternative (alternates only on a listed member's head) is a one-line change if the reviewer prefers it.
+3. The switch is rendered twice (the desktop bar and the mobile bar, which are both in the server HTML) as plain `<a>` links (a
+   language change loads the document), each `href` through `getUrl` without a trailing slash (`/_site/<id>`, the form `<Link>`
+   gives the menu); the client reads the head with a `MutationObserver`, so a metadata change after a client navigation is seen.
+4. The purge's set reads (§ 9.3) run after the write, strongly consistent; a failed read is logged and the siblings are skipped
+   (the same call's whole-tenant stored-page purge and the bulk `/*` still cover them), `/sitemap.xml` is still purged.
+5. The renderer's `isTranslationKey` and the backend's `isSetKey` state one rule (a key is a non-empty string) in two packages;
+   `packages/shared` is outside this allocation.
+6. Edge refresh by the bulk `/*` (≤ ~16 min), not by the fast lane: the address `/` of a home member (as for any home-page edit
+   today) and a page that holds the key without its item (no read can find it without a scan).
+
+**Abstractions (one line each).** The membership rule in `lib/dynamo.ts` (`parseTranslationSk`, `passesMembership`,
+`listedAlternates`, `sitemapAlternates`, `getTranslationSetMembers`, `getTranslationItems`) — users: the head (`SitePage`) and
+the sitemap route — no variation axis, one rule at two sites (§ 14 "one membership rule") — rejected: a copy per reader.
+`setPurgeSlugs` + `keyAfter` (`content/update.ts`) — users: create and update — exhaustive switch on `TranslationPlan` (variants
+fixed) — rejected: the rule written twice. `LanguageSwitchLink` — the DTO from the server layout to the client Navbar. Stub
+control `pageQueries` — user: row `lang1c-pagination` — a test seam the fixture sizes cannot reach.
+
+**Debt entry.** `docs/TECH-DEBT.md` § *Orphan and archived `TRANSLATION#` membership items are never removed*: the reader skips
+them (no alternate, no write), bound to rows `lang1c-hreflang-member-invalid` and `lang1c-member-not-owner`.
+
+**Staging (operator; NOT RUN by the builder; a staging TEST tenant only, never a live site).** Deploy order (§ 12): backend
+(the sibling and sitemap purge), then renderer. `API`, `TOKEN`, `T` as in Appendix E; `P` = the preview host (no staging tenant
+has a wired domain, Appendix F closeout).
+1. `PUT $API/settings` `{"languages":["ro"],"navLinksByLang":{"ro":[{"label":"Despre RO","href":"/ro/despre-lang"}]},
+   "footerLinksByLang":{"ro":[{"label":"Contact RO","href":"/ro/contact-lang"}]}}` → 200.
+2. `POST $API/content` `{"title":"About LANG","slug":"/about-lang","status":"Published"}` → nodeId `E`; `POST $API/content`
+   `{"title":"Despre LANG","slug":"/ro/despre-lang","status":"Published","translationOf":"E"}` → 201.
+3. Head of the pair: `curl -s https://$P/_site/$T/about-lang | grep -o '<link rel="alternate" hrefLang="[^"]*" href="[^"]*"/>'`
+   → `en` `https://<tenant domain>/about-lang`, `ro` `…/ro/despre-lang`, `x-default` `…/about-lang`; the same three on
+   `/_site/$T/ro/despre-lang`. A page in no set and the en-US / ro-RO staging sites: no such line.
+4. Sitemap: `curl -s https://$P/_site/$T/sitemap.xml` (first check that this preview address reaches the sitemap route: status 200,
+   `application/xml` — NOT RUN by the builder) → `xmlns:xhtml` and three `xhtml:link` lines on each of the two `<url>`.
+5. Menu per language: `/_site/$T/ro/despre-lang` shows "Despre RO" in the menu and "Contact RO" in the footer; `/_site/$T/about-lang`
+   shows the default lists.
+6. The switch in headless Chromium (§ 8.6; as `locale-1e` § 5): open `https://$P/_site/$T/ro/despre-lang`; after load,
+   `document.querySelector('ul[data-language-switch] a[hreflang="en"]').getAttribute("href")` = `/_site/$T/about-lang` (the
+   alternate, not the home), `…a[hreflang="ro"]` has `aria-current="true"`; click the `en` link → the URL is `/_site/$T/about-lang`
+   and `document.documentElement.lang` is `en`. On a page in no set the `en` link stays `/_site/$T`.
+7. Purge: `PUT $API/content/E` `{"title":"About LANG 2"}` → 200; in the debounce function's log the fast-lane paths hold
+   `/about-lang`, `/ro/despre-lang` and `/sitemap.xml`.
+8. Clean up: both pages `{"translationOf":null}` then `{"status":"Archived"}`; `PUT $API/settings`
+   `{"languages":[],"navLinksByLang":{},"footerLinksByLang":{}}`.
+9. The en-US and ro-RO staging sites: the `locale-1e` identity proof (51 pages) and their `/sitemap.xml` unchanged.
+
+**Rollback (§ 12).** Redeploy the previous renderer (and backend), then GO LIVE NOW. No data was written by this slice's code
+except purge calls; nothing to repair.
+
+### `lang-1c` — revision 1 (builder, 2026-11-22; review-0 findings R-LANG1C-01, -02)
+
+**R-LANG1C-01, class: a public address that serves a set member under a path other than its slug.** § 9.3 asks the purge to
+name every current address of the affected sets; the first form named slugs only, and the root `/` renders the page named
+by `homePageSlug` (`SitePage`), whose head carries the set's alternates. Rule (one, in `setPurgeSlugs`,
+`backend/src/content/update.ts`): a keyed write purges every public address whose stored copy carries an affected set's
+alternates — each other member's slug, `/` when `homePageSlug` equals the edited page's slug as read or as written or a
+remaining member's slug, and `/sitemap.xml`. `/` is the only such alias (an old slug answers a redirect, not the page). Cost:
+one more GetItem (the tenant's `homePageSlug`), keyed writes only; a failed read is logged and `/` is skipped (the bulk `/*`
+covers it). A keyless page, the home page included, purges exactly as before. Tests (`L1C-PURGE-SIBLINGS-SITEMAP`, 8 added):
+a sibling is the home, the edited page is the home, rename of the home member, publication change of a sibling of the home,
+leave from the home's set, create/join into the home's set, the home outside the affected sets (no `/`) and a keyless home edit
+(today's targets, no tenant read), a failed `homePageSlug` read. Mutation (EXECUTED, restored): the edited page's own slugs
+left out of the rule → 2 tests fail. This replaces difference 6's first item ("the address `/` of a home member" refreshed by
+the bulk `/*`); its second item (a page that holds the key without its item) stays.
+
+**R-LANG1C-02, class: a cost stated per listed page where the reader pays per stored item.** The head reads the set's
+membership items and then one GetItem per PARSEABLE item before it applies conditions 2 and 3, so stale items cost reads
+too, and "no alternates" is not "no reads". Corrected statement (replaces "`m` GetItem" in *Reads added* above): a content
+page that holds a set key costs 1 Query per 1 MB page of the set's membership items + one GetItem per parseable item, stale
+items included; a page alone in its set pays 1 Query + 1 GetItem and gets today's head; the sitemap pays 1 Query per 1 MB page
+of the tenant's items (stale items add to its volume) and no GetItem. Tests added (`renderer/test/unit/lang-1c-membership.test.ts`):
+the stale-item cost (2 listed members, 6 GetItem: Archived, Draft, another key and a missing page each read; the SK without a
+node id not read) and the keyed singleton (the reads run, the object is today's). The `SitePage.tsx` comment and
+`renderer/ARCHITECTURE.md` state the same; `docs/caching-architecture.md` and `backend/ARCHITECTURE.md` state the purge rule.
+
+**Staging, step 7 (added):** on the test tenant set `homePageSlug` to `/about-lang` (`PUT $API/settings`), save
+`PUT $API/content/<R>` `{"title":"Despre LANG 2"}` → the debounce function's fast-lane paths hold `/`, `/about-lang`,
+`/sitemap.xml` (NOT RUN by the builder). Clean up `homePageSlug` with the rest.
+
+**Gates of revision 1 (EXECUTED on the final tree, exit codes read bare).** `npm run build` 0; `npm run typecheck` 0;
+`packages/shared` 601; `renderer` `npm test` 902 (= 876 + 26); `tools/mcp-server` 17 (route coverage PASS); `backend`
+`npm run test:unit` 2079 + 1 skipped (= 2059 + 20); `admin` `npm run test:unit` 441. `npm run test:serving` five runs:
+**171 / 171** each, exit 0 (wall 18.9 / 19.0 / 19.1 / 19.0 / 19.2 s), each holding all 152 row names of `d940fc1` plus the 19
+`lang1c-*` rows. `npm run test:serving-bundle` 60 / 60. `git diff --check` 0. `Navbar.tsx` unchanged in this revision (the chunk
+margin of F-LANG1C-CHUNK-SPLIT is unchanged). Logs: relay directory `evidence/rev1/`.
+
+### `lang-1c` — revision 2 (builder, 2026-11-22; review-1, the rest of R-LANG1C-02)
+
+Review-1 closed R-LANG1C-01 and the code and tests of R-LANG1C-02. **Class closed here: a cost statement that omits the
+stale-item query volume of the sitemap.** A search of the allocated docs and of this slice's source comments found two
+instances: the debt entry in `docs/TECH-DEBT.md` ("nothing in the sitemap") and the rule comment in
+`renderer/src/lib/dynamo.ts` ("the sitemap join costs nothing per item"). Both now say: in the sitemap, stale items increase
+membership-query volume but cause no per-item GetItem; the join runs in memory. The first line of *Reads added* above
+("`m` GetItem") stays as written and is replaced by revision 1. No behaviour change. Gates of revision 2: relay directory
+`evidence/rev2/`.
+
+### `lang-1c` — operator closeout (2026-11-22): shipped to `main` and to staging
+
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate invocations).
+  Findings R-LANG1C-01 (the public home address `/` in the purge targets) and R-LANG1C-02 (read-cost statements) closed.
+- Operator gates, all exit 0: build, typecheck, shared, plugins, renderer unit, serving suite 171 / 171 on five
+  consecutive runs (no check name of `d940fc1` is missing in any run), serving bundle 60 / 60, admin unit, backend unit,
+  infra, MCP, `git diff --check`; no change under `infra/`, in the middleware, in `site-segment.ts` or in the booking tree.
+- Staging (operator, OBSERVED): diff read first, as its own step — code packages only (content create and update
+  functions, the renderer functions and assets, the admin config stamp), no resource added or removed, no IAM change;
+  then deployed. Tenant `cm1-content`, preview address:
+  - Head of the pair, on both pages: `en …/about-…`, `ro …/ro/despre-…`, `x-default …/about-…` with the tenant's public
+    domain; a page in no set: no alternate link.
+  - Sitemap (read through `/tenant/<id>/sitemap.xml`): the `xhtml` namespace, three alternates on each page of the pair,
+    none on the page in no set, no `~` and no preview prefix in any address.
+  - Menu and footer: the Romanian page shows the Romanian menu and footer links; the English page does not.
+  - Switch in headless Chromium: on the Romanian page the `en` link is the translation and `ro` is marked current; a
+    click on `en` lands on the English page with document language `en`; on a page in no set the links go to the
+    language home pages. Screenshots: `~/Downloads/amodx-to-verify/10-…png`, `11-…png`.
+  - Purge: an edit of the English page → the debounce function log (`amodx-debounce-flush-staging`)
+    `[FastLane] Invalidated 3 path(s): /about-…, /ro/despre-…, /sitemap.xml`.
+  - The 51 reference pages of the staging sites are identical to the capture after `lang-1b` (status, headers, `lang`,
+    word multiset). Probe pages, routes and link items removed; `languages` is `[]`.
+- NOT RUN on staging: the added step 7 (a set member that is the configured home page → `/` in the purge targets);
+  it is covered by the eight handler tests of revision 1.
+- Findings of the staging walk, neither introduced by `lang-1b` or `lang-1c`:
+  - **F-HYDRATION-418.** Every page load of a tenant page raises one uncaught `Minified React error #418` (a hydration
+    mismatch) in the browser — one-language sites too, on a tenant domain and on the preview address. OBSERVED on
+    staging and in the local `next start` harness at HEAD; OBSERVED also in the local harness built from `47ea18c`
+    (the commit before `lang-1b`), so it predates this track. The page is still shown (React renders it again on the
+    client); the cost is a second render in the browser and a possible flash. Cause not found yet: `next dev` on the
+    preview address did not raise it. Own slice: `hydration-1` (root cause first).
+  - **F-PREVIEW-SITEMAP-EDGE.** `/_site/<id>/sitemap.xml` and `/tenant/<id>/sitemap.xml` are kept at the edge for one
+    hour (`s-maxage=3600`) and the fast-lane purge names `/sitemap.xml` only, so the sitemap of a tenant WITHOUT a
+    domain stays up to one hour behind a page change. A tenant on its own domain is not affected. (The first form of
+    the operator's sitemap check read a stale edge copy for this reason.)
+- Next: `lang-1d` (German and French texts).

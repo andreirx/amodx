@@ -46,7 +46,7 @@ import {
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
     SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS, SCHEDLABELS1, SCHEDLABELS1_TEXTS,
-    LANG1B, LANG1B_OVERRIDES, LANG1B_PAGES,
+    LANG1B, LANG1B_OVERRIDES, LANG1B_PAGES, LANG1C, LANG1C_MENUS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -4625,6 +4625,305 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const keys = await keysUnder(A.host);
             assert.ok(keys.includes(`${A.host}/ro/x`) && keys.every((k) => !k.includes("~")), `stored: ${keys.join(", ")}`);
             console.log(`  (lang1b-langs-malformed) /, /about, /ro/x byte-equal to the one-language twin; stored ${keys.join(", ")}`);
+        });
+
+        // ── ROWS (lang1c-*) — LANG-1C (docs/slices/lang-1.md § 6.2, § 8.3–§ 8.6, § 11): `hreflang` + `x-default` in the head,
+        // sitemap alternates, the menu and footer per language, the language switch. Tenants: `LANG1C` (fixtures.mjs). A
+        // member of a set = a `TRANSLATION#<key>#<node>` item + a Published LATEST that holds `<key>` now (§ 6.2); members
+        // whose `hreflang` value two of them hold are left out; fewer than two listed → no alternates (today's head).
+        const C = LANG1C.multi;
+        /** The `<link rel="alternate" hreflang=…>` elements of a document: `[hreflang, href]` in document order. */
+        const hreflangLinksOf = (body) => [...body.matchAll(/<link\b[^>]*>/gi)].map((m) => m[0])
+            .filter((tag) => /\brel="alternate"/i.test(tag) && /\bhreflang="/i.test(tag))
+            .map((tag) => [/\bhreflang="([^"]*)"/i.exec(tag)[1], /\bhref="([^"]*)"/i.exec(tag)[1]]);
+        /** An alternate as the head writes it: Next writes the URL of `/` as its origin (as today's canonical of `/`). */
+        const headUrl = (host, p) => (p === "/" ? `https://${host}` : `https://${host}${p}`);
+        const headPairs = (host, pairs) => pairs.map(([l, p]) => [l, headUrl(host, p)]);
+        /** The `<url>` element whose `<loc>` is `loc`, or undefined; and its `<xhtml:link>` lines as `[hreflang, href]`. */
+        const sitemapUrl = (xml, loc) => xml.split("<url>").slice(1).map((u) => u.split("</url>")[0]).find((u) => u.includes(`<loc>${loc}</loc>`));
+        const sitemapLinksOf = (urlXml) => [...urlXml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]*)" href="([^"]*)"\/>/g)].map((m) => [m[1], m[2]]);
+        const sitemapPairs = (host, pairs) => pairs.map(([l, p]) => [l, `https://${host}${p}`]);
+        /** The language-switch lists of a document (desktop and mobile copies): each a list of its `<a>` elements. */
+        const switchListsOf = (body) => [...body.matchAll(/<ul data-language-switch=""[^>]*>([\s\S]*?)<\/ul>/g)].map((m) =>
+            [...m[1].matchAll(/<a ([^>]*)>([^<]*)<\/a>/g)].map(([, attrs, label]) => ({
+                href: /\bhref="([^"]*)"/.exec(attrs)?.[1], hreflang: /\bhrefLang="([^"]*)"/i.exec(attrs)?.[1],
+                lang: /\blang="([^"]*)"/.exec(attrs)?.[1], current: /\baria-current="true"/.test(attrs), label,
+            })));
+        /** The switch the spec describes (§ 8.6): default first, then `languages`; label = the language's own name. */
+        const ownName = (l) => new Intl.DisplayNames([l], { type: "language" }).of(l);
+        const SET_A = [["en", "/about"], ["ro", "/ro/despre"], ["de", "/de/uber"], ["x-default", "/about"]];
+
+        test("(lang1c-hreflang) a set whose members are all Published: each member's head lists every member (en, ro, de, in the tenant's order) and x-default = the default-language member; stored as before (MISS then HIT)", async () => {
+            for (const p of ["/about", "/ro/despre", "/de/uber"]) {
+                const first = await lAt(C.host, p);
+                const second = await lAt(C.host, p);
+                assert.equal(first.status, 200, p);
+                assert.match(first.header("cache-control"), new RegExp(S_MAXAGE), `${p}: cacheable`);
+                assert.equal(second.header("x-nextjs-cache"), "HIT", `${p}: then HIT`);
+                assert.deepEqual(hreflangLinksOf(first.body), headPairs(C.host, SET_A), `${p}: alternates`);
+                assert.deepEqual(hreflangLinksOf(second.body), hreflangLinksOf(first.body), `${p}: the stored copy holds them`);
+                assert.ok(first.body.includes(`<link rel="canonical" href="${headUrl(C.host, p)}"/>`), `${p}: the canonical stays the page's own address`);
+                assert.ok(hreflangLinksOf(first.body).every(([, href]) => !href.includes("~") && !href.includes("/_site/")), `${p}: public addresses only`);
+            }
+            console.log(`  (lang1c-hreflang) /about, /ro/despre, /de/uber: ${JSON.stringify(hreflangLinksOf((await lAt(C.host, "/about")).body))}`);
+        });
+
+        test("(lang1c-hreflang-home) the default-language member whose slug is homePageSlug is advertised at / (head and sitemap); a member under a listed prefix named by homePageSlug (a table edit) keeps its own slug", async () => {
+            const pairs = [["en", "/"], ["ro", "/ro/acasa"], ["x-default", "/"]];
+            for (const p of ["/home", "/ro/acasa", "/"]) {
+                const res = await lAt(C.host, p);
+                assert.equal(res.status, 200, p);
+                assert.deepEqual(hreflangLinksOf(res.body), headPairs(C.host, pairs), `${p}: alternates`);
+            }
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            const home = sitemapUrl(map, `https://${C.host}/home`);
+            assert.ok(home, "the sitemap lists /home at its slug (<loc> unchanged)");
+            assert.deepEqual(sitemapLinksOf(home), sitemapPairs(C.host, pairs), "sitemap: /home's alternates");
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/ro/acasa`)), sitemapPairs(C.host, pairs), "sitemap: /ro/acasa's alternates");
+            // Malformed half: `homePageSlug: "/ro/start"` (V6 refuses it at write; only a table edit stores it).
+            const H = LANG1C.homeEdit;
+            const editPairs = [["en", "/start"], ["ro", "/ro/start"], ["x-default", "/start"]];
+            for (const p of ["/start", "/ro/start"]) {
+                assert.deepEqual(hreflangLinksOf((await lAt(H.host, p)).body), headPairs(H.host, editPairs), `${H.host}${p}: alternates`);
+            }
+            const editMap = (await lAt(H.host, "/sitemap.xml")).body;
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(editMap, `https://${H.host}/ro/start`)), sitemapPairs(H.host, editPairs), "sitemap: the Romanian member at its own slug, never /");
+            assert.ok(!editMap.includes(`href="https://${H.host}/"`), "sitemap: no alternate at /");
+            console.log(`  (lang1c-hreflang-home) head ${JSON.stringify(headPairs(C.host, pairs))}; sitemap /home → ${JSON.stringify(sitemapLinksOf(home))}; homePageSlug under /ro → ${JSON.stringify(editPairs)}`);
+        });
+
+        test("(lang1c-hreflang-member-invalid) an Archived member, a Draft member, an item whose page is missing and an SK without a node id are skipped: /team lists en + ro only, in the head and the sitemap", async () => {
+            const pairs = [["en", "/team"], ["ro", "/ro/echipa"], ["x-default", "/team"]];
+            for (const p of ["/team", "/ro/echipa"]) assert.deepEqual(hreflangLinksOf((await lAt(C.host, p)).body), headPairs(C.host, pairs), `${p}: alternates`);
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/team`)), sitemapPairs(C.host, pairs), "sitemap: /team");
+            assert.ok(!sitemapUrl(map, `https://${C.host}/de/team`) && !sitemapUrl(map, `https://${C.host}/fr/equipe`), "sitemap: the Archived and Draft pages are not listed (as before)");
+            assert.ok(!map.includes("/de/team\"") && !map.includes("/fr/equipe\"") && !map.includes("c-ghost"), "sitemap: no alternate to a skipped member");
+            console.log(`  (lang1c-hreflang-member-invalid) /team: ${JSON.stringify(pairs)} (de Archived, fr Draft, missing page, SK without node id skipped)`);
+        });
+
+        test("(lang1c-same-language-pair) two members derive ro: no ro entry in any member's head or sitemap entry; en and de are listed with x-default", async () => {
+            const pairs = [["en", "/pair"], ["de", "/de/paar"], ["x-default", "/pair"]];
+            for (const p of ["/pair", "/de/paar", "/ro/pereche-1", "/ro/pereche-2"]) {
+                assert.deepEqual(hreflangLinksOf((await lAt(C.host, p)).body), headPairs(C.host, pairs), `${p}: alternates (§ 8.4: the set's listed members)`);
+            }
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/pair`)), sitemapPairs(C.host, pairs), "sitemap: /pair");
+            for (const p of ["/ro/pereche-1", "/ro/pereche-2"]) assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}${p}`)), [], `sitemap: ${p} is not a listed member`);
+            console.log(`  (lang1c-same-language-pair) ${JSON.stringify(pairs)}; the two ro members carry the set's listed alternates in their head (§ 8.4) and none in the sitemap (§ 8.5)`);
+        });
+
+        test("(lang1c-set-missing-item) a page that holds the key without its membership item is listed nowhere: not in its siblings' head, not in the sitemap", async () => {
+            const pairs = [["en", "/m-en"], ["ro", "/ro/m-ro"], ["x-default", "/m-en"]];
+            for (const p of ["/m-en", "/ro/m-ro"]) assert.deepEqual(hreflangLinksOf((await lAt(C.host, p)).body), headPairs(C.host, pairs), `${p}: alternates without /de/m-de`);
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/m-en`)), sitemapPairs(C.host, pairs), "sitemap: /m-en");
+            const own = sitemapUrl(map, `https://${C.host}/de/m-de`);
+            assert.ok(own, "sitemap: /de/m-de is still a page of the sitemap");
+            assert.deepEqual(sitemapLinksOf(own), [], "sitemap: /de/m-de carries no alternate");
+            assert.ok(!map.includes(`href="https://${C.host}/de/m-de"`), "sitemap: no alternate points to /de/m-de");
+            const ownHead = hreflangLinksOf((await lAt(C.host, "/de/m-de")).body);
+            console.log(`  (lang1c-set-missing-item) siblings: ${JSON.stringify(pairs)}; /de/m-de's own head (it holds the key, § 8.4): ${JSON.stringify(ownHead)}`);
+        });
+
+        test("(lang1c-member-not-owner) an item whose page now holds another key, or no key, is skipped in the head and the sitemap", async () => {
+            const pairs = [["en", "/o-en"], ["ro", "/ro/o-ro"], ["x-default", "/o-en"]];
+            for (const p of ["/o-en", "/ro/o-ro"]) assert.deepEqual(hreflangLinksOf((await lAt(C.host, p)).body), headPairs(C.host, pairs), `${p}: alternates`);
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/o-en`)), sitemapPairs(C.host, pairs), "sitemap: /o-en");
+            for (const p of ["/de/o-other", "/de/o-none"]) {
+                assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}${p}`)), [], `sitemap: ${p}`);
+                assert.ok(!map.includes(`href="https://${C.host}${p}"`), `sitemap: no alternate points to ${p}`);
+            }
+            assert.deepEqual(hreflangLinksOf((await lAt(C.host, "/de/o-other")).body), [], "/de/o-other (set-other: no item) has no alternate");
+            assert.deepEqual(hreflangLinksOf((await lAt(C.host, "/de/o-none")).body), [], "/de/o-none (no key) has no alternate");
+            console.log(`  (lang1c-member-not-owner) ${JSON.stringify(pairs)}`);
+        });
+
+        test("(lang1c-no-set) a page in no set, in the default or an extra language: no hreflang link, the canonical as before", async () => {
+            for (const p of ["/plain", "/ro/simplu", "/fr/page"]) {
+                const res = await lAt(C.host, p);
+                assert.equal(res.status, 200, p);
+                assert.deepEqual(hreflangLinksOf(res.body), [], `${p}: no alternate`);
+                assert.ok(res.body.includes(`<link rel="canonical" href="${headUrl(C.host, p)}"/>`), `${p}: canonical`);
+            }
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            for (const p of ["/plain", "/ro/simplu"]) assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}${p}`)), [], `sitemap: ${p}`);
+            console.log("  (lang1c-no-set) /plain, /ro/simplu, /fr/page: no alternates");
+        });
+
+        test("(lang1c-key-malformed) a stored translationKey that is \"\" or a number is treated as absent: no hreflang link; an SK with an empty key is skipped by the sitemap", async () => {
+            for (const p of ["/km-empty", "/ro/km-number"]) {
+                const res = await lAt(C.host, p);
+                assert.equal(res.status, 200, p);
+                assert.deepEqual(hreflangLinksOf(res.body), [], `${p}: no alternate`);
+            }
+            const map = (await lAt(C.host, "/sitemap.xml")).body;
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/km-empty`)), [], "sitemap: /km-empty");
+            console.log("  (lang1c-key-malformed) /km-empty (\"\"), /ro/km-number (5): no alternates");
+        });
+
+        test("(lang1c-pagination) more membership items than one query page: the head and the sitemap read every page (stub pages TRANSLATION# queries one item at a time)", async () => {
+            const before = stub.stats().pagedResponses;
+            stub.pageQueries("TRANSLATION#", 1);
+            try {
+                const head = await lAt(C.host, "/about?lang1c-pagination=1");   // the twin: a fresh render
+                assert.equal(head.status, 200);
+                assert.deepEqual(hreflangLinksOf(head.body), headPairs(C.host, SET_A), "head: all three members over three pages");
+                const afterHead = stub.stats().pagedResponses;
+                assert.ok(afterHead - before >= 2, `head: the set's query was paged (${afterHead - before} responses with LastEvaluatedKey)`);
+                const map = (await lAt(C.host, "/sitemap.xml")).body;
+                assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/de/uber`)), sitemapPairs(C.host, SET_A), "sitemap: set-a over many pages");
+                assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${C.host}/team`)), sitemapPairs(C.host, [["en", "/team"], ["ro", "/ro/echipa"], ["x-default", "/team"]]), "sitemap: set-invalid over many pages");
+                const afterMap = stub.stats().pagedResponses;
+                assert.ok(afterMap - afterHead >= 10, `sitemap: the tenant's query was paged (${afterMap - afterHead} responses)`);
+                console.log(`  (lang1c-pagination) head ${afterHead - before} paged responses, sitemap ${afterMap - afterHead}; every member read`);
+            } finally {
+                stub.pageQueries(null);
+            }
+        });
+
+        test("(lang1c-default-subtag-listed) a stored list that names the default subtag (en; V3 refuses it at write): <html lang> of root pages stays en; /x and /en/x both hold hreflang en and are both left out, no x-default; ro and de are listed", async () => {
+            const E = LANG1C.enListed;
+            const pairs = [["ro", "/ro/x"], ["de", "/de/x"]];
+            for (const p of ["/x", "/en/x", "/ro/x", "/de/x"]) {
+                const res = await lAt(E.host, p);
+                assert.equal(res.status, 200, p);
+                assert.deepEqual(hreflangLinksOf(res.body), headPairs(E.host, pairs), `${p}: alternates`);
+            }
+            assert.equal(htmlLangOf((await lAt(E.host, "/x")).body), "en", "/x: <html lang> = the default subtag");
+            console.log(`  (lang1c-default-subtag-listed) ${JSON.stringify(pairs)}, no en, no x-default`);
+        });
+
+        // The language-list rows edit ONLY `LANG1C.change`'s tenant record (`putItem`, the admin's settings save); no page and
+        // no membership item is written. Each renders through the twin (a query string: no-store), so every request is a
+        // fresh render, and puts the record back in `finally`.
+        const G = LANG1C.change;
+        const changeTenant = ITEMS.find((i) => i.PK === "SYSTEM" && i.SK === `TENANT#${G.id}`);
+        const CHANGE_ALL = [["en", "/about"], ["ro", "/ro/about"], ["fr", "/fr/about"], ["de", "/de/about"], ["x-default", "/about"]];
+        const CHANGE_RO_REMOVED = [["fr", "/fr/about"], ["de", "/de/about"]];
+        const changeTwin = async (p, n) => lAt(G.host, `${p}?lang1c-change=${n}`);
+
+        test("(lang1c-language-removed) ro removed from the list (a settings edit; no page or item written): /ro/about derives the default language, so /about and /ro/about both hold en and neither is listed, no x-default; fr and de are listed, in the head and the sitemap", async () => {
+            assert.deepEqual(hreflangLinksOf((await changeTwin("/about", 1)).body), headPairs(G.host, CHANGE_ALL), "before: every member");
+            try {
+                stub.putItem({ ...changeTenant, languages: ["fr", "de"] });
+                for (const p of ["/about", "/ro/about", "/fr/about"]) assert.deepEqual(hreflangLinksOf((await changeTwin(p, 2)).body), headPairs(G.host, CHANGE_RO_REMOVED), `removed: ${p}`);
+                assert.equal(htmlLangOf((await changeTwin("/ro/about", 3)).body), "en", "removed: /ro/about renders in the default language");
+                const map = (await lAt(G.host, "/sitemap.xml")).body;
+                assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${G.host}/fr/about`)), sitemapPairs(G.host, CHANGE_RO_REMOVED), "removed: sitemap /fr/about");
+                for (const p of ["/about", "/ro/about"]) assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${G.host}${p}`)), [], `removed: sitemap ${p}`);
+            } finally {
+                stub.putItem(changeTenant);
+            }
+            console.log(`  (lang1c-language-removed) ${JSON.stringify(CHANGE_RO_REMOVED)}`);
+        });
+
+        test("(lang1c-language-readded) ro removed, then added again (settings edits only): the earlier alternates come back with no write, in the head and the sitemap", async () => {
+            try {
+                stub.putItem({ ...changeTenant, languages: ["fr", "de"] });
+                assert.deepEqual(hreflangLinksOf((await changeTwin("/about", 4)).body), headPairs(G.host, CHANGE_RO_REMOVED), "precondition: removed");
+                stub.putItem({ ...changeTenant, languages: ["ro", "fr", "de"] });
+                for (const p of ["/about", "/ro/about", "/de/about"]) assert.deepEqual(hreflangLinksOf((await changeTwin(p, 5)).body), headPairs(G.host, CHANGE_ALL), `re-added: ${p}`);
+                const map = (await lAt(G.host, "/sitemap.xml")).body;
+                assert.deepEqual(sitemapLinksOf(sitemapUrl(map, `https://${G.host}/ro/about`)), sitemapPairs(G.host, CHANGE_ALL), "re-added: sitemap /ro/about");
+            } finally {
+                stub.putItem(changeTenant);
+            }
+            console.log(`  (lang1c-language-readded) ${JSON.stringify(CHANGE_ALL)}`);
+        });
+
+        test("(lang1c-sitemap) a tenant with extra languages: <urlset> declares xmlns:xhtml; each listed member's <url> carries one xhtml:link per listed member + x-default; <loc> stays the slug; a page in no set has none", async () => {
+            const res = await lAt(C.host, "/sitemap.xml");
+            assert.equal(res.status, 200);
+            assert.match(res.body, /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9" xmlns:xhtml="http:\/\/www\.w3\.org\/1999\/xhtml">\n/, "the urlset declares the xhtml namespace");
+            for (const [, p] of SET_A.slice(0, 3)) {
+                const url = sitemapUrl(res.body, `https://${C.host}${p}`);
+                assert.ok(url, `${p}: listed at its slug`);
+                assert.deepEqual(sitemapLinksOf(url), sitemapPairs(C.host, SET_A), `${p}: alternates`);
+            }
+            assert.deepEqual(sitemapLinksOf(sitemapUrl(res.body, `https://${C.host}/plain`)), [], "/plain: none");
+            assert.ok(!res.body.includes("~") && !res.body.includes("/_site/") && !res.body.includes("%5F"), "public addresses only");
+            assert.equal(res.header("cache-control"), "public, s-maxage=3600, stale-while-revalidate=59", "the route's cache header as before");
+            const url = sitemapUrl(res.body, `https://${C.host}/about`);
+            console.log(`  (lang1c-sitemap) /about's <url>:${url.replace(/\n\s*/g, " ")}`);
+        });
+
+        test("(lang1c-sitemap-identity) every fixture tenant of d940fc1 (one-language tenants, and two-language tenants with no set) answers /sitemap.xml with the bytes captured before this slice", async () => {
+            const before = JSON.parse(await readFile(new URL("./lang-1c-sitemap-before.json", import.meta.url), "utf8"));
+            assert.ok(before.captures.length >= 50 && before.skipped.length === 0, "precondition: the capture covers the fixture tenants");
+            for (const c of before.captures) {
+                const res = await lAt(c.host, "/sitemap.xml");
+                assert.equal(res.status, 200, c.host);
+                assert.equal(res.body, c.body, `${c.host}: sitemap bytes`);
+                assert.equal(res.header("content-type"), c.contentType, `${c.host}: content-type`);
+                assert.equal(res.header("cache-control"), c.cacheControl, `${c.host}: cache-control`);
+            }
+            const multi = before.captures.find((c) => c.host === LANG1B.multi.host);
+            assert.ok(multi, "control: a tenant with languages and no set is in the capture");
+            console.log(`  (lang1c-sitemap-identity) ${before.captures.length} sitemaps byte-equal to the d940fc1 capture (incl. ${LANG1B.multi.host}, languages ["ro"], no set)`);
+        });
+
+        test("(lang1c-menu) a page in an extra language with its own lists: that language's menu (payload, children included) and footer links; the default language keeps navLinks / footerLinks", async () => {
+            const ro = await lAt(C.host, "/ro/despre");
+            assert.equal(ro.status, 200);
+            const roFlight = splitFlight(ro.body).flight;
+            assert.ok(roFlight.includes(JSON.stringify({ links: LANG1C_MENUS.navLinksByLang.ro }).slice(1, -1)), "ro: the Navbar's links prop is the ro list");
+            assert.ok(ro.body.includes(">LANG1C Nav Despre<") && !ro.body.includes(">LANG1C Nav About<"), "ro: the ro menu in the HTML");
+            assert.ok(ro.body.includes(">LANG1C Foot Contact RO<") && !ro.body.includes(">LANG1C Foot Contact<"), "ro: the ro footer links");
+            const en = await lAt(C.host, "/about");
+            assert.ok(splitFlight(en.body).flight.includes(JSON.stringify({ links: LANG1C_MENUS.navLinks }).slice(1, -1)), "en: navLinks");
+            assert.ok(en.body.includes(">LANG1C Nav About<") && en.body.includes(">LANG1C Foot Contact<") && !en.body.includes("LANG1C Nav Despre"), "en: the default lists");
+            console.log("  (lang1c-menu) /ro/despre: ro menu + ro footer; /about: navLinks + footerLinks");
+        });
+
+        test("(lang1c-menu-fallback) a page in an extra language with no stored list (fr; and de's footer): the default menu and footer", async () => {
+            const fr = await lAt(C.host, "/fr/page");
+            assert.equal(fr.status, 200);
+            assert.equal(htmlLangOf(fr.body), "fr", "fr page");
+            assert.ok(splitFlight(fr.body).flight.includes(JSON.stringify({ links: LANG1C_MENUS.navLinks }).slice(1, -1)), "fr: navLinks");
+            assert.ok(fr.body.includes(">LANG1C Foot Contact<"), "fr: footerLinks");
+            const de = await lAt(C.host, "/de/uber");
+            assert.ok(de.body.includes(">LANG1C Foot Contact<") && !de.body.includes("LANG1C Foot Contact RO"), "de (a menu list, no footer list): footerLinks");
+            console.log("  (lang1c-menu-fallback) /fr/page and /de/uber's footer: the default lists");
+        });
+
+        test("(lang1c-menu-malformed-entries) navLinksByLang.de = [null, {label: 1}, {label, href}] → one link, no error", async () => {
+            const de = await lAt(C.host, "/de/uber");
+            assert.equal(de.status, 200);
+            assert.ok(splitFlight(de.body).flight.includes(JSON.stringify({ links: [{ label: "LANG1C Startseite", href: "/de" }] }).slice(1, -1)), "de: exactly the one valid entry");
+            assert.ok(de.body.includes(">LANG1C Startseite<") && !de.body.includes(">LANG1C Nav About<"), "de: the one link in the HTML");
+            console.log("  (lang1c-menu-malformed-entries) /de/uber: one menu link");
+        });
+
+        test("(lang1c-switch) a tenant with extra languages: the switch in the server HTML (desktop and mobile copies) — default first, then languages; own-language names; language homes; aria-current on the page language; the preview form on a by-id request as the menu links", async () => {
+            const expected = (current) => [["en", "/"], ["ro", "/ro"], ["de", "/de"], ["fr", "/fr"]].map(([l, href]) => ({ href, hreflang: l, lang: l, current: l === current, label: ownName(l) }));
+            for (const [p, current] of [["/ro/despre", "ro"], ["/about", "en"], ["/de/uber", "de"], ["/fr/page", "fr"]]) {
+                const lists = switchListsOf((await lAt(C.host, p)).body);
+                assert.equal(lists.length, 2, `${p}: two copies`);
+                for (const list of lists) assert.deepEqual(list, expected(current), `${p}: the switch`);
+            }
+            // By-id (preview) form: the switch's hrefs go through the same `getUrl` as the logo link (`getUrl("/")`).
+            const preview = await lAt(PREVIEW_HOST, `/_site/${C.id}/ro/despre`);
+            assert.equal(preview.status, 200);
+            const logoHref = /<a (?=[^>]*class="flex items-center gap-2")[^>]*href="([^"]*)"/.exec(preview.body)?.[1];
+            const [list] = switchListsOf(preview.body);
+            assert.ok(logoHref !== undefined && list, "preview: the logo link and the switch");
+            assert.equal(list[0].href, logoHref, "preview: the default-language home has the logo link's form");
+            assert.equal(list[1].href, logoHref === "/" ? "/ro" : `${logoHref}/ro`, "preview: /ro in the same form");
+            assert.ok(!preview.body.includes(`href="/${C.host}`) && !(/href="[^"]*~/.test(preview.body)), "no internal segment in a link");
+            console.log(`  (lang1c-switch) ${JSON.stringify(expected("ro").map((l) => `${l.label} ${l.href}`))}; preview logo ${logoHref} → switch ${list.map((l) => l.href).join(", ")}`);
+        });
+
+        test("(lang1c-switch-identity) a one-language tenant: no switch element and no languageSwitch prop; no hreflang link in the head", async () => {
+            for (const [host, p] of [[LANG1B.mono.host, "/about"], [LANG1B.mono.host, "/ro/x"], [CM1.content.host, "/"], [FIXTURE_HOST, PUBLISHED_SLUG]]) {
+                const res = await lAt(host, p);
+                assert.equal(res.status, 200, `${host}${p}`);
+                assert.ok(!res.body.includes("data-language-switch"), `${host}${p}: no switch element`);
+                assert.ok(!splitFlight(res.body).flight.includes("languageSwitch"), `${host}${p}: no languageSwitch prop`);
+                assert.deepEqual(hreflangLinksOf(res.body), [], `${host}${p}: no hreflang`);
+            }
+            console.log("  (lang1c-switch-identity) lang1b-mono /about, /ro/x; cm1-content /; fixture /published: no switch, no prop, no hreflang");
         });
 
         // ── ROW (np1-bootstrap-chunks) — NEXT-PATCH-1 ruling R-NP1-F1 rule 2. The LAST row of the `next` target on purpose:

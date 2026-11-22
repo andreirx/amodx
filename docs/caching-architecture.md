@@ -177,6 +177,40 @@ tests `renderer/test/unit/{tenant-directory,lang-1b-*,revalidate-purge}.test.ts`
 - **Measured (`lang-1b`, EXECUTED 2026-11-22, `cd renderer && npm run test:serving`):** 142 / 142 on the tree before
   the slice; the final tree: the counts of the five consecutive runs are in `docs/slices/lang-1.md` Appendix F.
 
+### Alternates, sitemap and switch (slice `lang-1c`; `docs/slices/lang-1.md` § 6.2, § 8.3–§ 8.6, § 9.3)
+
+What a page and the sitemap serve for a tenant that lists extra languages. Executable form: rows `lang1c-*` of
+`contract.test.mjs`; unit tests `renderer/test/unit/lang-1c-*.test.ts`, `backend/test/unit/lang-1c-purge.test.ts`.
+
+- **Cached like every other page.** The `hreflang` links are part of the stored render of a content page (the head),
+  under the same keys as `lang-1b` (`<host>/<path>` or `<host>~<l>/<path>`); the sitemap stays `force-dynamic` with
+  `public, s-maxage=3600, stale-while-revalidate=59` at the edge. No new cache key, no request API.
+- **One-language tenants are unchanged.** No membership read, no `<link hreflang>`, no switch, the same menu and footer
+  values, the same sitemap bytes (row `lang1c-sitemap-identity`: every fixture tenant's `/sitemap.xml` equals the
+  `d940fc1` capture), and every byte-identity row passes unchanged.
+- **Head** (content pages): one `<link rel="alternate" hrefLang>` per LISTED member of the page's translation set plus
+  `x-default` (§ 6.2 membership; same-language members left out; fewer than two listed → today's head). Addresses are
+  the public URL on the tenant's domain — never `~`, `_dyn` or a preview prefix (rows `lang1c-hreflang*`,
+  `lang1c-same-language-pair`, `lang1c-set-missing-item`, `lang1c-member-not-owner`, `lang1c-pagination`, …).
+- **Sitemap.** Each listed member's `<url>` carries `<xhtml:link>` alternates; `xmlns:xhtml` only when one is written
+  (row `lang1c-sitemap`).
+- **Switch.** A tenant with extra languages gets a language switch in the navbar (server HTML: the language homes);
+  the browser then uses the head's alternates of the page (row `lang1c-switch`; client half
+  `renderer/test/unit/lang-1c-switch-client.test.ts`, and a headless-Chromium check on staging).
+- **What a content write purges (§ 9.3, ORDINARY class).** A create or update of a page that holds a set key as read
+  or as written adds to today's targets every public address whose stored copy carries an affected set's alternates:
+  the slug of every other member of each named set, `/` when the tenant's `homePageSlug` is the edited page's slug (as
+  read or as written) or a remaining member's slug (the root renders that page; review R-LANG1C-01), and
+  `/sitemap.xml`. Layer 2 is the whole tenant anyway (CACHE-10); Layer 1 gets those exact paths in the fast lane. A
+  CloudFront path carries no host, so `/` and `/sitemap.xml` refresh those paths for every tenant (two paths). A page
+  in no set purges exactly as before (a keyless home-page edit still does not name `/`, as today). Not named by the
+  fast lane, so refreshed at the edge by the bulk `/*` (≤ ~16 min): a page that holds the key without its membership
+  item (no read finds it without a scan).
+- **Finding F-LANG1C-CHUNK-SPLIT (Turbopack, OBSERVED).** The number of `<script src>` chunks of the root layout is in
+  the compared bytes, and Turbopack splits the layout's own client chunk at a size threshold measured before
+  minification; `renderer/ARCHITECTURE.md` § *Languages in the page* states the margin and the rule (keep `Navbar.tsx`
+  small).
+
 ### Booking pages (slices `sched-1g2`, `sched-1g3`; `docs/slices/sched-1.md` § 10.1, § 12)
 
 A third route family, beside the ISR route and its twin. It is never stored by either cache layer.
@@ -449,7 +483,7 @@ Admin saves page ──> Backend Lambda (content/update.ts)   [NO withInvalidati
                          │
                          ├── Write to DynamoDB
                          │
-                         └── revalidateTenantPaths(tenantId, "page", [newSlug, oldSlug?])
+                         └── revalidateTenantPaths(tenantId, "page", [newSlug, oldSlug?, ...set siblings + /sitemap.xml (lang-1c, keyed pages only)])
                               │   (resolves tenant domain; purgeTargets → {domain, slug}[])
                               │
                               ├── Layer 2 (ISR): POST /api/revalidate { domain, slug }   [runs FIRST, CACHE-10]

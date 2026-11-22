@@ -260,7 +260,8 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 | `lang-1` | More than one language on one site. `docs/slices/lang-1.md` | SPEC RATIFIED 2026-11-22; next `lang-1a` |
 | `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy |
 | `lang-1b` | Language segment, `<html lang>`, texts, purge, deferred edge flush. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy after the `~` check of the site list |
-| `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | PLANNED |
+| `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy |
+| `hydration-1` | Every tenant page load raises one React hydration error (#418) in the browser; present before `lang-1b` (`lang-1.md`, `lang-1c` closeout, F-HYDRATION-418). Root cause first, then the fix. | PLANNED |
 | `lang-1d` | German and French packs in the global registry (satulbanului). `lang-1.md` § 12 | PLANNED |
 
 ## Courses, payments and growth — DRAFTS (2026-11-20, not ratified)

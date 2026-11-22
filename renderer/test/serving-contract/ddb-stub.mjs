@@ -29,6 +29,11 @@
 // `staleTenantRecord(item)` is the index-lag model of § 9.4 residual case 2: every renderer tenant read OTHER than the
 // host gate (the layout's and the page's `getTenantConfig`) answers `item` in place of the stored tenant item with the
 // same PK+SK, while the gate reads the stored one; `null` ends it — row `B-LANG-LIMIT-LIVE-KEY`.
+// LANG-1C (docs/slices/lang-1.md § 6.2, row `lang1c-pagination`): `pageQueries(skPrefix, size)` makes every main-table
+// Query whose `begins_with(SK, :sk)` value starts with `skPrefix` answer in SK order, at most `size` items per response,
+// with `LastEvaluatedKey` while more remain and `ExclusiveStartKey` honoured — DynamoDB's paging, which the fixture sets
+// are too small to reach. `pageQueries(null)` ends it. `stats().pagedResponses` counts responses that carried a
+// `LastEvaluatedKey`, so a row can show the reader followed more than one page.
 //
 // TAG TABLE (slice opennext-1a, bundle target only). The OpenNext server bundle has a second
 // DynamoDB client: the tag cache (open-next 3.1.3 `cache/tag/dynamodb.js`), on the table named by
@@ -143,11 +148,11 @@ function passesFilter(item, expr, names, values) {
  *        adapter runs — a call naming it there would be unhandled, as any unknown table is.
  * @returns {Promise<{url:string, stats:Function, journal:Function, tagItems:Function,
  *          reset:Function, failContentReads:Function, putItem:Function, failHostGate:Function,
- *          staleTenantRecord:Function, close:Function}>}
+ *          staleTenantRecord:Function, pageQueries:Function, close:Function}>}
  */
 export async function startDdbStub({ tagTable } = {}) {
     // `tagCache` stays 0 on the `next` target (no tag table is served there).
-    const counters = { total: 0, hostGate: 0, render: 0, tagCache: 0 };
+    const counters = { total: 0, hostGate: 0, render: 0, tagCache: 0, pagedResponses: 0 };
     const unhandled = [];
     /** Every request, in order: `{ table: "renderer"|"tag"|<name>, op, index }`. */
     const journal = [];
@@ -158,6 +163,8 @@ export async function startDdbStub({ tagTable } = {}) {
     let failGate = false;
     /** LANG-1B: tenant items the non-gate reads answer in place of the stored ones, by `PK|SK` (`staleTenantRecord`). */
     const staleTenants = new Map();
+    /** LANG-1C: `{ skPrefix, size }` while `pageQueries` is on, else null. */
+    let paging = null;
     /** This stub's copy of the fixture dataset; `putItem` edits it. */
     const items = ITEMS.map((i) => structuredClone(i));
 
@@ -269,6 +276,21 @@ export async function startDdbStub({ tagTable } = {}) {
         found = found.filter((i) => passesFilter(i, parsed.FilterExpression, names, values));
         if (parsed.Limit) found = found.slice(0, parsed.Limit);
 
+        // LANG-1C: DynamoDB's paging for the queries `pageQueries` names (file header).
+        if (paging && cond.rangeAttr === "SK" && String(values[cond.rangePrefix]).startsWith(paging.skPrefix)) {
+            found = [...found].sort((a, b) => (a.SK < b.SK ? -1 : a.SK > b.SK ? 1 : 0));
+            const after = parsed.ExclusiveStartKey ? unmarshallItem(parsed.ExclusiveStartKey).SK : undefined;
+            if (after !== undefined) found = found.filter((i) => i.SK > after);
+            const page = found.slice(0, paging.size);
+            const more = found.length > page.length;
+            if (more) counters.pagedResponses += 1;
+            const last = page[page.length - 1];
+            return json(res, {
+                Items: page.map(marshallItem), Count: page.length, ScannedCount: page.length,
+                ...(more ? { LastEvaluatedKey: marshallItem({ PK: last.PK, SK: last.SK }) } : {}),
+            });
+        }
+
         // `Select: COUNT` must not return Items. (Until LANG-1B the host gate sent this shape; it now
         // projects `SK, languages`, so no current caller sends COUNT. Kept: it answers the shape right.)
         if (parsed.Select === "COUNT") return json(res, { Count: found.length, ScannedCount: found.length });
@@ -322,7 +344,11 @@ export async function startDdbStub({ tagTable } = {}) {
         journal: () => journal.map((e) => ({ ...e })),
         tagItems: () => tagItems.map((i) => ({ ...i })),
         reset: () => {
-            counters.total = counters.hostGate = counters.render = counters.tagCache = 0;
+            counters.total = counters.hostGate = counters.render = counters.tagCache = counters.pagedResponses = 0;
+        },
+        /** LANG-1C: page the queries whose SK prefix starts with `skPrefix`, `size` items per response; `null` ends it. */
+        pageQueries: (skPrefix, size = 1) => {
+            paging = skPrefix === null ? null : { skPrefix, size };
         },
         /** CACHE-1-D4 fault injection. See the file header. */
         failContentReads: (on) => {

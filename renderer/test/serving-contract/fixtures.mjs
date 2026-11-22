@@ -1178,6 +1178,89 @@ const LANG1B_ITEMS = [
 /** `LANG1B.lag`'s tenant record before the save that added `de` (no `languages`): the index-lag model's stale record. */
 export const LANG1B_LAG_BEFORE = { ...siteTenant(LANG1B.lag.id, LANG1B.lag.host, LANG1B.lag.name), locale: "en-US" };
 
+// ── LANG-1C fixtures (docs/slices/lang-1.md § 6.2, § 8.3–§ 8.6, § 11; rows `lang1c-*`) ──────────────────────────────────
+// New tenants only, each with an explicit `locale`, in no `before/` capture and in no en-US subject list (§ 7.4 rule 3).
+// Pages are LATEST items + ROUTE# items; a set is `translationKey` on each LATEST plus `TRANSLATION#<key>#<nodeId>` items,
+// the shapes `lang-1a` writes (backend/src/content/update.ts `planTranslation`).
+//  - `multi` (en-US, `languages: ["ro", "de", "fr"]`, `homePageSlug: "/home"`): the menus per language — `ro` a valid list,
+//    `de` the malformed list of § 8.3 (one valid entry), `fr` none (falls back) — and the sets below.
+//  - `homeEdit` (en-US, `languages: ["ro"]`, `homePageSlug: "/ro/start"` — only a direct table edit stores it, V6): its
+//    set's Romanian member is advertised at its own slug, never at `/`.
+//  - `enListed` (en-US, `languages: ["en", "ro", "de"]` — the default subtag listed, which V3 refuses at write).
+//  - `change` (en-US, `languages: ["ro", "fr", "de"]`): the language-list rows edit its tenant record (and nothing else).
+export const LANG1C = {
+    multi: { id: "lang1c-multi", host: "lang1c-multi.serving-contract.test", name: "LANG1C Multi" },
+    homeEdit: { id: "lang1c-home-edit", host: "lang1c-home-edit.serving-contract.test", name: "LANG1C Home Edit" },
+    enListed: { id: "lang1c-en-listed", host: "lang1c-en-listed.serving-contract.test", name: "LANG1C EN Listed" },
+    change: { id: "lang1c-change", host: "lang1c-change.serving-contract.test", name: "LANG1C Change" },
+};
+/** `LANG1C.multi`'s menus and footer lists (§ 8.3). `de` holds the malformed entries of § 8.3 (one valid). */
+export const LANG1C_MENUS = {
+    navLinks: [{ label: "LANG1C Nav About", href: "/about" }],
+    footerLinks: [{ label: "LANG1C Foot Contact", href: "/contact" }],
+    navLinksByLang: {
+        ro: [{ label: "LANG1C Nav Despre", href: "/ro/despre" }, { label: "LANG1C Nav Grup", href: "/ro", children: [{ label: "LANG1C Nav Copil", href: "/ro/copil" }] }],
+        de: [null, { label: 1 }, { label: "LANG1C Startseite", href: "/de" }],
+    },
+    footerLinksByLang: { ro: [{ label: "LANG1C Foot Contact RO", href: "/ro/contact" }] },
+};
+/**
+ * The pages of `LANG1C.multi`: `[slug, nodeId, { status?, key? }]`. Sets (`key`):
+ *  - `set-a` every member Published (en, ro, de) — `lang1c-hreflang`;
+ *  - `set-home` the home member `/home` (= homePageSlug) and `/ro/acasa` — `lang1c-hreflang-home`;
+ *  - `set-invalid` en + ro Published, de Archived, fr Draft, plus an item whose page is missing and an SK with no node
+ *    id (items below) — `lang1c-hreflang-member-invalid`;
+ *  - `set-pair` two Romanian members — `lang1c-same-language-pair`;
+ *  - `set-missing` the `de` member holds the key but has NO membership item — `lang1c-set-missing-item`;
+ *  - `set-owner` items for a page that holds another key and for a page that holds none — `lang1c-member-not-owner`;
+ *  - no key on `/plain`, `/ro/simplu` — `lang1c-no-set`; a stored `""` and a number — `lang1c-key-malformed`.
+ */
+export const LANG1C_MULTI_PAGES = [
+    ["/home", "c-home", { key: "set-home" }], ["/ro/acasa", "c-acasa", { key: "set-home" }],
+    ["/about", "c-about", { key: "set-a" }], ["/ro/despre", "c-despre", { key: "set-a" }], ["/de/uber", "c-uber", { key: "set-a" }],
+    ["/team", "c-team", { key: "set-invalid" }], ["/ro/echipa", "c-echipa", { key: "set-invalid" }],
+    ["/de/team", "c-de-team", { key: "set-invalid", status: "Archived" }], ["/fr/equipe", "c-equipe", { key: "set-invalid", status: "Draft" }],
+    ["/pair", "c-pair", { key: "set-pair" }], ["/ro/pereche-1", "c-pereche-1", { key: "set-pair" }], ["/ro/pereche-2", "c-pereche-2", { key: "set-pair" }], ["/de/paar", "c-paar", { key: "set-pair" }],
+    ["/m-en", "c-m-en", { key: "set-missing" }], ["/ro/m-ro", "c-m-ro", { key: "set-missing" }], ["/de/m-de", "c-m-de", { key: "set-missing", noItem: true }],
+    ["/o-en", "c-o-en", { key: "set-owner" }], ["/ro/o-ro", "c-o-ro", { key: "set-owner" }],
+    ["/de/o-other", "c-o-other", { key: "set-other", noItem: true }], ["/de/o-none", "c-o-none"],
+    ["/plain", "c-plain"], ["/ro/simplu", "c-simplu"], ["/fr/page", "c-fr-page"],
+    ["/km-empty", "c-km-empty", { key: "" }], ["/ro/km-number", "c-km-number", { key: 5 }],
+];
+/** The hand-made membership items of `LANG1C.multi` (no page, another key, or a malformed SK behind them). */
+const LANG1C_STALE_ITEMS = [
+    "TRANSLATION#set-invalid#c-ghost",           // a member whose page item is missing
+    "TRANSLATION#set-invalid#",                  // an SK without a node id
+    "TRANSLATION#set-owner#c-o-other",           // the page now holds another key
+    "TRANSLATION#set-owner#c-o-none",            // the page holds no key
+    "TRANSLATION##c-km-empty",                   // an SK with an empty key: skipped by the sitemap's join (no set id)
+];
+const lang1cPage = (tenantId, [slug, nodeId, { status = "Published", key } = {}]) => [
+    siteRouteItem(tenantId, slug, nodeId),
+    { ...siteContentItem(tenantId, nodeId, slug, `LANG1C ${slug}`), status, ...(key !== undefined ? { translationKey: key } : {}) },
+];
+const lang1cItems = (tenantId, pages, extraSks = []) => [
+    ...pages.flatMap((p) => lang1cPage(tenantId, p)),
+    ...pages.filter(([, , o = {}]) => typeof o.key === "string" && o.key !== "" && !o.noItem)
+        .map(([, nodeId, { key }]) => ({ PK: `TENANT#${tenantId}`, SK: `TRANSLATION#${key}#${nodeId}`, Type: "Translation" })),
+    ...extraSks.map((SK) => ({ PK: `TENANT#${tenantId}`, SK, Type: "Translation" })),
+];
+/** `LANG1C.change`'s set: one page per language. */
+export const LANG1C_CHANGE_PAGES = [
+    ["/about", "ch-about", { key: "set-change" }], ["/ro/about", "ch-ro", { key: "set-change" }],
+    ["/fr/about", "ch-fr", { key: "set-change" }], ["/de/about", "ch-de", { key: "set-change" }],
+];
+const LANG1C_ITEMS = [
+    { ...siteTenant(LANG1C.multi.id, LANG1C.multi.host, LANG1C.multi.name), locale: "en-US", languages: ["ro", "de", "fr"], homePageSlug: "/home", ...LANG1C_MENUS },
+    ...lang1cItems(LANG1C.multi.id, LANG1C_MULTI_PAGES, LANG1C_STALE_ITEMS),
+    { ...siteTenant(LANG1C.homeEdit.id, LANG1C.homeEdit.host, LANG1C.homeEdit.name), locale: "en-US", languages: ["ro"], homePageSlug: "/ro/start" },
+    ...lang1cItems(LANG1C.homeEdit.id, [["/start", "he-start", { key: "set-he" }], ["/ro/start", "he-ro-start", { key: "set-he" }]]),
+    { ...siteTenant(LANG1C.enListed.id, LANG1C.enListed.host, LANG1C.enListed.name), locale: "en-US", languages: ["en", "ro", "de"] },
+    ...lang1cItems(LANG1C.enListed.id, [["/x", "el-x", { key: "set-el" }], ["/en/x", "el-en-x", { key: "set-el" }], ["/ro/x", "el-ro-x", { key: "set-el" }], ["/de/x", "el-de-x", { key: "set-el" }]]),
+    { ...siteTenant(LANG1C.change.id, LANG1C.change.host, LANG1C.change.name), locale: "en-US", languages: ["ro", "fr", "de"] },
+    ...lang1cItems(LANG1C.change.id, LANG1C_CHANGE_PAGES),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -1240,6 +1323,8 @@ export const ITEMS = [
     ...SCHEDLABELS1_ITEMS,
     // lang-1b: the language-segment tenants (above).
     ...LANG1B_ITEMS,
+    // lang-1c: the translation-set, menu and switch tenants (above).
+    ...LANG1C_ITEMS,
 ];
 
 /**

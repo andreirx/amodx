@@ -40,10 +40,12 @@ const latestKey = (tenantId: string, nodeId: string) => ({ PK: `TENANT#${tenantI
  * membership item exists AND the page's LATEST holds `setKey` now; its address is a string. Any status counts (a Draft
  * or Archived member can be published again). One paginated Query on the tenant partition, then one Get per item.
  */
-async function otherSetMembers(tenantId: string, setKey: string, exceptNodeId: string): Promise<{ nodeId: string; slug: string }[]> {
+async function otherSetMembers(tenantId: string, setKey: string, exceptNodeId: string, consistentRead = false): Promise<{ nodeId: string; slug: string }[]> {
     const prefix = `TRANSLATION#${setKey}#`;
     const nodeIds: string[] = [];
     let start: Record<string, any> | undefined;
+    // LANG-1C: the purge reads right after its own write, so it reads strongly consistent (the C3 check keeps today's read).
+    const consistency = consistentRead ? { ConsistentRead: true } : {};
     do {
         const page = await db.send(new QueryCommand({
             TableName: TABLE_NAME,
@@ -51,6 +53,7 @@ async function otherSetMembers(tenantId: string, setKey: string, exceptNodeId: s
             ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": prefix },
             ProjectionExpression: "SK",
             ExclusiveStartKey: start,
+            ...consistency,
         }));
         for (const item of page.Items ?? []) {
             const nodeId = String(item.SK).slice(prefix.length);
@@ -62,6 +65,7 @@ async function otherSetMembers(tenantId: string, setKey: string, exceptNodeId: s
         const res = await db.send(new GetCommand({
             TableName: TABLE_NAME, Key: latestKey(tenantId, nodeId),
             ProjectionExpression: "slug, translationKey",
+            ...consistency,
         }));
         return { nodeId, item: res.Item };
     }));
@@ -176,6 +180,58 @@ export async function planTranslation(args: {
         ...(isSetKey(kp) ? [] : [{ Put: { TableName: TABLE_NAME, Item: { ...membershipKey(tenantId, key, translationOf), Type: "Translation" } } }]),
     ];
     return plan({ kind: "join", key, selfCondition, actions });
+}
+
+/** The set key a page's LATEST holds after a write with `plan`, given the key it held before (`keyRead`). */
+export function keyAfter(plan: TranslationPlan, keyRead: unknown): unknown {
+    switch (plan.kind) {
+        case "unchanged": return keyRead;
+        case "join": return plan.key;
+        case "leave": return undefined;
+    }
+}
+
+/**
+ * LANG-1C (docs/slices/lang-1.md § 9.3) — the purge targets a write adds besides today's (the page's own slugs). One rule
+ * for every writer of a page item that this handler pair is: when the page's LATEST held a set key as read OR holds one
+ * as written, purge every PUBLIC ADDRESS whose stored copy carries an affected set's alternates:
+ *  - the slug of every OTHER page of each named set (§ 6.2 conditions 1 and 3, any status; their `hreflang` links,
+ *    which name this page, change);
+ *  - `/` when `/` serves one of the affected pages — the root renders the page named by the tenant's `homePageSlug`
+ *    (`SitePage`), so `/` is added when `homePageSlug` equals the edited page's slug as read or as written
+ *    (`selfSlugs`) or a remaining member's slug (review R-LANG1C-01). `/` is the only address that serves a page
+ *    under another path than its slug: an old slug answers a redirect, not the page;
+ *  - `/sitemap.xml` (its alternates change).
+ * Keys that are not a non-empty string are no key (the reader treats them so). No key before or after → `[]`: exactly
+ * today's targets, no read.
+ *
+ * Reads, only for a keyed page: one GetItem of the tenant record (`homePageSlug`), and per set one paginated Query of
+ * its membership items + one GetItem per item; the set reads are strongly consistent (they run right after this
+ * handler's own transaction). Best-effort like the purge it feeds: a failed read is logged and what it would have added
+ * is skipped (the whole-tenant stored-page purge of the same call and the bulk `/*` still cover it); `/sitemap.xml` is
+ * always returned.
+ */
+export async function setPurgeSlugs(tenantId: string, selfNodeId: string, keys: unknown[], selfSlugs: unknown[]): Promise<string[]> {
+    const setKeys = [...new Set(keys.filter(isSetKey))];
+    if (setKeys.length === 0) return [];
+    const siblings: string[] = [];
+    try {
+        for (const setKey of setKeys) {
+            for (const m of await otherSetMembers(tenantId, setKey, selfNodeId, true)) siblings.push(m.slug);
+        }
+    } catch (e) {
+        console.error(`[LANG-1C] Reading the translation set(s) of ${selfNodeId} for the purge failed; siblings not purged at the edge`, e);
+    }
+    let root: string[] = [];
+    try {
+        const home = (await db.send(new GetCommand({
+            TableName: TABLE_NAME, Key: { PK: "SYSTEM", SK: `TENANT#${tenantId}` }, ProjectionExpression: "homePageSlug",
+        }))).Item?.homePageSlug;
+        if (typeof home === "string" && home !== "" && [...selfSlugs, ...siblings].includes(home)) root = ["/"];
+    } catch (e) {
+        console.error(`[LANG-1C] Reading homePageSlug of ${tenantId} for the purge failed; "/" not purged at the edge`, e);
+    }
+    return [...siblings, ...root, "/sitemap.xml"];
 }
 
 /** The 409 text when a transaction that carried translation-set actions was cancelled outside its route item. */
@@ -422,7 +478,10 @@ const _handler: AmodxHandler = async (event) => {
         // keyed by — the previous tenantId-keyed purge addressed nothing in production.
         // On a rename both slugs are purged: the new path (fresh content) and the old one
         // (which now serves a redirect).
-        await revalidateTenantPaths(tenantId, "page", [newSlug, slugChanged ? oldSlug : undefined]);
+        // LANG-1C (§ 9.3): a page in a set (as read or as written) also purges its siblings' addresses and /sitemap.xml;
+        // a page in no set adds nothing (today's targets).
+        const setTargets = await setPurgeSlugs(tenantId, nodeId, [current.translationKey, keyAfter(plan, current.translationKey)], [oldSlug, newSlug]);
+        await revalidateTenantPaths(tenantId, "page", [newSlug, slugChanged ? oldSlug : undefined, ...setTargets]);
 
         return { statusCode: 200, body: JSON.stringify({ message: "Updated", version: currentVersion + 1, slug: newSlug }) };
     } catch (error: any) {

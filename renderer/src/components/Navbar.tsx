@@ -20,6 +20,9 @@ interface LinkItem {
     children?: { label: string; href: string }[];
 }
 
+// LANG-1C (§ 8.6): a link of the language switch (made by the layout; see renderer/ARCHITECTURE.md § Languages).
+export type LanguageSwitchLink = { hreflang: string; label: string; href: string; current: boolean };
+
 export function Navbar({
                            siteName,
                            logo,
@@ -44,6 +47,7 @@ export function Navbar({
                            colorStyle,
                            tagline,
                            categoryBar,
+                           languageSwitch,
                        }: {
     siteName: string;
     logo?: string;
@@ -100,6 +104,8 @@ export function Navbar({
      * the layout only when at least one category resolved (conditional spread).
      */
     categoryBar?: { label: string; links: { label: string; href: string }[] };
+    /** LANG-1C: only for a tenant with extra languages (conditional spread). Keep this file small: ARCHITECTURE.md. */
+    languageSwitch?: LanguageSwitchLink[];
 }) {
     const { getUrl } = useTenantUrl();
     const { data: session } = useSession();
@@ -110,6 +116,32 @@ export function Navbar({
     // CAT-THEME-1: both are "" / {} when the theme does not ask for them, so the markup is unchanged.
     const nf = navFont ? " font-[family-name:var(--font-nav)]" : "";
     const arrow = linkArrows ? { "data-theme-arrow": "" } : {};
+    // LANG-1C: the head's alternates as paths, by hreflang; re-read when the head changes (a client navigation).
+    const [alt, setAlt] = useState<Record<string, string>>({});
+    useEffect(() => {
+        if (!languageSwitch) return;
+        const read = () => {
+            const found: Record<string, string> = {};
+            document.head.querySelectorAll("link[rel=alternate][hreflang]").forEach((l) => {
+                const path = /^https?:\/\/[^/?#]+(\/[^?#]*)?/.exec(l.getAttribute("href") ?? "");
+                if (path) found[l.getAttribute("hreflang")!] = path[1] || "/";
+            });
+            setAlt((old) => (JSON.stringify(old) === JSON.stringify(found) ? old : found));
+        };
+        read();
+        const observer = new MutationObserver(read);
+        observer.observe(document.head, { childList: true, subtree: true, attributes: true });
+        return () => observer.disconnect();
+    }, [languageSwitch]);
+    const switchList = languageSwitch && (
+        <ul data-language-switch="" className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+            {languageSwitch.map((l) => (
+                <li key={l.hreflang}>
+                    <a href={getUrl(alt[l.hreflang] ?? l.href).replace(/(.)\/$/, "$1")} hrefLang={l.hreflang} lang={l.hreflang} aria-current={l.current ? "true" : undefined} className={l.current ? "text-foreground" : "hover:text-primary"}>{l.label}</a>
+                </li>
+            ))}
+        </ul>
+    );
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20);
@@ -231,10 +263,12 @@ export function Navbar({
                                 {strings.navContact}
                             </Link>
                         )}
+                        {switchList}
                     </div>
 
                     {/* --- MOBILE TOGGLE + CART --- */}
                     <div className="flex items-center gap-2 md:hidden">
+                        {switchList}
                         {commerceEnabled && <CartWidget />}
                         {interest && !commerceEnabled && <InterestWidget tenantId={interest.tenantId} listPrefix={interest.listPrefix} strings={interest.strings} />}
                         <button

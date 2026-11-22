@@ -47,7 +47,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings, pageLanguageOf, languageTagOf, localeLanguageSubtag } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -758,7 +758,8 @@ export async function getPublishedContent(tenantId: string) {
             },
             FilterExpression: "#s = :pub",
             ExpressionAttributeNames: { "#s": "status" },
-            ProjectionExpression: "SK, id, title, slug, seoDescription, createdAt, updatedAt, #s",
+            // LANG-1C (§ 6.2): `translationKey` for the sitemap's membership join. Same query, same pages, same count.
+            ProjectionExpression: "SK, id, title, slug, seoDescription, createdAt, updatedAt, #s, translationKey",
             ExclusiveStartKey: lastKey,
         }));
 
@@ -776,8 +777,195 @@ export async function getPublishedContent(tenantId: string) {
         seoDescription: p.seoDescription,
         status: p.status,
         createdAt: p.createdAt,
-        updatedAt: p.updatedAt
+        updatedAt: p.updatedAt,
+        // LANG-1C (§ 6.2): the node id is the key text of `CONTENT#<nodeId>#LATEST` (the key the membership rule
+        // names; `id` above is the CONTENT id, not the node id), and the raw stored set key. Readers that do not use
+        // them (llms.txt, the sitemap of a one-language tenant) are unchanged: they read named fields only.
+        nodeId: String(p.SK).slice("CONTENT#".length, -"#LATEST".length),
+        translationKey: p.translationKey as unknown,
     }));
+}
+
+// ── LANG-1C translation sets, read side (docs/slices/lang-1.md § 6.2, § 8.4, § 8.5) ─────────────────────────────────
+//
+// THE MEMBERSHIP RULE (one rule; the head and the sitemap apply it). Page <n> is a MEMBER of set K when:
+//   1. a membership item `TRANSLATION#K#<n>` exists;
+//   2. `CONTENT#<n>#LATEST` exists, its `status` is `Published`, and its `slug` is a string;
+//   3. that LATEST's current `translationKey` equals K.
+// A member's language is `pageLanguageOf(slug, languages)`; its `hreflang` value is `languageTagOf(…)`. Members whose
+// `hreflang` value is held by two or more members are all left out (§ 5.3); the rest are LISTED. Fewer than two listed
+// → no alternates at all. What the rule does with the two kinds of stale item (§ 6.1, § 15; docs/TECH-DEBT.md): an
+// item whose page is Draft, Archived or missing fails condition 2, and an orphan item whose page now holds another key
+// or none fails condition 3 — such an item is skipped, nothing is written, and it costs one GetItem per head read of
+// its set; in the sitemap it increases membership-query volume but causes no per-item GetItem (the join runs in memory).
+//
+// Reads (no scan): the head reads one set — a paginated Query `begins_with(SK, "TRANSLATION#<K>#")` + one GetItem per
+// item; the sitemap reads the tenant's items — one paginated Query `begins_with(SK, "TRANSLATION#")` — and joins them
+// with `getPublishedContent` in memory. Both are called only when `config.languages` is not empty.
+
+/** A page that passes the membership rule: its node id and its address (the stored slug). A DTO. */
+export type TranslationMember = { nodeId: string; slug: string };
+
+/** One alternate of a set: the `hreflang` value, the member, and its public address (a path, "/" or the slug). */
+export type TranslationAlternate = { hreflang: string; nodeId: string; path: string };
+
+/**
+ * The listed members of a set as alternates (§ 8.4, § 8.5): `links` in the order default language, then `languages`
+ * in the tenant's order; `xDefault` = the path of the listed default-language member, when there is one.
+ */
+export type TranslationAlternates = { links: TranslationAlternate[]; xDefault?: string };
+
+/** The tenant settings the alternates depend on (a subset of `TenantConfig`). */
+export type AlternatesSite = { languages: readonly string[]; locale?: string; homePageSlug?: string };
+
+const TRANSLATION_PREFIX = "TRANSLATION#";
+
+/**
+ * A stored set key a reader trusts: a non-empty string. A stored non-string or `""` (only a table edit makes it) is
+ * treated as no key (row `lang1c-key-malformed`).
+ */
+export function isTranslationKey(value: unknown): value is string {
+    return typeof value === "string" && value !== "";
+}
+
+/**
+ * Conditions 2 and 3 of the membership rule on a LATEST item as read (`undefined` = missing): Published, a string
+ * slug, and the current key equal to `setKey`. Condition 1 (the item exists) is the caller's: it starts from the items.
+ */
+export function passesMembership(setKey: string, latest: Record<string, unknown> | undefined): latest is Record<string, unknown> & { slug: string } {
+    return latest !== undefined && latest.status === "Published" && typeof latest.slug === "string" && latest.translationKey === setKey;
+}
+
+/**
+ * The membership item SK `TRANSLATION#<key>#<nodeId>` read: the key (up to the first `#` after the prefix) and the
+ * node id (the rest). `null` for an SK without a key or without a node id — skipped by every reader (§ 6.2).
+ */
+export function parseTranslationSk(sk: unknown): { setKey: string; nodeId: string } | null {
+    if (typeof sk !== "string" || !sk.startsWith(TRANSLATION_PREFIX)) return null;
+    const rest = sk.slice(TRANSLATION_PREFIX.length);
+    const at = rest.indexOf("#");
+    if (at <= 0 || at === rest.length - 1) return null;
+    return { setKey: rest.slice(0, at), nodeId: rest.slice(at + 1) };
+}
+
+/**
+ * The LISTED alternates of one set from its members (§ 5.3, § 8.4, § 8.5). Pure. Each member's `hreflang` value is its
+ * derived language tag; a value held by two or more members leaves all of them out (and when that value is the
+ * default language's, there is no `x-default`). A member's path is "/" only when its slug equals `homePageSlug` AND it
+ * derives the default language (the read-side guard of V6); else its slug. Fewer than two listed → `null`: the caller
+ * writes exactly today's output.
+ */
+export function listedAlternates(members: readonly TranslationMember[], site: AlternatesSite): TranslationAlternates | null {
+    const defaultTag = localeLanguageSubtag(site.locale);
+    const tagged = members.map((m) => {
+        const language = pageLanguageOf(m.slug, site.languages);
+        return { member: m, language, hreflang: languageTagOf(language, defaultTag) };
+    });
+    const count = new Map<string, number>();
+    for (const t of tagged) count.set(t.hreflang, (count.get(t.hreflang) ?? 0) + 1);
+    const listed = tagged.filter((t) => count.get(t.hreflang) === 1);
+    if (listed.length < 2) return null;
+    const rank = (tag: string) => (tag === defaultTag ? 0 : site.languages.indexOf(tag) + 1);
+    listed.sort((a, b) => rank(a.hreflang) - rank(b.hreflang));
+    const pathOf = (t: (typeof tagged)[number]): string => {
+        switch (t.language.kind) {
+            case "default": return t.member.slug === site.homePageSlug ? "/" : t.member.slug;
+            case "extra": return t.member.slug;
+        }
+    };
+    const links = listed.map((t) => ({ hreflang: t.hreflang, nodeId: t.member.nodeId, path: pathOf(t) }));
+    const home = listed.find((t) => t.language.kind === "default");
+    return home ? { links, xDefault: pathOf(home) } : { links };
+}
+
+/**
+ * The members of set `setKey` (§ 6.2, the head's read): one paginated Query of the set's membership items, then one
+ * GetItem per item on `CONTENT#<nodeId>#LATEST` (projected `slug, status, translationKey`; in parallel, as
+ * `getActiveCategoriesByIds`). Items without a node id are skipped; pages failing conditions 2 or 3 are skipped.
+ * A failed read throws (file header).
+ */
+export async function getTranslationSetMembers(tenantId: string, setKey: string): Promise<TranslationMember[]> {
+    const tableName = requireTableName();
+    const nodeIds: string[] = [];
+    let lastKey: any = undefined;
+    do {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": `${TRANSLATION_PREFIX}${setKey}#` },
+            ProjectionExpression: "SK",
+            ExclusiveStartKey: lastKey,
+        }));
+        for (const item of result.Items || []) {
+            const parsed = parseTranslationSk(item.SK);
+            if (parsed !== null && parsed.setKey === setKey) nodeIds.push(parsed.nodeId);
+        }
+        lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+    const pages = await Promise.all(nodeIds.map((nodeId) => docClient.send(new GetCommand({
+        TableName: tableName,
+        Key: { PK: `TENANT#${tenantId}`, SK: `CONTENT#${nodeId}#LATEST` },
+        ProjectionExpression: "slug, #s, translationKey",
+        ExpressionAttributeNames: { "#s": "status" },
+    }))));
+    return nodeIds.flatMap((nodeId, i) => {
+        const latest = pages[i].Item;
+        return passesMembership(setKey, latest) ? [{ nodeId, slug: latest.slug }] : [];
+    });
+}
+
+/**
+ * Every membership item of the tenant (§ 6.2, the sitemap's read): one paginated Query `begins_with(SK,
+ * "TRANSLATION#")`, projected to the key. Items whose SK has no key or no node id are skipped.
+ */
+export async function getTranslationItems(tenantId: string): Promise<{ setKey: string; nodeId: string }[]> {
+    const tableName = requireTableName();
+    const out: { setKey: string; nodeId: string }[] = [];
+    let lastKey: any = undefined;
+    do {
+        const result = await docClient.send(new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+            ExpressionAttributeValues: { ":pk": `TENANT#${tenantId}`, ":sk": TRANSLATION_PREFIX },
+            ProjectionExpression: "SK",
+            ExclusiveStartKey: lastKey,
+        }));
+        for (const item of result.Items || []) {
+            const parsed = parseTranslationSk(item.SK);
+            if (parsed !== null) out.push(parsed);
+        }
+        lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+    return out;
+}
+
+/**
+ * The sitemap join (§ 6.2, § 8.5). Pure. `pages` = the tenant's Published LATEST pages (`getPublishedContent`), `items`
+ * = its membership items. Members of each set by the membership rule (an item whose node is not a Published page, or
+ * whose page holds another key, is skipped), then `listedAlternates` per set. Result: the alternates of each LISTED
+ * member, by node id; a page in no listed set is absent.
+ */
+export function sitemapAlternates(
+    pages: readonly { nodeId: string; slug: unknown; status?: unknown; translationKey: unknown }[],
+    items: readonly { setKey: string; nodeId: string }[],
+    site: AlternatesSite,
+): Map<string, TranslationAlternates> {
+    const byNode = new Map(pages.map((p) => [p.nodeId, p]));
+    const sets = new Map<string, TranslationMember[]>();
+    for (const { setKey, nodeId } of items) {
+        const page = byNode.get(nodeId);
+        if (!passesMembership(setKey, page as Record<string, unknown> | undefined)) continue;
+        const members = sets.get(setKey) ?? [];
+        members.push({ nodeId, slug: page!.slug as string });
+        sets.set(setKey, members);
+    }
+    const out = new Map<string, TranslationAlternates>();
+    for (const members of sets.values()) {
+        const alternates = listedAlternates(members, site);
+        if (alternates === null) continue;
+        for (const link of alternates.links) out.set(link.nodeId, alternates);
+    }
+    return out;
 }
 
 // 13. Fetch all active products for SEO feed (openai-feed)

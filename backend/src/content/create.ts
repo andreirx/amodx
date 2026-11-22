@@ -10,7 +10,7 @@ import { requireRole } from "../auth/policy.js";
 import { reservedAddressRefusal } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { normalizeSlug } from "@amodx/shared";
-import { planTranslation, membershipActionsOf, TRANSLATION_CHANGED_ERROR } from "./update.js";
+import { planTranslation, membershipActionsOf, keyAfter, setPurgeSlugs, TRANSLATION_CHANGED_ERROR } from "./update.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -165,7 +165,8 @@ const _handler: AmodxHandler = async (event) => {
         // slice (`infra/lib/api.ts`, next to `grantReadWriteData(createContentFunc)`) — the
         // code and its IAM must deploy together or this call logs "[Revalidate] No secret
         // available" and purges nothing. See the cache-2 slice doc, § Migration / deployment.
-        await revalidateTenantPaths(tenantId, "page", [slug]);
+        // LANG-1C (§ 9.3): a page created into a set also purges the set's other addresses and /sitemap.xml.
+        await revalidateTenantPaths(tenantId, "page", [slug, ...await setPurgeSlugs(tenantId, nodeId, [keyAfter(plan, undefined)], [slug])]);
 
         return {
             statusCode: 201,

@@ -16,7 +16,7 @@
 //
 // Phase 3.3: getCustomerOrders / getCustomerProfile are deliberately NOT imported here.
 // Customer-private data is fetched via session-validating API routes, not SSR.
-import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds, getProductById, getFormBySlug } from "@/lib/dynamo";
+import { getTenantConfig, getContentBySlug, getPosts, getProductBySlug, getCategoryBySlug, getProductsByCategory, getAllCategories, getActiveProducts, getCatalogListing, searchProducts, getDeliveryConfig, getOrderForCustomer, getProductReviews, getSiteReviews, getActiveCategoriesByIds, getProductById, getFormBySlug, getTranslationSetMembers, isTranslationKey, listedAlternates } from "@/lib/dynamo";
 import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from "@/lib/review-images";
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
@@ -306,6 +306,13 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
     if (!result || 'redirect' in result) return { title: config.name };
 
     const content = result as ContentItem;
+    // LANG-1C (docs/slices/lang-1.md § 8.4): `hreflang` + `x-default` from the page's translation set. The set is read
+    // only when the tenant lists extra languages AND the page holds a set key (a non-empty string): one Query per 1 MB of
+    // the set's membership items + one GetItem per parseable item, stale items included. A one-language tenant or a page
+    // in no set → no read. Fewer than two LISTED members → the reads have run, and the object is exactly today's.
+    const alternates = (config.languages ?? []).length > 0 && isTranslationKey(content.translationKey)
+        ? listedAlternates(await getTranslationSetMembers(config.id, content.translationKey), { languages: config.languages ?? [], locale: config.locale, homePageSlug: config.homePageSlug })
+        : null;
     return {
         title: content.seoTitle || content.title || config.name,
         description: content.seoDescription,
@@ -322,7 +329,15 @@ export async function buildSitePageMetadata({ siteId, slug, query }: Pick<SitePa
                 : (config.logo ? [{ url: config.logo }] : []),
             siteName: config.name,
         },
-        alternates: { canonical: canonicalUrl }
+        alternates: alternates === null ? { canonical: canonicalUrl } : {
+            canonical: canonicalUrl,
+            // One entry per listed member (its public address on the tenant's domain, never a preview path or a `~`
+            // segment), then `x-default`. Next writes each as `<link rel="alternate" hrefLang=… href=…>`.
+            languages: Object.fromEntries([
+                ...alternates.links.map((l) => [l.hreflang, `https://${config.domain}${l.path}`]),
+                ...(alternates.xDefault !== undefined ? [["x-default", `https://${config.domain}${alternates.xDefault}`]] : []),
+            ]),
+        },
     };
 }
 

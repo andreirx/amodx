@@ -12,7 +12,7 @@ import "../globals.css";
 import { Providers } from "@/components/Providers";
 import { getTenantConfig, hasActivePopups, getActiveCategoriesByIds } from "@/lib/dynamo";
 import { ThemeInjector } from "@/components/ThemeInjector";
-import { Navbar } from "@/components/Navbar";
+import { Navbar, type LanguageSwitchLink } from "@/components/Navbar";
 import { Analytics } from "@/components/Analytics";
 import { Metadata } from "next";
 import { PaddleLoader } from "@/components/PaddleLoader";
@@ -23,7 +23,7 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, urlPrefixesOf, languageTagOf, type TenantConfig } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, urlPrefixesOf, languageTagOf, type TenantConfig, type PageLanguage } from "@amodx/shared";
 import { parseSiteSegment, segmentLanguage, localeInputFor } from "@/lib/site-segment";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
@@ -159,6 +159,39 @@ function ownOrChannel<T extends string | undefined>(own: T, channel: string | un
     return !own && channel ? channel : own;
 }
 
+/**
+ * LANG-1C (docs/slices/lang-1.md § 8.3) — the menu or footer list of the page language: the default language → the
+ * tenant's own list as today (`navLinks` / `footerLinks`, the same value); an extra language `l` → `byLanguage[l]` when
+ * the tenant stored a list for `l` (an empty list included), else the default list. `byLanguage` is the output of the
+ * read rule (`readLanguageSettings` via `mapTenant`), so every entry has a string `label` and `href`.
+ */
+function linksFor<T>(language: PageLanguage, defaultLinks: T, byLanguage: Record<string, T> | undefined): T {
+    switch (language.kind) {
+        case "default": return defaultLinks;
+        case "extra": return byLanguage !== undefined && Object.prototype.hasOwnProperty.call(byLanguage, language.subtag) ? byLanguage[language.subtag] : defaultLinks;
+    }
+}
+
+/**
+ * LANG-1C (§ 8.6) — the switch's links: the default language first, then `languages` in the tenant's order; label = the
+ * language's own name (`Intl.DisplayNames` in that language; no pack text), `href` = the language home (`/` or `/<l>`),
+ * `hreflang` = the tag the head's alternates use for it, `current` on the page language. The Navbar replaces each `href`
+ * on the client with the page's own alternate when the head lists one.
+ */
+function languageSwitchOf(language: PageLanguage, defaultSubtag: string, languages: readonly string[]): LanguageSwitchLink[] {
+    const nameOf = (l: string) => new Intl.DisplayNames([l], { type: "language" }).of(l) ?? l;
+    const current = (kind: PageLanguage["kind"], subtag: string): boolean => {
+        switch (language.kind) {
+            case "default": return kind === "default";
+            case "extra": return kind === "extra" && subtag === language.subtag;
+        }
+    };
+    return [
+        { hreflang: defaultSubtag, label: nameOf(defaultSubtag), href: "/", current: current("default", defaultSubtag) },
+        ...languages.map((l) => ({ hreflang: l, label: nameOf(l), href: `/${l}`, current: current("extra", l) })),
+    ];
+}
+
 export default async function SiteLayout({ children, params }: Props) {
     const { siteId } = await params;
     const segment = parseSiteSegment(siteId);
@@ -195,6 +228,12 @@ export default async function SiteLayout({ children, params }: Props) {
 
     // LANG-1B: the page language (§ 7.2) — the segment's, kept only when this tenant read lists it.
     const language = segmentLanguage(segment, config.languages ?? []);
+    // LANG-1C (§ 8.3): the menu and the footer links of the page language. The default language uses `navLinks` /
+    // `footerLinks` as today (the same values); only an extra language reads the per-language maps.
+    const navLinks = linksFor(language, config.navLinks, config.navLinksByLang);
+    const footerLinks = linksFor(language, config.footerLinks, config.footerLinksByLang);
+    // LANG-1C (§ 8.6): the language switch, only for a tenant that lists extra languages (no prop otherwise).
+    const languageSwitch = (config.languages ?? []).length > 0 ? languageSwitchOf(language, localeLanguageSubtag(config.locale), config.languages ?? []) : null;
     const commerceEnabled = config.commerceEnabled ?? false;
     const cartPrefix = config.urlPrefixes?.cart || URL_PREFIX_DEFAULTS.cart;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
@@ -241,10 +280,10 @@ export default async function SiteLayout({ children, params }: Props) {
             {config.companyDetails?.email && <p>{config.companyDetails.email}</p>}
         </div>
     );
-    const linksColumn = (config.footerLinks || []).length > 0 && (
+    const linksColumn = (footerLinks || []).length > 0 && (
         <div className="space-y-1">
             <p className="font-semibold text-foreground mb-2">{site.footerLinksHeading}</p>
-            {(config.footerLinks || []).map((link: any, i: number) => (
+            {(footerLinks || []).map((link: any, i: number) => (
                 <a key={i} href={link.href} className="block hover:text-foreground">{link.label}</a>
             ))}
         </div>
@@ -360,7 +399,7 @@ export default async function SiteLayout({ children, params }: Props) {
                     <Navbar
                         siteName={config.name}
                         logo={config.logo}
-                        links={config.navLinks}
+                        links={navLinks}
                         showLogo={config.header?.showLogo}
                         showTitle={config.header?.showTitle}
                         commerceEnabled={commerceEnabled}
@@ -384,6 +423,7 @@ export default async function SiteLayout({ children, params }: Props) {
                         {...(headerStyle ? { colorStyle: headerStyle } : {})}
                         {...(tagline ? { tagline } : {})}
                         {...(barLinks.length > 0 ? { categoryBar: { label: site.navCategoryBarLabel, links: barLinks } } : {})}
+                        {...(languageSwitch ? { languageSwitch } : {})}
                     />
 
                 </div>

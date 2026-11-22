@@ -150,7 +150,13 @@ src/
 │   │                      #   join / leave / move) used by create.ts; one transaction, one action per item, each
 │   │                      #   page action conditioned on the key as read; a cancelled set write → 409. Returns a
 │   │                      #   Result (ok:false = refusal); every decision on TranslationPlan is a switch whose arms
-│   │                      #   all return (membershipActionsOf, changesSet): a new variant does not compile
+│   │                      #   all return (membershipActionsOf, changesSet, keyAfter): a new variant does not compile
+│   │                      #   LANG-1C (§ 9.3): `setPurgeSlugs` — create and update of a page that holds a set key as
+│   │                      #   read OR as written also purge every other member's slug of each named set, `/` when
+│   │                      #   homePageSlug is the page's slug (read or written) or a member's (the root renders it),
+│   │                      #   and /sitemap.xml (strongly consistent set reads after the write; a failed read is
+│   │                      #   logged, what it would add skipped). No key before or after → today's targets, no read
+│   │                      #   (test/unit/lang-1c-purge.test.ts, row L1C-PURGE-SIBLINGS-SITEMAP)
 │   ├── history.ts         # GET /content/{id}/versions
 │   └── restore.ts         # POST /content/{id}/restore. LANG-1A: a page with a key keeps its current slug and key
 │                          #   (Put conditioned on both → 409 on a concurrent rename); a keyless page restores as

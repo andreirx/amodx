@@ -79,7 +79,8 @@ src/
 test/
 └── serving-contract/                          # `npm run test:serving` — see README.md there
     ├── contract.test.mjs                      # the contract rows + 4 harness isolation self-checks (101 tests on `next` since cat-theme-1; README.md there)
-    ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection; failHostGate(), staleTenantRecord() (lang-1b)
+    ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection; failHostGate(), staleTenantRecord() (lang-1b); pageQueries() (lang-1c)
+    ├── lang-1c-sitemap-before.json            # /sitemap.xml of every fixture tenant at d940fc1 (row lang1c-sitemap-identity)
     ├── harness.mjs                            # next build / next start on an ephemeral port / HTTP helper
     ├── no-dotenv.cjs                          # NODE_OPTIONS preload: hides renderer/.env* from the whole child process tree; journals its own coverage
     └── fixtures.mjs                           # tenant + ROUTE# + CONTENT# items, `.test` TLD hosts
@@ -768,7 +769,7 @@ the language into the internal first segment: `/<host>~<l><path>` (`lib/site-seg
 - **Layout.** `parseSiteSegment(siteId)` → the tenant is read by the host; `segmentLanguage` keeps the segment's
   language only when this read's `config.languages` lists it. `<html lang>` = `languageTagOf(language, localeLanguageSubtag(locale))`;
   the texts = `resolveLocaleStrings(localeInputFor(config, language))` — an extra language gets its pack without the
-  tenant's overrides (LANG1-OVERRIDES = A). The menu and footer lists are `lang-1c`.
+  tenant's overrides (LANG1-OVERRIDES = A). The menu and footer lists: `lang-1c` (next section).
 - **Pages.** Both catch-all pages pass the host to `SitePage` / `buildSitePageMetadata`. `SitePage`'s page chrome
   derives the language from its own address (`pageLanguageOf(slugPath, config.languages)`), the § 5 rule; it equals
   the layout's choice whenever the middleware's verdict and the page's tenant read agree.
@@ -779,6 +780,55 @@ the language into the internal first segment: `/<host>~<l><path>` (`lib/site-seg
 - **One-language tenants** get no suffix: the same rewrite, key, tenant read, `lang` and texts.
 - Finding F-LANG-SITEID-NAME: the parameter `[siteId]` holds a host, a tenant id, or `<host>~<lang>`; a rename would
   change the RSC payload of every tenant (`"n":"siteId"`), so it is not proposed; `parseSiteSegment` states the contract.
+
+## Languages in the page — slice `lang-1c` (PROTOTYPE)
+
+Specification: `docs/slices/lang-1.md` § 6.2, § 8.3–§ 8.6, § 9.3; rows `lang1c-*` (`test/serving-contract/contract.test.mjs`),
+`test/unit/lang-1c-{membership,switch-client}.test.ts`. Every new read and element runs only when `config.languages` is
+not empty (and, for the head, when the page holds a set key), so a one-language tenant renders and reads as before.
+
+- **The membership rule** (`lib/dynamo.ts`, one implementation for the head and the sitemap). Page `<n>` is a member of
+  set `K` when the item `TRANSLATION#K#<n>` exists, `CONTENT#<n>#LATEST` is `Published` with a string `slug`, and that
+  LATEST holds `K` now (`parseTranslationSk`, `passesMembership`). `listedAlternates` (pure) gives each member its
+  `hreflang` (`languageTagOf(pageLanguageOf(slug, languages), localeLanguageSubtag(locale))`), leaves out every value
+  two members hold, and answers `null` below two listed members; the order is the default language, then `languages`;
+  `x-default` = the listed default-language member; the path is `/` only for a default-language member whose slug is
+  `homePageSlug`. A stale item (page missing, Draft, Archived, or holding another key or none) is skipped — never
+  written (debt entry in `docs/TECH-DEBT.md`).
+- **Reads (no scan).** Head: `getTranslationSetMembers` — one paginated `Query begins_with(SK, "TRANSLATION#<K>#")` + one
+  `GetItem` per item (`slug, status, translationKey`). Sitemap: `getTranslationItems` — one paginated
+  `Query begins_with(SK, "TRANSLATION#")`, joined in memory (`sitemapAlternates`) with `getPublishedContent`, which now
+  also returns `nodeId` (from the SK) and `translationKey` (one more projected attribute; same query).
+  Added reads per request: one-language tenant 0 (page and sitemap); two-language tenant — a content page that holds a
+  set key: 1 Query per 1 MB page of the set's membership items + one GetItem per PARSEABLE item, stale items included
+  (Draft, Archived, a missing page, a page holding another key or none); so `k` items cost `k` GetItem even when fewer
+  pages are listed, and a page alone in its set still pays 1 Query + 1 GetItem though it gets no alternates (row
+  `lang1c-hreflang-member-invalid`: 2 listed, 6 GetItem in the unit test). A page in no set: 0. The sitemap: 1 Query per
+  1 MB page of the tenant's items (stale items add to its volume), no GetItem.
+- **Head** (`components/SitePage.tsx` `buildSitePageMetadata`, content pages only): `alternates.languages` = one
+  `https://<domain><path>` per listed member + `x-default`. Next writes them as `<link rel="alternate" hrefLang>`, and
+  writes the URL of `/` as its origin (`https://<domain>`, as today's canonical of `/`). Below two listed members the
+  object is exactly today's `{ canonical }`. A page that holds the key without being listed (a same-language pair, a
+  missing item, a preview of a Draft) still carries the set's listed alternates — § 8.4 takes "the page's set".
+- **Sitemap** (`app/[siteId]/sitemap.xml/route.ts`): each listed member's `<url>` gets `<xhtml:link>` lines (href
+  XML-escaped); `<urlset>` declares `xmlns:xhtml` only when at least one link is written; `<loc>` is unchanged.
+- **Menu and footer** (`app/[siteId]/layout.tsx` `linksFor`): an extra-language page uses `navLinksByLang[l]` /
+  `footerLinksByLang[l]` when the read rule kept that key (an empty list included), else `navLinks` / `footerLinks`; the
+  default language passes the same values as before.
+- **Switch** (`languageSwitchOf` in the layout → `Navbar` prop `languageSwitch`, a conditional spread): default language
+  first, then `languages`; label = `Intl.DisplayNames([l]).of(l)`; `href` = the language home; `aria-current="true"` on
+  the page language. Rendered twice (desktop bar, mobile bar) as plain `<a>` (a language change loads the document). On
+  the client the Navbar reads the head's `<link rel="alternate" hreflang>` paths and uses them in place of the homes; a
+  `MutationObserver` on `<head>` reads them again when Next replaces the metadata (a client navigation). Every `href`
+  goes through `getUrl` (the preview prefix, as the menu links) and loses a trailing slash (`/_site/<id>`, as `<Link>`).
+- **Keep `Navbar.tsx` small (finding F-LANG1C-CHUNK-SPLIT, OBSERVED on Next 16.4.6 / Turbopack).** The root layout's own
+  client chunk (`Navbar` and the other layout client components) is split by Turbopack at a size threshold measured
+  BEFORE minification (comments count): crossing it moves a 250-byte async loader into its own chunk, which adds one
+  `<script src>` to every page of every tenant — a byte difference the identity rows (`cm1-identity-*`, `loc1-*`, `cq1-*`,
+  `ct1-*`, `sched1g-preserve`) report, with no visible change. HEAD `d940fc1` had 1 500–2 000 characters of room; after
+  `lang-1c` 400–800 remain. So this slice's explanations live here and in the layout (server code, not in the chunk),
+  not in `Navbar.tsx`; a two-argument `new URL(…)` is avoided there for the same reason (it also crossed the threshold).
+  Any later client growth of the layout's components can cross it; the ruled comparators then fail without a defect.
 
 ## Hosted booking pages — slice `sched-1g2` (PROTOTYPE)
 
