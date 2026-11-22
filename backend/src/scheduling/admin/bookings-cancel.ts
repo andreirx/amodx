@@ -23,7 +23,8 @@ import type { AuthorizerContext } from "../../auth/context.js";
 import { formatFromHeader } from "../../lib/email-from.js";
 import { cancelBooking, getBooking, schedulingStoreFromEnv, type ChangeFailure } from "../../lib/scheduling-db.js";
 import { renderSchedulingMail, resolveTemplate } from "../../lib/scheduling-email.js";
-import { EDITOR_OR_ADMIN, adminActor, adminRoute, answer, parseBody, pathParam, readSchedulingTenant, refusal, type Answer } from "./common.js";
+import { EDITOR_OR_ADMIN, adminActor, adminRoute } from "./common.js";
+import { answer, parseBody, readSchedulingTenant, refusal, type Answer, pathParam } from "../common.js";
 import { bookingAdminDTO, bookingNames, type BookingNames } from "./booking-dto.js";
 
 const ses = new SESClient({});

@@ -804,7 +804,7 @@ describe("§ 7 transactions", () => {
         must(await holdSeat(store, run.id, person("c@example.com")));
         const lowered = must(await sdb.updateRun(store, T, "c1", run.id, { capacity: 1 }, NOW));
         expect(lowered.capacity).toBe(1);
-        expect(must(await sdb.confirmBooking(store, T, held.id, NOW)).state.kind).toBe("confirmed");
+        expect(must(await sdb.confirmBooking(store, T, held.id, NOW)).booking.state.kind).toBe("confirmed");
         expect(await holdSeat(store, run.id, person("d@example.com"))).toEqual({ ok: false, error: { kind: "runFull", capacity: 1 } });
     });
 
@@ -1708,5 +1708,58 @@ describe("review-0 regressions", () => {
         await sdb.readIntervals(store, T, r, { start: MON_0900 - HOUR, end: MON_0900 + 3 * HOUR }, NOW);
         await sdb.listRuns(store, T, "c1");
         expect(reads().slice(from).every((c) => consistentFlag(c) === false)).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// SCHED-1D2 ruling S1D2-CONFIRM-OUTCOME (review finding S1D2-R02): confirmBooking says whether THIS call committed
+// the confirmation, from the attempt that ends its versioned loop — never from a timestamp.
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("S1D2-R02 — confirmBooking outcome (applied | alreadyConfirmed)", () => {
+    const transactions = (fake: FakeTable) => fake.calls.filter((c) => c.op === "TransactWriteCommand").length;
+
+    it("S1D2-R02 a held booking → applied, with the confirmed booking; the same call again, same clock → alreadyConfirmed, no write", async () => {
+        const { fake, store } = setup();
+        await seedSlots(store);
+        const { booking: held } = must(await holdSlot(store));
+        const first = must(await sdb.confirmBooking(store, T, held.id, NOW));
+        expect(first.kind).toBe("applied");
+        expect(first.booking.state).toEqual({ kind: "confirmed", at: NOW });
+        expect(first.booking.rev).toBe(held.rev + 1);
+        const before = transactions(fake);
+        const again = must(await sdb.confirmBooking(store, T, held.id, NOW));   // the SAME millisecond (review probe)
+        expect(again.kind).toBe("alreadyConfirmed");
+        expect(again.booking.state).toEqual({ kind: "confirmed", at: NOW });
+        expect(transactions(fake)).toBe(before);
+    });
+
+    it("S1D2-R02 two confirms at once, same clock: the one that commits is applied, the other re-reads → alreadyConfirmed", async () => {
+        for (const kind of ["slot", "seat"] as const) {
+            const { fake, store } = setup();
+            let id: string;
+            if (kind === "slot") {
+                await seedSlots(store);
+                id = must(await holdSlot(store)).booking.id;
+            } else {
+                const { run } = await seedRun(store);
+                id = must(await holdSeat(store, run.id)).booking.id;
+            }
+            let inner: any;
+            fake.on("TransactWriteCommand", "before", async () => { inner = await sdb.confirmBooking(store, T, id, NOW); });
+            const outer = must(await sdb.confirmBooking(store, T, id, NOW));
+            expect({ kind, inner: must(inner).kind, outer: outer.kind }).toEqual({ kind, inner: "applied", outer: "alreadyConfirmed" });
+            expect(booking(fake, id)!.history.filter((e: any) => e.action === "confirmed")).toHaveLength(1);
+        }
+    });
+
+    it("S1D2-R02 a token mint commits between the confirm's read and write: the confirm retries and is still applied", async () => {
+        const { fake, store } = setup();
+        await seedSlots(store);
+        const { booking: held } = must(await holdSlot(store));
+        fake.on("TransactWriteCommand", "before", async () => { must(await sdb.mintToken(store, T, held.id, NOW, { countForEmail: false })); });
+        const outcome = must(await sdb.confirmBooking(store, T, held.id, NOW));
+        expect(outcome.kind).toBe("applied");
+        expect(outcome.booking.tokenHashes).toHaveLength(2);
     });
 });

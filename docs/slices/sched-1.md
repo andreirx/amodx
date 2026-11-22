@@ -2262,3 +2262,34 @@ rows C33, D14).
   entry, table count back to 0).
 - Production: arrives with the human's next `./deploy.sh prod` (one new nested stack; admin sidebar gains
   "Scheduling", which shows "not enabled" for tenants without the switch).
+
+### `sched-1d2` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Scope: eight visitor functions and routes in the scheduling nested stack (offer, slots, runs, hold, view,
+  confirm, cancel, move); reCAPTCHA on the hold through the commerce mechanism; the limits of § 9; the mails of
+  the visitor actions; shared route helpers moved to `backend/src/scheduling/common.ts`. `sched-1d` is complete
+  with this half; the calendar feed stays in `sched-1g`.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Operator gates, all exit 0 (same eleven as `1d1`). Integration file re-run on the staging table
+  after the store change: 36 passed.
+- Operator rulings (the human may override):
+  - **S1D2-AMODX-STACK-LINE = A:** `infra/lib/amodx-stack.ts` passes the existing reCAPTCHA secret to the
+    scheduling stack. The hold FAILS CLOSED when no reCAPTCHA configuration resolves (503
+    `verificationUnavailable`); it never skips the check.
+  - **S1D2-CONFIRM-OUTCOME = A:** `confirmBooking` in `scheduling-db.ts` returns `applied | alreadyConfirmed`;
+    only `applied` sends the confirmation mail.
+  - **S1D2-EXPIRED-VIEW = A:** the view of an expired hold answers 410 `expired` (§ 8.4). Consequence, recorded:
+    `BookingViewDTO.state: "expired"` (§ 10.2) has no producer; remove it from the type in `sched-1g`.
+  - A malformed token answers 404 `linkNotValid` on the four token routes; a switched-off tenant answers 403
+    `notAvailable` before stored settings are validated.
+- Limits recorded: `whenText` lives in the admin cancel handler (move to `scheduling-email.ts` later); after a
+  move, the answer can show the target run's language as read before the move.
+- Staging (operator, OBSERVED): diff read first — additions only (eight functions; `ses:SendEmail` on hold,
+  confirm, cancel, move; one reference to the reCAPTCHA parameter); deployed; 25 checks under tenant
+  `cm1-content` pass. Staging cannot pass reCAPTCHA, so: the hold route is shown to refuse a junk token (403)
+  and a missing token (400) and to write nothing; a hold made through `scheduling-db.ts` is then viewed,
+  confirmed, confirmed again, moved and cancelled through the deployed routes; slots follow each step; no
+  answer carries the booking id, the resource or the full email; the main-table audit holds nothing about the
+  booking; the table partition is back to 0 items and the tenant's switch is off again.
+  NOT RUN on a deployed stage: an accepted hold through the route with its mail (first possible with the
+  booking page of `sched-1g` in a real browser).

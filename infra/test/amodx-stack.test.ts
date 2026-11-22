@@ -103,7 +103,7 @@ let allTemplates: Template[];
 let catalogTemplate: Template;
 /** The EngagementApi NestedStack template alone (CAT-INTEREST-1 route assertion). */
 let engagementTemplate: Template;
-/** The SchedulingApi NestedStack template alone (SCHED-1D1 rows I1, I2, I5; the amended (sched1b-3)). */
+/** The SchedulingApi NestedStack template alone (SCHED-1D1/1D2 rows I1, I2, I3, I5; the amended (sched1b-3)). */
 let schedulingTemplate: Template;
 
 /**
@@ -1977,14 +1977,18 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
     // slice creates (the admin routes). The visitor functions of `sched-1d2` (and I3, the hold's reCAPTCHA secret) are
     // added to these lists by that slice. Inside the SCHED-1B block so the IAM reading rule above is the one used.
     // ────────────────────────────────────────────────────────────────────────────────────────────
-    describe('SCHED-1D1 — the SchedulingApi nested stack (admin routes)', () => {
-        /** Construct ids of this slice's functions, by role in § 11.2. */
-        const MAILING = ['AdminCancelBookingFunc'];
-        const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc'];
-        const READ_ONLY = ['AdminGetBookingFunc', 'AdminListResourcesFunc', 'AdminEmailTemplatesFunc', 'AdminLookupCustomerFunc'];
-        const ALL = ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminEraseCustomerFunc',
+    describe('SCHED-1D1/1D2 — the SchedulingApi nested stack (admin and visitor routes)', () => {
+        /** Construct ids of the functions, by role in § 11.2 (SCHED-1D1: admin; SCHED-1D2: visitor). */
+        const ADMIN = ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminEraseCustomerFunc',
             'AdminListResourcesFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc',
             'AdminFeedSecretFunc', 'AdminEmailTemplatesFunc'];
+        const VISITOR = ['VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorHoldFunc', 'VisitorViewFunc',
+            'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc'];
+        const MAILING = ['AdminCancelBookingFunc', 'VisitorHoldFunc', 'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc'];
+        const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc'];
+        const READ_ONLY = ['AdminGetBookingFunc', 'AdminListResourcesFunc', 'AdminEmailTemplatesFunc', 'AdminLookupCustomerFunc',
+            'VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorViewFunc'];
+        const ALL = [...ADMIN, ...VISITOR];
         const DYNAMODB_WRITE = /^dynamodb:(PutItem|UpdateItem|DeleteItem|BatchWriteItem|\*)$|^\*$/;
 
         type Fn = { construct: string; logicalId: string; vars: Record<string, unknown>; statements: any[] };
@@ -2009,7 +2013,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
         };
         const parameterOf = (v: unknown) => (isRefTo(v) ? parentParameterValues(realTree()).get(v.Ref) : undefined);
 
-        test('I2 (inventory) the nested stack holds exactly the ten admin functions of this slice, each behind a route with the authorizer', () => {
+        test('I2 (inventory) the nested stack holds exactly the ten admin and eight visitor functions, each behind a route with the authorizer', () => {
             expect(functions(schedulingTemplate).map((f) => f.construct).sort()).toEqual([...ALL].sort());
             const routes = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties);
             expect(routes.map((r) => r.RouteKey).sort()).toEqual([
@@ -2023,10 +2027,20 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 'POST /scheduling/admin/resources',
                 'POST /scheduling/admin/resources/{resourceId}/feed-secret',
                 'PUT /scheduling/admin/resources/{resourceId}',
-            ]);
+                // SCHED-1D2 visitor routes (§ 10.2; the feed is `sched-1g`).
+                'GET /scheduling/visitor/courses/{courseId}/runs',
+                'GET /scheduling/visitor/offer',
+                'GET /scheduling/visitor/slots',
+                'POST /scheduling/visitor/bookings/cancel',
+                'POST /scheduling/visitor/bookings/confirm',
+                'POST /scheduling/visitor/bookings/move',
+                'POST /scheduling/visitor/bookings/view',
+                'POST /scheduling/visitor/holds',
+            ].sort());
+            // § 16.3: no route is anonymous — every route, visitor routes included, runs the authorizer.
             for (const r of routes) expect({ key: r.RouteKey, auth: r.AuthorizationType }).toEqual({ key: r.RouteKey, auth: 'CUSTOM' });
-            // No visitor route in this slice (`sched-1d2`).
-            expect(routes.some((r) => String(r.RouteKey).includes('/scheduling/visitor'))).toBe(false);
+            // One authorizer for the whole nested stack (the renderer key resolves to RENDERER there).
+            expect(new Set(routes.map((r) => JSON.stringify(r.AuthorizerId))).size).toBe(1);
         });
 
         test('I1 every mailing function: SES_FROM_EMAIL and exactly one ses:SendEmail, on the sending identity (not *); no other function has an SES action', () => {
@@ -2056,7 +2070,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             }
         });
 
-        test('I2 the GET functions and the customer lookup have no write action; the writers have one on the scheduling table; the templates route has no grant on it', () => {
+        test('I2 the read-only functions (the GET routes, the customer lookup, the visitor view) have no write action; the writers have one on the scheduling table; the templates route has no grant on it', () => {
             const tree = realTree();
             const schedIndex = allTemplates.indexOf(schedulingTemplate);
             expect(schedIndex).toBeGreaterThan(0);
@@ -2085,8 +2099,25 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 const expected = AUDITING.includes(f.construct);
                 expect({ fn: f.construct, puts, bus }).toEqual({ fn: f.construct, puts: expected, bus: expected });
             }
-            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc']) {
+            // No event-bus permission on any booking function: the admin booking routes and every visitor route (§ 11.2).
+            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', ...VISITOR]) {
                 expect(byConstruct(name).statements.some((st) => actions(st).some((a) => a.startsWith('events:')))).toBe(false);
+            }
+        });
+
+        test('I3 the visitor hold: RECAPTCHA_SECRET_KEY equal to the commerce order function\'s; no other scheduling function has it', () => {
+            // The commerce order function (`CreateOrderFunc`, CommerceApi) and the hold resolve, through their nested-stack
+            // parameters, to the same parent value (the SSM-backed deployment secret). A function without it fails open (G4).
+            const commerce = allTemplates.find((t) => Object.keys(t.findResources('AWS::Lambda::Function')).some((id) => id.startsWith('CreateOrderFunc')));
+            if (!commerce) throw new Error('CreateOrderFunc not found in the stack tree');
+            const order = Object.entries(commerce.findResources('AWS::Lambda::Function')).find(([id]) => id.startsWith('CreateOrderFunc'))![1] as any;
+            const orderValue = parameterOf(order.Properties.Environment.Variables.RECAPTCHA_SECRET_KEY);
+            expect(orderValue).toBeDefined();
+            const hold = byConstruct('VisitorHoldFunc');
+            expect(Object.hasOwn(hold.vars, 'RECAPTCHA_SECRET_KEY')).toBe(true);
+            expect(parameterOf(hold.vars.RECAPTCHA_SECRET_KEY)).toEqual(orderValue);
+            for (const f of functions(schedulingTemplate).filter((x) => x.construct !== 'VisitorHoldFunc')) {
+                expect({ fn: f.construct, recaptcha: Object.hasOwn(f.vars, 'RECAPTCHA_SECRET_KEY') }).toEqual({ fn: f.construct, recaptcha: false });
             }
         });
 

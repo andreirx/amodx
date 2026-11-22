@@ -12,7 +12,8 @@ import { bookingBase } from "@amodx/shared";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { publishAudit } from "../../lib/events.js";
 import { getResource, schedulingStoreFromEnv, setFeedSecretHash, sha256hex } from "../../lib/scheduling-db.js";
-import { TENANT_ADMIN, adminRoute, answer, parseBody, pathParam, readTenantRecord, refusal } from "./common.js";
+import { TENANT_ADMIN, adminRoute } from "./common.js";
+import { answer, parseBody, readTenantRecord, refusal, pathParam } from "../common.js";
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) =>
     adminRoute(event, "resources-feed-secret", TENANT_ADMIN, async ({ tenantId, auth }) => {

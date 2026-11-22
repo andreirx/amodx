@@ -515,6 +515,7 @@ export class AmodxStack extends cdk.Stack {
       eventBus: amodxEvents.bus,
       sesEmail: sesEmail,
       rendererCloudFrontOrigin: cloudFrontUrl,
+      recaptchaSecretKey, // Deployment-level reCAPTCHA for the visitor hold (sched-1.md § 9.1, row I3) — as CommerceApi
     });
 
 

@@ -11,7 +11,8 @@ import { z } from "zod";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { publishAudit } from "../../lib/events.js";
 import { createResource, listResources, schedulingStoreFromEnv } from "../../lib/scheduling-db.js";
-import { EDITOR_OR_ADMIN, adminRoute, answer, parseBody, refusal } from "./common.js";
+import { EDITOR_OR_ADMIN, adminRoute } from "./common.js";
+import { answer, parseBody, refusal } from "../common.js";
 
 export const MAX_RESOURCES = 200; // § 4.5
 export const ResourceBodySchema = z.object({ name: z.string().trim().min(1).max(200) }).strict();

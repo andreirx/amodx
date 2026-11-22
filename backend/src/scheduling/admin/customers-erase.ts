@@ -10,7 +10,8 @@ import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { publishAudit } from "../../lib/events.js";
 import { eraseCustomer, schedulingStoreFromEnv } from "../../lib/scheduling-db.js";
-import { TENANT_ADMIN, adminRoute, answer, parseBody, refusal } from "./common.js";
+import { TENANT_ADMIN, adminRoute } from "./common.js";
+import { answer, parseBody, refusal } from "../common.js";
 import { EmailBodySchema } from "./customers-lookup.js";
 
 export const ERASURE_AUDIT_TITLE = "Scheduling customer erasure";

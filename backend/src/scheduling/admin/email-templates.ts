@@ -9,7 +9,8 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { SCHEDULING_EMAIL_KEYS, defaultSchedulingTemplates, resolveTemplate, type EmailTemplate } from "../../lib/scheduling-email.js";
-import { EDITOR_OR_ADMIN, adminRoute, answer, readSchedulingTenant, refusal } from "./common.js";
+import { EDITOR_OR_ADMIN, adminRoute } from "./common.js";
+import { answer, readSchedulingTenant, refusal } from "../common.js";
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) =>
     adminRoute(event, "email-templates", EDITOR_OR_ADMIN, async ({ tenantId }) => {

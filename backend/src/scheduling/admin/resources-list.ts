@@ -6,7 +6,8 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { listResources, schedulingStoreFromEnv } from "../../lib/scheduling-db.js";
-import { EDITOR_OR_ADMIN, adminRoute, answer } from "./common.js";
+import { EDITOR_OR_ADMIN, adminRoute } from "./common.js";
+import { answer } from "../common.js";
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) =>
     adminRoute(event, "resources-list", EDITOR_OR_ADMIN, async ({ tenantId }) => {

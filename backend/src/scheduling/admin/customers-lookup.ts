@@ -9,7 +9,8 @@ import { z } from "zod";
 import { PersonSchema } from "@amodx/shared";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { bookingIdsOfEmail, getBooking, schedulingStoreFromEnv } from "../../lib/scheduling-db.js";
-import { EDITOR_OR_ADMIN, adminRoute, answer, parseBody } from "./common.js";
+import { EDITOR_OR_ADMIN, adminRoute } from "./common.js";
+import { answer, parseBody } from "../common.js";
 import { bookingAdminDTO, bookingNames } from "./booking-dto.js";
 
 /** `{ email }`: the stored-email rule of `Person` (normalized, then validated). Shared with the erasure route. */

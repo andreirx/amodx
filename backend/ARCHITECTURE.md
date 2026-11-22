@@ -30,7 +30,10 @@ src/
 │   │                      #   its clock counts as expired (updateRun reads no seat and leaves `seats` as stored);
 │   │                      #   a BOOKING# change is conditioned on `rev` and sets only the attributes it changes
 │   │                      #   (+ rev, updatedAt, history with an entry). A stored item that fails its schema
-│   │                      #   throws StoredDataInvalidError (500 storedDataInvalid).
+│   │                      #   throws StoredDataInvalidError (500 storedDataInvalid). confirmBooking returns an
+│   │                      #   explicit ConfirmOutcome (SCHED-1D2): `applied` (this call's transaction confirmed it)
+│   │                      #   or `alreadyConfirmed` (no write), each with the booking — the mail owner is the
+│   │                      #   `applied` caller, never inferred from a timestamp.
 │   │                      #   No Scan. Tests: test/unit/scheduling-db.test.ts (rows C1-C35 against an in-memory
 │   │                      #   fake that evaluates the emitted expressions); test/scheduling-db.integration.test.ts
 │   │                      #   (operator-run on the staging table: skipped without SCHEDULING_TABLE_NAME, refuses a
@@ -41,7 +44,8 @@ src/
 │   │                      #   override replaces subject and body; an absent sendTo… flag keeps the default's),
 │   │                      #   storedOverrides (a stored schedulingEmailConfig that fails its schema → null → 500
 │   │                      #   storedDataInvalid, never "no override"), rendering via order-email.ts renderTemplate.
-│   │                      #   Users: scheduling/admin/bookings-cancel.ts (mail `cancelled`), email-templates.ts
+│   │                      #   Users: scheduling/admin/bookings-cancel.ts (mail `cancelled`), email-templates.ts,
+│   │                      #   scheduling/visitor/mail.ts (SCHED-1D2: `hold`, `confirmed`, `cancelled`, `moved`)
 │   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
 │   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
 │   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
@@ -256,15 +260,60 @@ src/
 │                          #   the three omits `ip` from the UPDATE_SETTINGS event (whole event, also for a mixed body);
 │                          #   other bodies send `ip` as before (test/unit/scheduling-settings.test.ts, rows D13/D14/D17).
 ├── scheduling/
+│   ├── common.ts          # SCHED-1D2 (moved from admin/common.ts, behaviour unchanged): the plumbing of BOTH route
+│   │                      #   families — answer/refusal (`{ error, code, ...context }`), parseBody/parseValue/pathParam
+│   │                      #   (400 invalid with issue paths, never values), guarded (StoredDataInvalidError → 500
+│   │                      #   storedDataInvalid logged by key; any other error → 500 internal logged by its NAME only),
+│   │                      #   readTenantRecord / readSchedulingTenant (+ SCHED-1D2 fields: enabled = schedulingEnabled
+│   │                      #   === true, recaptcha as stored, contactEmail). Used through admin/common.ts adminRoute and
+│   │                      #   visitor/common.ts visitorRoute.
+│   ├── visitor/           # SCHED-1D2 (sched-1.md § 10.2, § 7.2, § 8, § 9, § 16.3; PROTOTYPE): the visitor routes, in
+│   │                      #   the SchedulingApi nested stack; renderer-proxied (the hosted pages are sched-1g). Every
+│   │                      #   handler goes through common.ts visitorRoute: x-tenant-id (the tenant the renderer derived
+│   │                      #   from the URL); requireRole(["RENDERER"]) WITHOUT a target tenant (the renderer key is
+│   │                      #   tenantId "ALL"; GLOBAL_ADMIN passes first; every other role → 403 forbidden; no
+│   │                      #   credential never reaches a handler: the authorizer refuses it); switch off or no tenant
+│   │                      #   record → 403 notAvailable, decided on the RAW record before any stored setting is parsed
+│   │                      #   (../common.ts parseSchedulingTenant comes after); enabled without a stored time zone →
+│   │                      #   500 storedDataInvalid. Reads that decide whether a write runs are consistent (token,
+│   │                      #   booking, course, run, move target); answers and mails use placeFor (the place of the
+│   │                      #   EXACT booking described; a known place only for the same course+run).
+│   │                      #   offer, slots, runs (GET; § 16.3 class 1: derived reads, no resource id/name, no
+│   │                      #   customer data — row D9; slots: the kernel's availableSlots over AVAILABILITY#+DAYS#
+│   │                      #   and readIntervals, range checked by the kernel before any read, days after
+│   │                      #   lastBookableDate empty and not read); holds (POST; class 2: § 7.2 intent replay BEFORE
+│   │                      #   reCAPTCHA; a seat language must be one of the course's; reCAPTCHA as orders/create.ts —
+│   │                      #   resolveRecaptchaConfig(tenant.recaptcha), 400 verificationRequired / 403
+│   │                      #   verificationFailed — except remoteip = the viewer address (§ 9.1) and FAIL CLOSED: no
+│   │                      #   resolvable configuration → 503 verificationUnavailable (operator ruling); x-viewer-address
+│   │                      #   read ONLY from a RENDERER caller and re-checked with client-address.ts → addressKey for
+│   │                      #   the LIMIT#ADDR counter; holdSlot/holdSeat carry the limits; then the `hold` mail and
+│   │                      #   markHoldMail → 201 or 503 mailFailed); bookings-view / -confirm / -cancel / -move (POST
+│   │                      #   { token }; class 3: parseLinkBody checks the token IN FULL before any other field —
+│   │                      #   absent, not a string, or not the § 8.1 format (43 chars of [A-Za-z0-9_-], the same rule
+│   │                      #   as getBookingByToken, pinned equal by a test) → 404 linkNotValid with no lookup, write or
+│   │                      #   mail; only then 400 invalid for other fields; bookingByLink = getBookingByToken + readPlace,
+│   │                      #   consistent, + tokenView; every miss is 404 linkNotValid; view changes nothing, an expired
+│   │                      #   hold → 410 expired (§ 8.4; BookingViewDTO.state "expired" has no producer); confirm mails
+│   │                      #   `confirmed` with a NEW token (mintToken) only on the store's `applied` outcome; cancel
+│   │                      #   mails `cancelled` without a link; move keeps the id and mails `moved` with a new token). dto.ts: RunDTO / ProposalDTO (kernel propose) / HoldResult /
+│   │                      #   BookingViewDTO — never a booking id or token (row D5), email masked. mail.ts: the four
+│   │                      #   visitor mails; the `hold` customer copy is always sent (the only way to confirm); owner
+│   │                      #   copies (sendToAdmin → integrations.contactEmail) never carry the link. NO audit event
+│   │                      #   on any visitor route (SCHED-AUDIT-PII = C: history is in the booking's own write).
+│   │                      #   Tests: test/unit/scheduling-visitor.test.ts (D1-D7, D9-D11, D14, D15, route parts of
+│   │                      #   C4-C7), scheduling-visitor-d8.test.ts (D8 on the REAL scheduling-db.ts over
+│   │                      #   MemoryTable), scheduling-visitor-auth.test.ts (D2: the real authorizer)
 │   └── admin/             # SCHED-1D1 (sched-1.md § 10.3; PROTOTYPE): the admin routes shared by both shapes, in the
 │                          #   SchedulingApi nested stack (infra/lib/api-scheduling.ts). Every handler goes through
 │                          #   common.ts adminRoute (x-tenant-id; requireRole E+T = EDITOR/TENANT_ADMIN, T =
-│                          #   TENANT_ADMIN, GLOBAL_ADMIN passes; StoredDataInvalidError → 500 storedDataInvalid logged
-│                          #   by key; errors `{ error, code, ...context }`; logs carry ids only) and calls
+│                          #   TENANT_ADMIN, GLOBAL_ADMIN passes; then ../common.ts guarded: StoredDataInvalidError →
+│                          #   500 storedDataInvalid logged by key; errors `{ error, code, ...context }`; logs carry
+│                          #   ids only; SCHED-1D2 moved these shared parts to ../common.ts) and calls
 │                          #   lib/scheduling-db.ts — never DynamoDB for scheduling data (the tenant record is read
 │                          #   from the main table). Admin routes work whether schedulingEnabled is on or off.
 │                          #   A handler that USES a stored scheduling attribute reads the tenant only through
-│                          #   common.ts readSchedulingTenant (`scheduling` and `schedulingEmailConfig` parsed by their
+│                          #   ../common.ts readSchedulingTenant (`scheduling` and `schedulingEmailConfig` parsed by their
 │                          #   shared schemas → StoredDataInvalidError keyed TENANT#<id>.<attribute>), BEFORE any
 │                          #   write; the mail after a commit cannot change the answer (one exception, recorded in
 │                          #   bookings-cancel.ts: a names re-read after a concurrent move); the catch-all logs the
@@ -685,7 +734,11 @@ reCAPTCHA helpers mocked; each row inspects the commands that would reach Dynamo
 handlers, `requireRole`, `events.ts` and `scheduling-email.ts`, with the EventBridge and SES clients replaced by
 recorders (so the "no `ip`, no customer data in any audit event" rows read the real `PutEvents` input) and, for the
 admin routes, the store functions of `scheduling-db.ts` replaced (their transactions are the `sched-1c` rows of
-`scheduling-db.test.ts`).
+`scheduling-db.test.ts`). `test/unit/scheduling-visitor.test.ts` (SCHED-1D2) is the same shape for the visitor
+routes, with `verifyRecaptcha` (the call to Google) replaced and `resolveRecaptchaConfig` real; row D8 is in
+`scheduling-visitor-d8.test.ts`, which runs the REAL `scheduling-db.ts` over `MemoryTable` (every D8 refusal is decided
+on Get reads before the hold transaction; a positive control shows the request reaching `TransactWriteCommand` before
+the `dayOff` edit); `scheduling-visitor-auth.test.ts` runs the real authorizer on the visitor route keys.
 `test/unit/order-price-1.test.ts` (ORDER-PRICE-1) is the same shape for `orders/create.ts` (plus a mocked SES client,
 so the confirmation mail's item lines are read): each row inspects the `TransactWriteCommand`, or that none is sent.
 `test/unit/order-confirm-1.test.ts` (ORDER-CONFIRM-1) is the same shape for `orders/create.ts` (delivery config and

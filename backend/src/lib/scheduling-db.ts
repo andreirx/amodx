@@ -1239,21 +1239,30 @@ function languageChange(before: RunLanguage, after: RunLanguage): Record<string,
 export type ConfirmFailure = ConfirmRefusal | NotFound | Busy;
 
 /**
- * § 5.3 confirm by link: held and unexpired → confirmed (≤ 5 items); confirmed → no write; expired, or the entry
- * went to another writer after expiry (`seatLost`) → `expired`; cancelled → `cancelled`.
+ * The outcome of a successful confirm (SCHED-1D2 ruling S1D2-CONFIRM-OUTCOME): `applied` = THIS call's transaction
+ * committed the held → confirmed change (the caller owns the `confirmed` mail); `alreadyConfirmed` = the booking was
+ * confirmed when this call read it (no write; another request confirmed it). Taken from the attempt that ends the
+ * versioned loop, never inferred from timestamps.
+ */
+export type ConfirmOutcome = { kind: "applied"; booking: Booking } | { kind: "alreadyConfirmed"; booking: Booking };
+
+/**
+ * § 5.3 confirm by link: held and unexpired → confirmed (≤ 5 items) → `applied`; confirmed → no write →
+ * `alreadyConfirmed`; expired, or the entry went to another writer after expiry (`seatLost`) → `expired`; cancelled →
+ * `cancelled`. A lost version re-reads: a competing confirm that committed first makes this call `alreadyConfirmed`.
  */
 export async function confirmBooking(store: SchedulingStore, tenantId: string, bookingId: string, now: Instant)
-    : Promise<Result<Booking, ConfirmFailure>> {
-    return versioned<Booking, ConfirmFailure>(store, async () => {
+    : Promise<Result<ConfirmOutcome, ConfirmFailure>> {
+    return versioned<ConfirmOutcome, ConfirmFailure>(store, async () => {
         const b = await getBooking(store, tenantId, bookingId, true);
         if (b === undefined) return final(err(NOT_FOUND));
         const decision = confirmDecision(b, now);
         if (!decision.ok) return final(decision);
-        if (decision.value === "noop") return final(ok(b));
+        if (decision.value === "noop") return final(ok({ kind: "alreadyConfirmed", booking: b }));
         const state = b.state;
         if (state.kind !== "held" || b.heldUntil === undefined) throw new Error("[scheduling] held booking without heldUntil");
         const x = state.expiresAt;
-        const seatLost = final<Booking, ConfirmFailure>(err({ kind: "expired", at: x }));
+        const seatLost = final<ConfirmOutcome, ConfirmFailure>(err({ kind: "expired", at: x }));
         const change = changed(b, now, { state: { kind: "confirmed", at: now } }, { action: "confirmed", at: now });
         const next: Booking = { ...change.next };
         delete next.heldUntil;
@@ -1291,7 +1300,7 @@ export async function confirmBooking(store: SchedulingStore, tenantId: string, b
             { item: del(store, tenantId, K.held(b.heldUntil, b.id)), onConditionFailed: "unexpected" },
             containerUpdate(store, tenantId, { kind: "holds", snap: holds, now, entries: remaining }),
         );
-        return { kind: "write", items, value: next };
+        return { kind: "write", items, value: { kind: "applied", booking: next } };
     });
 }
 

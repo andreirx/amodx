@@ -8,7 +8,8 @@ import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { publishAudit } from "../../lib/events.js";
 import { getResource, removeResource, schedulingStoreFromEnv, type RemoveResourceRefusal } from "../../lib/scheduling-db.js";
-import { EDITOR_OR_ADMIN, adminRoute, answer, pathParam, refusal, type Answer } from "./common.js";
+import { EDITOR_OR_ADMIN, adminRoute } from "./common.js";
+import { answer, refusal, type Answer, pathParam } from "../common.js";
 
 function refusalAnswer(r: RemoveResourceRefusal): Answer {
     switch (r.kind) {

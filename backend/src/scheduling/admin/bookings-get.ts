@@ -5,7 +5,8 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { getBooking, schedulingStoreFromEnv } from "../../lib/scheduling-db.js";
-import { EDITOR_OR_ADMIN, adminRoute, answer, pathParam, refusal } from "./common.js";
+import { EDITOR_OR_ADMIN, adminRoute } from "./common.js";
+import { answer, refusal, pathParam } from "../common.js";
 import { bookingAdminDTO, bookingNames } from "./booking-dto.js";
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) =>
