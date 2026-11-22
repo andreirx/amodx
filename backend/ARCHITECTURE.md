@@ -499,7 +499,8 @@ src/
 ├── themes/
 │   └── manage.ts          # Theme CRUD (create, list, delete handlers)
 ├── webhooks/
-│   └── paddle.ts          # POST /webhooks/paddle (payment fulfillment + SES email)
+│   └── paddle.ts          # POST /webhooks/paddle — fulfils nothing (PADDLE-HOOK-1): unverified, so every request
+│                          #   gets 200 + one event-name log line; no table/S3/mail. Verified fulfilment: pay-2
 └── import/
     ├── wordpress.ts       # WordPress XML import handler (featured-image copy under the image destination policy;
     │                      #   unreachable today: wxr-parser.ts never sets featuredImage)
@@ -730,7 +731,7 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 - **Transactional writes:** `TransactWriteCommand` for multi-item consistency (content + route creation)
 - **Conditional writes:** `ConditionExpression="attribute_not_exists(SK)"` prevents duplicate slugs/IDs
 - **Audit trail:** Handlers call `publishAudit()` → EventBridge → `audit/worker.ts` → DynamoDB. Non-blocking.
-- **Presigned S3 URLs:** Assets get 5-min upload URLs. Resources get 15-min download URLs. Paddle fulfillment gets 24-hour URLs.
+- **Presigned S3 URLs:** Assets get 5-min upload URLs. Resources get 15-min download URLs. (Paddle no longer signs URLs — PADDLE-HOOK-1.)
 - **Lead upsert:** Leads keyed by email — PUT overwrites, so re-submissions update rather than duplicate
 - **Pagination:** Manual loop with `LastEvaluatedKey`, safety cap at 20 iterations
 - **Tenant mode (CATALOG-MODE-1):** `catalogMode` is fixed at `POST /tenants` (CM-D11) and read through

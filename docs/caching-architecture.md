@@ -1729,7 +1729,7 @@ These handlers do NOT trigger CloudFront invalidation, the admin "changes pendin
 | Users | invite, update, delete, toggle-status | Admin user management |
 | Assets | create | Upload; pages change when content is updated |
 | Resources | presign | Presigned URL generation |
-| Webhooks | paddle | Payment fulfillment email |
+| Webhooks | paddle | Fulfils nothing since `PADDLE-HOOK-1` (unverified route: 200, no table/S3/mail); verified fulfilment returns in `pay-2` |
 
 ### 2b. Fast-lane targeted invalidation (ORDINARY class, `cache-4a`)
 
