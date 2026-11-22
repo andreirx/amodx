@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate, useLocation } from "react-router-dom";
 import { getCurrentUser } from 'aws-amplify/auth';
-import LoginPage from "@/pages/Login";
+import LoginPage, { loginPathFor } from "@/pages/Login";
 import StrategyBoard from "@/pages/StrategyBoard";
 import StrategyEditor from "@/pages/StrategyEditor";
 import ContentList from "@/pages/ContentList";
@@ -44,11 +44,15 @@ import MigrationPage from "@/pages/Migration";
 import CatalogImport from "@/pages/CatalogImport";
 import EmailPage from "@/pages/Email";
 import SchedulingPage from "@/pages/Scheduling";
+import SchedulingAppointments from "@/pages/SchedulingAppointments";
+import SchedulingAppointmentsBooking from "@/pages/SchedulingAppointmentsBooking";
+import SchedulingPlanner from "@/pages/SchedulingPlanner";
 
 // 1. Create a Shell Component to handle Auth & Context
 // This replaces the old "ProtectedRoute" wrapper logic inside the routes
 function AppShell() {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+    const location = useLocation();
 
     useEffect(() => {
         checkAuth();
@@ -68,7 +72,8 @@ function AppShell() {
     }
 
     if (!isAuthenticated) {
-        return <Navigate to="/login" replace />;
+        // SCHED-1E2 (§ 23.5): keep the requested path and query, so the sign-in returns to it (Login.tsx checks it).
+        return <Navigate to={loginPathFor(location.pathname, location.search)} replace />;
     }
 
     return (
@@ -129,6 +134,9 @@ const router = createBrowserRouter([
             { path: "migration", element: <MigrationPage /> },
             { path: "email", element: <EmailPage /> },
             { path: "scheduling", element: <SchedulingPage /> },
+            { path: "scheduling/appointments", element: <SchedulingAppointments /> },
+            { path: "scheduling/planner", element: <SchedulingPlanner /> },
+            { path: "scheduling/bookings/:bookingId", element: <SchedulingAppointmentsBooking /> },
             { path: "settings", element: <SettingsPage /> },
         ],
     },

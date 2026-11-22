@@ -155,6 +155,48 @@ src/
     │                           #   204: deleteRequest treats apiRequest's JSON SyntaxError after a 2xx as success.
     │                           #   Scheduling.test.ts: pure-logic tests of the payload and error-text helpers.
     │                           #   Sidebar: group "Scheduling" for every site (the tenant list has no schedulingEnabled)
+    │                           #   SCHED-1E2: the header links to the week planner and to services/weekly hours.
+    ├── SchedulingPlanner.tsx   # SCHED-1E2 (docs/slices/sched-1.md § 23, § 10.3; PROTOTYPE): the week planner of one
+    │                           #   resource. GET …/resources/{r}/week?start=<Monday> drawn as a Monday-Sunday grid:
+    │                           #   open / taken / removed-by-a-day-edit / closed stretches (weekView: each ELAPSED
+    │                           #   minute since local midnight classified from the answer's intervals, so a 23- or
+    │                           #   25-hour day keeps every real minute once; window bounds in a spring gap start at
+    │                           #   the gap end; on a clock-change day the times carry their UTC offset and the column
+    │                           #   marks its own hours). Each kind has a fill, a pattern or border AND a word. Bookings:
+    │                           #   a block of true height in the grid, and below each day a list with ref, time,
+    │                           #   customer, service, "Held until", "⚠ Outside hours", Details and Move (the list does
+    │                           #   not depend on the block's height). The horizon: "Last day visitors can book", later
+    │                           #   days marked. Per day: Edit hours, Day off, Weekly hours (PUT …/days, from = to);
+    │                           #   "Edit a range of dates"; "Copy this week to the next N weeks" (POST …/days/copy-week);
+    │                           #   "+ Appointment" (every service: visitor eligibility does not limit the admin, § 5.2)
+    │                           #   and "Move" through AppointmentDialog (POST /scheduling/admin/appointments, POST
+    │                           #   …/move-slot with the rev read by GET …/bookings/{id}). The edit answer's outsideHours
+    │                           #   refs are listed. Times in WeekPlanDTO.timezone, never the browser's; "this week"
+    │                           #   from GET /settings scheduling.timezone. URL query: tenant, week, resource.
+    │                           #   The weekly mail's link ?tenant=&week= (§ 23.5): plannerAccess waits for the tenant
+    │                           #   list, then show / switch once (selectTenant reloads) / "You do not have access to
+    │                           #   this site." — no scheduling request unless "show", also after in-app navigation.
+    │                           #   useSelectionData(key, fetch) (one rule for the three scheduling pages): an answer
+    │                           #   is applied only when it answers the hook's latest request, and data is returned only
+    │                           #   for the current selection key (tenant, resource, week, booking); writes take their
+    │                           #   target from the data shown; dialogs, notices and errors carry the key they belong to.
+    │                           #   SharedUnionLinks: each copied DTO union the admin switches on is tied to its shared
+    │                           #   union (Same<…>), with a @ts-expect-error witness that a fifth variant fails (row A14).
+    │                           #   Pure helpers exported here are used by the two pages below. SchedulingPlanner.test.ts
+    │                           #   (jsdom): rows E15, E17-E21, E24 (incl. the page mounted with the link and the Login
+    │                           #   flows) and the review-0 regressions (late answers, in-app navigation, clock
+    │                           #   changes, 5- and 30-minute bookings, a manual appointment outside visitor eligibility).
+    ├── SchedulingAppointments.tsx # SCHED-1E2: services (GET/POST/PUT/DELETE /scheduling/admin/services; servicePayload
+    │                           #   = shared ServiceSchema) and the weekly hours of each resource (GET/PUT …/availability;
+    │                           #   rulesPayload = shared AvailabilityRuleSchema); lists and hours through
+    │                           #   useSelectionData; edited rows belong to the resource they were loaded for. DELETE
+    │                           #   204: its own deleteRequest (a copy of Scheduling.tsx's).
+    ├── SchedulingAppointmentsBooking.tsx # SCHED-1E2: one booking (GET /scheduling/admin/bookings/{id}, through
+    │                           #   useSelectionData) with its history (historyLine, exhaustive over the four actions),
+    │                           #   Cancel (POST …/cancel) and Move (a confirmed appointment; the planner's
+    │                           #   AppointmentDialog); the page reads the booking again after each. Opened from a
+    │                           #   planner entry. SchedulingAppointments.test.ts (jsdom): pure helpers of both pages and
+    │                           #   the review-0 R1 regressions of both.
     ├── AuditLog.tsx            # Activity feed with action icons
     └── __markup__/             # CAT-ADMIN-1: react-dom/server captures of Products, Settings, Migration, FormSubmissions
                                 #   taken at 3912c5d; the *.test.ts of each page compares a non-catalog render to them
@@ -163,7 +205,11 @@ src/
 
 ## Routing
 
-React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser()` from Amplify.
+React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser()` from Amplify. A signed-out user is
+sent to `/login?next=<path and query>` (`loginPathFor`, SCHED-1E2); after the password sign-in and after the
+new-password step `Login.tsx` goes to `next` when `isSafeReturnPath` accepts it (path only, one leading `/`, no `//`,
+no `\`, no control or whitespace character, ≤ 2000 characters), else to `/`. A 401/403 from `apiRequest` still goes to
+plain `/login` (no `next`).
 
 | Path | Component | Description |
 |------|-----------|-------------|
@@ -186,6 +232,9 @@ React Router v7. `AppShell` in `App.tsx` guards all routes with `getCurrentUser(
 | `/users` | Users | Team management |
 | `/email` | Email | Guided DNS for mailbox providers + read-only DNS checker (slice `email-2`). Provider selector, copyable record table (static / domain-derived / console-generated rows), MX destructive-advice warning, per-record check verdict (theme-token status via icon, not colour). Reads `EMAIL_PROVIDER_RECIPES` from `@amodx/shared`; POSTs `/email/dns-check`. |
 | `/scheduling` | Scheduling | Scheduling settings, resources, mail templates (SCHED-1D1); a short "not enabled" state when `schedulingEnabled` is off |
+| `/scheduling/appointments` | SchedulingAppointments | Services and weekly hours per resource (SCHED-1E2) |
+| `/scheduling/planner` | SchedulingPlanner | Week planner of one resource; query `tenant`, `week`, `resource`; the target of the weekly mail's link (SCHED-1E2) |
+| `/scheduling/bookings/:bookingId` | SchedulingAppointmentsBooking | One booking: details, history, cancel, move (SCHED-1E2) |
 | `/settings` | Settings | Site configuration |
 
 ## State Management
@@ -295,7 +344,8 @@ shown report was made for. Design: `docs/slices/cat-import-profile-1.md` § 5, �
 ## Auth Flow
 
 1. `main.tsx` configures Amplify with Cognito userPoolId + clientId (from runtime config or env)
-2. `Login.tsx` calls `signIn()`, handles `CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED` challenge
+2. `Login.tsx` calls `signIn()`, handles `CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED` challenge, then goes to a safe
+   `next` or `/` (see Routing)
 3. `AppShell` checks `getCurrentUser()` before rendering authenticated routes
 4. `apiRequest()` extracts ID token from `fetchAuthSession()` for every API call
 

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { signIn, confirmSignIn } from 'aws-amplify/auth'; // Import confirmSignIn
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,6 +13,39 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 
+/*
+ * SCHED-1E2 (docs/slices/sched-1.md § 23.5): the return path after sign-in. The guard in App.tsx sends a signed-out
+ * user to `/login?next=<path and query>`; after a successful sign-in (password, and the new-password step) the page
+ * goes to `next` when `isSafeReturnPath` accepts it, else to `/` as before. Without `next` nothing changes.
+ */
+
+/**
+ * § 23.5 — one rule for the class "the string must not be able to name another origin": a path only; it starts with
+ * exactly one `/`; no `//` and no `\` anywhere (browsers read `\` as `/`, so `/\evil.example` is `//evil.example`);
+ * no control or whitespace character; at most 2000 characters. A string that starts with `/` has no scheme. The page
+ * goes there with the router's in-app `navigate`, never `window.location`.
+ */
+export function isSafeReturnPath(p: string): boolean {
+    if (p.length === 0 || p.length > 2000) return false;
+    if (p[0] !== "/") return false;
+    if (p.includes("//") || p.includes("\\")) return false;
+    for (const ch of p) {
+        const code = ch.codePointAt(0) ?? 0;
+        if (code <= 0x20 || (code >= 0x7f && code <= 0x9f) || /\s/u.test(ch)) return false;
+    }
+    return true;
+}
+
+/** Where a successful sign-in goes: `next` (already decoded from the query) when safe, else `/`. */
+export function afterSignInPath(next: string | null): string {
+    return next !== null && isSafeReturnPath(next) ? next : "/";
+}
+
+/** The guard's redirect for a signed-out user: the login page with the requested path and query as `next`. */
+export function loginPathFor(pathname: string, search: string): string {
+    return `/login?next=${encodeURIComponent(pathname + search)}`;
+}
+
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [step, setStep] = useState<'LOGIN' | 'NEW_PASSWORD'>('LOGIN');
@@ -24,6 +57,8 @@ export default function LoginPage() {
     const [error, setError] = useState("");
 
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const returnPath = afterSignInPath(searchParams.get("next"));
 
     async function handleLogin(e: React.FormEvent) {
         e.preventDefault();
@@ -39,7 +74,7 @@ export default function LoginPage() {
             if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
                 setStep('NEW_PASSWORD');
             } else if (isSignedIn) {
-                navigate("/");
+                navigate(returnPath);
             }
         } catch (err: any) {
             console.error(err);
@@ -60,7 +95,7 @@ export default function LoginPage() {
             });
 
             if (isSignedIn) {
-                navigate("/");
+                navigate(returnPath);
             }
         } catch (err: any) {
             console.error(err);

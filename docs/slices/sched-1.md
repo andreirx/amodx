@@ -2315,3 +2315,26 @@ rows C33, D14).
   one on the day off, a refused double booking; the week read and the all-resource read; a move and a refused
   move with a stale `rev`; a deleted service whose booking keeps the service name; main-table audit with the
   configuration events and nothing about a booking. The partition is back to 0 items; the switch is off.
+
+### `sched-1e2` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Scope: admin pages `SchedulingAppointments.tsx` (services, weekly hours), `SchedulingPlanner.tsx` (the week
+  planner of § 23.5), `SchedulingAppointmentsBooking.tsx` (booking detail with history and move), three routes
+  and the guard's return path in `App.tsx`, the safe `next` in `Login.tsx`, links from `Scheduling.tsx`.
+  `sched-1e` is complete with this half. Admin app only; no backend or infra change.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), two cycles, approved (separate
+  invocations). Review-0 defects corrected: an answer for an earlier selection can no longer replace the
+  current one (`useSelectionData`, used by the three pages); the manual-appointment dialog offers every
+  service; bookings across a clock change are placed by elapsed minutes; short bookings keep their details and
+  actions outside the height-bound block; a compile-time parity check between the page's unions and the
+  shared ones.
+- Operator gates, all exit 0: build, typecheck, admin unit, shared, `git diff --check`.
+- Staging (operator, OBSERVED, headless browser on the staging admin, tenant `cm1-content`; 10 checks pass):
+  the planner link opened signed out goes to `/login?next=…` and, after sign-in, to the planner on the week of
+  the link (E18); the grid shows open time, bookings (by reference), a day off and a short day as hatched
+  "removed" time, closed weekend days, and a booking on the day off marked "Outside hours" (E15); the
+  appointments page lists the service and the weekly hours; a link for a tenant outside the user's list shows
+  "You do not have access to this site." (E20); `next=//evil.example/x` stays on the admin origin; no uncaught
+  page error. Screenshots kept by the operator. Everything written was removed; the switch is off.
+- Observations, not corrected here: the first planner load after a deploy took more than 4 s (function cold
+  start); the admin app requests `//scheduling/admin/…` (two slashes after the API host; answered 200).
