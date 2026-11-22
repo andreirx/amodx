@@ -16,7 +16,7 @@ lib/
 ├── amodx-stack.ts              # Main stack: composes all constructs, wires dependencies
 ├── api.ts                      # HTTP API Gateway + authorizer + all routes; wires catalog routes to CatalogApi's functions (passed in)
 ├── api-catalog.ts              # NestedStack: content/products/import FUNCTIONS (routes stay in api.ts; instantiated in amodx-stack.ts)
-├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 8 visitor routes; SCHED-1E1: 12 appointment admin routes; SCHED-1F1: 13 group admin routes; L1 routes, own authorizer)
+├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 8 visitor routes; SCHED-1E1: 12 appointment admin routes; SCHED-1F1: 13 group admin routes; SCHED-1G1: the calendar feed route + the scheduled job and its one rate(15 minutes) rule; L1 routes, own authorizer)
 ├── auth.ts                     # Two Cognito User Pools (Admin invite-only, Public self-signup)
 ├── database.ts                 # DynamoDB single table with 3 GSIs
 ├── uploads.ts                  # S3 buckets (public assets + private resources) + CloudFront CDN
@@ -47,7 +47,7 @@ AmodxStack
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
 ├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
 ├── EngagementApi (NestedStack — popups, forms)
-├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1F1: courses, runs, roster, unplaced list, seats; after AdminHosting)
+├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1F1: courses, runs, roster, unplaced list, seats; SCHED-1G1: calendar feed, scheduled job; after AdminHosting, which supplies `adminUrl`)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
 ├── AmodxAdminHosting (S3 + CloudFront)
 ├── AmodxDomains (Route53 + ACM certs)
@@ -102,8 +102,9 @@ to derive the domain server-side; the DNS lookups themselves write nothing). Wit
 `SchedulingApi` NestedStack (`api-scheduling.ts`, SCHED-1D1; docs/slices/sched-1.md § 11.2, § 17): functions AND
 routes (L1 `CfnRoute`/`CfnIntegration`, its own `CfnAuthorizer` on the parent's authorizer function, as CommerceApi).
 Routes: the 10 admin routes under `/scheduling/admin/…` (SCHED-1D1), the 8 visitor routes under
-`/scheduling/visitor/…` (SCHED-1D2: offer, slots, runs, holds, bookings/view|confirm|cancel|move; the feed is
-`sched-1g`) and the 12 appointment admin routes of SCHED-1E1 (services ×4, `resources/{r}/availability` GET/PUT,
+`/scheduling/visitor/…` (SCHED-1D2: offer, slots, runs, holds, bookings/view|confirm|cancel|move), the calendar
+feed `POST /scheduling/visitor/feed` (SCHED-1G1, § 12: read-only on the scheduling table, no mail / link-base /
+event-bus / reCAPTCHA wiring, row `(sched1g1)`) and the 12 appointment admin routes of SCHED-1E1 (services ×4, `resources/{r}/availability` GET/PUT,
 `resources/{r}/week`, `resources/{r}/days` PUT, `resources/{r}/days/copy-week`, `appointments` GET/POST,
 `bookings/{id}/move-slot`; no closed-time route, row E14, which also pins every scheduling admin route of the stack to
 `tools/mcp-server/routes.json`) and the 13 group admin routes of SCHED-1F1 (`courses` GET/POST, `courses/{c}`
@@ -136,7 +137,27 @@ resources added in SchedulingApi only (13 × function, role, policy, permission,
 the 30 existing scheduling functions change their code asset hash only (they bundle `scheduling-db.ts`, which gained
 the course rulings of SCHED-1F1); the nested template's description names the groups; the parent changes only the
 nested-stack resource's template URL. SchedulingApi raw 260 / 43 functions, deployed ≈ 304; parent deployed ≈ 469
-(unchanged).
+(unchanged). SCHED-1G1: the feed route (read-only, row `(sched1g1)` G11) and ONE scheduled function
+`SchedulingJobFunc` (`backend/src/scheduling/reminders.ts`: reminders, the daily expired-hold cleanup, the Sunday
+planner mail) with ONE rule `SchedulingJobSchedule` `rate(15 minutes)` that targets it; the function's resource-policy
+grant is scoped to that rule; no API route is created. Authorized operator invocation (for example `aws lambda
+invoke`) remains possible; IAM outside this stack was not examined.
+Wiring (least privilege, § 11.2): main table read, scheduling table read-write, `ses:SendEmail` on the sender identity,
+`SES_FROM_EMAIL`, `RENDERER_CLOUDFRONT_ORIGIN`, `ADMIN_URL`; no event bus; timeout 300 s (a timeout does not stop two
+invocations from running at once: reminders stay one per start through the conditional mark, the cleanup is
+idempotent, the weekly mail can be sent twice — documented in § 11.4). `ADMIN_URL` comes from the ONE property
+`adminUrl` that `amodx-stack.ts` passes (the expression of the `AdminUrl` output; ruling SCHED-1G1-ADMIN-URL-LINE = A);
+row G16 is asserted for both configurations (without a root domain in the main synth; with `domains.root` in a second
+synth whose hosted-zone lookup is answered from the app context and which reuses the first synth's build output).
+Comparison of the ACTUAL app (`bin/infra.ts`, stage staging, cached context, no AWS call; HEAD `6af9388` synthesized
+twice: only `AdminHostingRuntimeConfigWriteConfigJson` differs, synth noise): SchedulingApi 303 → 316, 13 added
+(`SchedulingJobFunc` + log group, role, policy, `SchedulingJobSchedule`, its invoke permission; `VisitorFeedFunc` +
+log group, role, policy, permission, integration, route), none removed in any stack; the parent and the three other
+nested stacks add or remove nothing. Changed: nested-stack template URLs and function `Code` assets — non-scheduling
+bundles byte-identical (only the source maps differ, they carry checkout paths); scheduling bundles: 13 verified (9
+identical, 4 differ only in renamed minified names; OBSERVED), 30 with a residual difference, caused by
+`lib/scheduling-email.ts` (`whenText`, the § 11.4 weekly text) and `admin/bookings-cancel.ts` (INFERRED from the source diff: no other changed source is reachable). Local synth counts:
+SchedulingApi raw 271 / 45 functions, deployed ≈ 317; parent deployed ≈ 469 (unchanged).
 
 Custom Lambda authorizer validates Cognito JWT or master API key. Public routes (`POST /leads`, `/contact`, `/consent`) bypass auth.
 

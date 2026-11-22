@@ -15,8 +15,8 @@
  * Limit (§ 11.1): English text, one template per key per tenant (trigger: `lang-1a`).
  */
 import {
-    SchedulingEmailConfigSchema, SchedulingEmailKeySchema,
-    type SchedulingEmailConfig, type SchedulingEmailKey, type SchedulingEmailTemplate,
+    SchedulingEmailConfigSchema, SchedulingEmailKeySchema, instantToLocal,
+    type Booking, type Instant, type SchedulingEmailConfig, type SchedulingEmailKey, type SchedulingEmailTemplate,
 } from "@amodx/shared";
 import { renderTemplate } from "./order-email.js";
 
@@ -81,9 +81,13 @@ export function defaultSchedulingTemplates(): Record<SchedulingEmailKey, EmailTe
             sendToAdmin: false,
         },
         weekAhead: {
-            subject: "Your week ahead: {{weekStart}} to {{weekEnd}}",
-            body: "Hello,\n\nThis is the plan for the week {{weekStart}} to {{weekEnd}}:\n\n{{summary}}\n\n" +
-                "You can change the hours of any day, or turn a day off, in the planner:\n{{plannerLink}}\n\n{{siteName}}",
+            // § 11.4 (corrected by SCHED-1G1, operator ruling SCHED-1G1-WEEKMAIL-DEFAULT = A): the subject of § 11.4; a
+            // sentence that every week is open from the weekly defaults and can be changed in the planner; the summary;
+            // the planner link.
+            subject: "Your week from {{weekStart}}: hours and bookings",
+            body: "Hello,\n\nEvery week is open for booking from your weekly hours. You can change the hours of any day, " +
+                "or turn a day off, in the planner.\n\nThe week {{weekStart}} to {{weekEnd}}:\n\n{{summary}}\n\n" +
+                "Open the planner:\n{{plannerLink}}\n\n{{siteName}}",
             sendToCustomer: false,
             sendToAdmin: true,
         },
@@ -111,6 +115,31 @@ export function resolveTemplate(key: SchedulingEmailKey, overrides: Partial<Reco
         sendToCustomer: override.sendToCustomer ?? base.sendToCustomer,
         sendToAdmin: override.sendToAdmin ?? base.sendToAdmin,
     };
+}
+
+/**
+ * `{{when}}` (§ 11.1): local date and time in the booking's zone, with the zone name; "" for an unplaced booking.
+ * A slot is shown in `tenantTimezone` (absent → UTC); a seat at its run's first start in the RUN's zone (never the
+ * tenant's current zone, § 6.3), "" when the run no longer exists (`firstStart: null`).
+ * Moved here from `scheduling/admin/bookings-cancel.ts` by SCHED-1G1 (third user: the reminder job), unchanged in
+ * behaviour; the parameter is the structural part of `BookingNames` it reads, so this module imports no handler.
+ */
+export function whenText(b: Booking, names: { firstStart: Instant | null; runTimezone: string | null },
+    tenantTimezone: string | undefined): string {
+    const at = (instant: Instant, tz: string | null | undefined) => {
+        const zone = tz ?? "UTC";
+        const local = instantToLocal(instant, zone);
+        return `${local.date} ${local.time} (${zone})`;
+    };
+    switch (b.what.kind) {
+        case "slot": return at(b.what.start, tenantTimezone);
+        case "seat": return names.firstStart === null ? "" : at(names.firstStart, names.runTimezone);
+        case "unplaced": return "";
+        default: {
+            const never: never = b.what;
+            throw new Error(`Unhandled booking ${JSON.stringify(never)}`);
+        }
+    }
 }
 
 /**

@@ -1,11 +1,11 @@
 {
   "generatedAt": "2026-10-15",
-  "stage": "prod snapshot of 2026-10-15 + 35 LOCAL ADDITIONS NOT YET DEPLOYED (see localAdditions)",
+  "stage": "prod snapshot of 2026-10-15 + 36 LOCAL ADDITIONS NOT YET DEPLOYED (see localAdditions)",
   "apiId": "vppjxqrc3c",
   "source": "aws apigatewayv2 get-routes --api-id vppjxqrc3c --query \"Items[].RouteKey\"",
   "refresh": "Operator re-runs the source command after every backend route change and replaces `routes` (sorted). Then run `npm test` in tools/mcp-server.",
   "localAdditions": {
-    "note": "Routes added to `routes` by slices SCHED-1D1 (10), SCHED-1E1 (12) and SCHED-1F1 (13) before any production deploy: they are NOT in the deployed API (not in the 2026-10-15 snapshot). The operator's refresh after the deploy replaces `routes` from the live table and deletes this key.",
+    "note": "Routes added to `routes` by slices SCHED-1D1 (10), SCHED-1E1 (12), SCHED-1F1 (13) and SCHED-1G1 (1: the calendar feed, a renderer-proxied visitor route; the eight visitor routes of SCHED-1D2 are not listed here) before any production deploy: they are NOT in the deployed API (not in the 2026-10-15 snapshot). The operator's refresh after the deploy replaces `routes` from the live table and deletes this key.",
     "routes": [
       "DELETE /scheduling/admin/courses/{courseId}",
       "DELETE /scheduling/admin/resources/{resourceId}",
@@ -36,6 +36,7 @@
       "POST /scheduling/admin/resources/{resourceId}/feed-secret",
       "POST /scheduling/admin/seats",
       "POST /scheduling/admin/services",
+      "POST /scheduling/visitor/feed",
       "PUT /scheduling/admin/courses/{courseId}",
       "PUT /scheduling/admin/courses/{courseId}/runs/{runId}",
       "PUT /scheduling/admin/resources/{resourceId}",
@@ -161,6 +162,7 @@
     "POST /scheduling/admin/resources/{resourceId}/feed-secret",
     "POST /scheduling/admin/seats",
     "POST /scheduling/admin/services",
+    "POST /scheduling/visitor/feed",
     "POST /service-keys",
     "POST /service-keys/{id}/revoke",
     "POST /signals",

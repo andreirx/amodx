@@ -516,6 +516,9 @@ export class AmodxStack extends cdk.Stack {
       sesEmail: sesEmail,
       rendererCloudFrontOrigin: cloudFrontUrl,
       recaptchaSecretKey, // Deployment-level reCAPTCHA for the visitor hold (sched-1.md § 9.1, row I3) — as CommerceApi
+      // § 11.2 / row G16 (SCHED-1G1, ruling SCHED-1G1-ADMIN-URL-LINE = A): the AdminUrl output's expression (below), for the
+      // weekly mail's planner link. Not the `adminUrl` variable above (it is undefined without a root domain).
+      adminUrl: rootDomain ? `https://admin.${rootDomain}` : `https://${admin.distribution.distributionDomainName}`,
     });
 
 

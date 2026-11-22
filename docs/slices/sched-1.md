@@ -2394,3 +2394,32 @@ rows C33, D14).
 - Observations, not corrected here: a phone number in international form (`+40…`) also gets the leading
   apostrophe in the CSV, because `+` can start a formula; the roster has no "paid" column (payment belongs to
   the paid-course path `sched-1h`).
+
+### `sched-1g1` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Operator split of `sched-1g` along backend / renderer (content unchanged). This half: one scheduled function
+  `backend/src/scheduling/reminders.ts` on ONE rule (every 15 minutes) with three jobs — reminders (§ 11.3),
+  the daily cleanup of expired holds over every tenant (§ 14.1, in the 03:00 UTC window), the Sunday planner
+  mail (§ 11.4) — and the calendar feed route `POST /scheduling/visitor/feed` (§ 12; reached through the
+  renderer proxy of `sched-1g2`). `whenText` moved to `scheduling-email.ts`. `sched-1g2` = renderer pages,
+  proxies, middleware branch, locale keys, the address witness.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Operator gates, all exit 0 (the eleven of `1d1`).
+- Operator rulings (the human may override):
+  - **SCHED-1G1-ADMIN-URL-LINE = A:** `infra/lib/amodx-stack.ts` passes the admin URL to the scheduling stack;
+    `ADMIN_URL` on the scheduled function in both deployment configurations (G16).
+  - **SCHED-1G1-WEEKMAIL-DEFAULT = A:** the `weekAhead` default subject and body corrected to § 11.4.
+  - **Seat reminders:** a run moved between the reminder mark and the send can give a reminder with the earlier
+    start; the run move's own mail carries the new time. No post-mark recheck.
+- Behaviour to know: the invoke payload's `time` is the schedule time (it selects the cleanup window); reminders
+  and the weekly mail use the real clock. A tenant without `integrations.contactEmail` gets no weekly mail and
+  no owner copies (counted as `noContactEmail`). Two invocations at the same time are made safe by the markers
+  (a second reminder run counts the booking as `stale` and sends nothing).
+- Staging (operator, OBSERVED): diff read first — additions only (the feed function and route; the scheduled
+  function with table write and `ses:SendEmail`; one schedule rule); deployed; 17 checks under tenant
+  `cm1-content` pass: a reminder sent once for an appointment 20 hours ahead and not a second time; the cleanup
+  run removes a hold that expired nine days ago and leaves the confirmed appointment; the feed is
+  `text/calendar`, `private, max-age=300`, holds the appointment and no customer field; after a new feed link
+  the old one answers 404 at once with the body of an unknown resource; with the switch off the feed answers
+  404 and the job sends nothing. The job enumerated 720 staging tenants in one run without a failure.
+  NOT RUN on a deployed stage: a weekly mail that is really sent (the staging tenant has no contact address).

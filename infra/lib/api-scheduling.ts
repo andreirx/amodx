@@ -5,6 +5,7 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
+import * as eventTargets from 'aws-cdk-lib/aws-events-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import * as path from 'path';
@@ -13,10 +14,11 @@ import * as path from 'path';
  * SCHED-1D1/1D2/1E1 (docs/slices/sched-1.md § 10.2, § 10.3, § 11.2, § 17) — the scheduling API nested stack: the ADMIN
  * routes of `sched-1d` (bookings with history, customers incl. erasure, resources, feed secret, mail templates;
  * SCHED-1D1), the VISITOR routes (offer, slots, runs, hold, view, confirm, cancel, move; SCHED-1D2; the calendar
- * feed is `sched-1g`) and the APPOINTMENT admin routes of `sched-1e` (services, default availability, week planner
+ * feed, SCHED-1G1) and the APPOINTMENT admin routes of `sched-1e` (services, default availability, week planner
  * read, day edits, copy-week, all-resource appointments read, manual appointment, slot move; SCHED-1E1) and the GROUP
  * admin routes of `sched-1f` (courses list/create/update/delete, runs list/create/update/move/cancel, roster, unplaced
- * list, manual entry, person move; SCHED-1F1). `sched-1g` appends the feed and the reminder job.
+ * list, manual entry, person move; SCHED-1F1), and the ONE scheduled function of SCHED-1G1 (`reminders.ts`: reminders,
+ * the daily expired-hold cleanup, the Sunday planner mail) with its ONE rule `rate(15 minutes)` (§ 11.3, § 11.4, § 14.1).
  *
  * Pattern of `api-commerce.ts`: L1 `CfnRoute` / `CfnIntegration` (routes created by `httpApi.addRoutes()` would land
  * in the parent), its own `CfnAuthorizer` on the parent's authorizer function. Unlike CommerceApi, the event bus is
@@ -52,6 +54,11 @@ interface SchedulingApiProps extends NestedStackProps {
     rendererCloudFrontOrigin: string;
     /** Deployment-level reCAPTCHA secret (as `api-commerce.ts`): `RECAPTCHA_SECRET_KEY` of the visitor hold (§ 9.1). */
     recaptchaSecretKey?: string;
+    /**
+     * § 11.2 / row G16: the value of the parent's `AdminUrl` output (`https://admin.<rootDomain>`, else `https://<admin
+     * distribution domain>`). `ADMIN_URL` of the scheduled job only: the weekly mail's planner link (§ 11.4).
+     */
+    adminUrl: string;
 }
 
 /** How a function may use the scheduling table. */
@@ -92,6 +99,8 @@ export class SchedulingApi extends NestedStack {
         /** One function with the § 11.2 wiring. `entry` is relative to `backend/src/scheduling` (`admin/…`, `visitor/…`). */
         const fn = (constructId: string, entry: string, wiring: {
             scheduling: SchedulingAccess; audit?: boolean; mail?: boolean; linkBase?: boolean; recaptcha?: boolean;
+            /** `ADMIN_URL` (the scheduled job only, § 11.2). */ adminUrl?: boolean;
+            /** Default 29 s (the API Gateway limit); the scheduled job is not behind the API. */ timeoutSeconds?: number;
         }): nodejs.NodejsFunction => {
             const f = new nodejs.NodejsFunction(this, constructId, {
                 runtime: lambda.Runtime.NODEJS_22_X,
@@ -104,10 +113,11 @@ export class SchedulingApi extends NestedStack {
                     ...(wiring.mail ? { SES_FROM_EMAIL: sesEmail } : {}),
                     ...(wiring.mail || wiring.linkBase ? { RENDERER_CLOUDFRONT_ORIGIN: props.rendererCloudFrontOrigin } : {}),
                     ...(wiring.recaptcha && props.recaptchaSecretKey ? { RECAPTCHA_SECRET_KEY: props.recaptchaSecretKey } : {}),
+                    ...(wiring.adminUrl ? { ADMIN_URL: props.adminUrl } : {}),
                 },
                 bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
                 memorySize: 1024,
-                timeout: cdk.Duration.seconds(29),
+                timeout: cdk.Duration.seconds(wiring.timeoutSeconds ?? 29),
             });
             table.grantReadData(f);
             switch (wiring.scheduling) {
@@ -194,6 +204,10 @@ export class SchedulingApi extends NestedStack {
             fn('VisitorCancelFunc', 'visitor/bookings-cancel.ts', { scheduling: 'readWrite', mail: true }));
         addRoute('VisitorMove', 'POST /scheduling/visitor/bookings/move',
             fn('VisitorMoveFunc', 'visitor/bookings-move.ts', { scheduling: 'readWrite', mail: true }));
+        // Calendar feed (SCHED-1G1, § 12; § 16.3 class 4: a per-resource secret, compared by hash). Renderer-proxied like
+        // every visitor route (the renderer handler is `sched-1g2`). It only reads; no mail, no link base, no audit.
+        addRoute('VisitorFeed', 'POST /scheduling/visitor/feed',
+            fn('VisitorFeedFunc', 'visitor/feed.ts', { scheduling: 'read' }));
 
         // ===================== APPOINTMENTS (admin, SCHED-1E1, § 10.3 routes of `sched-1e`) =====================
         // Configuration writes (services, default availability, day edits, copy-week) publish one main-table audit event
@@ -256,5 +270,19 @@ export class SchedulingApi extends NestedStack {
             fn('AdminCreateSeatFunc', 'admin/group-seats-create.ts', { scheduling: 'readWrite', mail: true }));
         addRoute('AdminMoveSeat', 'POST /scheduling/admin/bookings/{bookingId}/move-seat',
             fn('AdminMoveSeatFunc', 'admin/group-move-seat.ts', { scheduling: 'readWrite', mail: true }));
+
+        // ===================== SCHEDULED JOB (SCHED-1G1, § 11.3, § 11.4, § 14.1) =====================
+        // ONE function, ONE rule, no route. Named gain: reminders, the expired-hold cleanup and the Sunday mail cannot run
+        // without a schedule. Wiring (§ 11.2, least privilege): read on the main table (AP12 tenant Query); read-write on
+        // the scheduling table (reminder marks, token mints, cleanup transactions, WEEKMAIL# claim and sentAt); SES on the
+        // sender identity + RENDERER_CLOUDFRONT_ORIGIN (the reminder link base); ADMIN_URL (the planner link). No audit
+        // event (SCHED-AUDIT-PII = C): no event-bus grant. Timeout 5 minutes: up to 99 tenants per run, sequential.
+        // This does NOT prevent two invocations at once (an EventBridge retry, a slow run): reminders stay one per start
+        // (conditional mark), the cleanup is idempotent, the weekly mail can be sent twice (documented, § 11.4).
+        const job = fn('SchedulingJobFunc', 'reminders.ts', { scheduling: 'readWrite', mail: true, adminUrl: true, timeoutSeconds: 300 });
+        new events.Rule(this, 'SchedulingJobSchedule', {
+            schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+            targets: [new eventTargets.LambdaFunction(job)],
+        });
     }
 }

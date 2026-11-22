@@ -1988,21 +1988,25 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
         // SCHED-1F1 (§ 10.3 routes of `sched-1f`).
         const GROUPS = ['AdminListCoursesFunc', 'AdminCreateCourseFunc', 'AdminUpdateCourseFunc', 'AdminDeleteCourseFunc', 'AdminListRunsFunc', 'AdminCreateRunFunc', 'AdminUpdateRunFunc',
             'AdminMoveRunFunc', 'AdminCancelRunFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc', 'AdminCreateSeatFunc', 'AdminMoveSeatFunc'];
+        // SCHED-1G1 adds the calendar feed (§ 12).
         const VISITOR = ['VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorHoldFunc', 'VisitorViewFunc',
-            'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc'];
+            'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc', 'VisitorFeedFunc'];
         // § 11.2: the mailing functions (SES) and the functions that publish a main-table audit event (PutEvents).
         const MAILING = ['AdminCancelBookingFunc', 'VisitorHoldFunc', 'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc',
             'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc',
-            'AdminMoveRunFunc', 'AdminCancelRunFunc', 'AdminCreateSeatFunc', 'AdminMoveSeatFunc'];
+            'AdminMoveRunFunc', 'AdminCancelRunFunc', 'AdminCreateSeatFunc', 'AdminMoveSeatFunc',
+            'SchedulingJobFunc'];   // SCHED-1G1: reminders and the weekly mail (§ 11.2: the twelfth mailing function)
         const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc',
             'AdminCreateServiceFunc', 'AdminUpdateServiceFunc', 'AdminDeleteServiceFunc', 'AdminPutAvailabilityFunc', 'AdminEditDaysFunc', 'AdminCopyWeekFunc',
             'AdminCreateCourseFunc', 'AdminUpdateCourseFunc', 'AdminDeleteCourseFunc', 'AdminCreateRunFunc', 'AdminUpdateRunFunc',
             'AdminMoveRunFunc', 'AdminCancelRunFunc'];
         const READ_ONLY = ['AdminGetBookingFunc', 'AdminListResourcesFunc', 'AdminEmailTemplatesFunc', 'AdminLookupCustomerFunc',
-            'VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorViewFunc',
+            'VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorViewFunc', 'VisitorFeedFunc',
             'AdminListServicesFunc', 'AdminGetAvailabilityFunc', 'AdminWeekFunc', 'AdminListAppointmentsFunc',
             'AdminListCoursesFunc', 'AdminListRunsFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc'];
-        const ALL = [...ADMIN, ...VISITOR, ...APPOINTMENTS, ...GROUPS];
+        // SCHED-1G1: the ONE scheduled function (reminders, daily cleanup, Sunday planner mail; no route).
+        const JOB = ['SchedulingJobFunc'];
+        const ALL = [...ADMIN, ...VISITOR, ...APPOINTMENTS, ...GROUPS, ...JOB];
         const DYNAMODB_WRITE = /^dynamodb:(PutItem|UpdateItem|DeleteItem|BatchWriteItem|\*)$|^\*$/;
 
         type Fn = { construct: string; logicalId: string; vars: Record<string, unknown>; statements: any[] };
@@ -2027,7 +2031,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
         };
         const parameterOf = (v: unknown) => (isRefTo(v) ? parentParameterValues(realTree()).get(v.Ref) : undefined);
 
-        test('I2 (inventory) the nested stack holds exactly the ten admin, eight visitor, twelve appointment and thirteen group functions, each behind a route with the authorizer', () => {
+        test('I2 (inventory) the nested stack holds exactly the ten admin, nine visitor, twelve appointment and thirteen group functions (each behind a route with the authorizer) and the one scheduled job', () => {
             expect(functions(schedulingTemplate).map((f) => f.construct).sort()).toEqual([...ALL].sort());
             const routes = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties);
             expect(routes.map((r) => r.RouteKey).sort()).toEqual([
@@ -2041,7 +2045,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 'POST /scheduling/admin/resources',
                 'POST /scheduling/admin/resources/{resourceId}/feed-secret',
                 'PUT /scheduling/admin/resources/{resourceId}',
-                // SCHED-1D2 visitor routes (§ 10.2; the feed is `sched-1g`).
+                // SCHED-1D2 visitor routes (§ 10.2) and the SCHED-1G1 calendar feed (§ 12).
                 'GET /scheduling/visitor/courses/{courseId}/runs',
                 'GET /scheduling/visitor/offer',
                 'GET /scheduling/visitor/slots',
@@ -2049,6 +2053,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 'POST /scheduling/visitor/bookings/confirm',
                 'POST /scheduling/visitor/bookings/move',
                 'POST /scheduling/visitor/bookings/view',
+                'POST /scheduling/visitor/feed',
                 'POST /scheduling/visitor/holds',
                 // SCHED-1E1 appointment admin routes (§ 10.3 routes of `sched-1e`).
                 'DELETE /scheduling/admin/services/{serviceId}',
@@ -2142,7 +2147,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             }
             // No event-bus permission on any booking function: the admin booking routes and every visitor route (§ 11.2).
             for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc',
-                'AdminCreateSeatFunc', 'AdminMoveSeatFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc', ...VISITOR]) {
+                'AdminCreateSeatFunc', 'AdminMoveSeatFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc', ...VISITOR, ...JOB]) {
                 expect(byConstruct(name).statements.some((st) => actions(st).some((a) => a.startsWith('events:')))).toBe(false);
             }
         });
@@ -2159,6 +2164,106 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
             const admin = (keys: string[]) => keys.filter((k) => k.split(' ')[1].startsWith('/scheduling/admin/')).sort();
             expect(admin(listed)).toEqual(admin(stack));
         });
+
+        test('(sched1g1) G11 the calendar feed: POST /scheduling/visitor/feed behind the authorizer; its function reads the scheduling table and the main table, writes nothing, and has no mail, link-base, event-bus or reCAPTCHA wiring', () => {
+            // § 12 / § 16.3 class 4: the route is renderer-proxied (no anonymous route, § 16.3); the secret check is in the handler.
+            const routes = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties);
+            const feed = routes.filter((r) => r.RouteKey === 'POST /scheduling/visitor/feed');
+            expect(feed).toHaveLength(1);
+            expect(feed[0].AuthorizationType).toBe('CUSTOM');
+            const f = byConstruct('VisitorFeedFunc');
+            expect(Object.keys(f.vars).sort()).toEqual(['SCHEDULING_TABLE_NAME', 'TABLE_NAME']);   // no SES_FROM_EMAIL, RENDERER_CLOUDFRONT_ORIGIN, EVENT_BUS_NAME, RECAPTCHA_SECRET_KEY, ADMIN_URL
+            expect(f.statements.some((st) => actions(st).some((a) => DYNAMODB_WRITE.test(a)))).toBe(false);
+            expect(f.statements.some((st) => actions(st).some((a) => /^(ses|events):/i.test(a)))).toBe(false);
+            const tree = realTree();
+            const schedIndex = allTemplates.indexOf(schedulingTemplate);
+            const scheduling = parentTable(SCHEDULING);
+            // Positive control of the reading: the feed DOES read the scheduling table (GetItem, Query, BatchGetItem).
+            const reads = f.statements.filter((st) => ([] as unknown[]).concat(st.Resource ?? []).some((r) => tableOf(r, schedIndex, tree) === scheduling.logicalId));
+            for (const action of ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:BatchGetItem']) {
+                expect({ action, granted: reads.some((st) => actions(st).includes(action)) }).toEqual({ action, granted: true });
+            }
+        });
+
+        test('(sched1g1) the scheduled job: ONE rule rate(15 minutes) in the SchedulingApi stack, targeting SchedulingJobFunc (the parent keeps its three existing rules, no other stack has one); its one resource-policy grant is EventBridge scoped to that rule; no API route; least-privilege variables; 5-minute timeout; ADMIN_URL on no other function', () => {
+            const job = byConstruct('SchedulingJobFunc');
+            const jobLogicalId = job.logicalId;
+            const rules = Object.entries(schedulingTemplate.findResources('AWS::Events::Rule'));
+            expect(rules).toHaveLength(1);
+            const [ruleId, rule] = rules[0] as [string, any];
+            expect(rule.Properties.ScheduleExpression).toBe('rate(15 minutes)');
+            expect(rule.Properties.Targets).toHaveLength(1);
+            expect(rule.Properties.Targets[0].Arn).toEqual({ 'Fn::GetAtt': [jobLogicalId, 'Arn'] });
+            // The function's resource policy holds one grant: EventBridge, scoped to this rule. No API integration targets it.
+            // This inspects the Lambda resource policy and the API integrations only; IAM principals that may call
+            // lambda:InvokeFunction (an operator's manual invoke) are not examined and stay possible.
+            const perms = Object.values(schedulingTemplate.findResources('AWS::Lambda::Permission')).map((r: any) => r.Properties)
+                .filter((p) => JSON.stringify(p.FunctionName).includes(jobLogicalId));
+            expect(perms).toEqual([expect.objectContaining({ Principal: 'events.amazonaws.com', SourceArn: { 'Fn::GetAtt': [ruleId, 'Arn'] } })]);
+            const integrations = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Integration')).map((r: any) => JSON.stringify(r.Properties.IntegrationUri));
+            expect(integrations.filter((u) => u.includes(jobLogicalId))).toEqual([]);
+            // The rest of the tree: the parent's three existing rules (the two cache flushes and the audit-event rule of
+            // infra/lib/events.ts); no other nested stack has a rule. (The HEAD-versus-change comparison shows the job's
+            // rule is the only one added.)
+            const ruleCount = allTemplates.map((t) => Object.keys(t.findResources('AWS::Events::Rule')).length);
+            expect(ruleCount.reduce((a, b) => a + b, 0)).toBe(4);
+            expect(Object.keys(template.findResources('AWS::Events::Rule')).sort()).toEqual([
+                expect.stringMatching(/^DebounceFlushSchedule/), expect.stringMatching(/AuditRule/), expect.stringMatching(/^NightlyCacheFlushSchedule/)]);
+            // § 11.2 wiring, least privilege: main table read, scheduling read-write, SES on the identity, the link base, ADMIN_URL.
+            expect(Object.keys(job.vars).sort()).toEqual(['ADMIN_URL', 'RENDERER_CLOUDFRONT_ORIGIN', 'SCHEDULING_TABLE_NAME', 'SES_FROM_EMAIL', 'TABLE_NAME']);
+            const fnResource = schedulingTemplate.toJSON().Resources[jobLogicalId];
+            expect(fnResource.Properties.Timeout).toBe(300);
+            for (const f of functions(schedulingTemplate).filter((x) => x.construct !== 'SchedulingJobFunc')) {
+                expect({ fn: f.construct, adminUrl: Object.hasOwn(f.vars, 'ADMIN_URL') }).toEqual({ fn: f.construct, adminUrl: false });
+            }
+        });
+
+        test('(sched1g1) G16 ADMIN_URL of the scheduled job without a root domain = the AdminUrl output value (https:// + the admin distribution domain)', () => {
+            const outputs = template.toJSON().Outputs ?? {};
+            const adminUrl = outputs.AdminUrl.Value;
+            expect(JSON.stringify(adminUrl)).toMatch(/"https:\/\/".*AdminHosting.*DomainName/);
+            // In the nested template the value is `Fn::Join` with a `Ref` to a nested-stack parameter: resolve each part
+            // through the parent's parameter values, then compare with the output's expression.
+            const value = byConstruct('SchedulingJobFunc').vars.ADMIN_URL as any;
+            const resolved = value?.['Fn::Join']
+                ? { 'Fn::Join': [value['Fn::Join'][0], value['Fn::Join'][1].map((part: unknown) => (isRefTo(part) ? parameterOf(part) : part))] }
+                : parameterOf(value);
+            expect(resolved).toEqual(adminUrl);
+        });
+
+        test('(sched1g1) G16 ADMIN_URL of the scheduled job WITH a root domain = https://admin.<rootDomain> = the AdminUrl output (second synth, no AWS)', () => {
+            // A second AmodxStack with `domains.root`. Credential-free: the one context lookup (`HostedZone.fromLookup`) is
+            // answered from the app context below, so no provider runs; asset bundling is skipped for this app. The renderer
+            // and admin builds the constructors start are NOT run again: `execSync` is stubbed for this synth only, and the
+            // constructs read the `.open-next` / `admin/dist` output the FIRST synth of this file built moments ago (same
+            // sources), so the construct graph is the one a real build gives.
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const child = require('child_process');
+            const stub = jest.spyOn(child, 'execSync').mockImplementation(() => Buffer.from(''));
+            try {
+                const root = 'example.test';
+                const app = new cdk.App({
+                    context: {
+                        'aws:cdk:bundling-stacks': [],
+                        [`hosted-zone:account=111111111111:domainName=${root}:region=eu-central-1`]: { Id: '/hostedzone/ZG16TEST', Name: `${root}.` },
+                    },
+                });
+                const stack = new AmodxStack(app, 'G16RootStack', {
+                    env: { account: '111111111111', region: 'eu-central-1' }, stage: 'test', config: { domains: { root } },
+                });
+                const parent = Template.fromStack(stack);
+                const nested = stack.node.findAll().find((c): c is cdk.NestedStack => c instanceof cdk.NestedStack && c.node.id === 'SchedulingApi');
+                if (!nested) throw new Error('SchedulingApi NestedStack not found in the root-domain synth');
+                const fns = Object.entries(Template.fromStack(nested).findResources('AWS::Lambda::Function'))
+                    .filter(([id]) => id.startsWith('SchedulingJobFunc')).map(([, f]) => (f as any).Properties.Environment.Variables);
+                expect(fns).toHaveLength(1);
+                expect(parent.toJSON().Outputs.AdminUrl.Value).toBe(`https://admin.${root}`);
+                expect(fns[0].ADMIN_URL).toBe(`https://admin.${root}`);
+                expect(stub).toHaveBeenCalled();   // the builds were requested and not re-run
+            } finally {
+                stub.mockRestore();
+            }
+        }, 300_000);
 
         test('I3 the visitor hold: RECAPTCHA_SECRET_KEY equal to the commerce order function\'s; no other scheduling function has it', () => {
             // The commerce order function (`CreateOrderFunc`, CommerceApi) and the hold resolve, through their nested-stack

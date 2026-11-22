@@ -18,14 +18,13 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { z } from "zod";
-import { instantToLocal, type Booking, type Instant } from "@amodx/shared";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { formatFromHeader } from "../../lib/email-from.js";
 import { cancelBooking, getBooking, schedulingStoreFromEnv, type ChangeFailure } from "../../lib/scheduling-db.js";
-import { renderSchedulingMail, resolveTemplate } from "../../lib/scheduling-email.js";
+import { renderSchedulingMail, resolveTemplate, whenText } from "../../lib/scheduling-email.js";
 import { EDITOR_OR_ADMIN, adminActor, adminRoute } from "./common.js";
 import { answer, parseBody, readSchedulingTenant, refusal, type Answer, pathParam } from "../common.js";
-import { bookingAdminDTO, bookingNames, type BookingNames } from "./booking-dto.js";
+import { bookingAdminDTO, bookingNames } from "./booking-dto.js";
 
 const ses = new SESClient({});
 
@@ -46,23 +45,12 @@ export function changeFailureAnswer(f: ChangeFailure): Answer {
     }
 }
 
-/** `{{when}}` (§ 11.1): local date and time in the booking's zone, with the zone name; "" for an unplaced booking. */
-export function whenText(b: Booking, names: BookingNames, tenantTimezone: string | undefined): string {
-    const at = (instant: Instant, tz: string | null | undefined) => {
-        const zone = tz ?? "UTC";
-        const local = instantToLocal(instant, zone);
-        return `${local.date} ${local.time} (${zone})`;
-    };
-    switch (b.what.kind) {
-        case "slot": return at(b.what.start, tenantTimezone);
-        case "seat": return names.firstStart === null ? "" : at(names.firstStart, names.runTimezone);
-        case "unplaced": return "";
-        default: {
-            const never: never = b.what;
-            throw new Error(`Unhandled booking ${JSON.stringify(never)}`);
-        }
-    }
-}
+/**
+ * `whenText` moved to `lib/scheduling-email.ts` (SCHED-1G1). Re-exported here ONLY for the two existing importers
+ * outside the SCHED-1G1 allocation (`./group-common.ts`, `../visitor/mail.ts`); pointing their imports at
+ * `lib/scheduling-email.ts` and deleting this line is a recorded one-line follow-up for each.
+ */
+export { whenText };
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) =>
     adminRoute(event, "bookings-cancel", EDITOR_OR_ADMIN, async ({ tenantId, auth }) => {

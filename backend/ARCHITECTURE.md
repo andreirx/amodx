@@ -65,7 +65,11 @@ src/
 │   │                      #   used by SCHED-1E1 appt-appointments-create.ts `confirmed` and appt-move-slot.ts `moved`,
 │   │                      #   and by SCHED-1F1 group-seats-create.ts `confirmed`, group-runs-move.ts and
 │   │                      #   group-move-seat.ts `moved`), scheduling/admin/group-common.ts sendGroupAdminMail
-│   │                      #   (SCHED-1F1: `unplaced`; `cancelled` after an admin run cancel, no owner copy)
+│   │                      #   (SCHED-1F1: `unplaced`; `cancelled` after an admin run cancel, no owner copy),
+│   │                      #   scheduling/reminders.ts (SCHED-1G1: `reminder`, `weekAhead`). whenText ({{when}}: a slot in
+│   │                      #   the tenant zone, a seat at its run's first start in the RUN's zone) lives here since
+│   │                      #   SCHED-1G1; admin/bookings-cancel.ts re-exports it for group-common.ts and visitor/mail.ts
+│   │                      #   (their imports still point there: a recorded one-line follow-up each)
 │   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
 │   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
 │   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
@@ -287,6 +291,28 @@ src/
 │   │                      #   readTenantRecord / readSchedulingTenant (+ SCHED-1D2 fields: enabled = schedulingEnabled
 │   │                      #   === true, recaptcha as stored, contactEmail). Used through admin/common.ts adminRoute and
 │   │                      #   visitor/common.ts visitorRoute.
+│   ├── reminders.ts       # SCHED-1G1 (sched-1.md § 11.3, § 11.4, § 14.1; PROTOTYPE): the ONE scheduled job (rule
+│   │                      #   rate(15 minutes); SchedulingJobFunc in infra/lib/api-scheduling.ts, ADMIN_URL = the parent's
+│   │                      #   AdminUrl output value, row G16). handler(event)
+│   │                      #   → runSchedulingJobs({ scheduledAt = event.time, now = Date.now() }). Tenants: AP12, one
+│   │                      #   main-table Query PK=SYSTEM begins_with TENANT# with a projection (no scan). Per tenant,
+│   │                      #   each job in its own try/catch (logs: tenant id + error NAME): (1) cleanupExpiredHolds on
+│   │                      #   the run scheduled 03:00-03:14 UTC, for EVERY tenant whatever schedulingEnabled; (2)
+│   │                      #   reminders (switch on, reminderHours > 0): AP3 readIntervals per resource + AP6
+│   │                      #   runsNotEndedBy, confirmed only, start in [now, now + reminderHours] → markReminder (stale
+│   │                      #   guard) → mintToken (new token per mail) → mail built from the booking as saved; one check
+│   │                      #   after the mint (slot: still starts at S; seat: same course and run — NOT the run's start:
+│   │                      #   a run moved between mark and send is reminded with the earlier start, its `moved` mail
+│   │                      #   carries the new time, limit S1G1-R04); (3) the Sunday planner mail (switch on, weekMailDue
+│   │                      #   due, weekAhead sendToAdmin, contactEmail, ≥ 1 resource with weekly hours) → claimWeekMail →
+│   │                      #   planDay per resource and local day (weekSummary, counts only, no BOOKING# read) → SES →
+│   │                      #   markWeekMailSent only after SES accepted (SCHED-WEEKMAIL-DELIVERY = B). One summary line per
+│   │                      #   run: `[scheduling] job summary {…}` (counts only). Limits: a committed mark stays when a later
+│   │                      #   step fails (that reminder is lost); a weekly mail can be sent twice after an uncertain
+│   │                      #   result. Two runs at once (nothing prevents it): reminders one per start (conditional mark),
+│   │                      #   cleanup idempotent, weekly mail possibly twice. Weekly default text = § 11.4 (corrected in
+│   │                      #   SCHED-1G1). Tests: test/unit/scheduling-reminders.test.ts (G10, G14, G15, G17, C29 tenant part,
+│   │                      #   the cadence proof, isolation)
 │   ├── visitor/           # SCHED-1D2 (sched-1.md § 10.2, § 7.2, § 8, § 9, § 16.3; PROTOTYPE): the visitor routes, in
 │   │                      #   the SchedulingApi nested stack; renderer-proxied (the hosted pages are sched-1g). Every
 │   │                      #   handler goes through common.ts visitorRoute: x-tenant-id (the tenant the renderer derived
@@ -323,7 +349,18 @@ src/
 │   │                      #   on any visitor route (SCHED-AUDIT-PII = C: history is in the booking's own write).
 │   │                      #   Tests: test/unit/scheduling-visitor.test.ts (D1-D7, D9-D11, D14, D15, route parts of
 │   │                      #   C4-C7), scheduling-visitor-d8.test.ts (D8 on the REAL scheduling-db.ts over
-│   │                      #   MemoryTable), scheduling-visitor-auth.test.ts (D2: the real authorizer)
+│   │                      #   MemoryTable), scheduling-visitor-auth.test.ts (D2: the real authorizer).
+│   │                      #   feed.ts (SCHED-1G1, § 12; § 16.3 class 4): POST /scheduling/visitor/feed { resourceId,
+│   │                      #   secret } — NOT through visitorRoute (the feed answers 404, not 403, when off): RENDERER
+│   │                      #   role; switch off, no record, malformed body field, unknown resource, no secret, wrong or
+│   │                      #   rotated secret → one 404 linkNotValid; the last three take the same steps (tenant Get,
+│   │                      #   RESOURCE# Get, sha256, timingSafeEqual against the stored hash or a dummy). Both access
+│   │                      #   reads are CONSISTENT (a rotation or switch-off acts at once, review S1G1-R02). 200
+│   │                      #   text/calendar, Cache-Control private, max-age=300: confirmed / held (TENTATIVE) slots from
+│   │                      #   BOOKING# (feed projection, no `who`) and run meetings in the RUN's zone; window −60/+365
+│   │                      #   days; feedCalendar (pure) writes RFC 5545 (CRLF, folding, TEXT escaping). Capacity of
+│   │                      #   `taken/capacity` read with getRun (decision SCHED-1G1-FEED-CAPACITY). The renderer proxy is
+│   │                      #   sched-1g2. Tests: test/unit/scheduling-feed.test.ts (G11)
 │   └── admin/             # SCHED-1D1 (sched-1.md § 10.3; PROTOTYPE): the admin routes shared by both shapes, in the
 │                          #   SchedulingApi nested stack (infra/lib/api-scheduling.ts). Every handler goes through
 │                          #   common.ts adminRoute (x-tenant-id; requireRole E+T = EDITOR/TENANT_ADMIN, T =
