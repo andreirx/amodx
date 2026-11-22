@@ -4,9 +4,17 @@
 > Rewritten 2026-11-21 as a buildable specification after the LANG1-HTML-LANG spike (§ 3). Every `file:line`
 > in this file was read again on `main` at `d1ffd80`. Evidence labels: `EXECUTED`, `OBSERVED`, `INFERRED`,
 > `NOT RUN` (`docs/documentation.md` § Evidence Labels).
+> **HEAD moved** to `68f0dbb` (the `sched-1*` commits) before revision 3. Cited files changed since `d1ffd80`, so
+> their line numbers here are those of `d1ffd80` unless the text says `68f0dbb`: `backend/src/tenant/settings.ts`,
+> `docs/caching-architecture.md` (+58 lines after `:119`), `infra/lib/database.ts`, `packages/shared/src/index.ts`,
+> `renderer/middleware.ts` (a booking branch was added), `renderer/src/lib/dynamo.ts`,
+> `renderer/test/serving-contract/{contract.test.mjs,README.md}`, `docs/ROADMAP.md`, `docs/platform-decisions.md`.
+> Each build slice reads its files again (the new middleware branch included) before it relies on a line.
+> § 9.4 and the revision-3 parts of § 13 cite `68f0dbb`.
 
-Status: **PLANNED — specification written 2026-11-21, three review cycles; NOT approved by review: one finding
-open (Appendix B); not ratified; six decisions open (§ 13 and Appendix B)**.
+Status: **PLANNED — specification written 2026-11-21, six build cycles; R-LANG-FRESHNESS corrected in revisions 3
+and 5 under LANG1-STALENESS-BOUND = A (human) and LANG1-DEFERRED-FLUSH-LAYER2 = A′ (operator) — waits for review-5,
+Appendix B; not ratified; five decisions open (§ 13)**.
 Track: `lang` (the `locale` track is the neighbour and the base). Depends: `locale-1a`…`1e` (built);
 LANG1-SCOPE = A (§ 2.1). Source plans: `docs/plan-site-move-satulbanului.md`, `docs/plan-courses-group-sessions.md`
 § 1 and § 5. Maturity target of the build slices: PROTOTYPE; MATURE after one live two-language site runs `lang-1c`.
@@ -532,24 +540,19 @@ segment rule (`languages.includes(first)`) is `pageLanguageOf` on the same parse
 - `renderer/src/lib/site-segment.ts` (new): `parseSiteSegment(siteId) → { host: string; language?: string }`,
   split at the first `~`; and `localeInputFor(config, language)` (§ 8.2).
 - `layout.tsx` `generateMetadata` (`:111-113`) and `SiteLayout` (`:155-157`): look the tenant up by `host`; keep
-  `language` only when it is in `config.languages` (the fresh tenant read); else the default language.
+  `language` only when it is in `config.languages` (its own tenant read, which can lag, § 9.4); else the default
+  language.
 - `app/[siteId]/[[...slug]]/page.tsx:35`, `:40` and `app/[siteId]/%5Fdyn/[[...slug]]/page.tsx:41`, `:46` pass
   `host` to `buildSitePageMetadata` / `SitePage` (each uses `siteId` only for `getTenantConfig`,
   `SitePage.tsx:242`, `:336`). The product pages and the four route handlers never receive a suffix (their first
   segment is `products` or a handler name): unchanged.
-- **The segment must agree with the address (staleness rule, operator ruling LANG1-STALENESS-BOUND, review-1).**
-  `SitePage` and `buildSitePageMetadata` see the address. Both compare the language the segment states (`~<l>`,
-  or none) with `pageLanguageOf(address, config.languages)` computed from the fresh tenant read. When they differ,
-  the cached route (`[[...slug]]/page.tsx`) **throws** a named error (`SegmentLanguageMismatch`): a thrown render
-  is the ISR route's one non-cacheable outcome — `500`, no `Cache-Control` under `next start`, `no-store` through
-  the deployed bundle, stored by neither layer (`docs/caching-architecture.md:676-692`, row `e1`). This needs no
-  request API, so it is not the W4 failure. The twin route (`%5Fdyn`) is never stored, so there it renders the
-  page with the fresh language. The difference occurs only when the middleware's cached verdict is older than the
-  tenant's language list: for up to 60 s per renderer instance after a language is added or removed. Visible
-  effect, stated: in that time the cacheable addresses of the added or removed language answer `500` (the twin's
-  per-request answers stay correct); before and after, the correct page, cacheable. A page with default-language
-  chrome is never stored for an extra-language address, at the origin or at the edge. Row `lang1b-window`
-  (§ 11). A one-language tenant never has a mismatch (no list, no suffix), so its bytes do not change.
+- **No page-level language guard** (human ruling LANG1-STALENESS-BOUND = A, 2026-11-22). The layout takes the
+  page language from the segment (and keeps it only when its own tenant read lists it); the page does not compare
+  the segment with its address, and no response is refused because the two disagree. During a change of the
+  tenant's language list the segment and the reads can be older than the save; what that can store, and how it
+  ends, is stated in § 9.4. (Revision 2 specified a mismatch guard here; review-2 showed it could not hold for
+  the whole response — the root layout on the twin, and independent index reads — and the human chose to accept
+  the window instead.)
 - `renderer/src/lib/dynamo.ts` `mapTenant` (`:120-178`) is a whitelist: it adds the output of
   `readLanguageSettings(item)` (§ 5.1) — parsed `languages`, `navLinksByLang`, `footerLinksByLang`, invalid values
   dropped — and leaves every existing field, legacy `navLinks` / `footerLinks` included, as it is today. A tenant
@@ -681,8 +684,9 @@ Latency, by writer class (today's mechanisms, unchanged):
 - **Ordinary writes** (create, update; `revalidateTenantPaths`, `revalidate.ts:219`): Layer 2 — the renderer
   deletes the whole tenant's stored pages before the response (CACHE-10, `revalidate.ts:182-184`, including the
   `~` segments after § 9.2); Layer 1 — the sibling paths and `/sitemap.xml` go into the fast lane, drained in
-  about 1 s and then every 10 s (`docs/caching-architecture.md:328`). A CloudFront path carries no host, so the
-  `/sitemap.xml` path refreshes that path for every tenant: harmless, one path. The bulk `/*` (≤ 15 min) as today.
+  about 1 s and then every 10 s (`docs/caching-architecture.md:386` at `68f0dbb`). A CloudFront path carries no
+  host, so the `/sitemap.xml` path refreshes that path for every tenant: harmless, one path. The bulk `/*`
+  (≤ 15 min) as today.
 - **Bulk writes** (restore, `restore.ts:82`; WordPress import, `wordpress.ts:314`; both
   `withInvalidation(…, purgeStoredPagesOfRequestTenant)`): Layer 2 — the whole tenant after the response; Layer 1
   — only the `/*` marker: siblings and the sitemap refresh at the edge within 15 min, or at once with GO LIVE NOW.
@@ -692,36 +696,175 @@ Latency, by writer class (today's mechanisms, unchanged):
   `tenant/settings.ts:384`) + the `/*` marker — every segment after § 9.2.
 - **Nightly flush**: unchanged (all of `_cache/`).
 
-### 9.4 The language-list window (part of DECISION LANG1-HTML-LANG, not ratified)
+### 9.4 The language-list window and the deferred flush (human ruling LANG1-STALENESS-BOUND = A, strengthened)
 
-The middleware trusts a cached language list for up to 60 s per renderer instance (`tenant-directory.ts:31`).
-After a language is added or removed, a request in that window is rewritten by the old list. The page compares the
-segment with the fresh list (§ 7.2) and, on the cached route, throws: `500`, stored by neither layer. So:
+Ruling (human, 2026-11-22, verbatim "A with strengthening"): the window after a change of the tenant's language
+list is accepted and stated plainly; no consistency mechanism is added to the serving path; a settings save that
+changes the language list schedules by itself a second cache flush a few minutes later. Line numbers in this
+section are at `68f0dbb`.
 
-- Nothing with the wrong chrome is stored, at the origin or at the edge, in the window or after it. Review-1's case
-  — a `/*` (a nightly flush, a debounced flush or GO LIVE NOW) fires inside the window, a later request in the
-  window stores the old chrome again, and later nightly runs skip — cannot happen: that request answers `500` and
-  is not stored.
-- **Visible effect** (stated): for up to 60 s per instance after a language is added or removed, the cacheable
-  addresses of that language answer `500`. Requests that go to the twin (query string, session) render correctly.
-- Pages the edge stored **before** the settings save (the old language state, correct when stored) stay until the
-  settings `/*`: within 15 min of the save (`min(updatedAt + 15 min, firstPendingAt + 15 min)`,
-  `docs/caching-architecture.md:397-399`), or at once with GO LIVE NOW. That is today's latency of every settings
-  change; no new window.
-- INFERRED: CloudFront may hold the `500` itself for its error-caching minimum TTL (default 10 s) when the origin
-  sends no `Cache-Control` (the `next start` form); the deployed bundle sends `no-store` (row `e1`, bundle form).
-  An error page is not wrong chrome.
+**Why there is a window.** Two stale sources, independent of each other:
 
-Row `lang1b-window` (§ 11). It costs two 61-s waits in the serving suite (today about 17 s in total, so about
-2 min 20 s after); a test-only TTL setting would avoid the waits but adds a seam that nothing else needs, so it is
-not specified.
+1. *Middleware memory.* The gate keeps a host's verdict, with its language list, for 60 s per renderer instance
+   (`renderer/src/lib/tenant-directory.ts:31`). An instance routes by the old list until its verdict expires.
+2. *Index lag.* The gate and every renderer tenant read (`getTenantConfig`, a `GSI_Domain` query) read a global
+   secondary index, which DynamoDB updates after the base item; the repository records this lag
+   (`backend/src/tenant/settings.ts:369-370`: "GSIs are eventually consistent"). The settings save reads its own
+   item strongly consistently (`:314-318`), but no reader by host can. The layout's metadata, the layout, the page
+   metadata and the page each read on their own, so one response can mix two states. This specification gives
+   **no bound** for this lag: none can be supported from the repository. A gate read made after a verdict expires can
+   itself be lagged, so source 1 also lasts "60 s after the instance's first gate read that sees the new list".
+
+**What can be stored** (language `L` added or removed by the save; `x` any page under `/L/`):
+
+1. *`L` added, the middleware is old.* No suffix: default chrome around the `L` page. Origin: under the old key
+   `<host>/L/x`, which no request reaches after the window — inert. Edge: `/L/x` with wrong chrome.
+2. *`L` added, the layout's read is old.* Suffix `~L`, but the layout's list lacks `L`: default chrome. Origin:
+   under the **live key** `<host>~L/L/x`, wrong chrome. Edge: `/L/x` with wrong chrome.
+3. *`L` removed, the middleware is old.* Suffix `~L`; the layout drops `L`: default chrome, which is correct for
+   the new state. Origin: old key `<host>~L/…`, inert. Edge: correct.
+4. *`L` removed, the renderer's reads are old.* No suffix: default chrome; `hreflang` may still list `L` members.
+   Origin: under the **live key** `<host>/L/x`, stale alternates. Edge: the same.
+
+Mixed reads inside one response give any mix of these cases. The twin (query string, session) is never stored; it
+can show mixed chrome per request during the window. An unknown gate verdict is § 7.1 (twin, no-store), unchanged.
+
+**How it ends.** Two kinds of stored copy end in two different ways (lines at `68f0dbb`):
+
+- *An edge copy* (under the public URL) ends at the next CloudFront `/*` after it was stored: the settings save's
+  own bulk `/*` (≤ 15 min), the bulk `/*` of any later change of any tenant (the marker is one per deployment),
+  GO LIVE NOW (`backend/src/system/invalidation.ts:102-112`), the deferred flush below, or the nightly flush
+  (`backend/src/scheduled/nightly-cache-flush.ts`; it skips when nothing changed since its last run, `:72-75`).
+  If the origin still holds a wrong copy under the live key, the edge fills again from it.
+- *An origin copy under the live key* (cases 2 and 4) ends only at the next **stored-page purge** of that tenant.
+  The actions that do one today: an ordinary content or catalog write through `revalidateTenantPaths`
+  (`backend/src/lib/revalidate.ts:219`; callers `content/{create,update}.ts`, `products/{update,delete}.ts`,
+  `categories/{update,delete}.ts`), whose renderer call deletes every stored page of the tenant (CACHE-10); the
+  18 bulk handlers wrapped as `withInvalidation(…, purgeStoredPagesOfRequestTenant)` (for example
+  `content/restore.ts:82`, `import/wordpress.ts:314`, `forms/update.ts:130`, `popups/update.ts:66`); a settings
+  save (`tenant/settings.ts:428`); tenant creation (`tenant/create.ts:172`); and the nightly flush, which deletes
+  every stored page of every tenant (`nightly-cache-flush.ts:112-130`) unless it skips (`:72-75`). GO LIVE NOW
+  and the deferred flush do **not** purge stored pages.
+- *An origin copy under an old key* (cases 1 and 3) is never requested again once the routing uses the new list;
+  the same purges remove it. Not visible.
+
+**The deferred flush — a best-effort strengthening of the accepted window** (operator ruling
+LANG1-DEFERRED-FLUSH-LAYER2 = A′, 2026-11-22: edge only; no origin purge, no domain list, no infra change).
+
+- *Trigger.* The settings update handler (`backend/src/tenant/settings.ts`, `updateHandler` at `:436`) compares
+  `readLanguageSettings(current).languages` with `readLanguageSettings(merged).languages` **as sets**. Different →
+  it arms the deferred flush after its existing stored-page purge (`:428`). Same set (another field changed, or
+  only the order changed) → nothing. The menus per language do not trigger it: they do not change routing.
+- *Shape.* The pending-flush marker cannot carry it. `SYSTEM#CDN_PENDING` holds one due time,
+  `min(updatedAt + 15 min, firstPendingAt + 15 min)` (`backend/src/lib/edge-invalidation.ts:113-120`), and the
+  flush deletes it when its `/*` is accepted (`backend/src/scheduled/debounce-flush.ts:313-333`); a later due time
+  written into it would either be consumed by the first flush or delay that flush. So **one more marker item**,
+  holding one due time and nothing else:
+
+  ```
+  PK = SYSTEM   SK = CDN_DEFERRED_FLUSH     one item for the deployment (a CloudFront path carries no host)
+  dueAt = <epoch ms: save time + N>
+  ```
+
+- *Monotonic due time: a later save moves it later.* Written with `UpdateItem SET dueAt = :due`, condition
+  `attribute_not_exists(dueAt) OR dueAt < :due`; a failed condition (the stored due time is already later) is
+  logged and ignored. Why later and not "keep the earlier": the flush is meant to come after the routing memory
+  of the **last** language change; keeping the earlier time would fire it inside the second change's window. The
+  flush is one global `/*`, so moving it later loses no tenant's work: every edge copy of every tenant is in its
+  scope whenever it fires, and the bulk `/*` keeps its own 15-min clock. Best-effort like `markCdnPending`
+  (`backend/src/lib/invalidate-cdn.ts:118-154`): a write failure is logged and never fails the save.
+- *Drain.* The debounce function (`debounce-flush.ts`, run every minute, `infra/lib/amodx-stack.ts:388-392`) gets a
+  third branch next to `flushBulkIfDue` (`:250-336`), in the same form: no item → nothing; `dueAt` a finite
+  number and in the future → nothing; due → `submitInvalidation(["/*"], "deferred")`; on success `Delete` with a
+  **snapshot condition** on what the drain read: `dueAt` present → `dueAt = :read` (the raw value read, whatever
+  its type); `dueAt` absent → `attribute_exists(SK) AND attribute_not_exists(dueAt)`. A save that wrote a new due
+  time during the flush fails the condition and keeps the item, so one more flush follows. A malformed item
+  (`dueAt` absent, `null`, a string, or a number that is not finite) is treated as due: one `/*`, then the same
+  snapshot delete — an extra edge flush is harmless, a stuck item is not. A failed condition is logged, not
+  retried in the same invocation. A failed or skipped submit keeps
+  the item: the retry of the bulk path applies unchanged (`debounce-flush.ts:295-305`: the error is logged, the
+  marker is kept, the next EventBridge invocation about 1 min later tries again). At most one deferred attempt
+  per invocation; it counts as work for the idle-exit rule only when it acted, as the bulk branch does. No new
+  function, no new schedule, no new grant: the function already holds table read/write and
+  `cloudfront:CreateInvalidation` (`amodx-stack.ts:382-386`).
+- *N = 5 minutes, a best-effort delay.* Chosen to be longer than the middleware's memory (60 s) plus the drain's
+  resolution (one EventBridge tick, 1 min, plus up to about 50 s of polling, `debounce-flush.ts:117-119`); short
+  enough to be the human's "a few minutes"; shorter than the 15-min bulk wait. It fires between 5 and about 6
+  minutes after the last language change. It is **not** a proven end of the window: the window also depends on
+  index lag, which has no bound (above).
+- *A second change inside N.* The second save moves `dueAt` to its own time + N; one deferred flush runs, N after
+  the last change.
+- *Review-1's timing case.* A `/*` fires inside the window (the bulk `/*` of an older pending change, GO LIVE NOW,
+  or the nightly flush), and a later request in the window stores old-rule chrome at the edge, while later
+  nightly runs may skip. The deferred flush removes that edge copy if the copy was stored before the deferred
+  flush and the origin holds no wrong copy under the live key.
+
+**What the deferred flush removes, and what it does not.**
+
+- *Removes:* every edge copy stored before it, provided that the origin key the edge reaches afterwards holds a
+  right page (cases 1 and 3, and case 2 or 4 when no wrong live-key origin copy exists).
+- *Does not remove — residual case 1 (review-3):* a routing verdict that is still stale after the flush (index lag
+  plus the 60-s memory of an instance that read the old list late) stores a wrong edge copy again. It stays until
+  the next CloudFront `/*` (any later change of any tenant, GO LIVE NOW, or the nightly flush with its skip rule).
+  No bound.
+- *Does not remove — residual case 2 (review-4):* the gate already has the new list while the layout's own tenant
+  read is stale, so the wrong page is stored under the **live origin key** (cases 2 and 4). The edge fills again
+  from it after any `/*`, the deferred one included. It ends at the next stored-page purge of that tenant (the
+  actions listed under *How it ends*) or the nightly flush. No bound in a quiet tenant.
+- *Not stored:* the twin's mixed chrome during the window, per request.
+
+The same purge-then-stale-render sequence exists today for every other settings field the layout renders (finding
+F-LANG-SETTINGS-RACE, § 15).
+
+**Tests bound by name** (`L1B-*` = unit tests with fake clients; `B-*` = bundle serving rows; `lang1b-*` = `next`
+serving rows):
+
+- `L1B-DEFERRED-FLUSH-ARMED` — `["ro"]` → `["ro", "de"]`: one `UpdateItem` on `SYSTEM#CDN_DEFERRED_FLUSH` with
+  `dueAt` = save time + 5 min, issued after the stored-page purge; the item has no other attribute.
+- `L1B-DEFERRED-FLUSH-NOT-ARMED` — the same set, a reordered list, another field only, a tenant without
+  `languages`: no write to the item.
+- `L1B-DEFERRED-FLUSH-TWO-CHANGES` — a second change 2 min later moves `dueAt` to the second save + 5 min; a write
+  with an earlier or equal `:due` does not move it; the drain fires nothing at first save + 5 min and one `/*` at
+  second save + 5 min.
+- `L1B-DEFERRED-FLUSH-DRAIN` — the item **absent** → no submit; **valid** `dueAt` in the future → no submit; valid
+  and due → exactly one `/*`, then the item deleted with `dueAt = :read`; **malformed**, each a value the
+  DynamoDB marshaller can store — `dueAt` absent (delete conditioned on `attribute_exists(SK) AND
+  attribute_not_exists(dueAt)`), `null`, a string `"soon"` (both deleted with `dueAt = :read` on the raw value) —
+  → one `/*`, then the item deleted, and a second invocation submits nothing; for each malformed form, a valid
+  `dueAt` written between the read and the delete → the delete fails and the item is kept; CloudFront throws → no
+  delete, the item kept and submitted again by the next invocation. The delete is called only after the submit
+  returned success. A non-finite number (`NaN`, `Infinity`) cannot be stored (the marshaller refuses it), so the
+  due-time parser's "not finite → due" rule is checked in a parser-level case of the same test, not as a stored
+  item.
+- `L1B-LIMIT-STALE-VERDICT` (documented limit, residual case 1) — after the deferred flush has run and its item is
+  gone, the drain alone submits nothing more; when a later change of any tenant writes `SYSTEM#CDN_PENDING`, the
+  bulk branch submits the next `/*`. The test asserts only that this next flush happens; it asserts no time bound.
+- `B-LANG-LIMIT-LIVE-KEY` (documented limit, residual case 2; bundle target, S3 stub, the real `/api/revalidate`
+  route) — a stub control makes renderer tenant reads return the record from before the save while the gate
+  already sees the new list (the index-lag model); `/de/x` is stored under `<domain>~de` with default chrome and
+  is a HIT again after the lag model ends (the wrong copy stays; the deferred flush, an edge action, cannot reach
+  it). Then the next stored-page purge — `POST /api/revalidate { domain, slug }` with the token, the call an
+  ordinary content write makes through `revalidateTenantPaths` — deletes it, and the next request is a MISS with
+  `<html lang="de">`. The test asserts only that the stored-page purge removes it. Why the bundle target: the
+  whole-tenant purge of `~` segments is an S3 action (§ 9.2); `next start` has no S3.
+- Edge layer: no suite models the edge cache (`renderer/test/serving-bundle/README.md:128-131`), so the removal of
+  edge copies by the deferred flush is bound to `L1B-DEFERRED-FLUSH-DRAIN` (the function submits the `/*`), and
+  NOT RUN against a deployed edge until the `lang-1b` staging check.
+
+The row `lang1b-window` of revision 2 is withdrawn with the guard it tested; the option-B row
+`B-LANG-DEFERRED-PURGE` of revision 3 is withdrawn with the origin call (ruling A′).
 
 ## 10. Admin (English UI) and MCP
 
 - **Settings → Languages card** (`admin/src/pages/Settings.tsx`): shows the default language (from Locale, read
   only) and edits the extra languages (subtags, each with its English name from `Intl.DisplayNames`). Messages come
   from `languageSettingsProblem`. Removing a language removes its menu and footer lists from the form (V5). Help
-  text: pages whose address starts with `/<l>` are in language `<l>`.
+  text: pages whose address starts with `/<l>` are in language `<l>`. Under the list, one sentence (human ruling
+  LANG1-STALENESS-BOUND, § 9.4): "A change to the language list can take a few minutes to show on every page."
+  The GO LIVE NOW button stays where it is today. Rationale of "a few minutes": the deferred flush runs about 5–6
+  min after the save; it is best-effort, and in the two residual cases of § 9.4 a page can show the old language
+  state until a later flush or stored-page purge. The sentence does not promise a time; GO LIVE NOW clears the
+  edge again, and any content save of the site clears its stored pages.
 - **Settings → menu and footer links** (same file): a "Language" selector above the two link editors —
   "Default (<subtag>)" edits `navLinks` / `footerLinks` exactly as today; `<l>` edits `navLinksByLang[l]` /
   `footerLinksByLang[l]`; "Use the default menu" stores no list for `<l>`.
@@ -806,15 +949,12 @@ For each field or input: **absent** / **present, valid** / **present, malformed*
   `lang1b-dyn-leak` (a leaked `/<id>~ro/_dyn/…` → `308` to `/_site/<id>/…`). Malformed:
   `lang1b-segment-unlisted` (a preview `~xx` not in the list → the default language) and `lang1b-tilde-host` (a
   host or id with `~` → `404` no-store, no render).
-- **Segment older than the language list** (staleness rule, § 7.2). `lang1b-window`, two phases on a fixture with
-  `languages: ["ro"]` and a page `/de/x`:
-  1. Add: one request warms the middleware's verdict; `putItem` sets `languages: ["ro", "de"]` (the settings
-     change); a request for `/de/x` inside the 60-s window → `500`, no `Cache-Control`, nothing stored (no ISR
-     file, no `x-nextjs-cache`); after 61 s the same request → `200`, `<html lang="de">`, `s-maxage=31536000`,
-     MISS then HIT.
-  2. Remove: `putItem` sets `languages: ["ro"]` again; `/de/x` inside the window → `500`, nothing stored; after
-     61 s → `200`, the default `<html lang>`, cacheable.
-  A one-language fixture requested in the same run never answers `500`.
+- **Language-list change** (§ 9.4; human ruling LANG1-STALENESS-BOUND = A, strengthened). The window itself is
+  stated, not tested as absent. Marker `SYSTEM#CDN_DEFERRED_FLUSH` `dueAt` — absent / valid / malformed:
+  `L1B-DEFERRED-FLUSH-DRAIN`; arming: `L1B-DEFERRED-FLUSH-ARMED`, `L1B-DEFERRED-FLUSH-NOT-ARMED`,
+  `L1B-DEFERRED-FLUSH-TWO-CHANGES`; documented limits: `L1B-LIMIT-STALE-VERDICT` (residual case 1),
+  `B-LANG-LIMIT-LIVE-KEY` (residual case 2). Each is defined in § 9.4. Withdrawn: `lang1b-window` (revision 2),
+  `B-LANG-DEFERRED-PURGE` (revision 3).
 - **Gate verdict `unknown`.** `lang1b-gate-unknown` (stub `failHostGate(true)`: `/ro/despre` of a two-language tenant
   → twin, no-store, `<html lang="ro">`, nothing stored; `/about` → today's fail-open answer; after recovery the
   ISR route as usual).
@@ -850,12 +990,16 @@ human's production deploy. None migrates data: every field is optional.
 **`lang-1b` — segment, `<html lang>`, texts, purge** (§ 7, § 8.1, § 8.2, § 9.2).
 - Paths: `renderer/middleware.ts`, `renderer/src/lib/{tenant-directory,site-segment,dynamo}.ts`,
   `renderer/src/app/[siteId]/layout.tsx`, both catch-all `page.tsx`, `renderer/src/components/SitePage.tsx`
-  (`:636`; the staleness check of § 7.2), `renderer/src/app/api/revalidate/route.ts`,
-  `renderer/test/{serving-contract,serving-bundle,unit}/`, `docs/caching-architecture.md`.
-- Proof: `npm run test:serving` (every identity row + `lang1b-*`, `lang1b-window` included),
-  `npm run test:serving-bundle` (`B-LANG-PURGE`), the `L1B-*` rows; staging: `<html lang>` correct on a
-  two-language staging site.
-- Rollback: redeploy the previous renderer, then GO LIVE NOW. `~` objects are orphaned and leave with the nightly
+  (`:636`), `renderer/src/app/api/revalidate/route.ts`,
+  `renderer/test/{serving-contract,serving-bundle,unit}/`, `docs/caching-architecture.md`; the deferred flush
+  (§ 9.4): `backend/src/tenant/settings.ts`, `backend/src/scheduled/debounce-flush.ts`, `backend/test/unit/`, the
+  Languages card text (`admin/src/pages/Settings.tsx`). No infra change (LANG1-DEFERRED-FLUSH-LAYER2 = A′).
+- Proof: `npm run test:serving` (every identity row + `lang1b-*`), `npm run test:serving-bundle` (`B-LANG-PURGE`,
+  `B-LANG-LIMIT-LIVE-KEY`), the `L1B-*` rows (the `L1B-DEFERRED-FLUSH-*` and `L1B-LIMIT-STALE-VERDICT` rows
+  included); staging: `<html lang>` correct on a two-language staging site, and one language-list change followed
+  by the deferred `/*` in the debounce function's log (the deployed-edge half, NOT RUN before then).
+- Rollback: redeploy the previous renderer (and backend), then GO LIVE NOW. A `SYSTEM#CDN_DEFERRED_FLUSH` item
+  left behind is read by no old code (inert). `~` objects are orphaned and leave with the nightly
   flush.
 
 **`lang-1c` — `hreflang`, sitemap, menu, switch** (§ 8.3–§ 8.6; the sibling purge of § 9.3).
@@ -880,13 +1024,34 @@ One-language no-op argument per slice: `1a` — the new paths run only with `tra
 fields, or on a page that holds a `translationKey` (keyed restore); a tenant without `languages` can hold no key
 (C2), so its restores are HEAD's (the added condition `attribute_not_exists(translationKey)` always holds; witness
 `L1A-RESTORE-NO-KEY-AS-HEAD`); `1b` — the rewrite, the key and `resolveLocaleStrings` input are unchanged without
-`languages`, and the staleness rule (§ 7.2) cannot fire without a list (the gate read changes shape, same count:
-one per host per 60 s); `1c` — every new read and element is guarded by `config.languages` or a set of ≥ 2, and
-the set purge runs only for keyed pages; `1d` — only under LANG1-PACK-NOOP option A, where the new packs are reached
-only from extra-language pages (witnesses `lang1d-one-language-de`, `-fr`); under option B it is not a no-op.
+`languages`, and the deferred flush is armed only when the language set changes (the gate read changes shape,
+same count: one per host per 60 s); `1c` — every new read and element is guarded by `config.languages` or a set
+of ≥ 2, and the set purge runs only for keyed pages; `1d` — only under LANG1-PACK-NOOP option A, where the new
+packs are reached only from extra-language pages (witnesses `lang1d-one-language-de`, `-fr`); under option B it is
+not a no-op.
 `1b` has one exception, stated in § 7.1: while the gate read fails, language-shaped paths are served uncached.
 
 ## 13. Decisions
+
+**Ratified: LANG1-STALENESS-BOUND = A, with strengthening** (human, 2026-11-22, verbatim: "A with strengthening").
+The window after a change of the tenant's language list is accepted and stated plainly (§ 9.4); no consistency
+mechanism is added to the serving path (the mismatch guard of revision 2 is withdrawn, § 7.2); a settings save that
+changes the language list schedules by itself a second cache flush a few minutes later (§ 9.4, the deferred
+flush), so the admin does not have to press GO LIVE NOW. The question and options as review-2 raised them: A —
+keep the mechanism, disclose that no recovery bound is guaranteed; B — require a guarantee before W1 ships.
+The deferred flush is a **best-effort strengthening** of the accepted window, not a bound: it removes the edge
+copies stored before it whose origin key holds a right page; it does not remove (1) an edge copy stored again by a
+routing verdict that is still stale after it, or (2) a wrong page stored under the live origin key by a stale
+layout read, from which the edge fills again. Both end at a later flush or stored-page purge, with no bound
+(§ 9.4, *What the deferred flush removes, and what it does not*).
+
+**Ruled: LANG1-DEFERRED-FLUSH-LAYER2 = A′** (operator, 2026-11-22, packet § 10; the reviewer's recommendation).
+The deferred flush is edge only: one monotonic due time, one distribution-wide `/*` by the existing debounce
+function, no stored-page (origin) purge, no domain list, no infra change. Both residual cases are disclosed
+(§ 9.4). The rejected option B (a deferred origin purge too) needed two environment values and a secret grant on
+the debounce function, plus target-retention and purge-failure contracts, and still gave no bound.
+
+Open decisions follow: LANG1-HTML-LANG, LANG1-LANG-SOURCE, LANG1-DATA-SHAPES, LANG1-OVERRIDES, LANG1-PACK-NOOP.
 
 DECISION_REQUIRED: LANG1-HTML-LANG
 QUESTION: The root layout writes `<html lang>`, the menu, the footer and the cookie texts, but it cannot see the page
@@ -900,10 +1065,11 @@ OPTIONS:
   per address; one-language tenants keep rewrite, keys and bytes (OBSERVED 126/126). Risk: touches the core of the
   serving contract; three files every request passes (middleware, gate, layout); a purge-route change that, if
   wrong, leaves language pages stale (proof rows `lang1b-purge`, `B-LANG-PURGE`); while the gate read fails,
-  language-shaped paths of every tenant are served uncached (§ 7.1); for up to 60 s per renderer instance after a
-  language is added or removed, the cacheable addresses of that language answer `500` (the staleness rule of § 7.2
-  and § 9.4: nothing with wrong chrome is ever stored); pages the edge stored before the settings save stay up to
-  15 min, as for every settings change today. Choosing A also approves that 60-s error window.
+  language-shaped paths of every tenant are served uncached (§ 7.1). The window after a change of the language
+  list is ruled separately (LANG1-STALENESS-BOUND = A, ratified; § 9.4): pages of the changed language can be
+  stored with the other language's chrome; the deferred flush (about 5–6 min after the change) removes the edge
+  copies stored before it, best-effort; copies stored again by a still-stale verdict, and live-key origin copies
+  from a stale layout read, end at a later flush or stored-page purge of the tenant — no bound.
 - B. W3: tenant language on `<html>`, page language on the page's `<main>`. Reward: no contract change (126/126).
   Risk: `<html lang>` stays wrong on every extra-language page (the defect this slice was ruled to remove); the menu,
   footer and cookie texts cannot follow the page; § 8.3 and § 8.6 cannot be built.
@@ -1004,6 +1170,10 @@ One line each: what — current users — axis of variation — simpler choice r
 - `TRANSLATION#<key>#<nodeId>` membership item — writes: content create/update; reads: page metadata, sitemap —
   none: required by the no-scan rule to list a set from one page — rejected: sibling lists on each page (DECISION
   LANG1-DATA-SHAPES C). Head and sitemap apply one membership rule to it (§ 6.2).
+- `SYSTEM#CDN_DEFERRED_FLUSH` marker item (§ 9.4) — written by the settings update handler, drained by
+  `debounce-flush.ts` — none: a second due time the existing marker cannot hold — rejected: a later due time in
+  `SYSTEM#CDN_PENDING` (one due time, `edge-invalidation.ts:113-120`, deleted at its first `/*`,
+  `debounce-flush.ts:313-333`), and a new scheduled function (the existing one runs every minute).
 - `HostVerdict` sum type (`tenant-directory.ts`) — the middleware (one caller) — none: it replaces `boolean | null`
   now that the verdict carries the language list — rejected: a second function reading the same cache entry (two
   awaits, a boolean and a list that can disagree).
@@ -1024,9 +1194,10 @@ company details and legal-page URLs; WordPress WPML/Polylang mapping (`docs/slic
 `lang-1a`); per-language product data.
 
 Deferred debt (to `docs/TECH-DEBT.md` when `lang-1a` ships): `TRANSLATION#` items of archived pages, and orphan
-items whose page no longer holds the key (§ 6.1), stay; the reader ignores them, nothing removes them. (No ISR
-object is left under an old segment after a language change: the settings save deletes the tenant's stored pages,
-and in the 60-s window the cached route stores nothing, § 9.4.)
+items whose page no longer holds the key (§ 6.1), stay; the reader ignores them, nothing removes them. After a
+language change, renders in the window can leave stored pages at the origin under an old key (not requested
+again) and under the live key (served, residual case 2); the deferred flush clears neither; the next stored-page
+purge of the tenant or the nightly flush does (§ 9.4, *How it ends*).
 
 Findings (pre-existing; not fixed here):
 
@@ -1036,6 +1207,15 @@ Findings (pre-existing; not fixed here):
   is for every page without a `translationKey`, so for every page of a one-language tenant. For a page with a key,
   `lang-1a` keeps the current `slug` (§ 6.3), but it does not repair a record that an earlier restore already made
   inconsistent.
+- **F-LANG-SETTINGS-RACE** (not corrected here; operator ruling, packet § 10). Every settings save today writes the
+  tenant item (`backend/src/tenant/settings.ts` ~:398-406), then purges the tenant's stored pages (`:428`), then
+  arms the edge `/*` (`:436`). A render after the purge whose own tenant read (`renderer/src/lib/dynamo.ts:93-100`,
+  an eventually consistent `GSI_Domain` query; lag recorded at `settings.ts:424-426`) still returns the old record
+  stores the OLD settings — theme, menu, footer, texts, anything the layout renders — under the live key, and the
+  edge fills again from it until the next stored-page purge of the tenant or the nightly flush. LANG-1 adds the
+  language list to the fields this race can affect (§ 9.4, residual case 2). INFERRED from the code and DynamoDB's
+  eventual consistency; not reproduced (the serving stub is consistent). The operator carries it to
+  `docs/TECH-DEBT.md` (outside this allocation).
 - **F-LANG-TILDE.** Tenant ids and domains are not checked for `~` (`backend/src/tenant/create.ts:30` id =
   `body.id` as sent; `:37` domain = `body.domain` as sent). § 7.1 refuses such hosts and ids in the middleware.
   Check before the `lang-1b` deploy: no live tenant id or domain contains `~` (operator, admin tenant list) — NOT
@@ -1055,7 +1235,7 @@ on the en-US and ro-RO staging sites, the human's production deploy. No data mig
 
 ## 17. Definition of done, evidence, exit
 
-Definition of done of this specification slice: the spike recorded (§ 3, done); the five decisions of § 13
+Definition of done of this specification slice: the spike recorded (§ 3, done); the five open decisions of § 13
 answered; at ratification the operator registers `lang-1a`…`1d` in `docs/ROADMAP.md` and amends `locale-1.md:22`
 with the wording of LANG1-LANG-SOURCE (both outside this slice's allocation).
 
@@ -1065,6 +1245,12 @@ W1b); the searches of § 1, § 3.4, § 6.3 and § 10. Failed-row names: Appendix
 build and no spike again: it changed the design text only (§ 5, § 6, § 7.1, § 8, § 9, § 11–§ 15). Revision 2
 (after review-1; operator rulings LANG1-RESTORE-SCOPE = A and LANG1-STALENESS-BOUND, packet § 7) also ran
 nothing: § 5.1, § 5.3, § 6.2, § 6.3 restore, § 7.1, § 7.2, § 8.4, § 8.5, § 9.3, § 9.4, § 11–§ 15.
+Revision 3 (after review-2; human ruling LANG1-STALENESS-BOUND = A with strengthening, packet § 8) ran nothing:
+§ 7.2 (guard withdrawn), § 9.4 (rewritten), § 10 (one admin sentence), § 11–§ 14, Appendix B, the header. The
+machinery facts of § 9.4 were read at `68f0dbb` (OBSERVED). Revision 4 stopped with no edit (the reason of
+packet § 9 missed the live-key origin case; `notes-for-human.md` in the relay directory). Revision 5 (packet § 10,
+LANG1-DEFERRED-FLUSH-LAYER2 = A′) ran nothing: § 9.4 from *How it ends*, § 10 (the sentence's rationale), § 11,
+§ 12, § 13, § 15 (F-LANG-SETTINGS-RACE), Appendix B, the status line; its new citations are at `68f0dbb`.
 NOT RUN: `npm run test:serving-bundle` (the spike changed no S3 code; the S3 half of § 9.2 is INFERRED from
 `route.ts:84-117`); any staging or production call; `cd backend && npm test`.
 
@@ -1109,23 +1295,55 @@ the runner's `fail 81`.
   `(sl1b-hero-options)`, `(sl1c-blank-draws-nothing)`, `(sl1c-grid)`, `(sl1d-blank-as-absent)`,
   `(sl1d-catalog-no-effect)`, `(sl1d-options)`, `(sl1e-draws-nothing)`, `(sl1e-form)`
 
-## Appendix B. Review state (operator, 2026-11-21)
+## Appendix B. Review state (operator, 2026-11-21; updated by the builder in revisions 3 and 5, 2026-11-22)
 
-Builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), build cycles 0-2. Separate invocations, not assurance
+Builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), build cycles 0-5. Separate invocations, not assurance
 by independent providers.
 
 - Closed by review-2: translation-set membership and lifecycle, restore (LANG1-RESTORE-SCOPE = A, operator),
   reader contracts, purges on publication change, spike evidence, the § 8 reference.
-- **Open: R-LANG-FRESHNESS.** § 7 and § 9.4 claim that after a change of the tenant's language list no page with
-  wrong-language chrome is stored. Review-2 shows the claim is not established:
+- **R-LANG-FRESHNESS — corrected in revisions 3 and 5 under the human and operator rulings; waits for
+  review-5.** Review-2 showed that
+  revision 2's claim (after a change of the tenant's language list no page with wrong-language chrome is stored)
+  was not established:
   1. on the dynamic twin, the page can see the mismatch but the root layout still renders default-language
      chrome (the layout sees only the segment);
   2. the tenant record is read from `GSI_Domain` by the layout and the page independently, with propagation lag
-     (`backend/src/tenant/settings.ts:320`), so the middleware and the page can agree on an old list, or the
-     layout and the page can see different lists;
-  3. the planned test `lang1b-window` changes fixture data without the purge of the real settings save, so a warm
-     entry answers before the guard runs.
-  The guarantee text of § 7 and § 9.4 is therefore NOT to be relied on until decision LANG1-STALENESS-BOUND
-  (the human's) is answered and the text is corrected.
-- Decisions for the human: LANG1-HTML-LANG, LANG1-LANG-SOURCE, LANG1-DATA-SHAPES, LANG1-OVERRIDES,
-  LANG1-PACK-NOOP (§ 13) and LANG1-STALENESS-BOUND (this appendix). No build slice starts before them.
+     (`backend/src/tenant/settings.ts:369-370` at `68f0dbb`), so the middleware and the page can agree on an old
+     list, or the layout and the page can see different lists;
+  3. the planned test `lang1b-window` changed fixture data without the purge of the real settings save, so a warm
+     entry answered before the guard ran.
+  Human ruling LANG1-STALENESS-BOUND = A with strengthening (2026-11-22). Revision 3: the guard, its claim and
+  `lang1b-window` are withdrawn (§ 7.2); § 9.4 states what can be stored, when, and how it ends, with no bound for
+  index lag; a deferred flush 5 min after a language-list change is specified on the existing debounce function
+  with one more marker item (§ 9.4). Revision 4 stopped: the edge-only reason of packet § 9 missed the live-key
+  origin case (stale layout read). Packet § 10 ruled LANG1-DEFERRED-FLUSH-LAYER2 = A′ (edge only, both residual
+  cases disclosed); revision 5 applies it and records F-LANG-SETTINGS-RACE (§ 15).
+- Ratified: LANG1-STALENESS-BOUND (§ 13). Decisions for the human: LANG1-HTML-LANG, LANG1-LANG-SOURCE,
+  LANG1-DATA-SHAPES, LANG1-OVERRIDES, LANG1-PACK-NOOP (§ 13). Ruled: LANG1-DEFERRED-FLUSH-LAYER2 = A′ (operator,
+  § 13). No build slice starts before them.
+
+## Appendix C. Document review and decision review (operator, 2026-11-22)
+
+- Document review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), build cycles 0-6; review-6
+  verdict: approved (the document only; separate invocations, not assurance by independent providers).
+- Human ruling 2026-11-22: LANG1-STALENESS-BOUND = A with the strengthening. Operator rulings:
+  LANG1-RESTORE-SCOPE = A; LANG1-DEFERRED-FLUSH-LAYER2 = A′ (edge only, both residual cases disclosed, § 9.4,
+  § 15).
+- Decision review (reviewer challenges each recommendation against the source, builder answers once): five
+  decisions, five converged; three recommendations stand (LANG1-HTML-LANG = A, LANG1-DATA-SHAPES = A,
+  LANG1-OVERRIDES = A) and two were corrected. The corrections are NOT yet applied to the text above; they
+  are applied in one pass after the human ratifies:
+  - **LANG1-LANG-SOURCE = A with a homepage constraint.** Cause: `homePageSlug` can name a page of an extra
+    language, which is then served at `/` with default-language chrome and advertised as that language's
+    alternate. Rule V6: on a tenant with a non-empty `languages` list, `homePageSlug`, when set, must derive the
+    default language (checked on the merged settings at save, 400 naming `homePageSlug`). Read side: a member
+    is advertised at `/` only when its slug equals `homePageSlug` and it derives the default language. Rows
+    `L1A-LANGS-HOMEPAGE-REFUSED`, `lang1c-hreflang-home`.
+  - **LANG1-PACK-NOOP = A with pack selection by parameter.** Cause: the resolver selects packs from the
+    global registry only, so a separate German/French table would never be used. Rule:
+    `resolveLocaleStrings(input, options?: { packs })` and `packFor(locale, packs = LANGUAGE_PACKS)`; a
+    constant `EXTRA_LANGUAGE_PACKS` used only by the extra-language branch of `localeInputFor`; the global
+    registry and the admin "Site language" select stay EN and RO. Rows in `lang1d-extra-de`, the preservation
+    witnesses `lang1d-one-language-de` / `-fr`, and `L1D-PACKS-OPTION-ABSENT`.
+- State: waits for the human's ratification of the five decisions. No build slice starts before it.
