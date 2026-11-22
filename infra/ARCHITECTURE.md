@@ -16,7 +16,7 @@ lib/
 ├── amodx-stack.ts              # Main stack: composes all constructs, wires dependencies
 ├── api.ts                      # HTTP API Gateway + authorizer + all routes; wires catalog routes to CatalogApi's functions (passed in)
 ├── api-catalog.ts              # NestedStack: content/products/import FUNCTIONS (routes stay in api.ts; instantiated in amodx-stack.ts)
-├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 8 visitor routes; SCHED-1E1: 12 appointment admin routes; L1 routes, own authorizer)
+├── api-scheduling.ts           # NestedStack: scheduling functions + routes (SCHED-1D1: 10 admin routes; SCHED-1D2: 8 visitor routes; SCHED-1E1: 12 appointment admin routes; SCHED-1F1: 13 group admin routes; L1 routes, own authorizer)
 ├── auth.ts                     # Two Cognito User Pools (Admin invite-only, Public self-signup)
 ├── database.ts                 # DynamoDB single table with 3 GSIs
 ├── uploads.ts                  # S3 buckets (public assets + private resources) + CloudFront CDN
@@ -47,7 +47,7 @@ AmodxStack
 ├── AmodxApi (HTTP API Gateway + Custom Authorizer + all routes; owns the Lambdas NOT in a nested stack; wires catalog routes to CatalogApi's functions)
 ├── CommerceApi (NestedStack — categories, public products, orders, customers, delivery, coupons, reviews, reports)
 ├── EngagementApi (NestedStack — popups, forms)
-├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; after AdminHosting)
+├── SchedulingApi (NestedStack — scheduling routes; SCHED-1D1: admin bookings, customers, resources, mail templates; SCHED-1D2: visitor routes; SCHED-1E1: services, default availability, week planner, appointments; SCHED-1F1: courses, runs, roster, unplaced list, seats; after AdminHosting)
 ├── AmodxRendererHosting (OpenNext Lambda + CloudFront)
 ├── AmodxAdminHosting (S3 + CloudFront)
 ├── AmodxDomains (Route53 + ACM certs)
@@ -106,16 +106,20 @@ Routes: the 10 admin routes under `/scheduling/admin/…` (SCHED-1D1), the 8 vis
 `sched-1g`) and the 12 appointment admin routes of SCHED-1E1 (services ×4, `resources/{r}/availability` GET/PUT,
 `resources/{r}/week`, `resources/{r}/days` PUT, `resources/{r}/days/copy-week`, `appointments` GET/POST,
 `bookings/{id}/move-slot`; no closed-time route, row E14, which also pins every scheduling admin route of the stack to
-`tools/mcp-server/routes.json`). Every route runs the authorizer (`CUSTOM`, one authorizer for the nested stack): no scheduling route is
+`tools/mcp-server/routes.json`) and the 13 group admin routes of SCHED-1F1 (`courses` GET/POST, `courses/{c}`
+PUT/DELETE, `courses/{c}/runs` GET/POST, `courses/{c}/runs/{r}` PUT, `…/move`, `…/cancel`, `…/roster`,
+`courses/{c}/unplaced`, `seats` POST, `bookings/{id}/move-seat`). Every route runs the authorizer (`CUSTOM`, one authorizer for the nested stack): no scheduling route is
 anonymous; the renderer key resolves to `RENDERER`. Wiring per function, pinned by `infra/test` rows I1-I5 and the
 amended `(sched1b-3)`: every function has `SCHEDULING_TABLE_NAME` and `TABLE_NAME` (read on the main table); on the
 scheduling-private table read only for the GET routes (SCHED-1E1: services list, availability, week, appointments
-list), the customer lookup and the visitor view, read-write for the
+list; SCHED-1F1: courses, runs, roster, unplaced list), the customer lookup and the visitor view, read-write for the
 writers, no grant for the templates route; `EVENT_BUS_NAME` + `events:PutEvents` ONLY on the functions that publish a
 main-table audit event (resource writes, feed secret, erasure; SCHED-1E1: service writes, default availability, day
-edits, copy-week — never a booking function and never a visitor function,
+edits, copy-week; SCHED-1F1: course create / update / delete, run create / update / move / cancel — never a booking function (incl. the
+manual seat and the person move) and never a visitor function,
 SCHED-AUDIT-PII = C); `SES_FROM_EMAIL` + one `ses:SendEmail` on the sender identity on the mailing functions (admin
-booking cancel, manual appointment, slot move; visitor hold, confirm, cancel, move); `RENDERER_CLOUDFRONT_ORIGIN` on the mailing functions and the
+booking cancel, manual appointment, slot move, run move, run cancel, manual seat, person move; visitor hold, confirm,
+cancel, move); `RENDERER_CLOUDFRONT_ORIGIN` on the mailing functions and the
 feed-secret route; `RECAPTCHA_SECRET_KEY` on the visitor hold only, from the optional prop `recaptchaSecretKey` exactly
 as CommerceApi: `amodx-stack.ts` passes the parent's SSM-backed deployment secret to `SchedulingApi` (row I3, § 9.1
 fail-open guard; the hold handler also refuses — 503 `verificationUnavailable` — when no configuration resolves). The
@@ -127,7 +131,12 @@ resources added in SchedulingApi only (12 × function, role, policy, permission,
 the 18 existing scheduling functions change their code asset hash only (they bundle `scheduling-db.ts`, which gained
 `replaceService` and the `consistent` flag of `listServices`); the parent changes only the nested-stack resource's
 template asset hash; SchedulingApi raw 182 / 30
-functions, deployed ≈ 213.
+functions, deployed ≈ 213. SCHED-1F1 (synth comparison against HEAD `a3b7318`, HEAD synthesized twice for noise): 78
+resources added in SchedulingApi only (13 × function, role, policy, permission, integration, route), none removed;
+the 30 existing scheduling functions change their code asset hash only (they bundle `scheduling-db.ts`, which gained
+the course rulings of SCHED-1F1); the nested template's description names the groups; the parent changes only the
+nested-stack resource's template URL. SchedulingApi raw 260 / 43 functions, deployed ≈ 304; parent deployed ≈ 469
+(unchanged).
 
 Custom Lambda authorizer validates Cognito JWT or master API key. Public routes (`POST /leads`, `/contact`, `/consent`) bypass auth.
 

@@ -542,7 +542,7 @@ describe("§ 6.3 / § 6.4 reads", () => {
         await seedRun(store, { trainerId: (await sdb.createResource(store, T, "T2")).id });
         await seedRun(store, { trainerId: (await sdb.createResource(store, T, "T3")).id });
         fake.pageSize = 1;
-        expect(await sdb.listRuns(store, T, "c1")).toHaveLength(3);
+        expect(await sdb.listRuns(store, T, "c1", false)).toHaveLength(3);
         expect(fake.ops("QueryCommand").filter((q) => q.ExpressionAttributeValues[":p"] === "RUN#c1#").length).toBeGreaterThanOrEqual(3);
         expect(fake.ops("QueryCommand").every((q) => typeof q.ProjectionExpression === "string" && q.Limit === undefined)).toBe(true);
     });
@@ -597,7 +597,7 @@ describe("§ 6.3 / § 6.4 reads", () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe("§ 7 transactions", () => {
-    it("§ 7.3 / § 7.4 item counts: hold ≤ 13 / 10, confirm ≤ 5 / 4, cancel ≤ 25 / 24, move ≤ 6 / 3, manual ≤ 6 / 5", async () => {
+    it("§ 7.3 / § 7.4 item counts: hold ≤ 13 / 10, confirm ≤ 5 / 4, cancel ≤ 25 / 24, move ≤ 6 / 3 (seat → unplaced 4: + the course version, S1F1-COURSE-DELETE-GUARD), manual ≤ 6 / 5", async () => {
         const { fake, store } = setup();
         const [r] = await seedSlots(store);
         const midnight = Date.parse("2026-12-07T23:30:00Z"); // Tuesday 01:30 local, on the grid; crosses UTC midnight
@@ -621,7 +621,7 @@ describe("§ 7 transactions", () => {
         expect(seat[0]).toBeLessThanOrEqual(10);
         const seatId = [...fake.items.values()].find((i) => i.SK.startsWith("BOOKING#") && i.what.kind === "seat")!.id;
         expect((await sizes(() => sdb.confirmBooking(store, T, seatId, NOW)))[0]).toBe(4);
-        expect((await sizes(() => sdb.moveSeat(store, { tenantId: T, bookingId: seatId, runId: null, actor: admin, cutoffHours: 24, now: NOW })))[0]).toBe(3);
+        expect((await sizes(() => sdb.moveSeat(store, { tenantId: T, bookingId: seatId, runId: null, actor: admin, cutoffHours: 24, now: NOW })))[0]).toBe(4);
         expect((await sizes(() => sdb.moveSeat(store, { tenantId: T, bookingId: seatId, runId: run.id, actor: admin, cutoffHours: 24, now: NOW })))[0]).toBe(3);
         expect((await sizes(() => sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("d@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })))[0]).toBeLessThanOrEqual(5);
         expect((await sizes(() => sdb.updateRun(store, T, "c1", run.id, { capacity: 3 }, NOW)))[0]).toBe(1);
@@ -990,7 +990,7 @@ describe("unplaced, run cancel, erasure, tokens", () => {
         expect(itemSetViolations(fake)).toEqual([]);
     });
 
-    it("C12 / C32 — cancel a run of 45: one transaction ≤ 92 items; 45 changed with history; RUNSPAN# gone; held tokens cleared after commit", async () => {
+    it("C12 / C32 — cancel a run of 45: one transaction ≤ 93 items (S1F1-COURSE-DELETE-GUARD adds the course version); 45 changed with history; RUNSPAN# gone; held tokens cleared after commit", async () => {
         const { fake, store } = setup();
         const { run } = await seedRun(store, { capacity: 45 });
         const held: string[] = [];
@@ -1000,9 +1000,11 @@ describe("unplaced, run cancel, erasure, tokens", () => {
         }
         const before = fake.txSizes().length;
         const result = must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
+        expect(fake.txSizes().slice(before)).toEqual([2 + 2 * 30 + 15 + 1]); // cancelRun sends ONE transaction (S1F1-R02)
+        expect(await sdb.clearCancelledRunTokens(store, T, result.cancelled, NOW)).toEqual({ failed: [] });
         const sizes = fake.txSizes().slice(before);
-        expect(sizes[0]).toBe(2 + 2 * 30 + 15);
-        expect(Math.max(...sizes)).toBeLessThanOrEqual(92);
+        expect(sizes).toHaveLength(1 + 15);
+        expect(Math.max(...sizes)).toBeLessThanOrEqual(93);
         expect(result.unplaced).toHaveLength(30);
         expect(result.cancelled.sort()).toEqual(held.sort());
         expect(fake.sks("RUNSPAN#")).toEqual([]);
@@ -1706,7 +1708,7 @@ describe("review-0 regressions", () => {
         const from = reads().length;
         await sdb.listResources(store, T, false);
         await sdb.readIntervals(store, T, r, { start: MON_0900 - HOUR, end: MON_0900 + 3 * HOUR }, NOW);
-        await sdb.listRuns(store, T, "c1");
+        await sdb.listRuns(store, T, "c1", false);
         expect(reads().slice(from).every((c) => consistentFlag(c) === false)).toBe(true);
     });
 });
@@ -1796,5 +1798,148 @@ describe("SCHED-1E1 store extension", () => {
         fake.on("PutCommand", "before", () => sdb.deleteService(store, T, "svc1"));  // the delete commits in between
         expect(await sdb.replaceService(store, T, { ...svc, name: "Renamed" })).toEqual({ ok: false, error: { kind: "notFound" } });
         expect(fake.get(PK, "SERVICE#svc1")).toBeUndefined();
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// SCHED-1F1 operator rulings after review-0: S1F1-STORE-ALLOCATION, S1F1-COURSE-DELETE-GUARD, S1F1-CANCEL-OUTCOME
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("SCHED-1F1 store rulings", () => {
+    const course = { id: "c1", name: "Pottery", defaultCapacity: 8, languages: ["ro", "en"] };
+    const courseItem = (fake: FakeTable) => fake.get(PK, "COURSE#c1");
+
+    it("S1F1-STORE-ALLOCATION: listCourses and listRuns send ConsistentRead exactly as asked", async () => {
+        const { fake, store } = setup();
+        await seedRun(store);
+        for (const consistent of [true, false]) {
+            const from = fake.calls.length;
+            expect(await sdb.listCourses(store, T, consistent)).toEqual([course]);
+            expect(await sdb.listRuns(store, T, "c1", consistent)).toHaveLength(1);
+            const queries = fake.calls.slice(from).filter((c) => c.op === "QueryCommand").map((c) => c.input);
+            expect(queries).toHaveLength(2);
+            expect(queries.every((q) => q.ConsistentRead === consistent)).toBe(true);
+        }
+    });
+
+    it("S1F1-STORE-ALLOCATION: replaceCourse updates name, capacity and languages, keeps the dependent version; an unknown course or one deleted before the write → notFound and stays deleted", async () => {
+        const { fake, store } = setup();
+        await seedRun(store);
+        const v = courseItem(fake)!.v;
+        expect(v).toBe(1);
+        expect(must(await sdb.replaceCourse(store, T, { ...course, name: "Clay", languages: ["ro"] }))).toEqual({ ...course, name: "Clay", languages: ["ro"] });
+        expect(courseItem(fake)).toMatchObject({ name: "Clay", languages: ["ro"], defaultCapacity: 8, v });
+        expect(await sdb.replaceCourse(store, T, { ...course, id: "nope" })).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(fake.get(PK, "COURSE#nope")).toBeUndefined();
+        fake.on("UpdateCommand", "before", () => fake.deleteRaw(PK, "COURSE#c1"));
+        expect(await sdb.replaceCourse(store, T, course)).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(courseItem(fake)).toBeUndefined();
+    });
+
+    it("S1F1-COURSE-DELETE-GUARD: every writer of a new course dependent raises the course version in its own transaction; the item counts stay within § 7", async () => {
+        const { fake, store } = setup();
+        await sdb.putCourse(store, T, course);
+        expect(courseItem(fake)!.v).toBeUndefined();
+        const trainers = [];
+        for (let i = 0; i < 10; i++) trainers.push((await sdb.createResource(store, T, `T${i}`)).id);
+        let before = fake.txSizes().length;
+        const run = must(await sdb.createRun(store, {
+            tenantId: T, courseId: "c1", timezone: TZ, capacity: 45, trainerIds: trainers as [string, ...string[]], language: { kind: "notSet" },
+            meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: NOW,
+        }));
+        expect(fake.txSizes().slice(before)).toEqual([2 + 10 + 1]);
+        expect(courseItem(fake)!.v).toBe(1);
+        before = fake.txSizes().length;
+        const u = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        expect(fake.txSizes().slice(before)).toEqual([5]);
+        expect(courseItem(fake)!.v).toBe(2);
+        const seated = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        expect(courseItem(fake)!.v).toBe(2); // a seat in a run is the run's dependent, not a new course dependent
+        before = fake.txSizes().length;
+        must(await sdb.moveSeat(store, { tenantId: T, bookingId: seated.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }));
+        expect(fake.txSizes().slice(before)).toEqual([4]);
+        expect(courseItem(fake)!.v).toBe(3);
+        must(await sdb.moveSeat(store, { tenantId: T, bookingId: u.id, runId: run.id, actor: admin, cutoffHours: 24, now: NOW }));
+        expect(courseItem(fake)!.v).toBe(3); // unplaced → seat removes a dependent: no raise
+        // A full run of 45 confirmed seats: 2 + 2 × 45 + 1 = 93 ≤ 100.
+        for (let i = 0; i < 44; i++) must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person(`m${i}@example.com`), channel: "phone", adminEmail: admin.email, now: NOW }));
+        before = fake.txSizes().length;
+        const result = must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
+        expect(result.unplaced).toHaveLength(45);
+        expect(fake.txSizes().slice(before)).toEqual([93]);
+        expect(courseItem(fake)!.v).toBe(4);
+        expect(itemSetViolations(fake)).toEqual([]);
+    });
+
+    it("S1F1-COURSE-DELETE-GUARD: a dependent written between the delete's checks and its Delete → courseInUse, course and dependent kept (run create; unplaced manual entry); a dependent written after the delete is refused", async () => {
+        for (const kind of ["run", "unplaced"] as const) {
+            const { fake, store } = setup();
+            await sdb.putCourse(store, T, course);
+            const trainer = (await sdb.createResource(store, T, "T")).id;
+            fake.on("DeleteCommand", "before", async () => {
+                if (kind === "run") must(await sdb.createRun(store, { tenantId: T, courseId: "c1", timezone: TZ, capacity: 8, trainerIds: [trainer], language: { kind: "notSet" }, meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: NOW }));
+                if (kind === "unplaced") must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
+            }, (d) => d.Key.SK === "COURSE#c1");
+            expect({ kind, r: await sdb.deleteCourse(store, T, "c1") }).toEqual({ kind, r: { ok: false, error: { kind: "courseInUse" } } });
+            expect(courseItem(fake)).toBeDefined();
+            expect(fake.sks(kind === "run" ? "RUN#c1#" : "UNPLACED#c1#")).toHaveLength(1);
+        }
+        // After a completed delete, a dependent writer finds no course and is refused.
+        const { fake, store } = setup();
+        await sdb.putCourse(store, T, course);
+        const trainer = (await sdb.createResource(store, T, "T")).id;
+        expect(must(await sdb.deleteCourse(store, T, "c1"))).toEqual(course);
+        expect(await sdb.createRun(store, { tenantId: T, courseId: "c1", timezone: TZ, capacity: 8, trainerIds: [trainer], language: { kind: "notSet" }, meetings: [{ date: "2026-12-12", start: "10:00", end: "13:00" }], now: NOW }))
+            .toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: null, who: person(), channel: "phone", adminEmail: admin.email, now: NOW }))
+            .toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(fake.sks("RUN#")).toEqual([]);
+        expect(fake.sks("BOOKING#")).toEqual([]);
+        expect(await sdb.deleteCourse(store, T, "c1")).toEqual({ ok: false, error: { kind: "notFound" } });
+    });
+
+    it("S1F1-COURSE-DELETE-GUARD (review S1F1-R08, reachable preservation case): a person move out of a run, and a run cancel that unplaces people, need a run of the course — and while that run exists the delete is refused by its consistent check, before and after the move-out or the cancel (runs are never deleted)", async () => {
+        const { fake, store } = setup();
+        const { run } = await seedRun(store);
+        const seated = must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("s@example.com"), channel: "phone", adminEmail: admin.email, now: NOW })).booking;
+        must(await sdb.createManualSeat(store, { tenantId: T, courseId: "c1", runId: run.id, who: person("t@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
+        const refused = { ok: false, error: { kind: "courseInUse" } };
+        expect(await sdb.deleteCourse(store, T, "c1")).toEqual(refused);
+        must(await sdb.moveSeat(store, { tenantId: T, bookingId: seated.id, runId: null, actor: admin, cutoffHours: 24, now: NOW }));
+        expect(await sdb.deleteCourse(store, T, "c1")).toEqual(refused);
+        must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
+        expect(await sdb.deleteCourse(store, T, "c1")).toEqual(refused);
+        expect(fake.get(PK, `RUN#c1#${run.id}`)!.status).toBe("cancelled");
+        expect(fake.sks("UNPLACED#c1#")).toHaveLength(2);
+        expect(courseItem(fake)).toBeDefined();
+        // The version raises of these two writers are asserted in the item-count test above (v 3 and 4 there).
+    });
+
+    it("S1F1-CANCEL-OUTCOME (review S1F1-R02): cancelRun returns right after its ONE transaction with the run snapshot it decided on, and sends nothing after it; clearCancelledRunTokens, called later by the caller, reports a failed booking in `failed` and never throws", async () => {
+        const { fake, store } = setup();
+        const { run } = await seedRun(store);
+        const { booking: h } = must(await holdSeat(store, run.id, person("h@example.com")));
+        must(await sdb.moveRun(store, T, "c1", run.id, [{ date: "2026-12-19", start: "10:00", end: "13:00" }], NOW));
+        const from = fake.calls.length;
+        const result = must(await sdb.cancelRun(store, T, "c1", run.id, admin.email, NOW));
+        const sent = fake.calls.slice(from);
+        expect(sent.at(-1)!.op).toBe("TransactWriteCommand");                    // the cancel itself is the LAST request
+        expect(sent.filter((c) => c.op === "TransactWriteCommand")).toHaveLength(1);
+        expect(Object.keys(result).sort()).toEqual(["cancelled", "run", "unplaced"]);
+        expect(result.run.meetings).toEqual([{ date: "2026-12-19", start: "10:00", end: "13:00" }]);
+        expect(result.run.id).toBe(run.id);
+        expect(result.cancelled).toEqual([h.id]);
+        expect(tokenItems(fake, h.id)).toHaveLength(1);                         // not yet cleaned: the caller decides when
+        // The cleanup transaction throws (it is the one that deletes a TOKEN#).
+        fake.on("TransactWriteCommand", "before", crash, (t) => t.TransactItems.some((i: any) => String(i.Delete?.Key.SK ?? "").startsWith("TOKEN#")));
+        const log = vi.spyOn(console, "error").mockImplementation(() => {});
+        expect(await sdb.clearCancelledRunTokens(store, T, result.cancelled, NOW)).toEqual({ failed: [h.id] });
+        log.mockRestore();
+        expect(booking(fake, h.id)!.state.kind).toBe("cancelled");
+        expect(tokenItems(fake, h.id)).toHaveLength(1); // still listed: 404 by the view rule, found by erasure (C24)
+        // Without a failure: nothing failed and the tokens are gone.
+        expect(await sdb.clearCancelledRunTokens(store, T, result.cancelled, NOW)).toEqual({ failed: [] });
+        expect(tokenItems(fake, h.id)).toEqual([]);
+        expect(booking(fake, h.id)!.tokenHashes).toEqual([]);
     });
 });

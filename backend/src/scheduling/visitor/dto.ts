@@ -150,7 +150,7 @@ export async function bookingViewDTO(store: SchedulingStore, tenantId: string, b
             break;
         }
         case "unplaced": {
-            const runs = await listRuns(store, tenantId, w.courseId);
+            const runs = await listRuns(store, tenantId, w.courseId, false);
             what = { kind: "unplaced", courseName: (place.course as Course).name, proposal: proposalDTO(runs, b.who.language, false, now) };
             break;
         }

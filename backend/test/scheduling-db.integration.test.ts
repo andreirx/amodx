@@ -547,4 +547,21 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
         expect(await sdb.replaceService(store, t, { ...svc, name: "Renamed" })).toEqual({ ok: false, error: { kind: "notFound" } });
         expect(await sdb.getService(store, t, "svc1", true)).toBeUndefined();
     });
+
+    rowTest("SCHED-1F1 store rulings: a dependent written between deleteCourse's checks and its Delete refuses the delete (the version condition on the real table); replaceCourse does not re-create a deleted course; cancelRun returns the run snapshot and clearCancelledRunTokens runs after it", async (t, { store, on }) => {
+        await sdb.putCourse(store, t, { id: "c1", name: "Course", defaultCapacity: 8, languages: ["ro", "en"] });
+        on("DeleteCommand", "before", async () => {
+            must(await sdb.createManualSeat(store, { tenantId: t, courseId: "c1", runId: null, who: person("u@example.com"), channel: "phone", adminEmail: admin.email, now: NOW }));
+        });
+        expect(await sdb.deleteCourse(store, t, "c1")).toEqual({ ok: false, error: { kind: "courseInUse" } });
+        expect(await sdb.getCourse(store, t, "c1", true)).toBeDefined();
+        expect((await sdb.listCourses(store, t, true)).map((c) => c.id)).toEqual(["c1"]);
+        const { run } = await seedRun(store, t, 2);
+        const result = must(await sdb.cancelRun(store, t, "c1", run.id, admin.email, NOW));
+        expect(result.run.id).toBe(run.id);
+        expect(await sdb.clearCancelledRunTokens(store, t, result.cancelled, NOW)).toEqual({ failed: [] });
+        on("UpdateCommand", "before", () => doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: sdb.schedulingKeys.pk(t), SK: "COURSE#c1" } })));
+        expect(await sdb.replaceCourse(store, t, { id: "c1", name: "Renamed", defaultCapacity: 8, languages: [] })).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(await sdb.getCourse(store, t, "c1", true)).toBeUndefined();
+    });
 });

@@ -29,6 +29,6 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerCon
         const store = schedulingStoreFromEnv();
         const course = await getCourse(store, tenantId, courseId.value, false);
         if (course === undefined) return refusal(404, "notFound", "Course not found.");
-        const runs = await listRuns(store, tenantId, course.id);
+        const runs = await listRuns(store, tenantId, course.id, false);
         return answer(200, proposalDTO(runs, q.value.language, q.value.all === "1", Date.now()));
     });

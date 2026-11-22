@@ -17,12 +17,12 @@ src/
 │   │                      #   that names the scheduling-private table. Every function takes a SchedulingStore
 │   │                      #   (client, table, sleep); handlers use schedulingStoreFromEnv() (SCHEDULING_TABLE_NAME,
 │   │                      #   the one read). Decisions are the @amodx/shared kernel's. Reads that a write decides
-│   │                      #   on are ConsistentRead; display reads (readIntervals, listRuns, getBookingViews,
+│   │                      #   on are ConsistentRead; display reads (readIntervals, listRuns(…, false), getBookingViews,
 │   │                      #   listResources(…, false)) are not. Each booking or container change is ONE
 │   │                      #   TransactWriteItems; cancellation reasons are mapped by item position to the spec's
-│   │                      #   refusal unions (Result values). Not one transaction by design: cancelRun (the run
-│   │                      #   transaction, then one token-cleanup transaction per held booking it cancelled,
-│   │                      #   § 7.6), removeResource (fence update, check, release or delete, § 13), the per-booking
+│   │                      #   refusal unions (Result values). Not one transaction by design: a run cancel (cancelRun
+│   │                      #   = the run transaction only; then the caller's clearCancelledRunTokens = one
+│   │                      #   token-cleanup transaction per held booking it cancelled, § 7.6), removeResource (fence update, check, release or delete, § 13), the per-booking
 │   │                      #   transactions of cleanupExpiredHolds/eraseCustomer, and single-item writes (mail
 │   │                      #   mark, WEEKMAIL# claim/sent, DAYS# Put, configuration Puts). Two version rules in one
 │   │                      #   loop (`versioned`, ≤ 3 attempts, then busy): a write that reads a container's
@@ -37,7 +37,19 @@ src/
 │   │                      #   S1E1-STORE-ALLOCATION): listServices(…, consistent) as listResources (the create bound
 │   │                      #   reads consistently; displays do not); replaceService = the update of an EXISTING
 │   │                      #   service, one Put under attribute_exists(SK) → notFound when it is gone (a concurrent
-│   │                      #   delete is never undone); putService stays for create.
+│   │                      #   delete is never undone); putService stays for create. SCHED-1F1 (operator rulings
+│   │                      #   after review-0): listCourses / listRuns take `consistent`; replaceCourse = UpdateItem of
+│   │                      #   name, defaultCapacity, languages under attribute_exists(SK) (notFound when gone; the
+│   │                      #   course version is not touched). S1F1-COURSE-DELETE-GUARD: COURSE#.v is raised (ADD v 1,
+│   │                      #   attribute_exists) in the transaction of every write that gives a course a new
+│   │                      #   dependent — createRun (≤ 13 items), createManualSeat without a run (5), moveSeat out of
+│   │                      #   a run (4), cancelRun when someone is unplaced (≤ 2 + 2 × 45 + 1 = 93) — and deleteCourse
+│   │                      #   = consistent course read (v) + consistent run / UNPLACED# checks + one Delete under
+│   │                      #   that v (→ courseInUse | notFound | the deleted course). S1F1-CANCEL-OUTCOME (review
+│   │                      #   S1F1-R02): cancelRun sends ONE transaction and returns right after its commit with
+│   │                      #   { unplaced, cancelled, run (the snapshot it decided on) }; the caller records the commit
+│   │                      #   (the audit), then runs clearCancelledRunTokens(ids) → { failed } (logged by id, never
+│   │                      #   thrown).
 │   │                      #   No Scan. Tests: test/unit/scheduling-db.test.ts (rows C1-C35 against an in-memory
 │   │                      #   fake that evaluates the emitted expressions); test/scheduling-db.integration.test.ts
 │   │                      #   (operator-run on the staging table: skipped without SCHEDULING_TABLE_NAME, refuses a
@@ -50,7 +62,10 @@ src/
 │   │                      #   storedDataInvalid, never "no override"), rendering via order-email.ts renderTemplate.
 │   │                      #   Users: scheduling/admin/bookings-cancel.ts (mail `cancelled`), email-templates.ts,
 │   │                      #   scheduling/visitor/mail.ts (SCHED-1D2: `hold`, `confirmed`, `cancelled`, `moved`; also
-│   │                      #   used by SCHED-1E1 appt-appointments-create.ts `confirmed` and appt-move-slot.ts `moved`)
+│   │                      #   used by SCHED-1E1 appt-appointments-create.ts `confirmed` and appt-move-slot.ts `moved`,
+│   │                      #   and by SCHED-1F1 group-seats-create.ts `confirmed`, group-runs-move.ts and
+│   │                      #   group-move-seat.ts `moved`), scheduling/admin/group-common.ts sendGroupAdminMail
+│   │                      #   (SCHED-1F1: `unplaced`; `cancelled` after an admin run cancel, no owner copy)
 │   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
 │   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
 │   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
@@ -377,6 +392,54 @@ src/
 │                          #   routes publish none (SCHED-AUDIT-PII = C) and mail through visitor/mail.ts
 │                          #   sendVisitorMail (its name is narrower than this use — recorded, no rename yet).
 │                          #   Tests: test/unit/scheduling-appt.test.ts (rows E1-E14 backend parts, E16, E22, E23, E25)
+│                          # group-*.ts — SCHED-1F1 (sched-1.md § 10.3 routes of `sched-1f`, § 5.4, § 7.4, § 7.6, § 11.1;
+│                          #   PROTOTYPE): the group admin routes, same frame (adminRoute, E+T), work with the switch
+│                          #   off. group-courses-list (CourseDTO by name), group-courses-create (strict body, 45
+│                          #   text, distinct languages; bound 200 on a CONSISTENT count, S1D1-R02 wording),
+│                          #   group-courses-update (consistent course + run reads; 409 languageInUse when a tag the
+│                          #   update REMOVES from the stored list is used by any run, cancelled ones included —
+│                          #   review S1F1-R06; replaceCourse → 404, never re-created), group-courses-delete (deleteCourse:
+│                          #   404; 409 courseInUse while a run or an UNPLACED# exists, also when one is written
+│                          #   between its checks and its Delete — S1F1-COURSE-DELETE-GUARD),
+│                          #   group-runs-list (RunAdminDTO by first meeting: taken = active seats, overCapacityBy;
+│                          #   the seat map never leaves the server), group-runs-create (createRun: meetings checked by
+│                          #   the kernel's validateMeetings → 400 with the MeetingError kind as code; trainers 1-10,
+│                          #   distinct (S1F1-R03), read consistently: unknown → 400 with the path, being removed → 409
+│                          #   resourceUnavailable; capacity 1-45, above → 400 "A group in this version holds at most
+│                          #   45 people."; language one of the course's AT THE TIME IT IS SET; the tenant's zone
+│                          #   copied), group-runs-update
+│                          #   (updateRun: capacity / trainers / language|null / groupLink|null / open|closed; a
+│                          #   cancelled run → 409), group-runs-move (moveRun; then per active booking mintToken +
+│                          #   `moved` mail; answer { run, mailed, notSentPlacementChanged }), group-runs-cancel
+│                          #   (cancelRun; the audit from its committed run snapshot first; then
+│                          #   clearCancelledRunTokens; then per unplaced booking
+│                          #   mintToken + `unplaced` mail, per cancelled hold the `cancelled` mail without link and
+│                          #   without owner copy; answer { unplaced, cancelled, notSentPlacementChanged,
+│                          #   tokenCleanupFailed }). Ruling S1F1-LANGUAGE-CONSIST (amends § 4.3): a run language is
+│                          #   checked against the course list when it is SET (run create / update, a visitor's
+│                          #   first booking); a course update concurrent with such a writer can leave a run whose
+│                          #   language is no longer in the list — valid stored data: no reader, schema or writer
+│                          #   refuses it (the languageInUse guard looks only at removed tags). group-roster (AP7:
+│                          #   exactly the active seats as RosterRow — customer data, E+T only, never logged; the CSV of `sched-1f2` is
+│                          #   built from it in the admin page, § 10.3: no route), group-unplaced (AP8, 100 per page,
+│                          #   opaque cursor; a foreign cursor → 400), group-seats-create (createManualSeat: admin seat
+│                          #   rules, no runId → unplaced; mail `confirmed` with the group link for a seat) and
+│                          #   group-move-seat (moveSeat with the admin Actor and the screen's rev; runId null →
+│                          #   unplaced; mintToken + `moved` or `unplaced` mail; unplaced → unplaced writes nothing).
+│                          #   Shared parts in group-common.ts (DTO builders, the trainer check, the refusal maps,
+│                          #   seatPlace = the course and run of the EXACT booking answered, sendGroupAdminMail = the
+│                          #   `unplaced` mail and the admin-run-cancel `cancelled` mail, which visitor/mail.ts does not
+│                          #   send as § 11.1 states; hasPlacement = review S1F1-R01: every notice after a commit is
+│                          #   built from the minted booking and sent only when it still has the notice's placement).
+│                          #   Writers read the tenant first (appt-common.ts
+│                          #   readTenantBeforeWrite); the mailing routes and run create need scheduling.timezone (409
+│                          #   timezoneNotSet). Audit: one main-table event per course create / update / delete, run
+│                          #   create / update /
+│                          #   move / cancel (title = course name + the run's first local date; details = dates and
+│                          #   counts only; no `ip`); the two person routes publish none and append history.
+│                          #   Tests: test/unit/scheduling-group.test.ts (rows F1-F8 backend parts, F6 through the
+│                          #   real visitor hold route; review S1F1-R01…R05; the REAL store transactions over an
+│                          #   in-memory table that refuses two actions on one item, as DynamoDB)
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/

@@ -1977,25 +1977,32 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
     // slice creates (the admin routes). The visitor functions of `sched-1d2` (and I3, the hold's reCAPTCHA secret) are
     // added to these lists by that slice. Inside the SCHED-1B block so the IAM reading rule above is the one used.
     // ────────────────────────────────────────────────────────────────────────────────────────────
-    describe('SCHED-1D1/1D2/1E1 — the SchedulingApi nested stack (admin, visitor and appointment routes)', () => {
-        /** Construct ids of the functions, by role in § 11.2 (SCHED-1D1: admin; SCHED-1D2: visitor; SCHED-1E1: appointments). */
+    describe('SCHED-1D1/1D2/1E1/1F1 — the SchedulingApi nested stack (admin, visitor, appointment and group routes)', () => {
+        /** Construct ids of the functions, by role in § 11.2 (SCHED-1D1: admin; SCHED-1D2: visitor; SCHED-1E1: appointments; SCHED-1F1: groups). */
         const ADMIN = ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminEraseCustomerFunc',
             'AdminListResourcesFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc',
             'AdminFeedSecretFunc', 'AdminEmailTemplatesFunc'];
         const APPOINTMENTS = ['AdminListServicesFunc', 'AdminCreateServiceFunc', 'AdminUpdateServiceFunc', 'AdminDeleteServiceFunc',
             'AdminGetAvailabilityFunc', 'AdminPutAvailabilityFunc', 'AdminWeekFunc', 'AdminEditDaysFunc', 'AdminCopyWeekFunc',
             'AdminListAppointmentsFunc', 'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc'];
+        // SCHED-1F1 (§ 10.3 routes of `sched-1f`).
+        const GROUPS = ['AdminListCoursesFunc', 'AdminCreateCourseFunc', 'AdminUpdateCourseFunc', 'AdminDeleteCourseFunc', 'AdminListRunsFunc', 'AdminCreateRunFunc', 'AdminUpdateRunFunc',
+            'AdminMoveRunFunc', 'AdminCancelRunFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc', 'AdminCreateSeatFunc', 'AdminMoveSeatFunc'];
         const VISITOR = ['VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorHoldFunc', 'VisitorViewFunc',
             'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc'];
         // § 11.2: the mailing functions (SES) and the functions that publish a main-table audit event (PutEvents).
         const MAILING = ['AdminCancelBookingFunc', 'VisitorHoldFunc', 'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc',
-            'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc'];
+            'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc',
+            'AdminMoveRunFunc', 'AdminCancelRunFunc', 'AdminCreateSeatFunc', 'AdminMoveSeatFunc'];
         const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc',
-            'AdminCreateServiceFunc', 'AdminUpdateServiceFunc', 'AdminDeleteServiceFunc', 'AdminPutAvailabilityFunc', 'AdminEditDaysFunc', 'AdminCopyWeekFunc'];
+            'AdminCreateServiceFunc', 'AdminUpdateServiceFunc', 'AdminDeleteServiceFunc', 'AdminPutAvailabilityFunc', 'AdminEditDaysFunc', 'AdminCopyWeekFunc',
+            'AdminCreateCourseFunc', 'AdminUpdateCourseFunc', 'AdminDeleteCourseFunc', 'AdminCreateRunFunc', 'AdminUpdateRunFunc',
+            'AdminMoveRunFunc', 'AdminCancelRunFunc'];
         const READ_ONLY = ['AdminGetBookingFunc', 'AdminListResourcesFunc', 'AdminEmailTemplatesFunc', 'AdminLookupCustomerFunc',
             'VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorViewFunc',
-            'AdminListServicesFunc', 'AdminGetAvailabilityFunc', 'AdminWeekFunc', 'AdminListAppointmentsFunc'];
-        const ALL = [...ADMIN, ...VISITOR, ...APPOINTMENTS];
+            'AdminListServicesFunc', 'AdminGetAvailabilityFunc', 'AdminWeekFunc', 'AdminListAppointmentsFunc',
+            'AdminListCoursesFunc', 'AdminListRunsFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc'];
+        const ALL = [...ADMIN, ...VISITOR, ...APPOINTMENTS, ...GROUPS];
         const DYNAMODB_WRITE = /^dynamodb:(PutItem|UpdateItem|DeleteItem|BatchWriteItem|\*)$|^\*$/;
 
         type Fn = { construct: string; logicalId: string; vars: Record<string, unknown>; statements: any[] };
@@ -2020,7 +2027,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
         };
         const parameterOf = (v: unknown) => (isRefTo(v) ? parentParameterValues(realTree()).get(v.Ref) : undefined);
 
-        test('I2 (inventory) the nested stack holds exactly the ten admin, eight visitor and twelve appointment functions, each behind a route with the authorizer', () => {
+        test('I2 (inventory) the nested stack holds exactly the ten admin, eight visitor, twelve appointment and thirteen group functions, each behind a route with the authorizer', () => {
             expect(functions(schedulingTemplate).map((f) => f.construct).sort()).toEqual([...ALL].sort());
             const routes = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties);
             expect(routes.map((r) => r.RouteKey).sort()).toEqual([
@@ -2056,6 +2063,20 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 'PUT /scheduling/admin/resources/{resourceId}/availability',
                 'PUT /scheduling/admin/resources/{resourceId}/days',
                 'PUT /scheduling/admin/services/{serviceId}',
+                // SCHED-1F1 group admin routes (§ 10.3 routes of `sched-1f`).
+                'DELETE /scheduling/admin/courses/{courseId}',
+                'GET /scheduling/admin/courses',
+                'POST /scheduling/admin/courses',
+                'PUT /scheduling/admin/courses/{courseId}',
+                'GET /scheduling/admin/courses/{courseId}/runs',
+                'GET /scheduling/admin/courses/{courseId}/runs/{runId}/roster',
+                'GET /scheduling/admin/courses/{courseId}/unplaced',
+                'POST /scheduling/admin/bookings/{bookingId}/move-seat',
+                'POST /scheduling/admin/courses/{courseId}/runs',
+                'POST /scheduling/admin/courses/{courseId}/runs/{runId}/cancel',
+                'POST /scheduling/admin/courses/{courseId}/runs/{runId}/move',
+                'POST /scheduling/admin/seats',
+                'PUT /scheduling/admin/courses/{courseId}/runs/{runId}',
             ].sort());
             // § 16.3: no route is anonymous — every route, visitor routes included, runs the authorizer.
             for (const r of routes) expect({ key: r.RouteKey, auth: r.AuthorizationType }).toEqual({ key: r.RouteKey, auth: 'CUSTOM' });
@@ -2120,7 +2141,8 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 expect({ fn: f.construct, puts, bus }).toEqual({ fn: f.construct, puts: expected, bus: expected });
             }
             // No event-bus permission on any booking function: the admin booking routes and every visitor route (§ 11.2).
-            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc', ...VISITOR]) {
+            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc',
+                'AdminCreateSeatFunc', 'AdminMoveSeatFunc', 'AdminRosterFunc', 'AdminListUnplacedFunc', ...VISITOR]) {
                 expect(byConstruct(name).statements.some((st) => actions(st).some((a) => a.startsWith('events:')))).toBe(false);
             }
         });

@@ -2338,3 +2338,36 @@ rows C33, D14).
   page error. Screenshots kept by the operator. Everything written was removed; the switch is off.
 - Observations, not corrected here: the first planner load after a deploy took more than 4 s (function cold
   start); the admin app requests `//scheduling/admin/…` (two slashes after the API host; answered 200).
+
+### `sched-1f1` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Operator split of `sched-1f` along backend / screens (content unchanged). This half: thirteen admin functions
+  and routes — courses (list, create, update, delete), runs (list, create, update, move, cancel), roster,
+  unplaced list, manual entry, move a person. CSV export is admin-page work (§ 10.3) and comes with `sched-1f2`.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Operator gates, all exit 0 (the eleven of `1d1`). Integration on the staging table: 38 passed.
+- Operator rulings (the human may override):
+  - **S1F1-STORE-ALLOCATION = A:** `listCourses`/`listRuns` take `consistent`; `replaceCourse` with
+    `attribute_exists`.
+  - **S1F1-CANCEL-OUTCOME = A:** `cancelRun` returns the committed run snapshot; the handler order is
+    audit → store-owned token cleanup → mails; a cleanup failure is reported (`tokenCleanupFailed`), it does
+    not hide the cancellation.
+  - **S1F1-COURSE-DELETE-GUARD = A (amends § 6.2, § 7):** `COURSE#` carries a version. Run create, an unplaced
+    manual entry, a person moved out of a run and a run cancel that unplaces people increment it in their own
+    transaction; `deleteCourse` is conditioned on the version it read → 409 when a dependent arrived. Largest
+    transaction: run cancel, 93 items.
+  - **S1F1-LANGUAGE-CONSIST (amends § 4.3; the reviewer recommended a strict guarantee):** a run's language is
+    one of its course's languages at the time it is set. `409 languageInUse` on a course update is a sequential
+    guard (cancelled runs count). A course update at the same moment as a language-setting write can leave a
+    run whose language the course no longer lists; that is valid stored data and every reader accepts it.
+  - A notification is built from the booking as saved; when the booking no longer has the placement the notice
+    is about, it is not sent and the answer counts it (`notSentPlacementChanged`).
+- Staging (operator, OBSERVED): diff read first — additions only (thirteen routes; table write on nine
+  functions; `ses:SendEmail` on run move, run cancel, manual entry, move a person; `events:PutEvents` on the
+  seven course and run writers); deployed; 32 checks under tenant `cm1-content` pass: a course of capacity 3,
+  groups with meetings sent out of order (stored sorted), refusals (capacity 46, a trainer twice, an inverted
+  meeting, overlapping meetings), three manual entries and the fourth refused as full, an unplaced entry, the
+  roster, the visitor runs answer without a person or a trainer, a person moved and the freed seat taken, a
+  stale `rev` refused, a language in use and a course with groups protected (409), a run moved (3 mailed) and
+  cancelled (3 unplaced), history on a booking, main-table audit with course and run events and no person,
+  email or booking id. The partition is back to 0 items; the switch is off.

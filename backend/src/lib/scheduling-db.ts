@@ -24,9 +24,15 @@
  *   `history` entry in the same update. The update sets only the attributes the change names (`changed()`), never
  *   a read copy of another attribute.
  * Reads that a write decides on use `ConsistentRead` (§ 6.4 rule 4); the display reads (`readIntervals`,
- * `listRuns`, `getBookingViews`, `listResources(…, false)`, …) do not.
+ * `listRuns(…, false)`, `getBookingViews`, `listResources(…, false)`, …) do not.
+ * Course dependents (SCHED-1F1 ruling S1F1-COURSE-DELETE-GUARD): the `COURSE#` item carries a version `v`; every
+ * write that gives a course a new dependent (a run, or an `UNPLACED#` booking) raises it in its own transaction
+ * (`courseDependent`), and `deleteCourse` deletes only under the version it read after its consistent checks.
  * Transactions: each booking or container change is ONE `TransactWriteItems`. Not single transactions by design:
- * `cancelRun` (one run transaction, then one token-cleanup transaction per held booking it cancelled, § 7.6),
+ * `cancelRun` (one run transaction, returned as the committed result; the token cleanup of the bookings it cancelled
+ * is the separate `clearCancelledRunTokens`, one transaction per booking, called by the handler AFTER its audit —
+ * ruling S1F1-CANCEL-OUTCOME, review S1F1-R02; a cleanup failure is reported, never thrown), `deleteCourse` (consistent
+ * checks, then one conditional Delete),
  * `removeResource` (fence UpdateItem, check reads, release UpdateItem or delete transaction, § 13), the
  * per-booking transactions of `cleanupExpiredHolds` and `eraseCustomer` (§ 14), and the single-item writes
  * `markHoldMail`, `markWeekMailSent`, `claimWeekMail`, `editResourceDays` (Put) and configuration Puts.
@@ -681,10 +687,14 @@ export async function readIntervals(store: SchedulingStore, tenantId: string, re
     return activeEntries(raw, span, now);
 }
 
-/** AP4: runs of a course (admin list, proposal). `seats` is returned for counting only; DTOs carry counts. */
-export async function listRuns(store: SchedulingStore, tenantId: string, courseId: string): Promise<RunRecord[]> {
+/**
+ * AP4: runs of a course (admin list, proposal; `seats` is returned for counting only; DTOs carry counts).
+ * `consistent`: `true` for a read that decides a write (the `languageInUse` check of a course update), `false` for
+ * displays.
+ */
+export async function listRuns(store: SchedulingStore, tenantId: string, courseId: string, consistent: boolean): Promise<RunRecord[]> {
     const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: `RUN#${part(courseId, "courseId")}#` },
-        RUN_ATTRIBUTES, false);
+        RUN_ATTRIBUTES, consistent);
     return items.map((item) => decode(RunItemSchema, item, String(item.SK)));
 }
 
@@ -833,8 +843,9 @@ export async function getService(store: SchedulingStore, tenantId: string, servi
     return item === undefined ? undefined : decode(ServiceSchema, item, sk);
 }
 
-export async function listCourses(store: SchedulingStore, tenantId: string): Promise<Course[]> {
-    const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: "COURSE#" }, ["SK", "id", "name", "defaultCapacity", "languages"], false);
+/** AP10 `COURSE#` list. `consistent`: `true` for a read that decides a write (the create bound), `false` for displays. */
+export async function listCourses(store: SchedulingStore, tenantId: string, consistent: boolean): Promise<Course[]> {
+    const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: "COURSE#" }, ["SK", "id", "name", "defaultCapacity", "languages"], consistent);
     return items.map((item) => decode(CourseSchema, item, String(item.SK)));
 }
 
@@ -984,14 +995,72 @@ export async function putCourse(store: SchedulingStore, tenantId: string, course
     return c;
 }
 
-/** § 10.3: refused while any run or `UNPLACED#` of the course exists (`courseInUse`). */
+/**
+ * Update an EXISTING course (the update route): one UpdateItem of `name`, `defaultCapacity`, `languages` under
+ * `attribute_exists(SK)`, so a delete that committed after the caller's read is never undone (`notFound`). The
+ * dependent version `v` is not touched (S1F1-COURSE-DELETE-GUARD). `putCourse` stays for create.
+ */
+export async function replaceCourse(store: SchedulingStore, tenantId: string, course: Course): Promise<Result<Course, NotFound>> {
+    const c = decodeInput(CourseSchema, course);
+    const done = await singleUpdate(store, tenantId, K.course(c.id), "SET #n = :n, #c = :c, #l = :l",
+        { "#n": "name", "#c": "defaultCapacity", "#l": "languages" }, { ":n": c.name, ":c": c.defaultCapacity, ":l": c.languages });
+    return done.ok ? ok(c) : done;
+}
+
+/** The dependent version of a `COURSE#` item: absent until a first dependent is written (S1F1-COURSE-DELETE-GUARD). */
+const CourseVersionSchema = z.object({ v: VersionSchema.optional() });
+
+/**
+ * S1F1-COURSE-DELETE-GUARD: the item every write that gives a course a NEW dependent adds to its own transaction —
+ * a run (`createRun`), an `UNPLACED#` booking (`createManualSeat` without a run, `moveSeat` out of a run, `cancelRun`
+ * with confirmed seats). `ADD v 1` under `attribute_exists(SK)`: a course deleted before this commit refuses the whole
+ * write (`onGone`); a `deleteCourse` that read the course before this commit fails its version condition.
+ */
+function courseDependent<R>(store: SchedulingStore, tenantId: string, courseId: string, onGone: "unexpected" | R): Tagged<R> {
+    return {
+        item: {
+            Update: {
+                TableName: store.table, Key: key(tenantId, K.course(courseId)),
+                UpdateExpression: "ADD #v :one", ConditionExpression: "attribute_exists(SK)",
+                ExpressionAttributeNames: { "#v": "v" }, ExpressionAttributeValues: { ":one": 1 },
+            },
+        },
+        onConditionFailed: onGone,
+    };
+}
+
+/**
+ * § 10.3: refused while any run or `UNPLACED#` of the course exists (`courseInUse`). Order (S1F1-COURSE-DELETE-GUARD):
+ * 1. the course, consistent (absent → `notFound`), with its dependent version `v`;
+ * 2. the runs and the `UNPLACED#` keys of the course, consistent (any → `courseInUse`);
+ * 3. one Delete under "the version is still the one read in 1" (`v = :v`, or `attribute_not_exists(v)`). A dependent
+ *    written between 1 and 3 raised `v` in its own transaction → the condition fails → `courseInUse`. A dependent
+ *    writer that commits after 3 finds no course (its `attribute_exists`) and is refused. A delete that loses to a
+ *    concurrent delete also answers `courseInUse` (the item is gone, so the condition fails).
+ * Returns the deleted course (its name is the caller's audit title).
+ */
 export async function deleteCourse(store: SchedulingStore, tenantId: string, courseId: string)
-    : Promise<Result<void, { kind: "courseInUse" }>> {
+    : Promise<Result<Course, { kind: "courseInUse" } | NotFound>> {
+    const sk = K.course(courseId);
+    const item = await getItem(store, tenantId, sk, true);
+    if (item === undefined) return err(NOT_FOUND);
+    const course = decode(CourseSchema, item, sk);
+    const { v } = decode(CourseVersionSchema, item, sk);
     const runs = await queryAll(store, tenantId, { kind: "beginsWith", prefix: `RUN#${part(courseId, "courseId")}#` }, ["SK"], true);
     const unplaced = await queryAll(store, tenantId, { kind: "beginsWith", prefix: `UNPLACED#${courseId}#` }, ["SK"], true);
     if (runs.length > 0 || unplaced.length > 0) return err({ kind: "courseInUse" });
-    await store.db.send(new DeleteCommand({ TableName: store.table, Key: key(tenantId, K.course(courseId)) }));
-    return ok(undefined);
+    try {
+        await store.db.send(new DeleteCommand({
+            TableName: store.table, Key: key(tenantId, sk),
+            ...(v === undefined
+                ? { ConditionExpression: "attribute_exists(SK) AND attribute_not_exists(#v)", ExpressionAttributeNames: { "#v": "v" } }
+                : { ConditionExpression: "#v = :v", ExpressionAttributeNames: { "#v": "v" }, ExpressionAttributeValues: { ":v": v } }),
+        }));
+    } catch (e) {
+        if (e instanceof Error && e.name === "ConditionalCheckFailedException") return err({ kind: "courseInUse" });
+        throw e;
+    }
+    return ok(course);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1529,7 +1598,10 @@ export async function createManualAppointment(store: SchedulingStore, input: Man
 export type ManualSeatInput = ManualCommon & { courseId: string; runId: string | null };
 export type ManualSeatRefusal = SeatRefusal | NotFound | Busy;
 
-/** § 7.4 manual seat (admin), ≤ 5 items: admin seat rules on the run, or an unplaced booking (`UNPLACED#`). */
+/**
+ * § 7.4 manual seat (admin), ≤ 5 items: admin seat rules on the run (4 items), or an unplaced booking (`UNPLACED#`
+ * and the course's dependent version, S1F1-COURSE-DELETE-GUARD: 5 items; a course deleted meanwhile → `notFound`).
+ */
 export async function createManualSeat(store: SchedulingStore, input: ManualSeatInput): Promise<Result<Created, ManualSeatRefusal>> {
     const { tenantId, now } = input;
     return versioned<Created, ManualSeatRefusal>(store, async () => {
@@ -1540,7 +1612,8 @@ export async function createManualSeat(store: SchedulingStore, input: ManualSeat
             return {
                 kind: "write", value: { booking: b, token: t.token },
                 items: [...creationItems(store, tenantId, b, t.hash, now),
-                    { item: put(store, key(tenantId, K.unplaced(input.courseId, b.id)), true), onConditionFailed: "unexpected" }],
+                    { item: put(store, key(tenantId, K.unplaced(input.courseId, b.id)), true), onConditionFailed: "unexpected" },
+                    courseDependent<ManualSeatRefusal>(store, tenantId, input.courseId, NOT_FOUND)],
             };
         }
         const run = await getRun(store, tenantId, input.courseId, input.runId, true);
@@ -1565,8 +1638,10 @@ export type MoveSeatInput = {
 export type MoveSeatRefusal = SeatRefusal | ChangeRefusal | { kind: "stale" } | NotFound | Busy;
 
 /**
- * § 7.4 person moves inside the booking's own course, ≤ 3 items: seat → seat (both runs versioned; one update
- * when the same run), unplaced → seat (`UNPLACED#` deleted), seat → unplaced (`UNPLACED#` put). `seatDecision`
+ * § 7.4 person moves inside the booking's own course, ≤ 4 items: seat → seat (both runs versioned; one update
+ * when the same run; 3 items), unplaced → seat (`UNPLACED#` deleted; 3 items), seat → unplaced (`UNPLACED#` put and
+ * the course's dependent version, S1F1-COURSE-DELETE-GUARD; 4 items: the course cannot be gone while the booking's
+ * run exists, so a failed course condition is an invariant breach). `seatDecision`
  * with the actor's rules (customer = visitor rules) on the target, the source entry excluded when source =
  * target; `BOOKING#.what` with a `moved` history entry.
  */
@@ -1592,7 +1667,8 @@ export async function moveSeat(store: SchedulingStore, input: MoveSeatInput): Pr
             const seats = withoutExpired(source.seats, now);
             delete seats[b.id];
             items.push(containerUpdate(store, tenantId, { kind: "run", run: source, seats }),
-                { item: put(store, key(tenantId, K.unplaced(what.courseId, b.id)), true), onConditionFailed: "unexpected" });
+                { item: put(store, key(tenantId, K.unplaced(what.courseId, b.id)), true), onConditionFailed: "unexpected" },
+                courseDependent<never>(store, tenantId, what.courseId, "unexpected"));
         } else {
             const dest = source !== undefined && source.id === input.runId ? source
                 : await getRun(store, tenantId, what.courseId, input.runId, true);
@@ -1647,9 +1723,13 @@ export type CreateRunInput = {
     tenantId: string; courseId: string; meetings: Meeting[]; timezone: TimeZone; capacity: number;
     trainerIds: [string, ...string[]]; language: RunLanguage; groupLink?: string; now: Instant;
 };
-export type CreateRunRefusal = MeetingError | { kind: "resourceUnavailable" } | Busy;
+export type CreateRunRefusal = MeetingError | { kind: "resourceUnavailable" } | NotFound | Busy;
 
-/** § 7.6 run create: `RUN#` (v 1, no seats) + `RUNSPAN#` + the guard on each trainer (≤ 12 items). */
+/**
+ * § 7.6 run create: `RUN#` (v 1, no seats) + `RUNSPAN#` + the guard on each trainer + the course's dependent version
+ * (S1F1-COURSE-DELETE-GUARD; a course deleted meanwhile → `notFound`): ≤ 13 items. `trainerIds` must hold distinct
+ * ids (one transaction may not name an item twice): the caller validates it.
+ */
 export async function createRun(store: SchedulingStore, input: CreateRunInput): Promise<Result<RunRecord, CreateRunRefusal>> {
     const { tenantId, now } = input;
     const meetings = validateMeetings(input.meetings, input.timezone);
@@ -1667,6 +1747,7 @@ export async function createRun(store: SchedulingStore, input: CreateRunInput): 
             { item: put(store, { ...key(tenantId, K.run(run.courseId, run.id)), ...run }, true), onConditionFailed: "unexpected" },
             { item: put(store, { ...key(tenantId, K.runSpan(run.lastEndIso, run.courseId, run.id)), firstStartIso: run.firstStartIso }, true), onConditionFailed: "unexpected" },
             ...trainerGuards<CreateRunRefusal>(store, tenantId, run.trainerIds, span.lastEnd, now),
+            courseDependent<CreateRunRefusal>(store, tenantId, run.courseId, NOT_FOUND),
         ],
     }));
 }
@@ -1769,19 +1850,27 @@ export async function moveRun(store: SchedulingStore, tenantId: string, courseId
     });
 }
 
-export type CancelRunResult = { unplaced: string[]; cancelled: string[] };
+/**
+ * The committed outcome of a run cancel (ruling S1F1-CANCEL-OUTCOME): the ids the ONE run transaction moved to
+ * `unplaced` and cancelled; `run` = the run snapshot that transaction decided on (as read just before it: its
+ * meetings, trainers and language; `status` and `seats` are those before the cancel). Returned as soon as that
+ * transaction commits: no other request follows it inside `cancelRun` (review S1F1-R02), so the caller can record
+ * the committed fact before any later work. The token cleanup of `cancelled` is `clearCancelledRunTokens`.
+ */
+export type CancelRunResult = { unplaced: string[]; cancelled: string[]; run: RunRecord };
 
 /**
- * § 7.6 cancel a run (≤ 2 + 2 × 45 = 92 items): `RUN#` cancelled with no seats (versioned), `RUNSPAN#` deleted;
+ * § 7.6 cancel a run (≤ 2 + 2 × 45 + 1 = 93 items): `RUN#` cancelled with no seats (versioned), `RUNSPAN#` deleted;
  * each confirmed seat → unplaced (`moved` history, `UNPLACED#` put); each held unexpired seat → cancelled by the
- * admin (tokens kept in this transaction: no room in the 100-item budget). After the commit, each cancelled
- * booking's tokens are deleted and `tokenHashes = []` (one booking-rule transaction each). A crash in between
- * leaves listed tokens of a cancelled booking: they answer 404 and erasure still finds them (row C24).
+ * admin (tokens kept in this transaction: no room in the 100-item budget); when at least one booking is unplaced, the
+ * course's dependent version (S1F1-COURSE-DELETE-GUARD). Returns right after the commit (`CancelRunResult`); the
+ * caller then runs `clearCancelledRunTokens(result.cancelled)`. A crash in between leaves listed tokens of a cancelled
+ * booking: they answer 404 and erasure still finds them (row C24).
  */
 export async function cancelRun(store: SchedulingStore, tenantId: string, courseId: string, runId: string, adminEmail: string,
     now: Instant): Promise<Result<CancelRunResult, { kind: "runCancelled" } | NotFound | Busy>> {
     const by: Actor = { kind: "admin", email: adminEmail };
-    const committed = await versioned<CancelRunResult, { kind: "runCancelled" } | NotFound | Busy>(store, async () => {
+    return versioned<CancelRunResult, { kind: "runCancelled" } | NotFound | Busy>(store, async () => {
         const run = await getRun(store, tenantId, courseId, runId, true);
         if (run === undefined) return final(err(NOT_FOUND));
         if (run.status === "cancelled") return final(err({ kind: "runCancelled" }));
@@ -1807,7 +1896,7 @@ export async function cancelRun(store: SchedulingStore, tenantId: string, course
             },
             { item: del(store, tenantId, K.runSpan(run.lastEndIso, courseId, runId)), onConditionFailed: "unexpected" },
         ];
-        const result: CancelRunResult = { unplaced: [], cancelled: [] };
+        const result: CancelRunResult = { unplaced: [], cancelled: [], run };
         for (const id of effects.toUnplace) {
             const b = bookings.get(id);
             if (b === undefined) continue; // removed with its entry by erasure: nothing to move
@@ -1824,20 +1913,38 @@ export async function cancelRun(store: SchedulingStore, tenantId: string, course
             items.push(bookingUpdate(store, tenantId, b, change, {}));
             result.cancelled.push(id);
         }
+        // A run cannot outlive its course (deleteCourse refuses while a run exists): a failed condition here is an
+        // invariant breach, not a refusal.
+        if (result.unplaced.length > 0) items.push(courseDependent<never>(store, tenantId, courseId, "unexpected"));
         return { kind: "write", items, value: result };
     });
-    if (!committed.ok) return committed;
-    for (const id of committed.value.cancelled) await clearCancelledTokens(store, tenantId, id, now);
-    return committed;
 }
 
 const BOOKING_ATTRIBUTES = ["SK", "id", "ref", "rev", "what", "state", "source", "who", "tokenHashes", "intentId",
     "heldUntil", "reminderSentFor", "createdAt", "updatedAt", "history"];
 
 /**
- * The post-commit step of a run cancel (§ 7.6): delete the listed `TOKEN#` items of a cancelled booking and set
- * `tokenHashes = []`, in one booking-rule transaction. A booking that is gone or already has no tokens: nothing.
+ * The post-commit step of a run cancel (§ 7.6, ruling S1F1-CANCEL-OUTCOME), called by the caller of `cancelRun` after
+ * it recorded the committed result: for each booking id (the `cancelled` of `CancelRunResult`) delete its listed
+ * `TOKEN#` items and set `tokenHashes = []`, one booking-rule transaction per booking. Returns the ids whose cleanup
+ * failed (busy or an error), logged by booking id; never throws for a booking's failure. A failed booking keeps listed
+ * tokens of a cancelled booking: they answer 404 and erasure still finds them (row C24).
  */
+export async function clearCancelledRunTokens(store: SchedulingStore, tenantId: string, bookingIds: string[], now: Instant)
+    : Promise<{ failed: string[] }> {
+    const failed: string[] = [];
+    for (const id of bookingIds) {
+        try {
+            if (!(await clearCancelledTokens(store, tenantId, id, now)).ok) failed.push(id);
+        } catch {
+            failed.push(id);
+        }
+    }
+    if (failed.length > 0) console.error("[scheduling] run cancel token cleanup failed", failed.join(","));
+    return { failed };
+}
+
+/** One booking of `clearCancelledRunTokens`. A booking that is gone or already has no tokens: nothing. */
 async function clearCancelledTokens(store: SchedulingStore, tenantId: string, bookingId: string, now: Instant): Promise<Result<void, Busy>> {
     return versioned<void, Busy>(store, async () => {
         const b = await getBooking(store, tenantId, bookingId, true);
