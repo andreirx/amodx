@@ -33,7 +33,11 @@ src/
 │   │                      #   throws StoredDataInvalidError (500 storedDataInvalid). confirmBooking returns an
 │   │                      #   explicit ConfirmOutcome (SCHED-1D2): `applied` (this call's transaction confirmed it)
 │   │                      #   or `alreadyConfirmed` (no write), each with the booking — the mail owner is the
-│   │                      #   `applied` caller, never inferred from a timestamp.
+│   │                      #   `applied` caller, never inferred from a timestamp. SCHED-1E1 (operator ruling
+│   │                      #   S1E1-STORE-ALLOCATION): listServices(…, consistent) as listResources (the create bound
+│   │                      #   reads consistently; displays do not); replaceService = the update of an EXISTING
+│   │                      #   service, one Put under attribute_exists(SK) → notFound when it is gone (a concurrent
+│   │                      #   delete is never undone); putService stays for create.
 │   │                      #   No Scan. Tests: test/unit/scheduling-db.test.ts (rows C1-C35 against an in-memory
 │   │                      #   fake that evaluates the emitted expressions); test/scheduling-db.integration.test.ts
 │   │                      #   (operator-run on the staging table: skipped without SCHEDULING_TABLE_NAME, refuses a
@@ -45,7 +49,8 @@ src/
 │   │                      #   storedOverrides (a stored schedulingEmailConfig that fails its schema → null → 500
 │   │                      #   storedDataInvalid, never "no override"), rendering via order-email.ts renderTemplate.
 │   │                      #   Users: scheduling/admin/bookings-cancel.ts (mail `cancelled`), email-templates.ts,
-│   │                      #   scheduling/visitor/mail.ts (SCHED-1D2: `hold`, `confirmed`, `cancelled`, `moved`)
+│   │                      #   scheduling/visitor/mail.ts (SCHED-1D2: `hold`, `confirmed`, `cancelled`, `moved`; also
+│   │                      #   used by SCHED-1E1 appt-appointments-create.ts `confirmed` and appt-move-slot.ts `moved`)
 │   ├── image-upload.ts    # Copy a remote image into tenant media (S3 `<tenantId>/<assetId><ext>` + ASSET# item,
 │   │                      #   `uploadedBy` = the caller). CAT-IMAGES-1 destination policy (fetchImage), per hop
 │   │                      #   BEFORE any byte is sent: http/https only; ALL resolved addresses checked, any
@@ -335,6 +340,43 @@ src/
 │                          #   Main-table audit (no `ip`, no customer data) only on resource writes, feed rotation and
 │                          #   erasure (§ 6.5): target.title = the resource name (or the fixed erasure title); the only
 │                          #   `details` are the erasure's two counts. Tests: test/unit/scheduling-admin.test.ts (rows D7, D10, D12, D13, D16)
+│                          # appt-*.ts — SCHED-1E1 (sched-1.md § 10.3 routes of `sched-1e`, § 5.5, § 23; PROTOTYPE):
+│                          #   the appointment admin routes, same frame (adminRoute, E+T), work with the switch off.
+│                          #   appt-services-list/create/update/delete (ServiceDTO; strict body; an `only` list must
+│                          #   name existing resources, one consistent list read → 400 with the issue path; bound 200
+│                          #   on a consistent count: sequential creates refused above 200, two simultaneous creates
+│                          #   at 199 can both succeed (S1D1-R02 wording); update = replaceService → 404 when the
+│                          #   service is gone, a concurrent delete stays done; delete reads the service consistently
+│                          #   → 404; bookings keep their stored times and serviceName, § 13), appt-availability-get/put (the
+│                          #   defaults: ≤ 50 rules, 5-minute boundaries, end > start, one Put; overrides untouched),
+│                          #   appt-week (GET …/week?start → WeekPlanDTO: one readIntervals over the 7 local days, then
+│                          #   per day activeEntries + the kernel's planDay; one BatchGet of BOOKING# display views,
+│                          #   unreturned ids skipped; lastBookableDate from the horizon), appt-days-edit (PUT …/days)
+│                          #   and appt-days-copy-week (POST …/days/copy-week), both through appt-common.ts
+│                          #   applyDayEdit (consistent tenant + resource reads, defaults read, all BEFORE the write;
+│                          #   editResourceDays = the versioned DAYS# Put with one retry → 503 busy; DaysEditError →
+│                          #   400 with its kind as code; the audit event right after the commit, before any display
+│                          #   read; then outsideHours = refs derived from the ids of
+│                          #   planDay per changed date over ONE readIntervals; nobody is mailed, § 23.4),
+│                          #   appt-appointments-list (GET /scheduling/admin/appointments?from&to: ≤ 31 local days →
+│                          #   else 400 rangeTooLong; per resource one readIntervals; refs and names from BOOKING#),
+│                          #   appt-appointments-create (POST /scheduling/admin/appointments: createManualAppointment —
+│                          #   confirmed, source manual, no window/grid/day-off/horizon check, § 5.2; mail `confirmed`
+│                          #   with the transaction's token) and appt-move-slot (POST …/bookings/{id}/move-slot:
+│                          #   moveSlot with the admin Actor and the screen's rev → 409 stale / notConfirmed /
+│                          #   slotTaken / resourceUnavailable; then mintToken + mail `moved`; the answer carries the
+│                          #   rev after the mint; names of the EXACT booking answered — appt-common.ts slotNames reuses
+│                          #   a pre-read name only for that booking's resource). Every route that WRITES reads its tenant
+│                          #   first through appt-common.ts readTenantBeforeWrite (consistent; a malformed stored
+│                          #   scheduling setting or mail configuration → 500 storedDataInvalid, nothing written).
+│                          #   Every route that reads or writes local wall time (week, day edits,
+│                          #   appointments read, manual slot, move slot) needs scheduling.timezone: absent → 409
+│                          #   timezoneNotSet (§ 4.1: no default zone). Audit: one main-table event per service,
+│                          #   default-availability, day-edit or copy-week write (resource or service name as title;
+│                          #   details = counts, dates and the setting kind; never a ref; no `ip`); the two booking
+│                          #   routes publish none (SCHED-AUDIT-PII = C) and mail through visitor/mail.ts
+│                          #   sendVisitorMail (its name is narrower than this use — recorded, no rename yet).
+│                          #   Tests: test/unit/scheduling-appt.test.ts (rows E1-E14 backend parts, E16, E22, E23, E25)
 ├── users/
 │   └── invite.ts          # POST /users/invite (Cognito AdminCreateUser)
 ├── resources/
@@ -739,6 +781,12 @@ routes, with `verifyRecaptcha` (the call to Google) replaced and `resolveRecaptc
 `scheduling-visitor-d8.test.ts`, which runs the REAL `scheduling-db.ts` over `MemoryTable` (every D8 refusal is decided
 on Get reads before the hold transaction; a positive control shows the request reaching `TransactWriteCommand` before
 the `dayOff` edit); `scheduling-visitor-auth.test.ts` runs the real authorizer on the visitor route keys.
+`test/unit/scheduling-appt.test.ts` (SCHED-1E1) runs the appointment admin routes and the visitor `slots` / `offer`
+routes with every READ and configuration write of `scheduling-db.ts` REAL, over a test-local in-memory table
+(`MemTable`: Get, Query with `begins_with` and `BETWEEN`, BatchGet without the consistency assertion, Put with
+`attribute_not_exists(SK)`, `attribute_exists(SK)` or `#v = :v`, Delete, a one-shot hook after a consistent Get to
+force the E11 interleavings and one before a Put for the S1E1-R03 delete); the shared `MemoryTable` does not answer those scheduling request forms. Only the three booking
+transactions (`createManualAppointment`, `moveSlot`, `mintToken`) are replaced: they are `sched-1c` rows.
 `test/unit/order-price-1.test.ts` (ORDER-PRICE-1) is the same shape for `orders/create.ts` (plus a mocked SES client,
 so the confirmation mail's item lines are read): each row inspects the `TransactWriteCommand`, or that none is sent.
 `test/unit/order-confirm-1.test.ts` (ORDER-CONFIRM-1) is the same shape for `orders/create.ts` (delivery config and

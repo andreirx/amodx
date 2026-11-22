@@ -19,7 +19,7 @@ export type OfferDTO = {
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext> = async (event) =>
     visitorRoute(event, "offer", { consistent: false }, async ({ tenantId, settings }) => {
         const store = schedulingStoreFromEnv();
-        const [services, courses] = await Promise.all([listServices(store, tenantId), listCourses(store, tenantId)]);
+        const [services, courses] = await Promise.all([listServices(store, tenantId, false), listCourses(store, tenantId)]);
         const dto: OfferDTO = {
             timezone: settings.timezone,
             services: services.map((s) => ({ id: s.id, name: s.name, durationMin: s.durationMin })),

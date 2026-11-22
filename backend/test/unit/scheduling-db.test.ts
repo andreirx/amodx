@@ -1763,3 +1763,38 @@ describe("S1D2-R02 — confirmBooking outcome (applied | alreadyConfirmed)", () 
         expect(outcome.booking.tokenHashes).toHaveLength(2);
     });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// SCHED-1E1 store extension (operator ruling S1E1-STORE-ALLOCATION): listServices(consistent), replaceService
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("SCHED-1E1 store extension", () => {
+    const svc = { id: "svc1", name: "Consult", durationMin: 60, eligibility: { kind: "all" as const } };
+
+    it("listServices sends ConsistentRead exactly as asked (true for the create bound, false for displays)", async () => {
+        const { fake, store } = setup();
+        await sdb.putService(store, T, svc);
+        expect((await sdb.listServices(store, T, true)).map((s) => s.id)).toEqual(["svc1"]);
+        expect((await sdb.listServices(store, T, false)).map((s) => s.id)).toEqual(["svc1"]);
+        expect(fake.ops("QueryCommand").map((q) => q.ConsistentRead)).toEqual([true, false]);
+    });
+
+    it("replaceService: an existing service is replaced (one Put under attribute_exists(SK)); a missing one → notFound, nothing written", async () => {
+        const { fake, store } = setup();
+        await sdb.putService(store, T, svc);
+        expect(await sdb.replaceService(store, T, { ...svc, durationMin: 30 })).toEqual({ ok: true, value: { ...svc, durationMin: 30 } });
+        expect(fake.get(PK, "SERVICE#svc1")).toMatchObject({ durationMin: 30 });
+        expect(fake.ops("PutCommand").at(-1).ConditionExpression).toBe("attribute_exists(SK)");
+        expect(await sdb.replaceService(store, T, { ...svc, id: "ghost" })).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(fake.get(PK, "SERVICE#ghost")).toBeUndefined();
+    });
+
+    it("replaceService: a delete that commits after the caller's read is not undone (review S1E1-R03)", async () => {
+        const { fake, store } = setup();
+        await sdb.putService(store, T, svc);
+        expect(await sdb.getService(store, T, "svc1", true)).toBeDefined();      // the update route's preflight read
+        fake.on("PutCommand", "before", () => sdb.deleteService(store, T, "svc1"));  // the delete commits in between
+        expect(await sdb.replaceService(store, T, { ...svc, name: "Renamed" })).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(fake.get(PK, "SERVICE#svc1")).toBeUndefined();
+    });
+});

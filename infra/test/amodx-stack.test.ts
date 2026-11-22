@@ -1977,18 +1977,25 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
     // slice creates (the admin routes). The visitor functions of `sched-1d2` (and I3, the hold's reCAPTCHA secret) are
     // added to these lists by that slice. Inside the SCHED-1B block so the IAM reading rule above is the one used.
     // ────────────────────────────────────────────────────────────────────────────────────────────
-    describe('SCHED-1D1/1D2 — the SchedulingApi nested stack (admin and visitor routes)', () => {
-        /** Construct ids of the functions, by role in § 11.2 (SCHED-1D1: admin; SCHED-1D2: visitor). */
+    describe('SCHED-1D1/1D2/1E1 — the SchedulingApi nested stack (admin, visitor and appointment routes)', () => {
+        /** Construct ids of the functions, by role in § 11.2 (SCHED-1D1: admin; SCHED-1D2: visitor; SCHED-1E1: appointments). */
         const ADMIN = ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminEraseCustomerFunc',
             'AdminListResourcesFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc',
             'AdminFeedSecretFunc', 'AdminEmailTemplatesFunc'];
+        const APPOINTMENTS = ['AdminListServicesFunc', 'AdminCreateServiceFunc', 'AdminUpdateServiceFunc', 'AdminDeleteServiceFunc',
+            'AdminGetAvailabilityFunc', 'AdminPutAvailabilityFunc', 'AdminWeekFunc', 'AdminEditDaysFunc', 'AdminCopyWeekFunc',
+            'AdminListAppointmentsFunc', 'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc'];
         const VISITOR = ['VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorHoldFunc', 'VisitorViewFunc',
             'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc'];
-        const MAILING = ['AdminCancelBookingFunc', 'VisitorHoldFunc', 'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc'];
-        const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc'];
+        // § 11.2: the mailing functions (SES) and the functions that publish a main-table audit event (PutEvents).
+        const MAILING = ['AdminCancelBookingFunc', 'VisitorHoldFunc', 'VisitorConfirmFunc', 'VisitorCancelFunc', 'VisitorMoveFunc',
+            'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc'];
+        const AUDITING = ['AdminEraseCustomerFunc', 'AdminCreateResourceFunc', 'AdminUpdateResourceFunc', 'AdminDeleteResourceFunc', 'AdminFeedSecretFunc',
+            'AdminCreateServiceFunc', 'AdminUpdateServiceFunc', 'AdminDeleteServiceFunc', 'AdminPutAvailabilityFunc', 'AdminEditDaysFunc', 'AdminCopyWeekFunc'];
         const READ_ONLY = ['AdminGetBookingFunc', 'AdminListResourcesFunc', 'AdminEmailTemplatesFunc', 'AdminLookupCustomerFunc',
-            'VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorViewFunc'];
-        const ALL = [...ADMIN, ...VISITOR];
+            'VisitorOfferFunc', 'VisitorSlotsFunc', 'VisitorRunsFunc', 'VisitorViewFunc',
+            'AdminListServicesFunc', 'AdminGetAvailabilityFunc', 'AdminWeekFunc', 'AdminListAppointmentsFunc'];
+        const ALL = [...ADMIN, ...VISITOR, ...APPOINTMENTS];
         const DYNAMODB_WRITE = /^dynamodb:(PutItem|UpdateItem|DeleteItem|BatchWriteItem|\*)$|^\*$/;
 
         type Fn = { construct: string; logicalId: string; vars: Record<string, unknown>; statements: any[] };
@@ -2013,7 +2020,7 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
         };
         const parameterOf = (v: unknown) => (isRefTo(v) ? parentParameterValues(realTree()).get(v.Ref) : undefined);
 
-        test('I2 (inventory) the nested stack holds exactly the ten admin and eight visitor functions, each behind a route with the authorizer', () => {
+        test('I2 (inventory) the nested stack holds exactly the ten admin, eight visitor and twelve appointment functions, each behind a route with the authorizer', () => {
             expect(functions(schedulingTemplate).map((f) => f.construct).sort()).toEqual([...ALL].sort());
             const routes = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => r.Properties);
             expect(routes.map((r) => r.RouteKey).sort()).toEqual([
@@ -2036,6 +2043,19 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 'POST /scheduling/visitor/bookings/move',
                 'POST /scheduling/visitor/bookings/view',
                 'POST /scheduling/visitor/holds',
+                // SCHED-1E1 appointment admin routes (§ 10.3 routes of `sched-1e`).
+                'DELETE /scheduling/admin/services/{serviceId}',
+                'GET /scheduling/admin/appointments',
+                'GET /scheduling/admin/resources/{resourceId}/availability',
+                'GET /scheduling/admin/resources/{resourceId}/week',
+                'GET /scheduling/admin/services',
+                'POST /scheduling/admin/appointments',
+                'POST /scheduling/admin/bookings/{bookingId}/move-slot',
+                'POST /scheduling/admin/resources/{resourceId}/days/copy-week',
+                'POST /scheduling/admin/services',
+                'PUT /scheduling/admin/resources/{resourceId}/availability',
+                'PUT /scheduling/admin/resources/{resourceId}/days',
+                'PUT /scheduling/admin/services/{serviceId}',
             ].sort());
             // § 16.3: no route is anonymous — every route, visitor routes included, runs the authorizer.
             for (const r of routes) expect({ key: r.RouteKey, auth: r.AuthorizationType }).toEqual({ key: r.RouteKey, auth: 'CUSTOM' });
@@ -2100,9 +2120,22 @@ describe('SCHED-1B — the inert scheduling-private table', () => {
                 expect({ fn: f.construct, puts, bus }).toEqual({ fn: f.construct, puts: expected, bus: expected });
             }
             // No event-bus permission on any booking function: the admin booking routes and every visitor route (§ 11.2).
-            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', ...VISITOR]) {
+            for (const name of ['AdminGetBookingFunc', 'AdminCancelBookingFunc', 'AdminLookupCustomerFunc', 'AdminCreateAppointmentFunc', 'AdminMoveSlotFunc', ...VISITOR]) {
                 expect(byConstruct(name).statements.some((st) => actions(st).some((a) => a.startsWith('events:')))).toBe(false);
             }
+        });
+
+        test('E14 (SCHED-1E1) no closed-time route in the nested stack or in the MCP route list; the all-resource appointments route is in both; every scheduling ADMIN route of the stack is in routes.json and the reverse', () => {
+            const stack = Object.values(schedulingTemplate.findResources('AWS::ApiGatewayV2::Route')).map((r: any) => String(r.Properties.RouteKey));
+            const listed = (JSON.parse(fs.readFileSync(path.join(__dirname, '../../tools/mcp-server/routes.json'), 'utf8')).routes as string[]);
+            const closed = /\/closed/i;
+            expect(stack.filter((k) => closed.test(k))).toEqual([]);
+            expect(listed.filter((k) => closed.test(k))).toEqual([]);
+            expect(stack).toContain('GET /scheduling/admin/appointments');
+            expect(listed).toContain('GET /scheduling/admin/appointments');
+            // Visitor routes are renderer-only (§ 10.3): only the admin routes are the MCP server's.
+            const admin = (keys: string[]) => keys.filter((k) => k.split(' ')[1].startsWith('/scheduling/admin/')).sort();
+            expect(admin(listed)).toEqual(admin(stack));
         });
 
         test('I3 the visitor hold: RECAPTCHA_SECRET_KEY equal to the commerce order function\'s; no other scheduling function has it', () => {

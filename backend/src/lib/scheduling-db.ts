@@ -820,8 +820,9 @@ export async function getResource(store: SchedulingStore, tenantId: string, reso
     return item === undefined ? undefined : decode(ResourceSchema, item, sk);
 }
 
-export async function listServices(store: SchedulingStore, tenantId: string): Promise<Service[]> {
-    const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: "SERVICE#" }, ["SK", "id", "name", "durationMin", "eligibility"], false);
+/** AP10 `SERVICE#` list. `consistent` as `listResources`: `true` for a read that decides a write (the create bound). */
+export async function listServices(store: SchedulingStore, tenantId: string, consistent: boolean): Promise<Service[]> {
+    const items = await queryAll(store, tenantId, { kind: "beginsWith", prefix: "SERVICE#" }, ["SK", "id", "name", "durationMin", "eligibility"], consistent);
     return items.map((item) => decode(ServiceSchema, item, String(item.SK)));
 }
 
@@ -945,6 +946,24 @@ export async function putService(store: SchedulingStore, tenantId: string, servi
     const s = decodeInput(ServiceSchema, service);
     await store.db.send(new PutCommand({ TableName: store.table, Item: { ...key(tenantId, K.service(s.id)), ...s } }));
     return s;
+}
+
+/**
+ * Replace an EXISTING service (the update route): one Put under `attribute_exists(SK)`, so a delete that committed
+ * after the caller's read is never undone — the Put fails and the answer is `notFound` (review S1E1-R03). § 13: only
+ * the service item is written; bookings keep their stored times and `serviceName`. `putService` stays for create.
+ */
+export async function replaceService(store: SchedulingStore, tenantId: string, service: Service): Promise<Result<Service, NotFound>> {
+    const s = decodeInput(ServiceSchema, service);
+    try {
+        await store.db.send(new PutCommand({
+            TableName: store.table, Item: { ...key(tenantId, K.service(s.id)), ...s }, ConditionExpression: "attribute_exists(SK)",
+        }));
+        return ok(s);
+    } catch (e) {
+        if (e instanceof Error && e.name === "ConditionalCheckFailedException") return err(NOT_FOUND);
+        throw e;
+    }
 }
 
 export async function deleteService(store: SchedulingStore, tenantId: string, serviceId: string): Promise<void> {

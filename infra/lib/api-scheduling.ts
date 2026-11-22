@@ -10,11 +10,12 @@ import { Construct } from 'constructs';
 import * as path from 'path';
 
 /**
- * SCHED-1D1/1D2 (docs/slices/sched-1.md § 10.2, § 10.3, § 11.2, § 17) — the scheduling API nested stack: the ADMIN
+ * SCHED-1D1/1D2/1E1 (docs/slices/sched-1.md § 10.2, § 10.3, § 11.2, § 17) — the scheduling API nested stack: the ADMIN
  * routes of `sched-1d` (bookings with history, customers incl. erasure, resources, feed secret, mail templates;
- * SCHED-1D1) and the VISITOR routes (offer, slots, runs, hold, view, confirm, cancel, move; SCHED-1D2; the calendar
- * feed is `sched-1g`). `sched-1e`/`1f` add their admin routes, `sched-1g` the feed and the reminder job — each appends
- * its own functions and routes here.
+ * SCHED-1D1), the VISITOR routes (offer, slots, runs, hold, view, confirm, cancel, move; SCHED-1D2; the calendar
+ * feed is `sched-1g`) and the APPOINTMENT admin routes of `sched-1e` (services, default availability, week planner
+ * read, day edits, copy-week, all-resource appointments read, manual appointment, slot move; SCHED-1E1). `sched-1f` adds
+ * its admin routes, `sched-1g` the feed and the reminder job — each appends its own functions and routes here.
  *
  * Pattern of `api-commerce.ts`: L1 `CfnRoute` / `CfnIntegration` (routes created by `httpApi.addRoutes()` would land
  * in the parent), its own `CfnAuthorizer` on the parent's authorizer function. Unlike CommerceApi, the event bus is
@@ -24,7 +25,8 @@ import * as path from 'path';
  * Wiring per function (§ 11.2): every function gets `SCHEDULING_TABLE_NAME`, `TABLE_NAME` and read on the main table
  * (the tenant record); on the scheduling table, read for functions that only read (the GET routes, the customer
  * lookup and the visitor view), read-write for the others, none for the templates route (it never reads the table).
- * The mailing functions (admin booking cancel; visitor hold, confirm, cancel, move) get `SES_FROM_EMAIL`, one
+ * The mailing functions (admin booking cancel, manual appointment, slot move; visitor hold, confirm, cancel, move) get
+ * `SES_FROM_EMAIL`, one
  * `ses:SendEmail` on the sending identity, and `RENDERER_CLOUDFRONT_ORIGIN`; the feed-secret route gets
  * `RENDERER_CLOUDFRONT_ORIGIN` (it builds the feed URL). The visitor hold gets `RECAPTCHA_SECRET_KEY` exactly as the
  * commerce order function (`api-commerce.ts`: the deployment secret the parent reads from SSM, passed in as a prop;
@@ -57,7 +59,7 @@ export class SchedulingApi extends NestedStack {
     constructor(scope: Construct, id: string, props: SchedulingApiProps) {
         super(scope, id, {
             ...props,
-            description: 'AMODX Scheduling API — visitor booking routes; admin bookings, customers, resources, mail templates',
+            description: 'AMODX Scheduling API — visitor booking routes; admin bookings, customers, resources, mail templates, appointments and week planner',
         });
 
         cdk.Tags.of(this).add('Project', 'AMODX');
@@ -190,5 +192,34 @@ export class SchedulingApi extends NestedStack {
             fn('VisitorCancelFunc', 'visitor/bookings-cancel.ts', { scheduling: 'readWrite', mail: true }));
         addRoute('VisitorMove', 'POST /scheduling/visitor/bookings/move',
             fn('VisitorMoveFunc', 'visitor/bookings-move.ts', { scheduling: 'readWrite', mail: true }));
+
+        // ===================== APPOINTMENTS (admin, SCHED-1E1, § 10.3 routes of `sched-1e`) =====================
+        // Configuration writes (services, default availability, day edits, copy-week) publish one main-table audit event
+        // (§ 6.5 point 2): read-write + audit. The GET routes only read. The two booking routes (manual appointment, slot
+        // move) append `history` and publish no audit event (SCHED-AUDIT-PII = C); they mail (§ 11.2): read-write + mail.
+        addRoute('AdminListServices', 'GET /scheduling/admin/services',
+            fn('AdminListServicesFunc', 'admin/appt-services-list.ts', { scheduling: 'read' }));
+        addRoute('AdminCreateService', 'POST /scheduling/admin/services',
+            fn('AdminCreateServiceFunc', 'admin/appt-services-create.ts', { scheduling: 'readWrite', audit: true }));
+        addRoute('AdminUpdateService', 'PUT /scheduling/admin/services/{serviceId}',
+            fn('AdminUpdateServiceFunc', 'admin/appt-services-update.ts', { scheduling: 'readWrite', audit: true }));
+        addRoute('AdminDeleteService', 'DELETE /scheduling/admin/services/{serviceId}',
+            fn('AdminDeleteServiceFunc', 'admin/appt-services-delete.ts', { scheduling: 'readWrite', audit: true }));
+        addRoute('AdminGetAvailability', 'GET /scheduling/admin/resources/{resourceId}/availability',
+            fn('AdminGetAvailabilityFunc', 'admin/appt-availability-get.ts', { scheduling: 'read' }));
+        addRoute('AdminPutAvailability', 'PUT /scheduling/admin/resources/{resourceId}/availability',
+            fn('AdminPutAvailabilityFunc', 'admin/appt-availability-put.ts', { scheduling: 'readWrite', audit: true }));
+        addRoute('AdminWeek', 'GET /scheduling/admin/resources/{resourceId}/week',
+            fn('AdminWeekFunc', 'admin/appt-week.ts', { scheduling: 'read' }));
+        addRoute('AdminEditDays', 'PUT /scheduling/admin/resources/{resourceId}/days',
+            fn('AdminEditDaysFunc', 'admin/appt-days-edit.ts', { scheduling: 'readWrite', audit: true }));
+        addRoute('AdminCopyWeek', 'POST /scheduling/admin/resources/{resourceId}/days/copy-week',
+            fn('AdminCopyWeekFunc', 'admin/appt-days-copy-week.ts', { scheduling: 'readWrite', audit: true }));
+        addRoute('AdminListAppointments', 'GET /scheduling/admin/appointments',
+            fn('AdminListAppointmentsFunc', 'admin/appt-appointments-list.ts', { scheduling: 'read' }));
+        addRoute('AdminCreateAppointment', 'POST /scheduling/admin/appointments',
+            fn('AdminCreateAppointmentFunc', 'admin/appt-appointments-create.ts', { scheduling: 'readWrite', mail: true }));
+        addRoute('AdminMoveSlot', 'POST /scheduling/admin/bookings/{bookingId}/move-slot',
+            fn('AdminMoveSlotFunc', 'admin/appt-move-slot.ts', { scheduling: 'readWrite', mail: true }));
     }
 }

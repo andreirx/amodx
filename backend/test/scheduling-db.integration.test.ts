@@ -536,4 +536,15 @@ describe.skipIf(!ENABLED)("sched-1c on the staging table (operator-run; skipped 
             await expect(sdb.readIntervals(store, t, "rX", span, NOW)).rejects.toBeInstanceOf(sdb.StoredDataInvalidError);
         }
     });
+
+    rowTest("SCHED-1E1 store extension: listServices(consistent) sees a committed create; replaceService does not undo a delete that commits after the read", async (t, { store, on }) => {
+        const svc = { id: "svc1", name: "Consult", durationMin: 60, eligibility: { kind: "all" as const } };
+        await sdb.putService(store, t, svc);
+        expect((await sdb.listServices(store, t, true)).map((s) => s.id)).toEqual(["svc1"]);
+        expect(must(await sdb.replaceService(store, t, { ...svc, durationMin: 30 }))).toMatchObject({ durationMin: 30 });
+        expect(await sdb.getService(store, t, "svc1", true)).toBeDefined();
+        on("PutCommand", "before", () => sdb.deleteService(store, t, "svc1"));
+        expect(await sdb.replaceService(store, t, { ...svc, name: "Renamed" })).toEqual({ ok: false, error: { kind: "notFound" } });
+        expect(await sdb.getService(store, t, "svc1", true)).toBeUndefined();
+    });
 });

@@ -2293,3 +2293,25 @@ rows C33, D14).
   booking; the table partition is back to 0 items and the tenant's switch is off again.
   NOT RUN on a deployed stage: an accepted hold through the route with its mail (first possible with the
   booking page of `sched-1g` in a real browser).
+
+### `sched-1e1` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Operator split of `sched-1e` along backend / screens (content unchanged). This half: twelve admin functions
+  and routes in the scheduling nested stack — services (list, create, update, delete), default availability
+  (get, put), the week read, day edits, copy-week, the all-resource appointments read, manual appointment, move
+  slot. `sched-1e2` = the admin pages, the planner screen, the login return path (rows E15, E17-E21, E24).
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Review-0 defects corrected: stored settings validated before every mutation; a consistent read
+  for the service bound; a service update cannot recreate a deleted service; the configuration audit is written
+  before display reads; a move answer names the resource of the booking it returns.
+- Operator ruling S1E1-STORE-ALLOCATION: `scheduling-db.ts` gained `listServices(..., consistent)` and
+  `replaceService` (`attribute_exists`). The bound of 200 services follows S1D1-R02 (not strict under two
+  simultaneous creates).
+- Operator gates, all exit 0 (the eleven of `1d1`). Integration on the staging table: 37 passed.
+- Staging (operator, OBSERVED): diff read first — additions only (twelve functions; table write on the eight
+  writers; `ses:SendEmail` on manual appointment and move slot; `events:PutEvents` on the six configuration
+  writers); deployed; 38 checks under tenant `cm1-content` pass: default hours Mon-Fri, a day off, a short day,
+  copy-week onto two weeks, and the VISITOR slots route following them (8 / 0 / 3 starts); a manual appointment,
+  one on the day off, a refused double booking; the week read and the all-resource read; a move and a refused
+  move with a stale `rev`; a deleted service whose booking keeps the service name; main-table audit with the
+  configuration events and nothing about a booking. The partition is back to 0 items; the switch is off.
