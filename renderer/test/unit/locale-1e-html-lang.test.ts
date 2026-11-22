@@ -39,7 +39,7 @@ describe("[1e] <html lang> of the root layout", () => {
     const cases: [string, Record<string, unknown>, string][] = [
         ["no locale (en-US)", {}, "en"], ["en-US", { locale: "en-US" }, "en"], ["en-GB", { locale: "en-GB" }, "en"],
         ["ro-RO", { locale: "ro-RO" }, "ro"], ["ro_RO (normalised)", { locale: "ro_RO" }, "ro"],
-        ["de-DE (no de pack: texts English, lang de)", { locale: "de-DE" }, "de"], ["malformed 123", { locale: "123" }, "en"],
+        ["de-DE (the de pack since lang-1d; lang de)", { locale: "de-DE" }, "de"], ["malformed 123", { locale: "123" }, "en"],
     ];
     for (const [name, extra, lang] of cases) {
         it(`[1e] ${name} → lang="${lang}", the body class unchanged`, async () => {

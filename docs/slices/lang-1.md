@@ -2120,3 +2120,162 @@ membership-query volume but cause no per-item GetItem; the join runs in memory. 
     domain stays up to one hour behind a page change. A tenant on its own domain is not affected. (The first form of
     the operator's sitemap check read a stale edge copy for this reason.)
 - Next: `lang-1d` (German and French texts).
+
+## Appendix H. Build record — `lang-1d` (builder, 2026-11-22, base `2009207`)
+
+Status: built in the worktree, not committed, waiting for review and for the human's approval of the texts. Maturity:
+PROTOTYPE (the packs are new texts; the human approves them before the production deploy, `locale-1.md` § 16.2 item 4).
+Every file of § 12 `lang-1d` was read again at `2009207`. Fact the slice builds on (human, 2026-11-22): no site uses German
+or French today.
+
+**Environment (OBSERVED).** `renderer/.next/dev/` (left by an earlier `next dev` run, 18:49–18:50, before this build)
+made every `next build` fail in TypeScript (`.next/dev/types/validator.ts`: `"/%5Fbook/[siteId]"` is not a `LayoutRoutes`;
+`renderer/tsconfig.json` includes `.next/dev/types/**/*.ts`). It is generated, ignored by git, and not this builder's: it was
+moved aside for the runs and put back unchanged at the end. With it in place, `npm run build` at the root fails in the
+renderer step on any commit; remove `renderer/.next/dev/` (or stop including `.next/dev/types` in the renderer tsconfig, a
+separate decision) before the next build.
+
+**Suite at HEAD (EXECUTED, clean tree, after `npm run build` 0 and `npm run typecheck` 0).** Serving 171 / 171; shared
+`npm test` 601; renderer `npm test` 902; admin `npm run test:unit` 441; backend `npm run test:unit` 2079 + 1 skipped; MCP
+17 / 17. Row names: relay directory `evidence/head-serving-names.txt`.
+
+**Changed paths (each for § 12 `lang-1d`).**
+
+| Path | What and why |
+|---|---|
+| `packages/shared/src/language-packs/de.ts`, `fr.ts` (new) | `DE_LANGUAGE_PACK`, `FR_LANGUAGE_PACK`: `CompleteLanguagePack`, all four parts |
+| `packages/shared/src/language-packs/index.ts` | two entries in `LANGUAGE_PACKS` (the ratified extension point, `locale-1.md` § 16.2 item 3); no new export |
+| `packages/shared/src/locale-strings.ts` | the comment of `localeLanguageSubtag` only (its no-pack example is now `es-ES`) |
+| `packages/shared/test/lang-1d.test.ts` (new) | what the type cannot prove (below) |
+| `packages/shared/test/{locale-strings,cdl-1,sched-labels-1}.test.ts`, `admin/src/pages/Settings.test.ts`, `renderer/test/unit/{sched-1g-pure,sched-labels-1,lang-1b-site-segment,locale-1e-html-lang,locale-1d-server-render}.test.ts` | the tests whose subject changes (table below) |
+| `renderer/test/serving-contract/contract.test.mjs`, `README.md` | rows `lang1d-extra-de`, `lang1d-extra-fr` and their README line |
+| `renderer/test/serving-contract/locale-1/1b/coverage.json` | 25 added entries (coverage rule, below); additions only |
+| `packages/shared/ARCHITECTURE.md`, this appendix | docs |
+
+Not changed (EXECUTED, `git diff --stat` empty): the EN and RO packs, `language-packs/types.ts`, `packFor`,
+`resolveLocaleStrings`, `bookingLanguage` (`renderer/src/lib/booking-text.ts`), every file under `renderer/src`,
+`backend/src`, `admin/src/pages/Settings.tsx`, `infra/`, `package.json`, `package-lock.json`. No dependency added.
+Abstractions introduced: none (two data files in the existing pack registry).
+
+**Key counts (EXECUTED, built packs).** Per language: site 79, commerce 180, catalog 55, booking 98 = 412 (a count key
+counts once) — equal to the English pack, as § 12 states. Count keys: 5; German forms `one`/`other` (10 texts), French
+`one`/`many`/`other` (15 texts; `pluralCategoriesOf("fr")`, `locale-1.md` § 16.2 item 6 "one text per category of its
+language"). The packet's "count forms kept as the English pack has them" is read as: the same count keys, the same
+placeholders in every form; the forms themselves are the language's categories, as the ratified item 6 requires.
+
+**Text decisions (for the human's review of the tables).** Formal register (Sie, vous), tested. French: a no-break space
+before `:` `;` `!` `?` and inside `« »` (` ` escapes in the source), apostrophe `’`, tested. The six commerce keys
+whose English text is `""` stay `""` (two mean "use the Street Address label"; four placeholders would need a country
+format). Choices that need a look: `orderStatusCancelled` / `orderStatusAnnulled` = "Storniert" / "Annulliert",
+"Annulée" / "Invalidée"; `footerTaxId` = "Steuernr.: {value}", "N° fiscal : {value}" (English and Romanian say "CUI");
+`footerTradeRegister` = "Handelsregister: …", "Registre du commerce : …"; the interest-list mail = "Merkliste",
+"Sélection de produits"; `leadEmailPlaceholder` uses the reserved domain `example.com`. Tables: relay directory
+`evidence/texts-de.html` (417 rows) and `evidence/texts-fr.html` (422 rows) — key, English, new text.
+
+**Tests whose subject changes.** Search again at `2009207` (`git grep` for `de-DE`, `fr-FR`, `"de"`, `"fr"`, "no pack",
+"without a pack" over the test trees; a text search, each hit read), then the suites themselves.
+
+| Test | Before | After |
+|---|---|---|
+| `locale-strings.test.ts` registry | keys `en`, `ro` | `de`, `en`, `fr`, `ro` and their default locales |
+| `locale-strings.test.ts` `localeLanguageSubtag`, "a language without a pack" | `de-DE` = no pack | `es-ES` = no pack (precondition asserted); new case: `de-DE`, `fr-FR` select their pack |
+| `locale-strings.test.ts` "a new language is one pack file …", "a registered pack without count keys" | a throwaway pack written to `LANGUAGE_PACKS.fr`, then `delete LANGUAGE_PACKS.fr` | throwaway `es` and `pt` (precondition asserted). Reason beyond the name: the old `finally` would have deleted the real French pack for the rest of the run |
+| `cdl-1.test.ts` | `de-DE` → English | `es-ES` → English; new: `de-DE`, `fr-FR` → their pack's words |
+| `sched-labels-1.test.ts` (shared) | `bookingStandardTexts("de")` = English | `de`, `fr` = their pack; `es` = English |
+| `Settings.test.ts` (admin) | `de-DE` → "English" | `de-DE` → "German", `fr-FR` → "French", `es-ES` → "English" (+ precondition); `withSiteLanguage` writes `de-DE` / `fr-FR` (§ 10) |
+| `sched-1g-pure.test.ts` | `fr-FR` tenant → `en`; `bookingTexts("fr")` = English | `es-ES` → `en`; `fr-FR` → `fr`; `?lang=de` → `de`, `de-DE`; `?lang=fr` on a RO tenant → `fr-FR`; `bookingTexts("fr")` = the pack |
+| `sched-labels-1.test.ts` (renderer) | `de-DE` tenant's own language = English | `es-ES` for that case; new: a `de-DE` tenant's texts apply on its German page only |
+| `lang-1b-site-segment.test.ts` | extra `fr` → English | extra `es` → English; extra `fr` → the FR pack, no override |
+| `locale-1e-html-lang.test.ts` | label "no de pack" | label only; the assertion `lang="de"` is unchanged |
+| `locale-1d-server-render.test.ts:235` | `de-DE` → "My Account" | `de-DE` → the DE pack's text; `es-ES` → "My Account" (+ precondition) |
+
+Two of these are outside § 12's list. `locale-1d-server-render.test.ts` (§ 12: "INFERRED … read the format locale, not a
+text") has one line that reads a text: same class, same rule. `renderer/test/unit/locale-coverage.test.ts` applies the
+ratified coverage rule (`locale-1.md` § 16.2 items 5–6): every plural category of every REGISTERED language of a count key
+needs a check — "a new pack adds its own". It failed with 25 missing entries; the 25 entries were added to
+`locale-1/1b/coverage.json` (the slice that allocates the five count keys), each citing the new selection test of
+`lang-1d.test.ts` ("German: 0 → other, 1 → one, 2 → other", "French: 0 / 1 → one, 1000000 → many, 2 → other"). The test
+was not narrowed. Rule that closes the class (§ 12): a no-pack test uses a language without a pack (`es`, `pt`) and asserts
+that precondition; a test that registers a throwaway pack uses such a language too.
+
+**`lang-1d.test.ts` (shared, 15 tests).** Per language: each part has exactly the English pack's keys (compared with the
+English pack, no number); non-empty where English is non-empty, `""` where English is `""` (the six keys, listed); the same
+`{placeholders}` per key and per count form, the one `[…{variant}…]` segment of `quoteMessage`; exactly the language's
+plural categories; the unchanged resolver selects the pack for `de-DE` / `fr-FR` in the three table parts and
+`bookingStandardTexts`; no informal pronoun. Plus the count selection per language and the French spacing rule. Mutation
+check (EXECUTED, restored): an ASCII space before `:` and a dropped `{n}` in `fr.ts` → 2 tests fail. Completeness probe
+(EXECUTED, deleted): a copy of `de.ts` without `errGeneric` → `TS2741 … CompletePart<BookingStrings>`.
+
+**Rows (EXECUTED, final tree).** `lang1d-extra-de`: `/de/uber` of `LANG1C.multi` → `lang="de"`, "Teilen:",
+". Alle Rechte vorbehalten.", "Ihre Privatsphäre ist uns wichtig", and none of the English texts of those keys.
+`lang1d-extra-fr`: `/fr/page` → `lang="fr"`, "Partager :", ". Tous droits réservés.", "Nous respectons votre vie privée".
+Each row first asserts that the resolver selects the pack (a missing registration fails it).
+
+**Gates (EXECUTED, final code tree; exit codes read bare).**
+
+| Gate | Result |
+|---|---|
+| `npm run build` (root) | 0 |
+| `npm run typecheck` (root) | 0 |
+| `cd packages/shared && npm test` | 0 — 30 files, 619 tests (HEAD 601) |
+| `cd renderer && npm test` | 0 — 54 files, 903 (HEAD 902) |
+| `cd tools/mcp-server && npm test` | 0 — route coverage + 17 / 17 (no route change) |
+| `cd backend && npm run test:unit` | 0 — 2079 + 1 skipped (unchanged) |
+| `cd admin && npm run test:unit` | 0 — 22 files, 445 (HEAD 441) |
+| `cd renderer && npm run test:serving` ×3 | 0, 0, 0 — 173 / 173 each (HEAD 171 + the two `lang1d-*` rows); every HEAD row name present in every run |
+| `git diff --check` | 0 |
+
+NOT RUN: `npm run test:serving-bundle` (not a gate of this slice; no row there changes); staging; the human's approval of
+the texts.
+
+**EN and RO tenants, before and after.** The same texts and bytes: the EN and RO packs, `packFor`, the resolver and
+`bookingLanguage` are unchanged, and the identity rows (`cm1-identity-*`, `lang1b-one-language-identity`,
+`lang1c-*-identity`), `loc1-text-*`, `loc1-ro-*` and `sched1g-g3` pass unchanged (EXECUTED). The one new answer they can give
+is the § 12 one: a booking page asked with `?lang=de` or `?lang=fr` shows the German or French booking texts (before: the
+tenant language). A `de` or `fr` page of a multi-language tenant now shows German or French texts instead of English; the
+admin "Site language" select offers German and French (no admin code change; § 10).
+
+**Staging procedure (operator).** After the deploy below, on a staging site with English default: (1) add `de` and `fr` in
+Settings → Languages; create `/de/test` and `/fr/test`; each shows `lang="de"` / `"fr"`, the German / French footer, cookie
+bar and share label; (2) the hosted booking page with `?lang=de` and `?lang=fr` shows German / French texts and dates;
+(3) the en-US and ro-RO reference pages are identical to the capture after `lang-1c` (the `locale-1e` identity proof);
+(4) remove the probe pages and the two languages.
+
+**Deploy order and rollback (§ 12).** Shared build, then backend, renderer and admin in one deploy window (each bundles the
+shared package; with no German or French tenant, the order has no visible effect). Rollback: redeploy the previous backend,
+renderer and admin; a tenant that chose German or French in the meantime keeps its `locale` and shows English texts again;
+no data repair.
+
+**Observation, not changed.** `packages/shared/ARCHITECTURE.md` gives `commerceStrings` 179 keys; the English pack has 180
+(`pricesChanged`, order-confirm-1, is not counted there).
+
+### `lang-1d` — operator rulings and closeout (2026-11-22): shipped to `main` and to staging
+
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), one cycle. The review found no code correction and
+  escalated two questions about the operator's packet; the operator ruled both and closed the slice without a further
+  cycle (the only pending input was the operator's own):
+  - **LANG1D-PLURAL-FORMS = A.** French carries `one` / `many` / `other`, as `locale-1.md` § 16.2 item 6 requires
+    (one text per plural category of the language). The packet sentence "count forms exactly as the English pack has
+    them" was too narrow and is replaced by this ruling.
+  - **LANG1D-COVERAGE-ALLOCATION = A.** The 25 added entries in
+    `renderer/test/serving-contract/locale-1/1b/coverage.json` are allowed (additions only; the unchanged coverage rule
+    needs them).
+- Text quality (the human, 2026-11-22: German and French are not approved by the human; a `gpt-6.1-terra` review
+  decides, "if they are passable keep them"). Standalone read-only review by `gpt-6.1-terra` of `en.ts`, `de.ts`,
+  `fr.ts` (417 German and 422 French texts read): French PASSABLE; German NOT PASSABLE on three booking texts. The
+  operator applied the reviewer's three corrections in `de.ts`: `booking.bookTitle` "Termin buchen" → "Buchen";
+  `booking.errRange` "Diese Daten …" → "Diese Termine können nicht angezeigt werden."; `booking.errIntentClosed`
+  "… abgeschlossen …" → "Diese Buchung ist geschlossen. …". No other defect was listed. No test quotes these texts.
+- Operator gates on the final tree, all exit 0: build, typecheck, shared, plugins, renderer unit, serving suite
+  173 / 173 (three runs before the three text corrections, one run after; no check name of `2009207` is missing),
+  serving bundle 60 / 60, admin unit, backend unit, infra, MCP, `git diff --check`. (The first build and typecheck of
+  the gate run failed on `renderer/.next/dev/types`, a leftover of the operator's own `next dev` probe for
+  F-HYDRATION-418; removed, both pass.)
+- Staging (operator, OBSERVED): diff read first, as its own step, both times — code packages only, no resource added
+  or removed, no IAM change; deployed. Tenant `cm1-content` with `languages: ["de","fr"]`: `/de/…` → `<html lang="de">`,
+  footer "Alle Rechte vorbehalten.", menu word "Kontakt"; `/fr/…` → `<html lang="fr">`, footer "Tous droits réservés.";
+  the English page as before. Probe pages removed; `languages` is `[]`. The 51 reference pages are identical to the
+  capture after `lang-1c`.
+- Production (the human, 2026-11-22): deployed with `lang-1a`, `lang-1b`, `lang-1c`; the human confirmed that no site
+  id and no domain contains `~` (F-LANG-TILDE closed). `lang-1d` goes with the next production deploy.
+- LANG-1 build slices: all four shipped. Maturity PROTOTYPE until one live two-language site runs (§ 1).

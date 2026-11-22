@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "@amodx/shared";
+import { BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, LANGUAGE_PACKS, RO_LANGUAGE_PACK } from "@amodx/shared";
 
 /**
  * SCHED-LABELS-1 — the renderer half of the booking-text overrides (`renderer/src/lib/booking-text.ts`): the texts of a
@@ -49,9 +49,18 @@ describe("SCHED-LABELS-1 bookingTexts — the tenant's texts on its own-language
     });
 
     it("a tenant locale without a pack: its own language is English (the language of its page and of its Labels placeholders)", () => {
-        const deTenant = { locale: "de-DE", bookingStrings: { bookTitle: "Termin buchen" } };
-        expect(bookingLanguage(undefined, deTenant.locale).language).toBe("en");
-        expect(bookingTexts("en", deTenant).bookTitle).toBe("Termin buchen");
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        const esTenant = { locale: "es-ES", bookingStrings: { bookTitle: "Reservar cita" } };
+        expect(bookingLanguage(undefined, esTenant.locale).language).toBe("en");
+        expect(bookingTexts("en", esTenant).bookTitle).toBe("Reservar cita");
+        expect(bookingTexts(bookingLanguage("ro", esTenant.locale).language, esTenant)).toEqual(RO_STANDARD);
+    });
+
+    it("a tenant locale with a pack (de-DE, lang-1d): its own language is German — its texts on its German page only", () => {
+        const deTenant = { locale: "de-DE", bookingStrings: { bookTitle: "Jetzt Termin sichern" } };
+        expect(bookingLanguage(undefined, deTenant.locale).language).toBe("de");
+        expect(bookingTexts("de", deTenant)).toEqual({ ...LANGUAGE_PACKS.de.booking, bookTitle: "Jetzt Termin sichern" });
+        expect(bookingTexts(bookingLanguage("en", deTenant.locale).language, deTenant)).toEqual(EN_LANGUAGE_PACK.booking);
         expect(bookingTexts(bookingLanguage("ro", deTenant.locale).language, deTenant)).toEqual(RO_STANDARD);
     });
 

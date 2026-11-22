@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, fillTemplate } from "@amodx/shared";
+import { EN_LANGUAGE_PACK, LANGUAGE_PACKS, RO_LANGUAGE_PACK, fillTemplate } from "@amodx/shared";
 
 /**
  * SCHED-1G2 (docs/slices/sched-1.md § 10.1, § 8.2, § 9.1) — the pure parts of the hosted booking pages:
@@ -129,12 +129,19 @@ describe("SCHED-1G2 booking-text — page language (G3) and texts (G12)", () => 
         expect(bookingLanguage("xx", "ro-RO")).toEqual({ language: "ro", locale: "ro-RO" });
         expect(bookingLanguage("<script>", "en-US")).toEqual({ language: "en", locale: "en-US" });
         expect(bookingLanguage("", undefined)).toEqual({ language: "en", locale: "en-US" });
-        expect(bookingLanguage(undefined, "fr-FR")).toEqual({ language: "en", locale: "en-US" });
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        expect(bookingLanguage(undefined, "es-ES")).toEqual({ language: "en", locale: "en-US" });
+        // lang-1d: German and French have packs — the tenant locale and ?lang= select them (docs/slices/lang-1.md § 12).
+        expect(bookingLanguage(undefined, "fr-FR")).toEqual({ language: "fr", locale: "fr-FR" });
+        expect(bookingLanguage("de", "en-US")).toEqual({ language: "de", locale: "de-DE" });
+        expect(bookingLanguage("fr", "ro-RO")).toEqual({ language: "fr", locale: "fr-FR" });
     });
     it("texts: the pack's own, English for a language without a pack, never an empty text", () => {
         expect(bookingTexts("ro").bookTitle).toBe("Programare");
         expect(bookingTexts("en")).toEqual(EN_LANGUAGE_PACK.booking);
-        expect(bookingTexts("fr")).toEqual(EN_LANGUAGE_PACK.booking);
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        expect(bookingTexts("es")).toEqual(EN_LANGUAGE_PACK.booking);
+        for (const language of ["de", "fr"]) expect(bookingTexts(language), language).toEqual(LANGUAGE_PACKS[language].booking);   // lang-1d
         for (const v of Object.values(bookingTexts("ro"))) expect(v.length).toBeGreaterThan(0);
     });
     it("G12: EN and RO booking texts are complete, with the same placeholders per key", () => {

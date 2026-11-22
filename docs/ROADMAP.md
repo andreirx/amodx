@@ -256,13 +256,13 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 | `redirect-1` | An owner adds a redirect from an old address: `POST`/`DELETE /redirects`, a list screen, MCP. The record and the renderer side exist; only a slug rename writes one today. `docs/slices/redirect-1.md` | DRAFT — no ruling needed |
 | `stay-1` part A | A `date` field type for stored forms plus a "B later than A" rule, so a "Request a stay" form mails room, dates and guests. Starts after `public-harden-1` lands (same handler). `docs/slices/stay-1.md` § 2 | DRAFT — no ruling needed |
 | `stay-1` part B | Amendment to the Track D plan: a stay (a run of nights on one room) next to the timed appointment; one lock per night. Specification only. `docs/slices/stay-1.md` § 3 | WITHDRAWN 2026-11-20 (human: room booking by an external service — `booking-embed-1`) |
-| `paddle-hook-1` | The Paddle notification route fulfils nothing until a verified path exists (it mailed a product's private file on an unverified request from any authenticated caller). `docs/slices/paddle-hook-1.md` | SHIPPED 2026-11-22, staging; prod at the next deploy |
+| `paddle-hook-1` | The Paddle notification route fulfils nothing until a verified path exists (it mailed a product's private file on an unverified request from any authenticated caller). `docs/slices/paddle-hook-1.md` | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
 | `lang-1` | More than one language on one site. `docs/slices/lang-1.md` | SPEC RATIFIED 2026-11-22; next `lang-1a` |
-| `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy |
-| `lang-1b` | Language segment, `<html lang>`, texts, purge, deferred edge flush. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy after the `~` check of the site list |
-| `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy |
+| `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
+| `lang-1b` | Language segment, `<html lang>`, texts, purge, deferred edge flush. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
+| `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
 | `hydration-1` | Every tenant page load raises one React hydration error (#418) in the browser; present before `lang-1b` (`lang-1.md`, `lang-1c` closeout, F-HYDRATION-418). Root cause first, then the fix. | PLANNED |
-| `lang-1d` | German and French packs in the global registry (satulbanului). `lang-1.md` § 12 | PLANNED |
+| `lang-1d` | German and French packs in the global registry (satulbanului). `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy (texts reviewed by `gpt-6.1-terra`) |
 
 ## Courses, payments and growth — DRAFTS (2026-11-20, not ratified)
 

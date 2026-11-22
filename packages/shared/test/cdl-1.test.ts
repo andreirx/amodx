@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     CatalogStringsSchema, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK, ImportLabelsSchema, IMPORT_LABELS_WITHOUT_MARKER, ProductSchema,
-    catalogServerTexts, resolveLocaleStrings,
+    LANGUAGE_PACKS, catalogServerTexts, resolveLocaleStrings,
 } from "../src/index.js";
 
 /**
@@ -49,8 +49,9 @@ describe("CDL-1 catalog keys (§ 3.1)", () => {
 });
 
 describe("CDL-1 catalogServerTexts (§ 3.3, § 3.5)", () => {
-    it("absent locale → English pack values; de-DE (no pack) → English", () => {
-        for (const locale of [undefined, "de-DE"]) {
+    it("absent locale → English pack values; es-ES (no pack) → English", () => {
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        for (const locale of [undefined, "es-ES"]) {
             const t = catalogServerTexts(resolveLocaleStrings({ locale }));
             expect(t.siteLabels).toEqual({ collection: "Collection", unit: "Unit", packaging: "Packaging", minimumOrder: "Minimum order" });
             expect(t.variantName).toBe("Option");
@@ -58,6 +59,22 @@ describe("CDL-1 catalogServerTexts (§ 3.3, § 3.5)", () => {
                 subject: "Interest list — {name}", intro: "New interest list from {name}", products: "Products ({n}):", sentAt: "Sent: {date}",
                 name: "Name", email: "E-mail", phone: "Phone", message: "Message",
             });
+        }
+    });
+    it("de-DE and fr-FR without overrides (lang-1d packs) → the words of their pack", () => {
+        for (const [locale, language] of [["de-DE", "de"], ["fr-FR", "fr"]] as const) {
+            const c = LANGUAGE_PACKS[language].catalog;
+            const t = catalogServerTexts(resolveLocaleStrings({ locale }));
+            expect(t.siteLabels, locale).toEqual({
+                collection: c.importCollectionAttribute, unit: c.importUnitAttribute, packaging: c.importPackagingAttribute,
+                minimumOrder: c.importMinimumOrderAttribute,
+            });
+            expect(t.variantName, locale).toBe(c.importVariantName);
+            expect(t.interestMail, locale).toEqual({
+                subject: c.interestMailSubject, intro: c.interestMailIntro, products: c.interestMailProducts, sentAt: c.interestMailSentAt,
+                name: c.interestName, email: c.interestEmail, phone: c.interestPhone, message: c.interestMessage,
+            });
+            expect(t.interestMail.subject, locale).not.toBe(EN_LANGUAGE_PACK.catalog.interestMailSubject);
         }
     });
     it("ro-RO without overrides → today's Romanian words", () => {

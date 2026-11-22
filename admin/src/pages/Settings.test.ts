@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import { URL_PREFIX_DEFAULTS } from "@amodx/shared";
+import { LANGUAGE_PACKS, URL_PREFIX_DEFAULTS } from "@amodx/shared";
 
 /**
  * CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.5, CA-D2) — the page rendered per site kind with react-dom/server in
@@ -69,6 +69,11 @@ describe("Site language (§ 3.5)", () => {
         expect(withSiteLanguage(config, "ro")).toEqual({ ...config, locale: "ro-RO" });
         expect(withSiteLanguage({ ...config, locale: "ro-RO" }, "en")).toEqual({ ...config, locale: "en-US" });
     });
+    it("German and French (lang-1d; docs/slices/lang-1.md § 10) write de-DE and fr-FR with no admin code change; no other field changes", () => {
+        const config = { id: "t1", locale: "en-US", commerceStrings: { addToCart: "x" } };
+        expect(withSiteLanguage(config, "de")).toEqual({ ...config, locale: "de-DE" });
+        expect(withSiteLanguage(config, "fr")).toEqual({ ...config, locale: "fr-FR" });
+    });
 });
 
 describe("Country Apply (§ 7.2: country facts only, never texts)", () => {
@@ -91,7 +96,9 @@ describe("Locale (advanced): the help line and the fallback warning (§ 3.5; rev
         ["ro-RO", "ro-RO", "Romanian", false],
         ["ro_RO", "ro-RO", "Romanian", false],
         ["en-GB", "en-GB", "English", false],
-        ["de-DE", "de-DE", "English", false],             // a language without a pack: German dates, English texts
+        ["de-DE", "de-DE", "German", false],              // a language with a pack (lang-1d): German dates, German texts
+        ["fr-FR", "fr-FR", "French", false],              // a language with a pack (lang-1d): French dates, French texts
+        ["es-ES", "es-ES", "English", false],             // a language without a pack: Spanish dates, English texts
         ["en_US", "en-US", "English", false],             // a spelling of en-US: not a fallback
         ["", "en-US", "English", true],                   // present but blank → falls back → warning
         ["   ", "en-US", "English", true],
@@ -106,6 +113,9 @@ describe("Locale (advanced): the help line and the fallback warning (§ 3.5; rev
             expect(s.fallbackWarning).toBe(warning);
         });
     }
+    it("precondition of the es-ES case: es has no pack", () => {
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);
+    });
 });
 
 const renderSettings = (config: Record<string, unknown>) => {

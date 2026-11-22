@@ -357,6 +357,36 @@
         "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
       }
     ],
+    "catalog.facetsCount@de.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "catalog.facetsCount@de.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "catalog.facetsCount@fr.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "catalog.facetsCount@fr.many": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "catalog.facetsCount@fr.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
     "catalog.facetsUrlTooLong": [
       {
         "test": "renderer/test/unit/locale-1b-server-render.test.ts",
@@ -696,6 +726,36 @@
         "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
       }
     ],
+    "commerce.reviewsSummary@de.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "commerce.reviewsSummary@de.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "commerce.reviewsSummary@fr.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "commerce.reviewsSummary@fr.many": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "commerce.reviewsSummary@fr.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
     "commerce.productCount@en.one": [
       {
         "test": "renderer/test/unit/locale-1b-server-render.test.ts",
@@ -753,6 +813,36 @@
         "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
       }
     ],
+    "commerce.productCount@de.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "commerce.productCount@de.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "commerce.productCount@fr.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "commerce.productCount@fr.many": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "commerce.productCount@fr.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
     "commerce.searchResultCount@en.one": [
       {
         "test": "renderer/test/unit/locale-1b-server-render.test.ts",
@@ -801,6 +891,36 @@
       {
         "test": "packages/shared/test/locale-strings.test.ts",
         "case": "Romanian: 1 → one, 0 / 2 / 19 / 101 / 119 → few, 20 / 120 → other"
+      }
+    ],
+    "commerce.searchResultCount@de.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "commerce.searchResultCount@de.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "commerce.searchResultCount@fr.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "commerce.searchResultCount@fr.many": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "commerce.searchResultCount@fr.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
       }
     ],
     "catalog.interestWidgetLabel": [
@@ -863,6 +983,36 @@
       {
         "test": "renderer/test/unit/locale-1b-client.test.ts",
         "case": "widget: interestListTitle, and interestWidgetLabel (aria-label) for 0, 1, 2 and 20 items — each plural category"
+      }
+    ],
+    "catalog.interestWidgetLabel@de.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "catalog.interestWidgetLabel@de.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "German: 0 → other, 1 → one, 2 → other (every count key)"
+      }
+    ],
+    "catalog.interestWidgetLabel@fr.one": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "catalog.interestWidgetLabel@fr.many": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
+      }
+    ],
+    "catalog.interestWidgetLabel@fr.other": [
+      {
+        "test": "packages/shared/test/lang-1d.test.ts",
+        "case": "French: 0 / 1 → one, 1000000 → many, 2 → other (every count key)"
       }
     ],
     "catalog.interestStorageWarning": [

@@ -82,7 +82,7 @@ export function normalizeLocale(raw: unknown): string {
  * LOCALE-1E — the language subtag of the tenant's normalised locale (`"en-US"` → `"en"`, `"ro-RO"` → `"ro"`,
  * `"de-DE"` → `"de"`; absent or malformed → `"en"`, the § 3.3 fallback). The language the page content is written in,
  * for the `<html lang>` attribute. NOT `ResolvedLocaleStrings.language`, which is the language of the selected PACK
- * (`"en"` for a `de-DE` tenant, because no `de` pack exists). Never throws.
+ * (`"en"` for an `es-ES` tenant, because no `es` pack exists). Never throws.
  */
 export function localeLanguageSubtag(raw: unknown): string {
     return new Intl.Locale(normalizeLocale(raw)).language;

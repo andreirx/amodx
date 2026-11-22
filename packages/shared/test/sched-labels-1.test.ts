@@ -32,11 +32,16 @@ describe("SCHED-LABELS-1 — the booking key list and the bookingStrings schema"
 });
 
 describe("SCHED-LABELS-1 — bookingStandardTexts (English ← the pack of the language)", () => {
-    it("English, Romanian, and a language without a pack (English)", () => {
+    it("English, Romanian, German and French (lang-1d), and a language without a pack (English)", () => {
         expect(bookingStandardTexts("en")).toEqual(EN_LANGUAGE_PACK.booking);
         expect(bookingStandardTexts("ro")).toEqual({ ...EN_LANGUAGE_PACK.booking, ...RO_LANGUAGE_PACK.booking });
         expect(bookingStandardTexts("ro").bookTitle).toBe("Programare");
-        expect(bookingStandardTexts("de")).toEqual(EN_LANGUAGE_PACK.booking);
+        for (const language of ["de", "fr"]) {
+            expect(bookingStandardTexts(language), language).toEqual(LANGUAGE_PACKS[language].booking);
+            expect(bookingStandardTexts(language).bookTitle, language).not.toBe(EN_LANGUAGE_PACK.booking.bookTitle);
+        }
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        expect(bookingStandardTexts("es")).toEqual(EN_LANGUAGE_PACK.booking);
         expect(bookingStandardTexts("constructor")).toEqual(EN_LANGUAGE_PACK.booking);
     });
 

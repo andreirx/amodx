@@ -6,7 +6,7 @@ import React from "react";
 import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { URL_PREFIX_DEFAULTS, fillTemplate, resolveLocaleStrings } from "@amodx/shared";
+import { LANGUAGE_PACKS, URL_PREFIX_DEFAULTS, fillTemplate, resolveLocaleStrings } from "@amodx/shared";
 import { extractVisibleText, textChanges } from "../serving-contract/locale-1/extract.mjs";
 
 /**
@@ -223,16 +223,22 @@ if (CAPTURE) {
 
     describe("[1d-server] formatLocale: only for a tenant whose normalised locale is not en-US (§ 16.2 item 4)", () => {
         beforeEach(() => { vi.clearAllMocks(); });
-        it("[1d-server] absent / en-US / malformed → no prop (the formatters keep their defaults); ro-RO, de-DE → the locale", async () => {
+        it("[1d-server] absent / en-US / malformed → no prop (the formatters keep their defaults); ro-RO, de-DE, es-ES → the locale", async () => {
+            expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
             for (const tag of ["account-view", "checkout-view"] as const) {
                 for (const locale of [undefined, "en-US", "en_US", "xx-YY"]) {
                     // mapTenant normalises `locale` before SitePage (lib/dynamo.ts); the resolver normalises again.
                     expect(Object.hasOwn(await viewProps(tag, tenant(locale === undefined ? {} : { locale })), "formatLocale"), `${tag} ${locale}`).toBe(false);
                 }
                 expect((await viewProps(tag, tenant({ locale: "ro-RO" }))).formatLocale).toBe("ro-RO");
+                // lang-1d: de has a pack — German format locale and German texts.
                 const de = await viewProps(tag, tenant({ locale: "de-DE" }));
                 expect(de.formatLocale).toBe("de-DE");
-                expect(de.strings.emptyCart ?? de.strings.myAccount).toBe(tag === "checkout-view" ? "Your cart is empty" : "My Account");
+                expect(de.strings.emptyCart ?? de.strings.myAccount).toBe(tag === "checkout-view" ? LANGUAGE_PACKS.de.commerce.emptyCart : LANGUAGE_PACKS.de.commerce.myAccount);
+                // A language without a pack: its format locale, English texts.
+                const es = await viewProps(tag, tenant({ locale: "es-ES" }));
+                expect(es.formatLocale).toBe("es-ES");
+                expect(es.strings.emptyCart ?? es.strings.myAccount).toBe(tag === "checkout-view" ? "Your cart is empty" : "My Account");
             }
         });
     });

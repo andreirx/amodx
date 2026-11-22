@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readLanguageSettings, resolveLocaleStrings } from "@amodx/shared";
+import { LANGUAGE_PACKS, readLanguageSettings, resolveLocaleStrings } from "@amodx/shared";
 import {
     parseSiteSegment, siteSegmentFor, carriesSiteSegmentSeparator, firstPageSegmentOf, isLanguageShaped, segmentLanguage,
     localeInputFor,
@@ -105,8 +105,13 @@ describe("LANG-1B site segment — the page language of the layout and the resol
         const ro = resolveLocaleStrings(localeInputFor(config, { kind: "extra", subtag: "ro" }));
         expect(ro.strings.site.footerLinksHeading).toBe(resolveLocaleStrings({ locale: "ro-RO" }).strings.site.footerLinksHeading);
         expect(ro.strings.site.footerLinksHeading).not.toBe("Our links");
-        // A language without a pack gets the English pack (the resolver's rule, until lang-1d).
-        expect(resolveLocaleStrings(localeInputFor(config, { kind: "extra", subtag: "fr" })).strings.site.footerLinksHeading)
+        // A language without a pack gets the English pack (the resolver's rule).
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        expect(resolveLocaleStrings(localeInputFor(config, { kind: "extra", subtag: "es" })).strings.site.footerLinksHeading)
             .toBe(resolveLocaleStrings({ locale: "en-US" }).strings.site.footerLinksHeading);
+        // lang-1d: an extra language with a pack (fr) gets its pack by the same call, without the tenant's override.
+        const fr = resolveLocaleStrings(localeInputFor(config, { kind: "extra", subtag: "fr" }));
+        expect(fr.language).toBe("fr");
+        expect(fr.strings.site.footerLinksHeading).toBe(LANGUAGE_PACKS.fr.site.footerLinksHeading);
     });
 });

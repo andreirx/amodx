@@ -4,6 +4,8 @@ export { RO_LANGUAGE_PACK } from "./ro.js";
 
 import { EN_LANGUAGE_PACK } from "./en.js";
 import { RO_LANGUAGE_PACK } from "./ro.js";
+import { DE_LANGUAGE_PACK } from "./de.js";
+import { FR_LANGUAGE_PACK } from "./fr.js";
 import type { LanguagePack } from "./types.js";
 
 /**
@@ -15,4 +17,6 @@ import type { LanguagePack } from "./types.js";
 export const LANGUAGE_PACKS: Record<string, LanguagePack> = {
     en: EN_LANGUAGE_PACK,
     ro: RO_LANGUAGE_PACK,
+    de: DE_LANGUAGE_PACK,  // LANG-1D (docs/slices/lang-1.md § 12; LANG1-PACK-NOOP = B)
+    fr: FR_LANGUAGE_PACK,  // LANG-1D
 };

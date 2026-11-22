@@ -26,7 +26,7 @@ src/
 ├── zoned-time.ts       # Local wall time ↔ UTC instant on Intl (spring gap refused, ambiguous = earlier), for scheduling.ts
 ├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e); catalogServerTexts (cdl-1); booking texts: BOOKING_TEXT_KEYS, bookingStandardTexts, templatePlaceholders (sched-labels-1)
 ├── languages.ts        # LANG-1A (PROTOTYPE): readLanguageSettings, pageLanguageOf, languageTagOf, types PageLanguage, LanguageSettings, LanguageLink. Imports NOTHING (the renderer middleware will load dist/languages.js alone, lang-1b)
-├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
+├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, de.ts + fr.ts (complete by type, lang-1d), index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)
 ```
 
@@ -147,7 +147,7 @@ server-authoritative `expected` value) consume it — the slice's own promotion 
 > migration across every tenant, not a refactor. Its order of operations is load-bearing and
 > pinned by `test/normalizeEmail.test.ts` — read the module header before touching it.
 
-## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c`, `locale-1e` (PROTOTYPE)
+## Tenant locale table (`locale-strings.ts`, `language-packs/`) — slices `locale-1a`, `locale-1b`, `locale-1d`, `locale-1c`, `locale-1e`, `lang-1d` (PROTOTYPE)
 
 Design: `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
 `docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`. Maturity **PROTOTYPE**: since `locale-1c` every visitor text
@@ -165,7 +165,7 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   in `siteStrings`. `LocaleStrings` is the resolved DTO (every key a string; a count key a `CountText`).
 - **Count keys** (`1b`, § 16.2 item 6): `reviewsSummary`, `productCount`, `searchResultCount`, `facetsCount`,
   `interestWidgetLabel` hold one text per plural category of the language (`PluralTextsSchema`, the six CLDR categories
-  `PLURAL_CATEGORIES`; EN `one`/`other`, RO `one`/`few`/`other`). Resolved per category, every form kept: `CountText =
+  `PLURAL_CATEGORIES`; EN and DE `one`/`other`, RO `one`/`few`/`other`, FR `one`/`many`/`other` — French `one` is 0 and 1). Resolved per category, every form kept: `CountText =
   { language, forms, english }` — `forms` = the pack's texts, then the tenant's (a partial override included),
   `english` = the English texts. `selectPluralText(value, n)`: the form `Intl.PluralRules(language).select(n)` names,
   else the language's `other`, else English by English rules (`Intl.PluralRules("en")`), else the English `other`
@@ -175,7 +175,7 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   extensions dropped; idempotent) gives the date/number locale; its language subtag selects the pack in
   `LANGUAGE_PACKS` (none → English). `countryCode` never selects texts. `localeLanguageSubtag(raw)` (`locale-1e`) =
   the language subtag of `normalizeLocale(raw)`, the renderer's `<html lang>`: the language the content is in, NOT the
-  resolver's `language` (the selected pack's: `"en"` for a `de-DE` tenant, which has no `de` pack).
+  resolver's `language` (the selected pack's: `"en"` for an `es-ES` tenant, which has no `es` pack).
 - **Resolution.** `resolveLocaleStrings(tenantFields)` → `{ locale, language, strings, defaults }`: per key, EN pack <
   language pack < tenant override (an own string property; for the nine cookie/legal keys a non-empty string — the old
   `||` rule). Non-string and unknown stored values are ignored. `defaults` = without the override (admin placeholders,
@@ -204,13 +204,17 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   no override. `templatePlaceholders(text)` = the `{name}`s `fillTemplate` fills (one shared regex), for the
   PUT /settings rule "a booking text keeps exactly the placeholders of its standard text" and the admin's "Must keep"
   line. Test: `test/sched-labels-1.test.ts`.
-- **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
+- **Adding a key:** schema (`index.ts`) → EN, DE and FR values (`language-packs/en.ts`, `de.ts`, `fr.ts`: complete by type, compile
+  error until done) → RO value
   (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
   slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.
 - **Values.** Every pack value is a literal in its pack file (`locale-1d`): the EN pack holds the texts the renderer
   rendered before each slice; the RO pack holds the 75 commerce, five cookie and four legal texts that the RO country
   pack held at `92adbba`, unchanged (`test/fixtures/locale-1d-packs-92adbba.json` and `test/locale-strings.test.ts`
-  compare them), plus the approved Romanian columns of § 6. The compatibility export of the English commerce defaults
+  compare them), plus the approved Romanian columns of § 6. The DE and FR packs (`lang-1d`, `docs/slices/lang-1.md` § 12,
+  ruling LANG1-PACK-NOOP = B) hold new texts in all four parts (formal register); the human approves them as tables (key,
+  EN, new text) before the production deploy. `test/lang-1d.test.ts` checks their keys against the EN pack, the
+  placeholders per key, the plural categories and the French spacing rule. The compatibility export of the English commerce defaults
   and the country packs' text members are gone (§ 10.2); `country-packs/` holds country facts only (`CountryPack`:
   `code`, `name`, `currency`, `locale`, `address`). A renderer reader takes `resolveLocaleStrings(config)` only.
 

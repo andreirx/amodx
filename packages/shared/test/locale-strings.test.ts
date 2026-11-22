@@ -192,11 +192,13 @@ describe("the language packs", () => {
         expect(EN_PACK.address.regions).toEqual([]);
     });
 
-    it("the registry holds en and ro, each under its own language subtag", () => {
-        expect(keys(LANGUAGE_PACKS)).toEqual(["en", "ro"]);
+    it("the registry holds en, ro, de and fr (de and fr since lang-1d), each under its own language subtag", () => {
+        expect(keys(LANGUAGE_PACKS)).toEqual(["de", "en", "fr", "ro"]);
         for (const [language, pack] of Object.entries(LANGUAGE_PACKS)) expect(pack.language).toBe(language);
         expect(LANGUAGE_PACKS.ro.defaultLocale).toBe("ro-RO");
         expect(LANGUAGE_PACKS.en.defaultLocale).toBe("en-US");
+        expect(LANGUAGE_PACKS.de.defaultLocale).toBe("de-DE");
+        expect(LANGUAGE_PACKS.fr.defaultLocale).toBe("fr-FR");
     });
 });
 
@@ -301,8 +303,14 @@ describe("localeLanguageSubtag (locale-1e, `<html lang>`)", () => {
         it(`${JSON.stringify(raw) ?? "undefined"} → ${expected}`, () => expect(localeLanguageSubtag(raw)).toBe(expected));
     }
 
-    it("follows the tenant's locale, not the selected pack: de-DE → \"de\" while the resolver's pack language is \"en\"", () => {
-        expect(resolveLocaleStrings({ locale: "de-DE" }).language).toBe("en");
+    it("follows the tenant's locale, not the selected pack: es-ES (no pack) → \"es\" while the resolver's pack language is \"en\"", () => {
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        expect(resolveLocaleStrings({ locale: "es-ES" }).language).toBe("en");
+        expect(localeLanguageSubtag("es-ES")).toBe("es");
+    });
+
+    it("a language with a pack (de-DE, lang-1d): the subtag and the resolver's pack language agree", () => {
+        expect(resolveLocaleStrings({ locale: "de-DE" }).language).toBe("de");
         expect(localeLanguageSubtag("de-DE")).toBe("de");
     });
 });
@@ -382,11 +390,22 @@ describe("resolveLocaleStrings — layers, language, mismatch (§ 5.1, § 3.3)",
         expect(new Date("2026-10-31T12:00:00Z").toLocaleDateString(r.locale, { timeZone: "UTC" })).toBe("31.10.2026");
     });
 
-    it("a language without a pack (de-DE) → German dates, English texts", () => {
-        const r = resolveLocaleStrings({ locale: "de-DE" });
-        expect(r.locale).toBe("de-DE");
+    it("a language without a pack (es-ES) → Spanish dates, English texts", () => {
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        const r = resolveLocaleStrings({ locale: "es-ES" });
+        expect(r.locale).toBe("es-ES");
         expect(r.language).toBe("en");
         expect(r.strings.site.paginationNext).toBe("Next");
+    });
+
+    it("a language with a pack (de-DE, fr-FR; lang-1d) → its dates and its pack's texts", () => {
+        for (const [locale, language] of [["de-DE", "de"], ["fr-FR", "fr"]] as const) {
+            const r = resolveLocaleStrings({ locale });
+            expect(r.locale).toBe(locale);
+            expect(r.language).toBe(language);
+            expect(r.strings.site.paginationNext).toBe(LANGUAGE_PACKS[language].site.paginationNext);
+            expect(r.strings.site.paginationNext).not.toBe("Next");
+        }
     });
 
     it("a malformed locale (ro_RO, \" ro-RO \") still selects Romanian; garbage selects English; nothing throws", () => {
@@ -408,23 +427,23 @@ describe("resolveLocaleStrings — layers, language, mismatch (§ 5.1, § 3.3)",
 describe("a new language is one pack file + its registration (§ 16.2 item 3)", () => {
     it("a throwaway pack registered in this test only: its keys resolve, a missing key falls back to English", () => {
         const XX: LanguagePack = {
-            language: "fr", name: "French (test only)", defaultLocale: "fr-FR",
-            commerce: { addToCart: "Ajouter au panier" }, catalog: {}, site: { breadcrumbHome: "Accueil" },
+            language: "es", name: "Spanish (test only)", defaultLocale: "es-ES",
+            commerce: { addToCart: "Añadir al carrito" }, catalog: {}, site: { breadcrumbHome: "Inicio" },
         };
-        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "fr")).toBe(false);
-        expect(resolveLocaleStrings({ locale: "fr-FR" }).strings.site.breadcrumbHome).toBe("Home");
-        LANGUAGE_PACKS.fr = XX;                                   // the registration: one entry
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "es")).toBe(false);   // precondition: es has no pack
+        expect(resolveLocaleStrings({ locale: "es-ES" }).strings.site.breadcrumbHome).toBe("Home");
+        LANGUAGE_PACKS.es = XX;                                   // the registration: one entry
         try {
-            const r = resolveLocaleStrings({ locale: "fr-FR" });
-            expect(r.language).toBe("fr");
-            expect(r.strings.site.breadcrumbHome).toBe("Accueil");
-            expect(r.strings.commerce.addToCart).toBe("Ajouter au panier");
+            const r = resolveLocaleStrings({ locale: "es-ES" });
+            expect(r.language).toBe("es");
+            expect(r.strings.site.breadcrumbHome).toBe("Inicio");
+            expect(r.strings.commerce.addToCart).toBe("Añadir al carrito");
             expect(r.strings.site.paginationNext).toBe("Next");       // the pack lacks it → English
             expect(r.strings.commerce.checkout).toBe("Checkout");
         } finally {
-            delete LANGUAGE_PACKS.fr;
+            delete LANGUAGE_PACKS.es;
         }
-        expect(resolveLocaleStrings({ locale: "fr-FR" }).strings.site.breadcrumbHome).toBe("Home");
+        expect(resolveLocaleStrings({ locale: "es-ES" }).strings.site.breadcrumbHome).toBe("Home");
     });
 });
 
@@ -519,14 +538,15 @@ describe("a new language adds its plural categories in its pack file only (packe
         }
     });
 
-    it("a registered pack without count keys (French: 0 → one) gets the English texts with English rules — never \"0 product\"", () => {
-        LANGUAGE_PACKS.fr = { language: "fr", name: "French (test only)", defaultLocale: "fr-FR", commerce: {}, catalog: {}, site: {} };
+    it("a registered pack without count keys (Portuguese: 0 → one) gets the English texts with English rules — never \"0 product\"", () => {
+        expect(Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, "pt")).toBe(false);   // precondition: pt has no pack
+        LANGUAGE_PACKS.pt = { language: "pt", name: "Portuguese (test only)", defaultLocale: "pt-PT", commerce: {}, catalog: {}, site: {} };
         try {
-            expect(new Intl.PluralRules("fr").select(0)).toBe("one");
-            const { strings } = resolveLocaleStrings({ locale: "fr-FR" });
+            expect(new Intl.PluralRules("pt").select(0)).toBe("one");
+            const { strings } = resolveLocaleStrings({ locale: "pt-PT" });
             expect([0, 1, 2].map((n) => count(strings.commerce.productCount, n))).toEqual(["0 products", "1 product", "2 products"]);
         } finally {
-            delete LANGUAGE_PACKS.fr;
+            delete LANGUAGE_PACKS.pt;
         }
     });
 });

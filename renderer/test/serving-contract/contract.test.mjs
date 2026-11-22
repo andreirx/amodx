@@ -4926,6 +4926,30 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             console.log("  (lang1c-switch-identity) lang1b-mono /about, /ro/x; cm1-content /; fixture /published: no switch, no prop, no hreflang");
         });
 
+        // ── ROWS (lang1d-*) — LANG-1D, the German and French packs (docs/slices/lang-1.md § 8.2, § 11, § 12; LANG1-PACK-NOOP
+        // = B). The `de` and `fr` pages of `LANG1C.multi` (en-US; extra ro, de, fr; no fixture change) select the new packs
+        // through the same call as `ro` (`resolveLocaleStrings(localeInputFor(config, language))`): the layout (footer,
+        // cookie texts) and the page (share bar) show the pack's texts, and no English text of those keys. The expected texts
+        // are the registered pack's, read through the resolver; the precondition asserts that the resolver selected the pack
+        // (a missing registration would resolve English and fail it).
+        for (const [row, language, path] of [["lang1d-extra-de", "de", "/de/uber"], ["lang1d-extra-fr", "fr", "/fr/page"]]) {
+            test(`(${row}) a ${language} page of a multi-language tenant shows the ${language} pack's site texts in the layout (footer, cookie texts) and in the page (share bar), and <html lang="${language}">`, async () => {
+                const resolved = resolveLocaleStrings({ locale: language });
+                assert.equal(resolved.language, language, `precondition: a ${language} pack is registered`);
+                const site = resolved.strings.site;
+                for (const key of ["shareLabel", "footerCopyright", "cookieHeadline"]) assert.notEqual(site[key], EN_SITE[key], `precondition: ${key} differs from English`);
+                const res = await lAt(C.host, path);
+                assert.equal(res.status, 200, `${path}: 200`);
+                assert.equal(htmlLangOf(res.body), language, `${path}: <html lang>`);
+                assert.ok(res.body.includes(site.shareLabel), `${path}: the ${language} share label (SitePage)`);
+                assert.ok(res.body.includes(copyrightTail(site)), `${path}: the ${language} footer (layout)`);
+                assert.ok(splitFlight(res.body).flight.includes(site.cookieHeadline), `${path}: the ${language} cookie headline (layout)`);
+                assert.ok(!res.body.includes(EN_SITE.shareLabel) && !res.body.includes(copyrightTail(EN_SITE)), `${path}: an English text`);
+                assert.ok(!splitFlight(res.body).flight.includes(EN_SITE.cookieHeadline), `${path}: the English cookie headline`);
+                console.log(`  (${row}) ${path}: lang=${htmlLangOf(res.body)}; "${site.shareLabel}", "${copyrightTail(site).trim()}", "${site.cookieHeadline}"`);
+            });
+        }
+
         // ── ROW (np1-bootstrap-chunks) — NEXT-PATCH-1 ruling R-NP1-F1 rule 2. The LAST row of the `next` target on purpose:
         // its population is EVERY response the suite's server sent in this run (harness.mjs `servedResponses`, the journal
         // of the suite's only HTTP client), so no row's documents stay unchecked — review-1 found that an enumerated list
