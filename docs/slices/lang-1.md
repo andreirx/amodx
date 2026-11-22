@@ -11,10 +11,16 @@
 > `renderer/test/serving-contract/{contract.test.mjs,README.md}`, `docs/ROADMAP.md`, `docs/platform-decisions.md`.
 > Each build slice reads its files again (the new middleware branch included) before it relies on a line.
 > § 9.4 and the revision-3 parts of § 13 cite `68f0dbb`.
+> **Revision 6 (ratification, 2026-11-22)** read again at `7618acc` (equal to `68f0dbb` for every code file; `7618acc`
+> changed only this file and `docs/ROADMAP.md`): `renderer/middleware.ts`, `renderer/src/lib/booking-path.ts`,
+> `renderer/src/lib/booking-text.ts`, `renderer/src/lib/tenant-directory.ts`, `packages/shared/src/language-packs/`,
+> `admin/src/pages/Settings.tsx`, `renderer/test/serving-contract/{cm1-byte-identity.mjs,contract.test.mjs}`. The
+> middleware and serving-test lines in § 3.4, § 5.2, § 7.1 and § 7.3, the comparator rules (§ 7.4) and the row
+> counts of § 12 are at `7618acc`.
 
-Status: **PLANNED — specification written 2026-11-21, six build cycles; R-LANG-FRESHNESS corrected in revisions 3
-and 5 under LANG1-STALENESS-BOUND = A (human) and LANG1-DEFERRED-FLUSH-LAYER2 = A′ (operator) — waits for review-5,
-Appendix B; not ratified; five decisions open (§ 13)**.
+Status: **RATIFIED 2026-11-22** (human: LANG1-HTML-LANG, LANG1-LANG-SOURCE with the homepage rule, LANG1-DATA-SHAPES,
+LANG1-OVERRIDES = A; LANG1-PACK-NOOP = **B**; LANG1-STALENESS-BOUND = A with the second edge flush; § 13,
+Appendix D). **Next: `lang-1a`.**
 Track: `lang` (the `locale` track is the neighbour and the base). Depends: `locale-1a`…`1e` (built);
 LANG1-SCOPE = A (§ 2.1). Source plans: `docs/plan-site-move-satulbanului.md`, `docs/plan-courses-group-sessions.md`
 § 1 and § 5. Maturity target of the build slices: PROTOTYPE; MATURE after one live two-language site runs `lang-1c`.
@@ -24,7 +30,11 @@ This slice changes no code. The spike changed renderer code in the worktree to m
 **Scope.** The spike record (§ 3) and the specification of the build slices `lang-1a`…`1d` (§ 4–§ 12).
 **Architectural boundaries.** Tenant isolation (§ 7.1, § 9.2: the `~` separator never comes from the wire); no
 DynamoDB scan (§ 6.2); the dependency graph and the platform decisions PD-001…003 do not change (§ 14); the serving
-contract changes only under DECISION LANG1-HTML-LANG (§ 7.3).
+contract changes as ruled by LANG1-HTML-LANG = A (§ 7.3).
+
+**Base assumption (human, 2026-11-22).** galeriilevoicu.ro and satulbanului are the first sites with more than one
+language. No existing site has more than one language, and no existing site uses German or French. The live sites
+have one language, English or Romanian; every rule below keeps their output (§ 8, § 12).
 
 **Purpose / risk retired.** The open point LANG1-HTML-LANG: can the root layout write the page's language
 (`<html lang>`, the menu, the texts) while every page stays in the ISR cache and one-language sites stay
@@ -202,8 +212,9 @@ Search (EXECUTED; a text search is a subset until each hit is read — every hit
 Sites that build a cache key or a purge path from the host or the first segment (`route.ts` =
 `renderer/src/app/api/revalidate/route.ts`):
 
-- `renderer/middleware.ts:295-298` — the rewrite `/<host><path>` or `/<host>/_dyn<path>`, which is the ISR key.
-  Under W1: `<host>~<lang>` for listed prefixes.
+- `renderer/middleware.ts:295-298` at `d1ffd80` (`:337-341` at `7618acc`) — the rewrite `/<host><path>` or
+  `/<host>/_dyn<path>`, which is the ISR key. Under W1: `<host>~<lang>` for listed prefixes. The booking rewrite
+  `/_book/<host><rest>` (`:149-157`, branch A3, since `68f0dbb`) is never stored and gets no suffix (§ 7.1).
 - `route.ts:174` — `revalidatePath("/<domain><slug>")`. Under W1: misses `~` entries (OBSERVED). Fix: § 9.2.
 - `route.ts:177` — `revalidatePath("/<domain>", "layout")`. Under W1: misses `~` entries (INFERRED from the tag
   form). Fix: § 9.2.
@@ -218,7 +229,7 @@ Sites that build a cache key or a purge path from the host or the first segment 
 
 ### 3.5 Chosen way
 
-**W1** (subject to DECISION LANG1-HTML-LANG, § 13). Reasons: the only way that gives a correct `<html lang>` and
+**W1** (LANG1-HTML-LANG = A, ratified 2026-11-22, § 13). Reasons: the only way that gives a correct `<html lang>` and
 lets the menu and texts follow the page while every page stays cached per address; for a tenant without
 `languages` the rewrite, the key and the bytes are unchanged (OBSERVED control, 126/126). Rejected: W2 (a group
 cannot be chosen by data; silent capture of every address), W3 (the defect stays), W4 (500 on every cacheable
@@ -226,7 +237,7 @@ page), W5 and W6 (larger; not a no-op for one-language sites).
 
 ## 4. Design rule
 
-Rule (subject to DECISION LANG1-LANG-SOURCE, § 13): **the address states the language.**
+Rule (LANG1-LANG-SOURCE = A, ratified 2026-11-22, § 13): **the address states the language.**
 
 - The tenant has one **default language**: the language subtag of its `locale` (`localeLanguageSubtag`, today's
   rule). Its pages have no language prefix.
@@ -275,7 +286,8 @@ function pageLanguageOf(slug: string, languages: readonly string[]): PageLanguag
 // packages/shared/src/index.ts (next to the tenant schema; it uses normalizeLocale and LinkSchema, so it stays out
 // of the import-free module above, which the middleware loads)
 function languageSettingsProblem(input: { languages?: unknown; locale?: unknown; urlPrefixes?: unknown;
-    navLinksByLang?: unknown; footerLinksByLang?: unknown }): string | null;   // WRITE rule; null = valid
+    navLinksByLang?: unknown; footerLinksByLang?: unknown; homePageSlug?: unknown }): string | null;
+    // WRITE rule, called with the MERGED settings (stored item + request body); null = valid
 ```
 
 `pageLanguageOf`: the first segment of `slug` (`"/ro/x"` → `"ro"`, `"/ro"` → `"ro"`, `"/"` → none) is an extra
@@ -319,16 +331,25 @@ Callers: the middleware (§ 7.1) and `mapTenant` (§ 7.2).
 
 ### 5.2 Write rules
 
-`PUT /settings`, `languageSettingsProblem`; each refusal is a `400` that names the field:
+`PUT /settings`, `languageSettingsProblem` on the merged settings (the handler's `merged`,
+`backend/src/tenant/settings.ts:323` at `7618acc`); each refusal is a `400` that names the field:
 
 - **V1** `languages` is an array; each entry is a bare language subtag: `/^[a-z]{2,3}$/` and
-  `normalizeLocale(e) === e` (the runtime can format it; `locale-strings.ts:67-78`).
+  `normalizeLocale(e) === e` (the runtime can format it; `locale-strings.ts:67-78`). The internal first segments
+  `_booking`, `_book`, `_site`, `_dyn` cannot pass V1 (`_` is not in `[a-z]`).
 - **V2** No entry twice.
 - **V3** No entry equals the default subtag (`localeLanguageSubtag(locale)`, checked against the locale being saved).
 - **V4** No entry equals the first segment of one of the tenant's URL prefixes (`urlPrefixesOf`), nor `api` (the
-  middleware never rewrites `/api`, `middleware.ts:181-189`).
+  middleware never rewrites `/api`, `middleware.ts:196-205` at `7618acc`).
 - **V5** Every key of `navLinksByLang` and `footerLinksByLang` is in `languages`; each value is an array that
   `LinkSchema` accepts.
+- **V6** (homepage rule, LANG1-LANG-SOURCE = A) When `languages` is not empty and `homePageSlug` is a non-empty
+  string, `pageLanguageOf(homePageSlug, languages)` is `{ kind: "default" }`; else `400` naming `homePageSlug`.
+  Why: the page named by `homePageSlug` is served at `/` (`SitePage.tsx:303`, `:547`), and `/` is a
+  default-language address; an extra-language page there would get default-language chrome and be advertised as
+  that language's alternate. Because the check runs on the merged settings, it refuses both a new `homePageSlug`
+  under a listed prefix and a new language whose prefix holds the stored `homePageSlug`. A tenant without
+  `languages` is not checked (all its pages are in the default language).
 
 Content rules (backend `content/create.ts`, `content/update.ts`):
 
@@ -364,6 +385,9 @@ Content rules (backend `content/create.ts`, `content/update.ts`):
   The renderer reads sets only when `languages` is not empty.
 - **A set with one member left.** No cleanup: one member gives no alternates.
 - **The default `locale` changed to a subtag in `languages`.** Refused (V3).
+- **`homePageSlug` names a page under a listed prefix.** Refused at write (V6), also when the language is added
+  later. Only a direct table edit makes it. The reader then advertises that page at its own address, never at `/`
+  (§ 8.4, § 8.5). Row `lang1c-hreflang-home`.
 
 ## 6. Storage
 
@@ -493,6 +517,33 @@ Grants: the create, update and restore functions already hold `grantReadWriteDat
 
 ### 7.1 Middleware (`renderer/middleware.ts`)
 
+Lines in § 7.1 are at `7618acc` (the file is the same as at `68f0dbb`). **Order of the branches today:** 0 origin
+check (`:170-179`); A internals `/_next`, `/api`, `/static` → pass through (`:196-205`); A2 `/_dyn` → 404
+(`:210-212`); A2b leaked twin `/<id>/_dyn/…` → `308` (`:227-232`); **A3 booking** (`:234-259`, since `68f0dbb`); the
+twin decision (`:263-266`); B by id `/tenant/` (`:269-289`) and `/_site/` (`:290-319`); the production branch
+(`:320-342`: gate `:333-335`, rewrite `:337-341`).
+
+**Where the language rules sit.** `lang-1b` adds two rules, both **after A3**: the `~` refusal (below) directly
+after A3, and the language segment inside the by-id branches and the production branch. A3 changes only in its
+gate call (`:250`, verdict type below): `unwired` → `notFoundResponse()` as today; `wired` (its language list is not
+read) and `unknown` → the booking rewrite with the plain host, as today. Therefore:
+
+- `/_booking…` (tenant host) and `/_site/<id>/_booking…` (preview host) are **not language paths**. A3 answers them
+  before any language rule; they never get a `~` suffix; the booking tree `app/%5Fbook/[siteId]/` never parses `~`.
+  The booking pages keep their own language rule: `?lang=` when a pack exists for it, else the tenant locale's
+  language, else English (`renderer/src/lib/booking-text.ts:19-29`; `sched-1.md` § 10.1).
+- `/<l>/_booking` is not a booking address (`booking-path.ts:64` needs the raw path to start with `/_booking`); it
+  takes the production branch as an ordinary path of language `<l>`, as it does today without the suffix.
+- The 13 `sched1g-*` rows (of the 139 serving rows at `7618acc`, § 7.4) keep their answers: the A3 rows do not depend on
+  the language rules, and `sched1g-preserve` (near-miss paths, the unknown-host gate) and `sched1g-g2` (by-id gates) are
+  in the proof of `lang-1b`.
+
+Local choice, recorded: the `~` refusal sits after A3, not before it, so A3's answers stay byte for byte as at
+`68f0dbb`. A3 then treats a `~` host on `/_booking` as it treats any host today (`:250-253`): a gate lookup that
+succeeds and finds no tenant (`unwired`; no tenant domain holds `~`, F-LANG-TILDE) → `404`; an `unknown` verdict
+(no table, no credentials, or a failed read) → the booking rewrite, fail open, as at `68f0dbb`. The booking tree
+never parses `~`, so that rewrite binds no language and no other tenant.
+
 - **Host gate read** (`renderer/src/lib/tenant-directory.ts:81-110`): the same `GSI_Domain` query, with
   `ProjectionExpression: "SK, #l"` (`#l` = `languages`) in place of `Select: "COUNT"` (`:100`). The index projects
   all attributes (`infra/lib/database.ts:27-31`, no projection given; INFERRED from the CDK default). `SK` keeps a
@@ -501,14 +552,16 @@ Grants: the create, update and restore functions already hold `grantReadWriteDat
   plain form (§ 5.1, the input boundary) and then calls `readLanguageSettings`, the same function `mapTenant`
   uses. The verdict is cached 60 s as today (`:31`).
   Result type: `HostVerdict = { kind: "unknown" } | { kind: "unwired" } | { kind: "wired"; languages: readonly
-  string[] }`. `isWiredTenantHost` is replaced: one caller (`middleware.ts:291`) and its unit tests
-  (`renderer/test/unit/tenant-directory.test.ts`; deterministic `git grep`).
-- **Production branch** (`:278-300`), by verdict (exhaustive `switch`):
-  - `unwired` → `notFoundResponse()`, as today (`:291-293`).
+  string[] }`. `isWiredTenantHost` is replaced at its two call sites — `middleware.ts:250` (A3, booking) and
+  `:333` (production) — and in its unit tests (`renderer/test/unit/tenant-directory.test.ts`); the doc
+  `renderer/ARCHITECTURE.md:756` names it and changes with it (`git grep -n isWiredTenantHost`, EXECUTED at
+  `7618acc`, deterministic text search; every hit read).
+- **Production branch** (`:320-342`), by verdict (exhaustive `switch`):
+  - `unwired` → `notFoundResponse()`, as today (`:333-335`).
   - `wired` → segment = `<host>~<first>` when `first` (= `path.split("/")[1]`) is in its `languages` and the path
-    is not a route handler (`SITE_ROUTE_HANDLERS`, `:124`); else `<host>`. The ISR rewrite and the twin rewrite
+    is not a route handler (`SITE_ROUTE_HANDLERS`, `:125`); else `<host>`. The ISR rewrite and the twin rewrite
     both use the segment.
-  - `unknown` (no table, no credentials, or the read failed — today "fail open", `:284-290`): a path whose `first`
+  - `unknown` (no table, no credentials, or the read failed — today "fail open", `:326-332`): a path whose `first`
     matches `/^[a-z]{2,3}$/` and is not a route handler is rewritten to the **twin** with the segment
     `<host>~<first>` (no-store: never stored by either cache layer). The layout keeps the language only when the
     renderer's own tenant read lists it, so the page renders right in both cases. Every other path keeps today's
@@ -517,13 +570,15 @@ Grants: the create, update and restore functions already hold `grantReadWriteDat
     paths of every tenant render per request (no cache) — for a one-language tenant the HTML body is the same; the
     payload's segment value carries the suffix. Row `lang1b-gate-unknown` (needs a stub control that fails the
     gate read, `failHostGate(bool)`, added in `lang-1b`).
-- **The separator cannot come from the wire**: a host that contains `~` → `notFoundResponse()` before the gate (no
-  DNS host name contains `~`). A by-id path (`/tenant/<id>`, `/_site/<id>`) whose id contains `~` → the same 404.
-  Today ids and domains are not checked for `~` (`backend/src/tenant/create.ts:30`, `:37`); see F-LANG-TILDE (§ 15).
-- **By-id branches** (`/tenant/` `:227-247`, `/_site/` `:248-277`; always the uncached twin): the id gets
-  `~<first>` when `first` matches `/^[a-z]{2,3}$/` (no tenant read). The layout keeps the language only when it is
-  in the tenant's list, so a wrong guess renders the default language. These responses are never stored.
-- **Leaked twin addresses** (rule A2b, `:199-217`): a preview page hands the client router its rewritten path, so
+- **The separator cannot come from the wire**: after A3, a host that contains `~` → `notFoundResponse()` before the
+  production gate (no DNS host name contains `~`). A by-id path (`/tenant/<id>`, `/_site/<id>`) whose id contains
+  `~` → the same 404. Today ids and domains are not checked for `~` (`backend/src/tenant/create.ts:30`, `:37`); see
+  F-LANG-TILDE (§ 15).
+- **By-id branches** (`/tenant/` `:269-289`, `/_site/` `:290-319`; always the uncached twin): the id gets
+  `~<first>` when `first` (the first segment after the id) matches `/^[a-z]{2,3}$/` (no tenant read). The layout
+  keeps the language only when it is in the tenant's list, so a wrong guess renders the default language. These
+  responses are never stored. `/_site/<id>/_booking…` never reaches this branch (A3).
+- **Leaked twin addresses** (rule A2b, `:214-232`): a preview page hands the client router its rewritten path, so
   `/<id>~ro/_dyn/ro/x` can reach the address bar. A2b redirects it to `/_site/<id>/ro/x` — the id part before the
   first `~`; the language prefix is already in the rest of the path, so nothing is lost. Without this, the `~`
   refusal above would answer such an address 404. Row `lang1b-dyn-leak` (INFERRED need, from the A2b comment).
@@ -558,16 +613,41 @@ segment rule (`languages.includes(first)`) is `pageLanguageOf` on the same parse
   dropped — and leaves every existing field, legacy `navLinks` / `footerLinks` included, as it is today. A tenant
   without the fields gets `languages: []` and empty maps on `config`; no reader output changes for it (§ 8).
 
-### 7.3 Contract changes (all under DECISION LANG1-HTML-LANG)
+### 7.3 Contract changes (LANG1-HTML-LANG = A, ratified 2026-11-22)
 
 - `docs/caching-architecture.md` § *Serving contract*: a new row — an address under a listed language prefix is
   rewritten to `/<host>~<lang><path>` and stored under that key; every other address as today. And: with an
   unknown gate verdict, a language-shaped first segment goes to the twin (no-store), not to the ISR route.
+  § *Booking pages* gets one sentence: `/_booking…` is answered before the language rules and never carries a `~`
+  suffix (§ 7.1).
 - Row `(c)` keeps its meaning ("the render never runs for an unwired host"). Its executable form changes: the stub
-  identifies the gate by the new query shape (`ddb-stub.mjs:187-191`), and the message "exactly one COUNT query"
-  (`contract.test.mjs:695`) becomes "exactly one host-gate read".
+  identifies the gate by the new query shape (`ddb-stub.mjs:187-191`; it also counts A3's gate read, which takes
+  the same shape), and the message "exactly one COUNT query" (`contract.test.mjs:696` at `7618acc`) becomes
+  "exactly one host-gate read".
 - `tenant-directory.ts:77-79` ("nothing is unmarshalled and no tenant data crosses into the edge layer"): the
   language list crosses (public data, a few subtags).
+
+### 7.4 Serving rows and byte comparators at `7618acc` — rules for every build slice
+
+- **Rows.** `cd renderer && npm run test:serving` at `7618acc`: **139 tests, 139 pass, 0 fail** (EXECUTED
+  2026-11-22 for revision 6; `next` target, about 20 s). These are the 126 rows of the spike base and the 13
+  `sched1g-*` rows of `sched-1g2`. Every build slice keeps all 139 and adds its own rows.
+- **One listed comparator difference.** Since `sched-1g2` the root folder `app/%5Fbook` is a static sibling of
+  `[siteId]`, so every page's payload holds `"s":["%5Fbook","api"]` in the root `siteId` descriptor where the
+  committed baselines hold `["api"]`. The comparators accept exactly that item at that place
+  (`renderer/test/serving-contract/cm1-byte-identity.mjs:259-292` `rootSiblingAllowance`, ruling
+  SCHED-1G2-ROOT-SIBLING = A), inside `maskBody` (`:326`), which both comparator families run (`compareTenant`,
+  `:410`; `locale-1/proof.mjs` `checkExpected`). Controls: row `sched1g-root-sibling-controls`.
+- **Rules for `lang-1a`…`1d`:**
+  1. Add no folder (route segment) directly under `renderer/src/app/`. A third static sibling of `[siteId]` changes
+     the descriptor of every page, falls outside the allowance, and fails every identity row. `site-segment.ts`
+     goes in `renderer/src/lib/`.
+  2. Add no comparator allowance and change no committed baseline. A one-language page keeps `"k":"<host>"` in the
+     descriptor, so the identity rows compare it unchanged.
+  3. A language page carries `"k":"<host>~<l>"` (OBSERVED in W1). Such pages exist only in the new `lang1*`
+     fixtures, which have no `before/` capture and are not added to the en-US subjects or to any captured fixture
+     set, so no identity row sees them.
+  4. The `sched1g-*` rows stay in every slice's proof without change (§ 7.1).
 
 ## 8. Output contract
 
@@ -577,7 +657,8 @@ segment rule (`languages.includes(first)`) is `pageLanguageOf` on the same parse
 For every rule: a tenant without `languages` gets today's bytes. The general proof is the serving suite's
 byte-identity rows (`cm1-identity-*`, `loc1-text-*`, `loc1-ro-*`, `loc1e-*`, `cq1-*`, `ct1-*`, `sl1*`, `hc1-*`,
 `bpf1-*`, `cc1-*`) on every build slice, plus the `locale-1e` staging identity proof on the en-US and ro-RO
-staging sites. The spike shows the routing half already passes them (W1c, 126/126).
+staging sites. The spike shows the routing half already passes them (W1c, 126/126 at `d1ffd80`); at `7618acc` the
+suite has 139 rows and the comparator rules of § 7.4.
 
 ### 8.1 `<html lang>` (`lang-1b`)
 
@@ -590,8 +671,10 @@ Rule: the page language subtag when the segment carries a listed language; else 
 Rule: `resolveLocaleStrings(localeInputFor(config, language))`. `localeInputFor` returns `config` for the default
 language, and `{ locale: language }` for an extra language: the pack of that language, without the tenant's
 overrides (`siteStrings`, `catalogStrings`, `commerceStrings`, `gdpr.*`, `legalLinks` labels — written in the default
-language; DECISION LANG1-OVERRIDES). A language without a pack (de, fr before `lang-1d`) gets the English pack
-(today's rule, `locale-strings.ts:92-96`). Call sites: `layout.tsx:124` (meta description), `:196` (chrome),
+language; LANG1-OVERRIDES = A, ratified 2026-11-22). A language without a pack (de, fr before `lang-1d`) gets the
+English pack (today's rule, `locale-strings.ts:92-96`). After `lang-1d` the `de` and `fr` packs are in the global
+registry `LANGUAGE_PACKS` (LANG1-PACK-NOOP = B), so the same call selects them: no other selection path, no
+parameter. galeriilevoicu (ro, en) needs no new pack. Call sites: `layout.tsx:124` (meta description), `:196` (chrome),
 `SitePage.tsx:636` (block chrome of content pages). One language: `localeInputFor(config, undefined) === config` →
 same texts. Proof: `loc1-text-*`, `loc1-ro-*` unchanged + `lang1b-texts`.
 
@@ -614,21 +697,24 @@ page's set (§ 6.2); leave out every `hreflang` value held by two or more of the
 members. When at least two members are listed, `alternates` becomes `{ canonical, languages }` with one entry per
 listed member — `hreflang` = its derived language (`extra` → its subtag; `default` →
 `localeLanguageSubtag(locale)`), `href` = `https://<domain><address>`, where the address is `/` for the member
-whose slug is `homePageSlug`, else its slug — plus `x-default` = the `href` of the listed default-language member,
-when there is one. Fewer than two listed members → the metadata object is exactly today's
-(`alternates: { canonical }`, `:324`). One language: no read, same object. Proof: identity rows (the `<head>`
-bytes) + `lang1c-hreflang`, `lang1c-hreflang-member-invalid`, `lang1c-same-language-pair`.
+whose slug equals `homePageSlug` **and** whose derived language is the default (the read-side guard of V6, § 5.2),
+else its slug — plus `x-default` = the `href` of the listed default-language member, when there is one. Fewer than
+two listed members → the metadata object is exactly today's (`alternates: { canonical }`, `:324`). One language: no
+read, same object. Proof: identity rows (the `<head>` bytes) + `lang1c-hreflang`, `lang1c-hreflang-home`,
+`lang1c-hreflang-member-invalid`, `lang1c-same-language-pair`.
 
 ### 8.5 Sitemap alternates (`lang-1c`)
 
 Rule (`renderer/src/app/[siteId]/sitemap.xml/route.ts:30-67`): when `config.languages` is not empty, published pages
 are joined with the tenant's membership items (§ 6.2, the same membership rule as the head); each `<url>` of a
 listed member gets one `<xhtml:link rel="alternate" hreflang="…" href="…"/>` per listed member of its set, plus
-`x-default` (same rules as § 8.4, the same two-member threshold). `<urlset>` gets
+`x-default` (same rules as § 8.4, the same two-member threshold). The `href` of a member is `/` only when its slug
+equals `homePageSlug` and it derives the default language (the guard of § 8.4); else its slug. The `<loc>` of each
+`<url>` stays the page's slug, as today (`route.ts:33`, `:38`). `<urlset>` gets
 `xmlns:xhtml="http://www.w3.org/1999/xhtml"` only when at least one link is written. One language: no
 membership query, no join, same bytes. Proof: `cm1-catalog-sitemap`
-unchanged + new `lang1c-sitemap` (two-language fixture) and `lang1c-sitemap-identity` (one-language fixtures: the
-sitemap body equals the one before the slice).
+unchanged + new `lang1c-sitemap` (two-language fixture), `lang1c-hreflang-home` (its sitemap half) and
+`lang1c-sitemap-identity` (one-language fixtures: the sitemap body equals the one before the slice).
 
 ### 8.6 Language switch (`lang-1c`)
 
@@ -865,6 +951,15 @@ The row `lang1b-window` of revision 2 is withdrawn with the guard it tested; the
   min after the save; it is best-effort, and in the two residual cases of § 9.4 a page can show the old language
   state until a later flush or stored-page purge. The sentence does not promise a time; GO LIVE NOW clears the
   edge again, and any content save of the site clears its stored pages.
+- **Settings → home page** (same file, the `homePageSlug` field, `Settings.tsx:1003-1004`): no new control. A save
+  that breaks V6 shows the `400` message that names `homePageSlug`.
+- **Settings → "Site language" select** (`Settings.tsx:2015-2032`; LANG1-PACK-NOOP = B). After `lang-1d` the
+  select offers German and French with no admin code change: it lists `Object.values(LANGUAGE_PACKS)` (`:2025`),
+  and choosing one writes the pack's `defaultLocale` (`withSiteLanguage`, `:59-61`). Why this is the smallest
+  consistent answer: ruling LOCALE1-LANGUAGE = A (`locale-1.md` § 16.2 item 3) makes a new language "one
+  language-pack file plus its registration … no other code changes"; under B a one-language `de-DE` or `fr-FR`
+  site is a supported site with German or French texts, so the owner must be able to choose it; hiding the two
+  options needs a second list of packs, which is the selection path that B removes.
 - **Settings → menu and footer links** (same file): a "Language" selector above the two link editors —
   "Default (<subtag>)" edits `navLinks` / `footerLinks` exactly as today; `<l>` edits `navLinksByLang[l]` /
   `footerLinksByLang[l]`; "Use the default menu" stores no list for `<l>`.
@@ -910,6 +1005,16 @@ For each field or input: **absent** / **present, valid** / **present, malformed*
   `lang1c-menu-fallback`, `lang1c-menu-malformed-entries`.
 - **Tenant `languages`, write rule for maps.** Malformed: `L1A-BYLANG-REFUSED` (a key not in `languages`; a value
   that is not a link list) → `400`.
+- **Tenant `homePageSlug` with `languages`, write (V6).** Absent: `L1A-SETTINGS-NO-LANGS` (no check without
+  `languages`). Valid: `L1A-LANGS-VALID` includes `homePageSlug: "/acasa"` with `languages: ["en"]`. Malformed:
+  `L1A-LANGS-HOMEPAGE-REFUSED` — (a) `languages: ["en"]` and `homePageSlug: "/en/home"` in one body → `400`
+  naming `homePageSlug`; (b) stored `homePageSlug: "/en/home"`, body `languages: ["en"]` only → `400` (the merged
+  check); (c) stored `languages: ["en"]`, body `homePageSlug: "/en"` → `400`; control: a tenant without
+  `languages` and `homePageSlug: "/en/home"` → accepted.
+- **Tenant `homePageSlug`, read (§ 8.4, § 8.5).** Valid: `lang1c-hreflang-home` — a set with a default-language
+  member whose slug is `homePageSlug` → its alternate `href` is `https://<domain>/`, in the head and in the
+  sitemap. Malformed (only a direct table edit makes it): the stored `homePageSlug` names a member under a listed
+  prefix → that member is advertised at its own slug, never at `/`; the default member keeps its own slug.
 - **Content `translationKey`.** Absent: the identity rows and `lang1c-no-set` (a page in a language without a key
   → no `hreflang`). Valid: `lang1c-hreflang`. Malformed: `lang1c-key-malformed` (a stored non-string or `""` →
   treated as absent).
@@ -963,41 +1068,55 @@ For each field or input: **absent** / **present, valid** / **present, malformed*
   `L1C-PURGE-SIBLINGS-SITEMAP` (unit, § 9.3: join, leave, rename, publish, unpublish/archive, a content-only edit
   of a member — sibling addresses + `/sitemap.xml`; a keyless page → today's list; restore and import keep their
   whole-tenant wrapper). Malformed: `L1B-PURGE-DOMAIN-TILDE` (a `domain` with `~` → `400`).
-- **German and French packs** (`lang-1d`, under LANG1-PACK-NOOP). `lang1d-one-language-de`,
-  `lang1d-one-language-fr`: a one-language `de-DE` and a `fr-FR` fixture tenant answer the same bytes before and
-  after the slice (the preservation witnesses); `lang1d-extra-de` (a `de` page of a multi-language tenant uses the
-  German site texts, under option A).
+- **German and French packs** (`lang-1d`, LANG1-PACK-NOOP = B). Absent (no `de`/`fr` page, an EN or RO tenant):
+  the identity rows, `loc1-text-*` and `loc1-ro-*` unchanged (the EN and RO packs, `packFor` and the resolver do
+  not change). Valid: `lang1d-extra-de` and `lang1d-extra-fr` — a `de` page and a `fr` page of a multi-language
+  fixture tenant show the German and the French site texts and `<html lang="de">` / `"fr"`. Completeness: the
+  compiler (the packs are typed `CompleteLanguagePack`, § 12). No witness keeps a one-language `de-DE` or `fr-FR`
+  tenant on English texts: no such tenant exists (human, 2026-11-22), and one made later gets German or French
+  texts — the intended result.
 
 ## 12. Build slices
 
 Re-cut after the spike: the serving segment (W1) is the base of `<html lang>`, the menus and the texts, so it is
-one slice (`1b`) after the data (`1a`). galeriilevoicu needs `1a`–`1c`; satulbanului `1a`–`1d`. Each slice: staging,
-the full probe suite, the identity proof on the en-US and ro-RO staging sites (the `locale-1e` proof), then the
-human's production deploy. None migrates data: every field is optional.
+one slice (`1b`) after the data (`1a`). **galeriilevoicu.ro** (Romanian default, English extra) is served by
+`1a`–`1c` with the existing EN and RO packs; it does not wait for `1d`. **satulbanului** (English default; Romanian,
+German, French extra) needs `1a`–`1d`. Each slice: staging, the full probe suite, the identity proof on the en-US and
+ro-RO staging sites (the `locale-1e` proof), then the human's production deploy. None migrates data: every field is
+optional. Every slice keeps the 139 serving rows of `7618acc` and the comparator rules of § 7.4.
 
-**`lang-1a` — data and writes** (§ 5, § 6, § 10).
+**`lang-1a` — data and writes** (§ 5, § 6, § 10; V1–V6).
 - Paths: `packages/shared/src/index.ts`, `packages/shared/src/languages.ts` (new), `packages/shared/test/`;
   `backend/src/content/{create,update,restore,list}.ts`, `backend/src/import/wordpress.ts`,
   `backend/src/tenant/settings.ts`, `backend/test/unit/`; `admin/src/pages/{Settings,ContentEditor}.tsx`;
   `tools/mcp-server/src/index.ts`; `docs/database-patterns.md` (the `TRANSLATION#` item), this file.
-- Proof: the `L1A-*` rows (the preservation witness `L1A-RESTORE-NO-KEY-AS-HEAD` included); `npm run typecheck`;
-  `cd backend && npm run test:unit`; `cd tools/mcp-server && npm test`; `cd renderer && npm run test:serving` still
-  126/126 (no renderer file changes, but the shared package the
+- Proof: the `L1A-*` rows (`L1A-LANGS-HOMEPAGE-REFUSED` and the preservation witness `L1A-RESTORE-NO-KEY-AS-HEAD`
+  included); `npm run typecheck`; `cd backend && npm run test:unit`; `cd tools/mcp-server && npm test`;
+  `cd renderer && npm run test:serving` still 139/139 (no renderer file changes, but the shared package the
   renderer imports does).
+- Deploy order: shared build, then backend, then admin. Reason: the settings handler stores the merged body
+  (`settings.ts:323`), so an admin that sends `languages` to an old backend would store it unchecked.
 - Rollback: redeploy the previous backend and admin. Stored fields and items are ignored by the old code (an old
   restore writes the history `slug` again, as it does today).
 
-**`lang-1b` — segment, `<html lang>`, texts, purge** (§ 7, § 8.1, § 8.2, § 9.2).
-- Paths: `renderer/middleware.ts`, `renderer/src/lib/{tenant-directory,site-segment,dynamo}.ts`,
-  `renderer/src/app/[siteId]/layout.tsx`, both catch-all `page.tsx`, `renderer/src/components/SitePage.tsx`
-  (`:636`), `renderer/src/app/api/revalidate/route.ts`,
-  `renderer/test/{serving-contract,serving-bundle,unit}/`, `docs/caching-architecture.md`; the deferred flush
+**`lang-1b` — segment, `<html lang>`, texts, purge** (§ 7, § 8.1, § 8.2, § 9.2, § 9.4).
+- Paths: `renderer/middleware.ts` (the language rules after A3, and A3's gate call only, § 7.1),
+  `renderer/src/lib/{tenant-directory,site-segment,dynamo}.ts`, `renderer/src/app/[siteId]/layout.tsx`, both
+  catch-all `page.tsx`, `renderer/src/components/SitePage.tsx` (`:636`), `renderer/src/app/api/revalidate/route.ts`,
+  `renderer/test/{serving-contract,serving-bundle,unit}/`, `renderer/ARCHITECTURE.md` (the gate's name, `:756`),
+  `docs/caching-architecture.md` (§ *Serving contract*, one sentence in § *Booking pages*); the deferred flush
   (§ 9.4): `backend/src/tenant/settings.ts`, `backend/src/scheduled/debounce-flush.ts`, `backend/test/unit/`, the
-  Languages card text (`admin/src/pages/Settings.tsx`). No infra change (LANG1-DEFERRED-FLUSH-LAYER2 = A′).
-- Proof: `npm run test:serving` (every identity row + `lang1b-*`), `npm run test:serving-bundle` (`B-LANG-PURGE`,
-  `B-LANG-LIMIT-LIVE-KEY`), the `L1B-*` rows (the `L1B-DEFERRED-FLUSH-*` and `L1B-LIMIT-STALE-VERDICT` rows
-  included); staging: `<html lang>` correct on a two-language staging site, and one language-list change followed
-  by the deferred `/*` in the debounce function's log (the deployed-edge half, NOT RUN before then).
+  Languages card text (`admin/src/pages/Settings.tsx`). No folder under `renderer/src/app/` (§ 7.4). No infra
+  change (LANG1-DEFERRED-FLUSH-LAYER2 = A′).
+- Proof: `npm run test:serving` (all 139 rows of `7618acc`, the `sched1g-*` rows included, + `lang1b-*`),
+  `npm run test:serving-bundle` (`B-LANG-PURGE`, `B-LANG-LIMIT-LIVE-KEY`), the `L1B-*` rows (the
+  `L1B-DEFERRED-FLUSH-*` and `L1B-LIMIT-STALE-VERDICT` rows included), `renderer/test/unit/tenant-directory.test.ts`
+  on `HostVerdict`; staging: `<html lang>` correct on a two-language staging site, the booking walk of `sched-1g`
+  unchanged, and one language-list change followed by the deferred `/*` in the debounce function's log (the
+  deployed-edge half, NOT RUN before then).
+- Deploy order: before production, the F-LANG-TILDE check (§ 15). Then the renderer (segment, layout and purge route
+  in one deploy: `~` entries exist only once this renderer runs, and its own purge route deletes them), then the
+  backend (deferred flush) and the admin (one sentence).
 - Rollback: redeploy the previous renderer (and backend), then GO LIVE NOW. A `SYSTEM#CDN_DEFERRED_FLUSH` item
   left behind is read by no old code (inert). `~` objects are orphaned and leave with the nightly
   flush.
@@ -1006,29 +1125,64 @@ human's production deploy. None migrates data: every field is optional.
 - Paths: `renderer/src/components/{SitePage,Navbar}.tsx`, `renderer/src/app/[siteId]/layout.tsx`,
   `renderer/src/app/[siteId]/sitemap.xml/route.ts`, `renderer/src/lib/dynamo.ts`,
   `backend/src/content/{create,update}.ts` (sibling and sitemap purge targets), their tests, docs.
-- Proof: the `lang1c-*` rows + the identity rows; the headless-Chromium switch check on staging.
+- Proof: the `lang1c-*` rows (`lang1c-hreflang-home` included) + the identity rows and every earlier row; the
+  headless-Chromium switch check on staging.
+- Deploy order: backend (the sibling and sitemap purge), then renderer (the reads it keeps fresh).
 - Rollback: redeploy the previous renderer (and backend), then GO LIVE NOW.
 
-**`lang-1d` — German and French packs, site part. Last; blocked on DECISION LANG1-PACK-NOOP (§ 13).**
-- Why blocked: `packFor` selects a pack from the global registry by the locale's language, for every tenant
-  (`locale-strings.ts:92-96`). Adding `de` and `fr` there changes a one-language `de-DE` or `fr-FR` tenant from the
-  English fallback texts to the new pack: not a no-op. galeriilevoicu needs `ro` and `en` only, so `lang-1a`…`1c` do
-  not depend on this decision.
-- Paths (option A): `packages/shared/src/language-packs/{de,fr}.ts`, a pack table used only for extra-language
-  pages (`localeInputFor`, § 8.2) — not the global `LANGUAGE_PACKS` that `packFor` reads — and pack tests.
-- Proof: `lang1d-one-language-de`, `lang1d-one-language-fr` (preservation witnesses, § 11), `lang1d-extra-de`; the
-  coverage rule of `locale-1.md` § 16 (no site key without a text); the human approves the texts.
-- Rollback: redeploy the previous shared package and renderer.
+**`lang-1d` — German and French packs** (LANG1-PACK-NOOP = B; § 8.2, § 10). Last; for satulbanului only.
+- Scope: `packages/shared/src/language-packs/de.ts` and `fr.ts`, registered in the global `LANGUAGE_PACKS`
+  (`language-packs/index.ts:15-18`) — the ratified way to add a language (`locale-1.md` § 16.2 item 3). No `packs`
+  parameter on `resolveLocaleStrings` or `packFor`, no second pack table.
+- Effects, all intended: a `de` or `fr` page of a multi-language tenant shows German or French texts (§ 8.2); a
+  one-language `de-DE` or `fr-FR` tenant created later shows German or French texts; the admin "Site language"
+  select offers German and French (§ 10); the booking pages select the new packs by `?lang=de|fr` and for a `de-DE`
+  or `fr-FR` tenant (`renderer/src/lib/booking-text.ts:25-27`, `:33`); the backend texts that resolve through the
+  packs follow the tenant locale in the same way (`git grep -l resolveLocaleStrings -- backend/src`:
+  `orders/create.ts`, `interest/public.ts`, `import/glam-pricelist.ts`, EXECUTED at `7618acc`).
+- EN and RO tenants: no change. The EN and RO packs, `packFor`, `resolveLocaleStrings` and `bookingLanguage` do not
+  change, so these tenants resolve the same texts. The only new answer they can give is a booking page asked with
+  `?lang=de` or `?lang=fr` by the visitor, which before `1d` fell back to the tenant language; that is the
+  `?lang=` contract of `sched-1.md` § 10.1 (row `sched1g-g3` checks `lang=xx`, not `de` or `fr`, and stays green).
+- Coverage rule (no key without a text): the two packs are typed `CompleteLanguagePack`
+  (`language-packs/types.ts:61-66`), as the English pack is, so the compiler refuses a pack with a key missing in
+  any part. Size at `7618acc` (EXECUTED: key count of the built English pack): site 79, commerce 180, catalog 55,
+  booking 98 — 412 keys per language (a count key counts once). All four parts, because under B the packs are
+  global: every visitor surface of a German or French site and the booking `?lang=` read them, and a partial pack
+  gives two languages on one page (for example `?lang=de`: German dates, English booking texts). The human approves
+  the texts, as for Romanian (`locale-1.md` § 16.2 item 4).
+- Tests whose subject changes. They use German or French as "a language without a pack" (`git grep` for `de-DE`,
+  `fr-FR`, `"de"`, `"fr"` over the test trees, EXECUTED at `7618acc`; a text search, so `1d` searches again; each
+  hit line was read): `packages/shared/test/locale-strings.test.ts:304-306`, `:385-387`, `:411-427`, `:523-526`;
+  `packages/shared/test/cdl-1.test.ts:52-53`; `admin/src/pages/Settings.test.ts:94`;
+  `renderer/test/unit/sched-1g-pure.test.ts:132-137`; the case label of
+  `renderer/test/unit/locale-1e-html-lang.test.ts:42` ("no de pack"; its assertion `lang="de"` stays true). Rule
+  that closes the class: a test of the no-pack fallback uses a language that has no pack and asserts that
+  precondition in the test (`!Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, l)`, the form of
+  `locale-strings.test.ts:414`); the old `de` and `fr` cases become cases of a language with a pack. Tests that
+  use `de-DE` only to format dates or prices (`price-locale-1*`, `locale-1c-blocks-client`, `locale-1d-server-render`)
+  do not change (INFERRED from their assertions, which read the format locale, not a text).
+- Paths: `packages/shared/src/language-packs/{de,fr,index}.ts`, the tests above, the comment of
+  `packages/shared/src/locale-strings.ts:80-85` (it gives `de-DE` as the example of a language with no pack), this
+  file.
+- Proof: `lang1d-extra-de`, `lang1d-extra-fr`; the identity rows, `loc1-text-*` and `loc1-ro-*` unchanged;
+  `npm run typecheck` (completeness); `cd packages/shared && npm test`; `cd admin && npm run test:unit`;
+  `cd renderer && npm test`; the human approves the texts.
+- Deploy order: shared build, then backend, renderer and admin in one deploy window (each bundles the shared
+  package; with no German or French tenant, the order has no visible effect).
+- Rollback: redeploy the previous backend, renderer and admin. A tenant that chose German or French in the
+  meantime keeps its `locale` and shows English texts again (the fallback of today); no data repair.
 
-One-language no-op argument per slice: `1a` — the new paths run only with `translationOf`, with new settings
-fields, or on a page that holds a `translationKey` (keyed restore); a tenant without `languages` can hold no key
-(C2), so its restores are HEAD's (the added condition `attribute_not_exists(translationKey)` always holds; witness
-`L1A-RESTORE-NO-KEY-AS-HEAD`); `1b` — the rewrite, the key and `resolveLocaleStrings` input are unchanged without
-`languages`, and the deferred flush is armed only when the language set changes (the gate read changes shape,
-same count: one per host per 60 s); `1c` — every new read and element is guarded by `config.languages` or a set
-of ≥ 2, and the set purge runs only for keyed pages; `1d` — only under LANG1-PACK-NOOP option A, where the new
-packs are reached only from extra-language pages (witnesses `lang1d-one-language-de`, `-fr`); under option B it is
-not a no-op.
+One-language argument per slice (the live sites are one-language EN or RO sites): `1a` — the new paths run only
+with `translationOf`, with new settings fields, or on a page that holds a `translationKey` (keyed restore); a tenant
+without `languages` can hold no key (C2), so its restores are HEAD's (the added condition
+`attribute_not_exists(translationKey)` always holds; witness `L1A-RESTORE-NO-KEY-AS-HEAD`); V6 checks nothing
+without `languages`; `1b` — the rewrite, the key and `resolveLocaleStrings` input are unchanged without `languages`,
+the booking branch A3 answers as before, and the deferred flush is armed only when the language set changes (the
+gate read changes shape, same count: one per host per 60 s); `1c` — every new read and element is guarded by
+`config.languages` or a set of ≥ 2, and the set purge runs only for keyed pages; `1d` — no change for EN and RO
+tenants (above); a one-language German or French tenant changes from English to its own texts, which is the
+intended result, and none exists (human, 2026-11-22).
 `1b` has one exception, stated in § 7.1: while the gate read fails, language-shaped paths are served uncached.
 
 ## 13. Decisions
@@ -1051,9 +1205,13 @@ function, no stored-page (origin) purge, no domain list, no infra change. Both r
 (§ 9.4). The rejected option B (a deferred origin purge too) needed two environment values and a secret grant on
 the debounce function, plus target-retention and purge-failure contracts, and still gave no bound.
 
-Open decisions follow: LANG1-HTML-LANG, LANG1-LANG-SOURCE, LANG1-DATA-SHAPES, LANG1-OVERRIDES, LANG1-PACK-NOOP.
+**Ratified by the human, 2026-11-22** (Appendix D, words quoted there): LANG1-HTML-LANG = A, LANG1-LANG-SOURCE = A
+with the homepage rule, LANG1-DATA-SHAPES = A, LANG1-OVERRIDES = A, LANG1-PACK-NOOP = **B**. The base assumption
+of the ratification: these are the first sites with more than one language, and no existing site uses German or
+French. The five records below keep the question and the options as they were put to the human; the line
+`RULED` gives the answer and what it changed in this file. None is open.
 
-DECISION_REQUIRED: LANG1-HTML-LANG
+DECISION RECORD (ratified 2026-11-22): LANG1-HTML-LANG
 QUESTION: The root layout writes `<html lang>`, the menu, the footer and the cookie texts, but it cannot see the page
 address, and it may not read the request (that turns every cached page into an error, W4). The spike found one way
 that works: the middleware, which sees the address, puts the language into the internal first segment
@@ -1076,10 +1234,11 @@ OPTIONS:
 - C. W6: move the menu, footer and texts into the page, keep W3 for `<html>`. Reward: no middleware change. Risk:
   `<html lang>` still wrong; every page type (content, product, category, cart) changes; not measured.
 RECOMMENDED: A.
+RULED: A (human, 2026-11-22). § 3.5, § 7, § 9.2 apply as written.
 BLOCKING_REASON: `lang-1b` and `lang-1c` are built on the chosen way; the serving contract is changed only by the
 human.
 
-DECISION_REQUIRED: LANG1-LANG-SOURCE
+DECISION RECORD (ratified 2026-11-22): LANG1-LANG-SOURCE
 QUESTION: Where does a page's language come from? The draft said "the page's language is data on the page; the
 address is not parsed". The spike shows the middleware must know the language before the page is read; it can see
 only the address and the tenant record. If the language is a stored page field, the middleware must read the page
@@ -1098,10 +1257,13 @@ OPTIONS:
   Reward: any address in any language. Risk: one or two DynamoDB reads in the middleware per origin request (row
   `a2` "zero DynamoDB reads on HIT" fails unless a per-path cache is added); stale language for up to its TTL.
 RECOMMENDED: A.
+RULED: A with the homepage rule (human, 2026-11-22; the correction of the decision review, Appendix C): rule V6
+(§ 5.2), the read-side guard (§ 8.4, § 8.5), rows `L1A-LANGS-HOMEPAGE-REFUSED` and `lang1c-hreflang-home` (§ 11).
+`locale-1.md` § 1.1 carries the dated amendment note with the amended sentence.
 BLOCKING_REASON: § 5 and § 6 (fields, validation, language derivation) and the editor design follow from it; it
 amends a ratified statement.
 
-DECISION_REQUIRED: LANG1-DATA-SHAPES
+DECISION RECORD (ratified 2026-11-22): LANG1-DATA-SHAPES
 QUESTION: New data crosses the boundaries backend ↔ renderer ↔ admin ↔ MCP: tenant `languages`, `navLinksByLang`,
 `footerLinksByLang`; page `translationKey`; API input `translationOf`; the `TRANSLATION#<key>#<nodeId>` item (§ 5,
 § 6). Are these the shapes?
@@ -1119,9 +1281,10 @@ OPTIONS:
   Reward: no new item type. Risk: every set change and every address change writes every member; a missed write
   leaves wrong `hreflang`.
 RECOMMENDED: A.
+RULED: A (human, 2026-11-22). § 5 and § 6 apply as written (with `homePageSlug` as an input of V6).
 BLOCKING_REASON: `lang-1a` writes these shapes; once stored on live tenants, a change is a data migration.
 
-DECISION_REQUIRED: LANG1-OVERRIDES
+DECISION RECORD (ratified 2026-11-22): LANG1-OVERRIDES
 QUESTION: A tenant can override texts (`siteStrings`, `catalogStrings`, `commerceStrings`, cookie and legal labels;
 ratified "overridable per tenant", `locale-1.md:22`). These overrides are written in the default language. What
 does a page in an extra language show?
@@ -1134,9 +1297,10 @@ OPTIONS:
 - C. Overrides per language (one more map per part). Reward: full control. Risk: a larger Labels page and data
   shape that neither named client asked for.
 RECOMMENDED: A.
+RULED: A (human, 2026-11-22). § 8.2 applies as written.
 BLOCKING_REASON: `lang-1b` implements the resolver input; it narrows a ratified statement for extra-language pages.
 
-DECISION_REQUIRED: LANG1-PACK-NOOP
+DECISION RECORD (ratified 2026-11-22): LANG1-PACK-NOOP
 QUESTION: German and French site texts are needed by satulbanului only. Today a tenant picks its texts by the
 language of its `locale`, from one global list of packs (`locale-strings.ts:92-96`); a `de-DE` or `fr-FR` tenant gets
 English texts because no `de` or `fr` pack exists. Adding the packs to that global list changes what every live
@@ -1152,6 +1316,14 @@ OPTIONS:
 - C. Defer the German and French packs. Reward: no change to any output, no new selection rule. Risk: satulbanului's
   German and French pages show English texts for the site part.
 RECOMMENDED: A, subject to review of the selection rule.
+RULED: **B** (human, 2026-11-22), not the corrected A of Appendix C. The human states as a fact that no existing
+site uses German or French, so the preservation exception of option B touches no live site, and the operator's
+tenant list of option B is not needed. Applied: the German and French packs go into the global `LANGUAGE_PACKS`;
+no `packs` parameter, no `EXTRA_LANGUAGE_PACKS`, no witness for one-language German or French tenants (the rows
+`lang1d-one-language-de`, `-fr` and `L1D-PACKS-OPTION-ABSENT` are withdrawn). A one-language `de-DE` or `fr-FR`
+tenant made later gets German or French texts: the intended result. The admin "Site language" select offers German
+and French (§ 10). `lang-1d` keeps its coverage rule and its rows for a `de` and a `fr` page (§ 12). § 14 holds no
+pack abstraction (none was added).
 BLOCKING_REASON: `lang-1d` cannot both add the packs to the global list and keep one-language output; `lang-1a`…`1c`
 do not depend on it (galeriilevoicu needs `ro` and `en` only).
 
@@ -1174,9 +1346,9 @@ One line each: what — current users — axis of variation — simpler choice r
   `debounce-flush.ts` — none: a second due time the existing marker cannot hold — rejected: a later due time in
   `SYSTEM#CDN_PENDING` (one due time, `edge-invalidation.ts:113-120`, deleted at its first `/*`,
   `debounce-flush.ts:313-333`), and a new scheduled function (the existing one runs every minute).
-- `HostVerdict` sum type (`tenant-directory.ts`) — the middleware (one caller) — none: it replaces `boolean | null`
-  now that the verdict carries the language list — rejected: a second function reading the same cache entry (two
-  awaits, a boolean and a list that can disagree).
+- `HostVerdict` sum type (`tenant-directory.ts`) — the middleware (two call sites at `7618acc`: branch A3, booking, and
+  the production branch) — none: it replaces `boolean | null` now that the verdict carries the language list — rejected:
+  a second function reading the same cache entry (two awaits, a boolean and a list that can disagree).
 - `parseSiteSegment` + `localeInputFor` (`renderer/src/lib/site-segment.ts`) — layout (2 functions), both catch-all
   pages, SitePage — none: one parse rule and one resolver-input rule at 4+ sites — rejected: `getTenantConfig`
   strips the suffix silently (a name that hides a parse), and a ternary repeated at every site.
@@ -1231,13 +1403,15 @@ Findings (pre-existing; not fixed here):
 
 Every build slice touches code that serves live tenants. Order: staging, the full probe suite, the identity proof
 on the en-US and ro-RO staging sites, the human's production deploy. No data migration (all fields optional).
-`lang-1b` changes the host-gate read for every request: before its production deploy, F-LANG-TILDE is checked.
+`lang-1b` changes the host-gate read for every request, the booking branch A3 included: before its production
+deploy, F-LANG-TILDE is checked. Per-slice deploy order and rollback: § 12. `lang-1a`…`1c` ship for galeriilevoicu
+without waiting for `lang-1d`.
 
 ## 17. Definition of done, evidence, exit
 
-Definition of done of this specification slice: the spike recorded (§ 3, done); the five open decisions of § 13
-answered; at ratification the operator registers `lang-1a`…`1d` in `docs/ROADMAP.md` and amends `locale-1.md:22`
-with the wording of LANG1-LANG-SOURCE (both outside this slice's allocation).
+Definition of done of this specification slice: the spike recorded (§ 3, done); the five decisions of § 13
+answered (done, human ratification 2026-11-22, Appendix D); `lang-1a`…`1d` registered in `docs/ROADMAP.md` and the
+dated amendment note in `locale-1.md` § 1.1 (done in revision 6, packet LANG-1R).
 
 Evidence of this slice (EXECUTED 2026-11-21, base `d1ffd80`): seven `npm run test:serving` runs (HEAD, W3, W2, W4,
 W1b, W1c: counts in § 3.2; and one on the reverted tree at the end: 126/126); six probe runs (W0, W3, W2, W4, W1,
@@ -1251,11 +1425,18 @@ machinery facts of § 9.4 were read at `68f0dbb` (OBSERVED). Revision 4 stopped 
 packet § 9 missed the live-key origin case; `notes-for-human.md` in the relay directory). Revision 5 (packet § 10,
 LANG1-DEFERRED-FLUSH-LAYER2 = A′) ran nothing: § 9.4 from *How it ends*, § 10 (the sentence's rationale), § 11,
 § 12, § 13, § 15 (F-LANG-SETTINGS-RACE), Appendix B, the status line; its new citations are at `68f0dbb`.
+Revision 6 (packet LANG-1R, the human's ratification) changed the text of the header, the status line, § 2
+(base assumption), § 3.4, § 3.5, § 4, § 5 (V6 and its input), § 5.2, § 5.3, § 7.1, § 7.3, § 7.4 (new), § 8, § 10,
+§ 11, § 12, § 13, § 14, § 16, § 17, Appendix C (state line) and Appendix D (new). It ran one
+`cd renderer && npm run test:serving` at `7618acc` on the unchanged tree (EXECUTED: 139 tests, 139 pass, 0 fail),
+the deterministic searches named where they are used (§ 7.1 `isWiredTenantHost`; § 12 the pack readers and the
+tests that name German or French), and a key count of the built English pack (§ 12). It read the files listed in
+the header at `7618acc` (OBSERVED).
 NOT RUN: `npm run test:serving-bundle` (the spike changed no S3 code; the S3 half of § 9.2 is INFERRED from
 `route.ts:84-117`); any staging or production call; `cd backend && npm test`.
 
-Exit criterion: with the decisions answered, `lang-1a` can be built from § 5, § 6, § 10, § 11 and § 12 without
-further design.
+Exit criterion: with the decisions answered (done), `lang-1a` can be built from § 5, § 6, § 10, § 11 and § 12
+without further design. Next: `lang-1a`.
 
 References: `docs/caching-architecture.md` § *Serving contract*, § *Measured serving behaviour*;
 `renderer/test/serving-contract/README.md`; `docs/slices/locale-1.md` § 16, `docs/slices/locale-1e.md`;
@@ -1346,4 +1527,24 @@ by independent providers.
     constant `EXTRA_LANGUAGE_PACKS` used only by the extra-language branch of `localeInputFor`; the global
     registry and the admin "Site language" select stay EN and RO. Rows in `lang1d-extra-de`, the preservation
     witnesses `lang1d-one-language-de` / `-fr`, and `L1D-PACKS-OPTION-ABSENT`.
-- State: waits for the human's ratification of the five decisions. No build slice starts before it.
+- State (revision 5): waits for the human's ratification of the five decisions. No build slice starts before it.
+- State (revision 6, 2026-11-22): ratified (Appendix D). The LANG1-LANG-SOURCE correction above is applied (§ 5.2
+  V6, § 8.4, § 8.5, § 11). The LANG1-PACK-NOOP correction above is **not** applied: the human ruled B (§ 13), so
+  `packs`, `EXTRA_LANGUAGE_PACKS`, `lang1d-one-language-de` / `-fr` and `L1D-PACKS-OPTION-ABSENT` are withdrawn.
+
+## Appendix D. Ratification record (human, 2026-11-22; applied by revision 6, packet LANG-1R)
+
+- The human's words: "these are the first sites that need languages so build from that assumption, THERE ARE NO
+  EXISTING SITES THAT USE GERMAN AND FRENCH WE ARE BUILDING SUPPORT FOR LANGUAGES FOR THESE SITES THAT NEED THEM
+  FOR THE FIRST TIME." and "what you recommended is fine."
+- Rulings: LANG1-HTML-LANG = A; LANG1-LANG-SOURCE = A with the homepage rule (V6, § 5.2; read-side guard § 8.4,
+  § 8.5); LANG1-DATA-SHAPES = A; LANG1-OVERRIDES = A; LANG1-STALENESS-BOUND = A with the second edge flush (§ 9.4,
+  ratified earlier the same day); LANG1-PACK-NOOP = **B** (§ 13, § 12 `lang-1d`).
+- Base assumption applied in the whole file: galeriilevoicu.ro and satulbanului are the first sites with more than
+  one language; no existing site uses German or French. Every protection of the live one-language EN and RO sites
+  stays (§ 8, § 12); no protection is kept for a multi-language, German or French site that does not exist.
+- Amended elsewhere: `docs/slices/locale-1.md` § 1.1 (one dated amendment note; the ratified text is kept);
+  `docs/ROADMAP.md` (the `lang-1` row and the rows `lang-1a`…`lang-1d`).
+- HEAD moved to `7618acc`: the booking branch A3 and the root folder `app/%5Fbook` are taken into account (§ 7.1,
+  § 7.4); `/_booking` paths are not language paths; the serving suite has 139 rows (EXECUTED).
+- Next: `lang-1a`.

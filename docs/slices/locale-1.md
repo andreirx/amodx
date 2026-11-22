@@ -27,6 +27,13 @@ Settled by this direction, not re-opened here: the admin UI stays English and is
 one per tenant, overridable by the tenant. It has a commerce part (today's keys), a catalog part (new) and a site
 part (for ordinary content sites). The language is a per-tenant setting.
 
+> **Amendment 2026-11-22** (human ratification of LANG1-LANG-SOURCE = A; `docs/slices/lang-1.md` § 4, § 13,
+> Appendix D). The human's sentence "the language setting is per tenant" and the line above stay as written for
+> the record. From 2026-11-22 they read: **"the default language is set per tenant; a tenant may add languages, one
+> per address prefix"**. A tenant that adds no language is unchanged: its one language is the language of its
+> `locale`. The tenant's overrides apply to its default language; a page in an added language shows that
+> language's pack without them (LANG1-OVERRIDES = A, `lang-1.md` § 8.2).
+
 ### 1.2 Risk retired
 
 Today a tenant cannot get its visitor-facing texts in its own language. Three causes, all OBSERVED on the code:

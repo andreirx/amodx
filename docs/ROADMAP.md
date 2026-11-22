@@ -256,7 +256,11 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 | `redirect-1` | An owner adds a redirect from an old address: `POST`/`DELETE /redirects`, a list screen, MCP. The record and the renderer side exist; only a slug rename writes one today. `docs/slices/redirect-1.md` | DRAFT — no ruling needed |
 | `stay-1` part A | A `date` field type for stored forms plus a "B later than A" rule, so a "Request a stay" form mails room, dates and guests. Starts after `public-harden-1` lands (same handler). `docs/slices/stay-1.md` § 2 | DRAFT — no ruling needed |
 | `stay-1` part B | Amendment to the Track D plan: a stay (a run of nights on one room) next to the timed appointment; one lock per night. Specification only. `docs/slices/stay-1.md` § 3 | WITHDRAWN 2026-11-20 (human: room booking by an external service — `booking-embed-1`) |
-| `lang-1` | More than one language on one site: page language, `hreflang`, menu per language, language switch, German and French packs. Specification, then `lang-1a`…`1d`. Changes the ratified "the language setting is per tenant" of `locale-1.md`. `docs/slices/lang-1.md` | SPEC REVIEWED 2026-11-22 (document approved; LANG1-STALENESS-BOUND = A with a second edge flush, human; decision review 5/5 converged, two corrected — `lang-1.md` Appendix C) — waits for ratification of five decisions |
+| `lang-1` | More than one language on one site. `docs/slices/lang-1.md` | SPEC RATIFIED 2026-11-22; next `lang-1a` |
+| `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | PLANNED — next |
+| `lang-1b` | Language segment, `<html lang>`, texts, purge, deferred edge flush. `lang-1.md` § 12 | PLANNED |
+| `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | PLANNED |
+| `lang-1d` | German and French packs in the global registry (satulbanului). `lang-1.md` § 12 | PLANNED |
 
 ## Courses, payments and growth — DRAFTS (2026-11-20, not ratified)
 
