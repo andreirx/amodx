@@ -1670,3 +1670,236 @@ admin token, `T` = the test tenant id (locale en-US); headers `Authorization: Be
 - Deferred debt carried by the operator: orphan and archived `TRANSLATION#` items (§ 15) → `docs/TECH-DEBT.md`
   with `lang-1c`, the first reader.
 - Next: `lang-1b` (the routing change).
+
+## Appendix F. Build record — `lang-1b` (builder, 2026-11-22, base `47ea18c`)
+
+Status: built in the worktree, not committed, waiting for review. Maturity: PROTOTYPE. Every file of § 12 `lang-1b` was read
+again at `47ea18c` before use. `renderer/middleware.ts` at `47ea18c`: A3 at `:240-265` (gate call `:256`), production gate
+`:339`; the serving suite has **142 rows** (EXECUTED at `47ea18c` before any edit: 142 / 142; names kept in the relay
+directory).
+
+**Changed paths.** Renderer: `middleware.ts`; `src/lib/{tenant-directory,dynamo}.ts`, `src/lib/site-segment.ts` (new);
+`src/app/[siteId]/layout.tsx`; both catch-all `page.tsx`; `src/components/SitePage.tsx` (the `:636` call and its two
+imports); `src/app/api/revalidate/route.ts`; `test/serving-contract/{contract.test.mjs,ddb-stub.mjs,fixtures.mjs,harness.mjs,README.md}`;
+`test/serving-bundle/{bundle.test.mjs,README.md}`; `test/unit/{tenant-directory,revalidate-purge}.test.ts`,
+`test/unit/lang-1b-{site-segment,agreement}.test.ts` (new); `ARCHITECTURE.md`. Backend: `src/tenant/settings.ts`,
+`src/scheduled/debounce-flush.ts`, `test/unit/lang-1b-deferred-flush.test.ts` (new). Docs: `docs/caching-architecture.md`, this
+appendix. No admin file (difference 3), no infra, no dependency in any `package.json`, no folder under `renderer/src/app/`.
+
+**Rows (EXECUTED, all pass on the final tree).** Serving (`next`): `lang1b-segment`, `-html-lang`, `-texts`,
+`-segment-unlisted`, `-tilde-host`, `-dyn-leak`, `-gate-unknown`, `-purge`, `-one-language-identity`, `-langs-malformed`;
+row `(c)` keeps its meaning, its message says "exactly one host-gate read". Bundle: `B-LANG-PURGE`, `B-LANG-LIMIT-LIVE-KEY`.
+Renderer unit: `L1B-GATE-ATTRIBUTE-SHAPE` (11 shapes incl. `SS`, `BOOL`, nested `L`/`M`, against `@aws-sdk/util-dynamodb`
+`unmarshall`), `L1B-LANG-AGREEMENT` (10 stored forms × 10 paths, the REAL middleware vs the REAL `getTenantConfig`
++ `pageLanguageOf`), `L1B-PURGE-DOMAIN-TILDE`, and, added: `L1B-SEGMENT`, `L1B-TILDE-WIRE`, `L1B-FIRST-SEGMENT`,
+`L1B-LANGUAGE-SHAPED`, `L1B-SEGMENT-LANGUAGE`, `L1B-LOCALE-INPUT`, `L1B-PURGE-SEGMENTS`, `L1B-PURGE-PATHS`;
+`tenant-directory.test.ts` on `HostVerdict`. Backend unit: `L1B-DEFERRED-FLUSH-ARMED` (×3), `-NOT-ARMED`, `-TWO-CHANGES`,
+`-DRAIN` (×10: absent, future, due, three malformed forms each with and without a concurrent valid write, CloudFront
+throws, the parser case), `L1B-LIMIT-STALE-VERDICT`. Mutation checks (EXECUTED, restored byte for byte): arm on every save →
+1 test fails; no monotonic condition → 2 fail; unconditional delete → 7 fail. Negative control (EXECUTED, serving run 1,
+route unchanged): `lang1b-purge` fails `'HIT' !== 'MISS'` — the spike's W1b observation.
+
+**Gates (EXECUTED, exit codes read bare).** `npm run build` 0; `npm run typecheck` 0; `packages/shared` `npm test` 0 (601);
+`renderer` `npm test` 0 (871 = 836 + 35); `tools/mcp-server` `npm test` 0 (17, route coverage unchanged: no route added);
+`backend` `npm run test:unit` 0 (2059 pass, 1 skipped = 2043 + 16); `admin` `npm run test:unit` 0 (441, unchanged).
+`cd renderer && npm run test:serving` five consecutive runs on the final tree: **152 / 152, 152 / 152, 152 / 152, 152 / 152,
+152 / 152**, exit 0 each (wall 19.0 / 18.9 / 18.6 / 18.4 / 18.5 s); each run holds the 142 row results of `47ea18c` plus the 10
+`lang1b-*` rows. `npm run test:serving-bundle` 0: **60 / 60** (HEAD `47ea18c`: 58 / 58, EXECUTED in a throwaway worktree).
+`git diff --check` 0. The build, typecheck and unit gates ran before the last edit of `ddb-stub.mjs` (a test-only `.mjs`
+file that no build or typecheck compiles); the serving and bundle runs above ran on the final tree.
+Edge bundle (OBSERVED, the build's source map of the middleware chunk): the only `@amodx/shared` file is
+`packages/shared/dist/languages.js` (§ 7.1 INFERRED → OBSERVED).
+
+**Finding F-LANG1B-STREAMED-TITLE (pre-existing race; its rate rose with this slice's first stub; mitigated).** During the
+gate runs, existing rows failed four times in 32 runs of an intermediate tree: `loc1-ro-commerce` (`item 1: kind title →
+text`) twice, and once `loc1-text-commerce` + `loc1-text-mutation` + `loc1-diff-cdl-2` together (twice). Every failure was
+ONE capture of an order page of a commerce tenant rendered on the dynamic twin (`/checkout/cm1-order-cod?email=…`,
+`/checkout/confirmation?id=cm1-order-cod&…`): Next streamed the page metadata (`<title>`, `<meta>`) after the body content
+instead of in `<head>`, and these rows compare the visible-text items of the capture by position. Measured (EXECUTED):
+HEAD product code + HEAD tests, 26 runs: 0 failures; **HEAD product code + this slice's test directory, 12 runs: 1 failure
+of the same kind** (so the race exists without this slice's product code); this slice's tree, 32 runs: 4. The first form of
+the stub's index-lag control built a new 1,917-item array on every read even when unused; with that work removed when no
+stale record is set (`readView`), the final tree ran 15 + 5 runs with 0 failures. Claim, scoped: the race is in the
+existing rows (positional comparison of a streamed dynamic render), its rate depends on read latency, and this slice now adds
+no per-read work to the stub; it is NOT shown that the race cannot occur. The comparators are not edited (§ 7.4 rule 2).
+Proposed follow-up (not built): compare the dynamic order-page captures of the `loc1-*` rows by meaning, as row
+`sched1g-g4` does under SCHED-1G3-G7-ORACLE = A.
+
+**Differences from the specification (local decisions, recorded).**
+1. `SitePage` (`:636`) takes the page language from its own address and its own tenant read (`pageLanguageOf(slugPath,
+   config.languages)`, the § 5 rule), not from the segment: the page receives the host only (§ 7.2), and a new prop would
+   change more of `SitePage` than § 12 allows. It equals the layout's choice whenever the middleware's verdict and the
+   page's read agree; inside the § 9.4 window case 1 the page chrome can follow the new list while the layout follows the
+   old one (any mix is already stated there). Two import lines were needed for the one call.
+2. The middleware decides the language on the first segment decoded once (`firstSegmentOf`), the form in which Next hands
+   the slug to the page, so `/r%6F/despre` gets `~ro` and Romanian texts in the layout and in the page (OBSERVED in
+   `lang1b-segment`). The `~` refusal decodes fully (`%7E`, `%257E`) and checks `Host` and `x-forwarded-host`. "Has the form
+   of a language" (unknown verdict, by-id) is decided by `readLanguageSettings` itself, not by a copy of its pattern.
+3. Admin: no change. The § 10 sentence ("A change to the language list can take a few minutes to show on every page.")
+   already ships with `lang-1a` (`Settings.tsx` `LanguageListControls`, test `L1A-ADMIN-LANGUAGES`); the admin needs no deploy
+   for `lang-1b`.
+4. Harness: the `next` target's constructed environment gains `REVALIDATION_SECRET` (a fixed test value) and row `(iso1)`'s
+   allow-list gains that one name, so row `lang1b-purge` can call `/api/revalidate` on the `next` target as § 11 names it.
+   `(iso1)`'s property (the environment is constructed, never inherited) is unchanged. For review.
+5. Bundle rows wait (at most 5 GETs, 100 ms apart) for a `HIT` before they use "stored" as a precondition: the adapter can
+   store a render after it answered (OBSERVED: `MISS` → `MISS` after a `revalidatePath`).
+6. `lang1b-langs-malformed` compares the payload with the ruled resolved-tree comparison (`resolveFlight`, LOCALE1B-ROW-CUT =
+   A): raw row labels of two equal renders differed once (`$L1f` / `$L23`, OBSERVED).
+7. The marker key `CDN_DEFERRED_FLUSH` is written in the writer (`settings.ts`) and the drain (`debounce-flush.ts`), as
+   `CDN_PENDING` is today; both are pinned by the backend tests to the same literal. `deferredFlushIsDue` is exported for the
+   parser-level case (NaN and ±Infinity cannot be stored).
+8. Two renderer unit tests import `@aws-sdk/util-dynamodb` (the spec's oracle for `L1B-GATE-ATTRIBUTE-SHAPE`). It is a
+   transitive dependency of `@aws-sdk/lib-dynamodb`, hoisted to the root `node_modules`, not declared by `renderer`; no
+   `package.json` changed. If hoisting changes, the two tests fail to load (loud, not silent).
+9. `DynamoDB` `=` on a stored `NULL` `dueAt` (the snapshot delete of the malformed `null` form) is INFERRED to be accepted by
+   DynamoDB; it is EXECUTED only against the test table.
+
+**Abstractions (one line each; § 14 holds them).** `HostVerdict` — users: middleware A3 and production branch — sum type,
+variants fixed — rejected: a second function on the same cache entry. `site-segment.ts` (`parseSiteSegment`,
+`siteSegmentFor`, `carriesSiteSegmentSeparator`, `segmentLanguage`, `localeInputFor`, `firstSegmentOf`, `isLanguageShaped`)
+— users: middleware, layout, both pages, `SitePage`, the purge route — no axis, one rule at 5+ sites — rejected: a parse
+hidden in `getTenantConfig`. `SYSTEM#CDN_DEFERRED_FLUSH` — users: settings handler, debounce function — a second due time
+`CDN_PENDING` cannot hold — rejected: a later due time in `CDN_PENDING`, a new function. Stub controls `failHostGate`,
+`staleTenantRecord` — users: one row each — test seams the wire cannot give.
+
+**Before production (operator).** F-LANG-TILDE: in the admin tenant list, no tenant id and no domain contains `~` (NOT RUN
+by the builder; no AWS call was made). A live tenant with `~` in its domain would answer 404 on every page after this deploy.
+
+**Staging (operator; NOT RUN by the builder).** Deploy order: renderer, then backend (§ 12); admin unchanged.
+1. On a staging TEST tenant (never a live site), locale en-US: `PUT /settings {"languages":["ro"]}`; create `/about` and
+   `/ro/despre` (Published).
+2. `curl -s https://<test-domain>/ro/despre | grep -o '<html lang="[a-z]*"'` → `ro`; `/about` → `en`; the Romanian page
+   shows the RO footer copyright and share label, the English page the tenant's own texts. A second request of each:
+   `x-cache: Hit from cloudfront`.
+3. The booking walk of `sched-1g` on the staging booking tenant: `/_booking` and `/_booking/manage` answer as before (200,
+   `private, no-store`, `X-Robots-Tag`), no `~` anywhere.
+4. `PUT /settings {"languages":["ro","de"]}`; in the debounce function's CloudWatch log, between 5 and about 6 minutes later:
+   `[DeferredFlush] Language-list change flush due … Invalidating /*.` then `CloudFront /* invalidation submitted` and
+   `Marker cleared`; the item `SYSTEM#CDN_DEFERRED_FLUSH` is gone.
+5. Clean up: `PUT /settings {"languages":[],"navLinksByLang":{},"footerLinksByLang":{}}`; archive the two pages.
+6. The en-US and ro-RO staging sites: the `locale-1e` identity proof (51 pages, text-identical) — one-language sites must not
+   change.
+
+**Rollback.** As § 12: redeploy the previous renderer and backend, then GO LIVE NOW. A leftover `SYSTEM#CDN_DEFERRED_FLUSH`
+item is read by no old code.
+
+### `lang-1b` — revision 1 (builder, 2026-11-22; review-0 findings R-LANG1B-01, -02, -03)
+
+**R-LANG1B-03 (separator detection), class: a wire check that stops early.** Rule: `carriesSiteSegmentSeparator` makes
+one linear pass that decodes every valid `%HH` escape, also those that decoding forms (`%25%37%45` → `%7E` → `~`), to any
+depth, ignoring malformed escapes elsewhere (`id%7Ero%ZZ` is refused). Rows: `L1B-TILDE-WIRE` (five and six rounds of
+`%25`, 40 rounds, encoded digits, malformed mixes, linear time on 40 000 characters), `lang1b-tilde-host` (host,
+`x-forwarded-host`, `/tenant/` and `/_site/` ids). Mutation (EXECUTED): the four-round decoder fails 1 test.
+
+**R-LANG1B-02 (handler-name suffix), class: a predicate used beyond what it tests.** `isSiteRouteHandler` is a SUFFIX
+match (true for the four root handlers AND for any content path ending with their names). Rule: the language rules do
+not use it — a handler lives only at the site root and its name is never language-shaped, so no exemption is needed. The
+predicate keeps its older jobs only (the twin exemption; the by-id non-twin rewrite of one-language paths), documented at
+its definition. By-id (`byIdTarget`, one function for `/tenant/` and `/_site/`): a language-shaped first segment → the
+twin with `<id>~<first>`, also for a handler-name suffix; every other by-id path keeps its target. Rows:
+`L1B-LANG-AGREEMENT` (wired, unknown and both by-id modes × the four names, root handlers and `/blog/<name>`
+unchanged), `lang1b-segment` (fixture pages `/ro/{openai-feed,sitemap.xml,robots.txt,llms.txt}`: 200, `~ro`, `lang="ro"`,
+stored under `~ro`; the root handlers still answer), `lang1b-segment-unlisted`, `lang1b-gate-unknown` (twin). Mutation:
+the exemption put back in the wired branch fails 4 tests. Effect on one-language tenants: none on production hosts; on
+preview/test-mode hosts a by-id path whose first segment is language-shaped and that ends with a handler name now renders
+on the twin (it rendered on the cacheable route; previews must never be stored).
+
+**R-LANG1B-01 (encoded slash) — the premise did not hold; the defect did, on the other side.** The review inferred from
+Next's route matcher that the page receives the slug `["ro/despre"]` for `/ro%2Fdespre`. A probe outside the repo
+(the suite's harness, a page planted under each candidate literal slug, twin requests) OBSERVED on Next 16.4.6 under
+`next start` AND through the OpenNext 4.1.9 bundle, identically:
+
+| request | page body (`<h1>`) looked up | `generateMetadata` (`<title>`) looked up |
+|---|---|---|
+| `/ro%2Fdespre`, `/ro%2fdespre`, `/r%6F%2Fdespre` | `/ro%2Fdespre` | `/ro/despre` |
+| `/ro%252Fdespre` | none (404 / 307) | `/ro%2Fdespre` |
+| `/r%6F/x` (earlier rows) | `/ro/x` | `/ro/x` |
+
+So the page body — the visible page and its texts, `SitePage` — receives the first segment decoded once with the slash
+kept encoded. The first form of the middleware decided "Romanian" for `/ro%2Fdespre` in the WIRED branch only (it split a
+decoded `ro/despre` again), while the unknown and by-id branches and the page body said "default": a real disagreement.
+The review's instruction taken literally (decode, re-join, re-split in every branch) was built first and measured: the
+layout said `ro`, the page body rendered the default language (OBSERVED, twin request) — it moved the defect to all
+branches. Rule adopted (one function, every branch and the purge route): `firstPageSegmentOf` = the first path segment
+as the page body receives it — each escape decoded once, `%2F` kept encoded, never split again. Rows: `L1B-FIRST-SEGMENT`,
+`L1B-LANG-AGREEMENT` (oracle stated from the observed table, independent of the code), `lang1b-segment` (a fixture page
+stored at `/ro%2Fdespre`: the body renders it, and the segment, `<html lang>`, footer and share label are all the default
+language; a double-encoded slash leaves no `~` key), `lang1b-segment-unlisted` (both by-id modes). Mutation: decoding the
+slash fails 5 tests.
+
+**Finding F-LANG1B-ENCODED-SLASH-METADATA (pre-existing, every tenant, not language-specific; not changed).** For a first
+segment with an encoded slash Next hands `generateMetadata` and the page body two different `slug` values in one
+response (table above), so such a URL can show the `<title>` of one page with the body of another. Which page body answers
+depends on the stored routes: when no route holds the literal slug (`ROUTE#/ro%2Fdespre`), the body answers the not-found
+handoff (OBSERVED in the probe for `/ro%252Fdespre`, and before a literal page was planted); when one does, the body renders
+it (OBSERVED: the suite's fixture `/ro%2Fdespre`, row `lang1b-segment`). Whether any deployed tenant stores a slug with a
+literal `%2F` is NOT RUN (no data check was made; no AWS call is allowed here). The discrepancy stays deferred work: a fix
+belongs to the page shells, outside this slice.
+
+**Gates of revision 1 (EXECUTED on the corrected tree, exit codes read bare).** `npm run build` 0; `npm run typecheck` 0;
+`packages/shared` `npm test` 0 (601); `renderer` `npm test` 0 (876); `tools/mcp-server` `npm test` 0 (17); `backend`
+`npm run test:unit` 0 (2059 + 1 skipped); `admin` `npm run test:unit` 0 (441). `npm run test:serving` five runs: **152 / 152
+each**, exit 0 (wall 22.8 / 22.8 / 23.9 / 23.2 / 22.9 s), each holding all 142 rows of `47ea18c` plus the 10 `lang1b-*`
+rows. `npm run test:serving-bundle` 0: 60 / 60. `git diff --check` 0. Logs: the relay directory, `evidence/revision-1/`.
+
+**Corrections to the record above.** Difference 2: the middleware decides on `firstPageSegmentOf` (the page body's
+first segment), not on a once-decoded segment that is split again. The abstraction list: `site-segment.ts` exports
+`firstPageSegmentOf` in place of `firstSegmentOf`; the middleware's by-id helper is `byIdTarget`.
+
+### `lang-1b` — revision 2 (builder, 2026-11-22; review-1 finding R-LANG1B-04)
+
+Review-1 closed R-LANG1B-01, -02 and -03 and accepted LANG1B-R01-PREMISE = A (the encoded slash in the FIRST segment).
+**R-LANG1B-04, class: an absence claim about deployed data stated without an executed check.** Rule applied to every
+statement this slice added (searched in the diff of the docs and the code comments): a property of stored tenant data
+is stated as a condition, with the check that would establish it and that check's label. Three statements were of the
+class and are corrected: (1) the finding F-LANG1B-ENCODED-SLASH-METADATA above — the not-found answer now depends on the
+literal route being absent; deployed occurrence is NOT RUN; (2) and (3) two comments of
+`renderer/src/app/api/revalidate/route.ts` that stated no tenant domain contains `~` — the purge's isolation now holds
+"provided no stored tenant domain contains `~`", the operator's F-LANG-TILDE check (NOT RUN). § 9.2's own sentence
+("no host contains `~`") is ratified text and is not edited; its condition is F-LANG-TILDE (§ 15). No software behaviour
+changed in this revision.
+
+**Finding in this slice's own bundle row (revision 2).** In the gate run of revision 2, `B-LANG-PURGE` failed once on its
+precondition "stored again": five GETs 100 ms apart all answered MISS after a `revalidatePath` (the row had passed in the
+three earlier bundle runs). Class: a precondition that waits a fixed time for the adapter's after-response work (tag-table
+writes, the S3 put of a MISS render). Rule: `warmUntilHit` waits, before each retry, until the stubs' journals (DynamoDB
+with the tag table, S3, SQS) have not grown for 300 ms (at most 5 s). This replaces difference 5 above ("at most 5 GETs,
+100 ms apart"). EXECUTED after the change: `npm run test:serving-bundle` five runs, 60 / 60 each.
+
+**Gates of revision 2 (EXECUTED on the final tree, exit codes read bare).** `npm run build` 0; `npm run typecheck` 0;
+`packages/shared` 601; `renderer` `npm test` 876; `tools/mcp-server` 17; `backend` `npm run test:unit` 2059 + 1 skipped;
+`admin` `npm run test:unit` 441; `npm run test:serving` five runs 152 / 152 each (wall 19.6 / 20.0 / 19.8 / 18.7 / 18.4 s);
+`npm run test:serving-bundle` 59 / 60 once (above), then five runs 60 / 60 after the fix; `git diff --check` 0. The
+serving runs preceded the `bundle.test.mjs` change; `test:serving` does not load that file.
+
+### `lang-1b` — operator closeout (2026-11-22): shipped to `main` and to staging
+
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Findings R-LANG1B-01 (encoded slash), -02 (handler-name suffix), -03 (separator detection) and -04
+  (an unsupported claim about stored data) closed in revisions 1 and 2. LANG1B-R01-PREMISE = A accepted by the review.
+- Operator gates, all exit 0: build, typecheck, shared, plugins, renderer unit, serving suite 152 / 152 on five
+  consecutive runs (no check name of the 142 before this slice is missing in any run), serving bundle 60 / 60, admin
+  unit, backend unit, infra, MCP, `git diff --check`; no change under `infra/`, no manifest or lockfile change, no
+  change in the booking tree.
+- Staging (operator, OBSERVED): diff read first, as its own step — code packages only (the two settings functions, the
+  renderer functions and assets, the debounce function, the admin config stamp), no resource added or removed, no IAM
+  change; then deployed. Tenant `cm1-content` through the preview address (no staging tenant has a wired domain, so the
+  wired-host branch and the stored-page keys are covered by the serving suite and the serving bundle only):
+  - `languages: ["ro"]` saved; the marker `SYSTEM#CDN_DEFERRED_FLUSH` was written with a due time 300 s ahead and was
+    drained by the scheduled function about 34 s after its due time; no marker is left.
+  - `/about-…` → 200, `<html lang="en">`, footer "All rights reserved."; `/ro/despre-…` → 200, `<html lang="ro">`,
+    footer "Toate drepturile rezervate.".
+  - An id that carries `~` (`/_site/<id>~ro/…`, `%7E`, `%257E`, `/tenant/<id>~ro/…`) → 404 `private, no-store`.
+  - After `languages: []` the `/ro/…` page renders with `<html lang="en">`.
+  - Booking with scheduling on: `/_booking` and `/_booking/manage` → 200, `private, no-store`, `X-Robots-Tag: noindex,
+    nofollow`, `<html lang="en">`, no `~`; `/ro/_booking` → 404 (a booking address has no language form).
+  - The 51 reference pages of the staging sites are identical to the capture taken before the deploy (status, headers,
+    `lang`, word multiset), captured after the probe's pages were removed.
+  - All probe pages, routes and link items were removed; `languages` is `[]`; scheduling is off and its test data removed.
+- Two checks of the operator's script were wrong oracles, not product defects: (1) "the separator appears nowhere in the
+  page" — the segment `<id>~ro` appears once, as the route parameter in the page data Next embeds for its client router
+  (the place where `<id>` appears on every page today); it is in no link, no attribute and no visible text. (2) "a missing
+  `/de/…` page has a `lang`" — a missing page answers the same 404 document for `/de/x`, `/x` and `/blog/x`.
+- NOT RUN: F-LANG-TILDE on production data (the operator has no read access to production; the human checks the site
+  list before the production deploy). A stored-page (`x-cache: Hit`) check on a wired domain: no such staging tenant.
+- Next: `lang-1c`.

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { isWiredTenantHost } from '@/lib/tenant-directory';
+import { hostVerdict } from '@/lib/tenant-directory';
 import { bookingInternalPath, bookingRoute } from '@/lib/booking-path';
+import { pageLanguageOf, type PageLanguage } from '@amodx/shared/dist/languages.js';
+import { carriesSiteSegmentSeparator, firstPageSegmentOf, isLanguageShaped, parseSiteSegment, siteSegmentFor } from '@/lib/site-segment';
 
 // Phase 6.1: Origin verification secret (injected by CloudFront, verified here)
 const ORIGIN_VERIFY_SECRET = process.env.ORIGIN_VERIFY_SECRET;
@@ -122,6 +124,14 @@ function hasSessionCookie(request: NextRequest): boolean {
 // the rendering mode, and each sets (or deliberately omits) its own Cache-Control on the
 // Response, so they need no twin — and they have none, so rewriting one to /_dyn lands on
 // the page catch-all and 404s. Single source of truth for the twin exemption below.
+//
+// What the predicate below (`isSiteRouteHandler`) actually tests is a SUFFIX: it is true for the four handler
+// addresses (`/robots.txt`, … at the site root — the only place Next routes them, `app/[siteId]/<name>/route.ts`) AND
+// for every ordinary content path that merely ends with one of the names (`/blog/sitemap.xml`, `/ro/openai-feed`),
+// which Next serves with the page catch-all. Those content paths are exempt from the twin too (as before LANG-1B).
+// LANG-1B (review R-LANG1B-02): the language rules do NOT use this predicate. A handler address's first segment is the
+// handler name, which never has the form of a language (2-3 lowercase letters), so the language rules leave real
+// handlers alone without an exemption, and a content path ending with a handler name follows the language rules.
 const SITE_ROUTE_HANDLERS = ['/robots.txt', '/sitemap.xml', '/llms.txt', '/openai-feed'];
 
 /**
@@ -160,6 +170,44 @@ function bookingRewrite(request: NextRequest, siteId: string, rest: string) {
         response.headers.set('Referrer-Policy', 'no-referrer');
     }
     return response;
+}
+
+/**
+ * LANG-1B (docs/slices/lang-1.md § 7.1): the internal first segment of a page in `language` — `<id>` for the default
+ * language (today's segment, unchanged), `<id>~<subtag>` for an extra language. The root layout reads the language from
+ * it (`lib/site-segment.ts`), and the ISR key is per language.
+ */
+function languageSegment(id: string, language: PageLanguage): string {
+    switch (language.kind) {
+        case 'default': return id;
+        case 'extra': return siteSegmentFor(id, language.subtag);
+    }
+}
+
+/**
+ * LANG-1B (§ 7.1): the language a request path states — the shared address rule (`pageLanguageOf`) over the tenant's
+ * listed languages, applied to the first segment as the page body receives it (`firstPageSegmentOf`: decoded once, an
+ * encoded slash kept encoded, never split again), the segment `SitePage` derives its language from. So `/r%6F/x` is
+ * Romanian and `/ro%2Fdespre` is not, here as in the page body.
+ */
+function requestPageLanguage(path: string, languages: readonly string[]): PageLanguage {
+    return pageLanguageOf(`/${firstPageSegmentOf(path) ?? ''}`, languages);
+}
+
+/**
+ * LANG-1B (§ 7.1): the rewrite target of a by-id request (`/tenant/<id>/…`, `/_site/<id>/…`; no tenant read). When the
+ * first segment of the page address has the form of a language, the language is a guess: the target is the uncached
+ * twin with `<id>~<first>` (the layout keeps the language only when the tenant lists it, so a wrong guess renders the
+ * default language, and nothing is stored). Otherwise today's target: the twin with `<id>`, or, for a path that ends
+ * with a route-handler name, `/<id><rest>` (the handler at the root; a content path with such a suffix — as before).
+ */
+function byIdTarget(tenantId: string, restOfPath: string, isSiteRouteHandler: boolean): string {
+    const first = firstPageSegmentOf(restOfPath);
+    const language: PageLanguage = isLanguageShaped(first) ? { kind: 'extra', subtag: first } : { kind: 'default' };
+    switch (language.kind) {
+        case 'default': return isSiteRouteHandler ? `/${tenantId}${restOfPath}` : dynamicPath(tenantId, restOfPath);
+        case 'extra': return dynamicPath(languageSegment(tenantId, language), restOfPath);
+    }
 }
 
 /** Non-cacheable 404. The only response shape that must never enter either cache layer. */
@@ -230,10 +278,14 @@ export async function middleware(request: NextRequest) {
     // production tenant domains. Dotted first segments (`/<tenant-host>/_dyn/…`) reach here
     // too since SITEID-BINDING-1 removed the dotted pass-through: they 308 like any other
     // `<siteId>/_dyn` shape, and on a production host the `/_site/` gate then answers 403.
+    //
+    // LANG-1B (§ 7.1): a leaked language twin `/<id>~<lang>/_dyn/<lang>/…` redirects to `/_site/<id>/<lang>/…` — the id
+    // part before the first `~` (the language prefix is already in the rest of the path), so the `~` refusal below never
+    // sees it. A segment without `~` is unchanged.
     const segs = path.split('/'); // ['', seg1, seg2, ...]
     if (segs.length >= 3 && segs[2] === DYN_SEGMENT) {
         const url = request.nextUrl.clone();
-        url.pathname = `/_site/${segs[1]}` + (segs.length > 3 ? `/${segs.slice(3).join('/')}` : '');
+        url.pathname = `/_site/${parseSiteSegment(segs[1]).host}` + (segs.length > 3 ? `/${segs.slice(3).join('/')}` : '');
         return NextResponse.redirect(url, 308);
     }
 
@@ -253,15 +305,35 @@ export async function middleware(request: NextRequest) {
             return bookingRewrite(request, booking.tenantId, booking.rest);
         case 'domain': {
             const bookingHost = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(':')[0];
-            if (await isWiredTenantHost(bookingHost) === false) {
-                return notFoundResponse();
+            // LANG-1B: only the gate call changed (`HostVerdict`); the answers are those of the boolean gate before it:
+            // unwired → 404; wired (its language list is not read: a booking address is not a language path) and
+            // unknown (fail open) → the booking rewrite with the plain host.
+            const verdict = await hostVerdict(bookingHost);
+            switch (verdict.kind) {
+                case 'unwired':
+                    return notFoundResponse();
+                case 'wired':
+                case 'unknown':
+                    return bookingRewrite(request, bookingHost, booking.rest);
+                default: {
+                    const never: never = verdict;
+                    throw new Error(`Unhandled host verdict ${JSON.stringify(never)}`);
+                }
             }
-            return bookingRewrite(request, bookingHost, booking.rest);
         }
         default: {
             const never: never = booking;
             throw new Error(`Unhandled booking route ${JSON.stringify(never)}`);
         }
+    }
+
+    // LANG-1B (docs/slices/lang-1.md § 7.1) — the separator of the internal segment `<host>~<lang>` never comes from the
+    // wire. After A3 (so A3's answers stay as before): a host that carries `~`, literally or percent-encoded, is refused
+    // before any gate or rewrite. No DNS host name contains `~` (finding F-LANG-TILDE). The by-id ids are checked in their
+    // branches below.
+    const wireHosts = [request.headers.get('x-forwarded-host'), request.headers.get('host')];
+    if (wireHosts.some((h) => h !== null && carriesSiteSegmentSeparator(h))) {
+        return notFoundResponse();
     }
 
     // Requests that cannot be served from a cacheable render. Route Handlers are exempt:
@@ -285,12 +357,12 @@ export async function middleware(request: NextRequest) {
         const parts = path.split('/');
         if (parts.length >= 3) {
             const tenantId = parts[2];
+            // LANG-1B (§ 7.1): an id that carries the separator is refused (the same 404 as a `~` host).
+            if (carriesSiteSegmentSeparator(tenantId)) return notFoundResponse();
             const restOfPath = "/" + parts.slice(3).join("/");
 
             const url = request.nextUrl.clone();
-            url.pathname = isSiteRouteHandler
-                ? `/${tenantId}${restOfPath}`
-                : dynamicPath(tenantId, restOfPath);
+            url.pathname = byIdTarget(tenantId, restOfPath, isSiteRouteHandler);
             rewriteUrl = url;
         }
     } else if (path.startsWith('/_site/')) {
@@ -304,13 +376,13 @@ export async function middleware(request: NextRequest) {
         const parts = path.split('/');
         if (parts.length >= 3) {
             const tenantId = parts[2];
+            // LANG-1B (§ 7.1): an id that carries the separator is refused (the same 404 as a `~` host).
+            if (carriesSiteSegmentSeparator(tenantId)) return notFoundResponse();
             const restOfPath = "/" + parts.slice(3).join("/");
 
             const url = request.nextUrl.clone();
             // Always dynamic: previews show drafts and must never enter either cache.
-            url.pathname = isSiteRouteHandler
-                ? `/${tenantId}${restOfPath}`
-                : dynamicPath(tenantId, restOfPath);
+            url.pathname = byIdTarget(tenantId, restOfPath, isSiteRouteHandler);
 
             // Set cookie with preview base path for link generation
             const response = NextResponse.rewrite(url);
@@ -334,16 +406,46 @@ export async function middleware(request: NextRequest) {
         // and on the cacheable route that answer is stored by both cache layers with no
         // way to opt out (measured: a route in ISR mode has no non-cacheable outcome
         // except a thrown 500). Answering here is the only place a 404 can carry
-        // `no-store`. `null` means "lookup unavailable" — fail open and render as before,
+        // `no-store`. `unknown` means "lookup unavailable" — fail open and render as before,
         // because a DynamoDB blip must not 404 every tenant at once.
-        if (await isWiredTenantHost(cleanHost) === false) {
-            return notFoundResponse();
+        //
+        // LANG-1B (docs/slices/lang-1.md § 7.1), by verdict:
+        //   wired   → the segment is `<host>~<lang>` when the first segment as the page body receives it
+        //             (`firstPageSegmentOf`) is one of the tenant's listed languages; else `<host>` (today). The ISR
+        //             rewrite and the twin both use it.
+        //   unknown → a path whose first page segment has the form of a language goes to the
+        //             TWIN with `<host>~<first>`: never stored, so a gate failure cannot put an extra-language page into
+        //             a cache with default-language chrome (the layout keeps the language only when its own tenant
+        //             read lists it). Every other path keeps today's unsuffixed fail-open rewrite.
+        const verdict = await hostVerdict(cleanHost);
+        let siteSegment: string;
+        let renderOnTwin = needsDynamicRender;
+        switch (verdict.kind) {
+            case 'unwired':
+                return notFoundResponse();
+            case 'wired':
+                siteSegment = languageSegment(cleanHost, requestPageLanguage(path, verdict.languages));
+                break;
+            case 'unknown': {
+                const first = firstPageSegmentOf(path);
+                if (isLanguageShaped(first)) {
+                    siteSegment = languageSegment(cleanHost, { kind: 'extra', subtag: first });
+                    renderOnTwin = true;
+                } else {
+                    siteSegment = cleanHost;
+                }
+                break;
+            }
+            default: {
+                const never: never = verdict;
+                throw new Error(`Unhandled host verdict ${JSON.stringify(never)}`);
+            }
         }
 
         const url = request.nextUrl.clone();
-        url.pathname = needsDynamicRender
-            ? dynamicPath(cleanHost, path)
-            : `/${cleanHost}${path}`;
+        url.pathname = renderOnTwin
+            ? dynamicPath(siteSegment, path)
+            : `/${siteSegment}${path}`;
         rewriteUrl = url;
     }
 

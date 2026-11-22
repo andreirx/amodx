@@ -29,7 +29,7 @@ import { createRequire } from "node:module";
 import {
     buildRenderer, startRenderer, startStubs, request, rendererEnv, probeEnvLoading,
     readAudit, resetAudit, AUDIT_PATH, NO_DOTENV_PRELOAD, RENDERER_DIR,
-    BUNDLE, versionedExpectation, operationInventory, servedResponses,
+    BUNDLE, versionedExpectation, operationInventory, servedResponses, REVALIDATION_TEST_SECRET,
 } from "./harness.mjs";
 import { storedStatusOf } from "../serving-bundle/s3-stub.mjs";
 import { execFile } from "node:child_process";
@@ -46,6 +46,7 @@ import {
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
     SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS, SCHEDLABELS1, SCHEDLABELS1_TEXTS,
+    LANG1B, LANG1B_OVERRIDES, LANG1B_PAGES,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -374,6 +375,8 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             "TABLE_NAME", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
             "AWS_ENDPOINT_URL_DYNAMODB", "ORIGIN_VERIFY_SECRET", "NEXT_PUBLIC_API_URL",
             "NEXTAUTH_SECRET", "RECAPTCHA_SITE_KEY",
+            // LANG-1B: a constructed test value, so row lang1b-purge can call /api/revalidate on the `next` target.
+            "REVALIDATION_SECRET",
             ...(exp === "bundle-env" ? [...RENDERER_SERVER_ENV, ...BUNDLE_HERMETIC_ENV] : []),
         ]);
         if (exp === "bundle-env") {
@@ -691,9 +694,10 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         assert.equal(res.status, 404);
         assert.match(res.header("cache-control"), /no-store/);
         assert.equal(res.header("x-nextjs-cache"), undefined);
-        // "no render" is the load-bearing word: only the host gate's COUNT query happens.
+        // "no render" is the load-bearing word: only the host gate's read happens (LANG-1B: a projected
+        // query in place of the COUNT query; ddb-stub.mjs identifies it by that shape).
         assert.equal(stats.render, 0, "the render must never run for an unwired host");
-        assert.equal(stats.hostGate, 1, "the host gate should have performed exactly one COUNT query");
+        assert.equal(stats.hostGate, 1, "the host gate should have performed exactly one host-gate read");
         // A dotted path gets the same gate (SITEID-BINDING-1: no dotted pass-through before it).
         const dotted = await request({ port: server.port, path: "/x.php", host: UNKNOWN_HOST });
         assert.equal(dotted.status, 404, "a dotted path on an unwired host must hit the unknown-host gate");
@@ -4345,6 +4349,283 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         // since cat-theme-1 it was loc1-diff-theme-1 (the 0865ac6 capture, the same comparison, nothing listed); since
         // cat-variant-gallery-1 it is loc1-diff-variant-gallery-1 (the 27fa7ca capture, the same comparison; the catalog
         // product pages list the CVG1-GALLERY change, the text rows its listed removals).
+
+        // ── ROWS (lang1b-*) — LANG-1B, the language segment (docs/slices/lang-1.md § 7, § 8.1, § 8.2, § 9.2; § 11 rows; the
+        // contract rows in docs/caching-architecture.md § Serving contract). Running build only; the tenants are `LANG1B`
+        // (fixtures.mjs). An address under a listed language prefix is rewritten to `/<host>~<lang><path>` and stored under
+        // that key; `<html lang>` and the texts follow the page language; every other address is rewritten as before.
+        const L = LANG1B.multi;
+        const lAt = (host, p, opts = {}) => request({ port: server.port, host, path: p, ...opts });
+        /** `<html lang="…">` of a document. */
+        const htmlLangOf = (body) => (/<html lang="([^"]*)"/.exec(body) ?? [])[1];
+        /** The `[siteId]` value of the page's root segment descriptor in the RSC payload (`"n":"siteId","t":"d","k":"…"`). */
+        const segmentOf = (body) => (/"n":"siteId","t":"d","k":"([^"]*)"/.exec(splitFlight(body).flight) ?? [])[1];
+        /** The stored ISR keys under `prefix`, sorted. */
+        const keysUnder = async (prefix) => (await storedIsrEntries(prefix)).map((e) => e.key).sort();
+        const RO_SITE = resolveLocaleStrings({ locale: "ro-RO" }).strings.site;
+        const EN_SITE = resolveLocaleStrings({ locale: "en-US" }).strings.site;
+        /** The copyright sentence after the name ("All rights reserved." / "Toate drepturile rezervate."). */
+        const copyrightTail = (site) => site.footerCopyright.split("{name}")[1];
+
+        test("(lang1b-segment) a listed language prefix → segment <host>~ro, stored under that key, MISS then HIT; default and unlisted prefixes keep <host>; the decoded first segment decides", async () => {
+            const seen = {};
+            for (const p of ["/ro/despre", "/ro", "/about", "/xx/page", "/"]) {
+                const first = await lAt(L.host, p);
+                const second = await lAt(L.host, p);
+                assert.equal(first.status, 200, `${p}: 200`);
+                assert.match(first.header("cache-control"), new RegExp(S_MAXAGE), `${p}: cacheable`);
+                assert.equal(first.header("x-nextjs-cache"), "MISS", `${p}: first MISS`);
+                assert.equal(second.header("x-nextjs-cache"), "HIT", `${p}: then HIT`);
+                assert.ok(first.body.includes(LANG1B_PAGES[p]), `${p}: its own page`);
+                seen[p] = segmentOf(first.body);
+            }
+            assert.deepEqual(seen, {
+                "/ro/despre": `${L.host}~ro`, "/ro": `${L.host}~ro`, "/about": L.host, "/xx/page": L.host, "/": L.host,
+            }, "the segment value in the payload");
+            const keys = await keysUnder(L.host);
+            for (const k of [`${L.host}~ro/ro/despre`, `${L.host}~ro/ro`, `${L.host}/about`, `${L.host}/xx/page`]) {
+                assert.ok(keys.includes(k), `stored under ${k}; stored: ${keys.join(", ")}`);
+            }
+            assert.ok(!keys.includes(`${L.host}/ro/despre`) && !keys.includes(`${L.host}/ro`), "a language page under the unsuffixed key");
+            // A percent-encoded first segment: the page receives it decoded (`ro`), the middleware decides on that form, so
+            // the layout (segment) and the page (its own address) name the same language.
+            const encoded = await lAt(L.host, "/r%6F/despre");
+            assert.equal(encoded.status, 200, "encoded: 200");
+            assert.equal(segmentOf(encoded.body), `${L.host}~ro`, "encoded: the segment");
+            assert.equal(htmlLangOf(encoded.body), "ro", "encoded: <html lang>");
+            assert.ok(encoded.body.includes(RO_SITE.shareLabel) && !encoded.body.includes(LANG1B_OVERRIDES.shareLabel), "encoded: the page's texts are Romanian too");
+            // Revision 1 (R-LANG1B-01): an encoded SLASH. Next hands the page body the segment `ro%2Fdespre` (the slash kept
+            // encoded; OBSERVED), so the body renders the page stored at `/ro%2Fdespre`, in the default language — and the
+            // segment, `<html lang>` and the layout texts must say the same (no `~ro`). Lower-case escape and an encoded
+            // letter too. A double-encoded slash (`/ro%252Fdespre`; the body finds no page, OBSERVED) gets no `~ro` key.
+            for (const p of ["/ro%2Fdespre", "/ro%2fdespre", "/r%6F%2Fdespre"]) {
+                const slash = await lAt(L.host, p);
+                assert.equal(slash.status, 200, `${p}: 200`);
+                assert.ok(slash.body.includes(`>${LANG1B_PAGES["/ro%2Fdespre"]}</h1>`), `${p}: the page body renders the literal page`);
+                assert.equal(segmentOf(slash.body), L.host, `${p}: the segment (no ~ro)`);
+                assert.equal(htmlLangOf(slash.body), "en", `${p}: <html lang>`);
+                assert.ok(slash.body.includes(LANG1B_OVERRIDES.shareLabel) && !slash.body.includes(RO_SITE.shareLabel), `${p}: the page body's texts are the default language`);
+                assert.ok(slash.body.includes("LANG1B override ") && !slash.body.includes(copyrightTail(RO_SITE)), `${p}: the layout's texts are the default language`);
+            }
+            await lAt(L.host, "/ro%252Fdespre");
+            assert.ok((await keysUnder(`${L.host}~`)).every((k) => !k.includes("%")), "an encoded-slash request stored under a ~ segment");
+            // Revision 1 (R-LANG1B-02): content pages that end with a route-handler name follow the language rules; the
+            // handlers themselves stay at the root (not HTML pages, no segment).
+            for (const name of ["openai-feed", "sitemap.xml", "robots.txt", "llms.txt"]) {
+                const page = await lAt(L.host, `/ro/${name}`);
+                assert.equal(page.status, 200, `/ro/${name}: 200`);
+                assert.ok(page.body.includes(LANG1B_PAGES[`/ro/${name}`]), `/ro/${name}: its own page`);
+                assert.equal(segmentOf(page.body), `${L.host}~ro`, `/ro/${name}: the segment`);
+                assert.equal(htmlLangOf(page.body), "ro", `/ro/${name}: <html lang>`);
+                const handler = await lAt(L.host, `/${name}`);
+                assert.ok(!String(handler.header("content-type")).startsWith("text/html") || handler.status !== 200, `/${name}: still the route handler`);
+            }
+            assert.ok((await keysUnder(`${L.host}~ro/ro/`)).includes(`${L.host}~ro/ro/openai-feed`), "a suffix page stored under ~ro");
+            console.log(`  (lang1b-segment) segments ${JSON.stringify(seen)}; stored ${keys.length} keys under ${L.host}: ${keys.join(", ")}; /r%6F/despre → ${segmentOf(encoded.body)}`);
+        });
+
+        test("(lang1b-html-lang) <html lang>: ro on the Romanian pages and their twin, en on the default and unlisted pages and on a one-language tenant's /ro/x", async () => {
+            const want = { "/": "en", "/about": "en", "/xx/page": "en", "/ro": "ro", "/ro/despre": "ro" };
+            const got = {};
+            for (const p of Object.keys(want)) got[p] = htmlLangOf((await lAt(L.host, p)).body);
+            assert.deepEqual(got, want);
+            const twin = await lAt(L.host, "/ro/despre?x=1");
+            assert.match(twin.header("cache-control"), /no-store/, "twin: no-store");
+            assert.equal(htmlLangOf(twin.body), "ro", "twin: ro");
+            assert.equal(segmentOf(twin.body), `${L.host}~ro`, "twin: the same segment");
+            const mono = await lAt(LANG1B.mono.host, "/ro/x");
+            assert.equal(mono.status, 200);
+            assert.equal(htmlLangOf(mono.body), "en", "one-language tenant: /ro/x is a default-language page");
+            console.log(`  (lang1b-html-lang) ${JSON.stringify(got)}; twin ro; one-language /ro/x en`);
+        });
+
+        test("(lang1b-texts) a Romanian page shows the RO pack in the layout (footer, cookie texts) and in the page (share bar), without the tenant's default-language overrides; a default page shows the overrides", async () => {
+            for (const p of ["/about", "/"]) {
+                const res = await lAt(L.host, p);
+                assert.ok(res.body.includes(LANG1B_OVERRIDES.shareLabel), `${p}: the page's override`);
+                assert.ok(res.body.includes("LANG1B override "), `${p}: the layout's footer override`);
+                assert.ok(splitFlight(res.body).flight.includes(EN_SITE.cookieHeadline), `${p}: the English cookie headline`);
+                assert.ok(!res.body.includes(RO_SITE.shareLabel) && !res.body.includes(copyrightTail(RO_SITE)), `${p}: a Romanian text`);
+            }
+            for (const p of ["/ro/despre", "/ro"]) {
+                const res = await lAt(L.host, p);
+                assert.ok(res.body.includes(RO_SITE.shareLabel), `${p}: the RO share label (SitePage)`);
+                assert.ok(res.body.includes(copyrightTail(RO_SITE)), `${p}: the RO footer (layout)`);
+                assert.ok(splitFlight(res.body).flight.includes(RO_SITE.cookieHeadline), `${p}: the RO cookie headline (layout)`);
+                assert.ok(!res.body.includes(LANG1B_OVERRIDES.shareLabel) && !res.body.includes("LANG1B override "), `${p}: an override (written in the default language)`);
+                assert.ok(!res.body.includes(EN_SITE.shareLabel) && !res.body.includes(copyrightTail(EN_SITE)), `${p}: an English text`);
+            }
+            console.log(`  (lang1b-texts) /about and /: overrides + English; /ro and /ro/despre: "${RO_SITE.shareLabel}", "${copyrightTail(RO_SITE).trim()}", "${RO_SITE.cookieHeadline}"`);
+        });
+
+        test("(lang1b-segment-unlisted) by-id paths: a language-shaped first segment gets ~<first> without a tenant read; the layout keeps it only when listed (preview ~xx → default language); never stored", async () => {
+            const cases = [
+                [`/_site/${L.id}/ro/despre`, `${L.id}~ro`, "ro", RO_SITE.shareLabel],
+                [`/_site/${L.id}/xx/page`, `${L.id}~xx`, "en", LANG1B_OVERRIDES.shareLabel],
+                [`/_site/${L.id}/about`, L.id, "en", LANG1B_OVERRIDES.shareLabel],
+                [`/tenant/${L.id}/ro/despre`, `${L.id}~ro`, "ro", RO_SITE.shareLabel],
+                // Revision 1: an encoded slash (R-LANG1B-01: the body renders the literal `/ro%2Fdespre` page, default
+                // language, so no guess) and a handler-name suffix (R-LANG1B-02), both by-id modes.
+                [`/_site/${L.id}/ro%2Fdespre`, L.id, "en", LANG1B_OVERRIDES.shareLabel],
+                [`/tenant/${L.id}/ro%2Fdespre`, L.id, "en", LANG1B_OVERRIDES.shareLabel],
+                [`/_site/${L.id}/ro/openai-feed`, `${L.id}~ro`, "ro", RO_SITE.shareLabel],
+                [`/tenant/${L.id}/ro/sitemap.xml`, `${L.id}~ro`, "ro", RO_SITE.shareLabel],
+            ];
+            for (const [p, segment, lang, share] of cases) {
+                const res = await lAt(PREVIEW_HOST, p);
+                assert.equal(res.status, 200, `${p}: 200`);
+                assert.match(res.header("cache-control"), /no-store/, `${p}: the twin`);
+                assert.equal(segmentOf(res.body), segment, `${p}: segment`);
+                assert.equal(htmlLangOf(res.body), lang, `${p}: <html lang>`);
+                assert.ok(res.body.includes(share), `${p}: texts of ${lang}`);
+            }
+            assert.deepEqual([...await keysUnder(`${L.id}~`), ...await keysUnder(`${L.id}/`)], [], "a by-id render was stored");
+            console.log(`  (lang1b-segment-unlisted) ${cases.map(([p, s, l]) => `${p} → ${s} lang=${l}`).join("; ")}; nothing stored under the id`);
+        });
+
+        test("(lang1b-tilde-host) a host or by-id id carrying ~ (literal or percent-encoded) → 404 no-store before any gate read or render; /_booking on such a host is A3's answer (unwired → 404)", async () => {
+            const refused = [
+                [`a~b.serving-contract.test`, "/about", {}],
+                [`${L.host}~ro`, "/about", {}],
+                [`a%7Eb.serving-contract.test`, "/about", {}],
+                [`a%257Eb.serving-contract.test`, "/about", {}],
+                [L.host, "/about", { "x-forwarded-host": `${L.host}~ro` }],
+                [PREVIEW_HOST, `/_site/${L.id}~ro/ro/despre`, {}],
+                [PREVIEW_HOST, `/_site/${L.id}%7Ero/ro/despre`, {}],
+                [PREVIEW_HOST, `/_site/${L.id}%257Ero/ro/despre`, {}],
+                [PREVIEW_HOST, `/tenant/${L.id}~ro/ro/despre`, {}],
+                [PREVIEW_HOST, `/tenant/${L.id}%7Ero/about`, {}],
+                // Revision 1 (R-LANG1B-03): deeper than four rounds, and mixed with a malformed escape.
+                [`a%252525257Eb.serving-contract.test`, "/about", {}],
+                [L.host, "/about", { "x-forwarded-host": `a%2525257E%ZZb.serving-contract.test` }],
+                [PREVIEW_HOST, `/tenant/${L.id}%2525257Ero/about`, {}],
+                [PREVIEW_HOST, `/tenant/${L.id}%252525257Ero/about`, {}],
+                [PREVIEW_HOST, `/_site/${L.id}%7Ero%ZZ/about`, {}],
+            ];
+            for (const [host, p, headers] of refused) {
+                const { result: res, stats } = await readsDuring(() => lAt(host, p, { headers }));
+                const what = `${host} ${p} ${JSON.stringify(headers)}`;
+                assert.equal(res.status, 404, `${what}: 404`);
+                assert.match(res.header("cache-control") ?? "", /no-store/, `${what}: no-store`);
+                assert.equal(res.header("x-nextjs-cache"), undefined, `${what}: an ISR status`);
+                assert.equal(stats.render, 0, `${what}: rendered`);
+                assert.equal(stats.hostGate, 0, `${what}: a gate read (the refusal comes before the gate)`);
+            }
+            // Positive control: the same host and paths without the separator are served.
+            assert.equal((await lAt(L.host, "/about")).status, 200, "control: the host");
+            assert.equal((await lAt(PREVIEW_HOST, `/_site/${L.id}/ro/despre`)).status, 200, "control: the id");
+            // A3 answers /_booking before the refusal (§ 7.1, local choice): a gate read that finds no tenant → 404.
+            const { result: booking, stats: bookingStats } = await readsDuring(() => lAt(`a~b.serving-contract.test`, "/_booking"));
+            assert.equal(booking.status, 404, "/_booking on a ~ host: 404");
+            assert.match(booking.header("cache-control") ?? "", /no-store/);
+            assert.equal(bookingStats.render, 0, "/_booking on a ~ host: rendered");
+            assert.equal(bookingStats.hostGate, 1, "/_booking on a ~ host: A3's gate read");
+            assert.deepEqual(await keysUnder("a~b"), [], "stored under a ~ host");
+            console.log(`  (lang1b-tilde-host) ${refused.length} requests refused 404 no-store with no gate read and no render; /_booking on a ~ host → A3 gate → 404`);
+        });
+
+        test("(lang1b-dyn-leak) a leaked language twin /<id>~ro/_dyn/ro/x → 308 to /_site/<id>/ro/x (the id before the first ~)", async () => {
+            const res = await lAt(PREVIEW_HOST, `/${L.id}~ro/_dyn/ro/despre`);
+            assert.equal(res.status, 308);
+            assert.equal(new URL(res.header("location"), "http://x").pathname, `/_site/${L.id}/ro/despre`);
+            const follow = await lAt(PREVIEW_HOST, `/_site/${L.id}/ro/despre`);
+            assert.equal(follow.status, 200, "the redirect target is served");
+            assert.equal(htmlLangOf(follow.body), "ro", "the redirect target keeps the language");
+            const plain = await lAt(PREVIEW_HOST, `/${L.id}/_dyn/about`);
+            assert.equal(new URL(plain.header("location"), "http://x").pathname, `/_site/${L.id}/about`, "a segment without ~: unchanged (m1)");
+        });
+
+        test("(lang1b-gate-unknown) the gate read fails → a language-shaped path goes to the twin (no-store, <html lang=\"ro\">, nothing stored); /about keeps today's fail-open ISR answer; after recovery the language page is stored as usual", async () => {
+            const G = LANG1B.gate;
+            assert.deepEqual(await keysUnder(G.host), [], "precondition: nothing stored for the gate tenant");
+            stub.failHostGate(true);
+            let failed, about, gateReads, suffix;
+            try {
+                const r = await readsDuring(() => lAt(G.host, "/ro/despre"));
+                failed = r.result;
+                gateReads = r.stats.hostGate;
+                about = await lAt(G.host, "/about");
+                // Revision 1 (R-LANG1B-02): a handler-name suffix with a language prefix fails closed too.
+                suffix = await lAt(G.host, "/ro/openai-feed");
+            } finally {
+                stub.failHostGate(false);
+            }
+            assert.ok(gateReads >= 1, "the gate read was attempted");
+            assert.equal(failed.status, 200, "unknown: 200");
+            assert.match(failed.header("cache-control"), /no-store/, "unknown: the twin");
+            assert.equal(failed.header("x-nextjs-cache"), undefined, "unknown: not an ISR answer");
+            assert.equal(htmlLangOf(failed.body), "ro", "unknown: the layout's own read lists ro");
+            assert.equal(segmentOf(failed.body), `${G.host}~ro`, "unknown: the segment");
+            assert.equal(about.status, 200, "unknown /about: 200");
+            assert.match(about.header("cache-control"), new RegExp(S_MAXAGE), "unknown /about: today's fail-open ISR answer");
+            assert.equal(suffix.status, 200, "unknown /ro/openai-feed: 200");
+            assert.match(suffix.header("cache-control"), /no-store/, "unknown /ro/openai-feed: the twin");
+            assert.equal(htmlLangOf(suffix.body), "ro", "unknown /ro/openai-feed: <html lang>");
+            assert.equal(segmentOf(suffix.body), `${G.host}~ro`, "unknown /ro/openai-feed: the segment");
+            assert.deepEqual(await keysUnder(G.host), [`${G.host}/about`], "only /about stored during the failure");
+            const first = await lAt(G.host, "/ro/despre");
+            const second = await lAt(G.host, "/ro/despre");
+            assert.match(first.header("cache-control"), new RegExp(S_MAXAGE), "recovered: cacheable");
+            assert.equal(first.header("x-nextjs-cache"), "MISS");
+            assert.equal(second.header("x-nextjs-cache"), "HIT");
+            assert.ok((await keysUnder(G.host)).includes(`${G.host}~ro/ro/despre`), "recovered: stored under ~ro");
+            console.log(`  (lang1b-gate-unknown) failed gate (${gateReads} read): /ro/despre twin lang=ro, /about ${about.header("cache-control")}; recovered: MISS → HIT under ${G.host}~ro/ro/despre`);
+        });
+
+        test("(lang1b-purge) POST /api/revalidate { domain, slug: /ro/purge } revalidates the ~ro entry: the next request is a MISS; a domain with ~ is refused (400)", async () => {
+            await lAt(L.host, "/ro/purge");
+            const hit = await lAt(L.host, "/ro/purge");
+            assert.equal(hit.header("x-nextjs-cache"), "HIT", "precondition: stored");
+            const post = (body) => request({
+                port: server.port, host: FIXTURE_HOST, path: "/api/revalidate", method: "POST",
+                headers: { "content-type": "application/json", "x-revalidation-token": REVALIDATION_TEST_SECRET },
+                body: JSON.stringify(body),
+            });
+            const rv = await post({ domain: L.host, slug: "/ro/purge" });
+            assert.equal(rv.status, 200, `revalidate: ${rv.body}`);
+            assert.equal(JSON.parse(rv.body).revalidated, true);
+            const after = await lAt(L.host, "/ro/purge");
+            assert.equal(after.header("x-nextjs-cache"), "MISS", "the ~ro entry was not revalidated");
+            assert.equal(htmlLangOf(after.body), "ro");
+            const tilde = await post({ domain: `${L.host}~ro`, slug: "/ro/purge" });
+            assert.equal(tilde.status, 400, "a domain with ~");
+            console.log(`  (lang1b-purge) HIT → revalidate 200 → MISS; domain with ~ → ${tilde.status}`);
+        });
+
+        test("(lang1b-one-language-identity) a tenant without languages: no ~ segment and no ~ key — /ro/x under <host>/ro/x; every stored ~ key belongs to a tenant that lists the language", async () => {
+            const M = LANG1B.mono;
+            for (const p of ["/ro/x", "/about"]) {
+                const res = await lAt(M.host, p);
+                assert.equal(res.status, 200, p);
+                assert.equal(segmentOf(res.body), M.host, `${p}: segment`);
+            }
+            const keys = await keysUnder(M.host);
+            assert.ok(keys.includes(`${M.host}/ro/x`), `stored: ${keys.join(", ")}`);
+            assert.ok(keys.every((k) => !k.includes("~")), "a ~ key for a one-language tenant");
+            const tildeKeys = (await keysUnder("")).filter((k) => k.includes("~"));
+            assert.ok(tildeKeys.length > 0, "control: the ~ keys of the rows above are visible to this detector");
+            assert.ok(tildeKeys.every((k) => k.startsWith(`${L.host}~ro/`) || k.startsWith(`${LANG1B.gate.host}~ro/`)), `a ~ key of another tenant: ${tildeKeys.join(", ")}`);
+            console.log(`  (lang1b-one-language-identity) ${M.host}: ${keys.join(", ")}; ~ keys of the run: ${tildeKeys.join(", ")}`);
+        });
+
+        test("(lang1b-langs-malformed) languages stored as a string (\"ro\") is dropped by the read rule: the pages equal the one-language twin's, HTML and payload; /ro/x stored without ~", async () => {
+            const A = LANG1B.malformed, B = LANG1B.mono;
+            const asTwin = (t) => t.split(A.host).join(B.host).split(A.id).join(B.id);
+            for (const p of ["/", "/about", "/ro/x"]) {
+                const [a, b] = [await lAt(A.host, p), await lAt(B.host, p)];
+                assert.equal(a.status, 200, p);
+                const [fa, fb] = [splitFlight(asTwin(a.body)), splitFlight(b.body)];
+                assert.equal(fa.html, fb.html, `${p}: HTML equal to the twin`);
+                // The payload as its resolved tree (the ruled comparison, LOCALE1B-ROW-CUT = A): row labels and row cuts
+                // depend on the streaming order of each render, so raw rows of two renders can differ with equal content
+                // (OBSERVED in this row's first form: `$L1f` vs `$L23` for the same element).
+                assert.deepEqual(await cc1Resolved(asTwin(a.body)), await cc1Resolved(b.body), `${p}: payload equal to the twin`);
+                assert.equal(htmlLangOf(a.body), "en", `${p}: en`);
+            }
+            const keys = await keysUnder(A.host);
+            assert.ok(keys.includes(`${A.host}/ro/x`) && keys.every((k) => !k.includes("~")), `stored: ${keys.join(", ")}`);
+            console.log(`  (lang1b-langs-malformed) /, /about, /ro/x byte-equal to the one-language twin; stored ${keys.join(", ")}`);
+        });
 
         // ── ROW (np1-bootstrap-chunks) — NEXT-PATCH-1 ruling R-NP1-F1 rule 2. The LAST row of the `next` target on purpose:
         // its population is EVERY response the suite's server sent in this run (harness.mjs `servedResponses`, the journal

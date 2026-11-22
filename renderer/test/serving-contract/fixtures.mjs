@@ -106,7 +106,7 @@ function routeItem(slug, nodeId) {
 }
 
 // cache-8 counterexample tenant `wk` (see SCANNER_TENANT_ID above). Row `(h1)` reaches it by
-// its Domain through the domain GSI (the host gate's COUNT query and getTenantConfig). The
+// its Domain through the domain GSI (the host gate's read and getTenantConfig). The
 // bare string `wk` is never a Domain, so the GSI never claims it.
 const scannerTenant = {
     PK: "SYSTEM",
@@ -1117,6 +1117,67 @@ const SCHEDLABELS1_ITEMS = [
     siteContentItem(SCHEDLABELS1.id, "schedlabels1-home", "/", "SCHEDLABELS1 Home"),
 ];
 
+// ── LANG-1B fixtures (docs/slices/lang-1.md § 7, § 8.1, § 8.2, § 9.2; rows `lang1b-*`, bundle rows `B-LANG-*`) ─────────────
+// Every tenant has an explicit `locale`, so none is an en-US subject of the `loc1-*` rows nor in any `before/` capture;
+// rows `lang1b-*` read the running build only (§ 7.4 rule 3).
+//  - `multi` (en-US, `languages: ["ro"]`): pages in the default language (`/`, `/about`, `/xx/page` — `xx` is not listed)
+//    and in Romanian (`/ro`, `/ro/despre`, `/ro/purge`). Its site texts are overridden IN THE DEFAULT LANGUAGE
+//    (`siteStrings.shareLabel` — the content page's share bar, SitePage; `siteStrings.footerCopyright` — the layout's
+//    footer): a default page shows the overrides, a Romanian page the RO pack (LANG1-OVERRIDES = A, § 8.2).
+//  - `gate` (en-US, `languages: ["ro"]`): requested ONLY by row `lang1b-gate-unknown`, so its host verdict is never warm
+//    in the gate's 60-s memory when the row fails the gate read.
+//  - `mono` (en-US, no `languages`): a one-language tenant with a page under `/ro/x` (control: no suffix, § 9.1).
+//  - `malformed` (en-US, `languages: "ro"` — a string, not a list): the twin of `mono` (same name, nodes and pages) →
+//    the read rule drops it, so its pages are `mono`'s bytes (row `lang1b-langs-malformed`).
+//  - `lag` (en-US, `languages: ["de"]`, bundle row `B-LANG-LIMIT-LIVE-KEY` only): the record AFTER a save that added
+//    `de`; `LANG1B_LAG_BEFORE` is the record before it, which the stub's index-lag model serves to the renderer's reads.
+export const LANG1B = {
+    multi: { id: "lang1b-multi", host: "lang1b-multi.serving-contract.test", name: "LANG1B Multi" },
+    gate: { id: "lang1b-gate", host: "lang1b-gate.serving-contract.test", name: "LANG1B Gate" },
+    mono: { id: "lang1b-mono", host: "lang1b-mono.serving-contract.test", name: "LANG1B Mono" },
+    malformed: { id: "lang1b-malformed", host: "lang1b-malformed.serving-contract.test", name: "LANG1B Mono" },
+    lag: { id: "lang1b-lag", host: "lang1b-lag.serving-contract.test", name: "LANG1B Lag" },
+};
+/** The default-language overrides of `LANG1B.multi` (§ 8.2: never on an extra-language page). */
+export const LANG1B_OVERRIDES = { shareLabel: "LANG1B share override:", footerCopyright: "LANG1B override {year} {name}" };
+/** The pages of `LANG1B.multi`, by address. */
+export const LANG1B_PAGES = {
+    "/": "LANG1B Home", "/about": "LANG1B About", "/xx/page": "LANG1B XX Page",
+    "/ro": "LANG1B Acasa", "/ro/despre": "LANG1B Despre", "/ro/purge": "LANG1B Purge",
+    // Revision 1 (review R-LANG1B-02): content pages whose address ends with a route-handler name (the handlers live only
+    // at the site root; these are served by the page catch-all and follow the language rules).
+    "/ro/openai-feed": "LANG1B RO Feed Page", "/ro/sitemap.xml": "LANG1B RO Sitemap Page",
+    "/ro/robots.txt": "LANG1B RO Robots Page", "/ro/llms.txt": "LANG1B RO Llms Page",
+    // Revision 1 (review R-LANG1B-01): a page whose slug literally holds an encoded slash. Next hands the page body the
+    // segment `ro%2Fdespre` for a request `/ro%2Fdespre` (OBSERVED), so the body renders THIS page, in the default language;
+    // the row checks that the layout agrees (no `~ro`).
+    "/ro%2Fdespre": "LANG1B Literal Encoded Slash Page",
+};
+const lang1bPages = (tenantId, pages) => Object.entries(pages).flatMap(([slug, title], i) => [
+    siteRouteItem(tenantId, slug, `${tenantId}-p${i}`),
+    siteContentItem(tenantId, `${tenantId}-p${i}`, slug, title),
+]);
+const LANG1B_MONO_PAGES = { "/": "LANG1B Mono Home", "/about": "LANG1B Mono About", "/ro/x": "LANG1B Mono RO X" };
+/** The same node ids for `mono` and `malformed`, so the twins differ only by their key fields. */
+const lang1bTwinPages = (tenantId) => Object.entries(LANG1B_MONO_PAGES).flatMap(([slug, title], i) => [
+    siteRouteItem(tenantId, slug, `lang1b-twin-p${i}`),
+    siteContentItem(tenantId, `lang1b-twin-p${i}`, slug, title),
+]);
+const LANG1B_ITEMS = [
+    { ...siteTenant(LANG1B.multi.id, LANG1B.multi.host, LANG1B.multi.name), locale: "en-US", languages: ["ro"], siteStrings: { ...LANG1B_OVERRIDES } },
+    ...lang1bPages(LANG1B.multi.id, LANG1B_PAGES),
+    { ...siteTenant(LANG1B.gate.id, LANG1B.gate.host, LANG1B.gate.name), locale: "en-US", languages: ["ro"] },
+    ...lang1bPages(LANG1B.gate.id, { "/about": "LANG1B Gate About", "/ro/despre": "LANG1B Gate Despre", "/ro/openai-feed": "LANG1B Gate RO Feed Page" }),
+    { ...siteTenant(LANG1B.mono.id, LANG1B.mono.host, LANG1B.mono.name), locale: "en-US" },
+    ...lang1bTwinPages(LANG1B.mono.id),
+    { ...siteTenant(LANG1B.malformed.id, LANG1B.malformed.host, LANG1B.malformed.name), locale: "en-US", languages: "ro" },
+    ...lang1bTwinPages(LANG1B.malformed.id),
+    { ...siteTenant(LANG1B.lag.id, LANG1B.lag.host, LANG1B.lag.name), locale: "en-US", languages: ["de"] },
+    ...lang1bPages(LANG1B.lag.id, { "/about": "LANG1B Lag About", "/de/x": "LANG1B Lag DE X" }),
+];
+/** `LANG1B.lag`'s tenant record before the save that added `de` (no `languages`): the index-lag model's stale record. */
+export const LANG1B_LAG_BEFORE = { ...siteTenant(LANG1B.lag.id, LANG1B.lag.host, LANG1B.lag.name), locale: "en-US" };
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -1177,6 +1238,8 @@ export const ITEMS = [
     ...SCHED1G_ITEMS,
     // sched-labels-1: the tenant with its own booking texts (above).
     ...SCHEDLABELS1_ITEMS,
+    // lang-1b: the language-segment tenants (above).
+    ...LANG1B_ITEMS,
 ];
 
 /**

@@ -21,6 +21,7 @@ import { SitePage, buildSitePageMetadata, toSiteQuery } from "@/components/SiteP
 import { getPreviewBase } from "@/lib/routing-server";
 import { cookies } from "next/headers";
 import { Metadata } from "next";
+import { parseSiteSegment } from "@/lib/site-segment";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ async function readSessionToken(): Promise<string | null> {
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
     const { siteId, slug } = await params;
-    return buildSitePageMetadata({ siteId, slug, query: toSiteQuery(await searchParams) });
+    return buildSitePageMetadata({ siteId: parseSiteSegment(siteId).host, slug, query: toSiteQuery(await searchParams) });
 }
 
 export default async function DynamicPage({ params, searchParams }: Props) {
@@ -48,7 +49,8 @@ export default async function DynamicPage({ params, searchParams }: Props) {
 
     return (
         <SitePage
-            siteId={siteId}
+            // LANG-1B: the tenant is read by the host; the page derives its language from its own address.
+            siteId={parseSiteSegment(siteId).host}
             slug={slug}
             // Unchanged semantics: admin "Preview" links append ?preview=true, on the
             // tenant's real domain as well as on the /_site/ fallback.

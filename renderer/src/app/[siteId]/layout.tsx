@@ -4,6 +4,10 @@
 // `<body>` class moved with it, unchanged. `lang` = the language subtag of the tenant's normalised locale. This
 // layout reads only `params` and the tenant record: a request API (`headers()`, `cookies()`) here would make every
 // page dynamic and break the ISR cache.
+// LANG-1B (docs/slices/lang-1.md § 7.2, § 8.1, § 8.2): `[siteId]` is the internal segment `<host>` or `<host>~<lang>`
+// (`lib/site-segment.ts`; the middleware writes it). The tenant is read by the host; the page language is the segment's
+// language when this read's `languages` lists it, else the default language. It sets `<html lang>` and the texts
+// (`localeInputFor`). A one-language tenant never has a suffix: the same tenant read, the same `lang`, the same texts.
 import "../globals.css";
 import { Providers } from "@/components/Providers";
 import { getTenantConfig, hasActivePopups, getActiveCategoriesByIds } from "@/lib/dynamo";
@@ -19,7 +23,8 @@ import { CommerceBar } from "@/components/CommerceBar";
 import { FBPixel } from "@/components/FBPixel";
 import { PopupManager } from "@/components/PopupManager";
 import { RecaptchaProvider } from "@/components/RecaptchaProvider";
-import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, urlPrefixesOf, type TenantConfig } from "@amodx/shared";
+import { URL_PREFIX_DEFAULTS, isCatalogMode, resolveLocaleStrings, fillTemplate, localeLanguageSubtag, isCssColor, urlPrefixesOf, languageTagOf, type TenantConfig } from "@amodx/shared";
+import { parseSiteSegment, segmentLanguage, localeInputFor } from "@/lib/site-segment";
 import { PageEffectWrapper } from "@/components/PageEffectWrapper";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import { BODY_CLASS_NAME } from "@/lib/document-shell";
@@ -110,10 +115,12 @@ type Props = {
 // Global Metadata (Favicon & Title Template)
 export async function generateMetadata({ params }: { params: Promise<{ siteId: string }> }): Promise<Metadata> {
     const { siteId } = await params;
-    const config = await getTenantConfig(siteId);
+    const segment = parseSiteSegment(siteId);
+    const config = await getTenantConfig(segment.host);
 
     if (!config) return {};
 
+    const language = segmentLanguage(segment, config.languages ?? []);
     const baseUrl = `https://${config.domain}`;
 
     return {
@@ -121,7 +128,7 @@ export async function generateMetadata({ params }: { params: Promise<{ siteId: s
             template: `%s | ${config.name}`,
             default: config.name,
         },
-        description: config.description || fillTemplate(resolveLocaleStrings(config).strings.site.metaSiteDescription, { name: config.name }),
+        description: config.description || fillTemplate(resolveLocaleStrings(localeInputFor(config, language)).strings.site.metaSiteDescription, { name: config.name }),
         icons: {
             icon: config.icon || config.logo || '/favicon.ico',
         },
@@ -154,7 +161,8 @@ function ownOrChannel<T extends string | undefined>(own: T, channel: string | un
 
 export default async function SiteLayout({ children, params }: Props) {
     const { siteId } = await params;
-    const config = await getTenantConfig(siteId);
+    const segment = parseSiteSegment(siteId);
+    const config = await getTenantConfig(segment.host);
 
     if (!config) {
         // cache-1: this branch must not answer the not-found itself, and must render
@@ -185,6 +193,8 @@ export default async function SiteLayout({ children, params }: Props) {
         );
     }
 
+    // LANG-1B: the page language (§ 7.2) — the segment's, kept only when this tenant read lists it.
+    const language = segmentLanguage(segment, config.languages ?? []);
     const commerceEnabled = config.commerceEnabled ?? false;
     const cartPrefix = config.urlPrefixes?.cart || URL_PREFIX_DEFAULTS.cart;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
@@ -193,7 +203,8 @@ export default async function SiteLayout({ children, params }: Props) {
     // component below receives only the keys it renders, as a plain prop. LOCALE-1B: `catalog` for the interest widget.
     // LOCALE-1D: `commerce` for the commerce bar and the navbar account links (commerce sites only); `defaults` for the
     // two pattern-F texts of the commerce bar (§ 5.2: a stored "" falls back to the language default).
-    const { strings: { site, catalog, commerce }, defaults } = resolveLocaleStrings(config);
+    // LANG-1B (§ 8.2): an extra-language page resolves that language's pack without the tenant's overrides.
+    const { strings: { site, catalog, commerce }, defaults } = resolveLocaleStrings(localeInputFor(config, language));
     const channels = config.contactChannels;
     // CAT-THEME-1 (docs/slices/cat-theme-1-impl.md § 3): the `editorial` shape and the nav font, decided once here. Each
     // is passed to a client component by a conditional spread and switches a class only when set, so a tenant without
@@ -259,7 +270,7 @@ export default async function SiteLayout({ children, params }: Props) {
     })();
 
     return (
-        <html lang={localeLanguageSubtag(config.locale)}>
+        <html lang={languageTagOf(language, localeLanguageSubtag(config.locale))}>
         <body className={BODY_CLASS_NAME}>
         <Providers tenantId={config.id} cartPrefix={commerceEnabled ? cartPrefix : undefined}>
             <div className="site-wrapper flex flex-col min-h-screen">

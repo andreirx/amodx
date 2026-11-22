@@ -33,6 +33,16 @@ import { planEdgeInvalidation, bulkFlushDueAt } from "../lib/edge-invalidation.j
  *      drains every ~10s. A failed bulk retries on the NEXT EventBridge invocation (~1 min);
  *      the fast lane does not wait for it.
  *
+ *   C. DEFERRED FLUSH (LANG-1B, docs/slices/lang-1.md § 9.4): read SYSTEM#CDN_DEFERRED_FLUSH, written by the settings
+ *      handler when a save changes a tenant's language set (`tenant/settings.ts#armDeferredEdgeFlush`, `dueAt` = save
+ *      time + 5 min, moved only later). No item → nothing; `dueAt` a finite number in the future → nothing; due → ONE
+ *      `/*`, then the item is deleted with a SNAPSHOT condition on what this read saw (`dueAt = :read`, or
+ *      `attribute_exists(SK) AND attribute_not_exists(dueAt)` when the attribute was absent), so a save that wrote a new
+ *      due time meanwhile keeps the item and one more flush follows. A malformed item (`dueAt` absent, null, a string, a
+ *      non-finite number) is treated as due: an extra edge flush is harmless, a stuck item is not. A failed or skipped
+ *      submit keeps the item for the next invocation (~1 min). At most one attempt per invocation (latch, as B); it
+ *      counts as work for IDLE-EXIT only on the pass where it acted. Edge only: no stored-page (origin) purge.
+ *
  * IDLE-EXIT (human-ratified 2026-09-02, revising CACHE-4A/review-3): the loop exits early on the
  * first iteration that finds NO fast-lane work (after that iteration's bulk check ran). While
  * fast-lane paths exist — including retained-after-failure paths — the full ~10s cadence
@@ -114,6 +124,8 @@ const MAX_WAIT_MS = parseInt(process.env.DEBOUNCE_MAX_WAIT_MS || String(DEBOUNCE
 const CDN_PENDING_PK = "SYSTEM";
 const CDN_PENDING_SK = "CDN_PENDING";
 const CDN_FAST_PENDING_SK = "CDN_FAST_PENDING";
+/** LANG-1B: the deferred-flush marker (written by `tenant/settings.ts`, the same key there). */
+const CDN_DEFERRED_FLUSH_SK = "CDN_DEFERRED_FLUSH";
 
 const POLL_INTERVAL_MS = 10_000; // 10 seconds
 const MAX_ITERATIONS = 6;        // 6 iterations, 10s sleep BETWEEN them → 5×10s ≈ 50s of polling.
@@ -331,12 +343,76 @@ async function flushBulkIfDue(iteration: number): Promise<boolean> {
     return true; // /* submitted — do not submit again this invocation
 }
 
+/**
+ * LANG-1B (§ 9.4): whether the deferred flush is due, from the raw `dueAt` the drain read. A finite number → due when it
+ * is not in the future; anything else — absent, null, a string, NaN, ±Infinity (the last two cannot be stored: the
+ * marshaller refuses them) — is malformed and therefore due.
+ */
+export function deferredFlushIsDue(dueAt: unknown, now: number): boolean {
+    return typeof dueAt === "number" && Number.isFinite(dueAt) ? dueAt <= now : true;
+}
+
+/**
+ * Deferred-flush branch (C in the header). Returns TRUE iff a `/*` submission was ATTEMPTED this call (success, transient
+ * failure, or skip) — the caller latches on it ("at most one deferred attempt per invocation") and counts it as work for
+ * IDLE-EXIT; FALSE when nothing was due or the marker could not be read (the next iteration reads again).
+ */
+async function flushDeferredIfDue(): Promise<boolean> {
+    let item: Record<string, unknown> | undefined;
+    try {
+        const res = await ddb.send(new GetCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: CDN_PENDING_PK, SK: CDN_DEFERRED_FLUSH_SK },
+            ConsistentRead: true, // the snapshot the delete is conditioned on must be the latest write
+        }));
+        item = res.Item;
+    } catch (error) {
+        console.error("[DeferredFlush] Failed to read CDN_DEFERRED_FLUSH:", error);
+        return false;
+    }
+    if (!item) return false;
+    if (!deferredFlushIsDue(item.dueAt, Date.now())) return false;
+
+    console.log(`[DeferredFlush] Language-list change flush due (dueAt ${JSON.stringify(item.dueAt)}). Invalidating /*.`);
+    let submitted = false;
+    try {
+        submitted = await submitInvalidation(["/*"], "deferred");
+        if (submitted) console.log("[DeferredFlush] CloudFront /* invalidation submitted");
+    } catch (error) {
+        console.error("[DeferredFlush] CloudFront /* invalidation failed — keeping the marker for the next invocation:", error);
+    }
+    if (!submitted) return true; // attempted; the marker is kept and the next invocation tries again
+
+    // Snapshot delete: only the state this call read. A save that wrote a new due time since then fails the condition,
+    // so the marker stays and one more flush follows.
+    const hasDueAt = Object.prototype.hasOwnProperty.call(item, "dueAt");
+    try {
+        await ddb.send(new DeleteCommand({
+            TableName: TABLE_NAME,
+            Key: { PK: CDN_PENDING_PK, SK: CDN_DEFERRED_FLUSH_SK },
+            ...(hasDueAt
+                ? { ConditionExpression: "dueAt = :read", ExpressionAttributeValues: { ":read": item.dueAt } }
+                : { ConditionExpression: "attribute_exists(SK) AND attribute_not_exists(dueAt)" }),
+        }));
+        console.log("[DeferredFlush] Marker cleared");
+    } catch (error: any) {
+        if (error?.name === "ConditionalCheckFailedException") {
+            console.log("[DeferredFlush] Marker changed during the flush (a later language change) — kept; one more flush follows");
+        } else {
+            console.error("[DeferredFlush] Failed to delete the marker (the next invocation flushes again):", error);
+        }
+    }
+    return true;
+}
+
 export const handler = async (): Promise<void> => {
     // At most ONE bulk `/*` submission per invocation. Once a submission has been ATTEMPTED
     // (success, transient failure, or skip) this latches true and the bulk branch is skipped for
     // the rest of the invocation. A failed/skipped bulk retries on the NEXT EventBridge
     // invocation; the fast lane never waits for it (CACHE-4A/review-3).
     let bulkHandled = false;
+    // LANG-1B: the same latch for the deferred flush (C).
+    let deferredHandled = false;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
         // A. Fast lane — ordinary edits' changed paths, targeted, every ~10s while work exists.
@@ -354,12 +430,19 @@ export const handler = async (): Promise<void> => {
         // pass where a bulk actually acted.
         const bulkActedThisPass = bulkHandled && !bulkHandledBefore;
 
+        // C. Deferred flush (LANG-1B) — at most one attempt per invocation; work only on the pass where it acted.
+        const deferredHandledBefore = deferredHandled;
+        if (!deferredHandled) {
+            deferredHandled = await flushDeferredIfDue();
+        }
+        const deferredActedThisPass = deferredHandled && !deferredHandledBefore;
+
         // IDLE-EXIT (ratified 2026-09-02): a pass where neither lane had work has nothing left
         // that benefits from ~10s resolution — the bulk lane re-checks a 15-min clock at
         // EventBridge tick resolution by design. Sleeping through the remaining iterations would
         // bill ~50s of Lambda wall-clock per minute forever (the August 2026 cost incident — see
         // header). Exit.
-        if (!fastHadWork && !bulkActedThisPass) {
+        if (!fastHadWork && !bulkActedThisPass && !deferredActedThisPass) {
             if (i === 0) console.log("[DebounceFlush] Idle — exiting until next EventBridge tick.");
             return;
         }

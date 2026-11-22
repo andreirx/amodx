@@ -18,6 +18,7 @@
 // `[siteId]/%5Fdyn/[[...slug]]`, which renders the same `SitePage` body with real values.
 import { SitePage, buildSitePageMetadata } from "@/components/SitePage";
 import { Metadata } from "next";
+import { parseSiteSegment } from "@/lib/site-segment";
 
 export const revalidate = false; // On-demand revalidation only — no time-based ISR
 
@@ -33,14 +34,15 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { siteId, slug } = await params;
-    return buildSitePageMetadata({ siteId, slug, query: {} });
+    return buildSitePageMetadata({ siteId: parseSiteSegment(siteId).host, slug, query: {} });
 }
 
 export default async function Page({ params }: Props) {
     const { siteId, slug } = await params;
     return (
         <SitePage
-            siteId={siteId}
+            // LANG-1B: the tenant is read by the host; the page derives its language from its own address.
+            siteId={parseSiteSegment(siteId).host}
             slug={slug}
             preview={false}
             basePath=""

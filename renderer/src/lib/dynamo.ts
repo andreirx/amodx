@@ -47,7 +47,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings } from "@amodx/shared";
+import { TenantConfig, ContentItem, Product, Category, urlPrefixesOf, normalizeEmail, catalogListing, isProductAvailable as isAvailableOn, utcDay, normalizeLocale, resolveLocaleStrings, readLanguageSettings } from "@amodx/shared";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "eu-central-1" });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -198,6 +198,10 @@ function mapTenant(item: any): TenantConfig {
         // without the attribute is unchanged.
         ...(item.bookingStrings ? { bookingStrings: item.bookingStrings } : {}),
         urlPrefixes: urlPrefixesOf(item.urlPrefixes),   // CDL-2 (§ 7.1): per key, the saved path, else the English default
+        // LANG-1B (docs/slices/lang-1.md § 5.1, § 7.2): the extra languages and the menus per language, through the ONE
+        // read rule the middleware's gate also applies (`readLanguageSettings`): invalid values dropped, never thrown. A
+        // tenant without the fields gets `languages: []` and empty maps; legacy `navLinks` / `footerLinks` stay above.
+        ...readLanguageSettings(item),
         quickContact: item.quickContact || undefined,
         // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the visitor contact channels — the quote dialog and the bar fallbacks.
         contactChannels: item.contactChannels || undefined,

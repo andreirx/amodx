@@ -43,7 +43,7 @@ import {
 import {
     FIXTURE_HOST, PUBLISHED_SLUG, MISSING_SLUG, TENANT_ID, ITEMS,
     ISO_HOST_A, ISO_HOST_B, ISO_TENANT_A, ABOUT_SLUG, ISO_ABOUT_TITLE_A, ISO_ABOUT_TITLE_B,
-    LISTED_POST_SLUG, LISTED_POST_TITLE, REVALIDATION_MESSAGE_3_1_3,
+    LISTED_POST_SLUG, LISTED_POST_TITLE, REVALIDATION_MESSAGE_3_1_3, LANG1B, LANG1B_LAG_BEFORE,
 } from "../serving-contract/fixtures.mjs";
 import { toFunctionUrlEvent, runRevalidationFunction } from "./lambda-host.mjs";
 
@@ -476,6 +476,108 @@ describe("bundle artefact rows (docs/slices/opennext-1a.md)", { concurrency: 1 }
         assert.equal(v1.status, 200);
         assert.ok(v1.body.includes(title2), "variant 1: the purge did not refresh the listing");
         assert.ok(!v1.body.includes(LISTED_POST_TITLE), "variant 1: the listing still shows the original title");
+    });
+
+    // ── B-LANG-PURGE / B-LANG-LIMIT-LIVE-KEY — LANG-1B (docs/slices/lang-1.md § 9.2, § 9.4, § 11) ───────────────
+    // The S3 half of the purge route's language-segment rule, which `next start` cannot show (no S3): the pages of an
+    // extra language are stored under `<domain>~<lang>`, and the whole-tenant purge deletes them.
+    const htmlLangOf = (body) => (/<html lang="([^"]*)"/.exec(body) ?? [])[1];
+    /** The S3 cache keys (after `/$/`) that start with `prefix`. */
+    const s3KeysUnder = (prefix) => stubs.s3.objects().map((o) => cacheKeyOf(o.key)).filter((k) => k !== null && k.startsWith(prefix)).sort();
+    /**
+     * Resolves when the stubs' journals (DynamoDB incl. the tag table, S3, SQS) have not grown for `quietMs` (at most
+     * `maxMs`). The adapter does part of its work after it answered — tag-table reads and writes (B-TAG), the S3 put of a
+     * MISS render — so a precondition on stored state waits for that work to land, not for a fixed delay.
+     */
+    const quiet = async (quietMs = 300, maxMs = 5000) => {
+        const until = Date.now() + maxMs;
+        let last = JSON.stringify(journalSizes());
+        let since = Date.now();
+        while (Date.now() < until) {
+            await new Promise((r) => setTimeout(r, 25));
+            const now = JSON.stringify(journalSizes());
+            if (now !== last) { last = now; since = Date.now(); } else if (Date.now() - since >= quietMs) return;
+        }
+    };
+    /**
+     * GET until the entry answers HIT (at most 5 GETs) and return the last answer; before each retry, wait for the
+     * adapter's after-response work to land (`quiet`). One GET after a MISS is not proof that the entry is stored
+     * (OBSERVED: MISS → MISS after a revalidatePath; and with a fixed 100-ms wait, five MISSes in one run of revision 2).
+     */
+    const warmUntilHit = async (host, p) => {
+        let res;
+        for (let i = 0; i < 5; i++) {
+            res = await get(host, p);
+            if (res.headers["x-nextjs-cache"] === "HIT") return res;
+            await quiet();
+        }
+        return res;
+    };
+
+    test("(B-LANG-PURGE) the language page is stored in S3 under <domain>~ro; revalidatePath alone reaches it only for a /ro slug; the whole-tenant S3 purge deletes every ~ object of the domain and no other tenant's", async () => {
+        const M = LANG1B.multi, G = LANG1B.gate;
+        assert.equal((await warmUntilHit(M.host, "/ro/despre")).headers["x-nextjs-cache"], "HIT", "precondition: /ro/despre stored");
+        assert.equal((await warmUntilHit(M.host, "/about")).headers["x-nextjs-cache"], "HIT", "precondition: /about stored");
+        assert.equal((await warmUntilHit(G.host, "/ro/despre")).headers["x-nextjs-cache"], "HIT", "precondition: the other tenant's ~ro page stored");
+        assert.deepEqual(s3KeysUnder(`${M.host}~`), [`${M.host}~ro/ro/despre`], "the S3 key of the language page");
+        // 1. Purge neutralized, slug of a default page: neither the tag path nor S3 reaches the ~ro entry.
+        stubs.s3.listReturnsNothing(true);
+        let viaDefault, viaRo;
+        try {
+            await revalidate(M.host, "/about");
+            viaDefault = await get(M.host, "/ro/despre");
+            // 2. Purge neutralized, the language page's own slug: `revalidatePath("/<domain>~ro/ro/despre")` makes it a MISS.
+            await revalidate(M.host, "/ro/despre");
+            viaRo = await get(M.host, "/ro/despre");
+        } finally {
+            stubs.s3.listReturnsNothing(false);
+        }
+        assert.equal(viaDefault.headers["x-nextjs-cache"], "HIT", "neutralized purge of /about reached the ~ro page");
+        assert.equal(viaRo.headers["x-nextjs-cache"], "MISS", "neutralized purge of /ro/despre: the ~ro revalidatePath did not reach it");
+        // 3. Purge active, slug of a default page (an ordinary content write): every ~ object of the domain is deleted.
+        assert.equal((await warmUntilHit(M.host, "/ro/despre")).headers["x-nextjs-cache"], "HIT", "precondition: stored again");
+        const rv = await revalidate(M.host, "/about");
+        assert.equal(rv.status, 200);
+        assert.deepEqual(s3KeysUnder(`${M.host}~`), [], "a ~ object of the domain survived the purge");
+        assert.deepEqual(s3KeysUnder(`${M.host}/`), [], "an object of the domain survived the purge");
+        assert.ok(rv.json.purged >= 2, `purged ${rv.json.purged}`);
+        assert.deepEqual(s3KeysUnder(`${G.host}~`), [`${G.host}~ro/ro/despre`], "another tenant's ~ object was deleted");
+        const after = await get(M.host, "/ro/despre");
+        assert.equal(after.headers["x-nextjs-cache"], "MISS", "after the purge");
+        assert.equal(htmlLangOf(after.body), "ro");
+        // 4. A domain with ~ is refused before any S3 call.
+        const s3Before = stubs.s3.journal().length;
+        const tilde = await revalidate(`${M.host}~ro`, "/ro/despre");
+        assert.equal(tilde.status, 400, "a domain with ~");
+        assert.equal(stubs.s3.journal().length, s3Before, "an S3 call for a ~ domain");
+        console.log(`  (B-LANG-PURGE) neutralized: /about → ${viaDefault.headers["x-nextjs-cache"]}, /ro/despre → ${viaRo.headers["x-nextjs-cache"]}; active purge of /about: purged=${rv.json.purged}, ${M.host}~ objects left 0, ${G.host}~ro kept; next GET ${after.headers["x-nextjs-cache"]} lang=${htmlLangOf(after.body)}; ~ domain → ${tilde.status}`);
+    });
+
+    test("(B-LANG-LIMIT-LIVE-KEY) documented limit (§ 9.4 residual case 2): with the renderer's tenant reads lagging behind the gate, /de/x is stored under <domain>~de with default chrome and stays a HIT after the lag ends; the next stored-page purge removes it", async () => {
+        const T = LANG1B.lag;
+        stubs.ddb.staleTenantRecord(LANG1B_LAG_BEFORE);
+        let lagged, laggedAgain;
+        try {
+            lagged = await get(T.host, "/de/x");
+            laggedAgain = await warmUntilHit(T.host, "/de/x");
+        } finally {
+            stubs.ddb.staleTenantRecord(null);
+        }
+        assert.equal(lagged.status, 200);
+        assert.equal(htmlLangOf(lagged.body), "en", "the layout's lagging read lacks de: default chrome");
+        assert.deepEqual(s3KeysUnder(`${T.host}~`), [`${T.host}~de/de/x`], "stored under the LIVE key <domain>~de");
+        assert.equal(laggedAgain.headers["x-nextjs-cache"], "HIT");
+        const stays = await get(T.host, "/de/x");
+        assert.equal(stays.headers["x-nextjs-cache"], "HIT", "after the lag ends the wrong copy is still served");
+        assert.equal(htmlLangOf(stays.body), "en");
+        // The next stored-page purge: the call an ordinary content write makes (revalidateTenantPaths → { domain, slug }).
+        const rv = await revalidate(T.host, "/about");
+        assert.equal(rv.status, 200);
+        assert.deepEqual(s3KeysUnder(`${T.host}~`), [], "the purge did not delete the live-key copy");
+        const fresh = await get(T.host, "/de/x");
+        assert.equal(fresh.headers["x-nextjs-cache"], "MISS");
+        assert.equal(htmlLangOf(fresh.body), "de", "after the purge: the page language");
+        console.log(`  (B-LANG-LIMIT-LIVE-KEY) lagging reads: lang=${htmlLangOf(lagged.body)} stored ${T.host}~de/de/x, HIT after the lag (lang=${htmlLangOf(stays.body)}); stored-page purge (purged=${rv.json.purged}) → ${fresh.headers["x-nextjs-cache"]} lang=${htmlLangOf(fresh.body)}`);
     });
 
     // ── B-XISR ──────────────────────────────────────────────────────────────────────────

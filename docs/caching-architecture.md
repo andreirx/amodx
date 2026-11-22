@@ -119,6 +119,64 @@ props. The cacheable shells pass `false / "" / null / {} / true`.
 wire with `404` + `private, no-store`, so there is no second public URL serving the same
 tenant content uncached.
 
+### Language segment (slice `lang-1b`; `docs/slices/lang-1.md` § 7, § 9; ruling LANG1-HTML-LANG = A)
+
+A tenant may list extra languages (`languages`, e.g. `["ro"]`); a page whose address starts with `/<l>` or `/<l>/`,
+`<l>` listed, is in language `<l>`. The root layout cannot see the address and may not read the request, so the
+middleware puts the language into the internal first segment (way W1 of the spike):
+
+| | address under a listed prefix (`/ro`, `/ro/despre`) | every other address |
+|---|---|---|
+| ISR rewrite | `/<host>~<l><path>` | `/<host><path>` (today) |
+| twin rewrite | `/<host>~<l>/_dyn<path>` | `/<host>/_dyn<path>` (today) |
+| ISR key | `…/$/<host>~<l>/<path>` | `…/$/<host>/<path>` (today) |
+| CloudFront key | the public URL (unchanged) | the public URL (unchanged) |
+| `<html lang>`, texts | `<l>`; that language's pack, no tenant overrides | the tenant language (today) |
+
+Rules (executable form: rows `lang1b-*` of `contract.test.mjs`; bundle rows `B-LANG-PURGE`, `B-LANG-LIMIT-LIVE-KEY`; unit
+tests `renderer/test/unit/{tenant-directory,lang-1b-*,revalidate-purge}.test.ts`):
+
+- **The gate verdict carries the list.** The host gate (`lib/tenant-directory.ts` `hostVerdict`) reads `SK, languages`
+  (a projected query in place of `Select: COUNT`; same index, same filter, same 60-s memory) and parses the list by
+  the one read rule `mapTenant` also uses (`readLanguageSettings`). Verdict `unwired` → `404`; `wired` → the segment
+  above.
+- **Which first segment decides (revision 1).** Every language decision — wired, unknown verdict, by-id, and the purge
+  route — reads the first path segment as the PAGE BODY receives it (`lib/site-segment.ts` `firstPageSegmentOf`): each
+  escape decoded once (`/r%6F/x` → `ro`), an encoded slash kept encoded and the segment never split again
+  (`/ro%2Fdespre` → `ro%2Fdespre`, not a language). OBSERVED on Next 16.4.6 under `next start` and through the OpenNext
+  4.1.9 bundle: for an encoded slash Next hands the page body `ro%2Fdespre` but hands `generateMetadata` `ro/despre` in
+  the same response (finding F-LANG1B-ENCODED-SLASH-METADATA, `docs/slices/lang-1.md` Appendix F; not changed here).
+- **Route handlers need no exemption.** The four handlers live only at the site root, and their names never have the
+  form of a language, so the language rules leave them alone. A content path that merely ends with a handler name
+  (`/ro/openai-feed`) follows the language rules; the middleware's `isSiteRouteHandler` is a suffix match and keeps only
+  its older jobs (the twin exemption; the by-id non-twin rewrite of one-language paths).
+- **Unknown verdict fails closed for language-shaped paths.** When the gate read fails (no table, no credentials, a
+  failed read), a path whose first segment has the form of a language (2-3 lowercase letters)
+  goes to the **twin** with `<host>~<first>` — never stored by either layer; the layout keeps the language only when
+  its own tenant read lists it. Every other path keeps today's fail-open ISR rewrite. Row `lang1b-gate-unknown`.
+- **The separator never comes from the wire.** After the booking branch, a `Host` or `x-forwarded-host` that carries
+  `~` — literally or percent-encoded in any depth, whatever malformed escapes the value also holds (one linear
+  decoding pass, `carriesSiteSegmentSeparator`) — answers `404` + `private, no-store` before any gate read; so does
+  a by-id path (`/_site/<id>`, `/tenant/<id>`) whose id carries it. Row `lang1b-tilde-host`. A leaked language twin
+  `/<id>~<l>/_dyn/…` redirects `308` to `/_site/<id>/…` (row `lang1b-dyn-leak`).
+- **By-id paths** get `<id>~<first>` on the twin for a language-shaped first segment, with no tenant read (also when
+  the path ends with a handler name); the layout keeps it only when listed (row `lang1b-segment-unlisted`). Other by-id
+  paths keep today's target.
+- **One-language tenants.** No suffix, no key change, the same bytes: every byte-identity row passes unchanged; rows
+  `lang1b-one-language-identity`, `lang1b-langs-malformed` (a stored `languages` that is not a list is read as none).
+- **Purge.** `POST /api/revalidate` refuses a `domain` with `~` (`400`), also deletes every S3 object under
+  `<base>~` at each tenant base (the domain's language segments), and — when the slug's first segment has the form
+  of a language — also calls `revalidatePath("/<domain>~<first><slug>")` and the `~<first>` layout. Rows
+  `lang1b-purge`, `B-LANG-PURGE`.
+- **The window after a change of the language list** is accepted, not closed (ruling LANG1-STALENESS-BOUND = A): the
+  gate's 60-s memory and the index lag of every tenant read can store a page with the other language's chrome. A
+  save that changes the language SET arms one more distribution-wide `/*` about 5 minutes later (§ *Debounce Flush
+  Lambda*, branch C). That flush is edge only and best-effort: a copy stored again by a still-stale verdict, and a
+  wrong page stored under the live origin key by a stale layout read, end only at a later `/*` or stored-page purge —
+  no bound (row `B-LANG-LIMIT-LIVE-KEY` pins the second: the next stored-page purge removes it).
+- **Measured (`lang-1b`, EXECUTED 2026-11-22, `cd renderer && npm run test:serving`):** 142 / 142 on the tree before
+  the slice; the final tree: the counts of the five consecutive runs are in `docs/slices/lang-1.md` Appendix F.
+
 ### Booking pages (slices `sched-1g2`, `sched-1g3`; `docs/slices/sched-1.md` § 10.1, § 12)
 
 A third route family, beside the ISR route and its twin. It is never stored by either cache layer.
@@ -135,7 +193,8 @@ Rules (executable form: rows `sched1g-*` of `renderer/test/serving-contract/cont
 `renderer/test/unit/sched-1g-*.test.ts`):
 
 - **Binding (G1, G2, G5).** `renderer/middleware.ts` branch `A3` rewrites `/_booking…` on a host the unknown-host gate does
-  not deny, and `/_site/<id>/_booking…` on a preview host only. `/_book…` from the wire — `_book`, `%5Fbook`,
+  not deny, and `/_site/<id>/_booking…` on a preview host only. `/_booking…` is answered before the language rules
+  (`lang-1b`) and never carries a `~` suffix: the gate's language list is not read there. `/_book…` from the wire — `_book`, `%5Fbook`,
   `%255Fbook`, any case — answers the middleware's `404` + `private, no-store`, like `/_dyn`. `//_book/…` is answered
   `308` → `/_book/…` by Next before the middleware runs (as every doubled-slash path), and that target is refused.
   Rows `sched1g-g1`, `sched1g-g2`, `sched1g-g5`.
@@ -247,7 +306,7 @@ the same `getTenantConfig()` lookup and know both facts, decide. (It must actual
 the old HTTP-200 "Site Not Found" shell suppressed the page's own `notFound()`.)
 
 - **The host gate** repeats the `GSI_Domain` lookup `getTenantConfig()` already performs,
-  as a `Select: COUNT` query, behind a 60-second per-instance in-memory cache of the
+  as a query that projects `SK` and `languages` (a `Select: COUNT` query before `lang-1b`), behind a 60-second per-instance in-memory cache of the
   verdict (positive and negative), bounded at 512 hosts because `Host` is
   attacker-controlled. It **fails open**: a lookup error or a missing table renders as
   before rather than 404-ing every tenant at once. Measured: 1 DynamoDB call on the first
@@ -1776,7 +1835,7 @@ tick remains the sweeper/safety-net (§ *2*).
   ordinary edit gets no invalidation and no `CDN_LAST_CHANGE` that cycle — bounded, self-heals
   on the next edit or GO LIVE NOW; recorded, not fixed here.
 
-### 2. Debounce Flush Lambda (drains BOTH classes)
+### 2. Debounce Flush Lambda (drains BOTH classes, and the deferred flush since `lang-1b`)
 
 **File**: `backend/src/scheduled/debounce-flush.ts`
 
@@ -1800,7 +1859,7 @@ EventBridge (every 1 min) ──> Debounce Lambda, each of 6 iterations (10s sle
                                   │      → DELETE drained members, COND rev unchanged
                                   │        (any concurrent enqueue bumped rev → retain whole marker)
                                   │
-                                  └── B. read SYSTEM#CDN_PENDING (bulk debounce), at most ONCE/invocation:
+                                  ├── B. read SYSTEM#CDN_PENDING (bulk debounce), at most ONCE/invocation:
                                          ├── absent?        → keep polling (fast lane needs it)
                                          ├── not due?       → keep polling
                                          │   (due = min(updatedAt + 15 min,
@@ -1813,7 +1872,26 @@ EventBridge (every 1 min) ──> Debounce Lambda, each of 6 iterations (10s sle
                                                               drainFastLane keeps draining while
                                                               fast-lane work remains; the loop
                                                               idle-exits once neither lane has work.
+                                  │
+                                  └── C. (lang-1b) read SYSTEM#CDN_DEFERRED_FLUSH {dueAt}, at most ONCE/invocation:
+                                         ├── absent, or dueAt a finite number in the future → nothing
+                                         └── due, or malformed (absent dueAt, null, string) → CloudFront /* ;
+                                             latch ; delete COND on the snapshot read
+                                             (dueAt = :read, or attribute_exists(SK) AND
+                                             attribute_not_exists(dueAt)); failed/skipped submit
+                                             → marker kept, next invocation retries.
 ```
+
+**C. The deferred flush (`lang-1b`, `docs/slices/lang-1.md` § 9.4).** `PUT /settings` arms it when a save changes a
+tenant's language SET (order ignored; the menus per language do not count), after its stored-page purge:
+`UpdateItem SYSTEM#CDN_DEFERRED_FLUSH SET dueAt = :due` (`:due` = save time + 5 min) with the condition
+`attribute_not_exists(dueAt) OR dueAt < :due`, so a later language change moves the flush later and nothing moves it
+earlier. One item for the deployment (a CloudFront path carries no host); the flush is one `/*`, so moving it later
+loses no tenant's work. Best-effort like `markCdnPending`: a write failure is logged and never fails the save. It
+fires between 5 and about 6 minutes after the last language change. It is NOT a bound on the language-list window:
+edge only — no stored-page purge, no domain list, no infra change (ruling LANG1-DEFERRED-FLUSH-LAYER2 = A′); the two
+residual cases are in § *Language segment*. Unit rows `L1B-DEFERRED-FLUSH-*`, `L1B-LIMIT-STALE-VERDICT`
+(`backend/test/unit/lang-1b-deferred-flush.test.ts`).
 
 **Why the bulk branch never terminates the loop — and how idle-exit interacts.** The *bulk* branch
 must never `return` (it did pre-`cache-4a` / pre-review-3): a path enqueued the instant a bulk `/*`
@@ -1895,7 +1973,9 @@ Calls the renderer's `/api/revalidate` endpoint with a secret token. The request
 `{ domain, slug }` or `{ tag }`. For `{ domain, slug }` the renderer calls
 `revalidatePath("/" + domain + slug)` and `revalidatePath("/" + domain, "layout")`, then
 (**since `CACHE-10`**) deletes every S3 ISR object of `domain` and answers
-`{ revalidated, path, purged, now }`.
+`{ revalidated, path, purged, now }`. **Since `lang-1b`** the objects of the domain's language segments
+(`<domain>~<l>…`) are deleted too, a slug under a language-shaped first segment also revalidates the `~<l>` path and
+layout, and a `domain` with `~` is refused (§ *Language segment*).
 
 > **`revalidatePath` alone never cleared an App Router page (root-caused 2026-10-13).** It is
 > tag-based, and open-next 3.1.3 `adapters/cache.js#set()` writes tag rows only for `kind ===
@@ -2522,7 +2602,7 @@ IAM grants: `cloudfront:CreateInvalidation` + S3 read/delete on the asset bucket
 | SQS FIFO Revalidation Queue | Background page regeneration (OpenNext internal) |
 | ~~Warmer Lambda~~ | Removed 2026-10-15 (opennext-1c). It never worked: the construct set `FUNCTION_NAME`/`CONCURRENCY`, open-next 3.1.3 reads `WARM_PARAMS`, so every 5-minute run failed. Revisit trigger: a measured cold-start latency problem |
 | Image Optimization Lambda | On-demand image resizing, cached by CloudFront |
-| Debounce Flush Lambda | Event-driven (CACHE-9 async-invoke on the edit's own enqueue → ~1s first drain) + EventBridge minute tick as sweeper; idle-exits in ~25ms. Drains BOTH classes: fast-lane TARGETED invalidations of ordinary edits' changed paths (`CDN_FAST_PENDING`, ~1s then ~10s while work remains) + the bulk `/*` at the earlier of 15 min quiet / 15 min after the first pending change (`CDN_PENDING`, CACHE-10 max wait) |
+| Debounce Flush Lambda | Event-driven (CACHE-9 async-invoke on the edit's own enqueue → ~1s first drain) + EventBridge minute tick as sweeper; idle-exits in ~25ms. Drains BOTH classes: fast-lane TARGETED invalidations of ordinary edits' changed paths (`CDN_FAST_PENDING`, ~1s then ~10s while work remains) + the bulk `/*` at the earlier of 15 min quiet / 15 min after the first pending change (`CDN_PENDING`, CACHE-10 max wait) + the deferred `/*` 5 min after a language-list change (`CDN_DEFERRED_FLUSH`, `lang-1b`) |
 | Nightly Cache Flush Lambda | 02:00 UTC daily, clears both cache layers |
 | Invalidation Status Lambda | GET /system/invalidation — admin UI polling |
 | Invalidation Flush Lambda | POST /system/invalidation — "GO LIVE NOW" |

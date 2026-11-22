@@ -284,3 +284,72 @@ describe("CACHE-10 — branches the slice leaves unchanged", () => {
         expect(s3Send).not.toHaveBeenCalled();
     });
 });
+
+// ---------------------------------------------------------------------------------------------
+// LANG-1B (docs/slices/lang-1.md § 9.2) — the language segments `<domain>~<lang>`
+// ---------------------------------------------------------------------------------------------
+
+/** Every cache object of a tenant's language segment `<domain>~<lang>`: pages, both layouts, two builds, two owners. */
+function languageObjects(domain: string, lang: string): string[] {
+    const seg = `${domain}~${lang}`;
+    return [
+        newKey(B1, "APP_PAGE", H_PAGE, `${seg}/${lang}`),
+        newKey(B1, "APP_PAGE", H_PAGE, `${seg}/${lang}/despre`),
+        newKey(B2, "APP_PAGE", H_PAGE, `${seg}/${lang}/despre`),
+        newKey(B1, "APP_PAGE", H_PAGE, seg), // `<domain>~<lang>.cache`: cannot occur, covered
+        legacyKey(B1, `${seg}/${lang}/despre`),
+    ];
+}
+
+describe("LANG-1B /api/revalidate — language segments", () => {
+    it("L1B-PURGE-DOMAIN-TILDE: a domain with ~ → 400 before any S3 call or revalidatePath", async () => {
+        fake.keys = new Set([...tenantObjects("acme.test"), ...languageObjects("acme.test", "ro")]);
+        const before = new Set(fake.keys);
+        for (const domain of ["acme.test~ro", "acme.test~", "a~b.test"]) {
+            const res = await POST(req({ domain, slug: "/ro/despre" }));
+            expect(res.status, domain).toBe(400);
+            expect((await res.json()).error).toMatch(/must not contain '~'/);
+        }
+        expect(s3Send).not.toHaveBeenCalled();
+        expect(revalidatePathSpy).not.toHaveBeenCalled();
+        expect(fake.keys).toEqual(before);
+    });
+
+    it("L1B-PURGE-SEGMENTS: the domain's <domain>~<lang> objects are deleted with its own; other tenants' segments untouched", async () => {
+        const mine = [...tenantObjects("acme.test"), ...languageObjects("acme.test", "ro"), ...languageObjects("acme.test", "de")];
+        const others = [
+            ...tenantObjects("other.test"), ...languageObjects("other.test", "ro"),
+            ...languageObjects("acme.test.evil", "ro"), ...languageObjects("acme.testx", "ro"), FETCH_CACHE,
+        ];
+        fake.keys = new Set([...mine, ...others]);
+        const res = await POST(req({ domain: "acme.test", slug: "/about" }));
+        expect(res.status).toBe(200);
+        expect((await res.json()).purged).toBe(mine.length);
+        expect([...fake.keys].sort()).toEqual([...others].sort());
+    });
+
+    it("L1B-PURGE-SEGMENTS control: a one-language tenant's purge deletes exactly what it deleted before (no ~ object exists)", async () => {
+        const mine = tenantObjects("acme.test");
+        fake.keys = new Set([...mine, ...tenantObjects("other.test")]);
+        const res = await POST(req({ domain: "acme.test", slug: "/about" }));
+        expect((await res.json()).purged).toBe(mine.length);
+        expect([...fake.keys].sort()).toEqual(tenantObjects("other.test").sort());
+    });
+
+    it("L1B-PURGE-PATHS: a language-shaped first segment adds the ~<first> path and layout; other slugs add nothing", async () => {
+        delete process.env.CACHE_BUCKET_NAME;
+        await POST(req({ domain: "acme.test", slug: "/ro/despre" }));
+        expect(revalidatePathSpy.mock.calls).toEqual([
+            ["/acme.test/ro/despre"], ["/acme.test", "layout"],
+            ["/acme.test~ro/ro/despre"], ["/acme.test~ro", "layout"],
+        ]);
+        await POST(req({ domain: "acme.test", slug: "/ro" }));
+        expect(revalidatePathSpy.mock.calls.slice(4)).toEqual([["/acme.test/ro"], ["/acme.test", "layout"], ["/acme.test~ro/ro"], ["/acme.test~ro", "layout"]]);
+        for (const slug of ["/about", "/", "/products/x", "/_booking", "/RO/x", undefined]) {
+            revalidatePathSpy.mockReset();
+            await POST(req({ domain: "acme.test", ...(slug === undefined ? {} : { slug }) }));
+            expect(revalidatePathSpy.mock.calls.some(([p]) => String(p).includes("~")), String(slug)).toBe(false);
+            expect(revalidatePathSpy).toHaveBeenCalledTimes(2);
+        }
+    });
+});

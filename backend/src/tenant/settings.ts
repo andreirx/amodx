@@ -1,13 +1,13 @@
 import { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js"; // <--- Added .js
-import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { AuthorizerContext } from "../auth/context.js"; // <--- Added .js
 import { publishAudit } from "../lib/events.js"; // <--- Added .js
 import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, languageSettingsProblem, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, languageSettingsProblem, readLanguageSettings, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -310,6 +310,55 @@ export const getHandler: AmodxHandler = async (event) => {
     }
 };
 
+// ── LANG-1B (docs/slices/lang-1.md § 9.4, ruling LANG1-STALENESS-BOUND = A with strengthening; LANG1-DEFERRED-FLUSH-LAYER2
+// = A′): the deferred edge flush. A save that changes the tenant's language SET schedules one more distribution-wide `/*`
+// about 5 minutes later — after the routing memory of the LAST language change (the middleware keeps a host's language
+// list 60 s) — so the admin does not have to press GO LIVE NOW. Best-effort and edge only: it removes edge copies stored
+// before it whose origin copy is right; it does not remove a copy stored again by a still-stale routing verdict, nor a
+// wrong page stored under the live origin key by a stale layout read (§ 9.4, the two residual cases). No origin purge,
+// no domain list, no infra change. The marker is drained by `scheduled/debounce-flush.ts` (`flushDeferredIfDue`).
+//
+// Abstraction line (§ 14): the `SYSTEM#CDN_DEFERRED_FLUSH` marker item — written here, drained by debounce-flush.ts —
+// axis: none, a second due time the existing `SYSTEM#CDN_PENDING` marker cannot hold (one due time, deleted at its first
+// `/*`) — rejected: a later due time in CDN_PENDING, and a new scheduled function.
+
+/** The marker's key: one item for the deployment (a CloudFront path carries no host). Its only other attribute: `dueAt`. */
+const DEFERRED_FLUSH_KEY = { PK: "SYSTEM", SK: "CDN_DEFERRED_FLUSH" } as const;
+/** N of § 9.4: longer than the gate's 60-s memory plus the drain's resolution (one tick + ~50 s); shorter than 15 min. */
+const DEFERRED_FLUSH_DELAY_MS = 5 * 60_000;
+
+/** True when the two records' language SETS differ (order and repeats ignored), each read by the one read rule (§ 5.1). */
+function languageSetChanged(before: unknown, after: unknown): boolean {
+    const a = new Set(readLanguageSettings(before).languages);
+    const b = new Set(readLanguageSettings(after).languages);
+    return a.size !== b.size || [...a].some((language) => !b.has(language));
+}
+
+/**
+ * Write `dueAt = now + N` to the marker, monotonically: only when no due time is stored or the stored one is EARLIER, so a
+ * later save moves the flush later and an earlier or equal one never moves it back. A failed condition (a later due time
+ * is already stored) is logged and ignored; any other failure is logged and never fails the save (as `markCdnPending`).
+ */
+async function armDeferredEdgeFlush(now: number): Promise<void> {
+    const due = now + DEFERRED_FLUSH_DELAY_MS;
+    try {
+        await db.send(new UpdateCommand({
+            TableName: TABLE_NAME,
+            Key: DEFERRED_FLUSH_KEY,
+            UpdateExpression: "SET dueAt = :due",
+            ConditionExpression: "attribute_not_exists(dueAt) OR dueAt < :due",
+            ExpressionAttributeValues: { ":due": due },
+        }));
+        console.log(`[Settings] Language list changed — deferred edge flush due at ${new Date(due).toISOString()}`);
+    } catch (error: any) {
+        if (error?.name === "ConditionalCheckFailedException") {
+            console.log("[Settings] Deferred edge flush already due later — kept");
+        } else {
+            console.error("[Settings] Failed to arm the deferred edge flush (best-effort; the bulk /* still runs):", error);
+        }
+    }
+}
+
 const _updateHandler: AmodxHandler = async (event) => {
     try {
         const tenantId = event.headers['x-tenant-id'];
@@ -470,6 +519,10 @@ const _updateHandler: AmodxHandler = async (event) => {
         // a re-read: an eventually consistent read just after the Put could still return the old domain. Never throws;
         // the wrapper marks the CDN after it (S3 before edge).
         await purgeStoredPagesOfDomains([current.domain, merged.domain]);
+
+        // LANG-1B (§ 9.4): after the stored-page purge, only when the language SET changed (another field, a reordered
+        // list, or the menus per language do not change routing).
+        if (languageSetChanged(current, merged)) await armDeferredEdgeFlush(Date.now());
 
         return { statusCode: 200, body: JSON.stringify({ message: "Settings Saved" }) };
     } catch (error: any) {

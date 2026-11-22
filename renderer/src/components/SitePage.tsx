@@ -21,8 +21,9 @@ import { reviewAssetCdnBase, toPublicReviewPhotos, toCarouselReviewItems } from 
 import { RenderBlocks } from "@/components/RenderBlocks";
 import { permanentRedirect } from "next/navigation";
 import { notFoundOrHandoff } from "@/lib/not-found-handoff";
+import { localeInputFor } from "@/lib/site-segment";
 import { Metadata } from "next";
-import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
+import { ContentItem, Product, Category, FormFieldSchema, type FormField, URL_PREFIX_DEFAULTS, urlPrefixesOf, getCountryPack, isCatalogMode, localeUsesDecimalComma, parseMoney, catalogListingPath, resolveLocaleStrings, pageLanguageOf, fillTemplate, selectPluralText, blockStrings, type LocaleStrings, type ResolvedLocaleStrings, type FacetLabels } from "@amodx/shared";
 import Link from "next/link";
 import { CommentsSection } from "@/components/CommentsSection";
 import { ThemeInjector } from "@/components/ThemeInjector";
@@ -632,8 +633,9 @@ export async function SitePage({ siteId, slug, preview, basePath, sessionToken, 
         };
     }
 
-    // LOCALE-1A: the tenant's locale table for this page's chrome (docs/slices/locale-1.md § 5.3).
-    const resolved = resolveLocaleStrings(config);
+    // LOCALE-1A: the tenant's locale table for this page's chrome (docs/slices/locale-1.md § 5.3). LANG-1B (lang-1.md § 8.2):
+    // the page's language derived from its own address and the tenant's list (§ 5) — an extra language uses its pack.
+    const resolved = resolveLocaleStrings(localeInputFor(config, pageLanguageOf(slugPath, config.languages ?? [])));
     const { locale, strings: { site } } = resolved;
 
     // --- RENDER: ACCESS DENIED ---

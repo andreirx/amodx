@@ -67,7 +67,8 @@ src/
 │   └── Providers.tsx                          # NextAuth SessionProvider wrapper
 └── lib/
     ├── dynamo.ts                              # Direct DynamoDB access: getTenantConfig, getContentBySlug, getProductById, getPosts, getCatalogListing
-    ├── tenant-directory.ts                    # EDGE runtime: "is this host a wired tenant?" for middleware (own client — see file header)
+    ├── tenant-directory.ts                    # EDGE runtime: the host verdict for middleware — unknown / unwired / wired + languages (own client — see file header)
+    ├── site-segment.ts                        # LANG-1B: the internal segment `<host>~<lang>` — write, parse, wire refusal of `~`, the layout's page language, the resolver input
     ├── not-found-handoff.ts                   # notFoundOrHandoff() — keeps 404s off the cacheable route
     ├── document-shell.ts                      # BODY_CLASS_NAME — the one <body> class of [siteId]/layout.tsx and not-found.tsx (locale-1e)
     ├── widths.ts                              # WIDTH_CLASSES (cat-theme-1): max-w-[1440px] / [1600px] / [1920px] written literally so Tailwind 4 compiles them; read by no runtime code
@@ -78,7 +79,7 @@ src/
 test/
 └── serving-contract/                          # `npm run test:serving` — see README.md there
     ├── contract.test.mjs                      # the contract rows + 4 harness isolation self-checks (101 tests on `next` since cat-theme-1; README.md there)
-    ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection
+    ├── ddb-stub.mjs                           # DynamoDB JSON-1.0 responder; failContentReads() fault injection; failHostGate(), staleTenantRecord() (lang-1b)
     ├── harness.mjs                            # next build / next start on an ephemeral port / HTTP helper
     ├── no-dotenv.cjs                          # NODE_OPTIONS preload: hides renderer/.env* from the whole child process tree; journals its own coverage
     └── fixtures.mjs                           # tenant + ROUTE# + CONTENT# items, `.test` TLD hosts
@@ -116,9 +117,11 @@ Local development note: mode 1 now 404s unless the request's `Host` matches a re
 record (see the gate below), so `npm run dev` against a real table should be driven through
 `/tenant/<id>/…` or `/_site/<id>/…`.
 
-Unknown-host gate (production mode only) — `lib/tenant-directory.ts` answers "does a tenant
-record exist for this host?" from a 60-second in-memory cache over a `Select: COUNT` query on
-`GSI_Domain`, and middleware answers `404` + `private, no-store` when the answer is no. This
+Unknown-host gate (production mode only) — `lib/tenant-directory.ts` `hostVerdict` answers "does a tenant
+record exist for this host, and which extra languages does it list?" (`HostVerdict`: `unknown` / `unwired` /
+`wired` + `languages`) from a 60-second in-memory cache over a `GSI_Domain` query that projects `SK` and
+`languages` (a `Select: COUNT` query before `lang-1b`), and middleware answers `404` + `private, no-store` when the
+verdict is `unwired`. This
 is the **only** place a production 404 can be non-cacheable, because a route in ISR mode
 cannot emit one (see `docs/caching-architecture.md`). It **fails open** on any lookup error:
 a DynamoDB blip must not 404 the whole estate. The client is separate from `lib/dynamo.ts` on
@@ -746,6 +749,37 @@ Tests: `test/unit/review-images.test.ts` (the pure filter/resolver) and
 `test/unit/site-page-reviews.test.ts` (the `SitePage` SSR integration of all three surfaces:
 site-reviews carousel, product-reviews-by-id carousel, and product-page review photos).
 
+## Language segment — slice `lang-1b` (PROTOTYPE)
+
+Specification: `docs/slices/lang-1.md` § 7, § 8.1, § 8.2, § 9.2; the serving rows are in `docs/caching-architecture.md`
+§ *Language segment*. A tenant may list extra languages (`languages`); a page whose address starts with `/<l>` (`<l>`
+listed) is in language `<l>`. The root layout `app/[siteId]/layout.tsx` cannot see the address, so the middleware writes
+the language into the internal first segment: `/<host>~<l><path>` (`lib/site-segment.ts` `siteSegmentFor`).
+
+- **Middleware.** After the booking branch: a host or by-id id carrying `~` (literal or percent-encoded in any depth,
+  `carriesSiteSegmentSeparator`) → `404`. Every language decision reads the first segment as the page body receives
+  it (`firstPageSegmentOf`: decoded once, an encoded slash kept encoded — OBSERVED Next behaviour). The production
+  branch switches on `hostVerdict`: `wired` → `pageLanguageOf` (the shared address rule) on that segment over the
+  verdict's list → `<host>~<l>` or `<host>`; `unknown` → a language-shaped first segment goes to the twin with
+  `<host>~<first>` (never stored). Route handlers need no exemption: they live at the site root and their names are
+  never language-shaped; `isSiteRouteHandler` is a suffix match used only for its older jobs. By-id paths
+  (`byIdTarget`) get the twin with `<id>~<first>` for a language-shaped first segment, without a tenant read; other
+  by-id paths keep today's target. A leaked `/<id>~<l>/_dyn/…` redirects to `/_site/<id>/…`.
+- **Layout.** `parseSiteSegment(siteId)` → the tenant is read by the host; `segmentLanguage` keeps the segment's
+  language only when this read's `config.languages` lists it. `<html lang>` = `languageTagOf(language, localeLanguageSubtag(locale))`;
+  the texts = `resolveLocaleStrings(localeInputFor(config, language))` — an extra language gets its pack without the
+  tenant's overrides (LANG1-OVERRIDES = A). The menu and footer lists are `lang-1c`.
+- **Pages.** Both catch-all pages pass the host to `SitePage` / `buildSitePageMetadata`. `SitePage`'s page chrome
+  derives the language from its own address (`pageLanguageOf(slugPath, config.languages)`), the § 5 rule; it equals
+  the layout's choice whenever the middleware's verdict and the page's tenant read agree.
+- **`mapTenant`** adds `readLanguageSettings(item)` (`languages`, `navLinksByLang`, `footerLinksByLang`; `[]`/`{}` when
+  absent) — the same read rule the gate applies to its projected AttributeValues.
+- **Purge.** `api/revalidate/route.ts` deletes the `<domain>~…` S3 objects too, revalidates the `~<first>` path for a
+  language-shaped slug, and refuses a `domain` with `~`.
+- **One-language tenants** get no suffix: the same rewrite, key, tenant read, `lang` and texts.
+- Finding F-LANG-SITEID-NAME: the parameter `[siteId]` holds a host, a tenant id, or `<host>~<lang>`; a rename would
+  change the RSC payload of every tenant (`"n":"siteId"`), so it is not proposed; `parseSiteSegment` states the contract.
+
 ## Hosted booking pages — slice `sched-1g2` (PROTOTYPE)
 
 Specification: `docs/slices/sched-1.md` § 8, § 9, § 10.1, § 12, § 16.3 (PD-002 booking-token variant). The booking
@@ -753,8 +787,8 @@ screens for both shapes (a slot with a practitioner, a seat in a group), on the 
 without one — on the preview host. The browser talks only to the renderer; the renderer calls the scheduling visitor
 routes of the backend with the `RENDERER` key (`backend/src/scheduling/visitor/*.ts`, deployed by `sched-1d2`/`1g1`).
 
-**Routing.** `middleware.ts` branch `A3` (`lib/booking-path.ts` `bookingRoute`, pure): `/_booking[/rest]` on a host that
-`isWiredTenantHost` does not deny → rewrite to `/_book/<host>[/rest]`; `/_site/<id>/_booking[/rest]` on a preview host →
+**Routing.** `middleware.ts` branch `A3` (`lib/booking-path.ts` `bookingRoute`, pure): `/_booking[/rest]` on a host whose
+`hostVerdict` is not `unwired` (its language list is not read; `lang-1b`) → rewrite to `/_book/<host>[/rest]`; `/_site/<id>/_booking[/rest]` on a preview host →
 `/_book/<id>[/rest]`; first path segment `_book` in any spelling (`%5Fbook`, `%255Fbook`, mixed case; `//_book` is first
 answered 308 by Next itself) → `404` + `private, no-store`. No `%5Fdyn` twin, no `amodx_preview_base` cookie, no
 session-cookie test. `/_booking/manage` also gets `Referrer-Policy: no-referrer`; the book page and the manage page get

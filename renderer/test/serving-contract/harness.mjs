@@ -184,6 +184,9 @@ export async function readAudit() {
  * is exactly what Next's build workers do. Quoted because this repo's checkout path contains
  * a space. Rationale and the measurements behind it: `no-dotenv.cjs` § DELIVERY.
  */
+/** LANG-1B: the `next` target's revalidation secret (a constructed test value; row lang1b-purge). */
+export const REVALIDATION_TEST_SECRET = "serving-contract-revalidation-secret";
+
 export function rendererEnv(stubUrl) {
     const env = {};
     for (const key of OS_PASSTHROUGH) {
@@ -210,6 +213,9 @@ export function rendererEnv(stubUrl) {
         // mints a valid JWT, so an unverifiable cookie stays unauthenticated.
         NEXTAUTH_SECRET: "serving-contract-test-secret",
         RECAPTCHA_SITE_KEY: "",
+        // LANG-1B: lets row lang1b-purge call POST /api/revalidate (the route refuses every call without a secret). A
+        // constructed test value, never the operator's; the bundle target overrides it with its own (`bundleEnv`).
+        REVALIDATION_SECRET: REVALIDATION_TEST_SECRET,
     };
 }
 

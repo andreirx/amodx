@@ -14,7 +14,7 @@
 // defect this suite exists to catch.
 //
 // CONTROL SURFACE: plain methods on the returned handle — `stats()`, `reset()`,
-// `failContentReads(bool)`, `putItem(item)`. The cache-1 probe harness exposed the equivalent over HTTP
+// `failContentReads(bool)`, `putItem(item)`, `failHostGate(bool)`, `staleTenantRecord(item | null)`. The cache-1 probe harness exposed the equivalent over HTTP
 // (`/__ctl/fail-content-on`) because its probes were separate shell scripts; here the stub
 // and the assertions share one process, so an HTTP control plane would be a second
 // mechanism for data already in scope — and a surface the renderer could theoretically
@@ -24,6 +24,11 @@
 // admin edit: it replaces the item with the same PK+SK (or adds it) in THIS stub's copy of the
 // fixture dataset — the shared `ITEMS` array is never mutated, so another stub instance (the
 // contract describe's) is unaffected.
+// LANG-1B (docs/slices/lang-1.md § 7.1, § 9.4): `failHostGate(true)` fails the middleware's host-gate read only (the
+// gate's verdict becomes `unknown`; every other read stays healthy) — row `lang1b-gate-unknown`.
+// `staleTenantRecord(item)` is the index-lag model of § 9.4 residual case 2: every renderer tenant read OTHER than the
+// host gate (the layout's and the page's `getTenantConfig`) answers `item` in place of the stored tenant item with the
+// same PK+SK, while the gate reads the stored one; `null` ends it — row `B-LANG-LIMIT-LIVE-KEY`.
 //
 // TAG TABLE (slice opennext-1a, bundle target only). The OpenNext server bundle has a second
 // DynamoDB client: the tag cache (open-next 3.1.3 `cache/tag/dynamodb.js`), on the table named by
@@ -137,7 +142,8 @@ function passesFilter(item, expr, names, values) {
  *        (`CACHE_DYNAMO_TABLE`) to serve as well. Omitted on the `next` target, where no
  *        adapter runs — a call naming it there would be unhandled, as any unknown table is.
  * @returns {Promise<{url:string, stats:Function, journal:Function, tagItems:Function,
- *          reset:Function, failContentReads:Function, putItem:Function, close:Function}>}
+ *          reset:Function, failContentReads:Function, putItem:Function, failHostGate:Function,
+ *          staleTenantRecord:Function, close:Function}>}
  */
 export async function startDdbStub({ tagTable } = {}) {
     // `tagCache` stays 0 on the `next` target (no tag table is served there).
@@ -148,6 +154,10 @@ export async function startDdbStub({ tagTable } = {}) {
     /** Tag-table rows written by `BatchWriteItem`, unmarshalled: `{ path, tag, revalidatedAt }`. */
     const tagItems = [];
     let failContent = false;
+    /** LANG-1B: the host-gate read fails (`failHostGate`). */
+    let failGate = false;
+    /** LANG-1B: tenant items the non-gate reads answer in place of the stored ones, by `PK|SK` (`staleTenantRecord`). */
+    const staleTenants = new Map();
     /** This stub's copy of the fixture dataset; `putItem` edits it. */
     const items = ITEMS.map((i) => structuredClone(i));
 
@@ -184,12 +194,17 @@ export async function startDdbStub({ tagTable } = {}) {
                 return amzError(res, 400, "ValidationException", `ddb-stub does not implement ${target} on the tag table`);
             }
 
-            // The middleware host gate is the one read that uses `Select: COUNT`
-            // (lib/tenant-directory.ts). Counting it separately is what lets the
-            // "zero reads on HIT" assertion distinguish "no SSR ran" from "no I/O at all".
-            const isHostGate = parsed.Select === "COUNT" && parsed.IndexName === DOMAIN_INDEX;
+            // The middleware host gate is the one read that projects `SK, languages` on GSI_Domain
+            // (lib/tenant-directory.ts; LANG-1B, it was `Select: COUNT` before). The renderer's own
+            // tenant read on that index (`getTenantConfig`) projects nothing. Counting the gate
+            // separately is what lets the "zero reads on HIT" assertion distinguish "no SSR ran"
+            // from "no I/O at all".
+            const isHostGate = parsed.IndexName === DOMAIN_INDEX && resolveNames(parsed.ProjectionExpression, parsed.ExpressionAttributeNames) === "SK, languages";
             if (isHostGate) counters.hostGate += 1;
             else counters.render += 1;
+            if (isHostGate && failGate) {
+                return amzError(res, 400, "ValidationException", "injected host-gate failure");
+            }
 
             if (table !== "renderer") {
                 unhandled.push(`TableName=${tableName}`);
@@ -209,7 +224,7 @@ export async function startDdbStub({ tagTable } = {}) {
 
             try {
                 if (target === "GetItem") return getItem(res, parsed);
-                if (target === "Query") return query(res, parsed);
+                if (target === "Query") return query(res, parsed, isHostGate);
             } catch (e) {
                 unhandled.push(`${target}: ${e.message}`);
                 return amzError(res, 400, "ValidationException", e.message);
@@ -220,13 +235,20 @@ export async function startDdbStub({ tagTable } = {}) {
         });
     });
 
+    /** LANG-1B: the item a non-gate read sees — the stale tenant record when one is set for its key (`staleTenantRecord`). */
+    const asRead = (item) => staleTenants.get(`${item.PK}|${item.SK}`) ?? item;
+    /** LANG-1B: the dataset a read sees. With no stale record set (every row but one) it is `items` itself, so the stub
+     *  does no per-read work beyond what it did before the control existed (the suite's streamed-page rows are timing
+     *  sensitive: docs/slices/lang-1.md Appendix F, finding F-LANG1B-STREAMED-TITLE). */
+    const readView = (isHostGate) => (isHostGate || staleTenants.size === 0 ? items : items.map(asRead));
+
     function getItem(res, parsed) {
         const key = unmarshallItem(parsed.Key);
         const item = items.find((i) => i.PK === key.PK && i.SK === key.SK);
-        return json(res, item ? { Item: marshallItem(item) } : {});
+        return json(res, item ? { Item: marshallItem(staleTenants.size === 0 ? item : asRead(item)) } : {});
     }
 
-    function query(res, parsed) {
+    function query(res, parsed, isHostGate = false) {
         const names = parsed.ExpressionAttributeNames;
         const values = Object.fromEntries(
             Object.entries(parsed.ExpressionAttributeValues || {}).map(([k, v]) => [k, unmarshall(v)]),
@@ -240,15 +262,15 @@ export async function startDdbStub({ tagTable } = {}) {
             throw new Error(`unsupported ${SLUG_INDEX} key ${cond.hashAttr}`);
         }
 
-        let found = items.filter((i) => i[cond.hashAttr] === values[cond.hashVal]);
+        let found = readView(isHostGate).filter((i) => i[cond.hashAttr] === values[cond.hashVal]);
         if (cond.rangeAttr) {
             found = found.filter((i) => String(i[cond.rangeAttr] ?? "").startsWith(values[cond.rangePrefix]));
         }
         found = found.filter((i) => passesFilter(i, parsed.FilterExpression, names, values));
         if (parsed.Limit) found = found.slice(0, parsed.Limit);
 
-        // `Select: COUNT` must not return Items — lib/tenant-directory.ts reads `res.Count`
-        // precisely so no tenant data crosses into the edge layer.
+        // `Select: COUNT` must not return Items. (Until LANG-1B the host gate sent this shape; it now
+        // projects `SK, languages`, so no current caller sends COUNT. Kept: it answers the shape right.)
         if (parsed.Select === "COUNT") return json(res, { Count: found.length, ScannedCount: found.length });
         // ProjectionExpression is deliberately ignored: returning extra attributes cannot
         // change any assertion here, and honouring it would add a parser with no caller.
@@ -305,6 +327,15 @@ export async function startDdbStub({ tagTable } = {}) {
         /** CACHE-1-D4 fault injection. See the file header. */
         failContentReads: (on) => {
             failContent = on;
+        },
+        /** LANG-1B: the host-gate read fails while `on` (file header). */
+        failHostGate: (on) => {
+            failGate = on;
+        },
+        /** LANG-1B: non-gate reads see `item` for its PK+SK (the index-lag model, file header); `null` ends every one. */
+        staleTenantRecord: (item) => {
+            if (item === null) staleTenants.clear();
+            else staleTenants.set(`${item.PK}|${item.SK}`, structuredClone(item));
         },
         /** An admin edit (file header): replace-or-add by PK+SK in this stub's dataset. */
         putItem: (item) => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { S3Client, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { SITE_SEGMENT_SEPARATOR, firstPageSegmentOf, isLanguageShaped, siteSegmentFor } from "@/lib/site-segment";
 
 // Phase 2.5: Secure revalidation endpoint with secret token
 const REVALIDATION_SECRET = process.env.REVALIDATION_SECRET;
@@ -47,6 +48,17 @@ const REVALIDATION_SECRET = process.env.REVALIDATION_SECRET;
  * a `.` and no `/`: no fixed layout segment (`route-cache`, `APP_PAGE`, `$`, a buildId, a hash,
  * `__fetch`) contains a dot, so a dotted domain can never address another tenant's prefix, while
  * a domain such as `route-cache` would match every tenant's objects.
+ *
+ * LANG-1B — THE LANGUAGE SEGMENTS (docs/slices/lang-1.md § 9.2)
+ * A page of an extra language is stored under `<domain>~<lang>` (`…/$/<domain>~ro/ro/despre.cache`, and
+ * `<domain>~ro.cache` cannot occur — a language page always has its prefix in the path — but is covered). The
+ * purge also deletes every object under `<base>~` at each base above. Isolation: the middleware refuses a host that
+ * carries `~`, so this renderer writes no ISR key under such a host; `<domain>~` then addresses only this domain's
+ * language segments PROVIDED no stored tenant domain contains `~` — that is the operator's pre-deploy check
+ * F-LANG-TILDE (NOT RUN by the builder; docs/slices/lang-1.md § 15). A
+ * `domain` that contains `~` is refused (400). `revalidatePath` also names the `~<first>` path and layout when the
+ * slug's first segment has the form of a language — the route reads no tenant data, and a path with no entry is a
+ * no-op. The backend still sends the public `{ domain, slug }`.
  *
  * FAILURE IS LOUD
  * A List/Delete error, or any per-key error in a DeleteObjects response, returns 500. A purge
@@ -116,7 +128,11 @@ async function purgeTenantIsrCache(
         ];
     }))).flat();
 
-    const keys = (await Promise.all(bases.map((base) => tenantKeysAt(client, bucket, base)))).flat();
+    // LANG-1B (§ 9.2): plus every object under `<base>~` — the domain's language segments `<domain>~<lang>…`.
+    const keys = (await Promise.all([
+        ...bases.map((base) => tenantKeysAt(client, bucket, base)),
+        ...bases.map(async (base) => (await listAll(client, bucket, `${base}${SITE_SEGMENT_SEPARATOR}`)).keys),
+    ])).flat();
 
     for (let i = 0; i < keys.length; i += DELETE_BATCH_MAX) {
         const batch = keys.slice(i, i + DELETE_BATCH_MAX);
@@ -167,6 +183,14 @@ export async function POST(req: NextRequest) {
                 { status: 400 },
             );
         }
+        // LANG-1B (§ 9.2): the `~` separator is the language segment's; a domain that holds it would address another
+        // domain's language segments (`a.ro~…`), so it is refused. Stored tenant domains with `~`: F-LANG-TILDE.
+        if (domain.includes(SITE_SEGMENT_SEPARATOR)) {
+            return NextResponse.json(
+                { error: `domain must not contain '${SITE_SEGMENT_SEPARATOR}' (the language-segment separator)` },
+                { status: 400 },
+            );
+        }
 
         console.log(`[Cache] Purging: /${domain}${slug || ''}`);
 
@@ -175,6 +199,16 @@ export async function POST(req: NextRequest) {
 
         // Also revalidate the layout (theme changes)
         revalidatePath(`/${domain}`, 'layout');
+
+        // LANG-1B (§ 9.2): a slug whose first segment has the form of a language may be stored under the language
+        // segment `<domain>~<first>` (OBSERVED, spike W1b: without these two calls the page stays a HIT).
+        // The first segment as the page body receives it (`firstPageSegmentOf`), the rule the middleware routes by.
+        const first = typeof slug === "string" ? firstPageSegmentOf(slug) : undefined;
+        if (isLanguageShaped(first)) {
+            const segment = siteSegmentFor(domain, first);
+            revalidatePath(`/${segment}${slug}`);
+            revalidatePath(`/${segment}`, 'layout');
+        }
 
         // CACHE-10: the S3 purge that actually makes the edit visible (see header comment).
         // `purged: null` = purge not attempted (no bucket configured: unit tests, local dev).
