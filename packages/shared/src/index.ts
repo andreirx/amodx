@@ -12,7 +12,12 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts.
 export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings, catalogServerTexts, templatePlaceholders, BOOKING_TEXT_KEYS, bookingStandardTexts } from "./locale-strings.js";
-import { normalizeLocale, BOOKING_TEXT_KEYS } from "./locale-strings.js";
+import { normalizeLocale, localeLanguageSubtag, BOOKING_TEXT_KEYS } from "./locale-strings.js";
+// LANG-1 (docs/slices/lang-1.md § 5): the page-language derivation and the read rule of the language settings. Pure and
+// import-free (the renderer middleware loads the built module alone, `lang-1b`).
+export { readLanguageSettings, pageLanguageOf, languageTagOf } from "./languages.js";
+export type { PageLanguage, LanguageSettings, LanguageLink } from "./languages.js";
+import { pageLanguageOf, type PageLanguage } from "./languages.js";
 export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings, CatalogServerTexts } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
 export type { LanguagePack, CompleteLanguagePack, BookingStrings } from "./language-packs/index.js";
@@ -441,9 +446,20 @@ export const ContentItemSchema = z.object({
     createdAt: z.string(),
     updatedAt: z.string().optional(),
     updatedBy: z.string().optional(),
+
+    // LANG-1 (docs/slices/lang-1.md § 5, § 6): the translation set the page belongs to — a random UUID made when two
+    // pages are first linked, never a nodeId, never reused. WRITTEN ONLY BY THE BACKEND (rule C1): the content API
+    // never takes it as input (create omits it; update's schema does not list it). Absent = in no set.
+    translationKey: z.string().optional(),
 });
 
 export type ContentItem = z.infer<typeof ContentItemSchema>;
+
+/**
+ * LANG-1 (§ 5) — content API INPUT only (POST /content, PUT /content/{id}); never stored: the nodeId of a page whose
+ * translation set this page joins; `null` = leave the set; absent = no change to the set.
+ */
+export const TranslationOfInputSchema = z.string().nullable().optional();
 
 // NEW: The Comment Data Model
 
@@ -1228,6 +1244,11 @@ export const TenantConfigSchema = z.object({
     icon: z.string().optional(), // Favicon
     navLinks: z.array(LinkSchema).default([]),
     footerLinks: z.array(LinkSchema).default([]),
+    // LANG-1 (docs/slices/lang-1.md § 5): the menu and footer list of each EXTRA language; a language without a key
+    // uses `navLinks` / `footerLinks`. Optional, no default: a tenant without them parses as before. Checked on save by
+    // `languageSettingsProblem` (V5); read by `readLanguageSettings` (never through this schema).
+    navLinksByLang: z.record(z.string(), z.array(LinkSchema)).optional(),
+    footerLinksByLang: z.record(z.string(), z.array(LinkSchema)).optional(),
 
     // Commerce toggle — enables cart, checkout, orders flow. Products/categories/Paddle still work without it.
     commerceEnabled: z.boolean().default(false),
@@ -1290,6 +1311,9 @@ export const TenantConfigSchema = z.object({
     // Country pack & locale
     countryCode: z.string().default("EN"),
     locale: z.string().default("en-US"),
+    // LANG-1 (docs/slices/lang-1.md § 4, § 5): the EXTRA languages (bare subtags, e.g. ["ro"]); the default language is
+    // the subtag of `locale`. Pages under `/<l>/` are in language `<l>`. Optional, no default: absent = one language.
+    languages: z.array(z.string()).optional(),
 
     // Commerce UI strings (i18n) — the commerce part of the locale table (LOCALE-1 § 4.1)
     commerceStrings: CommerceStringsSchema.default({}),
@@ -1347,6 +1371,80 @@ export const TenantConfigSchema = z.object({
 });
 
 export type TenantConfig = z.infer<typeof TenantConfigSchema>;
+
+const LANGUAGE_SUBTAG_FORM = /^[a-z]{2,3}$/;
+const LinkListSchema = z.array(LinkSchema);
+
+/** The first path segment of a URL prefix (`"/produs"` → `"produs"`, `"/ro/shop"` → `"ro"`; leading slashes ignored). */
+function firstSegmentOf(prefix: string): string {
+    return prefix.replace(/^\/+/, "").split("/")[0];
+}
+
+/**
+ * LANG-1 (docs/slices/lang-1.md § 5.2) — the WRITE rule of the language settings, V1-V6. Called with the MERGED settings
+ * (the stored item with the request body over it), so it also refuses a change of `locale`, `urlPrefixes` or
+ * `homePageSlug` that breaks the stored list. Returns a message that names the field, or null when valid. A record
+ * without `languages`, `navLinksByLang` and `footerLinksByLang` is always valid (nothing is checked; V6 needs languages).
+ *  V1 `languages` is an array of bare language subtags: 2-3 lowercase letters that `normalizeLocale` keeps unchanged.
+ *  V2 no entry twice.  V3 no entry equals the default subtag (`localeLanguageSubtag(locale)`).
+ *  V4 no entry equals the first segment of a URL prefix (`urlPrefixesOf`), nor `api`.
+ *  V5 every key of `navLinksByLang` / `footerLinksByLang` is a listed language; each value is a `LinkSchema` list.
+ *  V6 with a non-empty list, a non-empty `homePageSlug` is a default-language address (it is served at `/`).
+ */
+export function languageSettingsProblem(input: {
+    languages?: unknown; locale?: unknown; urlPrefixes?: unknown;
+    navLinksByLang?: unknown; footerLinksByLang?: unknown; homePageSlug?: unknown;
+}): string | null {
+    const languages: string[] = [];
+    if (input.languages !== undefined) {
+        if (!Array.isArray(input.languages)) return "languages: must be a list of language codes, for example [\"ro\"].";
+        for (const entry of input.languages) {
+            const shown = JSON.stringify(entry)?.slice(0, 40) ?? String(entry);
+            if (typeof entry !== "string" || !LANGUAGE_SUBTAG_FORM.test(entry) || normalizeLocale(entry) !== entry) {
+                return `languages: ${shown} is not a language code (two or three lowercase letters of a known language, for example "ro").`;
+            }
+            if (languages.includes(entry)) return `languages: "${entry}" is listed twice.`;
+            languages.push(entry);
+        }
+        const defaultSubtag = localeLanguageSubtag(input.locale);
+        if (languages.includes(defaultSubtag)) {
+            return `languages: "${defaultSubtag}" is the default language of the site (from the locale); list only the other languages.`;
+        }
+        const prefixes = urlPrefixesOf(input.urlPrefixes);
+        for (const language of languages) {
+            if (language === "api") return `languages: "api" is a reserved address and cannot be a language.`;
+            const key = (Object.keys(prefixes) as (keyof typeof prefixes)[]).find((k) => firstSegmentOf(prefixes[k]) === language);
+            if (key !== undefined) {
+                return `languages: "${language}" is the start of the URL prefix ${key} ("${prefixes[key]}"); change the prefix or choose another language.`;
+            }
+        }
+    }
+    for (const field of ["navLinksByLang", "footerLinksByLang"] as const) {
+        const map = input[field];
+        if (map === undefined) continue;
+        if (map === null || typeof map !== "object" || Array.isArray(map)) return `${field}: must be an object of link lists per language.`;
+        for (const [key, value] of Object.entries(map)) {
+            if (!languages.includes(key)) return `${field}: "${key.slice(0, 40)}" is not in the site's languages.`;
+            const parsed = LinkListSchema.safeParse(value);
+            if (!parsed.success) {
+                const issue = parsed.error.issues[0];
+                return `${[field, key, ...issue.path.map(String)].join(".")}: ${issue.message}`;
+            }
+        }
+    }
+    if (languages.length > 0 && typeof input.homePageSlug === "string" && input.homePageSlug !== "") {
+        return homePageProblem(input.homePageSlug, pageLanguageOf(input.homePageSlug, languages));
+    }
+    return null;
+}
+
+/** V6: the home page is served at `/`, a default-language address. Every arm returns (a new variant does not compile). */
+function homePageProblem(homePageSlug: string, language: PageLanguage): string | null {
+    switch (language.kind) {
+        case "default": return null;
+        case "extra": return `homePageSlug: "${homePageSlug}" is a page in "${language.subtag}"; the home page (/) must be a page in the default language.`;
+    }
+}
 
 // USER PROFILE SCHEMA (Stored in DynamoDB, linked to Cognito ID)
 export const UserProfileSchema = z.object({

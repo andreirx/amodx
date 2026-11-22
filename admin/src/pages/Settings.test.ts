@@ -54,7 +54,7 @@ vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn()
 // the one the 3912c5d captures under __markup__/ were taken with (they were not re-captured).
 vi.stubGlobal("window", { AMODX_CONFIG: { VITE_RENDERER_URL: "https://d111wtnnjzzsb1.cloudfront.net" } });
 
-import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HeaderTaglineAndCategoryBarControls, FooterBrandAndColumnsControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS } from "./Settings";
+import SettingsPage, { localeStatus, withCountry, withSiteLanguage, withContactForSave, withThemeKey, withFooterKey, withHeaderKey, TypographyDetails, ThemeColorDetails, ShapeAndCards, FooterWidthControl, FooterColorControls, HeaderColorControls, HeaderTaglineAndCategoryBarControls, FooterBrandAndColumnsControls, HEADER_WIDTH_OPTIONS, PAGE_WIDTH_OPTIONS, LanguageListControls, MenuLanguageSelect, languageName, withLanguageAdded, withLanguageRemoved, linksFor, withLinksFor } from "./Settings";
 
 /**
  * LOCALE-1A — the "Language & Country" card of Settings (docs/slices/locale-1.md § 3.5, § 7.2; review-0 R3, R4).
@@ -203,6 +203,25 @@ function withoutCdl2(html: string, config: { urlPrefixes: Record<string, string>
 }
 
 /**
+ * LANG-1A (docs/slices/lang-1.md § 10; same procedure) — ONE listed insertion: the Languages controls
+ * (`LanguageListControls`), shown for every site, as the LAST child of the "Language & Country" card's content, directly
+ * after the Currency field. Native elements and `Input` only (no React `useId`); the card's content goes from 2 to 3
+ * children, which keeps the width of React's tree ids, so no Radix id of the page moves (the comparison below would
+ * fail otherwise). The captures are NOT re-taken. The comparison removes EXACTLY the group's own render for the same
+ * config; it must occur exactly once and directly after the Currency field. The menu-language selector
+ * (`MenuLanguageSelect`) renders only with extra languages, so it adds no byte to these fixtures.
+ */
+const CURRENCY_END = "Auto-filled from the country. Override if needed.</p></div></div>";
+const languageGroup = (config: Record<string, unknown>) => renderToStaticMarkup(createElement(LanguageListControls, { config, setConfig: () => {} }));
+function withoutLang1a(html: string, config: Record<string, unknown>): string {
+    const group = languageGroup(config);
+    expect(group.length, "the Languages group renders markup").toBeGreaterThan(0);
+    expect(html.split(group).length - 1, "the Languages group occurs once").toBe(1);
+    expect(html.split(CURRENCY_END + group).length - 1, "the Languages group directly follows the Currency field").toBe(1);
+    return html.replace(group, "");
+}
+
+/**
  * ADMIN-ENGLISH-2 (packet rule 3; record docs/slices/admin-english-2.md § 3) — the example placeholders became English.
  * The captures are NOT re-taken: they keep the Romanian examples. The comparison replaces, in the CAPTURE text, exactly
  * the old example texts by the new ones; each must occur exactly `count` times in each capture (a replacement that
@@ -230,10 +249,10 @@ function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES):
 
 describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups and the CDL-2 field, with the ADMIN-ENGLISH-2 example texts", () => {
     it("content site", () => {
-        expect(withoutCatTheme(withoutCdl2(renderSettings(CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettings(CONTENT), CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
     });
     it("commerce site", () => {
-        expect(withoutCatTheme(withoutCdl2(renderSettings(COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettings(COMMERCE), COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
     });
     it("control (CDL-2): without the listed removal the comparison fails; a moved, doubled or changed field is refused", () => {
         for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
@@ -246,19 +265,31 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
             expect(() => withoutCdl2(html.replace(field, field.replace('placeholder="/confirmation"', 'placeholder="/confirmations"')), config), `${name} changed`).toThrow();
         }
     });
+    it("control (LANG-1A): without the listed removal the comparison fails; a moved, doubled or preceded group is refused; a byte after it fails", () => {
+        for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
+            const html = renderSettings(config);
+            const group = languageGroup(config);
+            expect(withoutCatTheme(withoutCdl2(html, config), config), name).not.toBe(capture(name));
+            const moved = html.replace(group, "").replace(">URL Prefixes<", `>URL Prefixes<${group}`);
+            expect(() => withoutLang1a(moved, config), `${name} moved`).toThrow();
+            expect(() => withoutLang1a(html.replace(group, group + group), config), `${name} doubled`).toThrow();
+            expect(() => withoutLang1a(html.replace(CURRENCY_END, `${CURRENCY_END}<i></i>`), config), `${name} byte before`).toThrow();
+            expect(withoutCatTheme(withoutCdl2(withoutLang1a(html.replace(group, `${group} `), config), config), config), `${name} byte after`).not.toBe(capture(name));
+        }
+    });
     it("control: with any one ADMIN-ENGLISH-2 replacement removed, the comparison fails", () => {
         const pages = [["content", renderSettings(CONTENT), CONTENT], ["commerce", renderSettings(COMMERCE), COMMERCE]] as const;
         for (const [name, html, config] of pages) {
             for (let i = 0; i < ENGLISH_EXAMPLES.length; i++) {
                 const without = ENGLISH_EXAMPLES.filter((_, j) => j !== i);
-                expect(withoutCatTheme(withoutCdl2(html, config), config), `${name} without ${ENGLISH_EXAMPLES[i][0]}`).not.toBe(capture(name, without));
+                expect(withoutCatTheme(withoutCdl2(withoutLang1a(html, config), config), config), `${name} without ${ENGLISH_EXAMPLES[i][0]}`).not.toBe(capture(name, without));
             }
         }
     });
     it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card, one byte next to a removed group", async () => {
         const content = renderSettings(CONTENT), commerce = renderSettings(COMMERCE);
-        expect(withoutCatTheme(withoutCdl2(content, CONTENT), CONTENT)).toBe(capture("content"));            // positive control
-        expect(withoutCatTheme(withoutCdl2(commerce, COMMERCE), COMMERCE)).toBe(capture("commerce"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(content, CONTENT), CONTENT), CONTENT)).toBe(capture("content"));            // positive control
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(commerce, COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
         const footer = THEME_GROUPS(CONTENT)[3];
         const footerColours = THEME_GROUPS(COMMERCE)[4];
@@ -276,7 +307,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
             [once(commerce, 'placeholder="0762 271 715"', 'placeholder="0762 271 716"'), "commerce", COMMERCE],
             [once(content, footer, `${footer} `), "content", CONTENT],
         ];
-        for (const [html, name, config] of mutations) expect(withoutCatTheme(withoutCdl2(html, config as typeof CONTENT), config)).not.toBe(capture(name));
+        for (const [html, name, config] of mutations) expect(withoutCatTheme(withoutCdl2(withoutLang1a(html, config), config as typeof CONTENT), config)).not.toBe(capture(name));
     });
 });
 
@@ -748,5 +779,67 @@ describe("Settings — the cards of each site kind (§ 4.5)", () => {
         expect(html).toContain("Changing these will update how catalog URLs are generated and resolved. Existing links using old prefixes will stop working.");
         expect(html).not.toContain("commerce pages");
         expect(html).not.toContain("commerce URLs");
+    });
+});
+
+/**
+ * LANG-1A (docs/slices/lang-1.md § 10) — the Languages controls and the menu and footer lists per language. Pure helpers
+ * and server renders; the save rule shown is the shared `languageSettingsProblem` that PUT /settings runs.
+ */
+describe("Settings — languages (LANG-1A)", () => {
+    const TWO = { ...CONTENT, locale: "ro-RO", languages: ["en"], navLinks: [{ label: "Acasă", href: "/" }], footerLinks: [{ label: "Contact", href: "/contact" }] };
+
+    it("L1A-ADMIN-LANGUAGES: the controls show the default language, each extra language, the help text and the delay sentence", () => {
+        const html = languageGroup(TWO);
+        expect(html).toContain("Default language: Romanian (ro)");
+        expect(html).toContain("English (en) — pages under /en/");
+        expect(html).toContain("A change to the language list can take a few minutes to show on every page.");
+        expect(html).toContain("Adding a language makes the existing pages under its prefix pages of that language.");
+        expect(languageGroup(CONTENT)).toContain("Default language: English (en)");
+        expect(languageName("de")).toBe("German");
+    });
+
+    it("L1A-ADMIN-LANGUAGES: a list the save rule refuses shows the rule's message (the default subtag; a key of a removed language)", () => {
+        expect(languageGroup({ ...TWO, languages: ["ro"] })).toContain("languages: &quot;ro&quot; is the default language of the site");
+        expect(languageGroup({ ...TWO, navLinksByLang: { de: [] } })).toContain("navLinksByLang: &quot;de&quot; is not in the site&#x27;s languages.");
+        expect(languageGroup(TWO)).not.toContain("text-destructive\">languages");
+    });
+
+    it("L1A-ADMIN-LANGUAGES: add and remove — removing a language removes its menu and footer lists; the list and maps are sent even when empty", () => {
+        const added = withLanguageAdded(CONTENT, "de");
+        expect(added.languages).toEqual(["de"]);
+        const withMenus = { ...TWO, languages: ["en", "de"], navLinksByLang: { en: [{ label: "Home", href: "/en" }], de: [] }, footerLinksByLang: { en: [] } };
+        const removed = withLanguageRemoved(withMenus, "en");
+        expect(removed.languages).toEqual(["de"]);
+        expect(removed.navLinksByLang).toEqual({ de: [] });
+        expect(removed.footerLinksByLang).toEqual({});
+        const none = withLanguageRemoved(removed, "de");
+        expect(none.languages).toEqual([]);
+        expect(none.navLinksByLang).toEqual({});
+        // A map never stored stays absent; a malformed entry can be removed.
+        expect(Object.hasOwn(withLanguageRemoved({ ...CONTENT, languages: ["de", 5] as any }, 5), "navLinksByLang")).toBe(false);
+        expect(withLanguageRemoved({ ...CONTENT, languages: ["de", 5] as any }, 5).languages).toEqual(["de"]);
+    });
+
+    it("L1A-ADMIN-MENUS: the default list is navLinks / footerLinks exactly as before; a language edits its own list; undefined = use the default menu", () => {
+        expect(linksFor(TWO, "navLinks", null)).toBe(TWO.navLinks);
+        expect(withLinksFor(TWO, "footerLinks", null, [])).toEqual({ ...TWO, footerLinks: [] });
+        expect(linksFor(TWO, "navLinks", "en")).toBeUndefined();
+        const own = withLinksFor(TWO, "navLinks", "en", [{ label: "Home", href: "/en" }]);
+        expect(own.navLinksByLang).toEqual({ en: [{ label: "Home", href: "/en" }] });
+        expect(own.navLinks).toBe(TWO.navLinks);
+        expect(linksFor(own, "navLinks", "en")).toEqual([{ label: "Home", href: "/en" }]);
+        expect(withLinksFor(own, "navLinks", "en", undefined).navLinksByLang).toEqual({});
+    });
+
+    it("L1A-ADMIN-MENUS: the Language selector is in both link cards only when the site has extra languages", () => {
+        const withLangs = renderSettings(TWO);
+        expect(withLangs.match(/<option value="" selected="">Default \(ro\)<\/option>/g)).toHaveLength(2);
+        expect(withLangs).toContain("<option value=\"en\">English (en)</option>");
+        for (const config of [CONTENT, COMMERCE, CATALOG]) expect(renderSettings(config)).not.toMatch(/>Default \([a-z]{2,3}\)<\/option>/);
+        const select = renderToStaticMarkup(createElement(MenuLanguageSelect, { config: TWO, setConfig: () => {}, field: "navLinks", language: "en", setLanguage: () => {} }));
+        expect(select).toContain("Uses the default list. Add a link to give en its own list.");
+        const ownList = { ...TWO, navLinksByLang: { en: [] } };
+        expect(renderToStaticMarkup(createElement(MenuLanguageSelect, { config: ownList, setConfig: () => {}, field: "navLinks", language: "en", setLanguage: () => {} }))).toContain(">Use the default menu<");
     });
 });

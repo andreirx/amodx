@@ -847,8 +847,9 @@ server.tool("list_content",
     async ({ tenant_id }) => {
         try {
             const response = await axios.get(`${API_URL}/content`, { headers: getHeaders(tenant_id) });
+            // LANG-1A (docs/slices/lang-1.md § 10): the translation set, when the page is in one.
             const summary = response.data.items.map((item: any) =>
-                `- [${item.status}] ${item.title} (Slug: ${item.slug}, ID: ${item.nodeId})`
+                `- [${item.status}] ${item.title} (Slug: ${item.slug}, ID: ${item.nodeId}${item.translationKey ? `, Translation set: ${item.translationKey}` : ""})`
             ).join("\n");
             return { content: [{ type: "text", text: `Pages for ${tenant_id}:\n${summary}` }] };
         } catch (error: any) {
@@ -900,9 +901,10 @@ server.tool("update_page",
         hide_nav: z.boolean().optional(),
         hide_footer: z.boolean().optional(),
         hide_sharing: z.boolean().optional(),
-        theme_override: z.string().optional().describe("JSON string of theme variables to override for THIS PAGE ONLY. Example: {\"primaryColor\": \"#ff0000\", \"backgroundColor\": \"#000000\"}")
+        theme_override: z.string().optional().describe("JSON string of theme variables to override for THIS PAGE ONLY. Example: {\"primaryColor\": \"#ff0000\", \"backgroundColor\": \"#000000\"}"),
+        translation_of: z.string().nullable().optional().describe("LANG-1: the Node ID of a page in another language that this page translates (joins its translation set); null = leave the set; omit = no change. Needs extra languages in Settings. The page's language is its address prefix (/ro/…)."),
     },
-    async ({ tenant_id, page_id, title, slug, status, blocks, seo_title, seo_description, tags, hide_nav, hide_footer, hide_sharing, theme_override }) => {
+    async ({ tenant_id, page_id, title, slug, status, blocks, seo_title, seo_description, tags, hide_nav, hide_footer, hide_sharing, theme_override, translation_of }) => {
         try {
             const payload: any = {};
             if (title) payload.title = title;
@@ -914,6 +916,7 @@ server.tool("update_page",
             if (hide_nav !== undefined) payload.hideNav = hide_nav;
             if (hide_footer !== undefined) payload.hideFooter = hide_footer;
             if (hide_sharing !== undefined) payload.hideSharing = hide_sharing;
+            if (translation_of !== undefined) payload.translationOf = translation_of;   // null is sent: leave the set
 
             if (blocks) {
                 try {
@@ -1024,12 +1027,14 @@ server.tool("create_page",
         title: z.string(),
         slug: z.string().optional(),
         tags: z.string().optional().describe("Comma separated tags (e.g. 'blog, news')"),
+        translation_of: z.string().nullable().optional().describe("LANG-1: the Node ID of a page in another language that the new page translates (joins its translation set). Needs extra languages in Settings; the new page's language is its address prefix (/ro/…)."),
     },
-    async ({ tenant_id, title, slug, tags }) => {
+    async ({ tenant_id, title, slug, tags, translation_of }) => {
         try {
             const payload: any = { title, status: "Draft", blocks: [] };
             if (slug) payload.slug = slug;
             if (tags) payload.tags = tags.split(',').map(t => t.trim());
+            if (translation_of !== undefined) payload.translationOf = translation_of;
 
             const response = await axios.post(`${API_URL}/content`, payload, {
                 headers: getHeaders(tenant_id)

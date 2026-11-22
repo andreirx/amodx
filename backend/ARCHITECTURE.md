@@ -140,12 +140,21 @@ src/
 │                          #   labelling (missing/error are never verdicts) and MX-priority
 │                          #   comparison (wrong priority = mismatch). Unit-tested standalone.
 ├── content/
-│   ├── create.ts          # POST /content
-│   ├── list.ts            # GET /content
+│   ├── create.ts          # POST /content. LANG-1A: `translationOf` → the link transaction (planTranslation)
+│   ├── list.ts            # GET /content. LANG-1A: projects translationKey; a page that holds a key also gets
+│   │                      #   hasTranslationItem (its TRANSLATION#<key>#<nodeId> exists) — one paginated Query of
+│   │                      #   the tenant's TRANSLATION# items, sent only when some page holds a key
 │   ├── get.ts             # GET /content/{id}
-│   ├── update.ts          # PUT /content/{id}
+│   ├── update.ts          # PUT /content/{id}. LANG-1A (docs/slices/lang-1.md § 5.2, § 6.3; PROTOTYPE): also the
+│   │                      #   translation-set logic `planTranslation` (C2 400, C3 409 read-then-write, no-op,
+│   │                      #   join / leave / move) used by create.ts; one transaction, one action per item, each
+│   │                      #   page action conditioned on the key as read; a cancelled set write → 409. Returns a
+│   │                      #   Result (ok:false = refusal); every decision on TranslationPlan is a switch whose arms
+│   │                      #   all return (membershipActionsOf, changesSet): a new variant does not compile
 │   ├── history.ts         # GET /content/{id}/versions
-│   └── restore.ts         # POST /content/{id}/restore
+│   └── restore.ts         # POST /content/{id}/restore. LANG-1A: a page with a key keeps its current slug and key
+│                          #   (Put conditioned on both → 409 on a concurrent rename); a keyless page restores as
+│                          #   before (no key copied; condition attribute_not_exists(translationKey))
 ├── products/
 │   ├── create.ts          # POST /products
 │   ├── list.ts            # GET /products
@@ -287,6 +296,10 @@ src/
 │                          #   record: schedulingEnabled true without scheduling.timezone → 400. A body that names any of
 │                          #   the three omits `ip` from the UPDATE_SETTINGS event (whole event, also for a mixed body);
 │                          #   other bodies send `ip` as before (test/unit/scheduling-settings.test.ts, rows D13/D14/D17).
+│                          #   LANG-1A (lang-1.md § 5.2): shared `languageSettingsProblem` (V1-V6) on the MERGED record
+│                          #   → 400 naming the field (`languages`, `navLinksByLang`, `footerLinksByLang`,
+│                          #   `homePageSlug`); a record without the language fields checks nothing; a language-list
+│                          #   change writes no page or membership item (test/unit/lang-1a-settings.test.ts).
 ├── scheduling/
 │   ├── common.ts          # SCHED-1D2 (moved from admin/common.ts, behaviour unchanged): the plumbing of BOTH route
 │   │                      #   families — answer/refusal (`{ error, code, ...context }`), parseBody/parseValue/pathParam
@@ -503,7 +516,8 @@ src/
 │                          #   gets 200 + one event-name log line; no table/S3/mail. Verified fulfilment: pay-2
 └── import/
     ├── wordpress.ts       # WordPress XML import handler (featured-image copy under the image destination policy;
-    │                      #   unreachable today: wxr-parser.ts never sets featuredImage)
+    │                      #   unreachable today: wxr-parser.ts never sets featuredImage). LANG-1A: an overwrite
+    │                      #   copies the page's translationKey and conditions its Put on it (failed → post failed)
     ├── wxr-parser.ts      # WXR XML parser utility
     ├── html-to-tiptap.ts  # HTML → Tiptap JSON converter
     ├── woocommerce.ts     # POST /import/woocommerce — product CSV import; refuses a catalog tenant (403) and
@@ -712,6 +726,7 @@ All entities in one table. Partition key `PK`, sort key `SK`.
 | Content (latest) | `TENANT#<id>` | `CONTENT#<nodeId>#LATEST` |
 | Content (version) | `TENANT#<id>` | `CONTENT#<nodeId>#v<N>` |
 | Route | `TENANT#<id>` | `ROUTE#<slug>` |
+| Translation membership (LANG-1A; `docs/database-patterns.md` § Translation Sets) | `TENANT#<id>` | `TRANSLATION#<translationKey>#<nodeId>` |
 | Product | `TENANT#<id>` | `PRODUCT#<productId>` |
 | Comment | `TENANT#<id>` | `COMMENT#<pageId>#<timestamp>` |
 | Lead | `TENANT#<id>` | `LEAD#<email>` |

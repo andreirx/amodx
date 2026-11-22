@@ -57,10 +57,42 @@ const _restoreHandler: Handler = async (event) => {
         // @ts-ignore - snapshotCreatedAt might not be in ContentItem type definition but exists in DB
         delete restoredItem.snapshotCreatedAt;
 
-        await db.send(new PutCommand({
-            TableName: TABLE_NAME,
-            Item: restoredItem
-        }));
+        // LANG-1A (docs/slices/lang-1.md § 6.3, ruling LANG1-RESTORE-SCOPE = A). The Put replaces the whole LATEST, so it
+        // is conditioned on the key as read (and, for a member, on the address as read):
+        //  - the current LATEST has a `translationKey` (attribute present): the restored item keeps the CURRENT `slug`
+        //    and the CURRENT key, conditioned `slug = :readSlug AND translationKey = :readKey` — a restore cannot change
+        //    a member's derived language or set, and a concurrent rename fails it (409) instead of writing the old
+        //    address back;
+        //  - no key: today's restore exactly (the history's fields, its `slug` included, no route moved — finding
+        //    F-LANG-RESTORE-SLUG stays), except that the restored item takes NO key from the history item; conditioned
+        //    `attribute_not_exists(translationKey)`. A one-language site holds no key (rule C2), so the condition
+        //    always holds and the stored item is HEAD's.
+        const current = currentRes.Item;
+        delete (restoredItem as { translationKey?: unknown }).translationKey;
+        let condition: { ConditionExpression: string; ExpressionAttributeValues?: Record<string, unknown> };
+        if (current !== undefined && current.translationKey !== undefined) {
+            (restoredItem as Record<string, unknown>).translationKey = current.translationKey;
+            if (current.slug === undefined) delete (restoredItem as { slug?: unknown }).slug;
+            else restoredItem.slug = current.slug;
+            condition = current.slug === undefined
+                ? { ConditionExpression: "attribute_not_exists(slug) AND translationKey = :readKey", ExpressionAttributeValues: { ":readKey": current.translationKey } }
+                : { ConditionExpression: "slug = :readSlug AND translationKey = :readKey", ExpressionAttributeValues: { ":readSlug": current.slug, ":readKey": current.translationKey } };
+        } else {
+            condition = { ConditionExpression: "attribute_not_exists(translationKey)" };
+        }
+
+        try {
+            await db.send(new PutCommand({
+                TableName: TABLE_NAME,
+                Item: restoredItem,
+                ...condition,
+            }));
+        } catch (e: any) {
+            if (e?.name === "ConditionalCheckFailedException") {
+                return { statusCode: 409, body: JSON.stringify({ error: "The page changed while restoring (its address or translation set); load it again." }) };
+            }
+            throw e;
+        }
 
         await publishAudit({
             tenantId,

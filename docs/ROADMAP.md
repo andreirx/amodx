@@ -258,7 +258,7 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 | `stay-1` part B | Amendment to the Track D plan: a stay (a run of nights on one room) next to the timed appointment; one lock per night. Specification only. `docs/slices/stay-1.md` § 3 | WITHDRAWN 2026-11-20 (human: room booking by an external service — `booking-embed-1`) |
 | `paddle-hook-1` | The Paddle notification route fulfils nothing until a verified path exists (it mailed a product's private file on an unverified request from any authenticated caller). `docs/slices/paddle-hook-1.md` | SHIPPED 2026-11-22, staging; prod at the next deploy |
 | `lang-1` | More than one language on one site. `docs/slices/lang-1.md` | SPEC RATIFIED 2026-11-22; next `lang-1a` |
-| `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | PLANNED — next |
+| `lang-1a` | Data and writes: settings V1–V6, translation sets, admin, MCP. `lang-1.md` § 12 | SHIPPED 2026-11-22, staging; prod at the next deploy |
 | `lang-1b` | Language segment, `<html lang>`, texts, purge, deferred edge flush. `lang-1.md` § 12 | PLANNED |
 | `lang-1c` | `hreflang`, sitemap alternates, menus, language switch. `lang-1.md` § 12 | PLANNED |
 | `lang-1d` | German and French packs in the global registry (satulbanului). `lang-1.md` § 12 | PLANNED |

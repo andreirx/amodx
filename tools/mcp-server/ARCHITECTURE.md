@@ -65,12 +65,12 @@ Method column = the API route(s) the tool calls. Generated from the `server.tool
 ### Content & Blocks
 | Tool | Method | Purpose |
 |------|--------|---------|
-| `list_content` | GET /content | List all pages |
+| `list_content` | GET /content | List all pages (LANG-1A: with the page's translation set, when it has one) |
 | `read_page` | GET /content/{id} | Read full page with blocks |
-| `update_page` | PUT /content/{id} | Full page update (blocks JSON replaces entire content) |
+| `update_page` | PUT /content/{id} | Full page update (blocks JSON replaces entire content). LANG-1A: `translation_of` (nodeId to join its translation set; `null` = leave) → `translationOf` |
 | `get_block_schemas` | (local) | Attribute schemas for the 20 block types |
 | `add_block` | GET + PUT /content/{id} | Append a single block to existing page |
-| `create_page` | POST /content | Create blank draft page |
+| `create_page` | POST /content | Create blank draft page. LANG-1A: `translation_of` (nodeId) → `translationOf` |
 | `page_history` | GET /content/{id}/versions | List saved versions, newest first |
 | `restore_page_version` | POST /content/{id}/restore | Forward rollback to a saved version (new version number) |
 | `list_tags` | GET /content (extract) | List all tags used across pages |

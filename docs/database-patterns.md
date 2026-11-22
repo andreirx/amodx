@@ -12,6 +12,7 @@ All entities share one table with composite keys:
 | Content (latest) | `TENANT#<id>` | `CONTENT#<nodeId>#LATEST` |
 | Content (version) | `TENANT#<id>` | `CONTENT#<nodeId>#v<N>` |
 | Route | `TENANT#<id>` | `ROUTE#<slug>` |
+| Translation membership (LANG-1A) | `TENANT#<id>` | `TRANSLATION#<translationKey>#<nodeId>` |
 | Product | `TENANT#<id>` | `PRODUCT#<productId>` |
 | Comment | `TENANT#<id>` | `COMMENT#<pageId>#<timestamp>` |
 | Lead | `TENANT#<id>` | `LEAD#<email>` |
@@ -46,6 +47,31 @@ When a slug changes, the old `ROUTE#<old-slug>` gets `IsRedirect=true` pointing 
 
 - **Prevent duplicates:** `ConditionExpression: "attribute_not_exists(SK)"` on creates.
 - **Multi-item consistency:** Use `TransactWriteCommand` for content + route creation.
+
+## Translation Sets (LANG-1A)
+
+Spec: `docs/slices/lang-1.md` § 5, § 6. Pages that are the same page in different languages share a **set**:
+
+- `translationKey` on each member's `CONTENT#<nodeId>#LATEST` — a random UUID made when two pages are first linked,
+  never a `nodeId`, never used again for another set. Written only by the backend (never accepted as API input).
+- One membership item per member: `PK = TENANT#<id>`, `SK = TRANSLATION#<translationKey>#<nodeId>`,
+  `Type = "Translation"`. It holds **no** language, slug or status: the language is derived from the page's current
+  address and the tenant's current `languages` (`pageLanguageOf`, `@amodx/shared`), so a language-list change, a rename
+  or a restore writes no membership item.
+- **Membership rule** (every reader): page `n` is a member of set `K` when `TRANSLATION#K#n` exists, its LATEST holds
+  `translationKey = K`, and (for what visitors see) the LATEST is `Published`. An item whose page holds another key is
+  ignored (orphan items are inert; nothing removes them — deferred debt, `lang-1.md` § 15).
+- **Reads, no scan:** one set = `Query PK = TENANT#<id> AND begins_with(SK, "TRANSLATION#<key>#")`, paginated, then one
+  `Get` per member LATEST.
+- **Writes:** joining, leaving or moving a set is ONE `TransactWriteCommand` with one action per item: the page's
+  LATEST (key set or removed), the membership items (`Put` / `Delete`), and the target page (`ConditionCheck` of its key,
+  or `Update` with the new key and its item). Every write that replaces a page item whole (`Put`: restore, WordPress
+  import) or changes its key is conditioned on the key **as read** (`translationKey = :read`, or
+  `attribute_not_exists(translationKey)` when none was read); a failed condition is a `409` (the importer reports the
+  post failed). Handlers: `backend/src/content/update.ts` (`planTranslation`, also used by `create.ts`), `restore.ts`,
+  `backend/src/import/wordpress.ts`.
+- **Admin reads:** `GET /content` (`content/list.ts`) gives each keyed page `hasTranslationItem` (its membership item
+  exists), so the editor applies the same membership rule without reading items itself.
 
 ## Audit Trail
 

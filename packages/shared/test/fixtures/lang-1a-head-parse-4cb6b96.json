@@ -1,0 +1,293 @@
+{
+  "capturedAt": "HEAD 4cb6b96 (git worktree, unmodified src/index.ts)",
+  "tenantEn": {
+    "id": "t-en",
+    "domain": "en.example.test",
+    "name": "English Site",
+    "header": {
+      "showLogo": true,
+      "showTitle": true,
+      "navHeight": "h-16",
+      "navHeightScrolled": "h-12",
+      "logoHeight": "h-12",
+      "logoHeightScrolled": "h-8",
+      "titleSize": "text-xl",
+      "titleSizeScrolled": "text-lg",
+      "contentMaxWidth": "max-w-7xl",
+      "contentPageMaxWidth": "max-w-4xl"
+    },
+    "gdpr": {
+      "position": "bottom",
+      "enabled": true
+    },
+    "hideSocialSharing": false,
+    "homePageSlug": "/home",
+    "schemaType": "Organization",
+    "navLinks": [
+      {
+        "label": "Home",
+        "href": "/"
+      },
+      {
+        "label": "About",
+        "href": "/about",
+        "children": [
+          {
+            "label": "Team",
+            "href": "/about/team"
+          }
+        ]
+      }
+    ],
+    "footerLinks": [
+      {
+        "label": "Contact",
+        "href": "/contact"
+      }
+    ],
+    "commerceEnabled": false,
+    "catalogMode": false,
+    "askBirthdayOnAccount": true,
+    "askBirthdayOnCheckout": true,
+    "urlPrefixes": {
+      "product": "/product",
+      "category": "/category",
+      "cart": "/cart",
+      "checkout": "/checkout",
+      "shop": "/shop",
+      "account": "/account",
+      "search": "/search",
+      "interest": "/my-list",
+      "checkoutConfirmation": "/confirmation"
+    },
+    "topBar": {
+      "show": false
+    },
+    "commerceBar": {
+      "enabled": false,
+      "socialLinks": [],
+      "height": "h-10",
+      "fontSize": "text-sm",
+      "iconSize": "h-5 w-5"
+    },
+    "searchBar": {
+      "enabled": false,
+      "placeholder": "Search products..."
+    },
+    "pageEffect": {
+      "type": "none",
+      "colors": [],
+      "speed": 0.5,
+      "timeOffset": 0,
+      "intensity": 0.1,
+      "invertY": false,
+      "overlayOpacity": 0.85
+    },
+    "celebrationEnabled": false,
+    "recaptcha": {
+      "enabled": false,
+      "threshold": 0.5
+    },
+    "orderEmailConfig": {
+      "templates": {}
+    },
+    "enabledPaymentMethods": [
+      "cash_on_delivery"
+    ],
+    "currency": "USD",
+    "countryCode": "EN",
+    "locale": "en-US",
+    "commerceStrings": {},
+    "companyDetails": {},
+    "legalLinks": {},
+    "status": "LIVE",
+    "plan": "Pro",
+    "theme": {
+      "mode": "light",
+      "primaryColor": "#112233",
+      "primaryForeground": "#ffffff",
+      "secondaryColor": "#ffffff",
+      "secondaryForeground": "#000000",
+      "backgroundColor": "#ffffff",
+      "surfaceColor": "#f4f4f5",
+      "textColor": "#020817",
+      "fontHeading": "Prata",
+      "fontBody": "Lato",
+      "radius": "0.5rem"
+    },
+    "integrations": {
+      "googleAnalyticsId": "",
+      "googleSearchConsoleId": "",
+      "paddle": {
+        "environment": "sandbox",
+        "clientToken": "",
+        "vendorId": ""
+      },
+      "google": {
+        "clientId": "",
+        "clientSecret": ""
+      },
+      "analytics": {
+        "provider": "none"
+      },
+      "mailerlite": false,
+      "perplexity": false,
+      "contactEmail": ""
+    },
+    "createdAt": "2026-01-02T03:04:05.000Z"
+  },
+  "tenantRo": {
+    "id": "t-ro",
+    "domain": "ro.example.test",
+    "name": "Site Românesc",
+    "header": {
+      "showLogo": true,
+      "showTitle": true,
+      "navHeight": "h-16",
+      "navHeightScrolled": "h-12",
+      "logoHeight": "h-12",
+      "logoHeightScrolled": "h-8",
+      "titleSize": "text-xl",
+      "titleSizeScrolled": "text-lg",
+      "contentMaxWidth": "max-w-7xl",
+      "contentPageMaxWidth": "max-w-4xl"
+    },
+    "gdpr": {
+      "position": "bottom",
+      "enabled": true
+    },
+    "hideSocialSharing": false,
+    "schemaType": "Organization",
+    "navLinks": [
+      {
+        "label": "Acasă",
+        "href": "/"
+      }
+    ],
+    "footerLinks": [],
+    "commerceEnabled": true,
+    "catalogMode": false,
+    "askBirthdayOnAccount": true,
+    "askBirthdayOnCheckout": true,
+    "urlPrefixes": {
+      "product": "/produs",
+      "category": "/categorie",
+      "cart": "/cos",
+      "checkout": "/comanda",
+      "shop": "/magazin",
+      "account": "/account",
+      "search": "/search",
+      "interest": "/my-list",
+      "checkoutConfirmation": "/confirmation"
+    },
+    "topBar": {
+      "show": false
+    },
+    "commerceBar": {
+      "enabled": false,
+      "socialLinks": [],
+      "height": "h-10",
+      "fontSize": "text-sm",
+      "iconSize": "h-5 w-5"
+    },
+    "searchBar": {
+      "enabled": false,
+      "placeholder": "Search products..."
+    },
+    "pageEffect": {
+      "type": "none",
+      "colors": [],
+      "speed": 0.5,
+      "timeOffset": 0,
+      "intensity": 0.1,
+      "invertY": false,
+      "overlayOpacity": 0.85
+    },
+    "celebrationEnabled": false,
+    "recaptcha": {
+      "enabled": false,
+      "threshold": 0.5
+    },
+    "orderEmailConfig": {
+      "templates": {}
+    },
+    "enabledPaymentMethods": [
+      "cash_on_delivery"
+    ],
+    "currency": "RON",
+    "countryCode": "RO",
+    "locale": "ro-RO",
+    "commerceStrings": {},
+    "companyDetails": {},
+    "legalLinks": {},
+    "status": "LIVE",
+    "plan": "Pro",
+    "theme": {
+      "mode": "light",
+      "primaryColor": "#000000",
+      "primaryForeground": "#ffffff",
+      "secondaryColor": "#ffffff",
+      "secondaryForeground": "#000000",
+      "backgroundColor": "#ffffff",
+      "surfaceColor": "#f4f4f5",
+      "textColor": "#020817",
+      "fontHeading": "Prata",
+      "fontBody": "Lato",
+      "radius": "0.5rem"
+    },
+    "integrations": {
+      "googleAnalyticsId": "",
+      "googleSearchConsoleId": "",
+      "paddle": {
+        "environment": "sandbox",
+        "clientToken": "",
+        "vendorId": ""
+      },
+      "google": {
+        "clientId": "",
+        "clientSecret": ""
+      },
+      "analytics": {
+        "provider": "none"
+      },
+      "mailerlite": false,
+      "perplexity": false,
+      "contactEmail": ""
+    },
+    "createdAt": "2026-01-02T03:04:05.000Z"
+  },
+  "contentItem": {
+    "id": "c-1",
+    "nodeId": "n-1",
+    "version": 3,
+    "status": "Published",
+    "title": "About",
+    "slug": "/about",
+    "seoTitle": null,
+    "tags": [
+      "a"
+    ],
+    "commentsMode": "Hidden",
+    "hideNav": false,
+    "hideFooter": false,
+    "hideSharing": false,
+    "blocks": [
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Hi"
+          }
+        ]
+      }
+    ],
+    "accessPolicy": {
+      "type": "Public",
+      "currency": "USD"
+    },
+    "author": "u-1",
+    "createdAt": "2026-01-02T03:04:05.000Z",
+    "updatedAt": "2026-01-03T03:04:05.000Z"
+  }
+}

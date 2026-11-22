@@ -2,14 +2,15 @@ import {
     APIGatewayProxyHandlerV2WithLambdaAuthorizer
 } from "aws-lambda";
 import { db, TABLE_NAME } from "../lib/db.js";
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
-import { ContentItemSchema } from "@amodx/shared";
+import { TransactWriteCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
+import { ContentItemSchema, TranslationOfInputSchema } from "@amodx/shared";
 import { AuthorizerContext } from "../auth/context.js";
 import { publishAudit } from "../lib/events.js";
 import { requireRole } from "../auth/policy.js";
 import { reservedAddressRefusal } from "../lib/slug-guard.js";
 import { revalidateTenantPaths } from "../lib/revalidate.js";
 import { normalizeSlug } from "@amodx/shared";
+import { planTranslation, membershipActionsOf, TRANSLATION_CHANGED_ERROR } from "./update.js";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -41,9 +42,10 @@ const _handler: AmodxHandler = async (event) => {
 
         // 1. Validation
         // We use the shared schema to validate types, but we will construct the Item manually below
+        // LANG-1A: `translationKey` is never input (rule C1, omitted → dropped); `translationOf` is input only (§ 5).
         const parsed = ContentItemSchema.omit({
-            id: true, createdAt: true, author: true, nodeId: true, version: true
-        }).safeParse(body);
+            id: true, createdAt: true, author: true, nodeId: true, version: true, translationKey: true
+        }).extend({ translationOf: TranslationOfInputSchema }).safeParse(body);
         if (!parsed.success) {
             return { statusCode: 400, body: JSON.stringify({ error: "Validation failed", issues: parsed.error.issues }) };
         }
@@ -63,6 +65,11 @@ const _handler: AmodxHandler = async (event) => {
         if (conflict) {
             return { statusCode: 400, body: JSON.stringify({ error: conflict }) };
         }
+
+        // 2c. LANG-1A (§ 6.3): with `translationOf`, the link transaction (rules C2, C3 first). A new page holds no key.
+        const planned = await planTranslation({ tenantId, selfNodeId: nodeId, selfSlug: slug, selfKeyRead: undefined, translationOf: input.translationOf });
+        if (!planned.ok) return { statusCode: planned.statusCode, body: JSON.stringify({ error: planned.error }) };
+        const plan = planned.plan;
 
         // 3. Construct Item Explicitly (Safety & Clarity)
         const contentItem = {
@@ -101,15 +108,23 @@ const _handler: AmodxHandler = async (event) => {
             Type: "Page",
         };
 
-        // 4. Transaction
+        // 4. Transaction. LANG-1A: the page Put and the membership actions of the plan. Without `translationOf` (and
+        // for `null`: a new page is in no set) the plan is `unchanged` and this is today's transaction exactly.
+        const contentPut = ((): NonNullable<TransactWriteCommandInput["TransactItems"]>[number] => {
+            switch (plan.kind) {
+                case "unchanged":
+                case "leave":   // not reachable on create (no key was read); listed so the switch stays exhaustive
+                    return { Put: { TableName: TABLE_NAME, Item: contentItem } };
+                case "join":
+                    return { Put: {
+                        TableName: TABLE_NAME, Item: { ...contentItem, translationKey: plan.key },
+                        ConditionExpression: plan.selfCondition.expression,
+                    } };
+            }
+        })();
         await db.send(new TransactWriteCommand({
             TransactItems: [
-                {
-                    Put: {
-                        TableName: TABLE_NAME,
-                        Item: contentItem
-                    }
-                },
+                contentPut,
                 {
                     Put: {
                         TableName: TABLE_NAME,
@@ -123,7 +138,8 @@ const _handler: AmodxHandler = async (event) => {
                         },
                         ConditionExpression: "attribute_not_exists(SK)"
                     }
-                }
+                },
+                ...membershipActionsOf(plan),
             ]
         }));
 
@@ -164,6 +180,13 @@ const _handler: AmodxHandler = async (event) => {
 
     } catch (error: any) {
         console.error(error);
+        // LANG-1A: index 1 is the route Put. A cancellation elsewhere happens only with set actions (the target page
+        // or its set changed) → its own text. Without set actions the mapping is today's.
+        const translationChanged = Array.isArray(error.CancellationReasons) && error.CancellationReasons.length > 2
+            && error.CancellationReasons[1]?.Code !== "ConditionalCheckFailed";
+        if (error.name === "TransactionCanceledException" && translationChanged) {
+            return { statusCode: 409, body: JSON.stringify({ error: TRANSLATION_CHANGED_ERROR }) };
+        }
         if (error.name === "TransactionCanceledException") {
             return { statusCode: 409, body: JSON.stringify({ error: "Page with this title/slug already exists" }) };
         }

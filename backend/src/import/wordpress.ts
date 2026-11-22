@@ -11,8 +11,12 @@ import { purgeStoredPagesOfRequestTenant } from "../lib/revalidate.js";
 import { AuthorizerContext } from "../auth/context.js";
 import { requireRole } from "../auth/policy.js";
 
-/** Find existing content by slug using ROUTE# lookup */
-async function findContentBySlug(tenantId: string, slug: string): Promise<{ nodeId: string; contentId: string; createdAt: string } | null> {
+/**
+ * Find existing content by slug using ROUTE# lookup. LANG-1A: also the page's `translationKey` as read (raw; undefined
+ * when absent), taken only from the LATEST item: `CONTENT#<n>#LATEST` sorts before every `CONTENT#<n>#v<k>`, so the
+ * first item is LATEST whenever it exists.
+ */
+async function findContentBySlug(tenantId: string, slug: string): Promise<{ nodeId: string; contentId: string; createdAt: string; translationKey: unknown } | null> {
     const routeResult = await db.send(new QueryCommand({
         TableName: TABLE_NAME,
         KeyConditionExpression: "PK = :pk AND SK = :sk",
@@ -43,10 +47,12 @@ async function findContentBySlug(tenantId: string, slug: string): Promise<{ node
 
     if (!contentResult.Items || contentResult.Items.length === 0) return null;
 
+    const first = contentResult.Items[0];
     return {
         nodeId,
-        contentId: contentResult.Items[0].id,
-        createdAt: contentResult.Items[0].createdAt
+        contentId: first.id,
+        createdAt: first.createdAt,
+        translationKey: String(first.SK).endsWith("#LATEST") ? first.translationKey : undefined,
     };
 }
 
@@ -245,9 +251,20 @@ async function processPost(
     // Preserve original createdAt for updates
     const createdAt = existing?.createdAt || post.publishedAt || new Date().toISOString();
 
+    // LANG-1A (docs/slices/lang-1.md § 6.3): the importer writes no new set key. When it overwrites an existing page it
+    // copies the page's `translationKey` and conditions the Put on the key as read (`translationKey = :readKey`, or
+    // `attribute_not_exists(translationKey)` when it read none), so a link made since the read is not lost: the Put
+    // fails and this post is reported failed like any other. A new page: no key, no condition (as before).
+    const keyCondition = !existing
+        ? {}
+        : existing.translationKey === undefined
+            ? { ConditionExpression: "attribute_not_exists(translationKey)" }
+            : { ConditionExpression: "translationKey = :readKey", ExpressionAttributeValues: { ":readKey": existing.translationKey } };
     await db.send(new PutCommand({
+        ...keyCondition,
         TableName: TABLE_NAME,
         Item: {
+            ...(existing && existing.translationKey !== undefined ? { translationKey: existing.translationKey } : {}),
             PK: `TENANT#${tenantId}`,
             SK: `CONTENT#${nodeId}#LATEST`,
             id: contentId,

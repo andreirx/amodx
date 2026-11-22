@@ -1548,3 +1548,125 @@ by independent providers.
 - HEAD moved to `7618acc`: the booking branch A3 and the root folder `app/%5Fbook` are taken into account (§ 7.1,
   § 7.4); `/_booking` paths are not language paths; the serving suite has 139 rows (EXECUTED).
 - Next: `lang-1a`.
+
+## Appendix E. Build record — `lang-1a` (builder, 2026-11-22, base `4cb6b96`)
+
+Status: built in the worktree, not committed, waiting for review. Maturity: PROTOTYPE. Every file of § 12 `lang-1a` was
+read again at `4cb6b96` before use (OBSERVED: `backend/src/tenant/settings.ts` now holds four string parts incl.
+`bookingStrings`; the merged record is `merged`, the language check runs after the scheduling check).
+
+**Changed paths.** `packages/shared/src/languages.ts` (new; imports nothing — OBSERVED: the built `dist/languages.js`
+has no `import`), `packages/shared/src/index.ts`, `packages/shared/test/lang-1a.test.ts` + two fixtures (the HEAD
+parse capture was taken from `4cb6b96`'s own source in a throwaway worktree); `backend/src/content/{create,update,
+restore,list}.ts`, `backend/src/import/wordpress.ts`, `backend/src/tenant/settings.ts`,
+`backend/test/unit/lang-1a-{settings,content,import,list}.test.ts` + `lang-1a-table.ts` (a test-only in-memory table that
+applies a transaction atomically; `memory-table.ts` has none and was not extended); `admin/src/pages/{Settings,
+ContentEditor}.tsx`, `Settings.test.ts`, `ContentEditor.test.ts` (new); `tools/mcp-server/src/index.ts`;
+`docs/database-patterns.md`; the ARCHITECTURE.md of shared, backend, admin and the MCP server; this appendix. No renderer
+file, no infra, no dependency.
+
+**Rows (EXECUTED, all pass).** Shared (`test/lang-1a.test.ts`, 17): `L1A-READ-SETTINGS-ABSENT`, `-VALID`, `-MALFORMED`
+(×5), `L1A-PAGE-LANGUAGE` (×2, added), `L1A-SETTINGS-NO-LANGS`, `L1A-LANGS-VALID`, `L1A-LANGS-REFUSED` (×2),
+`L1A-BYLANG-REFUSED`, `L1A-LANGS-HOMEPAGE-REFUSED`, `L1A-PRESERVE-RECORDS` (×2, added: an en-US and a ro-RO tenant and a
+content item parse equal to the `4cb6b96` capture). Backend settings (6): `L1A-SETTINGS-NO-LANGS` (the written item is
+HEAD's), `L1A-LANGS-VALID`, `L1A-LANGS-REFUSED` (×2), `L1A-BYLANG-REFUSED`, `L1A-LANGS-HOMEPAGE-REFUSED` (a, b, c,
+control). Backend content (22): `L1A-CONTENT-NO-TRANSOF` (×4, incl. C1), `L1A-SET-NEW-ID` (×3), `L1A-SET-SAME-NOOP`,
+`L1A-SET-LEAVE`, `L1A-SET-MOVE`, `L1A-SET-NO-REUSE`, `L1A-TRANSOF-REFUSED`, `L1A-SET-SAME-LANGUAGE` (×2),
+`L1A-SET-CONCURRENT`, `L1A-SET-TARGET-CHANGED`, one route-message test, `L1A-RESTORE-KEEPS-KEY-SLUG`,
+`L1A-RESTORE-VS-RENAME`, `L1A-RESTORE-THEN-EDIT`, `L1A-RESTORE-NO-KEY-AS-HEAD` (×2; the stored-item test also passes
+against `4cb6b96`'s own `restore.ts`, EXECUTED in the throwaway worktree). Import (3): `L1A-IMPORT-KEEPS-KEY`. List (3,
+added in revision 1): `L1A-LIST-MEMBERSHIP` (no key → today's response and one query; member / key without item /
+stale item; pagination). Admin: `L1A-ADMIN-LANGUAGES` (×3), `L1A-ADMIN-MENUS` (×2), `L1A-ADMIN-EDITOR` (×8: incl. missing
+membership, stale key, Draft and Archived members, two Published members in one language); the Settings captures still compare equal
+after removing exactly the one new group (so no React id moved). Mutation checks (EXECUTED): removing the join condition
+fails `L1A-SET-NEW-ID` and `L1A-SET-CONCURRENT`; removing the no-op fails `L1A-SET-SAME-NOOP` and
+`L1A-RESTORE-THEN-EDIT`.
+
+**Gates (EXECUTED, exit codes read bare).** `npm run build` 0; `npm run typecheck` 0; `packages/shared` `npm test` 0
+(601); `backend` `npm run test:unit` 0 (2043 pass, 1 skipped, as before); `admin` `npm run test:unit` 0 (441);
+`tools/mcp-server` `npm test` 0 (route coverage PASS, 17); `renderer` `npm test` 0 (836); `renderer`
+`npm run test:serving` 0 — **142 / 142**, equal to HEAD's 142 / 142 (EXECUTED first with `4cb6b96`'s shared build;
+the same 142 row names; both runs repeated in revision 1); `git diff --check` 0. NOT RUN: `cd backend && npm test` (forbidden), staging, production.
+
+**Differences from the specification (local decisions, recorded).**
+1. The set logic (`planTranslation`) lives in `content/update.ts` and is imported by `create.ts`: a new backend module is
+   outside the slice's paths.
+2. Conditions use the key **as read**, raw: a stored key that is present but not a non-empty string (only a table edit
+   makes it) is matched by equality, not treated as absent; restore applies the keyed rule whenever the attribute is
+   present; a malformed key has no membership item to delete.
+3. C3 counts every member whose LATEST holds the key (Draft and Archived too: they can be published again); languages
+   are compared by tag (`languageTagOf`, § 5.3).
+4. `translationOf: null` (leave) is accepted on a tenant without `languages` (C2 names a page; leaving only removes a key).
+5. Create adds no condition to its page Put without `translationOf` (`L1A-CONTENT-NO-TRANSOF`: today's transaction); the
+   WordPress importer adds `attribute_not_exists(translationKey)` to an overwrite of a keyless page (the general rule of
+   § 6.3; it always holds on a one-language site) and no condition to a new page.
+6. V4 `api`: the runtime cannot format `api` (EXECUTED: `normalizeLocale("api")` = `en-US`), so V1 refuses it first.
+7. Admin: the Languages controls are a section at the end of the "Language & Country" card, not a separate card (a new
+   card would move the page's React ids, which the capture test pins).
+8. § 10 says the list projection adds `translationKey` "so the picker needs no extra read". To apply the § 6.2
+   membership rule in the editor (review R-L1A-01), `GET /content` also gives each page that holds a key
+   `hasTranslationItem` (its membership item exists): one more paginated Query of the tenant's `TRANSLATION#` items,
+   sent only when some page holds a key — a one-language site gets today's response and today's single query. The
+   picker still makes no read of its own. **Ruled: LANG1A-MEMBERSHIP-RESPONSE = approve** (operator, 2026-11-22, after
+   review-1). Meaning: `hasTranslationItem` is present only on a page whose LATEST holds a set key, and is true exactly
+   when `TRANSLATION#<that key>#<nodeId>` exists (§ 6.2 conditions 1 and 3; status and address come from the item
+   itself). Reader: the admin page editor only (`admin/src/pages/ContentEditor.tsx`: the picker and the set display).
+   The public renderer does not read it — it reads DynamoDB directly and calls no `GET /content` (EXECUTED:
+   `git grep hasTranslationItem` over `renderer`, `tools`, `packages`: no hit; the MCP `list_content` tool receives the
+   field and does not print it). Reason of the ruling: the ratified admin rule (the picker must not offer or count a
+   page whose membership item is missing) cannot be met without this evidence; the field is admin-only, additive and
+   optional.
+9. Pre-existing finding (not fixed): `TenantConfigSchema`'s own default `integrations.contactEmail: ""` fails its
+   `.email()` check, so a parse output cannot be parsed again.
+
+**Revision 1 (review-0).** R-L1A-01: the editor applies the § 6.2 membership rule — a member holds the key now, has its
+membership item and an address; a member whose status is Published is listed unless another Published member shares
+its language. The picker offers exactly the targets the backend would
+join (`planTranslation`'s order: not itself, not its own set, not its language, not a set with a member in its
+language — Draft and Archived members count, as in C3); the set display shows Draft and Archived members as not
+listed, and the search-engine warning counts PUBLISHED members only (review R-L1A-04: the field is `published`, not
+`listed`, because two published members in one language are both left out). R-L1A-02: the warning uses `text-destructive`; no line
+the slice adds in the admin uses a fixed colour (grep of the diff; the editor's remaining `text-red-600` is HEAD's
+slug-review line). R-L1A-03, closed as a class with one rule: every decision on the `kind` of `PageLanguage`,
+`TranslationPlan` or `TranslationChoice` is a `switch` whose every arm returns, in a function whose declared return
+type excludes `undefined`, with no default arm; the refusal of `planTranslation` is a Result (`ok: false`), not a plan
+variant. EXECUTED check: a fourth variant added to each type in turn gives TS2366 at every decision site (4, 4 and 3
+sites), then the files were restored byte for byte.
+
+**Deferred.** The § 15 debt (orphan and archived `TRANSLATION#` items) goes to `docs/TECH-DEBT.md` when `lang-1a`
+ships — that file is outside this slice's paths (operator).
+
+**Staging check (operator; a staging TEST tenant only, never a live site).** `API` = the staging API URL, `TOKEN` = an
+admin token, `T` = the test tenant id (locale en-US); headers `Authorization: Bearer $TOKEN`, `x-tenant-id: $T`,
+`content-type: application/json`.
+1. `PUT $API/settings` `{"languages":["ro"]}` → 200; `{"languages":["en"]}` → 400 naming `languages` (V3);
+   `{"homePageSlug":"/ro/x"}` → 400 naming `homePageSlug` (V6).
+2. `POST $API/content` `{"title":"About LANG","slug":"/about-lang","status":"Draft"}` → 201, nodeId `E`;
+   `POST $API/content` `{"title":"Despre LANG","slug":"/ro/despre-lang","status":"Draft","translationOf":"E"}` → 201,
+   nodeId `R`; `GET $API/content` → `E` and `R` show the same `translationKey` (a UUID, neither nodeId) and
+   `hasTranslationItem: true`; a page in no set has neither field.
+3. `POST $API/content` `{"title":"Alt","slug":"/ro/alt-lang","translationOf":"E"}` → 409 (C3).
+4. Removal: `PUT $API/content/R` `{"translationOf":null}` and `PUT $API/content/E` `{"translationOf":null}` → 200 each
+   (both keys and both membership items removed); `PUT` each page `{"status":"Archived"}`; `PUT $API/settings`
+   `{"languages":[],"navLinksByLang":{},"footerLinksByLang":{}}` → 200. Pages cannot be deleted through the API.
+5. The en-US and ro-RO staging sites: one settings save and one page save each answer 200 as before (no renderer change
+   in this slice). Deploy order: shared build, backend, then admin (§ 12).
+
+### `lang-1a` — operator closeout (2026-11-22): shipped to `main` and to staging
+
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Operator ruling LANG1A-MEMBERSHIP-RESPONSE = approve (Appendix E, difference 8).
+- Operator gates, all exit 0: build, typecheck, shared, plugins, renderer unit, serving suite 142 / 142 on three
+  consecutive runs, admin unit, backend unit, infra, MCP, `git diff --check`.
+- Staging (operator, OBSERVED): diff read first — code only, no resource added or removed, no IAM change;
+  deployed; the Appendix E calls on tenant `cm1-content`, 14 checks pass: `languages: ["ro"]` accepted; the
+  default language as an extra refused (400 naming `languages`); a Romanian home page refused (400 naming
+  `homePageSlug`); an English page and its Romanian translation share one set id (a UUID, neither page id) and
+  carry `hasTranslationItem: true`; a page in no set carries neither field; a second Romanian member → 409; an
+  unknown page → 400; both pages leave the set and no `TRANSLATION#` item is left; an ordinary settings save
+  answers 200. The probe's page, route and link items were removed from `AmodxTable-staging`; `languages` is `[]`
+  again. The 51 reference pages of the staging sites are identical to the capture taken before this slice
+  (status, headers, `lang`, word multiset).
+- Deferred debt carried by the operator: orphan and archived `TRANSLATION#` items (§ 15) → `docs/TECH-DEBT.md`
+  with `lang-1c`, the first reader.
+- Next: `lang-1b` (the routing change).

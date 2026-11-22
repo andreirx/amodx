@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { MediaPicker } from "@/components/MediaPicker";
 import { TagInput } from "@/components/ui/tag-input";
 
-import { THEME_PRESETS, normalizeSlug, needsSlugReview } from "@amodx/shared";
+import { THEME_PRESETS, normalizeSlug, needsSlugReview, pageLanguageOf, languageTagOf, localeLanguageSubtag, readLanguageSettings, type PageLanguage } from "@amodx/shared";
 import { extractText, findImage } from "@/lib/seoExtract";
 
 // IMPROVED COLOR COMPONENT
@@ -57,6 +57,147 @@ function ColorOverride({ label, value, onChange, onReset }: { label: string, val
             </div>
         </div>
     );
+}
+
+// ── LANG-1A (docs/slices/lang-1.md § 6.2, § 10): the page's language and its translation set. Pure, so
+// ContentEditor.test.ts pins them. The language is the address prefix (the stored data is the address). The set is read
+// from the content list (content/list.ts): `translationKey` on each LATEST and, for a page that holds a key,
+// `hasTranslationItem` (its membership item exists). The backend repeats every check (rules C2, C3).
+// Rule for every decision on a sum type here (`PageLanguage`, `TranslationChoice`; review R-L1A-03): a `switch` whose
+// every arm returns, in a function whose return type excludes `undefined`, no default arm. ──────────────────────────
+
+/** A page of the content list. `hasTranslationItem` is present only when the page holds a set key. */
+export type ListedPage = { nodeId: string; title?: string; slug?: unknown; status?: string; translationKey?: unknown; hasTranslationItem?: boolean };
+/** The tenant's languages as the editor needs them: the extra languages (read rule) and the default subtag. */
+export type SiteLanguages = { languages: string[]; defaultSubtag: string };
+
+/** The English name of a language subtag; the subtag itself when the runtime has no name. */
+function languageName(subtag: string): string {
+    try { return new Intl.DisplayNames(["en"], { type: "language" }).of(subtag) ?? subtag; } catch { return subtag; }
+}
+
+/** The tenant settings → the editor's language view (`readLanguageSettings`, the one read rule). */
+export function siteLanguagesOf(settings: unknown): SiteLanguages {
+    const locale = settings !== null && typeof settings === "object" ? (settings as { locale?: unknown }).locale : undefined;
+    return { languages: readLanguageSettings(settings).languages, defaultSubtag: localeLanguageSubtag(locale) };
+}
+
+/** `path` (with a leading `/`) without its language prefix: a default-language address is returned whole. */
+function addressWithoutLanguage(path: string, language: PageLanguage): string {
+    switch (language.kind) {
+        case "default": return path;
+        case "extra": return path.slice(1 + language.subtag.length);
+    }
+}
+
+/** The address with its language prefix replaced: `/about` → `ro` → `/ro/about`; `/ro/about` → default → `/about`. */
+export function slugInLanguage(slug: string, languages: readonly string[], target: string | null): string {
+    const path = "/" + slug.replace(/^\//, "");
+    const rest = addressWithoutLanguage(path, pageLanguageOf(path, languages));
+    if (target === null) return rest === "" ? "/" : rest;
+    return `/${target}${rest === "/" ? "" : rest}`;
+}
+
+/** The Language select's value for a page language: "" = the default language, else the subtag. */
+export function languageSelectValue(language: PageLanguage): string {
+    switch (language.kind) {
+        case "default": return "";
+        case "extra": return language.subtag;
+    }
+}
+
+/** The language tag of an address (`hreflang` value): an extra language's subtag, else the default subtag. */
+export function languageTagOfSlug(slug: unknown, site: SiteLanguages): string {
+    return languageTagOf(pageLanguageOf(typeof slug === "string" ? "/" + slug.replace(/^\//, "") : "", site.languages), site.defaultSubtag);
+}
+
+const isSetKey = (value: unknown): value is string => typeof value === "string" && value !== "";
+
+/**
+ * Member of set `key` by the conditions of § 6.2 that do not depend on publication: the page holds `key` now, its
+ * membership item exists (`hasTranslationItem`), and its address is a string. This is what the backend's rule C3
+ * counts (`otherSetMembers`, content/update.ts): a Draft or Archived member counts, it can be published again.
+ */
+export function isSetMember(page: ListedPage, key: unknown): boolean {
+    return isSetKey(key) && page.translationKey === key && page.hasTranslationItem === true && typeof page.slug === "string";
+}
+
+/**
+ * The pages the "Translation of" picker offers for page `self` (its address as being edited): exactly the targets for
+ * which PUT /content/{id} would JOIN (`planTranslation`, content/update.ts), in its order of checks — not the page
+ * itself (400); not a page of the page's own set (the backend's no-op); not a page in this page's language (C3); not a
+ * page whose set has another member (`isSetMember`) in this page's language (C3). A page without an address is not
+ * offered. The page's own key comes from its list entry.
+ */
+export function translationChoices(pages: readonly ListedPage[], self: { nodeId: string; slug: string }, site: SiteLanguages): ListedPage[] {
+    const selfKey = pages.find((p) => p.nodeId === self.nodeId)?.translationKey;
+    const selfTag = languageTagOfSlug(self.slug, site);
+    const setHasLanguage = (key: unknown) => isSetKey(key) && pages.some((q) =>
+        q.nodeId !== self.nodeId && isSetMember(q, key) && languageTagOfSlug(q.slug, site) === selfTag);
+    return pages.filter((p) => p.nodeId !== self.nodeId && typeof p.slug === "string"
+        && !(isSetKey(p.translationKey) && p.translationKey === selfKey)
+        && languageTagOfSlug(p.slug, site) !== selfTag && !setHasLanguage(p.translationKey));
+}
+
+/**
+ * One member of the page's set: its language tag, the page, and `published` = its status is Published (§ 6.2 condition
+ * 2). A published member is listed for search engines only when no other published member shares its language (§ 5.3,
+ * `sharedTags`); an unpublished member is never listed.
+ */
+export type SetMemberView = { tag: string; page: ListedPage; published: boolean };
+
+/**
+ * The page's set (§ 6.2) as language → page: every `isSetMember` of the page's key, the page itself with its address and
+ * status as being edited; `published` = status Published. `sharedTags` = language tags that two or more PUBLISHED
+ * members share: search engines get neither of them (§ 5.3). A Draft or Archived member is shown, not listed, and
+ * causes no such warning. Empty when the page is not a member itself (no key, or no membership item).
+ */
+export function translationSetView(pages: readonly ListedPage[], self: { nodeId: string; slug: string; status: string }, site: SiteLanguages): { members: SetMemberView[]; sharedTags: string[] } {
+    const entry = pages.find((p) => p.nodeId === self.nodeId);
+    const edited = (p: ListedPage): ListedPage => (p.nodeId === self.nodeId ? { ...p, slug: self.slug, status: self.status } : p);
+    const key = entry?.translationKey;
+    if (entry === undefined || !isSetMember(edited(entry), key)) return { members: [], sharedTags: [] };
+    const members = pages.map(edited).filter((p) => isSetMember(p, key))
+        .map((page) => ({ tag: languageTagOfSlug(page.slug, site), page, published: page.status === "Published" }));
+    const counts = new Map<string, number>();
+    for (const m of members) if (m.published) counts.set(m.tag, (counts.get(m.tag) ?? 0) + 1);
+    return { members, sharedTags: [...counts].filter(([, n]) => n > 1).map(([tag]) => tag) };
+}
+
+/** The "Translation of" choice: absent = no change (nothing sent); null = leave the set; a nodeId = join that page's set. */
+export type TranslationChoice = { kind: "unchanged" } | { kind: "leave" } | { kind: "join"; nodeId: string };
+
+const LEAVE_VALUE = "__leave";
+/** The "Translation of" select's value for a choice; `choiceFromSelectValue` is its inverse. */
+export function choiceSelectValue(choice: TranslationChoice): string {
+    switch (choice.kind) {
+        case "unchanged": return "";
+        case "leave": return LEAVE_VALUE;
+        case "join": return choice.nodeId;
+    }
+}
+export function choiceFromSelectValue(value: string): TranslationChoice {
+    if (value === "") return { kind: "unchanged" };
+    if (value === LEAVE_VALUE) return { kind: "leave" };
+    return { kind: "join", nodeId: value };
+}
+
+/** True when the choice changes the page's set (the editor is then dirty: Save sends `translationOf`). */
+export function choiceChangesSet(choice: TranslationChoice): boolean {
+    switch (choice.kind) {
+        case "unchanged": return false;
+        case "leave": return true;
+        case "join": return true;
+    }
+}
+
+/** The `PUT /content/{id}` body with the choice applied: `translationOf` is sent only for a choice the editor made. */
+export function withTranslationChoice<T extends object>(payload: T, choice: TranslationChoice): T & { translationOf?: string | null } {
+    switch (choice.kind) {
+        case "unchanged": return payload;
+        case "leave": return { ...payload, translationOf: null };
+        case "join": return { ...payload, translationOf: choice.nodeId };
+    }
 }
 
 // ... [Keep DEFAULT_STATE] ...
@@ -127,6 +268,13 @@ export default function ContentEditor() {
 
     const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
 
+    // LANG-1A: the tenant's languages (null until loaded, or when the site has none → no language controls), the
+    // content list (the picker and the set display; it holds this page's key and membership too), and the editor's set
+    // choice (sent on save only when made).
+    const [siteLanguages, setSiteLanguages] = useState<SiteLanguages | null>(null);
+    const [listedPages, setListedPages] = useState<ListedPage[]>([]);
+    const [translationChoice, setTranslationChoice] = useState<TranslationChoice>({ kind: "unchanged" });
+
     // Store the CLEAN state (from server)
     const [serverState, setServerState] = useState<typeof DEFAULT_STATE | null>(null);
 
@@ -139,8 +287,8 @@ export default function ContentEditor() {
     // dirty state management
     const isDirty = useMemo(() => {
         if (!serverState) return false;
-        return JSON.stringify(serverState) !== JSON.stringify(form);
-    }, [serverState, form]);
+        return JSON.stringify(serverState) !== JSON.stringify(form) || choiceChangesSet(translationChoice);
+    }, [serverState, form, translationChoice]);
 
     // IMPORT-POLICY-1: the URL field hides the slug's leading "/" and, once edited, stores the value
     // without it. Only the decision to SHOW the red review line uses the slug with the slash, so a
@@ -173,13 +321,25 @@ export default function ContentEditor() {
     useEffect(() => {
         if (id) loadContent(id);
         fetchAvailableTags();
+        loadSiteLanguages();
     }, [id]);
+
+    // LANG-1A: the language controls show only for a site with extra languages.
+    async function loadSiteLanguages() {
+        try {
+            const site = siteLanguagesOf(await apiRequest("/settings"));
+            setSiteLanguages(site.languages.length > 0 ? site : null);
+        } catch (e) {
+            console.warn("Failed to load the site languages", e);
+        }
+    }
 
     async function fetchAvailableTags() {
         try {
             // We fetch all content to derive tags.
             // Optimization: Later, make a dedicated endpoint GET /tags
             const res = await apiRequest("/content");
+            setListedPages(res.items);   // LANG-1A: the "Translation of" picker reads the same list
             const allTags = new Set<string>();
             res.items.forEach((item: any) => {
                 if (Array.isArray(item.tags)) {
@@ -217,6 +377,7 @@ export default function ContentEditor() {
             };
             setForm(state);
             setServerState(state);
+            setTranslationChoice({ kind: "unchanged" });
             if (data.seoTitle || data.seoDescription) setManualSeo(true);
         } catch (err) {
             console.error(err);
@@ -246,10 +407,11 @@ export default function ContentEditor() {
                 seoDescription: finalSeoDesc,
                 featuredImage: finalImg,
             };
-            await apiRequest(`/content/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+            await apiRequest(`/content/${id}`, { method: "PUT", body: JSON.stringify(withTranslationChoice(payload, translationChoice)) });
             setServerState(payload);
             // Re-fetch to ensure sync (e.g. if slug changed backend side)
             await loadContent(id);
+            fetchAvailableTags();   // LANG-1A: the list holds the sets the picker shows
             window.dispatchEvent(new Event("amodx:refresh-links"));
         } catch (err: any) {
             alert("Failed to save: " + err.message);
@@ -674,6 +836,46 @@ export default function ContentEditor() {
                                         : `Will be saved as ${normalizeSlug(form.slug)}.`}
                                 </p>
                             )}
+                            {siteLanguages && id && (() => {
+                                const site = siteLanguages;
+                                const self = { nodeId: id, slug: slugWithLeadingSlash, status: form.status };
+                                const choices = translationChoices(listedPages, self, site);
+                                const set = translationSetView(listedPages, self, site);
+                                return (
+                                    <div className="space-y-2 text-sm text-muted-foreground">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span>Language:</span>
+                                            <select className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+                                                    value={languageSelectValue(pageLanguageOf(slugWithLeadingSlash, site.languages))}
+                                                    onChange={e => update("slug", slugInLanguage(form.slug, site.languages, e.target.value === "" ? null : e.target.value))}>
+                                                <option value="">{languageName(site.defaultSubtag)} ({site.defaultSubtag}, default)</option>
+                                                {site.languages.map(l => <option key={l} value={l}>{languageName(l)} ({l})</option>)}
+                                            </select>
+                                            <span>Translation of:</span>
+                                            <select className="h-8 rounded-md border border-input bg-transparent px-2 text-sm max-w-[360px]" value={choiceSelectValue(translationChoice)}
+                                                    onChange={e => setTranslationChoice(choiceFromSelectValue(e.target.value))}>
+                                                <option value={choiceSelectValue({ kind: "unchanged" })}>{set.members.length > 0 ? "Keep the current set" : "No change"}</option>
+                                                <option value={choiceSelectValue({ kind: "leave" })}>Not a translation</option>
+                                                {choices.map(p => (
+                                                    <option key={p.nodeId} value={p.nodeId}>{`${p.title || "Untitled"} — ${String(p.slug)} (${languageTagOfSlug(p.slug, site)})`}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        {set.members.length > 0 && (
+                                            <ul className="text-xs space-y-0.5">
+                                                {set.members.map(m => (
+                                                    <li key={m.page.nodeId}>
+                                                        {languageName(m.tag)} ({m.tag}) → {String(m.page.slug)}{m.page.nodeId === id ? " (this page)" : ""}{m.published ? "" : ` — ${m.page.status || "not published"}, not listed for search engines`}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        {set.sharedTags.map(tag => (
+                                            <p key={tag} className="text-xs text-destructive">Two pages in {languageName(tag)}: neither is listed for search engines. Change the address or the set of one of them.</p>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {/* Editor */}

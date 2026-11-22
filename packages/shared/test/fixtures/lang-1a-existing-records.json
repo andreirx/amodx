@@ -1,0 +1,24 @@
+{
+  "_comment": "LANG-1A preservation witness inputs: records shaped like a live one-language tenant (en-US, ro-RO) and a content item, as stored before lang-1a. test/lang-1a.test.ts parses them and compares with the HEAD capture lang-1a-head-parse-4cb6b96.json.",
+  "tenantEn": {
+    "id": "t-en", "domain": "en.example.test", "name": "English Site", "status": "LIVE", "plan": "Pro", "createdAt": "2026-01-02T03:04:05.000Z",
+    "locale": "en-US", "countryCode": "EN", "currency": "USD", "homePageSlug": "/home",
+    "navLinks": [{ "label": "Home", "href": "/" }, { "label": "About", "href": "/about", "children": [{ "label": "Team", "href": "/about/team" }] }],
+    "footerLinks": [{ "label": "Contact", "href": "/contact" }],
+    "urlPrefixes": { "product": "/product", "category": "/category" },
+    "theme": { "primaryColor": "#112233" }
+  },
+  "tenantRo": {
+    "id": "t-ro", "domain": "ro.example.test", "name": "Site Românesc", "status": "LIVE", "plan": "Pro", "createdAt": "2026-01-02T03:04:05.000Z",
+    "locale": "ro-RO", "countryCode": "RO", "currency": "RON",
+    "navLinks": [{ "label": "Acasă", "href": "/" }],
+    "footerLinks": [],
+    "urlPrefixes": { "product": "/produs", "category": "/categorie", "cart": "/cos", "checkout": "/comanda", "shop": "/magazin" },
+    "commerceEnabled": true
+  },
+  "contentItem": {
+    "id": "c-1", "nodeId": "n-1", "version": 3, "status": "Published", "title": "About", "slug": "/about",
+    "seoTitle": null, "tags": ["a"], "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Hi" }] }],
+    "author": "u-1", "createdAt": "2026-01-02T03:04:05.000Z", "updatedAt": "2026-01-03T03:04:05.000Z"
+  }
+}

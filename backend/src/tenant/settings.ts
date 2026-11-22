@@ -7,7 +7,7 @@ import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, languageSettingsProblem, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -399,6 +399,12 @@ const _updateHandler: AmodxHandler = async (event) => {
             const timezoneError = schedulingTimezoneError(merged);
             if (timezoneError) return { statusCode: 400, body: JSON.stringify({ error: timezoneError }) };
         }
+        // LANG-1A (docs/slices/lang-1.md § 5.2, V1-V6): on the MERGED record, so a body that changes `locale`,
+        // `urlPrefixes` or `homePageSlug` is refused when it breaks the stored language list. A record without
+        // `languages`, `navLinksByLang` and `footerLinksByLang` checks nothing (every save of a one-language site passes).
+        // A language-list change writes no page and no membership item.
+        const languageProblem = languageSettingsProblem(merged);
+        if (languageProblem) return { statusCode: 400, body: JSON.stringify({ error: languageProblem }) };
 
         // SETTINGS-KEYS-1B — best-effort hostname claim check: reject a new hostname when another tenant's record is
         // visible in GSI_Domain now. Two identity resolvers (renderer getTenantConfig, lib/tenant-verify
