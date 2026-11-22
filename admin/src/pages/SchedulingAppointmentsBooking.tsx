@@ -10,6 +10,8 @@ import {
     AppointmentDialog, formatWhen, mondayOf, plannerErrorText, selectionKey, useSelectionData,
     type BookingAdminDTO, type HistoryEntryDTO, type PlacementDTO, type ResourceDTO,
 } from "./SchedulingPlanner";
+import { MoveSeatDialog } from "./SchedulingRoster";
+import { groupErrorText, useSelectionLifetime, type RunAdminDTO } from "./SchedulingCourses";
 
 /*
  * SCHED-1E2 (docs/slices/sched-1.md § 10.3, § 23.5) — one booking as the admin sees it
@@ -17,6 +19,12 @@ import {
  * read here, never in the main-table audit log). Actions: cancel (`POST …/cancel`, the customer gets the "Cancelled"
  * mail) and, for a confirmed appointment, move (the planner's dialog, `POST …/move-slot`). Times in the site's zone
  * (`GET /settings` → `scheduling.timezone`). English UI. PROTOTYPE.
+ * SCHED-1F2: a confirmed group booking (a seat, or a person without a group) is moved to another group of its course,
+ * or out to "without a group", through SchedulingRoster's `MoveSeatDialog` (`POST …/move-seat`); the course's groups
+ * are read when the move starts. That read, the dialog and its message follow SchedulingCourses' `useSelectionLifetime`
+ * rule (review R1 of sched-1f2): they live the lifetime of the booking shown (it ends when the route moves to another
+ * booking or the page unmounts, and never comes back); the dialog opens only for the latest "Move" click; a completion
+ * closes only its own dialog.
  */
 
 function actorText(a: Actor): string {
@@ -84,7 +92,10 @@ export default function SchedulingAppointmentsBooking() {
     });
     const [actionError, setActionError] = useState<{ key: string; text: string } | null>(null);
     const [moving, setMoving] = useState<string | null>(null);
+    const [movingSeat, setMovingSeat] = useState<{ alive: () => boolean; runs: RunAdminDTO[] } | null>(null);
+    const [seatMessage, setSeatMessage] = useState<{ alive: () => boolean; text: string; error: boolean } | null>(null);
     const [busy, setBusy] = useState(false);
+    const seatMoves = useSelectionLifetime(key);
 
     async function cancel(target: { key: string; booking: BookingAdminDTO }) {
         if (!confirm(`Cancel ${target.booking.ref}? The customer gets the "Cancelled" mail.`)) return;
@@ -97,6 +108,20 @@ export default function SchedulingAppointmentsBooking() {
             setActionError({ key: target.key, text: plannerErrorText(e) });
         } finally {
             setBusy(false);
+        }
+    }
+
+    async function openSeatMove(target: { key: string; booking: BookingAdminDTO }) {
+        const what = target.booking.what;
+        if (what.kind === "slot") return;
+        const isCurrent = seatMoves.start();
+        setSeatMessage(null);
+        try {
+            const answer = await apiRequest(`/scheduling/admin/courses/${encodeURIComponent(what.courseId)}/runs`);
+            if (!isCurrent()) return; // the booking's lifetime ended, or a later "Move" click
+            setMovingSeat({ alive: seatMoves.lifetime(), runs: answer.runs as RunAdminDTO[] });
+        } catch (e) {
+            if (isCurrent()) setSeatMessage({ alive: seatMoves.lifetime(), text: groupErrorText(e), error: true });
         }
     }
 
@@ -141,6 +166,9 @@ export default function SchedulingAppointmentsBooking() {
                 <p className="text-muted-foreground">Times in {tz}. {plannerLink && <Link className="underline" to={plannerLink}>Open the week in the planner</Link>}</p>
             </div>
             {errorBox}
+            {seatMessage !== null && seatMessage.alive() && (
+                <div className={seatMessage.error ? "rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" : "rounded-md border p-3 text-sm"}>{seatMessage.text}</div>
+            )}
             <Card>
                 <CardHeader>
                     <CardTitle>{whatText}</CardTitle>
@@ -151,6 +179,9 @@ export default function SchedulingAppointmentsBooking() {
                     <p>Source: {sourceText(booking.source)}</p>
                     <div className="flex gap-2 pt-2">
                         {what.kind === "slot" && booking.state.kind === "confirmed" && <Button variant="outline" onClick={() => setMoving(key)}>Move</Button>}
+                        {what.kind !== "slot" && booking.state.kind === "confirmed" && (
+                            <Button variant="outline" onClick={() => openSeatMove(target)}>{what.kind === "seat" ? "Move to another group" : "Place into a group"}</Button>
+                        )}
                         {booking.state.kind !== "cancelled" && (
                             <Button variant="outline" onClick={() => cancel(target)} disabled={busy}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Cancel booking</Button>
                         )}
@@ -168,6 +199,15 @@ export default function SchedulingAppointmentsBooking() {
             {moving === key && (
                 <AppointmentDialog mode={{ kind: "move", booking, resources }} tz={tz} onClose={() => setMoving(null)}
                     onDone={() => { setMoving(null); void loaded.reload(); }} />
+            )}
+            {movingSeat !== null && movingSeat.alive() && (
+                <MoveSeatDialog booking={booking} runs={movingSeat.runs} onClose={() => setMovingSeat(null)}
+                    onDone={(text) => {
+                        const mine = movingSeat;
+                        setMovingSeat((prev) => (prev === mine ? null : prev)); // closes only this dialog
+                        if (mine.alive()) setSeatMessage({ alive: mine.alive, text, error: false });
+                        void loaded.reload();
+                    }} />
             )}
         </div>
     );

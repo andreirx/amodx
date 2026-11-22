@@ -20,7 +20,8 @@ import { SchedulingSettingsSchema, SchedulingEmailKeySchema, type SchedulingEmai
  * template overrides are saved through the existing PUT /settings (TENANT_ADMIN), with ONLY the scheduling attributes
  * in the body. The default mail texts come from GET /scheduling/admin/email-templates: this page keeps no copy.
  * Not on this screen: services and the week planner (`sched-1e`, own pages linked from the header: SchedulingPlanner.tsx,
- * SchedulingAppointments.tsx), courses and runs (`sched-1f`),
+ * SchedulingAppointments.tsx), courses and groups (`sched-1f`, own pages linked from the header: SchedulingCourses.tsx,
+ * SchedulingRoster.tsx),
  * customer lookup and erasure (the routes exist; the screen for them is not in this slice).
  */
 
@@ -286,11 +287,13 @@ export default function SchedulingPage() {
         <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="h-7 w-7" /> Scheduling</h1>
             <p className="text-muted-foreground">Appointments and group bookings, confirmed by an emailed link.</p>
-            {/* SCHED-1E2: the appointment pages (they work with scheduling off, § 23.5). */}
+            {/* SCHED-1E2: the appointment pages (they work with scheduling off, § 23.5). SCHED-1F2: the group pages. */}
             <p className="text-sm">
                 <Link className="underline" to="/scheduling/planner">Week planner</Link>
                 {" · "}
                 <Link className="underline" to="/scheduling/appointments">Services and weekly hours</Link>
+                {" · "}
+                <Link className="underline" to="/scheduling/courses">Courses and groups</Link>
             </p>
         </div>
     );

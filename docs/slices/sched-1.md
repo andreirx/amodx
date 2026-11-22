@@ -2371,3 +2371,26 @@ rows C33, D14).
   stale `rev` refused, a language in use and a course with groups protected (409), a run moved (3 mailed) and
   cancelled (3 unplaced), history on a booking, main-table audit with course and run events and no person,
   email or booking id. The partition is back to 0 items; the switch is off.
+
+### `sched-1f2` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Scope: admin pages `SchedulingCourses.tsx` (courses; groups of a course with meetings, places, language,
+  trainers, group link; create, edit, move, cancel) and `SchedulingRoster.tsx` (people of a group, people
+  without a group, manual entry, move a person, CSV export), two routes in `App.tsx`, links from
+  `Scheduling.tsx`, the move-seat action on the booking detail page. `sched-1f` is complete with this half.
+  Admin app only.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved (separate
+  invocations). Corrected in review: state of an earlier selection (actions, forms, dialogs, messages, pending
+  pages) can no longer return after A → B → A or after leaving the page (`useSelectionLifetime`, three page
+  users); move notices describe the placement of the booking the answer returns; wording that claimed more
+  than the backend guarantees.
+- Operator gates, all exit 0: build, typecheck, admin unit, shared, `git diff --check`.
+- Staging (operator, OBSERVED, headless browser on the staging admin, tenant `cm1-content`; 11 checks pass):
+  the courses page shows a course with two groups (4 / 12 places, language, trainer, group link); the roster
+  shows four people with channel and the list of people without a group; the downloaded CSV is named
+  `<course>_<first date>_group-<id>.csv`, starts with a UTF-8 byte order mark, keeps Romanian letters, has the
+  columns Reference, Name, Email, Phone, Language, State, Held until, Source, Channel, and a name written as
+  `=HYPERLINK(…)` is exported with a leading apostrophe. Everything written was removed; the switch is off.
+- Observations, not corrected here: a phone number in international form (`+40…`) also gets the leading
+  apostrophe in the CSV, because `+` can start a formula; the roster has no "paid" column (payment belongs to
+  the paid-course path `sched-1h`).
