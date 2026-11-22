@@ -7,6 +7,8 @@
 // existing page (measured, build report step 3). Force-dynamic: never stored (row G1).
 // SCHED-1G3: 404 (the tree's not-found) when the tenant has no record or scheduling is off (`getBookingTenant`); the
 // robots meta `noindex, nofollow` keeps the page out of search indexes (rows sched1g3-*).
+// SCHED-LABELS-1: the texts include the tenant's own `bookingStrings` on a page in the tenant's own language only
+// (`bookingTexts(language, config)`, lib/booking-text.ts).
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getBookingTenant } from "@/lib/booking-tenant";
@@ -26,7 +28,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     const { siteId } = await params;
     const config = await getBookingTenant(siteId);
     if (!config) return {};
-    const texts = bookingTexts(bookingLanguage(one((await searchParams).lang), config.locale).language);
+    const texts = bookingTexts(bookingLanguage(one((await searchParams).lang), config.locale).language, config);
     return { title: `${texts.bookTitle} | ${config.name}`, robots: { index: false, follow: false } };
 }
 
@@ -36,7 +38,7 @@ export default async function BookPage({ params, searchParams }: Props) {
     const config = await getBookingTenant(siteId);
     if (!config) notFound();
     const { language, locale } = bookingLanguage(one(query.lang), config.locale);
-    const texts = bookingTexts(language);
+    const texts = bookingTexts(language, config);
     const recaptchaSiteKey = config.recaptcha?.siteKey || process.env.RECAPTCHA_SITE_KEY || undefined;
     return (
         <PageShell config={config} frame={one(query.frame) === "1"} language={language} title={texts.bookTitle}>

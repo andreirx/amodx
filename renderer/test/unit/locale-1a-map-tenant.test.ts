@@ -29,8 +29,9 @@ beforeEach(() => { process.env.TABLE_NAME = "locale-1a-unit"; });
 const PART_FIELDS = Object.keys(TenantConfigSchema.shape).filter((k) => k.endsWith("Strings"));
 
 describe("mapTenant passes every part of the locale table and the language", () => {
-    it("the schema has exactly the three parts (a fourth part must be added here AND to mapTenant)", () => {
-        expect(PART_FIELDS.sort()).toEqual(["catalogStrings", "commerceStrings", "siteStrings"]);
+    it("the schema has exactly the three parts and the booking texts (another part must be added here AND to mapTenant)", () => {
+        // SCHED-LABELS-1: + `bookingStrings`, the fourth stored home (the booking-page texts).
+        expect(PART_FIELDS.sort()).toEqual(["bookingStrings", "catalogStrings", "commerceStrings", "siteStrings"]);
     });
 
     it("every part field, gdpr, legalLinks and locale reach the TenantConfig", async () => {

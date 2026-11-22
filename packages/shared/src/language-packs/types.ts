@@ -23,8 +23,10 @@ export interface LanguagePack {
 /**
  * SCHED-1G2 (docs/slices/sched-1.md § 10.1) — the visitor texts of the hosted booking pages (`/_booking`,
  * `/_booking/manage`). Plain texts with `{placeholders}` (filled by `fillTemplate`); no count key (counts are written as
- * "Places left: {n}", so no plural form is needed). Not part of the tenant locale table: a tenant does not override
- * them (no `bookingStrings` field exists); the page selects a pack by language (`?lang=`, else the tenant locale).
+ * "Places left: {n}", so no plural form is needed). Not part of the three-part locale table; the page selects a pack by
+ * language (`?lang=`, else the tenant locale). SCHED-LABELS-1: a tenant overrides them in its own stored home,
+ * `bookingStrings` (`BookingStringsSchema`, keys `BOOKING_TEXT_KEYS` derived from the English pack), shown only on a
+ * booking page in the tenant's own language (`renderer/src/lib/booking-text.ts`).
  * The `err*` keys are the visitor texts of the refusal codes of § 10.2 and of the renderer proxy
  * (`renderer/src/lib/booking-ui.ts` maps each code to one key).
  */

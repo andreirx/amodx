@@ -7,18 +7,21 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RotateCcw, Save } from "lucide-react";
 import {
-    COOKIE_AND_LEGAL_LABEL_LOCATIONS, CatalogStringsSchema, CommerceStringsSchema, SiteStringsSchema, isCatalogMode,
-    pluralCategoriesOf, resolveLocaleStrings, type CookieOrLegalLabelKey, type CountText, type LocaleStrings, type PluralCategory,
+    BOOKING_TEXT_KEYS, COOKIE_AND_LEGAL_LABEL_LOCATIONS, CatalogStringsSchema, CommerceStringsSchema, EN_LANGUAGE_PACK, SiteStringsSchema,
+    bookingStandardTexts, isCatalogMode, pluralCategoriesOf, resolveLocaleStrings, templatePlaceholders,
+    type CookieOrLegalLabelKey, type CountText, type LocaleStrings, type PluralCategory,
 } from "@amodx/shared";
 
 // ── LOCALE-1A (docs/slices/locale-1.md § 7.1): the Labels page edits the tenant's locale table ─────────────────────
-// Four stored homes, one input per key: `commerceStrings` (commerce part), `catalogStrings` (catalog part, LOCALE-1B),
-// `siteStrings` (site part, without the nine cookie/legal keys) and the label fields of `gdpr` / `legalLinks` (the
-// nine, § 4.1). The page shows them in SECTIONS (each with its Reset); a section edits exactly one home. The pure
-// helpers below build what a save sends; `Labels.test.ts` pins them.
+// Five stored homes, one input per key: `commerceStrings` (commerce part), `catalogStrings` (catalog part, LOCALE-1B),
+// `siteStrings` (site part, without the nine cookie/legal keys), the label fields of `gdpr` / `legalLinks` (the
+// nine, § 4.1) and — SCHED-LABELS-1 — `bookingStrings` (the booking-page texts). The page shows them in SECTIONS (each
+// with its Reset); a section edits exactly one home. The pure helpers below build what a save sends; `Labels.test.ts`
+// pins them.
 
-/** Which stored home an input edits. `labels` = the nine cookie/legal keys, stored in gdpr/legalLinks fields. */
-export type LabelsPart = "commerce" | "catalog" | "site" | "labels";
+/** Which stored home an input edits. `labels` = the nine cookie/legal keys, stored in gdpr/legalLinks fields;
+ *  `booking` = `bookingStrings`. */
+export type LabelsPart = "commerce" | "catalog" | "site" | "labels" | "booking";
 
 /** What the page edits: copies of the loaded objects (unknown and non-string stored keys are kept, § 2.4). */
 export type LabelsDraft = {
@@ -26,6 +29,7 @@ export type LabelsDraft = {
     catalog: Record<string, unknown>;
     site: Record<string, unknown>;
     labels: Partial<Record<CookieOrLegalLabelKey, string>>;
+    booking: Record<string, unknown>;
 };
 
 const NINE = Object.keys(COOKIE_AND_LEGAL_LABEL_LOCATIONS) as CookieOrLegalLabelKey[];
@@ -42,7 +46,7 @@ export function draftFromSettings(settings: Record<string, unknown>): LabelsDraf
     }
     return {
         commerce: { ...asObject(settings.commerceStrings) }, catalog: { ...asObject(settings.catalogStrings) },
-        site: { ...asObject(settings.siteStrings) }, labels,
+        site: { ...asObject(settings.siteStrings) }, labels, booking: { ...asObject(settings.bookingStrings) },
     };
 }
 
@@ -84,9 +88,10 @@ const PRODUCT_PAGE_KEYS = [
 ];
 
 /** A section of the page: one heading, one Reset. Each section edits exactly one stored home. */
-export type LabelsSection = "site" | "labels" | "catalog" | "product" | "commerce" | "showcase";
+export type LabelsSection = "site" | "labels" | "catalog" | "product" | "commerce" | "showcase" | "booking";
 export const SECTION_HOME = {
     site: "site", labels: "labels", catalog: "catalog", product: "commerce", commerce: "commerce", showcase: "commerce",
+    booking: "booking",
 } as const satisfies Record<LabelsSection, LabelsPart>;
 
 /**
@@ -105,10 +110,12 @@ export const SECTION_KEYS = {
     product: PRODUCT_PAGE_KEYS,
     commerce: Object.keys(CommerceStringsSchema.shape).filter((k) => !PRODUCT_PAGE_KEYS.includes(k)),
     showcase: SHOWCASE_KEYS,
+    booking: [...BOOKING_TEXT_KEYS],
 } satisfies Record<LabelsSection, string[]>;
 
 /** The sections the page shows a tenant, in page order: site and cookie/legal for everyone; Catalog for a catalog site;
- *  Product pages & search for a shop or a catalog; Commerce for a shop; the showcase section for a content-only site. */
+ *  Product pages & search for a shop or a catalog; Commerce for a shop; the showcase section for a content-only site;
+ *  SCHED-LABELS-1: Booking for everyone, last (the texts can be prepared before scheduling is switched on). */
 export function visibleSections(settings: Record<string, unknown> | null): LabelsSection[] {
     const isCommerce = settings?.commerceEnabled === true;
     const isCatalog = isCatalogMode(settings);
@@ -117,7 +124,29 @@ export function visibleSections(settings: Record<string, unknown> | null): Label
     if (isCommerce || isCatalog) out.push("product");
     if (isCommerce) out.push("commerce");
     if (!isCommerce && !isCatalog) out.push("showcase");
+    out.push("booking");
     return out;
+}
+
+/**
+ * SCHED-LABELS-1 — the inputs of the Booking section, one per booking key in the order of the English pack: `label` =
+ * the English standard text (the admin is English); `placeholder` = the standard text in the tenant's language (what
+ * visitors see when the input is blank — `language` is the resolver's text language, the same language as the
+ * tenant's booking page without `?lang=`); `keep` = the `{placeholders}` the site's text must keep (PUT /settings
+ * refuses a text that drops one or adds another); `value` = the stored site text.
+ */
+export function bookingInputs(draft: LabelsDraft, language: string): { key: string; label: string; placeholder: string; keep: string[]; value: string }[] {
+    const standard = bookingStandardTexts(language);
+    return BOOKING_TEXT_KEYS.map((key) => {
+        const stored = draft.booking[key];
+        return {
+            key,
+            label: EN_LANGUAGE_PACK.booking[key],
+            placeholder: standard[key],
+            keep: templatePlaceholders(EN_LANGUAGE_PACK.booking[key]),
+            value: typeof stored === "string" ? stored : "",
+        };
+    });
 }
 
 /** How many overrides a Reset of `section` removes. */
@@ -150,6 +179,7 @@ export function labelsSaveBody(settings: Record<string, unknown>, draft: LabelsD
     if (!sameEntries(asObject(settings.commerceStrings), draft.commerce)) body.commerceStrings = draft.commerce;
     if (!sameEntries(asObject(settings.catalogStrings), draft.catalog)) body.catalogStrings = draft.catalog;
     if (!sameEntries(asObject(settings.siteStrings), draft.site)) body.siteStrings = draft.site;
+    if (!sameEntries(asObject(settings.bookingStrings), draft.booking)) body.bookingStrings = draft.booking;
     for (const attribute of ["gdpr", "legalLinks"] as const) {
         const loaded = asObject(settings[attribute]);
         const next: Record<string, unknown> = { ...loaded };
@@ -173,11 +203,12 @@ const LabelsCtx = createContext<{
     language: string;
     update: (part: LabelsPart, key: string, value: string) => void;
     updateCount: (part: LabelsPart, key: string, category: PluralCategory, value: string) => void;
-}>({ draft: { commerce: {}, catalog: {}, site: {}, labels: {} }, defaults: null, language: "en", update: () => {}, updateCount: () => {} });
+}>({ draft: { commerce: {}, catalog: {}, site: {}, labels: {}, booking: {} }, defaults: null, language: "en", update: () => {}, updateCount: () => {} });
 
-/** The language default of one key of a stored home (the nine cookie/legal keys are site keys). */
+/** The language default of one key of a stored home (the nine cookie/legal keys are site keys). The booking keys are
+ *  not in the locale table: their inputs take the standard texts from `bookingInputs`. */
 function defaultOf(defaults: LocaleStrings | null, part: LabelsPart, field: string): unknown {
-    if (!defaults) return undefined;
+    if (!defaults || part === "booking") return undefined;
     return (defaults[part === "labels" ? "site" : part] as Record<string, unknown>)[field];
 }
 
@@ -241,6 +272,21 @@ function CountF({ label, field, section, example }: { label: string; field: stri
     );
 }
 
+/** SCHED-LABELS-1: one input of the Booking section (`bookingInputs`): the English text as label, the key, the
+ *  standard text of the site language as placeholder, and the placeholders the text must keep. */
+function BookingField({ input }: { input: ReturnType<typeof bookingInputs>[number] }) {
+    const { update } = useContext(LabelsCtx);
+    return (
+        <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{input.label} <span className="font-mono opacity-70">({input.key})</span></Label>
+            <Input value={input.value} onChange={e => update("booking", input.key, e.target.value)} placeholder={input.placeholder} className="h-9" />
+            {input.keep.length > 0 && (
+                <p className="text-[11px] text-muted-foreground">Must keep: {input.keep.map((name) => `{${name}}`).join(", ")}</p>
+            )}
+        </div>
+    );
+}
+
 /** A group heading with its one-line description and its Reset button. */
 function SectionHeader({ title, description, section, onReset }: { title: string; description: string; section: LabelsSection; onReset: (section: LabelsSection, title: string) => void }) {
     const { draft } = useContext(LabelsCtx);
@@ -262,7 +308,7 @@ function SectionHeader({ title, description, section, onReset }: { title: string
 export default function Labels() {
     const { currentTenant } = useTenant();
     const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
-    const [draft, setDraft] = useState<LabelsDraft>({ commerce: {}, catalog: {}, site: {}, labels: {} });
+    const [draft, setDraft] = useState<LabelsDraft>({ commerce: {}, catalog: {}, site: {}, labels: {}, booking: {} });
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -334,6 +380,7 @@ export default function Labels() {
     const resolved = settings ? resolveLocaleStrings(settings) : null;
     const defaults = resolved ? resolved.defaults : null;
     const visible = visibleSections(settings);
+    const booking = bookingInputs(draft, resolved?.language ?? "en");
 
     return (
         <LabelsCtx.Provider value={{ draft, defaults, language: resolved?.language ?? "en", update, updateCount }}>
@@ -969,6 +1016,38 @@ export default function Labels() {
                         <F label="Tracking (heading)" field="tracking" />
                         <F label="Tracking Number:" field="trackingNumber" />
                         <F label="Items (heading)" field="items" />
+                    </div>
+                </CardContent>
+            </Card>
+            </>}
+
+            {/* ── Booking (every tenant; SCHED-LABELS-1) ── */}
+            {visible.includes("booking") && <>
+            <SectionHeader section="booking" onReset={reset} title="Booking" description="The booking page and the page where a visitor manages a booking (opened from the e-mail link). Your texts are shown only when these pages are in your site language; a page opened in another language (?lang=) shows that language's standard texts. A cleared input uses the standard text." />
+            {settings?.schedulingEnabled !== true && (
+                <p className="text-sm text-muted-foreground">Scheduling is off for this site, so the booking pages are not shown yet. You can prepare the texts now; they are used when scheduling is switched on (Scheduling page).</p>
+            )}
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Booking pages</CardTitle>
+                    <CardDescription>Headings, buttons, form fields and messages. A text with {"{placeholders}"} must keep each of them (the page fills them in).</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {booking.filter((input) => !input.key.startsWith("err")).map((input) => <BookingField key={input.key} input={input} />)}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Booking errors</CardTitle>
+                    <CardDescription>The messages a visitor sees when a booking step cannot be done.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {booking.filter((input) => input.key.startsWith("err")).map((input) => <BookingField key={input.key} input={input} />)}
                     </div>
                 </CardContent>
             </Card>

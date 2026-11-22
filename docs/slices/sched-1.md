@@ -2500,3 +2500,33 @@ test tenant and sent none because the tenant has no contact address (`due 1`, `n
   `witness` parameter is refused (400); no booking address in `sitemap.xml`. Manage-page walk passes again.
 - Still NOT RUN on a deployed stage: a hold accepted through the page. The reCAPTCHA badge on the staging
   preview host still reads "Invalid domain for site key" (the key must list `d3kezt5niqwtgx.cloudfront.net`).
+
+### `sched-labels-1` — shipped to `main` and to staging 2026-11-22 (operator closeout)
+
+- Requirement (human, 2026-11-22): the booking page texts must be changeable in the admin. The Romanian texts of
+  `sched-1g2` are approved by the human as the standard wording.
+- Scope: a fourth part of the tenant locale table, `bookingStrings` (optional; one optional text per booking
+  key; an empty text = the standard text; a non-empty text must keep the placeholders of the standard text,
+  else 400 naming the key); `bookingTexts(language, overrides)`: English ← the pack of the page language ← the
+  tenant's texts, applied only when the page language is the tenant's own; a "Booking" section on the admin
+  Labels page (98 keys, standard text as hint, required placeholders, Reset; a line when scheduling is off);
+  `mapTenant`; one serving row. `locale-1.md` has a dated amendment note.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), one cycle, approved. Operator gates, all
+  exit 0; serving suite 142 / 142 on three consecutive runs.
+- Staging (operator, OBSERVED): diff read first — code only; deployed; 8 checks pass on tenant `cm1-content`:
+  an override of the page title is shown on the booking page with typed HTML shown as text; the Romanian
+  version keeps the standard Romanian title; a text without its placeholder and a number are refused (400);
+  an empty text restores the standard; the tenant's `bookingStrings` is `{}` afterwards.
+
+### First hold accepted through the page — staging, 2026-11-22 (closes the NOT RUN item of `sched-1g2`)
+
+- After the human added the staging and production preview hosts to the reCAPTCHA key's domain list, a person
+  made a booking through `/_site/cm1-content/_booking` in a normal browser: the hold was accepted, the hold
+  mail arrived, the manage page confirmed it (stored: `confirmed`, history `created, confirmed`).
+  An automated browser is refused by score (0.3 against the threshold 0.5), which is the intended behaviour.
+- Observation: the mail link used the tenant's stored domain. The staging fixture tenant has a domain that
+  exists only for tests, so the link did not open; `bookingBase` follows the admin's "view site" rule (stored
+  domain unless it ends with `.localhost`, else the preview address). A site whose real domain is stored before
+  it points at the platform has the same effect in mails and in the admin links.
+- Finding (not corrected yet): booking mails carry no `Reply-To`; a customer's reply goes to the platform's
+  sender address, not to the site.

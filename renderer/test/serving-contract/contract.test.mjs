@@ -45,7 +45,7 @@ import {
     SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS, SL1C, SL1C_PATH, SL1C_CATEGORIES, SL1C_GRID, SL1C_BLANK_GRID,
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
-    SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS,
+    SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS, SCHEDLABELS1, SCHEDLABELS1_TEXTS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -4291,6 +4291,41 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.ok(map.body.includes(`<loc>https://${t.host}/</loc>`), `control: ${t.id} sitemap lists the home page`);
                 assert.doesNotMatch(map.body, /_booking|_book\b|%5Fbook/i, `${t.id} sitemap lists a booking address`);
             }
+        });
+
+        // ── ROW (schedlabels1-override) — SCHED-LABELS-1: a site's own booking texts (`bookingStrings`, edited on the admin
+        // Labels page) are shown on its booking pages in its own language and NOT under `?lang=` of another language; an
+        // override with HTML is shown as text (the page's rendering escapes it); a tenant without overrides is unchanged
+        // (the `sched1g` tenants: their rows run as before; the ro-RO one is the control here). Never stored.
+        test("(schedlabels1-override) the site's booking texts: shown on its own-language page (book and manage), escaped; not under ?lang=en; a tenant without them shows the standard texts; never stored", async () => {
+            const T = SCHEDLABELS1;
+            const escaped = "Programează-te &lt;b&gt;acum&lt;/b&gt;";
+            const book = await at(T.host, "/_booking");
+            assert.equal(book.status, 200);
+            assertNeverStored(book, "override book");
+            assert.match(book.body, /<div lang="ro"/);
+            assert.ok(book.body.includes(`>${escaped}</h1>`), "the site's title, as text, in the page heading");
+            assert.ok(book.body.includes(`<title>${escaped} | ${T.name}</title>`), "the site's title, as text, in <title>");
+            assert.ok(!book.body.includes("<b>acum</b>"), "the HTML of the override is never markup");
+            assert.doesNotMatch(book.body, />Programare<\/h1>/, "the standard title is replaced");
+            const manage = await at(T.host, "/_booking/manage");
+            assert.equal(manage.status, 200);
+            assertNeverStored(manage, "override manage");
+            assert.ok(manage.body.includes(`>${SCHEDLABELS1_TEXTS.manageTitle}</h1>`), "the site's manage title");
+            // ?lang= of the tenant's own language: the same texts.
+            assert.ok((await at(T.host, "/_booking?lang=ro")).body.includes(`>${escaped}</h1>`), "?lang=ro on a ro-RO tenant");
+            // ?lang= of another language: that language's standard texts, and no text of the site anywhere in the page.
+            for (const [p, title] of [["/_booking?lang=en", "Book"], ["/_booking/manage?lang=en", "Your booking"]]) {
+                const other = await at(T.host, p);
+                assert.equal(other.status, 200, p);
+                assertNeverStored(other, p);
+                assert.match(other.body, new RegExp(`>${title}</h1>`), `${p}: the English standard title`);
+                assert.ok(!other.body.includes("Programează-te") && !other.body.includes(SCHEDLABELS1_TEXTS.manageTitle), `${p}: a site text on the English page`);
+            }
+            // A tenant without bookingStrings (sched1g ro-RO): the standard Romanian texts.
+            const control = await at(S1G_RO.host, "/_booking");
+            assert.match(control.body, />Programare<\/h1>/, "control: a tenant without overrides");
+            assert.ok(!control.body.includes("Programează-te"), "control: another tenant's text");
         });
 
         // ── ROW (cmrc-counties-diff) — RETIRED by locale-1d (docs/slices/locale-1d.md): it compared the commerce and content

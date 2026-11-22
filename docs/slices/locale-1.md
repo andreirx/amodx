@@ -34,6 +34,21 @@ part (for ordinary content sites). The language is a per-tenant setting.
 > `locale`. The tenant's overrides apply to its default language; a page in an added language shows that
 > language's pack without them (LANG1-OVERRIDES = A, `lang-1.md` § 8.2).
 
+> **Amendment 2026-11-22 — a fourth stored home, `bookingStrings`** (slice `SCHED-LABELS-1`; human requirement of
+> 2026-11-22: "we need to be able to change them in the admin site"). The texts of the hosted booking pages (the
+> `booking` part of the language packs, 98 keys, `docs/slices/sched-1.md` § 10.1) are not a part of the three-part
+> table, but a tenant overrides them in the tenant attribute `bookingStrings`, beside `commerceStrings`,
+> `catalogStrings` and `siteStrings` (§ 4.1). Same rules as the site part: one optional text per key (the key list is
+> derived from the English pack); absent key = no override; unknown stored keys kept (§ 2.4); the limits of § 4.4 at
+> PUT /settings. Two differences, both for this attribute only: (1) a stored `""` is NO override (the booking page
+> shows the standard text; the site part renders a stored `""` empty, pattern D of § 5.2 — the Labels page never
+> writes `""` in either home); (2) PUT /settings refuses a booking text whose `{placeholders}` differ from those of
+> the key's standard text (400 naming the key and the placeholder; no such rule exists for the other parts). The
+> overrides apply only on a booking page in the tenant's own language — never under `?lang=` of another language
+> (LANG1-OVERRIDES = A). Edited in the Labels page section "Booking" (every tenant). Code:
+> `packages/shared/src/locale-strings.ts` (`BOOKING_TEXT_KEYS`, `bookingStandardTexts`, `templatePlaceholders`),
+> `backend/src/tenant/settings.ts`, `renderer/src/lib/booking-text.ts`, `admin/src/pages/Labels.tsx`.
+
 ### 1.2 Risk retired
 
 Today a tenant cannot get its visitor-facing texts in its own language. Three causes, all OBSERVED on the code:

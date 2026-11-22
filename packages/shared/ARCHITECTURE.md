@@ -24,7 +24,7 @@ src/
 │                       #   changeDecision, activeEntries, planDay, editDays, …). No I/O, no clock. Persistence and
 │                       #   concurrency live in its first consumer, backend/src/lib/scheduling-db.ts (sched-1c)
 ├── zoned-time.ts       # Local wall time ↔ UTC instant on Intl (spring gap refused, ambiguous = earlier), for scheduling.ts
-├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e); catalogServerTexts (cdl-1)
+├── locale-strings.ts   # Tenant locale table: normalizeLocale, resolveLocaleStrings, fillTemplate, COOKIE_AND_LEGAL_LABEL_LOCATIONS (locale-1a); blockStrings (locale-1c); count keys: PLURAL_CATEGORIES, pluralCategoriesOf, selectPluralText (locale-1b); localeLanguageSubtag (locale-1e); catalogServerTexts (cdl-1); booking texts: BOOKING_TEXT_KEYS, bookingStandardTexts, templatePlaceholders (sched-labels-1)
 ├── language-packs/     # Texts per language: types.ts, en.ts (complete by type), ro.ts, index.ts (LANGUAGE_PACKS registry) (locale-1a)
 └── country-packs/      # Per-country facts only: currency, locale, regions, address formats (texts removed by locale-1d)
 ```
@@ -189,6 +189,16 @@ dates in the tenant's normalised locale — `dateLocale`, or `"en-US"` when it i
   whitespace gives the language default; a non-blank override is used trimmed — an empty attribute key would be dropped
   by the product page and the facets. Users: backend `import/glam-pricelist.ts`, `interest/public.ts`. The RO values
   equal the literals the backend wrote before (`test/cdl-1.test.ts`).
+- **Booking texts** (`sched-labels-1`, amendment of `docs/slices/locale-1.md` dated 2026-11-22). The `booking` part of the
+  language packs (the 98 texts of the hosted booking pages, `BookingStrings` in `language-packs/types.ts`) is NOT a part
+  of the table above, but a tenant overrides it in a fourth stored home, `bookingStrings` (`BookingStringsSchema`, one
+  optional text per key; `TenantConfig.bookingStrings`). `BOOKING_TEXT_KEYS` = the keys of the English pack (the list is
+  written once). `bookingStandardTexts(language)` = English ← the language's pack (a `""` or absent pack text gives
+  English): the admin placeholders and the renderer's lower layers; the renderer (`lib/booking-text.ts`) adds the tenant
+  layer and owns the rule of when it applies (only on a page in the tenant's own language). An absent key or `""` =
+  no override. `templatePlaceholders(text)` = the `{name}`s `fillTemplate` fills (one shared regex), for the
+  PUT /settings rule "a booking text keeps exactly the placeholders of its standard text" and the admin's "Must keep"
+  line. Test: `test/sched-labels-1.test.ts`.
 - **Adding a key:** schema (`index.ts`) → EN value (`language-packs/en.ts`, compile error until done) → RO value
   (`language-packs/ro.ts`, `test/locale-strings.test.ts` fails until done) → the reader → its Labels input → the
   slice's `coverage.json`. **Adding a language:** one pack file + one `LANGUAGE_PACKS` entry; a missing key → English.

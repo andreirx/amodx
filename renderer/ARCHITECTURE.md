@@ -539,7 +539,8 @@ and `test/unit/catalog-listing.test.ts`, which replays the golden through `getCa
 Design `docs/slices/locale-1.md` (§ 16 rulings win); records `docs/slices/locale-1a.md`, `docs/slices/locale-1b.md`,
 `docs/slices/locale-1d.md`, `docs/slices/locale-1c.md`, `docs/slices/locale-reviews-date-1.md`, `docs/slices/locale-1e.md`.
 
-- `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` and `locale` — NORMALISED (`normalizeLocale`), so
+- `mapTenant` (`lib/dynamo.ts`) copies `catalogStrings`, `siteStrings` (and, `sched-labels-1`, `bookingStrings` when
+  present) and `locale` — NORMALISED (`normalizeLocale`), so
   every reader of `config.locale` (also the commerce dates of `SitePage` this slice does not touch) gets a value no
   formatter throws on; absent/malformed → `en-US`. `countryCode` is copied since `cmrc-counties-1` (below). A
   tenant without a name gets `site.untitledSiteName` of its language. `test/unit/locale-1a-map-tenant.test.ts` lists
@@ -803,7 +804,10 @@ refresh) follow ONE lifetime rule (`_components/operation.ts` `useOperation`): o
 included) disabled meanwhile, an answer applied only to the screen it was started for. `?service=` / `?course=` start
 the flow on that service or course when the offer lists it (both → the service; unknown → the offer). Texts: the `booking`
 part of the language packs (`packages/shared/src/language-packs/`, EN + RO complete), selected by `?lang=` (a language
-with a pack) else the tenant locale; times in the tenant's (or the run's) zone with the zone named. `?frame=1`: no
+with a pack) else the tenant locale; `sched-labels-1`: over them the site's own texts (`bookingStrings`, admin Labels
+"Booking"), ONLY on a page in the tenant's own language — the language of its page without `?lang=` (ruling
+LANG1-OVERRIDES = A); `lib/booking-text.ts` `bookingTexts(language, config)`, used by both pages and their metadata.
+Texts are rendered as React text (escaped). Times in the tenant's (or the run's) zone with the zone named. `?frame=1`: no
 header, transparent background (the frame chrome is `sched-frame-1`).
 
 **Proxy** (`lib/booking-proxy.ts`, users: `api/[op]/route.ts`, `feed/…/route.ts`): op table `BOOKING_OPS` (offer, slots,
@@ -832,7 +836,9 @@ carries the texts' language). Every page's RSC payload now lists `%5Fbook` among
 that one item (ruling SCHED-1G2-ROOT-SIBLING = A, `cm1-byte-identity.mjs` `rootSiblingAllowance`, controls row
 `sched1g-root-sibling-controls`).
 
-**Tests.** Serving rows `sched1g-*` and `sched1g3-*` (`test/serving-contract/contract.test.mjs`; fixtures `SCHED1G`); unit
+**Tests.** Serving rows `sched1g-*`, `sched1g3-*` and `schedlabels1-override` (`test/serving-contract/contract.test.mjs`;
+fixtures `SCHED1G`, `SCHEDLABELS1`); unit `test/unit/sched-labels-1.test.ts` (the override layer and its language rule,
+`mapTenant`);
 `test/unit/sched-1g-pure.test.ts` (path, texts, `mapTenant` reCAPTCHA pair and scheduling switch, structural rules,
 coverage of the booking keys),
 `sched-1g-proxy.test.ts` (forwarding, no address and no browser header forwarded, the feed and its scheduling

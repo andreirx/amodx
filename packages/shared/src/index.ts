@@ -11,11 +11,12 @@ export { normalizeSlug, needsSlugReview } from "./slug.js";
 
 // LOCALE-1 (docs/slices/locale-1.md § 5): the locale-table resolver and the language packs. Pure; same re-export
 // pattern as slug.ts.
-export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings, catalogServerTexts } from "./locale-strings.js";
-import { normalizeLocale } from "./locale-strings.js";
+export { normalizeLocale, localeLanguageSubtag, resolveLocaleStrings, fillTemplate, selectPluralText, pluralCategoriesOf, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BLOCK_SITE_KEYS, BLOCK_FALLBACK_KEYS, blockStrings, catalogServerTexts, templatePlaceholders, BOOKING_TEXT_KEYS, bookingStandardTexts } from "./locale-strings.js";
+import { normalizeLocale, BOOKING_TEXT_KEYS } from "./locale-strings.js";
 export type { LocaleStringsInput, ResolvedLocaleStrings, CookieOrLegalLabelKey, PluralCategory, BlockStrings, CatalogServerTexts } from "./locale-strings.js";
 export { LANGUAGE_PACKS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "./language-packs/index.js";
-export type { LanguagePack, CompleteLanguagePack } from "./language-packs/index.js";
+export type { LanguagePack, CompleteLanguagePack, BookingStrings } from "./language-packs/index.js";
+import type { BookingStrings } from "./language-packs/index.js";
 
 // Re-export the STATIC-1 iframe sandbox contract (D-STATIC-1). Framework-agnostic
 // constant consumed by static-4's renderer shell; guarded by packages/shared/test/sandbox.test.ts.
@@ -1059,6 +1060,18 @@ export const CatalogStringsSchema = z.object({
 });
 export type CatalogStrings = z.infer<typeof CatalogStringsSchema>;
 
+// SCHED-LABELS-1 — the tenant's own wording of the hosted booking pages, stored as the tenant attribute `bookingStrings`:
+// a fourth stored home beside the three parts of the locale table (docs/slices/locale-1.md, amendment 2026-11-22). One
+// optional text per booking key; the keys are `BOOKING_TEXT_KEYS`, derived from the English pack (the `BookingStrings`
+// type, language-packs/types.ts), never written a second time. Absent key or `""` = no override (the renderer then shows
+// the standard text of the page language). PUT /settings checks the attribute as sent (backend/src/tenant/settings.ts):
+// the limits of `siteStrings`, plus: a booking key holds a text that keeps exactly the `{placeholders}` of its standard
+// text. Unknown keys are kept (§ 2.4). Shown only on a booking page in the tenant's own language
+// (renderer/src/lib/booking-text.ts).
+export const BookingStringsSchema = z.object(
+    Object.fromEntries(BOOKING_TEXT_KEYS.map((key) => [key, z.string().optional()])) as { [K in keyof BookingStrings]: z.ZodOptional<z.ZodString> },
+);
+
 // The site part: texts every tenant shows (§ 6.1). `locale-1a` ships the site chrome keys; `locale-1c` adds the block
 // chrome keys. The nine cookie and legal keys are stored ONLY in `gdpr` / `legalLinks` (§ 4.1): `PUT /settings`
 // refuses them in `siteStrings`, and the resolver never reads them from there (COOKIE_AND_LEGAL_LABEL_LOCATIONS).
@@ -1283,6 +1296,8 @@ export const TenantConfigSchema = z.object({
     // LOCALE-1: the catalog and site parts of the locale table; absent = no override (§ 4.1)
     catalogStrings: CatalogStringsSchema.optional(),
     siteStrings: SiteStringsSchema.optional(),
+    // SCHED-LABELS-1: the booking-page texts of the site; absent = no override (BookingStringsSchema)
+    bookingStrings: BookingStringsSchema.optional(),
 
     // Company details (footer, invoices)
     companyDetails: CompanyDetailsSchema.default({}),

@@ -4,6 +4,8 @@
 // then sends `POST view`; only its Confirm button confirms. No third-party script at all (row G6); the middleware adds
 // `Referrer-Policy: no-referrer` to this path. Force-dynamic: never stored.
 // SCHED-1G3: 404 (the tree's not-found) when the tenant has no record or scheduling is off (`getBookingTenant`).
+// SCHED-LABELS-1: the texts include the tenant's own `bookingStrings` on a page in the tenant's own language only
+// (`bookingTexts(language, config)`, lib/booking-text.ts).
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getBookingTenant } from "@/lib/booking-tenant";
@@ -22,7 +24,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     const { siteId } = await params;
     const config = await getBookingTenant(siteId);
     if (!config) return {};
-    const texts = bookingTexts(bookingLanguage(one((await searchParams).lang), config.locale).language);
+    const texts = bookingTexts(bookingLanguage(one((await searchParams).lang), config.locale).language, config);
     return { title: `${texts.manageTitle} | ${config.name}`, robots: { index: false, follow: false } };
 }
 
@@ -32,7 +34,7 @@ export default async function ManagePage({ params, searchParams }: Props) {
     const config = await getBookingTenant(siteId);
     if (!config) notFound();
     const { language, locale } = bookingLanguage(one(query.lang), config.locale);
-    const texts = bookingTexts(language);
+    const texts = bookingTexts(language, config);
     return (
         <PageShell config={config} frame={one(query.frame) === "1"} language={language} title={texts.manageTitle}>
             <ManageView texts={texts} locale={locale} />

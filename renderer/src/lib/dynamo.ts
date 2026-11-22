@@ -193,6 +193,10 @@ function mapTenant(item: any): TenantConfig {
         // when it is exactly `true`; absent or any other value stays absent (= off, § 4.1), so the mapped record of a
         // tenant without scheduling is unchanged. The other scheduling attributes are not mapped.
         ...(item.schedulingEnabled === true ? { schedulingEnabled: true } : {}),
+        // SCHED-LABELS-1: the site's own booking-page texts, read only by `bookingTexts` (lib/booking-text.ts), which
+        // ignores anything that is not an object of texts. Mapped only when present, so the mapped record of a tenant
+        // without the attribute is unchanged.
+        ...(item.bookingStrings ? { bookingStrings: item.bookingStrings } : {}),
         urlPrefixes: urlPrefixesOf(item.urlPrefixes),   // CDL-2 (§ 7.1): per key, the saved path, else the English default
         quickContact: item.quickContact || undefined,
         // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the visitor contact channels — the quote dialog and the bar fallbacks.

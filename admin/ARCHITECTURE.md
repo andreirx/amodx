@@ -124,6 +124,10 @@ src/
     │                           #   CAT-QUOTE-1: Catalog card "Request a quote" (the 7 quote* keys);
     │                           #   ORDER-CONFIRM-1: `pricesChanged` in "Checkout - Payment & Submit" (the order
     │                           #   handler sends it in its 409 `message`; not in the checkout's strings prop);
+    │                           #   SCHED-LABELS-1: "Booking" (every tenant, last; bookingStrings): one input per
+    │                           #   booking key from bookingInputs() — English text as label, the standard text of
+    │                           #   the site language as placeholder, "Must keep: {…}"; two cards (pages, err* keys);
+    │                           #   one line when scheduling is off;
     │                           #   visibleSections() decides the sections per tenant kind (one input per key);
     │                           #   placeholders = language defaults; Reset per
     │                           #   section; one input per key (Labels.test.ts reads the page's inputs and pins them

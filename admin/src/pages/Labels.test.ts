@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolveLocaleStrings } from "@amodx/shared";
-import { countInputs, draftFromSettings, labelsSaveBody, overrideCount, resetSection, setCountText, setText, visibleSections, SECTION_HOME, SECTION_KEYS } from "./Labels";
+import { BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, RO_LANGUAGE_PACK } from "@amodx/shared";
+import { bookingInputs, countInputs, draftFromSettings, labelsSaveBody, overrideCount, resetSection, setCountText, setText, visibleSections, SECTION_HOME, SECTION_KEYS } from "./Labels";
 
 /**
  * LOCALE-1A — the Labels page's save rules (docs/slices/locale-1.md § 7.1; admin unit checks of § 10 row `locale-1a`):
@@ -39,7 +40,8 @@ describe("draftFromSettings", () => {
         expect(d.labels).toEqual({ cookieHeadline: "Cookie-uri", legalTermsLabel: "Termeni", legalDisputeResolutionLabel: "SAL" });
     });
     it("a tenant with none of the attributes → an empty draft", () => {
-        expect(draftFromSettings({ id: "t2" })).toEqual({ commerce: {}, catalog: {}, site: {}, labels: {} });
+        // SCHED-LABELS-1: + the fifth home, `booking`.
+        expect(draftFromSettings({ id: "t2" })).toEqual({ commerce: {}, catalog: {}, site: {}, labels: {}, booking: {} });
     });
 });
 
@@ -263,11 +265,12 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
     });
 
     it("LOCALE-1C R4: visibility per tenant kind — the showcase texts reach content-only tenants, and no key has two inputs for any kind", () => {
+        // SCHED-LABELS-1: + "booking", last, for every tenant kind.
         const kinds: [string, Record<string, unknown>, string[]][] = [
-            ["content-only", { commerceEnabled: false }, ["site", "labels", "showcase"]],
-            ["commerce", { commerceEnabled: true }, ["site", "labels", "product", "commerce"]],
-            ["catalog", { catalogMode: true }, ["site", "labels", "catalog", "product"]],
-            ["commerce + catalog", { commerceEnabled: true, catalogMode: true }, ["site", "labels", "catalog", "product", "commerce"]],
+            ["content-only", { commerceEnabled: false }, ["site", "labels", "showcase", "booking"]],
+            ["commerce", { commerceEnabled: true }, ["site", "labels", "product", "commerce", "booking"]],
+            ["catalog", { catalogMode: true }, ["site", "labels", "catalog", "product", "booking"]],
+            ["commerce + catalog", { commerceEnabled: true, catalogMode: true }, ["site", "labels", "catalog", "product", "commerce", "booking"]],
         ];
         for (const [kind, settings, sections] of kinds) {
             expect(visibleSections(settings), kind).toEqual(sections);
@@ -278,7 +281,7 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
         // The stock overlay text: shown wherever the showcase can show it (never on a catalog-only site, CATALOG-MODE-1).
         expect(visibleSections({}).flatMap((s) => inputs[s]).filter((k) => k === "outOfStock")).toHaveLength(1);
         expect(visibleSections({ commerceEnabled: true }).flatMap((s) => inputs[s]).filter((k) => k === "outOfStock")).toHaveLength(1);
-        expect(visibleSections(null)).toEqual(["site", "labels", "showcase"]);
+        expect(visibleSections(null)).toEqual(["site", "labels", "showcase", "booking"]);
     });
 
     it("LOCALE-1C R4: a content-only tenant's showcase texts save into commerceStrings, and the section's Reset removes only them", () => {
@@ -297,5 +300,72 @@ describe("one input per key: the page's inputs are exactly each Reset's scope (r
         expect(overrideCount(d, "commerce")).toBe(1);
         expect(inputs.commerce).toContain("emptyCart");
         expect(labelsSaveBody(loaded, resetSection(d, "commerce"))).toEqual({ commerceStrings: { futureKey: "kept" } });
+    });
+});
+
+describe("SCHED-LABELS-1 — the Booking section (stored home `bookingStrings`)", () => {
+    const loaded = { locale: "ro-RO", schedulingEnabled: true, bookingStrings: { bookTitle: "Programează-te", back: "Înapoi acasă", futureKey: "kept" } };
+
+    it("the section covers every booking key (98, from the English pack), edits bookingStrings, and is shown to every tenant, with or without scheduling", () => {
+        expect(SECTION_KEYS.booking).toEqual(BOOKING_TEXT_KEYS);
+        expect(SECTION_KEYS.booking).toHaveLength(98);
+        expect(SECTION_HOME.booking).toBe("booking");
+        for (const settings of [{}, { schedulingEnabled: true }, { schedulingEnabled: false }, { commerceEnabled: true }, { catalogMode: true }, null]) {
+            expect(visibleSections(settings).at(-1), JSON.stringify(settings)).toBe("booking");
+        }
+        // no booking key is a key of another section (the booking texts are a separate home)
+        const others = new Set([...SECTION_KEYS.site, ...SECTION_KEYS.labels, ...SECTION_KEYS.catalog, ...SECTION_KEYS.product, ...SECTION_KEYS.commerce]);
+        expect(SECTION_KEYS.booking.filter((k) => others.has(k))).toEqual([]);
+    });
+
+    it("one input per booking key: English label, the standard text of the tenant language as placeholder, the placeholders to keep, the stored text", () => {
+        const inputs = bookingInputs(draftFromSettings(loaded), "ro");
+        expect(inputs.map((i) => i.key)).toEqual(BOOKING_TEXT_KEYS);
+        const ro = { ...EN_LANGUAGE_PACK.booking, ...RO_LANGUAGE_PACK.booking };
+        for (const input of inputs) {
+            const key = input.key as keyof typeof ro;
+            expect(input.label, key).toBe(EN_LANGUAGE_PACK.booking[key]);
+            expect(input.placeholder, key).toBe(ro[key]);
+        }
+        expect(inputs.find((i) => i.key === "bookTitle")).toEqual({ key: "bookTitle", label: "Book", placeholder: "Programare", keep: [], value: "Programează-te" });
+        expect(inputs.find((i) => i.key === "checkMailHeld")!.keep).toEqual(["email", "ref", "time"]);
+        expect(inputs.find((i) => i.key === "loading")!.value).toBe("");
+        // an English tenant: the placeholders are the English texts
+        expect(bookingInputs(draftFromSettings({}), "en").map((i) => i.placeholder)).toEqual(BOOKING_TEXT_KEYS.map((k) => EN_LANGUAGE_PACK.booking[k]));
+    });
+
+    it("the page renders the inputs from bookingInputs, split by the err prefix into two cards, and the scheduling-off line", () => {
+        const source = readFileSync(new URL("./Labels.tsx", import.meta.url), "utf8");
+        const section = source.slice(source.indexOf('<SectionHeader section="booking"'), source.lastIndexOf('<div className="flex justify-end pb-8">'));
+        expect(section).toContain('booking.filter((input) => !input.key.startsWith("err")).map((input) => <BookingField key={input.key} input={input} />)');
+        expect(section).toContain('booking.filter((input) => input.key.startsWith("err")).map((input) => <BookingField key={input.key} input={input} />)');
+        expect(section).toContain("settings?.schedulingEnabled !== true");
+        expect(section).toContain("Scheduling is off for this site");
+        // the two filters together take each key once
+        const first = BOOKING_TEXT_KEYS.filter((k) => !k.startsWith("err"));
+        const second = BOOKING_TEXT_KEYS.filter((k) => k.startsWith("err"));
+        expect([...first, ...second].sort()).toEqual([...BOOKING_TEXT_KEYS].sort());
+    });
+
+    it("an edit saves bookingStrings only, unknown stored keys kept; an empty input removes the override (never writes \"\")", () => {
+        let d = setText(draftFromSettings(loaded), "booking", "loading", "Se încarcă…");
+        expect(labelsSaveBody(loaded, d)).toEqual({ bookingStrings: { bookTitle: "Programează-te", back: "Înapoi acasă", futureKey: "kept", loading: "Se încarcă…" } });
+        d = setText(draftFromSettings(loaded), "booking", "bookTitle", "");
+        expect(labelsSaveBody(loaded, d)).toEqual({ bookingStrings: { back: "Înapoi acasă", futureKey: "kept" } });
+        expect(labelsSaveBody(loaded, draftFromSettings(loaded))).toEqual({});
+    });
+
+    it("the Booking Reset removes the booking overrides only (unknown stored keys kept; no other home sent)", () => {
+        const withSite = { ...loaded, siteStrings: { navContact: "Scrie-ne" } };
+        const d = draftFromSettings(withSite);
+        expect(overrideCount(d, "booking")).toBe(2);
+        expect(labelsSaveBody(withSite, resetSection(d, "booking"))).toEqual({ bookingStrings: { futureKey: "kept" } });
+        // and the site Reset does not touch the booking texts
+        expect(labelsSaveBody(withSite, resetSection(d, "site"))).toEqual({ siteStrings: {} });
+    });
+
+    it("a tenant without bookingStrings: the first edit creates the attribute with that text only", () => {
+        const d = setText(draftFromSettings({ id: "t2" }), "booking", "bookTitle", "Schedule a visit");
+        expect(labelsSaveBody({ id: "t2" }, d)).toEqual({ bookingStrings: { bookTitle: "Schedule a visit" } });
     });
 });

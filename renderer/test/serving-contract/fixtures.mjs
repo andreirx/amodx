@@ -1102,6 +1102,21 @@ const SCHED1G_ITEMS = [
     siteContentItem(SCHED1G.unset.id, "sched1g-unset-home", "/", "SCHED1G Unset Home"),
 ];
 
+// ── SCHED-LABELS-1 fixture (row `schedlabels1-override`) ────────────────────────────────────────────────────────────────
+// One ro-RO tenant with scheduling on and the site's own texts for two booking keys (`bookingStrings`): the book-page
+// title holds HTML (it must show as text) and the manage-page title is plain. The `sched1g` tenants have no
+// `bookingStrings`, so their rows are the "no override" control and stay unchanged.
+export const SCHEDLABELS1 = { id: "schedlabels1-ro", host: "schedlabels1-ro.serving-contract.test", name: "SCHEDLABELS1 Salon" };
+export const SCHEDLABELS1_TEXTS = { bookTitle: "Programează-te <b>acum</b>", manageTitle: "Programarea dumneavoastră" };
+const SCHEDLABELS1_ITEMS = [
+    {
+        ...siteTenant(SCHEDLABELS1.id, SCHEDLABELS1.host, SCHEDLABELS1.name), locale: "ro-RO", schedulingEnabled: true,
+        bookingStrings: { ...SCHEDLABELS1_TEXTS },
+    },
+    siteRouteItem(SCHEDLABELS1.id, "/", "schedlabels1-home"),
+    siteContentItem(SCHEDLABELS1.id, "schedlabels1-home", "/", "SCHEDLABELS1 Home"),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -1160,6 +1175,8 @@ export const ITEMS = [
     ...SL1E_ITEMS,
     // sched-1g2: the booking-page tenants (above).
     ...SCHED1G_ITEMS,
+    // sched-labels-1: the tenant with its own booking texts (above).
+    ...SCHEDLABELS1_ITEMS,
 ];
 
 /**

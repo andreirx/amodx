@@ -1,7 +1,7 @@
 import type { CatalogStrings, CommerceStrings, CountText, ImportLabels, LocaleStrings, PluralTexts, ResolvedPart, SiteStrings } from "./index.js";
 import { EN_LANGUAGE_PACK } from "./language-packs/en.js";
 import { LANGUAGE_PACKS } from "./language-packs/index.js";
-import type { CompletePart, LanguagePack } from "./language-packs/types.js";
+import type { BookingStrings, CompletePart, LanguagePack } from "./language-packs/types.js";
 
 /**
  * LOCALE-1 — the one resolution of the tenant locale table (docs/slices/locale-1.md § 3.3, § 5).
@@ -287,11 +287,48 @@ export function catalogServerTexts(resolved: ResolvedLocaleStrings): CatalogServ
     };
 }
 
+/** The `{name}` placeholder form that `fillTemplate` fills. One definition, so a check of placeholders and the filling
+ *  can never disagree about what a placeholder is. */
+const PLACEHOLDER = /\{([A-Za-z0-9_]+)\}/g;
+
 /**
  * Replaces each `{name}` of `template` with `String(values[name])` (§ 5.1). A placeholder without a value stays as
  * written, so a missing value is visible instead of silently empty.
  */
 export function fillTemplate(template: string, values: Record<string, string | number>): string {
-    return template.replace(/\{([A-Za-z0-9_]+)\}/g, (whole, name: string) =>
+    return template.replace(PLACEHOLDER, (whole, name: string) =>
         Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : whole);
+}
+
+/**
+ * SCHED-LABELS-1 — the names of the `{placeholders}` of `text` that `fillTemplate` would fill, each once, in order of
+ * first appearance (`"{ref} at {time}, {ref}"` → `["ref", "time"]`). Users: the `bookingStrings` check of PUT /settings
+ * (a site text must keep exactly the placeholders of the standard text) and the admin Labels page (it lists the
+ * placeholders each booking text must keep).
+ */
+export function templatePlaceholders(text: string): string[] {
+    return [...new Set([...text.matchAll(PLACEHOLDER)].map((m) => m[1]))];
+}
+
+/**
+ * SCHED-LABELS-1 — the 98 text keys of the hosted booking pages, derived from the English pack (complete by type), so
+ * the list is never written twice. The keys of the `bookingStrings` tenant attribute (`BookingStringsSchema`), of the
+ * admin "Booking" Labels section and of the renderer's booking texts.
+ */
+export const BOOKING_TEXT_KEYS = Object.keys(EN_LANGUAGE_PACK.booking) as (keyof BookingStrings)[];
+
+/**
+ * SCHED-LABELS-1 — the STANDARD booking texts of `language` (layers 1 + 2): the English text of every key, replaced by
+ * the text of the `language` pack where that pack has a non-empty one; English for a language without a pack. No
+ * tenant layer: the renderer adds the tenant's `bookingStrings` (`renderer/src/lib/booking-text.ts`, which owns the
+ * rule of WHEN they apply); the admin Labels page shows these texts as the placeholders of its Booking inputs.
+ */
+export function bookingStandardTexts(language: string): CompletePart<BookingStrings> {
+    const own = Object.prototype.hasOwnProperty.call(LANGUAGE_PACKS, language) ? LANGUAGE_PACKS[language].booking ?? {} : {};
+    const out = { ...EN_LANGUAGE_PACK.booking };
+    for (const key of BOOKING_TEXT_KEYS) {
+        const value = own[key];
+        if (typeof value === "string" && value !== "") out[key] = value;
+    }
+    return out;
 }

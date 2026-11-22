@@ -7,7 +7,7 @@ import { requireRole } from "../auth/policy.js"; // <--- Added .js
 import { withInvalidation } from "../lib/invalidate-cdn.js";
 import { purgeStoredPagesOfDomains } from "../lib/revalidate.js";
 import { z } from "zod";
-import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
+import { isCatalogMode, COOKIE_AND_LEGAL_LABEL_LOCATIONS, PLURAL_CATEGORIES, BOOKING_TEXT_KEYS, EN_LANGUAGE_PACK, templatePlaceholders, ContactChannelsSchema, ThemeSchema, FooterConfigSchema, HeaderConfigSchema, SchedulingSettingsSchema, SchedulingEmailConfigSchema, type CookieOrLegalLabelKey } from "@amodx/shared";
 
 type AmodxHandler = APIGatewayProxyHandlerV2WithLambdaAuthorizer<AuthorizerContext>;
 
@@ -47,14 +47,19 @@ const ModeFlagsSchema = z.object({
  * LOCALE-1A (docs/slices/locale-1.md § 4.4) — limits of the two NEW locale-table attributes, checked on the
  * attribute AS SENT and only when the body contains it. Same narrow kind as the mode-flag check: `commerceStrings`,
  * `gdpr` and `legalLinks` stay unvalidated, so no live tenant's next save can be refused for data it already has.
- * Unknown keys are kept (§ 2.4) and count toward every limit. What this bounds: the serialised size of these two
- * attributes (2 × 32 768 bytes); it does not bound the whole tenant item.
+ * Unknown keys are kept (§ 2.4) and count toward every limit. What this bounds: the serialised size of these
+ * attributes (3 × 32 768 bytes with `bookingStrings`); it does not bound the whole tenant item.
  *
  * LOCALE-1B (§ 16.2 item 6): a value is a text, or a COUNT text — a JSON object whose keys are plural categories
  * (`PLURAL_CATEGORIES`: zero, one, two, few, many, other) and whose values are texts; the length limit applies to each
  * of its texts, and it counts as one entry.
+ *
+ * SCHED-LABELS-1: `bookingStrings` (the booking-page texts) has the same limits, plus one rule for this attribute ONLY
+ * (`bookingPlaceholderError`): a value of a booking key (`BOOKING_TEXT_KEYS`) is a text, and a non-empty text keeps
+ * exactly the `{placeholders}` of the key's standard text. The site and catalog parts have no placeholder rule; it is
+ * not added to them, so their existing stored values cannot be refused by it.
  */
-const LOCALE_STRING_ATTRIBUTES = ["siteStrings", "catalogStrings"] as const;
+const LOCALE_STRING_ATTRIBUTES = ["siteStrings", "catalogStrings", "bookingStrings"] as const;
 const LOCALE_KEY_FORM = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
 const LOCALE_MAX_ENTRIES = 200;
 const LOCALE_MAX_VALUE_UNITS = 500;      // UTF-16 code units (String.length)
@@ -70,6 +75,35 @@ function textsOf(name: string, value: unknown): [string, string][] | null {
         out.push([`${name}.${category}`, text]);
     }
     return out;
+}
+
+const BOOKING_KEYS: ReadonlySet<string> = new Set(BOOKING_TEXT_KEYS);
+
+/**
+ * SCHED-LABELS-1 — one entry of `bookingStrings`. An unknown key: no rule here (kept, § 2.4). A booking key: the value
+ * must be a text (the booking texts have no count key); `""` is no override and is not checked; any other text must
+ * keep exactly the placeholders of the English standard text of the key — every placeholder of the standard text
+ * present, and no other (`fillTemplate` leaves an unknown one in the page as written). The English text is the key's
+ * contract: every language pack keeps the same placeholders per key (shared test `sched-labels-1`). The message names
+ * the key and the first missing or unknown placeholder; null when the entry is accepted.
+ */
+function bookingPlaceholderError(key: string, value: unknown): string | null {
+    if (!BOOKING_KEYS.has(key)) return null;
+    if (typeof value !== "string") return `bookingStrings.${key} must be a text.`;
+    if (value === "") return null;
+    const standard = EN_LANGUAGE_PACK.booking[key as (typeof BOOKING_TEXT_KEYS)[number]];
+    const required = templatePlaceholders(standard);
+    const given = templatePlaceholders(value);
+    const missing = required.find((name) => !given.includes(name));
+    if (missing !== undefined) {
+        return `bookingStrings.${key} must keep the placeholder {${missing}} (the standard text "${standard}" has ${required.map((n) => `{${n}}`).join(", ")}).`;
+    }
+    const unknown = given.find((name) => !required.includes(name));
+    if (unknown !== undefined) {
+        const allowed = required.length > 0 ? `only ${required.map((n) => `{${n}}`).join(", ")}` : "no placeholder";
+        return `bookingStrings.${key} has the unknown placeholder {${unknown.slice(0, 64)}}; the text may use ${allowed}.`;
+    }
+    return null;
 }
 
 /** The first limit `value` breaks, as a message that names the attribute and the limit; null when it breaks none. */
@@ -89,6 +123,10 @@ function localeStringsLimitError(attribute: (typeof LOCALE_STRING_ATTRIBUTES)[nu
         if (attribute === "siteStrings" && Object.hasOwn(COOKIE_AND_LEGAL_LABEL_LOCATIONS, key)) {
             const { attribute: home, field } = COOKIE_AND_LEGAL_LABEL_LOCATIONS[key as CookieOrLegalLabelKey];
             return `siteStrings must not contain "${key}": that text is stored only in ${home}.${field}.`;
+        }
+        if (attribute === "bookingStrings") {
+            const placeholderError = bookingPlaceholderError(key, text);
+            if (placeholderError) return placeholderError;
         }
     }
     const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
