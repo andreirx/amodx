@@ -993,3 +993,15 @@ those sales (they stay in WooCommerce); `BookingSourceSchema` (`packages/shared/
 variant for an external order (its `order` variant names an AMODX order id). This is put to the human with the six
 decisions; if chosen, CMRC-WOO-SEQUENCE has no object and § 7 is replaced by the pickup specification.
 
+### R.4 Human direction (2026-11-22, after the six decisions were put): the track waits
+
+The human: Track B is the generic shop for physical products; digital products and scheduling are handled separately,
+and scheduling has its own table. With WordPress keeping the school's orders, the premise "Track B before the school's
+orders" (`docs/ROADMAP.md`, 2026-11-20) no longer applies. Consequences recorded by the operator:
+- The WooCommerce pickup is specified on the scheduling private table only (R.3); it does not depend on this track.
+- CMRC-ORDER-LOOKUP-AUTHORITY, CMRC-TABLE, CMRC-MAIN-KEYS and CMRC-TEST-ONLY are NOT asked now. They are asked when a
+  shop for physical products is to go live on AMODX. This document stays a reviewed draft until then.
+- CMRC-CLIENT is asked with the Clients page (the one screen that shows shop customers and booking persons together).
+- Finding F-CMRC1-PRESIGN-ENTITLEMENT (the digital download check reads the shop's order index and cannot find a
+  purchase) is independent of this track and stays open for the digital products work.
+
