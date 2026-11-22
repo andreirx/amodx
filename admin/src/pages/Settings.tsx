@@ -461,8 +461,14 @@ export function MenuLanguageSelect({ config, setConfig, field, language, setLang
 
 // ── CAT-QUOTE-1 (docs/slices/cat-quote-1.md § 3 items 1 and 4): the "Contact channels" card. ──────────────────────
 
-/** The page's config state: the loaded settings, where `interestListEmail: null` = "send to the contact e-mail" chosen. */
-export type SettingsDraft = Omit<Partial<TenantConfig>, "interestListEmail"> & { interestListEmail?: string | null };
+/**
+ * The page's config state: `interestListEmail: null` = "send to the contact e-mail" chosen.
+ * Scheduling can start with just an explicit time zone; the backend schema supplies absent numeric defaults.
+ */
+export type SettingsDraft = Omit<Partial<TenantConfig>, "interestListEmail" | "scheduling"> & {
+    interestListEmail?: string | null;
+    scheduling?: Partial<NonNullable<TenantConfig["scheduling"]>>;
+};
 
 /** The Commerce Bar card's description before CAT-QUOTE-1, and the fallback note it gains (the renderer layout uses
  *  Contact channels when the bar's own phone / WhatsApp is empty). One text node: the page's tree shape, hence the ids
@@ -547,7 +553,7 @@ const getRendererUrl = () => {
 };
 
 export default function SettingsPage() {
-    const { currentTenant } = useTenant();
+    const { currentTenant, refreshTenants } = useTenant();
     const { userRole } = useAuth();
     const [config, setConfig] = useState<SettingsDraft>({});
     const [loading, setLoading] = useState(false);
@@ -656,7 +662,8 @@ export default function SettingsPage() {
                 method: "PUT",
                 body: JSON.stringify(withContactForSave(config))
             });
-            window.location.reload();
+            // Both commerce and scheduling navigation read the existing tenant-list context.
+            await refreshTenants();
         } catch (e: any) {
             setError(e.message || "Failed to save settings");
         } finally {
@@ -1145,6 +1152,8 @@ export default function SettingsPage() {
 
                     {/* COMMERCE TOGGLE — CATALOG-MODE-1 (CM-D11): the kind is fixed at creation; a catalog site never sells.
                         CAT-ADMIN-1 (docs/slices/cat-admin-1.md § 4.5): a catalog gets its own card, which states the kind; no control. */}
+                    {/* One child slot preserves the existing settings controls' React useId paths. */}
+                    <>
                     {isCatalogMode(config) ? (
                     <Card>
                         <CardHeader>
@@ -1180,6 +1189,32 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
                     )}
+
+                    {/* SCHED-MENU-1: the switch is available even when the Scheduling menu is hidden. */}
+                    <Card data-scheduling-switch>
+                        <CardHeader>
+                            <CardTitle>Scheduling</CardTitle>
+                            <CardDescription>Enable individual appointments and group bookings, confirmed by an emailed link.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={config.schedulingEnabled === true} disabled={!isAdmin}
+                                    onChange={e => setConfig({ ...config, schedulingEnabled: e.target.checked })}
+                                    className="rounded border-input h-5 w-5" />
+                                <span className="font-medium text-sm">Enable scheduling</span>
+                            </label>
+                            {config.schedulingEnabled === true && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="settings-scheduling-timezone">Scheduling time zone</Label>
+                                    <Input id="settings-scheduling-timezone" value={config.scheduling?.timezone ?? ""} disabled={!isAdmin}
+                                        placeholder="Europe/Bucharest"
+                                        onChange={e => setConfig({ ...config, scheduling: { ...config.scheduling, timezone: e.target.value } })} />
+                                    <p className="text-xs text-muted-foreground">Required to turn scheduling on; use an IANA time zone such as Europe/Bucharest.</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                    </>
 
                     {/* DIGITAL SALES (PADDLE) */}
                     <Card>

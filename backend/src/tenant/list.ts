@@ -15,6 +15,8 @@ export const handler: AmodxHandler = async (event) => {
             const result = await db.send(new QueryCommand({
                 TableName: TABLE_NAME,
                 KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+                ProjectionExpression: "id, #name, #domain, #status, commerceEnabled, schedulingEnabled, catalogMode, currency, locale, countryCode",
+                ExpressionAttributeNames: { "#name": "name", "#domain": "domain", "#status": "status" },
                 ExpressionAttributeValues: {
                     ":pk": "SYSTEM",
                     ":sk": "TENANT#"
@@ -27,6 +29,7 @@ export const handler: AmodxHandler = async (event) => {
                 domain: item.domain,
                 status: item.status,
                 commerceEnabled: item.commerceEnabled ?? false,
+                schedulingEnabled: item.schedulingEnabled === true,
                 catalogMode: item.catalogMode ?? false,
                 currency: item.currency || "USD",
                 locale: item.locale || "en-US",
@@ -55,6 +58,7 @@ export const handler: AmodxHandler = async (event) => {
                 domain: result.Item.domain,
                 status: result.Item.status,
                 commerceEnabled: result.Item.commerceEnabled ?? false,
+                schedulingEnabled: result.Item.schedulingEnabled === true,
                 catalogMode: result.Item.catalogMode ?? false,
                 currency: result.Item.currency || "USD",
                 locale: result.Item.locale || "en-US",

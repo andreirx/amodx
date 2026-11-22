@@ -76,7 +76,6 @@ const COMMON = {
     Content: ["Pages", "Content Graph", "Media"],
     Growth: ["Strategy", "Signals", "Leads"],
     Engagement: ["Popups", "Forms"],
-    Scheduling: ["Scheduling"],
     System: ["Comments", "Audit Log", "Resources", "Team", "WP Migration", "Email DNS", "Labels", "Settings"],
 };
 const COMMERCE_ONLY = ["Reports", "Orders", "Customers", "Coupons", "Reviews", "Delivery", "Email Templates"];
@@ -86,12 +85,11 @@ const BEFORE = {
 };
 /**
  * BEFORE with the ratified differences applied: Digital Products moves to "Digital sales", placed after Commerce
- * (CAT-ADMIN-1); SCHED-1D1 adds the "Scheduling" group, placed before System, for every site.
+ * (CAT-ADMIN-1). SCHED-MENU-1: these fixtures have scheduling off, so no Scheduling group.
  */
 function withRatifiedChanges(before: Record<string, string[]>): Record<string, string[]> {
     const out: Record<string, string[]> = {};
     for (const [group, items] of Object.entries(before)) {
-        if (group === "System") out.Scheduling = COMMON.Scheduling;
         out[group] = group === "Commerce" ? items.filter((n) => n !== "Digital Products") : items;
         if (group === "Commerce") out["Digital sales"] = ["Digital Products"];
     }
@@ -103,7 +101,7 @@ const hrefOf = (html: string, name: string) =>
 
 describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => {
     for (const [kind, t, before] of [["content", CONTENT_T, BEFORE.content], ["commerce", COMMERCE_T, BEFORE.commerce]] as const) {
-        it(`${kind} tenant: exactly the 3912c5d nav, except Digital Products in its own "Digital sales" group and the Scheduling group (SCHED-1D1)`, () => {
+        it(`${kind} tenant with scheduling off: exactly the 3912c5d nav, except Digital Products in its own "Digital sales" group`, () => {
             const nav = render(t);
             const expected = withRatifiedChanges(before);
             expect(nav).toEqual(expected);
@@ -119,10 +117,9 @@ describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => 
             "Digital sales": ["Digital Products"],
             Growth: COMMON.Growth,
             Engagement: COMMON.Engagement,
-            Scheduling: COMMON.Scheduling,
             System: COMMON.System,
         });
-        expect(Object.keys(nav)).toEqual(["Content", "Catalog", "Digital sales", "Growth", "Engagement", "Scheduling", "System"]);
+        expect(Object.keys(nav)).toEqual(["Content", "Catalog", "Digital sales", "Growth", "Engagement", "System"]);
     });
 
     it("catalog tenant: the two catalog entries go to the pricelist import page and the interest-list submissions", () => {
@@ -132,13 +129,29 @@ describe("Sidebar — the groups of each site kind (CAT-ADMIN-1 § 4.2)", () => 
     });
 });
 
-describe("Sidebar — Scheduling (SCHED-1D1)", () => {
-    it("every site kind lists Scheduling once, in its own group, linking to /scheduling", () => {
+describe("Sidebar — Scheduling (SCHED-MENU-1)", () => {
+    it("scheduling on: every site kind has exactly the three entries at their unchanged routes; other entries stay unchanged", () => {
         for (const t of [CONTENT_T, COMMERCE_T, CATALOG_T]) {
-            const html = markup(t);
-            expect(sections(html).Scheduling).toEqual(["Scheduling"]);
-            expect(Object.values(sections(html)).flat().filter((n) => n === "Scheduling")).toHaveLength(1);
-            expect(hrefOf(html, "Scheduling")).toBe("/scheduling");
+            const before = render(t);
+            const html = markup({ ...t, schedulingEnabled: true });
+            const { Scheduling, ...other } = sections(html);
+            expect(Scheduling).toEqual(["Appointments", "Groups", "Scheduling settings"]);
+            expect(hrefOf(html, "Appointments")).toBe("/scheduling/planner");
+            expect(hrefOf(html, "Groups")).toBe("/scheduling/courses");
+            expect(hrefOf(html, "Scheduling settings")).toBe("/scheduling");
+            expect(other).toEqual(before);
+            expect(hrefOf(html, "Customers")).toBe(t.commerceEnabled ? "/customers" : undefined);
+            const groups = Object.keys(sections(html));
+            expect(groups.indexOf("Scheduling")).toBe(groups.indexOf("System") - 1);
+        }
+    });
+    it("scheduling false or absent: no Scheduling section or scheduling link for any site kind", () => {
+        for (const t of [CONTENT_T, COMMERCE_T, CATALOG_T]) {
+            for (const flags of [{}, { schedulingEnabled: false }]) {
+                const html = markup({ ...t, ...flags });
+                expect(sections(html)).not.toHaveProperty("Scheduling");
+                expect(html).not.toMatch(/href="\/scheduling/);
+            }
         }
     });
 });

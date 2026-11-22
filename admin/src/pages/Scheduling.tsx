@@ -15,8 +15,8 @@ import { SchedulingSettingsSchema, SchedulingEmailKeySchema, type SchedulingEmai
  * SCHED-1D1 (docs/slices/sched-1.md § 4.1, § 10.3, § 11.1) — the minimal scheduling screen: scheduling settings,
  * resources, mail templates. English UI. PROTOTYPE.
  *
- * Reachable for every site from the sidebar; when the site has `schedulingEnabled` off, the page shows only a short
- * "not enabled" state with the one control that turns it on (a time zone is required, § 4.1). The settings and the
+ * SCHED-MENU-1: the sidebar lists this page only for scheduling sites. A direct visit while off shows a sentence
+ * and a link to Settings, which owns the switch and initial time zone. The settings and the
  * template overrides are saved through the existing PUT /settings (TENANT_ADMIN), with ONLY the scheduling attributes
  * in the body. The default mail texts come from GET /scheduling/admin/email-templates: this page keeps no copy.
  * Not on this screen: services and the week planner (`sched-1e`, own pages linked from the header: SchedulingPlanner.tsx,
@@ -48,13 +48,13 @@ export function settingsFormOf(stored: unknown): SettingsForm {
 }
 
 /**
- * The PUT /settings body for the scheduling settings: `{ schedulingEnabled, scheduling }` and nothing else (§ 6.5
+ * The PUT /settings body for the scheduling settings: `{ scheduling }` and nothing else (§ 6.5
  * point 4: a body with a scheduling attribute publishes its audit event without `ip`). Checked here with the same
- * shared schema the server uses, and the § 4.1 rule "enabling needs a time zone"; an error names the field as the
- * server does. An empty time zone is left out (allowed only while scheduling is off).
+ * shared schema the server uses. This form is available only while scheduling is on, so it requires a time zone.
+ * The switch belongs to Settings; this save never changes it.
  */
-export function settingsPayload(enabled: boolean, form: SettingsForm)
-    : { ok: true; body: { schedulingEnabled: boolean; scheduling: Record<string, unknown> } } | { ok: false; error: string } {
+export function settingsPayload(form: SettingsForm)
+    : { ok: true; body: { scheduling: Record<string, unknown> } } | { ok: false; error: string } {
     const number = (text: string) => (text.trim() === "" ? Number.NaN : Number(text));
     const scheduling: Record<string, unknown> = {
         ...(form.timezone.trim() !== "" ? { timezone: form.timezone.trim() } : {}),
@@ -68,10 +68,10 @@ export function settingsPayload(enabled: boolean, form: SettingsForm)
         const issue = parsed.error.issues[0];
         return { ok: false, error: `${["scheduling", ...issue.path.map(String)].join(".")}: ${issue.message}` };
     }
-    if (enabled && scheduling.timezone === undefined) {
+    if (scheduling.timezone === undefined) {
         return { ok: false, error: "scheduling.timezone: a time zone is required when scheduling is enabled." };
     }
-    return { ok: true, body: { schedulingEnabled: enabled, scheduling } };
+    return { ok: true, body: { scheduling } };
 }
 
 export type EmailTemplate = { subject: string; body: string; sendToCustomer: boolean; sendToAdmin: boolean };
@@ -222,8 +222,8 @@ export default function SchedulingPage() {
         }
     }
 
-    async function saveSettings(nextEnabled: boolean) {
-        const payload = settingsPayload(nextEnabled, form);
+    async function saveSettings() {
+        const payload = settingsPayload(form);
         if (!payload.ok) { setError(payload.error); return; }
         setSavingSettings(true);
         setError(null);
@@ -285,6 +285,8 @@ export default function SchedulingPage() {
     const errorBox = error && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
     );
+    // A failed settings read does not establish that scheduling is off.
+    if (error !== null && !enabled) return <div className="p-8">{errorBox}</div>;
     const timezoneInput = (
         <div className="space-y-2">
             <Label htmlFor="sched-timezone">Time zone</Label>
@@ -312,25 +314,10 @@ export default function SchedulingPage() {
 
     if (!enabled) {
         return (
-            <div className="p-8 space-y-6 max-w-2xl">
-                {header}
+            <div className="p-8 space-y-4">
                 {errorBox}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Scheduling is not enabled for this site</CardTitle>
-                        <CardDescription>
-                            {isAdmin ? "Choose the site's time zone, then turn scheduling on." : "A site admin can turn scheduling on."}
-                        </CardDescription>
-                    </CardHeader>
-                    {isAdmin && (
-                        <CardContent className="space-y-4">
-                            {timezoneInput}
-                            <Button onClick={() => saveSettings(true)} disabled={savingSettings}>
-                                {savingSettings && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Turn on scheduling
-                            </Button>
-                        </CardContent>
-                    )}
-                </Card>
+                <p>Scheduling is off for this site.</p>
+                <Link className="underline" to="/settings">Settings</Link>
             </div>
         );
     }
@@ -371,11 +358,8 @@ export default function SchedulingPage() {
                     </div>
                     {isAdmin && (
                         <div className="flex gap-2">
-                            <Button onClick={() => saveSettings(true)} disabled={savingSettings}>
+                            <Button onClick={saveSettings} disabled={savingSettings}>
                                 {savingSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save settings
-                            </Button>
-                            <Button variant="outline" onClick={() => { if (confirm("Turn scheduling off? Visitors can no longer book; existing bookings stay.")) saveSettings(false); }} disabled={savingSettings}>
-                                Turn off scheduling
                             </Button>
                         </div>
                     )}

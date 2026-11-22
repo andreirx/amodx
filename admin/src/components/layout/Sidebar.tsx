@@ -96,14 +96,15 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 { name: "Forms", href: "/forms", icon: ClipboardList },
             ]
         },
-        // SCHED-1D1 (docs/slices/sched-1.md § 17.1): listed for every site. The tenant list does not carry
-        // `schedulingEnabled`, so the page itself shows a short "not enabled" state (with the switch) when it is off.
-        {
+        // SCHED-MENU-1: scheduling is independent of commerce; its switch lives in Settings.
+        ...(currentTenant?.schedulingEnabled === true ? [{
             label: "Scheduling",
             items: [
-                { name: "Scheduling", href: "/scheduling", icon: CalendarClock },
+                { name: "Appointments", href: "/scheduling/planner", icon: CalendarClock },
+                { name: "Groups", href: "/scheduling/courses", icon: Users },
+                { name: "Scheduling settings", href: "/scheduling", icon: Settings },
             ]
-        },
+        }] : []),
         {
             label: "System",
             items: [

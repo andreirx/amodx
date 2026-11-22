@@ -2530,3 +2530,122 @@ test tenant and sent none because the tenant has no contact address (`due 1`, `n
   it points at the platform has the same effect in mails and in the admin links.
 - Finding (not corrected yet): booking mails carry no `Reply-To`; a customer's reply goes to the platform's
   sender address, not to the site.
+
+### `sched-menu-1` — BUILT 2026-11-22 (builder; not deployed)
+
+Human direction: scheduling is separate from Customers, visible only for sites with scheduling, with individual
+appointments and groups on separate pages. Maturity: PROTOTYPE. This record supersedes the earlier sidebar/switch
+placement descriptions above; earlier specification and build records are unchanged. The VISION fit is a bounded,
+disabled-by-default tenant feature, without changing private booking authority or tenant access rules.
+
+**Changes and allocation (selection packet items 1–7):**
+
+- **1 — `backend/src/tenant/list.ts`, `backend/test/unit/tenant-list.test.ts`:** both existing response branches
+  add only `schedulingEnabled`, computed by `=== true`. Absent, true, false and non-boolean values have distinct
+  assertions (also number and null; GLOBAL_ADMIN, TENANT_ADMIN and EDITOR). Other returned fields are unchanged.
+  The global Query now names its response metadata in a ProjectionExpression, as CLAUDE.md requires. Role/key
+  selection is unchanged; no scan, backend settings-validation change or migration.
+- **1, 3, 5 — `admin/src/context/TenantContext.tsx`:** add the tenant-list flag; use the fetched list directly for
+  initial selection and settings refresh. The old initial-load call to selectTenant saw the previous empty list.
+  Store the selected id without reloading; explicit site switches still use the existing reload and retain the
+  planner path/query. No new state mechanism.
+- **2 — `admin/src/components/layout/Sidebar.tsx`, `Sidebar.test.ts`:** only scheduling-enabled sites have the
+  Scheduling section: Appointments → `/scheduling/planner`, Groups → `/scheduling/courses`, Scheduling settings →
+  `/scheduling`. Tests cover enabled/disabled/absent for every site kind, exact routes and preservation of all other
+  groups, including Customers → `/customers` only on commerce sites.
+- **3, 6 — `admin/src/pages/Settings.tsx`, `Settings.test.ts`:** switch next to Commerce (or Catalog), with the
+  English description. Enabling still needs an explicit time zone: the initial-zone input moves here too, retains
+  other stored scheduling fields, and does not invent a default. Scheduling controls remain admin-only (disabled
+  for editors). Before this slice, the commerce save reloaded the browser. Both switches now use the existing
+  refreshTenants after PUT /settings, without a page reload. Existing markup captures are not replaced: exclude only
+  the added off-state card from those comparisons; one fragment preserves the other controls' useId paths.
+- **4 — `admin/src/pages/Scheduling.tsx`, `Scheduling.test.ts`:** remove only the moved on/off controls. A direct
+  address while off shows `Scheduling is off for this site.` and a Settings link, no scheduling form. An initial
+  settings-read failure shows only the error: never present an unknown state as disabled. Settings-card
+  saves send `{ scheduling }`, never schedulingEnabled. Mail-template saves still send only schedulingEmailConfig.
+  The shared schema and backend § 6.5 rules stay unchanged. Planner/services/group links remain on the enabled page.
+- **2–5 verification — `admin/src/pages/Settings.scheduling.test.ts`:** mounts the real TenantProvider, Sidebar and
+  pages in jsdom, with HTTP/auth replaced. Exercises on/save/off, the commerce refresh, failed save, preservation of
+  numeric limits during a zone edit, the off sentence/link, both Scheduling save buttons, settings-read failure, and the mail link with no
+  stored selected site. The existing planner/login suite exercises E18–E20 unchanged.
+- **7 — `admin/ARCHITECTURE.md`, `backend/ARCHITECTURE.md`, `docs/ROADMAP.md`, this appended record:** document the
+  resulting contract; roadmap status BUILT. MCP checks require no source/route-table edit: no API route changed.
+  No renderer, infra, dependency, shared-schema, route-name or visitor-text change. No new production abstraction.
+
+**Verification — EXECUTED unless marked otherwise.** Expected exit for every command: 0. Logs are in the gitignored
+`.agent-manager/slices/SCHED-MENU-1/` operational directory. Builds/tests ran in a separate `SCHED-MENU-1-*` copy
+with copied dependencies, no .env files, an empty external HOME, and an allowlisted environment without credentials.
+No build was installed over the operator's environment.
+
+| Exact command | Bare exit / observed result | Evidence file |
+|---|---|---|
+| `npm run build` (first attempt) | 1: Next root detection rejected HOME inside the isolated workspace; corrected the isolation layout, no product change | `build-1.log` |
+| `npm run build` (second attempt) | 1: shared, effects, plugins, backend and admin compiled; renderer Turbopack failed creating its CSS process/port: `Operation not permitted (os error 1)`. MCP/infra build steps not reached | `build-2.log` |
+| `npm run typecheck` | 0: all eight workspaces, rerun after the final error-state correction | `typecheck-reviewed.log` |
+| `cd admin && npm run test:unit` | 0: 454 tests; new mounted-page checks 8/8, Sidebar 12/12, Scheduling helpers 11/11; planner/login 40/40 | `admin-unit-reviewed.log` |
+| `cd backend && npm run test:unit` | 1: 2040 passed, 59 skipped; image-destination-policy suite's loopback-server hook failed (`listen EPERM 127.0.0.1`, then timeout). New tenant-list tests passed | `backend-unit-1.log` |
+| `cd tools/mcp-server && npm test` | 1: tsx CLI could not create its IPC socket (`listen EPERM`); checks not reached by this launcher | `mcp-1.log` |
+| `git diff --check` | 0 | `diff-check-final.log` |
+| `cd admin && npm run build` (supplemental final-source rebuild) | 0: tsc and Vite build after the error-state correction | `admin-build-reviewed.log` |
+| `cd backend && npm run test:unit -- tenant-list.test.ts` (supplemental) | 0: all 19 tenant-list cases | `tenant-list-focused.log` |
+| `cd tools/mcp-server && node --import tsx scripts/route-coverage.ts && node --import tsx --test test/tool-shapes.test.ts` (supplemental, not a replacement pass for npm test) | 0: route coverage passes; 17 tool-shape tests pass | `mcp-direct.log` |
+
+**Runtime evidence and limits.** OBSERVED in mounted DOM tests: after the Settings PUT and tenant-list refresh,
+Appointments, Groups and Scheduling settings appear; after disabling and saving, none remain. Commerce's Customers
+entry follows the same save/refresh path. Scheduling's actual Save button sent only the scheduling object; the
+mail-template Save sent only schedulingEmailConfig. A fresh provider with no stored site opened the requested
+planner week, with the services/weekly-hours link retained. These are local mocked-HTTP component proofs, not a
+claim of real browser, authentication, mail delivery, DynamoDB persistence or staging verification.
+
+An additional proof against fresh admin/dist was attempted with a temporary loopback server and throwaway browser,
+synthetic auth and local HTTP only. It exited 1 at `listen EPERM 127.0.0.1`, before browser launch or any UI assertion
+(`browser-proof-1.log`; script `.agent-manager/slices/SCHED-MENU-1/browser-proof.cjs`). Built-browser end-to-end
+behavior is therefore NOT RUN. A browser smoke check is warranted for this flow. No permanent E2E harness was added; the operator staging checks
+below exercise this boundary. Full build, full backend suite and canonical MCP gate still need reruns outside the socket restriction.
+
+**Site without scheduling — before/after (OBSERVED source and local component tests).** Before: a Scheduling sidebar
+entry for every site; the page offered time zone and Turn on scheduling. After: no scheduling section or entry;
+Settings offers the switch and initial time zone; direct `/scheduling` shows only the off sentence and Settings link.
+The Customers entry has not moved or changed.
+
+**Operator staging verification — NOT RUN by builder; do not mark SHIPPED yet:**
+
+1. Deploy the reviewed tenant-list backend before the reviewed admin; no migration or infra change. Sign in as a
+   site admin and select a scheduling-off site. Confirm no Scheduling section and unchanged Customers behavior.
+2. In Settings, next to Commerce/Catalog, enable scheduling; enter an IANA zone if none is stored. Save. Without a
+   document reload, confirm the three entries at the addresses above.
+3. Open Appointments: the week planner and its Services and weekly hours link. Open Groups: courses/groups and
+   existing roster navigation. Open Scheduling settings: no on/off control; save settings without changing the flag.
+4. Return to Settings, switch scheduling off and save. All scheduling entries disappear without reload; a direct
+   `/scheduling` shows `Scheduling is off for this site.` with the Settings link. Existing bookings remain.
+5. Open `/scheduling/planner?tenant=<allowed-id>&week=<Monday>` in a new browser with no selected site. Exercise
+   sign-in (including the new-password path when available); confirm the same site/week. With another current site,
+   confirm one switch and no loop; an unlisted site must show the E20 refusal and make no scheduling request.
+6. Rerun every canonical packet gate outside this sandbox. The operator decides promotion and sets SHIPPED.
+
+#### `sched-menu-1` — operator closeout (2026-11-22): shipped to `main` and to staging
+
+- Models: builder `gpt-6.1-sol` (Codex), reviewer `gemini-4-hydrogen` (Antigravity); one cycle, approved. First slice on
+  this pairing (the human's assignment of 2026-11-22: straightforward slices to `gpt-6.1-sol`).
+- Operator gates, all exit 0: build, typecheck, shared, plugins, renderer unit, serving suite 173 / 173, serving
+  bundle 60 / 60, admin unit, backend unit, infra, MCP, `git diff --check`; no renderer, infra or manifest change.
+- Two changes beyond the literal packet, both read and accepted by the operator:
+  - `backend/src/tenant/list.ts`: the GLOBAL_ADMIN query now projects exactly the ten attributes the answer maps
+    (`id`, `name`, `domain`, `status`, `commerceEnabled`, `schedulingEnabled`, `catalogMode`, `currency`, `locale`,
+    `countryCode`). The answer is the same; less data is read.
+  - `admin/src/context/TenantContext.tsx`: the first load selects a site from the list it has just fetched. Before, it
+    called `selectTenant`, which read the list of the previous render (empty on first load), so a new browser had no
+    site selected; an explicit site switch still reloads the page. `Settings.tsx` now refreshes the site list after a
+    save instead of reloading the page (shop switch and scheduling switch alike).
+- Staging (operator, OBSERVED): diff read first, as its own step — code packages only, no resource added or removed,
+  no IAM change; deployed. Browser walk on tenant `cm1-content`: the site list answer carries `schedulingEnabled`;
+  a new browser has a site selected after sign-in; with scheduling off the menu has no scheduling entry and
+  `/scheduling` shows "Scheduling is off for this site." with a link to Settings and no switch; after the switch and
+  the time zone are saved on Settings the menu shows "Appointments → /scheduling/planner", "Groups →
+  /scheduling/courses", "Scheduling settings → /scheduling" without a reload; each entry opens its page; after
+  switching off the entries are gone; no uncaught page error. The planner mail link walk (rows E18 to E20) passes
+  unchanged. Screenshots: `~/Downloads/amodx-to-verify/14-…png`, `15-…png`, `16-…png`. (The first two runs of the
+  operator's walk read the menu from the wrong element, which made its "no entry" checks empty; corrected, with a
+  control check that the menu is found.)
+- Not in this slice (the human, 2026-11-22: clients stay their own page, outside Scheduling): the Customers page for
+  a site with scheduling and no shop — it comes with the Clients work, when bookings feed the client list.

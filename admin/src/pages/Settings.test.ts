@@ -41,10 +41,11 @@ vi.mock("@/components/ui/button", async (importOriginal) => {
     const { createElement: h } = await import("react");
     return { ...real, Button: (props: any) => { seed.capture?.buttons.push(props); return h(real.Button, props); } };
 });
+const refreshTenants = vi.hoisted(() => vi.fn(async () => {}));
 const api = vi.hoisted(() => ({ apiRequest: vi.fn(async (..._args: unknown[]) => ({})) }));
 vi.mock("@/lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api")>()), apiRequest: api.apiRequest }));
 vi.mock("@/context/TenantContext", () => ({
-    useTenant: () => ({ tenants: [], currentTenant: { id: "t", name: "T", domain: "t.test" }, selectTenant: () => {}, refreshTenants: async () => {} }),
+    useTenant: () => ({ tenants: [], currentTenant: { id: "t", name: "T", domain: "t.test" }, selectTenant: () => {}, refreshTenants }),
 }));
 vi.mock("@/context/AuthContext", () => ({ useAuth: () => ({ userRole: "TENANT_ADMIN" }) }));
 vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn() }));
@@ -257,16 +258,27 @@ function capture(name: "content" | "commerce", replacements = ENGLISH_EXAMPLES):
     return out;
 }
 
+// SCHED-MENU-1: remove only the new off-state card for the old byte-preservation comparisons.
+// The two fixtures below have scheduling off. Native controls + one fragment keep all existing useId slots.
+function renderSettingsWithoutSchedulingSwitch(config: Record<string, unknown>): string {
+    const html = renderSettings(config);
+    const cards = html.match(/<div class="rounded-xl[^"]*" data-scheduling-switch="true">[\s\S]*?<\/label><\/div><\/div>/g) ?? [];
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toContain(">Scheduling</div>");
+    expect(cards[0]).not.toContain(">Digital Sales (Paddle)</div>");
+    return html.replace(cards[0], "");
+}
+
 describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-take (rule 4), minus the CAT-THEME-1 groups and the CDL-2 field, with the ADMIN-ENGLISH-2 example texts", () => {
     it("content site", () => {
-        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettings(CONTENT), CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutSchedulingSwitch(CONTENT), CONTENT), CONTENT), CONTENT)).toBe(capture("content"));
     });
     it("commerce site", () => {
-        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettings(COMMERCE), COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
+        expect(withoutCatTheme(withoutCdl2(withoutLang1a(renderSettingsWithoutSchedulingSwitch(COMMERCE), COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
     });
     it("control (CDL-2): without the listed removal the comparison fails; a moved, doubled or changed field is refused", () => {
         for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
-            const html = renderSettings(config);
+            const html = renderSettingsWithoutSchedulingSwitch(config);
             expect(withoutCatTheme(html, config), name).not.toBe(capture(name));
             const field = confirmationField(config.urlPrefixes.checkoutConfirmation);
             const moved = html.replace(field, "").replace(">URL Prefixes<", `>URL Prefixes<${field}`);
@@ -277,7 +289,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
     });
     it("control (LANG-1A): without the listed removal the comparison fails; a moved, doubled or preceded group is refused; a byte after it fails", () => {
         for (const [name, config] of [["content", CONTENT], ["commerce", COMMERCE]] as const) {
-            const html = renderSettings(config);
+            const html = renderSettingsWithoutSchedulingSwitch(config);
             const group = languageGroup(config);
             expect(withoutCatTheme(withoutCdl2(html, config), config), name).not.toBe(capture(name));
             const moved = html.replace(group, "").replace(">URL Prefixes<", `>URL Prefixes<${group}`);
@@ -288,7 +300,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         }
     });
     it("control: with any one ADMIN-ENGLISH-2 replacement removed, the comparison fails", () => {
-        const pages = [["content", renderSettings(CONTENT), CONTENT], ["commerce", renderSettings(COMMERCE), COMMERCE]] as const;
+        const pages = [["content", renderSettingsWithoutSchedulingSwitch(CONTENT), CONTENT], ["commerce", renderSettingsWithoutSchedulingSwitch(COMMERCE), COMMERCE]] as const;
         for (const [name, html, config] of pages) {
             for (let i = 0; i < ENGLISH_EXAMPLES.length; i++) {
                 const without = ENGLISH_EXAMPLES.filter((_, j) => j !== i);
@@ -297,7 +309,7 @@ describe("Settings — a non-catalog site renders byte-equal to the 0865ac6 re-t
         }
     });
     it("controls: any other mutation of the rendered page still fails — one attribute elsewhere, one text, one attribute inside the Commerce Bar card, one byte next to a removed group", async () => {
-        const content = renderSettings(CONTENT), commerce = renderSettings(COMMERCE);
+        const content = renderSettingsWithoutSchedulingSwitch(CONTENT), commerce = renderSettingsWithoutSchedulingSwitch(COMMERCE);
         expect(withoutCatTheme(withoutCdl2(withoutLang1a(content, CONTENT), CONTENT), CONTENT)).toBe(capture("content"));            // positive control
         expect(withoutCatTheme(withoutCdl2(withoutLang1a(commerce, COMMERCE), COMMERCE), COMMERCE)).toBe(capture("commerce"));
         const once = (html: string, from: string, to: string) => { expect(html.split(from).length - 1, from).toBe(1); return html.replace(from, to); };
@@ -758,7 +770,8 @@ describe("Settings — the cards of each site kind (§ 4.5)", () => {
             const body = JSON.parse(String(options.body));
             expect(body.urlPrefixes).toEqual({ ...COMMERCE.urlPrefixes, checkoutConfirmation: "/multumim" });
             expect(body.urlPrefixes.checkoutConfirmation).toBe("/multumim");
-            expect(win.location.reload).toHaveBeenCalledTimes(1);
+            expect(refreshTenants).toHaveBeenCalled();
+            expect(win.location.reload).not.toHaveBeenCalled();
             // Control: the Checkout field's onChange writes checkout, not the confirmation key.
             const third = capture();
             renderSettings(COMMERCE);

@@ -265,7 +265,9 @@ src/
 │   └── delete.ts          # DELETE /context/{id}
 ├── tenant/
 │   ├── create.ts          # POST /tenant (Global Admin only); CATALOG-MODE-1: the ONLY place `catalogMode` is set
-│   ├── list.ts            # GET /tenant (projects commerceEnabled + catalogMode for the admin)
+│   ├── list.ts            # GET /tenants (projects commerceEnabled + catalogMode + schedulingEnabled for the admin;
+│                          #   SCHED-MENU-1: schedulingEnabled is true only for stored boolean true, else false,
+│                          #   in both role branches; the global Query projects only the response metadata)
 │   └── settings.ts        # GET/PUT /tenant/settings; PUT: ConsistentRead, 404 on a missing tenant record, and
 │                          #   a narrow parse of { commerceEnabled, catalogMode } on the merged item (mode change
 │                          #   → 400; commerce on a catalog site → 400) — never a full TenantConfigSchema parse.

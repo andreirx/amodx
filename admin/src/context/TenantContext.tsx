@@ -7,6 +7,7 @@ interface Tenant {
     name: string;
     domain: string;
     commerceEnabled?: boolean;
+    schedulingEnabled?: boolean;
     catalogMode?: boolean;   // CATALOG-MODE-1: fixed at creation (GET /tenants projects it)
     currency?: string;
     locale?: string;
@@ -40,18 +41,11 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
             // Auto-select logic
             const storedId = localStorage.getItem("AMODX_TENANT_ID");
-            if (storedId) {
-                const found = list.find((t: Tenant) => t.id === storedId);
-                if (found) {
-                    setCurrentTenant(found);
-                } else if (list.length > 0) {
-                    // ID invalid (deleted?), reset to first available
-                    selectTenant(list[0].id);
-                }
-            } else if (list.length > 0) {
-                // No ID, start fresh
-                selectTenant(list[0].id);
-            }
+            // Use the fetched list, not selectTenant's previous-render list (empty on first load).
+            // Initial selection and a settings refresh need no reload; explicit site switches below still reload.
+            const selected = list.find((t: Tenant) => t.id === storedId) ?? list[0] ?? null;
+            setCurrentTenant(selected);
+            if (selected) localStorage.setItem("AMODX_TENANT_ID", selected.id);
         } catch (e) {
             console.error("Failed to load tenants", e);
         } finally {

@@ -27,34 +27,30 @@ describe("settingsFormOf — the form from the stored attribute", () => {
 describe("settingsPayload — the PUT /settings body of the settings card", () => {
     const form = settingsFormOf({ timezone: "Europe/Bucharest" });
 
-    it("only the two scheduling attributes, with numbers (so the server's audit event carries no ip, § 6.5 point 4)", () => {
-        const p = settingsPayload(true, form);
+    it("only scheduling, with numbers; never the on/off switch (SCHED-MENU-1; audit still carries no ip, § 6.5 point 4)", () => {
+        const p = settingsPayload(form);
         expect(p).toEqual({ ok: true, body: {
-            schedulingEnabled: true,
             scheduling: { timezone: "Europe/Bucharest", holdMinutes: 30, changeCutoffHours: 24, reminderHours: 24, bookingHorizonWeeks: 8 },
         } });
-        if (p.ok) expect(Object.keys(p.body).sort()).toEqual(["scheduling", "schedulingEnabled"]);
+        if (p.ok) expect(Object.keys(p.body)).toEqual(["scheduling"]);
     });
 
-    it("turning on without a time zone is refused before sending (§ 4.1); turning off without one is allowed and sends no timezone", () => {
+    it("the enabled site's settings cannot clear its time zone (§ 4.1); switching off belongs to Settings", () => {
         const noZone = { ...form, timezone: "  " };
-        expect(settingsPayload(true, noZone)).toEqual({ ok: false, error: "scheduling.timezone: a time zone is required when scheduling is enabled." });
-        const off = settingsPayload(false, noZone);
-        expect(off.ok).toBe(true);
-        if (off.ok) expect(off.body.scheduling).not.toHaveProperty("timezone");
+        expect(settingsPayload(noZone)).toEqual({ ok: false, error: "scheduling.timezone: a time zone is required when scheduling is enabled." });
     });
 
     it("the § 4.5 ranges are checked with the shared schema, naming the field (D14 values: 0, 53, 2.5, blank)", () => {
         for (const weeks of ["0", "53", "2.5", ""]) {
-            const p = settingsPayload(true, { ...form, bookingHorizonWeeks: weeks });
+            const p = settingsPayload({ ...form, bookingHorizonWeeks: weeks });
             expect({ weeks, ok: p.ok }).toEqual({ weeks, ok: false });
             if (!p.ok) expect(p.error).toMatch(/^scheduling\.bookingHorizonWeeks: /);
         }
-        for (const weeks of ["1", "52"]) expect(settingsPayload(true, { ...form, bookingHorizonWeeks: weeks }).ok).toBe(true);
-        const badZone = settingsPayload(true, { ...form, timezone: "Mars/Olympus" });
+        for (const weeks of ["1", "52"]) expect(settingsPayload({ ...form, bookingHorizonWeeks: weeks }).ok).toBe(true);
+        const badZone = settingsPayload({ ...form, timezone: "Mars/Olympus" });
         expect(badZone.ok).toBe(false);
         if (!badZone.ok) expect(badZone.error).toMatch(/^scheduling\.timezone: /);
-        const hold = settingsPayload(true, { ...form, holdMinutes: "4" });
+        const hold = settingsPayload({ ...form, holdMinutes: "4" });
         expect(hold.ok).toBe(false);
     });
 });

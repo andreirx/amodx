@@ -14,6 +14,22 @@ only the digital-sales switch (catalog + commerce is refused by the backend, 400
 sidebar's kind group is "Commerce" or "Catalog", "Digital sales" is its own group on every site, and the pages that
 differ by kind (Products, Settings, WP Migration, Pricelist import) read `isCatalogMode` from `@amodx/shared`.
 
+**Scheduling navigation** (SCHED-MENU-1, `docs/slices/sched-1.md` § 25; PROTOTYPE): independent of site kind and
+commerce. `GET /tenants` adds only `schedulingEnabled` (strict `=== true`; absent/non-boolean → false), read by
+TenantContext. Only enabled sites have the Scheduling section: Appointments → `/scheduling/planner`, Groups →
+`/scheduling/courses`, Scheduling settings → `/scheduling`. Customers and other entries are unchanged. Settings
+owns the scheduling switch next to Commerce (or Catalog) and a time-zone field when on: no inferred default zone,
+the backend still requires an IANA zone to enable. Saving Settings uses the existing `refreshTenants`, rather than
+the former browser reload, for both commerce and scheduling. TenantProvider selects directly from the fetched list
+on initial load/refresh (the old selectTenant closure held the previous list); explicit site switches still reload.
+This keeps the planner mail's path/query intact, also without a stored site. Settings.scheduling.test.ts mounts the
+real provider, sidebar and pages with local HTTP/auth replacements: save on/off, failed save, retained limits,
+Scheduling off/save bodies, and a fresh-browser planner link. The existing planner/login suite retains E18–E20.
+Settings' existing markup captures are not re-taken: the preservation tests remove only the added off-state
+scheduling card before their existing exclusions. Commerce/Catalog and the new card share one fragment slot so
+the other controls retain their React `useId` paths. The page-local SettingsDraft accepts a partial scheduling
+object for the initial explicit zone; the backend's existing schema supplies missing numeric defaults.
+
 ## Internal Structure
 
 ```
@@ -155,14 +171,16 @@ src/
     │                           #   text differs from backend getDefaultTemplates() (known)
     ├── Scheduling.tsx          # SCHED-1D1 (docs/slices/sched-1.md § 4.1, § 10.3, § 11.1; PROTOTYPE): the minimal
     │                           #   scheduling screen, English. GET /settings decides: schedulingEnabled off → a short
-    │                           #   "not enabled" card (TENANT_ADMIN/GLOBAL_ADMIN: time zone + "Turn on scheduling";
-    │                           #   editors: text only); on → Scheduling settings (time zone, hold, change cutoff,
-    │                           #   reminder, booking horizon; "Turn off"), Resources (GET/POST/PUT/DELETE
+    │                           #   "Scheduling is off for this site." sentence and a Settings link, no form or switch
+    │                           #   (initial settings-read failure → error only, not an unsupported off-state claim);
+    │                           #   on → Scheduling settings (time zone, hold, change cutoff,
+    │                           #   reminder, booking horizon), Resources (GET/POST/PUT/DELETE
     │                           #   /scheduling/admin/resources; "Create calendar link" = feed secret, T only, URL shown
     │                           #   once), Mail templates (the seven keys; defaults from GET
     │                           #   /scheduling/admin/email-templates — no copy in the page). Saves through PUT /settings
-    │                           #   with ONLY the scheduling attributes (settingsPayload: shared SchedulingSettingsSchema
-    │                           #   + "enabling needs a time zone"; templatesPayload: an override only for a key that
+    │                           #   with ONLY scheduling or schedulingEmailConfig, never schedulingEnabled
+    │                           #   (settingsPayload: shared SchedulingSettingsSchema + required time zone;
+    │                           #   templatesPayload: an override only for a key that
     │                           #   differs from its default, weekAhead without sendToCustomer). Save buttons hidden for
     │                           #   editors (PUT /settings is TENANT_ADMIN; apiRequest signs out on 403). DELETE answers
     │                           #   204: deleteRequest treats apiRequest's JSON SyntaxError after a 2xx as success.
@@ -171,7 +189,7 @@ src/
     │                           #   are not sent until a contact address is set; link to /settings (Notifications).
     │                           #   needsContactAddressWarning decides; the address comes from the same GET /settings.
     │                           #   Scheduling.test.ts: pure-logic tests of the payload, error-text and warning helpers.
-    │                           #   Sidebar: group "Scheduling" for every site (the tenant list has no schedulingEnabled)
+    │                           #   Sidebar: group "Scheduling" only when schedulingEnabled (SCHED-MENU-1, above)
     │                           #   SCHED-1E2: the header links to the week planner and to services/weekly hours.
     │                           #   SCHED-1F2: and to "Courses and groups".
     ├── SchedulingPlanner.tsx   # SCHED-1E2 (docs/slices/sched-1.md § 23, § 10.3; PROTOTYPE): the week planner of one
