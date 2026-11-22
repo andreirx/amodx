@@ -63,7 +63,7 @@ export {
     DayOverrideSchema, DayOverridesSchema, DaySettingSchema, DaysEditSchema,
     CourseSchema, MeetingSchema, RunLanguageSchema, RunStatusSchema, RunSchema,
     BookingWhatSchema, ActorSchema, BookingStateSchema, PlacementSchema, HistoryEntrySchema, BookingSourceSchema,
-    PersonSchema, BookingSchema, ResDayEntrySchema, SeatEntrySchema,
+    PersonSchema, BookingSchema, ResDayEntrySchema, SeatEntrySchema, KeyPart, HoldRequestSchema, MoveBodySchema,
     SchedulingSettingsSchema, SchedulingEmailKeySchema, SchedulingEmailTemplateSchema, SchedulingEmailConfigSchema,
     availableSlots, slotDecision, overlapCheck, pickResource,
     isActive, holdExpiry, confirmDecision, changeDecision, tokenView, appendHistory, bookingBase,

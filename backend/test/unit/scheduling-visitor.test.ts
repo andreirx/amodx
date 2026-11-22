@@ -714,7 +714,7 @@ describe("token routes", () => {
         const res = await call(viewRoute, { body: { token: TOKEN } });
         expect(res.json).toEqual({
             ref: "B-0B9F1C2A", state: "held", expiresAt: "2026-12-01T10:30:00.000Z",
-            what: { kind: "slot", serviceName: "Consultation", start: "2026-12-07T07:00:00.000Z", end: "2026-12-07T08:00:00.000Z", timezone: "Europe/Bucharest" },
+            what: { kind: "slot", serviceId: "svc1", serviceName: "Consultation", start: "2026-12-07T07:00:00.000Z", end: "2026-12-07T08:00:00.000Z", timezone: "Europe/Bucharest" },
             who: { name: "Ana Pop", emailMasked: "a***@example.test" },
             can: { confirm: true, cancel: true, move: false },
             changeCutoff: "2026-12-06T07:00:00.000Z",
@@ -726,6 +726,24 @@ describe("token routes", () => {
         expect(late.body).not.toContain("Ana Pop");
         for (const name of WRITES) expect({ name, calls: h.store[name].mock.calls.length }).toEqual({ name, calls: 0 });
         expect(h.sesSends).toEqual([]);
+    });
+
+    it("SCHED-1G2 slot view: `serviceId` is the booking's own stored service id (renamed service, another service of the same name), on view and on move", async () => {
+        // The booking keeps its name snapshot "Consultation"; the stored id is "svc-own". Another service is now named
+        // "Consultation" too: the view must name the booking's service by id, never by its name.
+        const own = { kind: "slot" as const, serviceId: "svc-own", serviceName: "Consultation", resourceId: RESOURCE_ID, start: START, end: END };
+        h.store.getBookingByToken.mockResolvedValue(confirmed({ what: own }));
+        const view = await call(viewRoute, { body: { token: TOKEN } });
+        expect(view.statusCode).toBe(200);
+        expect(view.json.what).toEqual({ kind: "slot", serviceId: "svc-own", serviceName: "Consultation", start: "2026-12-07T07:00:00.000Z", end: "2026-12-07T08:00:00.000Z", timezone: "Europe/Bucharest" });
+        expect(view.body).not.toContain(RESOURCE_ID);
+        const target = START + 2 * HOUR;
+        const moved = { ...own, start: target, end: target + HOUR };
+        h.store.moveSlot.mockResolvedValue({ ok: true, value: confirmed({ rev: 3, what: moved }) });
+        h.store.mintToken.mockResolvedValue({ ok: true, value: { booking: confirmed({ rev: 4, what: moved }), token: NEW_TOKEN } });
+        const move = await call(moveRoute, { body: { token: TOKEN, to: { kind: "slot", start: "2026-12-07T09:00:00.000Z" } } });
+        expect(move.statusCode).toBe(200);
+        expect(move.json.what).toMatchObject({ kind: "slot", serviceId: "svc-own", start: "2026-12-07T09:00:00.000Z" });
     });
 
     it("view: an unplaced booking shows the course's proposal in the person's language", async () => {

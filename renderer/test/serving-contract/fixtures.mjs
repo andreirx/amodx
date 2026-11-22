@@ -1053,6 +1053,43 @@ const SL1E_ITEMS = [
     ...sl1eTenant("none", SL1E_NONE_BLOCKS),
 ];
 
+// ── SCHED-1G2 fixtures (docs/slices/sched-1.md § 10.1, § 9.1; rows `sched1g-*`) ─────────────────────────────────────────
+// Two tenants with an explicit `locale` (so neither is an en-US subject of the `loc1-*` rows nor in any `before/` capture;
+// rows `sched1g-*` read the running build only):
+//  - `studio` (en-US): its OWN reCAPTCHA pair (site key + secret: `mapTenant` maps the site key, never the secret, § 9.1)
+//    and every tenant script the site layout injects — Google Analytics id, Facebook pixel, Paddle client token — so the
+//    booking pages' ABSENCE of them (row G6) has a positive control: the tenant's own home page shows each marker;
+//  - `oneKey` (ro-RO): a site key WITHOUT a secret — not a pair, so no tenant key reaches any page (row G8), and the
+//    Romanian texts of the booking pages (rows G3, G12).
+// The booking backend is not reachable from the suite (no `API_URL` in the constructed environment, row iso1): the proxy
+// rows prove what the renderer decides before it forwards; forwarding is proven by test/unit/sched-1g-proxy.test.ts.
+export const SCHED1G = {
+    studio: { id: "sched1g-studio", host: "sched1g-studio.serving-contract.test", name: "SCHED1G Studio" },
+    oneKey: { id: "sched1g-onekey", host: "sched1g-onekey.serving-contract.test", name: "SCHED1G Atelier" },
+};
+export const SCHED1G_SITE_KEY = "sched1g-tenant-site-key";
+export const SCHED1G_SECRET = "sched1g-tenant-secret-never-mapped";
+export const SCHED1G_ONLY_SITE_KEY = "sched1g-site-key-without-secret";
+export const SCHED1G_MARKERS = { ga: "G-SCHED1G0001", pixel: "5551234567", paddle: "test_sched1g_paddle_token" };
+const SCHED1G_ITEMS = [
+    {
+        ...siteTenant(SCHED1G.studio.id, SCHED1G.studio.host, SCHED1G.studio.name), locale: "en-US",
+        recaptcha: { enabled: false, siteKey: SCHED1G_SITE_KEY, secretKey: SCHED1G_SECRET, threshold: 0.5 },
+        integrations: {
+            googleAnalyticsId: SCHED1G_MARKERS.ga, fbPixelId: SCHED1G_MARKERS.pixel,
+            paddle: { clientToken: SCHED1G_MARKERS.paddle, environment: "sandbox" },
+        },
+    },
+    siteRouteItem(SCHED1G.studio.id, "/", "sched1g-studio-home"),
+    siteContentItem(SCHED1G.studio.id, "sched1g-studio-home", "/", "SCHED1G Studio Home"),
+    {
+        ...siteTenant(SCHED1G.oneKey.id, SCHED1G.oneKey.host, SCHED1G.oneKey.name), locale: "ro-RO",
+        recaptcha: { enabled: false, siteKey: SCHED1G_ONLY_SITE_KEY, threshold: 0.5 },
+    },
+    siteRouteItem(SCHED1G.oneKey.id, "/", "sched1g-onekey-home"),
+    siteContentItem(SCHED1G.oneKey.id, "sched1g-onekey-home", "/", "SCHED1G Atelier Home"),
+];
+
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */
 export const ITEMS = [
     tenant,
@@ -1109,6 +1146,8 @@ export const ITEMS = [
     ...SL1D_ITEMS,
     // shop-look-1e: the custom-form tenants (above).
     ...SL1E_ITEMS,
+    // sched-1g2: the booking-page tenants (above).
+    ...SCHED1G_ITEMS,
 ];
 
 /**

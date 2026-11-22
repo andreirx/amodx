@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { isWiredTenantHost } from '@/lib/tenant-directory';
+import { bookingInternalPath, bookingRoute } from '@/lib/booking-path';
 
 // Phase 6.1: Origin verification secret (injected by CloudFront, verified here)
 const ORIGIN_VERIFY_SECRET = process.env.ORIGIN_VERIFY_SECRET;
@@ -141,6 +142,20 @@ function dynamicPath(siteId: string, restOfPath: string) {
     return `/${siteId}/${DYN_SEGMENT}${restOfPath === '/' ? '' : restOfPath}`;
 }
 
+/**
+ * SCHED-1G2: the rewrite of a public booking address to `/_book/<siteId><rest>` (branch A3 below). The manage page
+ * carries the link token in its fragment (§ 8.2), so it also gets `Referrer-Policy: no-referrer`.
+ */
+function bookingRewrite(request: NextRequest, siteId: string, rest: string) {
+    const url = request.nextUrl.clone();
+    url.pathname = bookingInternalPath(siteId, rest);
+    const response = NextResponse.rewrite(url);
+    if (rest === '/manage') {
+        response.headers.set('Referrer-Policy', 'no-referrer');
+    }
+    return response;
+}
+
 /** Non-cacheable 404. The only response shape that must never enter either cache layer. */
 function notFoundResponse() {
     return new NextResponse('Not found', {
@@ -214,6 +229,33 @@ export async function middleware(request: NextRequest) {
         const url = request.nextUrl.clone();
         url.pathname = `/_site/${segs[1]}` + (segs.length > 3 ? `/${segs.slice(3).join('/')}` : '');
         return NextResponse.redirect(url, 308);
+    }
+
+    // A3. SCHED-1G2 — the hosted booking pages (docs/slices/sched-1.md § 10.1). One early branch; a path that is not
+    // a booking address (`bookingRoute` → `none`) continues below exactly as before. A booking address is rewritten
+    // to the `app/%5Fbook/[siteId]/` tree with the tenant bound HERE: the request host on a domain (after the same
+    // unknown-host gate as the production branch), or the id of a `/_site/<id>/_booking…` path on a preview host. No
+    // `%5Fdyn` twin, no preview cookie, no session-cookie test: every page and handler of that tree is force-dynamic
+    // and answers `private, no-store` itself. The internal target `/_book…`, in any spelling, is refused like `/_dyn`.
+    const booking = bookingRoute(path, isPreviewHost(request.headers.get('host') || ''));
+    switch (booking.kind) {
+        case 'none':
+            break;
+        case 'internal':
+            return notFoundResponse();
+        case 'preview':
+            return bookingRewrite(request, booking.tenantId, booking.rest);
+        case 'domain': {
+            const bookingHost = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(':')[0];
+            if (await isWiredTenantHost(bookingHost) === false) {
+                return notFoundResponse();
+            }
+            return bookingRewrite(request, bookingHost, booking.rest);
+        }
+        default: {
+            const never: never = booking;
+            throw new Error(`Unhandled booking route ${JSON.stringify(never)}`);
+        }
     }
 
     // Requests that cannot be served from a cacheable render. Route Handlers are exempt:

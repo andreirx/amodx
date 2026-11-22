@@ -2423,3 +2423,54 @@ rows C33, D14).
   the old one answers 404 at once with the body of an unknown resource; with the switch off the feed answers
   404 and the job sends nothing. The job enumerated 720 staging tenants in one run without a failure.
   NOT RUN on a deployed stage: a weekly mail that is really sent (the staging tenant has no contact address).
+
+### `sched-1g1` addendum (operator, 2026-11-22)
+
+Staging, OBSERVED at Sunday 09:03 Europe/Bucharest (real clock): the job counted the weekly mail as due for the
+test tenant and sent none because the tenant has no contact address (`due 1`, `noContactEmail 1`, `sent 0`).
+
+### `sched-1g2` — shipped to `main` and to staging 2026-11-22 (operator closeout) — NOT yet cleared for visitors
+
+- Scope: the hosted booking pages. `renderer/middleware.ts` gains one early branch (`/_booking…` on a tenant
+  host, `/_site/<id>/_booking…` on the preview host → the internal tree `app/%5Fbook/[siteId]/`; a wire request
+  to the internal segment in any spelling → 404); a second root layout with no tenant script; the book page and
+  the manage page; eight proxy operations and the feed handler (`renderer/src/lib/booking-proxy.ts`);
+  `mapTenant` reCAPTCHA key pair rule; 98 booking texts EN + RO. Backend: the slot view carries `serviceId`.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles and one decision review,
+  approved (separate invocations). Operator gates, all exit 0 (eleven); serving suite 139 / 139.
+- Operator rulings (the human may override):
+  - **SCHED-1G2-ROOT-SIBLING = A:** the byte comparators allow exactly one difference: the static-sibling list
+    of the root `[siteId]` segment is `["%5Fbook","api"]` where the baseline has `["api"]` (framework routing
+    metadata in every page's RSC payload). Negative controls refuse any other sibling, a removed `api`, another
+    placement and any other payload byte. Baselines untouched.
+  - **SCHED-1G2-SLOT-MOVE-ID = A (amends § 10.2):** `BookingViewDTO` slot variant has `serviceId`.
+  - **SCHED-1G2-ZOD-DEP = C:** `HoldRequestSchema`, `MoveBodySchema` and `KeyPart` live in
+    `packages/shared/src/scheduling.ts`; the backend handlers and the renderer proxy use the same objects.
+  - `"expired"` is no longer a `BookingViewDTO` state (an expired hold answers 410).
+- Staging (operator, OBSERVED): diff read first — code only, no resource added or removed, no IAM change;
+  deployed. Existing pages: 51 reference pages captured before and after — status, headers, `lang` and the
+  word multiset of the visible text identical (0 differences). Booking addresses: book and manage pages 200
+  `private, no-store` and never an edge hit; `Referrer-Policy: no-referrer` on manage; `/_book/…`,
+  `/%5Fbook/…` and the internal path under the preview prefix → 404. Browser walk (headless, preview address
+  of tenant `cm1-content`): the page lists the service and the course in EN and RO, shows a week of slots in
+  the tenant's zone and the details form; the manage page opened with `#t=` removes the token from the address
+  bar, no requested address carries the token, opening the link leaves the booking held, Confirm confirms,
+  "Change the time" moves, Cancel cancels; no uncaught page error. Test data removed; the switch is off.
+- **G9 — FAILED on staging, as a configuration fact:** a hold through the page answers 403
+  `verificationFailed`; the reCAPTCHA badge reads "Invalid domain for site key". The deployment's reCAPTCHA key
+  does not list the staging preview host. The page shows its refusal text. A hold accepted through the page,
+  with its mail, is therefore still NOT RUN on a deployed stage.
+- **G13 — the witness ran and FAILED:** in six cases (no header; one forged entry; forged + garbage; three
+  forged entries; the tester's own address forged first; IPv6) the renderer received exactly ONE
+  `X-Forwarded-For` entry, and it matched the tester's address only when the tester sent no header or sent the
+  own address first. The value is under the caller's control; no trusted position exists.
+  `CloudFront-Viewer-Address` is absent. Cause (OBSERVED): the renderer distribution's origin request policy is
+  an allow-list that is full at CloudFront's limit of ten headers (`infra/lib/renderer-hosting.ts:405-425`) and
+  holds neither header. Consequence: `TRUSTED_FORWARDED_POSITION` stays `null`, the proxy sends no address, the
+  backend applies no per-address limit. Per § 9.2 this is a new decision for the human (SCHED-ADDR-INFRA), and
+  the visitor exposure gate stays closed until it is answered.
+- Still in the code, to remove in the follow-up that applies that decision: the TEMPORARY witness line and the
+  `witness` query parameter of the `offer` proxy.
+- Observations: the booking pages load Google Fonts through the tenant theme (a third-party request besides
+  reCAPTCHA); English times are shown as `09:00 AM`.
+- Before production: the human approves the 98 Romanian booking texts (locale rule).

@@ -257,6 +257,41 @@ export function splitFlight(body) {
 }
 
 /**
+ * SCHED-1G2-ROOT-SIBLING = A (operator ruling 2026-11-22; the class of NEXT-PATCH-1 ruling R-NP1-F1: framework routing
+ * metadata inside the RSC payload, no visible content). The booking pages need a second root folder `app/%5Fbook`
+ * (SCHED-PAGE-LAYOUT = A). Next lists the static siblings of the dynamic root segment `[siteId]` in the segment
+ * descriptor that opens one payload row of EVERY page: `[["children",{"s":{"n":"siteId","t":"d","k":"<host>","s":[…]}`.
+ * Before the slice the list is `["api"]`; with the folder it is `["%5Fbook","api"]`.
+ *
+ * The ONE listed difference: a payload row that STARTS with that descriptor — key order n, t, k, s; `n` = "siteId",
+ * `t` = "d", `k` a JSON string, and the list EXACTLY `["%5Fbook","api"]` — and whose parsed value confirms the same
+ * structure at `[0][1].s` (exactly the keys n, t, k, s) is read with the list `["api"]`. Nothing else: a list with
+ * another sibling, without "api", in another order, the same list in another segment's descriptor (e.g. the nested
+ * `slug` descriptor), the text anywhere outside that place, or any other byte — all stay compared (row
+ * `sched1g-root-sibling-controls`). Counted per body as `rootSibling` (0 or 1). Applied to both sides: a baseline
+ * (captured before the slice) never matches, so the rule can only make a candidate's `["%5Fbook","api"]` equal a
+ * baseline's `["api"]`.
+ */
+const ROOT_SIBLING_ROW = /^([0-9a-f]+):\[\["children",\{"s":\{"n":"siteId","t":"d","k":"(?:[^"\\]|\\.)*","s":\["%5Fbook","api"\]\}/;
+const ROOT_SIBLING_ALLOWED = '["%5Fbook","api"]}';
+export function rootSiblingAllowance(row) {
+    const m = ROOT_SIBLING_ROW.exec(row);
+    if (!m) return { row, applied: false };
+    let value;
+    try {
+        value = JSON.parse(row.slice(m[1].length + 1));
+    } catch {
+        return { row, applied: false };
+    }
+    const d = Array.isArray(value) && Array.isArray(value[0]) && value[0][0] === "children" && value[0][1] !== null && typeof value[0][1] === "object" ? value[0][1].s : undefined;
+    const exact = d !== null && typeof d === "object" && Object.keys(d).join(",") === "n,t,k,s" && d.n === "siteId" && d.t === "d"
+        && typeof d.k === "string" && JSON.stringify(d.s) === '["%5Fbook","api"]';
+    if (!exact) return { row, applied: false };
+    const at = m[0].length - ROOT_SIBLING_ALLOWED.length;
+    return { row: `${row.slice(0, at)}["api"]}${row.slice(m[0].length)}`, applied: true };
+}
+
+/**
  * The canonical form of one body under CM1-A1 (spec § 8.19), applied to both sides; every step reports its count.
  *
  *  1. flight chunks joined   the `self.__next_f.push([1,"…"])` scripts are removed from the HTML, decoded (JSON
@@ -282,12 +317,14 @@ export function splitFlight(body) {
  * WITHOUT the `/_next/` prefix the asset mask matches — each `static/chunks/<name>.js` token becomes one fixed
  * placeholder. Every other byte of that element, and the NUMBER of tokens, stays compared; a token outside the element
  * is not touched. Count: `bootstrapChunks`. That the named chunks exist and load is row `np1-bootstrap-chunks`
- * (`bootstrapChunkProblems`), not this comparison. Nothing else is masked.
+ * (`bootstrapChunkProblems`), not this comparison. And the one listed difference SCHED-1G2-ROOT-SIBLING
+ * (`rootSiblingAllowance`, above), applied to each payload row before step 3. Count: `rootSibling`. Nothing else is
+ * masked.
  *
  * @param side `{ buildId, clientModules }` of the capture set the body belongs to.
  */
 export function maskBody(body, { buildId, clientModules }) {
-    const counts = { flightChunks: 0, clientRefRows: 0, clientRefUses: 0, clientRefExportRows: 0, assetPath: 0, buildId: 0, footerYear: 0, bootstrapChunks: 0 };
+    const counts = { flightChunks: 0, clientRefRows: 0, clientRefUses: 0, clientRefExportRows: 0, assetPath: 0, buildId: 0, footerYear: 0, bootstrapChunks: 0, rootSibling: 0 };
     const split = splitFlight(body);
     const { chunks, flight } = split;
     const html = split.html.replace(BOOTSTRAP_SCRIPT, (_m, inner) => `<script id="_R_">${inner.replace(BOOTSTRAP_CHUNK, () => {
@@ -295,7 +332,11 @@ export function maskBody(body, { buildId, clientModules }) {
         return "static/chunks/<bootstrap-chunk>";
     })}</script>`);
     counts.flightChunks = chunks;
-    const allRows = flight.split("\n");
+    const allRows = flight.split("\n").map((row) => {
+        const allowed = rootSiblingAllowance(row);
+        if (allowed.applied) counts.rootSibling += 1;
+        return allowed.row;
+    });
     const rowById = new Map();
     for (const row of allRows) {
         const m = /^([0-9a-f]+):/.exec(row);

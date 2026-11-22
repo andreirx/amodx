@@ -25,8 +25,7 @@
  * entry is in the hold's own write). Logs: ids only.
  */
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { z } from "zod";
-import { PersonSchema, type Booking } from "@amodx/shared";
+import { HoldRequestSchema, type Booking } from "@amodx/shared";
 import type { AuthorizerContext } from "../../auth/context.js";
 import { resolveRecaptchaConfig, verifyRecaptcha } from "../../lib/recaptcha.js";
 import {
@@ -37,20 +36,6 @@ import { answer, parseBody, refusal, type Answer } from "../common.js";
 import { readPlace, viewerAddressOf, visitorRefusal, visitorRoute, type VisitorContext } from "./common.js";
 import { holdResult } from "./dto.js";
 import { sendVisitorMail } from "./mail.js";
-
-const KeyPart = z.string().min(1).max(100).refine((v) => !v.includes("#"), { message: "Must not contain #." });
-
-/** § 10.2 `HoldRequest`. */
-export const HoldRequestSchema = z.object({
-    intentId: z.uuid(),
-    recaptchaToken: z.string().max(4000).optional(),   // "" → 400 verificationRequired, as orders/create.ts (`!token`)
-    resend: z.boolean().optional(),
-    what: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("slot"), serviceId: KeyPart, start: z.iso.datetime() }).strict(),
-        z.object({ kind: z.literal("seat"), courseId: KeyPart, runId: KeyPart }).strict(),
-    ]),
-    who: PersonSchema.strict(),
-}).strict();
 
 const notFoundTarget = () => refusal(404, "notFound", "The service or group was not found.");
 

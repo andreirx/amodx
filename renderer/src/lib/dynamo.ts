@@ -117,6 +117,13 @@ export async function getTenantConfig(identifier: string): Promise<TenantConfig 
 }
 
 
+/** § 9.1: the stored `recaptcha` holds a non-empty site key AND a non-empty secret key (the backend's branch-1 test). */
+function hasOwnRecaptchaPair(recaptcha: unknown): recaptcha is { siteKey: string; secretKey: string } {
+    if (recaptcha === null || typeof recaptcha !== "object") return false;
+    const r = recaptcha as { siteKey?: unknown; secretKey?: unknown };
+    return typeof r.siteKey === "string" && r.siteKey !== "" && typeof r.secretKey === "string" && r.secretKey !== "";
+}
+
 function mapTenant(item: any): TenantConfig {
     let theme = item.theme;
     if (typeof theme === 'string') {
@@ -177,6 +184,11 @@ function mapTenant(item: any): TenantConfig {
         legalLinks: item.legalLinks || undefined,
         theme: theme || {},
         integrations: item.integrations || {},
+        // SCHED-1G2 (docs/slices/sched-1.md § 9.1, finding G8): the tenant's reCAPTCHA SITE key, ONLY when the stored
+        // record has both keys — the condition under which the backend verifies with the tenant's secret
+        // (`resolveRecaptchaConfig` branch 1, backend/src/lib/recaptcha.ts). Otherwise absent, and every page uses the
+        // deployment key, which pairs with the deployment secret. The secret and the threshold are never mapped.
+        ...(hasOwnRecaptchaPair(item.recaptcha) ? { recaptcha: { siteKey: item.recaptcha.siteKey } } : {}),
         urlPrefixes: urlPrefixesOf(item.urlPrefixes),   // CDL-2 (§ 7.1): per key, the saved path, else the English default
         quickContact: item.quickContact || undefined,
         // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the visitor contact channels — the quote dialog and the bar fallbacks.

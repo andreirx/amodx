@@ -119,6 +119,64 @@ props. The cacheable shells pass `false / "" / null / {} / true`.
 wire with `404` + `private, no-store`, so there is no second public URL serving the same
 tenant content uncached.
 
+### Booking pages (slice `sched-1g2`; `docs/slices/sched-1.md` § 10.1, § 12)
+
+A third route family, beside the ISR route and its twin. It is never stored by either cache layer.
+
+| | Booking pages | Booking handlers (proxy) | Calendar feed |
+|---|---|---|---|
+| public path | `/_booking`, `/_booking/manage` (tenant host); `/_site/<id>/_booking…` (preview host) | `<base>/api/<op>` | `<base>/feed/<resourceId>/<secret>.ics` |
+| internal target | `/_book/<siteId>/…` → `app/%5Fbook/[siteId]/page.tsx`, `manage/page.tsx` | `app/%5Fbook/[siteId]/api/[op]/route.ts` | `app/%5Fbook/[siteId]/feed/[resourceId]/[file]/route.ts` |
+| mode | `dynamic = "force-dynamic"` (second root layout) | `force-dynamic` | `force-dynamic` |
+| response | `private, no-cache, no-store, max-age=0, must-revalidate` (Next) | `private, no-store` | 200: `private, max-age=300`, `text/calendar`; else `private, no-store` |
+| twin | none: the middleware rewrites before the twin decision; query strings and the session cookie change nothing | none | none |
+
+Rules (executable form: rows `sched1g-*` of `renderer/test/serving-contract/contract.test.mjs`, unit tests
+`renderer/test/unit/sched-1g-*.test.ts`):
+
+- **Binding (G1, G2, G5).** `renderer/middleware.ts` branch `A3` rewrites `/_booking…` on a host the unknown-host gate does
+  not deny, and `/_site/<id>/_booking…` on a preview host only. `/_book…` from the wire — `_book`, `%5Fbook`,
+  `%255Fbook`, any case — answers the middleware's `404` + `private, no-store`, like `/_dyn`. `//_book/…` is answered
+  `308` → `/_book/…` by Next before the middleware runs (as every doubled-slash path), and that target is refused.
+  Rows `sched1g-g1`, `sched1g-g2`, `sched1g-g5`.
+- **Not-found inside the tree.** A path under `/_booking/` that no page serves lands on `app/%5Fbook/[siteId]/[...rest]`
+  and answers a force-dynamic `404`. Without that catch-all it fell through to `app/[siteId]/[[...slug]]` with
+  `siteId = "_book"` and answered a CACHEABLE `307` (`s-maxage=31536000`) to `/<host>/<rest>?nf=1` (measured in
+  `sched-1g2` before the fix). Row `sched1g-not-found`; no ISR entry under `_book/` (rows `sched1g-g1`, `-not-found`).
+- **Query and cookie (G3, G4).** `?frame=1&lang=…` reach the page (the route is never stored, and CloudFront forwards
+  every query string, finding G10); the session cookie does not change status, cache headers, visible text, scripts or
+  mounted components. Byte equality is not the oracle: two cookie-less requests already differ (React streams the font
+  hint, the script tags and the `<title>` in a timing-dependent order, measured). Rows `sched1g-g3`, `sched1g-g4`.
+- **Scripts and referrer (G6).** No Analytics, Facebook pixel, Paddle, cookie banner, popup or referral beacon on the booking
+  pages; the book page's only external script is reCAPTCHA; the manage page has none and answers
+  `Referrer-Policy: no-referrer`. Row `sched1g-g6`.
+- **A GET changes nothing (G7).** The link token is in the fragment, so the server never receives it; write ops refuse GET
+  (`405`, `Allow: POST`). Row `sched1g-g7-server`; the browser half (fragment removed, `POST view` first, `POST confirm`
+  only on the button) is `test/unit/sched-1g-pages.test.ts`.
+- **reCAPTCHA pair (G8).** `mapTenant` exposes the tenant's site key only when both keys are stored. Row `sched1g-g8`.
+- **Proxy inputs.** Absent / valid / malformed for every query parameter and body: a valid input reaches the forward
+  step (`503 unavailable` in the suite, which has no backend), the others are refused before it. Row
+  `sched1g-proxy-inputs`; what is forwarded, the checks (the backend route's own schemas from `@amodx/shared`),
+  and the complete input inventory: `test/unit/sched-1g-proxy.test.ts`. The `?service` / `?course` selectors: row
+  `sched1g-selectors` (server reader) and `test/unit/sched-1g-pages.test.ts` (the flow).
+- **Existing pages (rule 1).** The booking branch leaves every other path on its old code path (row `sched1g-preserve`:
+  near-miss paths, preview paths, the unknown-host gate). Adding the root folder `app/%5Fbook` makes Next list it among
+  the static siblings of `[siteId]` in every page's RSC payload: `"s":["api"]` → `"s":["%5Fbook","api"]`. Measured on
+  the final `sched-1g2` build (iteration 1, captured documents: home, a content page, a shop page, a 307 handoff, a
+  404 landing, a preview page): exactly one occurrence per HTML document, inside the root `siteId` descriptor of one
+  payload row; none in the HTML outside the payload, none in a response header, none in `sitemap.xml`, `robots.txt`
+  or `llms.txt` (a `text/x-component` response was not captured: NOT RUN). Ruling SCHED-1G2-ROOT-SIBLING = A: the
+  byte-identity comparators accept exactly that one item at that one place (`renderer/test/serving-contract/
+  cm1-byte-identity.mjs` `rootSiblingAllowance`, used by `maskBody`, which both comparator families run: `compareTenant`
+  and `locale-1/proof.mjs` `checkExpected`). Row `sched1g-root-sibling-controls`: another sibling, `api` removed,
+  another order, the list in the nested `slug` descriptor, the text outside the payload, a changed descriptor name or
+  key, and one other payload byte each compare DIFFERENT in both families. The committed baselines are unchanged.
+  **Measured result of the final tree** (EXECUTED 2026-11-22 on the `sched-1g2` iteration-2 tree, `cd renderer && npm run test:serving`): 139 tests,
+  139 pass, 0 fail — the 126 rows that existed before `sched-1g2` and the 13 `sched1g-*` rows.
+- **Not proven here (staging, `sched-1g` record):** that CloudFront stores nothing (`x-cache` is not `Hit` on a second
+  request, G1 — `private` is INFERRED to keep the answer out of the edge cache), reCAPTCHA host lists (G9), the
+  `X-Forwarded-For` position `k` (G13).
+
 ### How the `[siteId]` segment is bound (slice `siteid-binding-1`)
 
 Every public page is served by `app/[siteId]/[[...slug]]`, and `siteId` decides which tenant

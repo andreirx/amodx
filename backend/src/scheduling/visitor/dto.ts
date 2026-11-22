@@ -24,7 +24,10 @@ export type HoldResult =
 export type BookingViewDTO = {
     ref: string; state: "held" | "confirmed" | "expired"; expiresAt?: string;
     what:
-        | { kind: "slot"; serviceName: string; start: string; end: string; timezone: string }
+        // SCHED-1G2 (operator ruling SCHED-1G2-SLOT-MOVE-ID = A; § 10.2 amendment recorded at closeout): `serviceId` is the
+        // booking's own stored service id, so the manage page asks for the free times of exactly that service. The offer
+        // route already shows service ids to visitors: nothing private is added.
+        | { kind: "slot"; serviceId: string; serviceName: string; start: string; end: string; timezone: string }
         | { kind: "seat"; courseName: string; run: Omit<RunDTO, "seatsLeft">; groupLink?: string }
         | { kind: "unplaced"; courseName: string; proposal: ProposalDTO };
     who: { name: string; emailMasked: string };
@@ -138,7 +141,7 @@ export async function bookingViewDTO(store: SchedulingStore, tenantId: string, b
     const w = b.what;
     switch (w.kind) {
         case "slot":
-            what = { kind: "slot", serviceName: w.serviceName, start: iso(w.start), end: iso(w.end), timezone: settings.timezone };
+            what = { kind: "slot", serviceId: w.serviceId, serviceName: w.serviceName, start: iso(w.start), end: iso(w.end), timezone: settings.timezone };
             break;
         case "seat": {
             const run = place.run as RunRecord;

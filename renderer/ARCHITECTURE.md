@@ -24,6 +24,15 @@ src/
 │   │   ├── sitemap.xml/route.ts               # Dynamic sitemap from published content
 │   │   ├── llms.txt/route.ts                  # AI agent discovery (Markdown format)
 │   │   └── openai-feed/route.ts               # Product JSON feed (OpenAI format, 15min cache)
+│   ├── %5Fbook/[siteId]/                      # sched-1g2: SECOND root layout — the hosted booking pages (URL segment `_book`,
+│   │   │                                      #   reached only by the middleware rewrite of `/_booking…`; see "Hosted booking pages")
+│   │   ├── layout.tsx                         # <html lang>/<body> + BookingTheme; NO site scripts or chrome
+│   │   ├── page.tsx                           # book page (`/_booking`; ?frame=1 ?lang= ?service= ?course=)
+│   │   ├── manage/page.tsx                    # manage page (`/_booking/manage#t=<token>`)
+│   │   ├── api/[op]/route.ts                  # proxy: one op → one backend visitor route (lib/booking-proxy.ts)
+│   │   ├── feed/[resourceId]/[file]/route.ts  # calendar feed proxy (`<secret>.ics`)
+│   │   ├── [...rest]/page.tsx                 # not-found of the tree (force-dynamic 404)
+│   │   └── _components/                       # BookFlow, ManageView, Pickers, operation.ts (browser); PageShell, BookingTheme (server); api.ts
 │   └── api/                                   # 10 routes; all behind the CachingDisabled `api/*` behavior
 │       ├── account/orders/route.ts            # Signed-in customer's order history → backend proxy
 │       ├── auth/[...nextauth]/route.ts        # Per-tenant Google OAuth via NextAuth
@@ -89,6 +98,10 @@ Tenant mapping, three modes:
 1. **Production** — extracts hostname, rewrites `/about` → `/[domain]/about`
 2. **Test** — `/tenant/<id>/about` → `/<id>/about`
 3. **Preview** — `/_site/<id>/about` → `/<id>/about`
+
+Booking addresses (slice `sched-1g2`, branch `A3`, placed before the three modes): `/_booking…` on a tenant host →
+`/_book/<host>…`, and `/_site/<id>/_booking…` on a preview host → `/_book/<id>…`; a wire request to `/_book…` in any
+spelling → `404`. Every other path is unchanged. See "Hosted booking pages" below.
 
 Modes 2 and 3 address a tenant by id, so both are restricted to preview hosts
 (`isPreviewHost`: the `Host` contains `localhost`, `cloudfront.net` or `staging`); any other host
@@ -345,6 +358,9 @@ and without it the cacheable `307 → ?nf=1` becomes a redirect loop.
 
 The renderer reads directly from DynamoDB for performance (bypasses backend API):
 - `getTenantConfig(identifier)` — by domain (GSI) or tenant ID (PK)
+  - `mapTenant` maps `recaptcha: { siteKey }` ONLY when the stored record has both `siteKey` and `secretKey` (sched-1g2,
+    `docs/slices/sched-1.md` § 9.1, finding G8): the condition under which the backend verifies with the tenant's secret,
+    so every page's site key pairs with the secret the backend uses. The secret and the threshold are never mapped.
 - `getContentBySlug(tenantId, slug)` — route lookup → content fetch, handles redirects
 - `getProductById(tenantId, productId)` — direct get
 - `getPosts(tenantId, tag?, limit)` — query all published LATEST content, filter/sort in-memory
@@ -728,6 +744,82 @@ appear on any page, so there is no bounded set of changed paths to feed the targ
 Tests: `test/unit/review-images.test.ts` (the pure filter/resolver) and
 `test/unit/site-page-reviews.test.ts` (the `SitePage` SSR integration of all three surfaces:
 site-reviews carousel, product-reviews-by-id carousel, and product-page review photos).
+
+## Hosted booking pages — slice `sched-1g2` (PROTOTYPE)
+
+Specification: `docs/slices/sched-1.md` § 8, § 9, § 10.1, § 12, § 16.3 (PD-002 booking-token variant). The booking
+screens for both shapes (a slot with a practitioner, a seat in a group), on the tenant's own domain or — for a tenant
+without one — on the preview host. The browser talks only to the renderer; the renderer calls the scheduling visitor
+routes of the backend with the `RENDERER` key (`backend/src/scheduling/visitor/*.ts`, deployed by `sched-1d2`/`1g1`).
+
+**Routing.** `middleware.ts` branch `A3` (`lib/booking-path.ts` `bookingRoute`, pure): `/_booking[/rest]` on a host that
+`isWiredTenantHost` does not deny → rewrite to `/_book/<host>[/rest]`; `/_site/<id>/_booking[/rest]` on a preview host →
+`/_book/<id>[/rest]`; first path segment `_book` in any spelling (`%5Fbook`, `%255Fbook`, mixed case; `//_book` is first
+answered 308 by Next itself) → `404` + `private, no-store`. No `%5Fdyn` twin, no `amodx_preview_base` cookie, no
+session-cookie test. `/_booking/manage` also gets `Referrer-Policy: no-referrer`. The `[siteId]` of the tree is therefore
+always chosen by the middleware, never by the wire.
+
+**Second root layout** (`app/%5Fbook/[siteId]/layout.tsx`, SCHED-PAGE-LAYOUT = A): `<html lang>` (tenant locale),
+`<body>`, the tenant theme (`_components/BookingTheme.tsx`, server-rendered CSS variables + the theme's two Google
+fonts). It renders no Analytics, Paddle, Facebook pixel, cookie banner, popups, referral beacon, navbar, footer or
+cart providers. The book page adds reCAPTCHA v3 as a plain `<script async>` (tenant key when the tenant stored both
+keys, `mapTenant` § 9.1, else `RECAPTCHA_SITE_KEY`); the manage page adds no third-party script. Everything in the tree is
+`force-dynamic`: pages answer Next's `private, no-cache, no-store, max-age=0, must-revalidate`, handlers
+`private, no-store`, the feed `private, max-age=300` on 200.
+
+**Rule of the tree (measured in `sched-1g2`).** No module that runs in the browser may import a client module of the
+site tree (`ThemeInjector`, `RecaptchaProvider`, …) or `@amodx/shared` at runtime (type imports are fine): a client
+module shared by both trees makes Turbopack regroup the client chunks of every existing tenant page (+2 or +3 chunk
+references per page, measured on `cm1-content /about`), which breaks the byte identity of existing pages. Hence
+`BookingTheme` instead of `ThemeInjector`, the plain reCAPTCHA `<script>`, and `lib/booking-ui.ts` (browser-safe,
+with `fillText`, a copy of `fillTemplate`) apart from `lib/booking-text.ts` (server: language and texts from the
+packs). `test/unit/sched-1g-pure.test.ts` checks the rule on the sources.
+
+**Pages.** Book (`_components/BookFlow.tsx`): offer → service (free starts week by week up to `lastBookableDate`,
+`Pickers.tsx` `SlotWeek`) or course (language when the course has several, then the proposal of the partly filled
+group, the others on request, `RunList`) → name, email, phone → hold (one intent id per choice, kept across retries and
+the resend) → "check your email". Manage (`_components/ManageView.tsx`): reads `#t=<token>`, removes the fragment
+(`history.replaceState`), keeps the token in memory, `POST view`; Confirm (only the button sends `POST confirm`), Cancel
+(asked once more), Move (slot: the free starts of the booking's OWN service — the slot view carries its stored
+`serviceId`, ruling SCHED-1G2-SLOT-MOVE-ID = A; a service that no longer exists → "cannot be changed here, please contact
+us"; seat/unplaced: the groups of its course). Every refusal code maps to a visitor text (`lib/booking-ui.ts`
+`REFUSAL_TEXT`, unknown → `errGeneric`) and, where the visitor must act, to an action of the page (`refusalRecovery`):
+a token-free "new booking" link or button (expired, used or closed form), or "show the current booking" with the
+token kept in memory (stale); no text asks the visitor to reload the page. Writes (hold, resend, confirm, cancel, move,
+refresh) follow ONE lifetime rule (`_components/operation.ts` `useOperation`): one at a time, every control (pickers
+included) disabled meanwhile, an answer applied only to the screen it was started for. `?service=` / `?course=` start
+the flow on that service or course when the offer lists it (both → the service; unknown → the offer). Texts: the `booking`
+part of the language packs (`packages/shared/src/language-packs/`, EN + RO complete), selected by `?lang=` (a language
+with a pack) else the tenant locale; times in the tenant's (or the run's) zone with the zone named. `?frame=1`: no
+header, transparent background (the frame chrome is `sched-frame-1`).
+
+**Proxy** (`lib/booking-proxy.ts`, users: `api/[op]/route.ts`, `feed/…/route.ts`): op table `BOOKING_OPS` (offer, slots,
+runs: GET; hold, view, confirm, cancel, move: POST) → exactly one backend route each; method (405 + `Allow`), body
+≤ 8 KB (413), JSON (400), input check with the backend route's OWN schema, imported from `@amodx/shared` (`HoldRequestSchema`, `MoveBodySchema`,
+`KeyPart`, `LocalDateSchema`; moved there from the backend handlers by ruling SCHED-1G2-ZOD-DEP = C; the renderer
+imports no `zod` itself) — 400 in the backend's issue form; a malformed or absent link token → 404 `linkNotValid`, the
+backend's one answer; tenant record of `[siteId]` (absent → 403 `notAvailable`), then the call with `x-api-key` (renderer key) and
+`x-tenant-id` = the record's id; a body that passed the strict schema is forwarded as received; the backend status, JSON body and
+`Retry-After` pass through. No `API_URL` / no key / a failed call → 503 `unavailable`. Feed: `<secret>.ics` (43-character
+base64url) → POST `/scheduling/visitor/feed` `{ resourceId, secret }`; every URL-holder failure → one 404 body.
+
+**Client address (§ 9.2) — GATE.** `TRUSTED_FORWARDED_POSITION` is `null` until the staging witness G13 records `k`; until
+then the proxy sends NO `x-viewer-address` (the backend then applies no address limit and sends no `remoteip`), and no
+tenant's booking page may be exposed to visitors. The TEMPORARY witness: `GET <base>/api/offer?witness=<probe address>`
+logs one line `[booking-witness TEMPORARY sched-1g2 G13] … xffEntries=… probeAtPositionFromRight=[…] cvaPresent=…
+cvaMatchesProbe=…` — counts and positions only, never an address; it is removed before `sched-1g` closes.
+
+**Known limits.** `<html lang>` stays the tenant's when `?lang=` selects another language (the wrapper `<div lang>`
+carries the texts' language). Every page's RSC payload now lists `%5Fbook` among the static siblings of `[siteId]`
+(`"s":["%5Fbook","api"]`; nothing in the HTML outside the payload or in headers); the byte-identity rows accept exactly
+that one item (ruling SCHED-1G2-ROOT-SIBLING = A, `cm1-byte-identity.mjs` `rootSiblingAllowance`, controls row
+`sched1g-root-sibling-controls`).
+
+**Tests.** Serving rows `sched1g-*` (`test/serving-contract/contract.test.mjs`; fixtures `SCHED1G`); unit
+`test/unit/sched-1g-pure.test.ts` (path, texts, `mapTenant`, structural rules, coverage of the booking keys),
+`sched-1g-proxy.test.ts` (forwarding, gate, witness, feed, no direct zod import, the input inventory: every
+proxy input absent / valid / malformed), `sched-1g-pages.test.ts` (jsdom: flows, G7, every refusal text, the lifetime
+rule, the selectors, recovery). Locale coverage file: `test/serving-contract/locale-1/sched-1g/coverage.json`.
 
 ## Authentication
 

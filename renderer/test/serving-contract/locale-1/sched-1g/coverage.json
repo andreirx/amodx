@@ -1,0 +1,723 @@
+{
+  "slice": "sched-1g2",
+  "rule": "docs/slices/locale-1.md § 16.2 item 5 (coverage rule), for SCHED-1G2 (docs/slices/sched-1.md § 10.1, § 17.3 row G12): every key of the booking part of the language packs (packages/shared/src/language-packs/types.ts `BookingStrings`) maps to a check that renders it at its reader in Romanian — the book flow and the manage view mounted in jsdom (test/unit/sched-1g-pages.test.ts; every err* key through the refusal table, one mount per code) or the serving row that asserts the server-rendered title. The booking part is not part of the tenant locale table (no tenant override), so `allocatedKeys` lists none of the three table parts; the booking keys are listed in `bookingKeys` and checked by renderer/test/unit/sched-1g-pure.test.ts (the existing locale-coverage check reads only the three table parts). No count key.",
+  "allocatedKeys": {
+    "site": [],
+    "catalog": [],
+    "commerce": []
+  },
+  "bookingKeys": [
+    "bookTitle",
+    "manageTitle",
+    "loading",
+    "back",
+    "timesShownIn",
+    "chooseOffer",
+    "servicesHeading",
+    "coursesHeading",
+    "durationMinutes",
+    "nothingOffered",
+    "chooseTime",
+    "previousWeek",
+    "nextWeek",
+    "noTimesThisWeek",
+    "lastBookableDate",
+    "chooseLanguage",
+    "chooseGroup",
+    "proposedGroup",
+    "otherGroups",
+    "showAllGroups",
+    "seatsLeft",
+    "groupLanguage",
+    "groupLanguageOpen",
+    "meetingsHeading",
+    "meetingLine",
+    "noGroupsOpen",
+    "chooseThisGroup",
+    "detailsHeading",
+    "selectedLabel",
+    "nameLabel",
+    "emailLabel",
+    "phoneLabel",
+    "languageLabel",
+    "fieldRequired",
+    "emailInvalid",
+    "submitHold",
+    "sending",
+    "checkMailHeading",
+    "checkMailHeld",
+    "checkMailConfirmed",
+    "resendMail",
+    "resent",
+    "newBooking",
+    "noLinkToken",
+    "bookingRef",
+    "stateHeld",
+    "stateConfirmed",
+    "whenLabel",
+    "whatLabel",
+    "groupChatLink",
+    "unplacedNote",
+    "confirmButton",
+    "confirmedNow",
+    "cancelButton",
+    "cancelQuestion",
+    "cancelYes",
+    "cancelNo",
+    "cancelledNow",
+    "moveTimeButton",
+    "moveGroupButton",
+    "movedNow",
+    "moveNotOffered",
+    "changeUntil",
+    "refreshBooking",
+    "errInvalid",
+    "errNotAvailable",
+    "errNotFound",
+    "errVerificationRequired",
+    "errVerificationFailed",
+    "errUnavailable",
+    "errSlotTaken",
+    "errNotOnGrid",
+    "errInPast",
+    "errBeyondHorizon",
+    "errNotEligible",
+    "errOutsideAvailability",
+    "errResourceUnavailable",
+    "errRunFull",
+    "errRunClosed",
+    "errRunCancelled",
+    "errRunStarted",
+    "errLanguageMismatch",
+    "errIntentReused",
+    "errIntentClosed",
+    "errTooManyForEmail",
+    "errTooManyFromAddress",
+    "errBusy",
+    "errMailFailed",
+    "errLinkNotValid",
+    "errExpired",
+    "errCancelled",
+    "errTooLate",
+    "errNotConfirmed",
+    "errPaidContactTenant",
+    "errStale",
+    "errRange",
+    "errServer",
+    "errGeneric"
+  ],
+  "checks": {
+    "booking.bookTitle": [
+      {
+        "test": "renderer/test/serving-contract/contract.test.mjs",
+        "case": "(sched1g-g3)"
+      }
+    ],
+    "booking.manageTitle": [
+      {
+        "test": "renderer/test/serving-contract/contract.test.mjs",
+        "case": "(sched1g-g3)"
+      }
+    ],
+    "booking.loading": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): loading, then the offer with services and courses"
+      }
+    ],
+    "booking.back": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.timesShownIn": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.chooseOffer": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): loading, then the offer with services and courses"
+      }
+    ],
+    "booking.servicesHeading": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): loading, then the offer with services and courses"
+      }
+    ],
+    "booking.coursesHeading": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): loading, then the offer with services and courses"
+      }
+    ],
+    "booking.durationMinutes": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): loading, then the offer with services and courses"
+      }
+    ],
+    "booking.nothingOffered": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): nothing offered"
+      }
+    ],
+    "booking.chooseTime": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.previousWeek": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.nextWeek": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.noTimesThisWeek": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.lastBookableDate": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.chooseLanguage": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.chooseGroup": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.proposedGroup": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.otherGroups": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.showAllGroups": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.seatsLeft": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.groupLanguage": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.groupLanguageOpen": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.meetingsHeading": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.meetingLine": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.noGroupsOpen": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): no group open"
+      }
+    ],
+    "booking.chooseThisGroup": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      },
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): a confirmed seat"
+      }
+    ],
+    "booking.detailsHeading": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.selectedLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.nameLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      },
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.emailLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      },
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.phoneLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.languageLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.fieldRequired": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.emailInvalid": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.submitHold": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.sending": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.checkMailHeading": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.checkMailHeld": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.checkMailConfirmed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a course with two languages"
+      }
+    ],
+    "booking.resendMail": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.resent": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      }
+    ],
+    "booking.newBooking": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "book flow (ro): a service week by week"
+      },
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "R4 manage view: an expired link offers a token-free 'new booking' link"
+      }
+    ],
+    "booking.noLinkToken": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): no fragment"
+      }
+    ],
+    "booking.bookingRef": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.stateHeld": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.stateConfirmed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.whenLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.whatLabel": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.groupChatLink": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): a confirmed seat"
+      }
+    ],
+    "booking.unplacedNote": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): an unplaced booking"
+      }
+    ],
+    "booking.confirmButton": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.confirmedNow": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.cancelButton": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.cancelQuestion": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): cancel asks once more"
+      }
+    ],
+    "booking.cancelYes": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): cancel asks once more"
+      }
+    ],
+    "booking.cancelNo": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): cancel asks once more"
+      }
+    ],
+    "booking.cancelledNow": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): cancel asks once more"
+      }
+    ],
+    "booking.moveTimeButton": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): move a slot"
+      }
+    ],
+    "booking.moveGroupButton": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): a confirmed seat"
+      }
+    ],
+    "booking.movedNow": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): move a slot"
+      }
+    ],
+    "booking.moveNotOffered": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the booking's service no longer exists"
+      }
+    ],
+    "booking.changeUntil": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro) G7:"
+      }
+    ],
+    "booking.refreshBooking": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "R4 manage view: a stale answer keeps the token in memory"
+      }
+    ],
+    "booking.errInvalid": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errNotAvailable": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errNotFound": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errVerificationRequired": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errVerificationFailed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errUnavailable": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errSlotTaken": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errNotOnGrid": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errInPast": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errBeyondHorizon": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errNotEligible": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errOutsideAvailability": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errResourceUnavailable": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errRunFull": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errRunClosed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errRunCancelled": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errRunStarted": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errLanguageMismatch": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errIntentReused": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      },
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "R4 book flow: a used form (intentReused)"
+      }
+    ],
+    "booking.errIntentClosed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errTooManyForEmail": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errTooManyFromAddress": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errBusy": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errMailFailed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errLinkNotValid": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errExpired": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errCancelled": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errTooLate": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errNotConfirmed": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errPaidContactTenant": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errStale": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      },
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "R4 manage view: a stale answer keeps the token in memory"
+      }
+    ],
+    "booking.errRange": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errServer": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ],
+    "booking.errGeneric": [
+      {
+        "test": "renderer/test/unit/sched-1g-pages.test.ts",
+        "case": "manage view (ro): the visitor text of refusal"
+      }
+    ]
+  }
+}

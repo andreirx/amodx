@@ -16,6 +16,42 @@ export interface LanguagePack {
     commerce: Partial<CommerceStrings>;
     catalog: Partial<CatalogStrings>;
     site: Partial<SiteStrings>;
+    /** SCHED-1G2: the texts of the hosted booking pages. Optional, so a pack without them gets English. */
+    booking?: Partial<BookingStrings>;
+}
+
+/**
+ * SCHED-1G2 (docs/slices/sched-1.md § 10.1) — the visitor texts of the hosted booking pages (`/_booking`,
+ * `/_booking/manage`). Plain texts with `{placeholders}` (filled by `fillTemplate`); no count key (counts are written as
+ * "Places left: {n}", so no plural form is needed). Not part of the tenant locale table: a tenant does not override
+ * them (no `bookingStrings` field exists); the page selects a pack by language (`?lang=`, else the tenant locale).
+ * The `err*` keys are the visitor texts of the refusal codes of § 10.2 and of the renderer proxy
+ * (`renderer/src/lib/booking-ui.ts` maps each code to one key).
+ */
+export interface BookingStrings {
+    bookTitle: string; manageTitle: string; loading: string; back: string; timesShownIn: string;
+    chooseOffer: string; servicesHeading: string; coursesHeading: string; durationMinutes: string; nothingOffered: string;
+    chooseTime: string; previousWeek: string; nextWeek: string; noTimesThisWeek: string; lastBookableDate: string;
+    chooseLanguage: string; chooseGroup: string; proposedGroup: string; otherGroups: string; showAllGroups: string;
+    seatsLeft: string; groupLanguage: string; groupLanguageOpen: string; meetingsHeading: string; meetingLine: string;
+    noGroupsOpen: string; chooseThisGroup: string;
+    detailsHeading: string; selectedLabel: string; nameLabel: string; emailLabel: string; phoneLabel: string;
+    languageLabel: string; fieldRequired: string; emailInvalid: string; submitHold: string; sending: string;
+    checkMailHeading: string; checkMailHeld: string; checkMailConfirmed: string; resendMail: string; resent: string;
+    newBooking: string;
+    noLinkToken: string; bookingRef: string; stateHeld: string; stateConfirmed: string; whenLabel: string;
+    whatLabel: string; groupChatLink: string; unplacedNote: string; confirmButton: string; confirmedNow: string;
+    cancelButton: string; cancelQuestion: string; cancelYes: string; cancelNo: string; cancelledNow: string;
+    moveTimeButton: string; moveGroupButton: string; movedNow: string; moveNotOffered: string; changeUntil: string;
+    refreshBooking: string;
+    errInvalid: string; errNotAvailable: string; errNotFound: string; errVerificationRequired: string;
+    errVerificationFailed: string; errUnavailable: string; errSlotTaken: string; errNotOnGrid: string; errInPast: string;
+    errBeyondHorizon: string; errNotEligible: string; errOutsideAvailability: string; errResourceUnavailable: string;
+    errRunFull: string; errRunClosed: string; errRunCancelled: string; errRunStarted: string; errLanguageMismatch: string;
+    errIntentReused: string; errIntentClosed: string; errTooManyForEmail: string; errTooManyFromAddress: string;
+    errBusy: string; errMailFailed: string; errLinkNotValid: string; errExpired: string; errCancelled: string;
+    errTooLate: string; errNotConfirmed: string; errPaidContactTenant: string; errStale: string; errRange: string;
+    errServer: string; errGeneric: string;
 }
 
 /** A complete part: every text key holds a string; every count key its texts with `other` present (§ 16.2 item 6). */
@@ -26,4 +62,5 @@ export interface CompleteLanguagePack extends LanguagePack {
     commerce: CompletePart<CommerceStrings>;
     catalog: CompletePart<CatalogStrings>;
     site: CompletePart<SiteStrings>;
+    booking: CompletePart<BookingStrings>;
 }

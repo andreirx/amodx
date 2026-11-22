@@ -21,8 +21,7 @@
  * shows it).
  */
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { z } from "zod";
-import type { Booking } from "@amodx/shared";
+import { MoveBodySchema, type Booking } from "@amodx/shared";
 import type { AuthorizerContext } from "../../auth/context.js";
 import {
     getRun, getService, listResources, mintToken, moveSeat, moveSlot, schedulingStoreFromEnv,
@@ -31,14 +30,6 @@ import { answer, refusal, type Answer } from "../common.js";
 import { bookingByLink, eligibleIds, linkNotValid, parseLinkBody, placeFor, visitorRefusal, visitorRoute, type Place } from "./common.js";
 import { bookingViewDTO } from "./dto.js";
 import { sendVisitorMail } from "./mail.js";
-
-/** The body besides the token (`parseLinkBody` takes the token first). */
-const MoveBodySchema = z.object({
-    to: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("slot"), start: z.iso.datetime() }).strict(),
-        z.object({ kind: z.literal("seat"), runId: z.string().min(1).max(100).refine((v) => !v.includes("#"), { message: "Must not contain #." }) }).strict(),
-    ]),
-}).strict();
 
 const targetMismatch = (): Answer => refusal(400, "invalid", "The request is not valid.", {
     issues: [{ path: "to.kind", message: "The target does not match the booking." }],

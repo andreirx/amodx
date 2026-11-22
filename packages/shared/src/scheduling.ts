@@ -279,6 +279,33 @@ export const PersonSchema = z.object({
 });
 export type Person = z.infer<typeof PersonSchema>;
 
+// SCHED-1G2 (operator ruling SCHED-1G2-ZOD-DEP = C): the visitor request schemas, moved unchanged from the backend
+// handlers (`backend/src/scheduling/visitor/holds.ts`, `bookings-move.ts`), so the renderer booking proxy checks a
+// request with the SAME schema the backend route applies (docs/slices/sched-1.md § 10.1 "Handlers", § 10.2).
+
+/** A part of a store key: 1-100 characters, no `#` (the key separator). */
+export const KeyPart = z.string().min(1).max(100).refine((v) => !v.includes("#"), { message: "Must not contain #." });
+
+/** § 10.2 `HoldRequest` (POST /scheduling/visitor/holds). */
+export const HoldRequestSchema = z.object({
+    intentId: z.uuid(),
+    recaptchaToken: z.string().max(4000).optional(),   // "" → 400 verificationRequired, as orders/create.ts (`!token`)
+    resend: z.boolean().optional(),
+    what: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("slot"), serviceId: KeyPart, start: z.iso.datetime() }).strict(),
+        z.object({ kind: z.literal("seat"), courseId: KeyPart, runId: KeyPart }).strict(),
+    ]),
+    who: PersonSchema.strict(),
+}).strict();
+
+/** The body of POST /scheduling/visitor/bookings/move besides the token (`parseLinkBody` takes the token first). */
+export const MoveBodySchema = z.object({
+    to: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("slot"), start: z.iso.datetime() }).strict(),
+        z.object({ kind: z.literal("seat"), runId: z.string().min(1).max(100).refine((v) => !v.includes("#"), { message: "Must not contain #." }) }).strict(),
+    ]),
+}).strict();
+
 /**
  * The stored `BOOKING#` record. `history` is non-empty (the creating Put writes one entry and no write removes the
  * last one) and holds at most 50 entries; after truncation it need not start with `created` (§ 4.4).

@@ -45,6 +45,7 @@ import {
     SL1A, SL1A_HEADER, SL1A_FOOTER, SL1B, SL1B_COVER_OPTIONS, SL1B_SPLIT_OPTIONS, SL1C, SL1C_PATH, SL1C_CATEGORIES, SL1C_GRID, SL1C_BLANK_GRID,
     SL1D, SL1D_PATH, SL1D_SHOWCASE_OPTIONS, SL1D_SHOWCASE_BLANK, SL1D_POST_GRID_OPTIONS, SL1D_POST_GRID_BLANK,
     SL1E, SL1E_PATH, SL1E_NOTIFY, SL1E_FIELDS, SL1E_FORM, SL1E_BLOCK, SL1E_BLANK_BLOCK, SL1E_NONE_BLOCKS,
+    SCHED1G, SCHED1G_SITE_KEY, SCHED1G_SECRET, SCHED1G_ONLY_SITE_KEY, SCHED1G_MARKERS,
     FIXTURE_HOST, UNKNOWN_HOST, TENANT_ID, TABLE_NAME,
     PUBLISHED_SLUG, MISSING_SLUG, D4_SLUG,
     SCANNER_TENANT_ID, SCANNER_TENANT_HOST, SCANNER_SLUG, SCANNER_PAGE_TITLE,
@@ -3806,6 +3807,380 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             const allowed = doc.requests.filter((e, i) => got[i].vary !== e.vary);
             const byStatus = got.reduce((n, g) => ({ ...n, [g.status]: (n[g.status] ?? 0) + 1 }), {});
             console.log(`  (loc1e-cache-headers) ${got.length} URLs equal to d9999d2 on status, cache-control, content-type, vary: ${JSON.stringify(byStatus)}; ROUTE_HANDLER_VARY_16_4_6 (next ${nextVersion}, ${allowance ? "on" : "off"}) used by ${allowed.length} responses on ${new Set(allowed.map((e) => e.host)).size} hosts (${[...new Set(allowed.map((e) => e.path))].join(", ")}); controls reported: a token after Accept-Encoding, another token, Accept-Encoding on a page`);
+        });
+
+        // ── ROWS (sched1g-*) — SCHED-1G2, the hosted booking pages (docs/slices/sched-1.md § 10.1, § 9.1, § 17.3 rows G1-G8;
+        // the contract rows in docs/caching-architecture.md § Serving contract, "Booking pages"). Running build only; the
+        // tenants are `SCHED1G` (fixtures.mjs). The suite has no booking backend (no `API_URL` in the constructed
+        // environment, row iso1), so a proxy request that passes every renderer check answers 503 `unavailable` at the
+        // forward step: that status is the proof that the request was accepted and would have been forwarded. What the
+        // proxy forwards (key, tenant, body, address gate) and the feed's 200 headers are proven by
+        // test/unit/sched-1g-proxy.test.ts. Staging rows G9 and G13 (and the CloudFront `x-cache` half of G1) are not
+        // rows here: the build report lists them for the operator.
+        const S1G = SCHED1G.studio;
+        const S1G_RO = SCHED1G.oneKey;
+        const at = (host, p, opts = {}) => request({ port: server.port, host, path: p, ...opts });
+        const postJson = (host, p, body) => at(host, p, { method: "POST", headers: { "content-type": "application/json" }, body });
+        /** A booking answer: never a storable lifetime — `private` and `no-store`, no `s-maxage`, no ISR status. */
+        const assertNeverStored = (res, what) => {
+            const cc = res.header("cache-control") ?? "";
+            assert.match(cc, /\bprivate\b/, `${what}: cache-control ${cc}`);
+            assert.match(cc, /\bno-store\b/, `${what}: cache-control ${cc}`);
+            assert.doesNotMatch(cc, /s-maxage|max-age=[1-9]/, `${what}: cache-control ${cc}`);
+            assert.equal(res.header("x-nextjs-cache"), undefined, `${what}: an ISR status`);
+            assert.equal(res.header("set-cookie"), undefined, `${what}: a Set-Cookie`);
+        };
+        const FEED_SECRET = "s".repeat(43);
+        /** The ISR entries stored under the booking tree's rewrite target (key `_book/<siteId>/…`, either spelling). Not
+         *  the near-miss paths of sched1g-preserve (`<host>/_bookingx` …): those are site pages and are stored by design. */
+        const bookingEntries = async () => (await storedIsrEntries("")).filter((e) => /^(_book|%5Fbook)(\/|$)/i.test(e.key));
+
+        test("(sched1g-preserve) with the booking branch present, existing-tenant pages are byte-identical to the committed baseline; near-miss paths take the code path they took before", async () => {
+            // 1. Byte identity (CM1-A1 comparison, the committed baseline/ captured before this slice) for both tenants,
+            //    with the ONE listed difference SCHED-1G2-ROOT-SIBLING (cm1-byte-identity.mjs `rootSiblingAllowance`):
+            //    every HTML page of the candidate uses it exactly once, no baseline page uses it.
+            for (const tenantKey of ["content", "commerce"]) {
+                const rows = compareTenant(await cm1Base(), await cm1Set(), tenantKey);
+                assert.ok(rows.length > 0, `precondition: the ${tenantKey} baseline lists URLs`);
+                assert.deepEqual(rows.filter((r) => !r.same).map((r) => `${r.path}: ${r.why}`), [], `${tenantKey} tenant bytes changed`);
+                for (const r of rows) {
+                    assert.equal(r.base.rootSibling, 0, `${tenantKey} ${r.path}: the baseline uses the allowance`);
+                    assert.equal(r.cand.rootSibling, r.cand.flightChunks > 0 ? 1 : 0, `${tenantKey} ${r.path}: the allowance was not used exactly once`);
+                }
+            }
+            // 2. Paths that are NOT booking addresses: the production branch's not-found handoff (the d1 shape), unchanged.
+            for (const p of ["/_bookingx", "/_Booking", "/x/_booking", "/_bookings/manage", "/%5Fbooking"]) {
+                const res = await at(CM1.content.host, p);
+                assert.equal(res.status, 307, `${p}: ${res.status}`);
+                assert.equal(new URL(res.header("location"), "http://x").search, "?nf=1", `${p}: not the not-found handoff`);
+                assert.match(res.header("cache-control"), new RegExp(S_MAXAGE), `${p}: not the cacheable handoff`);
+            }
+            // 3. A preview path whose 3rd segment is not `_booking`: the preview branch (twin + preview cookie), unchanged.
+            const preview = await at(PREVIEW_HOST, `/_site/${CM1.content.id}/x/_booking`);
+            assert.match(preview.header("cache-control"), /no-store/);
+            assert.ok([].concat(preview.header("set-cookie") ?? []).some((c) => c.startsWith("amodx_preview_base=")), "the preview branch sets its cookie");
+            // 4. `/_booking` on a host with no tenant: the unknown-host 404, as every path on that host.
+            const unknown = await at(UNKNOWN_HOST, "/_booking");
+            assert.equal(unknown.status, 404);
+            assert.match(unknown.header("cache-control"), /no-store/);
+        });
+
+        // SCHED-1G2-ROOT-SIBLING = A, requirement 2: the negative controls of the one listed difference, through BOTH
+        // comparator families of the byte rows — CM1-A1 equality of `maskBody` (cm1-identity-*, sched1g-preserve) and the
+        // resolved-tree comparison `checkExpected` (loc1-*, cq1-*, ct1-*, loc1e-*). Subject: the content tenant's /about,
+        // committed baseline vs this run's capture. A comparison that refuses to run (throws) counts as "different".
+        test("(sched1g-root-sibling-controls) the real candidate compares equal; another sibling, a removed api, another order, the list in another segment, the text outside the payload and one other byte each compare different, in both comparators", async () => {
+            const base = await cm1Base();
+            const cand = await cm1Set();
+            const b = base.captures.find((c) => c.tenant === "content" && c.path === "/about");
+            const a = cand.captures.find((c) => c.tenant === "content" && c.path === "/about");
+            const count = (body, x) => body.split(x).length - 1;
+            const ROOT = '\\"s\\":[\\"%5Fbook\\",\\"api\\"]';      // the escaped form inside the HTML's payload scripts
+            const ROOT_BEFORE = '\\"s\\":[\\"api\\"]';
+            assert.equal(count(a.body, ROOT), 1, "precondition: the candidate page holds the list once");
+            assert.equal(count(b.body, ROOT), 0, "precondition: the baseline does not hold it");
+            assert.equal(count(b.body, ROOT_BEFORE), 1, "precondition: the baseline holds [\"api\"] once");
+            const verdict = (body) => {
+                const cm1 = maskBody(b.body, base).masked === maskBody(body, cand).masked;
+                let loc1;
+                try { loc1 = checkExpected(base, b.body, cand, body, []).length === 0; } catch { loc1 = false; }
+                return { cm1, loc1 };
+            };
+            assert.deepEqual(verdict(a.body), { cm1: true, loc1: true }, "the real candidate must compare equal");
+            assert.equal(maskBody(a.body, cand).counts.rootSibling, 1);
+            assert.equal(maskBody(b.body, base).counts.rootSibling, 0);
+            const once = (body, from, to) => {
+                assert.equal(count(body, from), 1, `mutation anchor occurs once: ${from}`);
+                return body.replace(from, to);
+            };
+            const SLUG_LIST = /\\"s\\":\[\\"%5Fdyn\\"[^\]]*\]/;
+            assert.equal((a.body.match(new RegExp(SLUG_LIST, "g")) ?? []).length, 1, "precondition: the nested slug descriptor's list occurs once");
+            const host = CM1.content.host;
+            const mutations = {
+                "another added sibling": once(a.body, ROOT, '\\"s\\":[\\"%5Fbook\\",\\"x\\",\\"api\\"]'),
+                "another sibling in place of %5Fbook": once(a.body, ROOT, '\\"s\\":[\\"x\\",\\"api\\"]'),
+                "\"api\" removed": once(a.body, ROOT, '\\"s\\":[\\"%5Fbook\\"]'),
+                "another order": once(a.body, ROOT, '\\"s\\":[\\"api\\",\\"%5Fbook\\"]'),
+                "the same item at another segment (the slug descriptor), the root list as before": once(a.body, ROOT, ROOT_BEFORE).replace(SLUG_LIST, ROOT),
+                "the item also added to another segment": a.body.replace(SLUG_LIST, (m) => m.replace('[\\"%5Fdyn', '[\\"%5Fbook\\",\\"%5Fdyn')),
+                "another segment name in the descriptor": once(a.body, '\\"n\\":\\"siteId\\"', '\\"n\\":\\"siteIe\\"'),
+                "one byte of the descriptor's key": once(a.body, `\\"k\\":\\"${host}\\"`, `\\"k\\":\\"${host.replace("content", "contenu")}\\"`),
+                "one byte elsewhere in the payload": once(a.body, '\\"name\\":\\"viewport\\"', '\\"name\\":\\"viewporu\\"'),
+                "the list as text outside the payload": a.body.replace("</body>", '<p>"s":["%5Fbook","api"]</p></body>'),
+            };
+            const failed = Object.entries(mutations).filter(([, body]) => { const v = verdict(body); return v.cm1 || v.loc1; }).map(([name, body]) => `${name}: ${JSON.stringify(verdict(body))}`);
+            assert.deepEqual(failed, [], "a mutation compared equal");
+            console.log(`  (sched1g-root-sibling-controls) real candidate equal in both comparators; ${Object.keys(mutations).length} mutations each different in both: ${Object.keys(mutations).join("; ")}`);
+        });
+
+        test("(sched1g-g1) domain host: the book page, the manage page, an API op and the feed are served by the booking tree, never stored", async () => {
+            const book = await at(S1G.host, "/_booking");
+            assert.equal(book.status, 200);
+            assert.match(book.header("content-type"), /text\/html/);
+            assert.match(book.body, />Book<\/h1>/, "the book page of the booking tree");
+            assertNeverStored(book, "/_booking");
+            const manage = await at(S1G.host, "/_booking/manage");
+            assert.equal(manage.status, 200);
+            assert.match(manage.body, />Your booking<\/h1>/, "the manage page of the booking tree");
+            assertNeverStored(manage, "/_booking/manage");
+            // Not the site twin: the booking layout writes no site chrome (control: the tenant's own home page has it).
+            const home = await at(S1G.host, "/");
+            assert.match(home.body, /<footer/, "control: the site layout writes a footer");
+            for (const res of [book, manage]) assert.doesNotMatch(res.body, /<footer|<nav/, "site chrome on a booking page");
+            const api = await at(S1G.host, "/_booking/api/offer");
+            assert.equal(api.status, 503, "the offer op passed the proxy's checks and reached the forward step");
+            assert.deepEqual(JSON.parse(api.body), { error: "Booking is temporarily unavailable.", code: "unavailable" });
+            assertNeverStored(api, "/_booking/api/offer");
+            const feed = await at(S1G.host, `/_booking/feed/r1/${FEED_SECRET}.ics`);
+            assert.equal(feed.status, 503, "the feed passed its checks and reached the forward step");
+            assertNeverStored(feed, "feed (no backend)");
+            // A second identical request is answered by the renderer again, the same way (nothing was stored)…
+            const again = await at(S1G.host, "/_booking");
+            assert.equal(again.status, 200);
+            assert.equal(again.header("x-nextjs-cache"), undefined);
+            // …and no ISR entry exists under the booking tree; positive control: the detector reads a live cache.
+            assert.ok((await storedIsrEntries("")).length > 0, "storedIsrEntries() found nothing at all — detector broken");
+            assert.deepEqual((await bookingEntries()).map((e) => e.key), [], "an ISR entry under the booking tree");
+        });
+
+        test("(sched1g-g2) preview host: /_site/<id>/_booking/manage is the manage page of tenant <id>, with no preview cookie; the by-id gates are unchanged", async () => {
+            const res = await at(PREVIEW_HOST, `/_site/${S1G.id}/_booking/manage`);
+            assert.equal(res.status, 200);
+            assert.match(res.body, />Your booking<\/h1>/);
+            assert.match(res.body, new RegExp(`>${S1G.name}<`), "the header names the tenant of the path");
+            assert.equal(res.header("referrer-policy"), "no-referrer");
+            assertNeverStored(res, "preview manage");
+            const book = await at(PREVIEW_HOST, `/_site/${S1G_RO.id}/_booking`);
+            assert.equal(book.status, 200);
+            assert.match(book.body, new RegExp(`>${S1G_RO.name}<`), "another id selects another tenant");
+            assertNeverStored(book, "preview book");
+            // Control: the preview branch for a non-booking path still sets the cookie.
+            const site = await at(PREVIEW_HOST, `/_site/${S1G.id}`);
+            assert.ok([].concat(site.header("set-cookie") ?? []).some((c) => c.startsWith("amodx_preview_base=")), "control: preview cookie");
+            // By-id booking addresses: refused on a tenant host (the preview gate, 403); an unknown id → 404 not stored.
+            const onTenantHost = await at(S1G.host, `/_site/${S1G.id}/_booking`);
+            assert.equal(onTenantHost.status, 403);
+            const unknownId = await at(PREVIEW_HOST, "/_site/sched1g-nobody/_booking");
+            assert.equal(unknownId.status, 404);
+            assert.match(unknownId.header("cache-control"), /no-store/);
+        });
+
+        test("(sched1g-g3) ?frame=1 and ?lang= reach the page: frame → no header; lang → the texts' language; absent, malformed and repeated values fall back", async () => {
+            const plain = await at(S1G.host, "/_booking");
+            assert.match(plain.body, /<header/, "control: the page header without frame");
+            assert.match(plain.body, /<div lang="en"/);
+            const both = await at(S1G.host, "/_booking?frame=1&lang=ro");
+            assert.equal(both.status, 200);
+            assertNeverStored(both, "frame + lang");
+            assert.doesNotMatch(both.body, /<header/, "frame=1: no header");
+            assert.match(both.body, /background:transparent/, "frame=1: transparent background");
+            assert.match(both.body, /<div lang="ro"/);
+            assert.match(both.body, />Programare<\/h1>/, "lang=ro: the Romanian title");
+            // frame: malformed (0, yes) and repeated → absent (the header stays).
+            for (const q of ["frame=0", "frame=yes", "frame=1&frame=1"]) {
+                assert.match((await at(S1G.host, `/_booking?${q}`)).body, /<header/, `${q} must not remove the header`);
+            }
+            // lang: unknown, malformed, repeated → the tenant's language (en for this tenant, ro for the ro-RO tenant).
+            for (const q of ["lang=xx", "lang=%3Cscript%3E", "lang=ro&lang=ro", "lang="]) {
+                assert.match((await at(S1G.host, `/_booking?${q}`)).body, />Book<\/h1>/, `${q} on an en-US tenant`);
+            }
+            assert.match((await at(S1G_RO.host, "/_booking")).body, />Programare<\/h1>/, "ro-RO tenant without lang");
+            assert.match((await at(S1G_RO.host, "/_booking/manage")).body, />Rezervarea ta<\/h1>/, "ro-RO tenant: the manage title");
+            assert.match((await at(S1G_RO.host, "/_booking?lang=en")).body, />Book<\/h1>/, "lang=en on a ro-RO tenant");
+            assert.match((await at(S1G_RO.host, "/_booking/manage?lang=en-GB")).body, />Your booking<\/h1>/, "a regional tag selects its language");
+        });
+
+        // Oracle: what the answer MEANS, not its bytes. Measured (build report, step 10): two requests WITHOUT any cookie
+        // already differ in bytes — React streams the font hint row, the script tags and the <title> in a timing-dependent order — so
+        // byte equality would test the stream, not the cookie. Compared: status, cache-control, content-type, the visible
+        // text (locale-1 § 8.5 extraction), the set of script sources, the client components the payload mounts.
+        // S1G2-R3: the server half of the ?service / ?course selectors — what the book page's query reader passes to the
+        // browser flow (props `initialServiceId` / `initialCourseId` in the payload). The browser half (unknown ids → the
+        // offer, both → the service) is test/unit/sched-1g-pages.test.ts "S1G2-R3".
+        test("(sched1g-selectors) ?service and ?course: absent → no value; valid → passed as is; repeated → absent; empty and malformed → passed and matched by the flow; both → both passed", async () => {
+            const props = async (q) => {
+                const body = (await at(S1G.host, `/_booking${q}`)).body;
+                const prop = (name) => {
+                    const m = new RegExp(`\\\\"${name}\\\\":\\\\"((?:[^\\\\]|\\\\.)*?)\\\\"`).exec(body);
+                    return m === null ? null : m[1];
+                };
+                return { service: prop("initialServiceId"), course: prop("initialCourseId") };
+            };
+            assert.deepEqual(await props(""), { service: "$undefined", course: "$undefined" }, "absent");
+            assert.deepEqual(await props("?service=svc1"), { service: "svc1", course: "$undefined" }, "valid service");
+            assert.deepEqual(await props("?course=c1"), { service: "$undefined", course: "c1" }, "valid course");
+            assert.deepEqual(await props("?service=a&service=b&course=c&course=d"), { service: "$undefined", course: "$undefined" }, "repeated → absent");
+            assert.deepEqual(await props("?service=&course=x%23y"), { service: "", course: "x#y" }, "empty and malformed are passed; the flow matches them against the offer");
+            assert.deepEqual(await props("?service=svc1&course=c1"), { service: "svc1", course: "c1" }, "both passed (the flow takes the service)");
+        });
+
+        test("(sched1g-g4) the session cookie does not change the answer: same status, cache headers, visible text, scripts and components; no twin", async () => {
+            const meaning = (res) => ({
+                status: res.status,
+                cacheControl: res.header("cache-control"),
+                contentType: res.header("content-type"),
+                // As a sorted multiset: Next streams the metadata, so the <title> item moves between requests (measured).
+                text: extractVisibleText(res.body).map((item) => JSON.stringify(item)).sort(),
+                scripts: [...res.body.matchAll(/<script[^>]*\ssrc="([^"]*)"/g)].map((m) => m[1]).sort(),
+                components: [...res.body.matchAll(/\\"(BookFlow|ManageView)\\"\]/g)].map((m) => m[1]).sort(),
+            });
+            const jars = ["next-auth.session-token=abc", "next-auth.session-token.0=x; next-auth.session-token.1=y", "__Secure-next-auth.session-token=abc"];
+            for (const p of ["/_booking", "/_booking/manage", "/_booking?frame=1"]) {
+                const without = meaning(await at(S1G.host, p));
+                assert.equal(without.status, 200, p);
+                assert.ok(without.components.length > 0, `${p}: precondition — the payload mounts the booking component`);
+                for (const cookie of jars) {
+                    const res = await at(S1G.host, p, { headers: { cookie } });
+                    assert.deepEqual(meaning(res), without, `${p} with "${cookie}"`);
+                    assertNeverStored(res, `${p} with cookie`);
+                }
+            }
+            // Control: the oracle tells two different pages apart.
+            assert.notDeepEqual(meaning(await at(S1G.host, "/_booking")), meaning(await at(S1G.host, "/_booking/manage")));
+        });
+
+        test("(sched1g-g5) a wire request to the internal segment answers 404 in every spelling; a doubled slash is normalised by Next first", async () => {
+            const target = `${S1G_RO.id}/manage`;
+            const cases = [
+                [S1G.host, `/_book/${target}`], [S1G.host, `/_book/${S1G_RO.host}/manage`], [S1G.host, `/%5Fbook/${target}`],
+                [S1G.host, `/%5fbook/${target}`], [S1G.host, `/_BOOK/${target}`], [S1G.host, `/_Book/${S1G_RO.id}`],
+                [S1G.host, `/%255Fbook/${target}`], [S1G.host, "/_book"], [S1G.host, `/_book/${S1G_RO.id}/api/offer`],
+                [PREVIEW_HOST, `/_book/${target}`], [UNKNOWN_HOST, `/_book/${target}`],
+            ];
+            for (const [host, p] of cases) {
+                const res = await at(host, p);
+                assert.equal(res.status, 404, `${host} ${p}: ${res.status}`);
+                assert.equal(res.body, "Not found", `${host} ${p}: not the middleware's refusal`);
+                assert.match(res.header("cache-control"), /private, no-store/);
+            }
+            const post = await postJson(S1G.host, `/_book/${S1G_RO.id}/api/view`, JSON.stringify({ token: "t".repeat(43) }));
+            assert.equal(post.status, 404, "a POST to the internal segment");
+            // Doubled slash: Next answers 308 to the single-slash form BEFORE the middleware runs (as for every path);
+            // that form is refused.
+            const doubled = await at(S1G.host, `//_book/${target}`);
+            assert.equal(doubled.status, 308);
+            const location = new URL(doubled.header("location"), "http://x").pathname;
+            assert.equal(location, `/_book/${target}`);
+            assert.equal((await at(S1G.host, location)).status, 404);
+            // Negative control: the public address of the same page is served.
+            assert.equal((await at(S1G_RO.host, "/_booking/manage")).status, 200);
+        });
+
+        test("(sched1g-not-found) a path under /_booking that no page serves answers 404, never stored; the site not-found rows are unchanged", async () => {
+            for (const p of ["/_booking/nope", "/_booking/api", "/_booking/feed/r1", "/_booking/manage/x", "/_booking/api/offer/x"]) {
+                const res = await at(S1G.host, p);
+                assert.equal(res.status, 404, `${p}: ${res.status}`);
+                assertNeverStored(res, p);
+            }
+            const unknownOp = await at(S1G.host, "/_booking/api/nope");
+            assert.equal(unknownOp.status, 404);
+            assert.equal(JSON.parse(unknownOp.body).code, "notFound");
+            assertNeverStored(unknownOp, "unknown op");
+            assert.deepEqual((await bookingEntries()).map((e) => e.key), [], "an ISR entry under the booking tree");
+            // The site's own not-found (d1/d2 shapes) on the same host is unchanged.
+            const site = await at(S1G.host, "/no-such-page");
+            assert.equal(site.status, 307);
+            assert.equal((await at(S1G.host, "/no-such-page?nf=1")).status, 404);
+        });
+
+        test("(sched1g-g6) no tenant script on the booking pages: the book page loads reCAPTCHA only, the manage page no third-party script; Referrer-Policy on manage", async () => {
+            const markers = {
+                analytics: SCHED1G_MARKERS.ga, pixelId: SCHED1G_MARKERS.pixel, pixelScript: "connect.facebook.net",
+                paddle: SCHED1G_MARKERS.paddle, cookieBanner: "We value your privacy", referralBeacon: "/api/ref?v=",
+            };
+            // Positive control: the tenant's own site page carries every marker.
+            const home = await at(S1G.host, "/");
+            for (const [name, m] of Object.entries(markers)) assert.ok(home.body.includes(m), `control: the site page lacks ${name}`);
+            const book = await at(S1G.host, "/_booking");
+            const manage = await at(S1G.host, "/_booking/manage");
+            const externalScripts = (body) => [...body.matchAll(/<script[^>]*\ssrc="(https?:\/\/[^"]*)"/g)].map((m) => m[1]);
+            for (const [page, res] of [["book", book], ["manage", manage]]) {
+                for (const [name, m] of Object.entries(markers)) assert.ok(!res.body.includes(m), `${page} page carries ${name}`);
+            }
+            assert.deepEqual(externalScripts(book.body), [`https://www.google.com/recaptcha/api.js?render=${SCHED1G_SITE_KEY}`], "book page: reCAPTCHA (tenant key) is the only external script");
+            assert.deepEqual(externalScripts(manage.body), [], "manage page: an external script");
+            assert.ok(externalScripts(home.body).length + (home.body.match(/googletagmanager|connect\.facebook\.net|cdn\.paddle\.com/g) ?? []).length > 0, "control: the detector finds the site page's scripts");
+            assert.doesNotMatch(manage.body, /recaptcha/i, "manage page: no reCAPTCHA");
+            assert.equal(manage.header("referrer-policy"), "no-referrer");
+            assert.equal(book.header("referrer-policy"), undefined, "the header is the manage page's only");
+        });
+
+        test("(sched1g-g7-server) a GET of the link changes nothing: the token never reaches the server, the page makes no booking call, GET is refused on every write op", async () => {
+            // Two GETs of the link page give the same bytes: the server holds no booking data for the page (the token is in
+            // the fragment, which an HTTP client never sends); the browser half (fragment removed, POST view first, POST
+            // confirm only on the button) is test/unit/sched-1g-pages.test.ts.
+            const a = await at(S1G.host, "/_booking/manage");
+            const b = await at(S1G.host, "/_booking/manage");
+            assert.equal(a.status, 200);
+            assert.equal(a.body, b.body, "the manage shell differs between two GETs");
+            for (const op of ["hold", "view", "confirm", "cancel", "move"]) {
+                const res = await at(S1G.host, `/_booking/api/${op}`);
+                assert.equal(res.status, 405, `GET ${op}`);
+                assert.equal(res.header("allow"), "POST");
+                assertNeverStored(res, `GET ${op}`);
+            }
+            for (const op of ["offer", "slots", "runs"]) {
+                const res = await postJson(S1G.host, `/_booking/api/${op}`, "{}");
+                assert.equal(res.status, 405, `POST ${op}`);
+                assert.equal(res.header("allow"), "GET");
+            }
+        });
+
+        test("(sched1g-g8) reCAPTCHA key pair: a tenant with both keys gets its site key on every page and its secret nowhere; a tenant with one key gets the deployment key", async () => {
+            const book = await at(S1G.host, "/_booking");
+            const home = await at(S1G.host, "/");
+            assert.ok(book.body.includes(`render=${SCHED1G_SITE_KEY}`), "book page: the tenant's site key");
+            assert.ok(home.body.includes(`window.AMODX_RECAPTCHA_KEY = \\"${SCHED1G_SITE_KEY}\\"`) || home.body.includes(`window.AMODX_RECAPTCHA_KEY = "${SCHED1G_SITE_KEY}"`), "site page: the tenant's site key (mapTenant, § 9.1)");
+            for (const res of [book, home]) assert.ok(!res.body.includes(SCHED1G_SECRET), "the secret reached a page");
+            // One key only: not a pair → the deployment key (empty in this suite: no reCAPTCHA key at all).
+            const oneBook = await at(S1G_RO.host, "/_booking");
+            const oneHome = await at(S1G_RO.host, "/");
+            for (const res of [oneBook, oneHome]) assert.ok(!res.body.includes(SCHED1G_ONLY_SITE_KEY), "a lone site key reached a page");
+            assert.doesNotMatch(oneBook.body, /recaptcha\/api\.js/, "no deployment key in the suite: no reCAPTCHA script");
+        });
+
+        test("(sched1g-proxy-inputs) every proxy input, absent / valid / malformed: a valid one reaches the forward step (503 here), the others are refused before it", async () => {
+            const T = "A".repeat(43);
+            const intent = "3b241101-e2bb-4255-8caf-4136c566a962";
+            const who = { email: "ana@example.test", name: "Ana" };
+            const post = (op, body) => postJson(S1G.host, `/_booking/api/${op}`, body);
+            const cases = [
+                // [label, request, status, code]
+                ["hold absent body", () => post("hold", ""), 400, "invalid"],
+                ["hold not JSON", () => post("hold", "{"), 400, "invalid"],
+                ["hold valid slot", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "slot", serviceId: "svc", start: "2026-12-01T09:00:00.000Z" }, who })), 503, "unavailable"],
+                ["hold valid seat + token", () => post("hold", JSON.stringify({ intentId: intent, recaptchaToken: "r", resend: true, what: { kind: "seat", courseId: "c", runId: "r" }, who: { ...who, phone: "+40 700", language: "ro" } })), 503, "unavailable"],
+                ["hold bad email", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "seat", courseId: "c", runId: "r" }, who: { email: "nope", name: "A" } })), 400, "invalid"],
+                ["hold extra field", () => post("hold", JSON.stringify({ intentId: intent, what: { kind: "seat", courseId: "c", runId: "r" }, who, tenantId: "other" })), 400, "invalid"],
+                ["hold too large", () => post("hold", JSON.stringify({ pad: "x".repeat(9000) })), 413, "tooLarge"],
+                ["view absent token", () => post("view", "{}"), 404, "linkNotValid"],
+                ["view malformed token", () => post("view", JSON.stringify({ token: "short" })), 404, "linkNotValid"],
+                ["view valid token", () => post("view", JSON.stringify({ token: T })), 503, "unavailable"],
+                ["view extra field", () => post("view", JSON.stringify({ token: T, tenantId: "other" })), 400, "invalid"],
+                ["confirm valid", () => post("confirm", JSON.stringify({ token: T })), 503, "unavailable"],
+                ["cancel malformed", () => post("cancel", JSON.stringify({ token: 5 })), 404, "linkNotValid"],
+                ["move valid slot", () => post("move", JSON.stringify({ token: T, to: { kind: "slot", start: "2026-12-01T09:00:00Z" } })), 503, "unavailable"],
+                ["move absent to", () => post("move", JSON.stringify({ token: T })), 400, "invalid"],
+                ["move malformed to", () => post("move", JSON.stringify({ token: T, to: { kind: "seat", runId: "a#b" } })), 400, "invalid"],
+                ["slots absent query", () => at(S1G.host, "/_booking/api/slots"), 400, "invalid"],
+                ["slots valid", () => at(S1G.host, "/_booking/api/slots?serviceId=svc&from=2026-12-01&to=2026-12-07"), 503, "unavailable"],
+                ["slots malformed date", () => at(S1G.host, "/_booking/api/slots?serviceId=svc&from=12/01/2026&to=2026-12-07"), 400, "invalid"],
+                ["runs absent courseId", () => at(S1G.host, "/_booking/api/runs"), 400, "invalid"],
+                ["runs valid", () => at(S1G.host, "/_booking/api/runs?courseId=c1&language=ro&all=1"), 503, "unavailable"],
+                ["runs malformed all", () => at(S1G.host, "/_booking/api/runs?courseId=c1&all=yes"), 400, "invalid"],
+                ["offer unknown parameter", () => at(S1G.host, "/_booking/api/offer?tenant=other"), 400, "invalid"],
+                ["feed malformed secret", () => at(S1G.host, "/_booking/feed/r1/short.ics"), 404, "linkNotValid"],
+                ["feed malformed resource", () => at(S1G.host, `/_booking/feed/a%23b/${FEED_SECRET}.ics`), 404, "linkNotValid"],
+                ["feed no .ics", () => at(S1G.host, `/_booking/feed/r1/${FEED_SECRET}`), 404, "linkNotValid"],
+                ["preview unknown tenant op", () => at(PREVIEW_HOST, "/_site/sched1g-nobody/_booking/api/offer"), 403, "notAvailable"],
+                ["preview unknown tenant feed", () => at(PREVIEW_HOST, `/_site/sched1g-nobody/_booking/feed/r1/${FEED_SECRET}.ics`), 404, "linkNotValid"],
+            ];
+            for (const [label, send, status, code] of cases) {
+                const res = await send();
+                assert.equal(res.status, status, `${label}: ${res.status} ${res.body}`);
+                assert.equal(JSON.parse(res.body).code, code, label);
+                assertNeverStored(res, label);
+            }
         });
 
         // ── ROW (cmrc-counties-diff) — RETIRED by locale-1d (docs/slices/locale-1d.md): it compared the commerce and content
