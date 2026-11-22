@@ -137,12 +137,12 @@ PD-001 (tenant-local identity). Security finding 7.6.
 
 | Slice | Scope | Status |
 |-------|-------|--------|
-| `cmrc-1` | Read-topology cutover: `commerce-db.ts`, renderer-key `/customer/*` endpoints, renderer proxy routes, inert commerce-private table | PLANNED |
-| `cmrc-2` | Migration tooling (plan/migrate/verify --strict/--post-cutover/purge-*) + GSI pre-migration gate | PLANNED |
-| `cmrc-3` | Copy under write freeze (operational, disposable test data) | PLANNED |
-| `cmrc-4` | Backend storage cutover: cross-table `TransactWrite`, `Update`-not-`Put` customer | PLANNED |
-| `cmrc-5` | Post-cutover validation + forbidden-import CI guard | PLANNED |
-| `cmrc-6` | Purge old main-table copies (backup-ref + NDJSON gated, `purge-verify`) | PLANNED |
+| `cmrc-1` | Read-topology cutover: `commerce-db.ts` is the only code naming the four private keys and their table (still the main table); renderer-key routes `POST /customer/order-history`, `/customer/profile-read`, `/customer/order-lookup`; the renderer reads no order or customer item; empty commerce table. Specified in full: `docs/slices/cmrc-1.md` § 5 (may split `cmrc-1a`/`1b`, § 5.15; the order-page lookup is part L) | SPEC DRAFT 2026-11-22, revision 3 — six decisions open (§ 8); CMRC-TABLE blocks the table item, CMRC-ORDER-LOOKUP-AUTHORITY blocks part L |
+| `cmrc-2` | Tool and write freeze: extend the existing `scripts/migrate-commerce-private-table.ts` (content-equality `--strict`, `--post-cutover`, `purge-*` and `discard-*` branches, conditional writes, GSI-attribute and key-form report); freeze guard on every writer of the moved kinds. `docs/slices/cmrc-1.md` § 6 | SPEC DRAFT 2026-11-22 (shrinks to discard/report if CMRC-TEST-ONLY = B) |
+| `cmrc-3` | Copy under write freeze (operational). `docs/slices/cmrc-1.md` § 6 | SPEC DRAFT 2026-11-22 (falls away if CMRC-TEST-ONLY = B) |
+| `cmrc-4` | Storage cutover: required `COMMERCE_TABLE_NAME` in `commerce-db.ts`, per-function grants, cross-table order transaction by construction; new writes land in the private table from here on. Gate: no reader bypasses `commerce-db.ts` — needs part L of `cmrc-1` (or the token slice). `docs/slices/cmrc-1.md` § 6 | SPEC DRAFT 2026-11-22 |
+| `cmrc-5` | Post-cutover validation; key-ownership guard in CI; the anonymous `GET /public/orders/{id}` decision. `docs/slices/cmrc-1.md` § 6 | SPEC DRAFT 2026-11-22 |
+| `cmrc-6` | Remove main-table items: `purge` of verified copies, or authorized `discard` (no copy; incl. plain-text `EMAILLIMIT#` per CMRC-MAIN-KEYS). `docs/slices/cmrc-1.md` § 6 | SPEC DRAFT 2026-11-22 |
 
 **Commerce feature backlog (human, 2026-09-16 — "add these to the commerce track that will
 soon need to be done"):** two order-lifecycle features, to be spec'd/ratified when Track B
