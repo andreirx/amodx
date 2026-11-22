@@ -27,8 +27,8 @@ src/
 │   ├── %5Fbook/[siteId]/                      # sched-1g2: SECOND root layout — the hosted booking pages (URL segment `_book`,
 │   │   │                                      #   reached only by the middleware rewrite of `/_booking…`; see "Hosted booking pages")
 │   │   ├── layout.tsx                         # <html lang>/<body> + BookingTheme; NO site scripts or chrome
-│   │   ├── page.tsx                           # book page (`/_booking`; ?frame=1 ?lang= ?service= ?course=)
-│   │   ├── manage/page.tsx                    # manage page (`/_booking/manage#t=<token>`)
+│   │   ├── page.tsx                           # book page (`/_booking`; ?frame=1 ?lang= ?service= ?course=); 404 when scheduling is off
+│   │   ├── manage/page.tsx                    # manage page (`/_booking/manage#t=<token>`); 404 when scheduling is off
 │   │   ├── api/[op]/route.ts                  # proxy: one op → one backend visitor route (lib/booking-proxy.ts)
 │   │   ├── feed/[resourceId]/[file]/route.ts  # calendar feed proxy (`<secret>.ics`)
 │   │   ├── [...rest]/page.tsx                 # not-found of the tree (force-dynamic 404)
@@ -756,7 +756,8 @@ routes of the backend with the `RENDERER` key (`backend/src/scheduling/visitor/*
 `isWiredTenantHost` does not deny → rewrite to `/_book/<host>[/rest]`; `/_site/<id>/_booking[/rest]` on a preview host →
 `/_book/<id>[/rest]`; first path segment `_book` in any spelling (`%5Fbook`, `%255Fbook`, mixed case; `//_book` is first
 answered 308 by Next itself) → `404` + `private, no-store`. No `%5Fdyn` twin, no `amodx_preview_base` cookie, no
-session-cookie test. `/_booking/manage` also gets `Referrer-Policy: no-referrer`. The `[siteId]` of the tree is therefore
+session-cookie test. `/_booking/manage` also gets `Referrer-Policy: no-referrer`; the book page and the manage page get
+`X-Robots-Tag: noindex, nofollow` (`sched-1g3`, both in `bookingRewrite`). The `[siteId]` of the tree is therefore
 always chosen by the middleware, never by the wire.
 
 **Second root layout** (`app/%5Fbook/[siteId]/layout.tsx`, SCHED-PAGE-LAYOUT = A): `<html lang>` (tenant locale),
@@ -766,6 +767,18 @@ cart providers. The book page adds reCAPTCHA v3 as a plain `<script async>` (ten
 keys, `mapTenant` § 9.1, else `RECAPTCHA_SITE_KEY`); the manage page adds no third-party script. Everything in the tree is
 `force-dynamic`: pages answer Next's `private, no-cache, no-store, max-age=0, must-revalidate`, handlers
 `private, no-store`, the feed `private, max-age=300` on 200.
+
+**Scheduling switch and indexing (slice `sched-1g3`).** The book page, the manage page and the feed exist only when the
+tenant record exists AND its `schedulingEnabled` is exactly `true` (`lib/booking-tenant.ts` `getBookingTenant`;
+`mapTenant` maps the attribute only when it is `true`, so the mapped record of a tenant without scheduling is
+unchanged). Otherwise the pages call `notFound()` (the tree's force-dynamic 404, never stored) and the feed answers its
+one URL-holder 404 `linkNotValid` without a backend call. The check is in the tree because each of these already read
+the tenant record: no new read, and the middleware reads no switch, so no other path pays for it. The API ops are not
+gated here: the backend answers its own 403 `notAvailable` and the proxy passes it through. Both pages carry
+`<meta name="robots" content="noindex, nofollow">`; `sitemap.xml` lists content pages, categories and products only, so
+no booking address. Both pages also answer `X-Robots-Tag: noindex, nofollow` (ruling SCHED-1G3-XROBOTS = A): an App
+Router page cannot set a response header, so `middleware.ts` `bookingRewrite` sets it for `rest` = `""` (book) and
+`/manage`, next to `Referrer-Policy`; the API ops, the feed and every non-booking response do not get it.
 
 **Rule of the tree (measured in `sched-1g2`).** No module that runs in the browser may import a client module of the
 site tree (`ThemeInjector`, `RecaptchaProvider`, …) or `@amodx/shared` at runtime (type imports are fine): a client
@@ -798,16 +811,20 @@ runs: GET; hold, view, confirm, cancel, move: POST) → exactly one backend rout
 ≤ 8 KB (413), JSON (400), input check with the backend route's OWN schema, imported from `@amodx/shared` (`HoldRequestSchema`, `MoveBodySchema`,
 `KeyPart`, `LocalDateSchema`; moved there from the backend handlers by ruling SCHED-1G2-ZOD-DEP = C; the renderer
 imports no `zod` itself) — 400 in the backend's issue form; a malformed or absent link token → 404 `linkNotValid`, the
-backend's one answer; tenant record of `[siteId]` (absent → 403 `notAvailable`), then the call with `x-api-key` (renderer key) and
-`x-tenant-id` = the record's id; a body that passed the strict schema is forwarded as received; the backend status, JSON body and
+backend's one answer; tenant record of `[siteId]` (absent → 403 `notAvailable`), then the call with exactly `x-api-key` (renderer key),
+`x-tenant-id` = the record's id and, for a POST, `content-type` — no header of the browser's request is forwarded; a body that passed the strict schema is forwarded as received; the backend status, JSON body and
 `Retry-After` pass through. No `API_URL` / no key / a failed call → 503 `unavailable`. Feed: `<secret>.ics` (43-character
 base64url) → POST `/scheduling/visitor/feed` `{ resourceId, secret }`; every URL-holder failure → one 404 body.
 
-**Client address (§ 9.2) — GATE.** `TRUSTED_FORWARDED_POSITION` is `null` until the staging witness G13 records `k`; until
-then the proxy sends NO `x-viewer-address` (the backend then applies no address limit and sends no `remoteip`), and no
-tenant's booking page may be exposed to visitors. The TEMPORARY witness: `GET <base>/api/offer?witness=<probe address>`
-logs one line `[booking-witness TEMPORARY sched-1g2 G13] … xffEntries=… probeAtPositionFromRight=[…] cvaPresent=…
-cvaMatchesProbe=…` — counts and positions only, never an address; it is removed before `sched-1g` closes.
+**Client address (§ 9.2) — none, by ruling SCHED-ADDR-INFRA = A (human, 2026-11-22).** The staging witness G13 showed
+that the renderer receives one `X-Forwarded-For` value that the caller controls and no `CloudFront-Viewer-Address` (the
+renderer distribution's origin request policy is full at CloudFront's ten headers). So the proxy sends NO
+`x-viewer-address`, permanently in this version; the backend then applies no per-address limit and sends no
+`remoteip` to reCAPTCHA. What protects the anonymous hold: reCAPTCHA (a token minted on the tenant's page), at most
+five holds per email per hour and at most two open holds per email (both per tenant, § 9), and hold expiry (an
+unconfirmed hold ends after the tenant's `holdMinutes`). The witness (`offer?witness=`, its log line) is removed
+(`sched-1g3`): `offer` takes no parameter. The pure `packages/shared/src/client-address.ts` and the backend's handling of
+an absent header are unchanged.
 
 **Known limits.** `<html lang>` stays the tenant's when `?lang=` selects another language (the wrapper `<div lang>`
 carries the texts' language). Every page's RSC payload now lists `%5Fbook` among the static siblings of `[siteId]`
@@ -815,10 +832,11 @@ carries the texts' language). Every page's RSC payload now lists `%5Fbook` among
 that one item (ruling SCHED-1G2-ROOT-SIBLING = A, `cm1-byte-identity.mjs` `rootSiblingAllowance`, controls row
 `sched1g-root-sibling-controls`).
 
-**Tests.** Serving rows `sched1g-*` (`test/serving-contract/contract.test.mjs`; fixtures `SCHED1G`); unit
-`test/unit/sched-1g-pure.test.ts` (path, texts, `mapTenant`, structural rules, coverage of the booking keys),
-`sched-1g-proxy.test.ts` (forwarding, gate, witness, feed, no direct zod import, the input inventory: every
-proxy input absent / valid / malformed), `sched-1g-pages.test.ts` (jsdom: flows, G7, every refusal text, the lifetime
+**Tests.** Serving rows `sched1g-*` and `sched1g3-*` (`test/serving-contract/contract.test.mjs`; fixtures `SCHED1G`); unit
+`test/unit/sched-1g-pure.test.ts` (path, texts, `mapTenant` reCAPTCHA pair and scheduling switch, structural rules,
+coverage of the booking keys),
+`sched-1g-proxy.test.ts` (forwarding, no address and no browser header forwarded, the feed and its scheduling
+switch, no direct zod import, the input inventory: every proxy input absent / valid / malformed), `sched-1g-pages.test.ts` (jsdom: flows, G7, every refusal text, the lifetime
 rule, the selectors, recovery). Locale coverage file: `test/serving-contract/locale-1/sched-1g/coverage.json`.
 
 ## Authentication

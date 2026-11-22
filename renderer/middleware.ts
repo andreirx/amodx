@@ -145,11 +145,17 @@ function dynamicPath(siteId: string, restOfPath: string) {
 /**
  * SCHED-1G2: the rewrite of a public booking address to `/_book/<siteId><rest>` (branch A3 below). The manage page
  * carries the link token in its fragment (§ 8.2), so it also gets `Referrer-Policy: no-referrer`.
+ * SCHED-1G3 (ruling SCHED-1G3-XROBOTS = A): the two pages — book (`rest` = "") and manage — also get
+ * `X-Robots-Tag: noindex, nofollow`, the header form of the pages' robots meta (a page cannot set a response header).
+ * The API ops and the feed do not get it (they are not documents).
  */
 function bookingRewrite(request: NextRequest, siteId: string, rest: string) {
     const url = request.nextUrl.clone();
     url.pathname = bookingInternalPath(siteId, rest);
     const response = NextResponse.rewrite(url);
+    if (rest === '' || rest === '/manage') {
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    }
     if (rest === '/manage') {
         response.headers.set('Referrer-Policy', 'no-referrer');
     }

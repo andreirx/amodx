@@ -6,11 +6,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * the module boundary: the tenant read (`getTenantConfig`) and the renderer key (`getRendererKey`). Proves what the
  * serving rows cannot see (the suite has no backend): each op reaches EXACTLY ONE backend route, with the renderer key
  * and the tenant of the `[siteId]` segment (never one from the body or a browser header), a body rebuilt from checked
- * fields, NO `x-viewer-address` until the witness `k` is recorded, the pass-through answer, the feed's headers, and
- * logs without a token, secret or address.
+ * fields, NO `x-viewer-address` and no browser header ever (SCHED-1G3, ruling SCHED-ADDR-INFRA = A), the pass-through
+ * answer, the feed's headers and its scheduling switch (SCHED-1G3), and logs without a token, secret or address.
  */
 
-const tenants = vi.hoisted(() => ({ map: new Map<string, { id: string }>() }));
+const tenants = vi.hoisted(() => ({ map: new Map<string, { id: string; schedulingEnabled?: boolean }>() }));
 const key = vi.hoisted(() => ({ value: "renderer-key" }));
 vi.mock("@/lib/dynamo", () => ({ getTenantConfig: async (id: string) => tenants.map.get(id) ?? null }));
 vi.mock("@/lib/api-client", () => ({ getRendererKey: async () => key.value }));
@@ -19,7 +19,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalDateSchema } from "@amodx/shared";
-import { BOOKING_OPS, MAX_BODY_BYTES, TRUSTED_FORWARDED_POSITION, handleBookingApi, handleBookingFeed, viewerAddressHeader, witnessLine } from "@/lib/booking-proxy";
+import { BOOKING_OPS, MAX_BODY_BYTES, handleBookingApi, handleBookingFeed } from "@/lib/booking-proxy";
+import * as proxyModule from "@/lib/booking-proxy";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body: unknown };
 let calls: Call[];
@@ -33,7 +34,13 @@ const WHO = { email: "Ana@Example.test", name: "Ana", phone: "+40 700 000 000", 
 beforeEach(() => {
     process.env.API_URL = "https://api.example.test/";
     key.value = "renderer-key";
-    tenants.map = new Map([["shop.example.test", { id: "tenant-shop" }], ["tenant-nodomain", { id: "tenant-nodomain" }]]);
+    tenants.map = new Map([
+        ["shop.example.test", { id: "tenant-shop", schedulingEnabled: true }],
+        ["tenant-nodomain", { id: "tenant-nodomain", schedulingEnabled: true }],
+        // SCHED-1G3: a record with the switch off (`false`) and one without the attribute (absent = off, § 4.1).
+        ["off.example.test", { id: "tenant-off", schedulingEnabled: false }],
+        ["unset.example.test", { id: "tenant-unset" }],
+    ]);
     calls = [];
     reply = () => new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { "content-type": "application/json", "cache-control": "max-age=999" } });
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
@@ -198,37 +205,69 @@ describe("SCHED-1G2 proxy — inputs refused before forwarding (absent / valid /
     });
 });
 
-describe("SCHED-1G2 proxy — client address (§ 9.2) and the G13 witness", () => {
-    it("THE GATE: `k` is not recorded yet, so no x-viewer-address is sent whatever X-Forwarded-For holds", async () => {
-        expect(TRUSTED_FORWARDED_POSITION).toBeNull();
-        await post("hold", { intentId: INTENT, what: { kind: "seat", courseId: "c1", runId: "r1" }, who: WHO }, { "x-forwarded-for": "203.0.113.7, 198.51.100.4" });
-        expect(calls[0].headers["x-viewer-address"]).toBeUndefined();
-        expect(viewerAddressHeader("198.51.100.4")).toBeUndefined();
+describe("SCHED-1G3 proxy — no client address, no browser header (ruling SCHED-ADDR-INFRA = A, § 9.2)", () => {
+    /** Every header a browser could send to make the backend see an address, a tenant or a key. */
+    const BROWSER = {
+        "x-viewer-address": "203.0.113.7", "x-forwarded-for": "203.0.113.7, 198.51.100.4", "cloudfront-viewer-address": "198.51.100.4:4431",
+        "x-real-ip": "203.0.113.7", "x-tenant-id": "tenant-other", "x-api-key": "browser-key", cookie: "a=b", authorization: "Bearer x",
+    };
+    it("every op and the feed: the backend request carries exactly the renderer's headers, never x-viewer-address", async () => {
+        const sends: [string, () => Promise<Response>, boolean][] = [
+            ["offer", () => get("offer", "", BROWSER), false],
+            ["slots", () => get("slots", "?serviceId=s1&from=2026-12-01&to=2026-12-07", BROWSER), false],
+            ["runs", () => get("runs", "?courseId=c1", BROWSER), false],
+            ["hold", () => post("hold", { intentId: INTENT, recaptchaToken: "r", what: { kind: "seat", courseId: "c1", runId: "r1" }, who: WHO }, BROWSER), true],
+            ["view", () => post("view", { token: TOKEN }, BROWSER), true],
+            ["confirm", () => post("confirm", { token: TOKEN }, BROWSER), true],
+            ["cancel", () => post("cancel", { token: TOKEN }, BROWSER), true],
+            ["move", () => post("move", { token: TOKEN, to: { kind: "seat", runId: "r2" } }, BROWSER), true],
+        ];
+        expect(sends.map(([op]) => op).sort(), "precondition: every op of the table").toEqual(Object.keys(BOOKING_OPS).sort());
+        for (const [op, send, isPost] of sends) {
+            calls = [];
+            expect((await send()).status, op).toBe(200);
+            expect(calls, op).toHaveLength(1);
+            expect(calls[0].headers, op).toEqual({ "x-api-key": "renderer-key", "x-tenant-id": "tenant-shop", ...(isPost ? { "content-type": "application/json" } : {}) });
+        }
+        calls = [];
+        await handleBookingFeed("shop.example.test", "r1", `${SECRET}.ics`);
+        expect(calls[0].headers).toEqual({ "x-api-key": "renderer-key", "x-tenant-id": "tenant-shop", "content-type": "application/json" });
     });
-    it("once `k` is recorded: the § 9.2 worked table (k = 1 and k = 2) and the invalid cases", () => {
-        expect(viewerAddressHeader("198.51.100.4", 1)).toBe("198.51.100.4");
-        expect(viewerAddressHeader("203.0.113.7, 198.51.100.4", 1)).toBe("198.51.100.4");
-        expect(viewerAddressHeader("1.1.1.1, garbage, 198.51.100.4", 1)).toBe("198.51.100.4");
-        expect(viewerAddressHeader("203.0.113.7, 2001:db8::5", 1)).toBe("2001:db8::5");
-        expect(viewerAddressHeader("203.0.113.7, 198.51.100.4, 130.176.0.1", 2)).toBe("198.51.100.4");
-        expect(viewerAddressHeader(null, 1)).toBeUndefined();
-        expect(viewerAddressHeader("198.51.100.4", 2)).toBeUndefined();
-        expect(viewerAddressHeader("203.0.113.7, 999.1.1.1", 1)).toBeUndefined();
-    });
-    it("witness line: the count and the matching positions from the right, never an address", () => {
-        const line = witnessLine("203.0.113.7, 198.51.100.4", "198.51.100.4:4431", "198.51.100.4");
-        expect(line).toBe("[booking-witness TEMPORARY sched-1g2 G13] probeValid=true xffEntries=2 probeAtPositionFromRight=[1] cvaPresent=true cvaMatchesProbe=true");
-        expect(witnessLine("198.51.100.4, 203.0.113.7, 130.176.0.1", null, "::ffff:198.51.100.4"))
-            .toBe("[booking-witness TEMPORARY sched-1g2 G13] probeValid=true xffEntries=3 probeAtPositionFromRight=[3] cvaPresent=false cvaMatchesProbe=false");
-        expect(witnessLine(null, null, "not-an-ip")).toBe("[booking-witness TEMPORARY sched-1g2 G13] probeValid=false xffEntries=0 probeAtPositionFromRight=[] cvaPresent=false cvaMatchesProbe=false");
-    });
-    it("offer?witness=<probe> logs the witness line once and answers as offer does", async () => {
+    it("the TEMPORARY witness is gone: offer?witness= is refused (400, no call, no log line); the gate symbols are not exported", async () => {
         const res = await get("offer", "?witness=198.51.100.4", { "x-forwarded-for": "203.0.113.7, 198.51.100.4" });
-        expect(res.status).toBe(200);
-        expect(calls[0].url).toBe("https://api.example.test/scheduling/visitor/offer");
-        expect(logs.filter((l) => l.startsWith("[booking-witness"))).toEqual([
-            "[booking-witness TEMPORARY sched-1g2 G13] probeValid=true xffEntries=2 probeAtPositionFromRight=[1] cvaPresent=false cvaMatchesProbe=false",
-        ]);
+        expect(res.status).toBe(400);
+        expect(await res.json()).toMatchObject({ code: "invalid", issues: [{ path: "witness", message: "Unknown parameter." }] });
+        expect(calls).toHaveLength(0);
+        expect(logs.filter((l) => l.includes("witness"))).toEqual([]);
+        for (const name of ["witnessLine", "viewerAddressHeader", "TRUSTED_FORWARDED_POSITION"]) expect(name in proxyModule, name).toBe(false);
+    });
+    it("the proxy source holds no address extraction (no viewerAddress, no x-forwarded-for / cloudfront-viewer-address read)", () => {
+        const src = readFileSync(fileURLToPath(new URL("../../src/lib/booking-proxy.ts", import.meta.url)), "utf8");
+        const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");   // comments may name the ruling
+        expect(code).not.toMatch(/viewerAddress|x-viewer-address|x-forwarded-for|cloudfront-viewer-address/i);
+        expect(src, "control: the detector reads the real file (its header names the header)").toMatch(/x-viewer-address/);
+    });
+});
+
+describe("SCHED-1G3 scheduling switch — the feed answers 404 when it is off; the API ops are left to the backend", () => {
+    it("feed: switch false, switch absent, or no record → the one 404 linkNotValid, private no-store, no backend call", async () => {
+        for (const site of ["off.example.test", "unset.example.test", "nobody.example.test"]) {
+            const res = await handleBookingFeed(site, "r1", `${SECRET}.ics`);
+            expect(res.status, site).toBe(404);
+            expect(await res.json(), site).toEqual({ error: "This link is not valid.", code: "linkNotValid" });
+            expect(res.headers.get("cache-control"), site).toBe("private, no-store");
+        }
+        expect(calls).toHaveLength(0);
+        expect((await handleBookingFeed("shop.example.test", "r1", `${SECRET}.ics`)).status, "control: switch on").toBe(200);
+        expect(calls).toHaveLength(1);
+    });
+    it("API op with the switch off: forwarded; the backend's own 403 notAvailable is passed through", async () => {
+        reply = () => new Response(JSON.stringify({ error: "Booking is not available on this site.", code: "notAvailable" }), { status: 403, headers: { "content-type": "application/json" } });
+        const res = await handleBookingApi(new Request("https://off.example.test/_book/x/api/offer"), "off.example.test", "offer");
+        expect(res.status).toBe(403);
+        expect(await res.json()).toMatchObject({ code: "notAvailable" });
+        expect(calls).toHaveLength(1);
+        expect(calls[0].headers["x-tenant-id"]).toBe("tenant-off");
     });
 });
 
@@ -347,7 +386,8 @@ const INVENTORY: Inventory[] = [
     { input: "runs ?courseId", absent: () => get("runs", "?language=ro"), valid: () => get("runs", "?courseId=c1"), malformed: () => get("runs", "?courseId=a%23b"), absentStatus: 400, malformedStatus: 400 },
     { input: "runs ?language (optional)", absent: () => get("runs", "?courseId=c1"), valid: () => get("runs", "?courseId=c1&language=ro"), malformed: () => get("runs", `?courseId=c1&language=${"x".repeat(36)}`), absentStatus: 200, malformedStatus: 400 },
     { input: "runs ?all (optional)", absent: () => get("runs", "?courseId=c1"), valid: () => get("runs", "?courseId=c1&all=1"), malformed: () => get("runs", "?courseId=c1&all=true"), absentStatus: 200, malformedStatus: 400 },
-    { input: "offer ?witness (optional, temporary)", absent: () => get("offer"), valid: () => get("offer", "?witness=198.51.100.4"), malformed: () => get("offer", "?witness=1&witness=2"), absentStatus: 200, malformedStatus: 400 },
+    // SCHED-1G3: offer takes no parameter; any parameter (the former `?witness` included) is malformed.
+    { input: "offer: no parameter", absent: () => get("offer"), valid: () => get("offer"), malformed: () => get("offer", "?witness=198.51.100.4"), absentStatus: 200, malformedStatus: 400 },
     { input: "hold intentId", absent: holdWith((b) => { delete b.intentId; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.intentId = "11111111-1111-1111-1111-111111111111"; }), absentStatus: 400, malformedStatus: 400 },
     { input: "hold recaptchaToken (optional)", absent: holdWith((b) => { delete b.recaptchaToken; }), valid: holdWith(() => {}), malformed: holdWith((b) => { b.recaptchaToken = 7; }), absentStatus: 200, malformedStatus: 400 },
     { input: "hold resend (optional)", absent: holdWith((b) => { delete b.resend; }), valid: holdWith((b) => { b.resend = true; }), malformed: holdWith((b) => { b.resend = "yes"; }), absentStatus: 200, malformedStatus: 400 },

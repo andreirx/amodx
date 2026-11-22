@@ -2474,3 +2474,29 @@ test tenant and sent none because the tenant has no contact address (`due 1`, `n
 - Observations: the booking pages load Google Fonts through the tenant theme (a third-party request besides
   reCAPTCHA); English times are shown as `09:00 AM`.
 - Before production: the human approves the 98 Romanian booking texts (locale rule).
+
+### `sched-1g3` — shipped to `main` and to staging 2026-11-22 (operator closeout); `sched-1g` is complete
+
+- Human, 2026-11-22: the per-address hold limit is not built in this version (SCHED-ADDR-INFRA = A); "no
+  indexing no booking if disabled"; the Romanian booking texts are approved; booking texts must become editable
+  in the admin (follow-up `sched-labels-1`).
+- Scope: the TEMPORARY witness, `TRUSTED_FORWARDED_POSITION` and every address extraction are removed from the
+  renderer; a proxy request carries no `x-viewer-address` and forwards no address header from the browser. The
+  hold is protected by reCAPTCHA, five holds per email per hour, and the hold expiry. The book page, the manage
+  page and the feed answer 404 when the tenant's `schedulingEnabled` is not `true` (check in the booking tree,
+  no added read for other paths); the API proxies keep the backend's 403. Book and manage responses carry
+  `X-Robots-Tag: noindex, nofollow` (set in the booking rewrite helper of the middleware) and the robots meta.
+  Admin: a warning on the scheduling page when scheduling is on and the tenant has no contact address.
+- Review: builder `claude-opus-5-5`, reviewer `gpt-6.1-sol` (Codex), three cycles, approved. Operator rulings:
+  SCHED-1G3-XROBOTS = A (one change in the middleware's booking helper); SCHED-1G3-G7-ORACLE = A: row
+  `sched1g-g7-server` compared two streamed manage-page answers by bytes and failed 2 runs of 10; it now uses
+  the semantic comparison of `sched1g-g4` with a negative control (the byte comparators of existing tenant
+  pages are unchanged).
+- Operator gates, all exit 0; serving suite 141 / 141 on five consecutive runs (the builder reports ten).
+- Staging (operator, OBSERVED): diff code only, no IAM change (the diff and the deploy ran in one command; the
+  diff was read after the deploy, against the rule "read first" — recorded); 51 existing pages identical
+  before and after; with scheduling off the book and manage pages answer 404 on the preview form and on a
+  tenant host; with it on they answer 200 with `X-Robots-Tag: noindex, nofollow` and the robots meta; the
+  `witness` parameter is refused (400); no booking address in `sitemap.xml`. Manage-page walk passes again.
+- Still NOT RUN on a deployed stage: a hold accepted through the page. The reCAPTCHA badge on the staging
+  preview host still reads "Invalid domain for site key" (the key must list `d3kezt5niqwtgx.cloudfront.net`).

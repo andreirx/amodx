@@ -153,7 +153,11 @@ src/
     │                           #   differs from its default, weekAhead without sendToCustomer). Save buttons hidden for
     │                           #   editors (PUT /settings is TENANT_ADMIN; apiRequest signs out on 403). DELETE answers
     │                           #   204: deleteRequest treats apiRequest's JSON SyntaxError after a 2xx as success.
-    │                           #   Scheduling.test.ts: pure-logic tests of the payload and error-text helpers.
+    │                           #   SCHED-1G3: on + no integrations.contactEmail (absent or "", the backend's rule) →
+    │                           #   one warning line: the weekly planner mail and the owner copies of booking mails
+    │                           #   are not sent until a contact address is set; link to /settings (Notifications).
+    │                           #   needsContactAddressWarning decides; the address comes from the same GET /settings.
+    │                           #   Scheduling.test.ts: pure-logic tests of the payload, error-text and warning helpers.
     │                           #   Sidebar: group "Scheduling" for every site (the tenant list has no schedulingEnabled)
     │                           #   SCHED-1E2: the header links to the week planner and to services/weekly hours.
     │                           #   SCHED-1F2: and to "Courses and groups".

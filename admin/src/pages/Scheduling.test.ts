@@ -9,7 +9,7 @@ vi.mock("@/context/TenantContext", () => ({ useTenant: () => ({ currentTenant: n
 vi.mock("@/context/AuthContext", () => ({ useAuth: () => ({ userRole: "TENANT_ADMIN" }) }));
 vi.mock("aws-amplify/auth", () => ({ signOut: vi.fn(), fetchAuthSession: vi.fn() }));
 
-import { settingsFormOf, settingsPayload, editableTemplates, templatesPayload, schedulingErrorText, type EmailTemplate } from "./Scheduling";
+import { settingsFormOf, settingsPayload, editableTemplates, templatesPayload, schedulingErrorText, needsContactAddressWarning, type EmailTemplate } from "./Scheduling";
 import { ApiError } from "@/lib/api";
 
 const KEYS = ["hold", "confirmed", "cancelled", "moved", "unplaced", "reminder", "weekAhead"] as const;
@@ -107,5 +107,20 @@ describe("schedulingErrorText — the text shown for a refusal", () => {
         expect(schedulingErrorText(new ApiError(400, { error: "scheduling.timezone: a time zone is required when scheduling is enabled." }, "m")))
             .toBe("scheduling.timezone: a time zone is required when scheduling is enabled.");
         expect(schedulingErrorText(new Error("Network down"))).toBe("Network down");
+    });
+});
+
+describe("needsContactAddressWarning — SCHED-1G3: the warning that owner mails are not sent", () => {
+    it("scheduling on: absent, empty string or not a string → warn; a set address → no warning", () => {
+        expect(needsContactAddressWarning(true, undefined)).toBe(true);
+        expect(needsContactAddressWarning(true, "")).toBe(true);
+        expect(needsContactAddressWarning(true, null)).toBe(true);
+        expect(needsContactAddressWarning(true, 5)).toBe(true);
+        expect(needsContactAddressWarning(true, "owner@client-site.test")).toBe(false);
+    });
+    it("scheduling off: never a warning (no mail is due)", () => {
+        expect(needsContactAddressWarning(false, undefined)).toBe(false);
+        expect(needsContactAddressWarning(false, "")).toBe(false);
+        expect(needsContactAddressWarning(false, "owner@client-site.test")).toBe(false);
     });
 });

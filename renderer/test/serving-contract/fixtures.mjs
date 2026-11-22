@@ -1063,9 +1063,15 @@ const SL1E_ITEMS = [
 //    Romanian texts of the booking pages (rows G3, G12).
 // The booking backend is not reachable from the suite (no `API_URL` in the constructed environment, row iso1): the proxy
 // rows prove what the renderer decides before it forwards; forwarding is proven by test/unit/sched-1g-proxy.test.ts.
+// SCHED-1G3: the booking pages and the feed exist only when `schedulingEnabled === true` (`lib/booking-tenant.ts`), so
+// `studio` and `oneKey` store the switch on; `off` stores it `false` and `unset` has no such attribute (absent = off,
+// § 4.1) — both answer 404 on the book page, the manage page and the feed (rows sched1g3-*). Each of the two has a
+// home page, so its host is a wired site host (the control that the 404 comes from the switch, not the host gate).
 export const SCHED1G = {
     studio: { id: "sched1g-studio", host: "sched1g-studio.serving-contract.test", name: "SCHED1G Studio" },
     oneKey: { id: "sched1g-onekey", host: "sched1g-onekey.serving-contract.test", name: "SCHED1G Atelier" },
+    off: { id: "sched1g-off", host: "sched1g-off.serving-contract.test", name: "SCHED1G Off" },
+    unset: { id: "sched1g-unset", host: "sched1g-unset.serving-contract.test", name: "SCHED1G Unset" },
 };
 export const SCHED1G_SITE_KEY = "sched1g-tenant-site-key";
 export const SCHED1G_SECRET = "sched1g-tenant-secret-never-mapped";
@@ -1073,7 +1079,7 @@ export const SCHED1G_ONLY_SITE_KEY = "sched1g-site-key-without-secret";
 export const SCHED1G_MARKERS = { ga: "G-SCHED1G0001", pixel: "5551234567", paddle: "test_sched1g_paddle_token" };
 const SCHED1G_ITEMS = [
     {
-        ...siteTenant(SCHED1G.studio.id, SCHED1G.studio.host, SCHED1G.studio.name), locale: "en-US",
+        ...siteTenant(SCHED1G.studio.id, SCHED1G.studio.host, SCHED1G.studio.name), locale: "en-US", schedulingEnabled: true,
         recaptcha: { enabled: false, siteKey: SCHED1G_SITE_KEY, secretKey: SCHED1G_SECRET, threshold: 0.5 },
         integrations: {
             googleAnalyticsId: SCHED1G_MARKERS.ga, fbPixelId: SCHED1G_MARKERS.pixel,
@@ -1083,11 +1089,17 @@ const SCHED1G_ITEMS = [
     siteRouteItem(SCHED1G.studio.id, "/", "sched1g-studio-home"),
     siteContentItem(SCHED1G.studio.id, "sched1g-studio-home", "/", "SCHED1G Studio Home"),
     {
-        ...siteTenant(SCHED1G.oneKey.id, SCHED1G.oneKey.host, SCHED1G.oneKey.name), locale: "ro-RO",
+        ...siteTenant(SCHED1G.oneKey.id, SCHED1G.oneKey.host, SCHED1G.oneKey.name), locale: "ro-RO", schedulingEnabled: true,
         recaptcha: { enabled: false, siteKey: SCHED1G_ONLY_SITE_KEY, threshold: 0.5 },
     },
     siteRouteItem(SCHED1G.oneKey.id, "/", "sched1g-onekey-home"),
     siteContentItem(SCHED1G.oneKey.id, "sched1g-onekey-home", "/", "SCHED1G Atelier Home"),
+    { ...siteTenant(SCHED1G.off.id, SCHED1G.off.host, SCHED1G.off.name), locale: "en-US", schedulingEnabled: false },
+    siteRouteItem(SCHED1G.off.id, "/", "sched1g-off-home"),
+    siteContentItem(SCHED1G.off.id, "sched1g-off-home", "/", "SCHED1G Off Home"),
+    { ...siteTenant(SCHED1G.unset.id, SCHED1G.unset.host, SCHED1G.unset.name), locale: "en-US" },
+    siteRouteItem(SCHED1G.unset.id, "/", "sched1g-unset-home"),
+    siteContentItem(SCHED1G.unset.id, "sched1g-unset-home", "/", "SCHED1G Unset Home"),
 ];
 
 /** Every item the stub can serve. Order is irrelevant; lookups are by key. */

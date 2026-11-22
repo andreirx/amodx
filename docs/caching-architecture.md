@@ -119,7 +119,7 @@ props. The cacheable shells pass `false / "" / null / {} / true`.
 wire with `404` + `private, no-store`, so there is no second public URL serving the same
 tenant content uncached.
 
-### Booking pages (slice `sched-1g2`; `docs/slices/sched-1.md` § 10.1, § 12)
+### Booking pages (slices `sched-1g2`, `sched-1g3`; `docs/slices/sched-1.md` § 10.1, § 12)
 
 A third route family, beside the ISR route and its twin. It is never stored by either cache layer.
 
@@ -151,9 +151,30 @@ Rules (executable form: rows `sched1g-*` of `renderer/test/serving-contract/cont
   pages; the book page's only external script is reCAPTCHA; the manage page has none and answers
   `Referrer-Policy: no-referrer`. Row `sched1g-g6`.
 - **A GET changes nothing (G7).** The link token is in the fragment, so the server never receives it; write ops refuse GET
-  (`405`, `Allow: POST`). Row `sched1g-g7-server`; the browser half (fragment removed, `POST view` first, `POST confirm`
-  only on the button) is `test/unit/sched-1g-pages.test.ts`.
+  (`405`, `Allow: POST`). Row `sched1g-g7-server`: two GETs of the manage page give the same page by meaning
+  (status, cache headers, visible text, scripts, mounted components — the shell carries no per-request booking
+  content), with the book page as the control that must differ. Since `sched-1g3` (ruling SCHED-1G3-G7-ORACLE = A)
+  this is the oracle of row `sched1g-g4`, not byte equality: the page is streamed and Next places the metadata by
+  timing (byte equality failed 2 of 10 runs). The row does not show that no backend call happened (the suite has no
+  booking backend). The browser half (fragment removed, `POST view` first, `POST confirm` only on the button) is
+  `test/unit/sched-1g-pages.test.ts`.
 - **reCAPTCHA pair (G8).** `mapTenant` exposes the tenant's site key only when both keys are stored. Row `sched1g-g8`.
+- **Scheduling switch (`sched-1g3`).** The book page, the manage page and the feed answer `404`, never stored, when the
+  tenant has no record or its `schedulingEnabled` is not exactly `true` (`renderer/src/lib/booking-tenant.ts`): the
+  pages through the tree's force-dynamic not-found, the feed through its one `404 linkNotValid` (`private, no-store`,
+  no backend call). Same on a domain host and on the preview form; on → served. The check is in the booking tree,
+  where each surface already reads the tenant record: no new read, and the middleware gains none. The API ops are not
+  gated by the renderer (the backend's `403 notAvailable` passes through). Row `sched1g3-switch`.
+- **Not indexed (`sched-1g3`).** Both pages carry `<meta name="robots" content="noindex, nofollow">`; `sitemap.xml`
+  holds no booking address. Both pages also answer `X-Robots-Tag: noindex, nofollow`, set by `renderer/middleware.ts`
+  `bookingRewrite` (ruling SCHED-1G3-XROBOTS = A; a page cannot set a response header), on the domain and the preview
+  form; the API ops, the feed and non-booking responses do not get it. Row `sched1g3-noindex`.
+- **No client address (`sched-1g3`, ruling SCHED-ADDR-INFRA = A).** The proxy forwards exactly the renderer key,
+  `x-tenant-id` and, for a POST, `content-type` — never `x-viewer-address` and no browser header. Unit
+  `renderer/test/unit/sched-1g-proxy.test.ts`.
+- **Measured (`sched-1g3`, EXECUTED 2026-11-22, `cd renderer && npm run test:serving`):** 139 / 139 on the tree
+  before the slice; on the final tree, ten consecutive runs, each 141 / 141, exit 0 (the 139 earlier rows +
+  `sched1g3-switch` + `sched1g3-noindex`).
 - **Proxy inputs.** Absent / valid / malformed for every query parameter and body: a valid input reaches the forward
   step (`503 unavailable` in the suite, which has no backend), the others are refused before it. Row
   `sched1g-proxy-inputs`; what is forwarded, the checks (the backend route's own schemas from `@amodx/shared`),

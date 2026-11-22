@@ -189,6 +189,10 @@ function mapTenant(item: any): TenantConfig {
         // (`resolveRecaptchaConfig` branch 1, backend/src/lib/recaptcha.ts). Otherwise absent, and every page uses the
         // deployment key, which pairs with the deployment secret. The secret and the threshold are never mapped.
         ...(hasOwnRecaptchaPair(item.recaptcha) ? { recaptcha: { siteKey: item.recaptcha.siteKey } } : {}),
+        // SCHED-1G3: the scheduling switch, read by the booking pages and the feed (`lib/booking-tenant.ts`). Mapped ONLY
+        // when it is exactly `true`; absent or any other value stays absent (= off, § 4.1), so the mapped record of a
+        // tenant without scheduling is unchanged. The other scheduling attributes are not mapped.
+        ...(item.schedulingEnabled === true ? { schedulingEnabled: true } : {}),
         urlPrefixes: urlPrefixesOf(item.urlPrefixes),   // CDL-2 (§ 7.1): per key, the saved path, else the English default
         quickContact: item.quickContact || undefined,
         // CAT-QUOTE-1 (CQ-IMPL-MAPTENANT = A): the visitor contact channels — the quote dialog and the bar fallbacks.

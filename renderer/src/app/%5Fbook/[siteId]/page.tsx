@@ -5,9 +5,11 @@
 // (`mapTenant`, § 9.1), else the deployment key. It is a plain `<script async>` rendered here, NOT the site's
 // `RecaptchaProvider` client component: a client module shared with the site tree regroups the client chunks of every
 // existing page (measured, build report step 3). Force-dynamic: never stored (row G1).
+// SCHED-1G3: 404 (the tree's not-found) when the tenant has no record or scheduling is off (`getBookingTenant`); the
+// robots meta `noindex, nofollow` keeps the page out of search indexes (rows sched1g3-*).
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTenantConfig } from "@/lib/dynamo";
+import { getBookingTenant } from "@/lib/booking-tenant";
 import { bookingLanguage, bookingTexts } from "@/lib/booking-text";
 import { BookFlow } from "./_components/BookFlow";
 import { PageShell } from "./_components/PageShell";
@@ -22,16 +24,16 @@ const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : u
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
     const { siteId } = await params;
-    const config = await getTenantConfig(siteId);
+    const config = await getBookingTenant(siteId);
     if (!config) return {};
     const texts = bookingTexts(bookingLanguage(one((await searchParams).lang), config.locale).language);
-    return { title: `${texts.bookTitle} | ${config.name}` };
+    return { title: `${texts.bookTitle} | ${config.name}`, robots: { index: false, follow: false } };
 }
 
 export default async function BookPage({ params, searchParams }: Props) {
     const { siteId } = await params;
     const query = await searchParams;
-    const config = await getTenantConfig(siteId);
+    const config = await getBookingTenant(siteId);
     if (!config) notFound();
     const { language, locale } = bookingLanguage(one(query.lang), config.locale);
     const texts = bookingTexts(language);

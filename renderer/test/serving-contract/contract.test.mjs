@@ -3990,6 +3990,21 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.match((await at(S1G_RO.host, "/_booking/manage?lang=en-GB")).body, />Your booking<\/h1>/, "a regional tag selects its language");
         });
 
+        /** RULE (SCHED-1G3, ruling SCHED-1G3-G7-ORACLE = A): a booking page is streamed (force-dynamic), and Next places
+         *  the metadata (`<title>`, robots meta) in `<head>` or behind a Suspense `<template>` by timing — measured in
+         *  sched-1g2 (row g4) and sched-1g3 (row g7-server failed 2 of 10 runs on byte equality). So two answers of a
+         *  booking page are compared by what they MEAN, never by bytes: status, cache-control, content-type, the visible
+         *  text as a sorted multiset, the sorted script sources, the mounted booking components. Used by rows g4, g7-server. */
+        const bookingPageMeaning = (res) => ({
+            status: res.status,
+            cacheControl: res.header("cache-control"),
+            contentType: res.header("content-type"),
+            // As a sorted multiset: Next streams the metadata, so the <title> item moves between requests (measured).
+            text: extractVisibleText(res.body).map((item) => JSON.stringify(item)).sort(),
+            scripts: [...res.body.matchAll(/<script[^>]*\ssrc="([^"]*)"/g)].map((m) => m[1]).sort(),
+            components: [...res.body.matchAll(/\\"(BookFlow|ManageView)\\"\]/g)].map((m) => m[1]).sort(),
+        });
+
         // Oracle: what the answer MEANS, not its bytes. Measured (build report, step 10): two requests WITHOUT any cookie
         // already differ in bytes — React streams the font hint row, the script tags and the <title> in a timing-dependent order — so
         // byte equality would test the stream, not the cookie. Compared: status, cache-control, content-type, the visible
@@ -4015,15 +4030,7 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
         });
 
         test("(sched1g-g4) the session cookie does not change the answer: same status, cache headers, visible text, scripts and components; no twin", async () => {
-            const meaning = (res) => ({
-                status: res.status,
-                cacheControl: res.header("cache-control"),
-                contentType: res.header("content-type"),
-                // As a sorted multiset: Next streams the metadata, so the <title> item moves between requests (measured).
-                text: extractVisibleText(res.body).map((item) => JSON.stringify(item)).sort(),
-                scripts: [...res.body.matchAll(/<script[^>]*\ssrc="([^"]*)"/g)].map((m) => m[1]).sort(),
-                components: [...res.body.matchAll(/\\"(BookFlow|ManageView)\\"\]/g)].map((m) => m[1]).sort(),
-            });
+            const meaning = bookingPageMeaning;
             const jars = ["next-auth.session-token=abc", "next-auth.session-token.0=x; next-auth.session-token.1=y", "__Secure-next-auth.session-token=abc"];
             for (const p of ["/_booking", "/_booking/manage", "/_booking?frame=1"]) {
                 const without = meaning(await at(S1G.host, p));
@@ -4105,14 +4112,19 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
             assert.equal(book.header("referrer-policy"), undefined, "the header is the manage page's only");
         });
 
-        test("(sched1g-g7-server) a GET of the link changes nothing: the token never reaches the server, the page makes no booking call, GET is refused on every write op", async () => {
-            // Two GETs of the link page give the same bytes: the server holds no booking data for the page (the token is in
-            // the fragment, which an HTTP client never sends); the browser half (fragment removed, POST view first, POST
-            // confirm only on the button) is test/unit/sched-1g-pages.test.ts.
-            const a = await at(S1G.host, "/_booking/manage");
-            const b = await at(S1G.host, "/_booking/manage");
+        test("(sched1g-g7-server) two GETs of the manage page give the same page by meaning (status, cache headers, visible text, scripts, components); GET is refused on every write op", async () => {
+            // What this shows: the server answers the link page with one shell that carries no per-request booking content —
+            // two GETs compare equal under `bookingPageMeaning` (SCHED-1G3-G7-ORACLE = A; byte equality is not valid for a
+            // streamed page). The link token is in the URL fragment, which an HTTP client does not send, so these GETs carry
+            // none. It does NOT show that no backend call happened (the suite has no booking backend at all). The browser
+            // half (fragment removed, POST view first, POST confirm only on the button) is test/unit/sched-1g-pages.test.ts.
+            const a = bookingPageMeaning(await at(S1G.host, "/_booking/manage"));
+            const b = bookingPageMeaning(await at(S1G.host, "/_booking/manage"));
             assert.equal(a.status, 200);
-            assert.equal(a.body, b.body, "the manage shell differs between two GETs");
+            assert.deepEqual(a.components, ["ManageView"], "precondition: the payload mounts the manage view");
+            assert.deepEqual(b, a, "two GETs of the manage page differ in meaning");
+            // Negative control: the comparison tells another page apart (the book page of the same tenant).
+            assert.notDeepEqual(bookingPageMeaning(await at(S1G.host, "/_booking")), a, "control: the book page compares equal to the manage page");
             for (const op of ["hold", "view", "confirm", "cancel", "move"]) {
                 const res = await at(S1G.host, `/_booking/api/${op}`);
                 assert.equal(res.status, 405, `GET ${op}`);
@@ -4180,6 +4192,104 @@ describe("renderer serving contract (docs/caching-architecture.md)", { concurren
                 assert.equal(res.status, status, `${label}: ${res.status} ${res.body}`);
                 assert.equal(JSON.parse(res.body).code, code, label);
                 assertNeverStored(res, label);
+            }
+        });
+
+        // ── ROWS (sched1g3-*) — SCHED-1G3 (docs/slices/sched-1.md § 25 `sched-1g3`): the booking pages and the feed exist
+        // only when the tenant's `schedulingEnabled` is exactly `true` (`lib/booking-tenant.ts`); the pages are not indexed.
+        // Fixtures SCHED1G: `studio` and `oneKey` on, `off` (`false`) and `unset` (no attribute) off.
+        const S1G_OFF = [SCHED1G.off, SCHED1G.unset];
+        /** The three gated surfaces under one public base (`/_booking` on a domain host, `/_site/<id>/_booking` on preview). */
+        const surfaces = (base) => ({ book: base, manage: `${base}/manage`, feed: `${base}/feed/r1/${FEED_SECRET}.ics` });
+
+        test("(sched1g3-switch) scheduling off or no tenant record → the book page, the manage page and the feed answer 404, never stored, on a domain host and on the preview form; on → served; the API ops stay with the backend", async () => {
+            /** The booking tree's not-found for a page: a 404 HTML document of the force-dynamic tree, no booking component. */
+            const assertPageNotFound = (res, what) => {
+                assert.equal(res.status, 404, `${what}: ${res.status}`);
+                assert.match(res.header("content-type") ?? "", /text\/html/, `${what}: not the tree's HTML not-found`);
+                assert.doesNotMatch(res.body, /\\"(BookFlow|ManageView)\\"\]/, `${what}: a booking component is mounted`);
+                assertNeverStored(res, what);
+            };
+            const assertFeedNotFound = (res, what) => {
+                assert.equal(res.status, 404, `${what}: ${res.status}`);
+                assert.deepEqual(JSON.parse(res.body), { error: "This link is not valid.", code: "linkNotValid" }, what);
+                assertNeverStored(res, what);
+            };
+            const forms = (t) => [[t.host, surfaces("/_booking")], [PREVIEW_HOST, surfaces(`/_site/${t.id}/_booking`)]];
+            // Off: switch `false` and switch absent.
+            for (const t of S1G_OFF) {
+                // Control: the host is a wired site host, so the 404 below comes from the switch, not the unknown-host gate.
+                assert.equal((await at(t.host, "/")).status, 200, `control: ${t.id} home`);
+                for (const [host, s] of forms(t)) {
+                    assertPageNotFound(await at(host, s.book), `${t.id} ${host} book`);
+                    assertPageNotFound(await at(host, s.manage), `${t.id} ${host} manage`);
+                    assertPageNotFound(await at(host, `${s.book}?frame=1&lang=ro`), `${t.id} ${host} book with a query`);
+                    assertFeedNotFound(await at(host, s.feed), `${t.id} ${host} feed`);
+                }
+                // The API op is not gated by the renderer: it passes the proxy's checks and reaches the forward step (503 in
+                // the suite, which has no backend); deployed, the backend answers its own 403 `notAvailable`.
+                const op = await at(t.host, "/_booking/api/offer");
+                assert.equal(op.status, 503, `${t.id} api/offer: ${op.status}`);
+                assert.equal(JSON.parse(op.body).code, "unavailable");
+            }
+            // No tenant record: the preview form reaches the tree (404 from the tree); a domain host without a tenant is the
+            // middleware's unknown-host 404 for every path.
+            for (const [label, res] of [
+                ["preview book", await at(PREVIEW_HOST, "/_site/sched1g-nobody/_booking")],
+                ["preview manage", await at(PREVIEW_HOST, "/_site/sched1g-nobody/_booking/manage")],
+            ]) assertPageNotFound(res, `no record ${label}`);
+            assertFeedNotFound(await at(PREVIEW_HOST, `/_site/sched1g-nobody/_booking/feed/r1/${FEED_SECRET}.ics`), "no record preview feed");
+            for (const p of Object.values(surfaces("/_booking"))) {
+                const res = await at(UNKNOWN_HOST, p);
+                assert.equal(res.status, 404, `unknown host ${p}`);
+                assert.match(res.header("cache-control"), /private, no-store/, `unknown host ${p}`);
+            }
+            // On (positive control, both forms): book and manage 200 with their component; the feed reaches the forward step.
+            for (const [host, s] of forms(S1G)) {
+                const book = await at(host, s.book);
+                assert.equal(book.status, 200, `${host} book`);
+                assert.match(book.body, /\\"BookFlow\\"\]/, `${host} book: the flow is mounted`);
+                const manage = await at(host, s.manage);
+                assert.equal(manage.status, 200, `${host} manage`);
+                assert.match(manage.body, /\\"ManageView\\"\]/, `${host} manage: the view is mounted`);
+                const feed = await at(host, s.feed);
+                assert.equal(feed.status, 503, `${host} feed: passed the switch and reached the forward step`);
+            }
+            assert.deepEqual((await bookingEntries()).map((e) => e.key), [], "an ISR entry under the booking tree");
+        });
+
+        test("(sched1g3-noindex) the book and manage pages send X-Robots-Tag and carry robots meta noindex, nofollow, on the domain and the preview form; no other response gets the header; no booking address is in sitemap.xml", async () => {
+            const ROBOTS = /<meta name="robots" content="noindex, nofollow"\/>/;
+            const pages = [
+                [S1G.host, "/_booking"], [S1G.host, "/_booking/manage"], [S1G_RO.host, "/_booking?frame=1"], [S1G_RO.host, "/_booking/manage?lang=en"],
+                [PREVIEW_HOST, `/_site/${S1G.id}/_booking`], [PREVIEW_HOST, `/_site/${S1G.id}/_booking/manage`],
+            ];
+            for (const [host, p] of pages) {
+                const res = await at(host, p);
+                assert.equal(res.status, 200, `${host}${p}`);
+                assert.equal(res.header("x-robots-tag"), "noindex, nofollow", `${host}${p}: X-Robots-Tag`);
+                assert.equal((res.body.match(new RegExp(ROBOTS, "g")) ?? []).length, 1, `${host}${p}: robots meta once`);
+            }
+            // The header is the two pages' only: not on an API op, not on the feed (booking responses that are not documents).
+            for (const p of ["/_booking/api/offer", `/_booking/feed/r1/${FEED_SECRET}.ics`]) {
+                assert.equal((await at(S1G.host, p)).header("x-robots-tag"), undefined, `${p}: X-Robots-Tag`);
+            }
+            // Preservation control: non-booking pages of existing tenants (domain and preview form, a near-miss path, a
+            // sitemap) carry neither the header nor a noindex meta.
+            for (const [host, p] of [
+                [CM1.content.host, "/"], [CM1.content.host, "/about"], [S1G.host, "/"], [PREVIEW_HOST, `/_site/${CM1.content.id}`],
+                [CM1.content.host, "/_bookingx"], [S1G.host, "/sitemap.xml"],
+            ]) {
+                const res = await at(host, p);
+                assert.equal(res.header("x-robots-tag"), undefined, `${host}${p}: X-Robots-Tag on a non-booking response`);
+                assert.doesNotMatch(res.body, /noindex/, `${host}${p}: a noindex meta`);
+            }
+            // sitemap.xml lists the tenant's pages (positive control) and no booking address, in either spelling.
+            for (const t of [S1G, S1G_RO]) {
+                const map = await at(t.host, "/sitemap.xml");
+                assert.equal(map.status, 200, `${t.id} sitemap`);
+                assert.ok(map.body.includes(`<loc>https://${t.host}/</loc>`), `control: ${t.id} sitemap lists the home page`);
+                assert.doesNotMatch(map.body, /_booking|_book\b|%5Fbook/i, `${t.id} sitemap lists a booking address`);
             }
         });
 

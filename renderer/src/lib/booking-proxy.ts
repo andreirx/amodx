@@ -8,7 +8,14 @@
  *   - `x-tenant-id` = the id of the tenant record found for the `[siteId]` route segment. That segment is written only
  *     by the middleware (the request host, or the id of a `/_site/<id>/_booking` path on a preview host); a wire
  *     request to the internal tree is refused there (row G5). No tenant comes from the body or a browser header;
- *   - `x-viewer-address` only when the trusted `X-Forwarded-For` position is recorded (see `TRUSTED_FORWARDED_POSITION`);
+ *   - NO `x-viewer-address`, permanently in this version (ruling SCHED-ADDR-INFRA = A, 2026-11-22; § 9.2): the staging
+ *     witness G13 showed that the renderer receives one `X-Forwarded-For` value that the caller controls and no
+ *     `CloudFront-Viewer-Address` (the origin request policy is full at ten headers), so no trusted client address
+ *     exists here. The backend then applies no per-address limit and sends no `remoteip`. What protects the anonymous
+ *     hold (§ 9, backend `visitor/holds.ts`): reCAPTCHA (a token minted on the tenant's page), at most five holds per
+ *     email per hour and at most two open holds per email (both counted per tenant), and hold expiry (an unconfirmed
+ *     hold ends after the tenant's `holdMinutes`). No browser header is forwarded: the backend request carries only
+ *     the headers `forward` writes;
  *   - a body that passed the route's own strict schema from `@amodx/shared` (size ≤ 8 KB first; checked BEFORE anything
  *     is forwarded), so it holds known fields only.
  * The backend status and JSON body are passed through; the answer is `Cache-Control: private, no-store` (the feed:
@@ -20,52 +27,13 @@
  *   with the same frame (method, size, tenant, key, pass-through) written eight times.
  * - `forward` — users: the API handler and the feed handler; axis: none; rejected: two copies of the backend call.
  */
-import { HoldRequestSchema, KeyPart, LocalDateSchema, MoveBodySchema, viewerAddress } from "@amodx/shared";
+import { HoldRequestSchema, KeyPart, LocalDateSchema, MoveBodySchema } from "@amodx/shared";
 import { getTenantConfig } from "@/lib/dynamo";
+import { getBookingTenant } from "@/lib/booking-tenant";
 import { getRendererKey } from "@/lib/api-client";
 
 /** § 10.1: a request body larger than this is refused (413) before it is parsed. */
 export const MAX_BODY_BYTES = 8 * 1024;
-
-/**
- * § 9.2 SCHED-ADDR-LIMIT, staging witness G13 — the trusted position `k` of the viewer in `X-Forwarded-For` (counted
- * from the right, 1-based: the viewer is entry `e[n − k]`). `null` = NOT YET RECORDED: the witness has not run, so the
- * proxy sends NO `x-viewer-address` and the backend applies no address limit and sends no `remoteip` (§ 9.2 "missing").
- * EXPOSURE GATE (§ 9.2, ruling SCHED-ADDR-WITNESS-STAGE = B): no tenant's booking page is exposed to visitors
- * (`schedulingEnabled` on for a real tenant, or a `sched-frame-1` snippet handed out) until G13 has passed on staging
- * and its `k` is written here and in the `sched-1g` record.
- */
-export const TRUSTED_FORWARDED_POSITION: number | null = null;
-
-/** The `x-viewer-address` value for one request, or `undefined` (no address sent) — the gate above. */
-export function viewerAddressHeader(forwardedFor: string | null, k: number | null = TRUSTED_FORWARDED_POSITION): string | undefined {
-    if (k === null) return undefined;
-    const chosen = viewerAddress(forwardedFor ?? undefined, "xff", k);
-    return chosen.ok ? chosen.value : undefined;
-}
-
-/**
- * TEMPORARY — SCHED-1G2 witness of § 9.2 (row G13); REMOVE before `sched-1g` closes (with the `witness` query
- * parameter of `offer`). The log line for one witness request: the number of `X-Forwarded-For` entries, the positions
- * counted from the right (1-based, = the candidate `k`) whose entry equals the probe address the operator sent, whether
- * `CloudFront-Viewer-Address` is present and whether its address equals the probe. NEVER an address or a header value.
- * Comparison after the shared normalization (`viewerAddress`), so `::ffff:198.51.100.4` equals `198.51.100.4`.
- */
-export function witnessLine(forwardedFor: string | null, viewerAddressValue: string | null, probe: string): string {
-    const probeAddress = viewerAddress(probe, "xff", 1);
-    const entries = forwardedFor === null ? [] : forwardedFor.split(",");
-    const positions: number[] = [];
-    if (probeAddress.ok) {
-        entries.forEach((entry, i) => {
-            const a = viewerAddress(entry, "xff", 1);
-            if (a.ok && a.value === probeAddress.value) positions.push(entries.length - i);
-        });
-    }
-    const cva = viewerAddressValue === null ? null : viewerAddress(viewerAddressValue, "cva", 1);
-    return `[booking-witness TEMPORARY sched-1g2 G13] probeValid=${probeAddress.ok} xffEntries=${entries.length} ` +
-        `probeAtPositionFromRight=[${positions.reverse().join(",")}] cvaPresent=${viewerAddressValue !== null} ` +
-        `cvaMatchesProbe=${cva !== null && cva.ok && probeAddress.ok && cva.value === probeAddress.value}`;
-}
 
 // ── Input checks ───────────────────────────────────────────────────────────────────────────────────────────────────
 // RULE (review-0 S1G2-R2; operator ruling SCHED-1G2-ZOD-DEP = C): a request is checked with the SAME schema its backend
@@ -114,7 +82,7 @@ function queryOf(params: URLSearchParams, allowed: string[]): Checked<Record<str
 // ── The operations ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** What one checked request forwards: the backend path (with its query) and, for a POST, the JSON body. */
-type Forward = { path: string; body?: Record<string, unknown>; witnessProbe?: string };
+type Forward = { path: string; body?: Record<string, unknown> };
 type Prepared = { ok: true; forward: Forward } | { ok: false; status: number; code: string; error: string; issues?: Issue[] };
 
 const invalid = (issues: Issue[]): Prepared => ({ ok: false, status: 400, code: "invalid", error: "The request is not valid.", issues });
@@ -140,11 +108,8 @@ export const BOOKING_OPS: Readonly<Record<string, GetOp | PostOp>> = {
     offer: {
         method: "GET",
         prepare: (query) => {
-            // `witness` — TEMPORARY (G13): the operator's probe address; it changes nothing in the answer.
-            const q = queryOf(query, ["witness"]);
-            if (!q.ok) return invalid(q.issues);
-            const probe = q.value.witness;
-            return { ok: true, forward: { path: "/scheduling/visitor/offer", ...(probe !== null ? { witnessProbe: probe } : {}) } };
+            const q = queryOf(query, []);   // the backend route takes no parameter
+            return q.ok ? { ok: true, forward: { path: "/scheduling/visitor/offer" } } : invalid(q.issues);
         },
     },
     slots: {
@@ -246,11 +211,12 @@ async function readBoundedText(req: Request): Promise<{ ok: true; text: string }
 }
 
 /**
- * One backend call: `POST` when `body` is given, else `GET`; renderer key, `x-tenant-id`, `x-viewer-address` (when the
- * gate gives one). `null` → the renderer cannot call the backend (no `API_URL`, no key, or the call failed): the
- * caller answers 503. The failure is logged with the route only.
+ * One backend call: `POST` when `body` is given, else `GET`; exactly the headers written here — the renderer key,
+ * `x-tenant-id` and, for a POST, `content-type`. Never `x-viewer-address` (ruling SCHED-ADDR-INFRA = A) and never a
+ * header of the browser's request. `null` → the renderer cannot call the backend (no `API_URL`, no key, or the call
+ * failed): the caller answers 503. The failure is logged with the route only.
  */
-export async function forward(route: string, tenantId: string, viewer: string | undefined, body?: Record<string, unknown>)
+export async function forward(route: string, tenantId: string, body?: Record<string, unknown>)
     : Promise<globalThis.Response | null> {
     const apiUrl = process.env.API_URL?.replace(/\/$/, "");
     if (!apiUrl) {
@@ -263,7 +229,6 @@ export async function forward(route: string, tenantId: string, viewer: string | 
         return null;
     }
     const headers: Record<string, string> = { "x-api-key": key, "x-tenant-id": tenantId };
-    if (viewer !== undefined) headers["x-viewer-address"] = viewer;
     if (body !== undefined) headers["content-type"] = "application/json";
     try {
         return await fetch(`${apiUrl}${route}`, {
@@ -309,11 +274,7 @@ export async function handleBookingApi(req: Request, siteId: string, op: string)
     const config = await getTenantConfig(siteId);
     if (config === null) return refusal(403, "notAvailable", "Booking is not available on this site.");
 
-    const forwardedFor = req.headers.get("x-forwarded-for");
-    if (prepared.forward.witnessProbe !== undefined) {
-        console.log(witnessLine(forwardedFor, req.headers.get("cloudfront-viewer-address"), prepared.forward.witnessProbe));
-    }
-    const answer = await forward(prepared.forward.path, config.id, viewerAddressHeader(forwardedFor), prepared.forward.body);
+    const answer = await forward(prepared.forward.path, config.id, prepared.forward.body);
     if (answer === null) return unavailable();
     const retryAfter = answer.headers.get("retry-after");
     return new Response(await answer.text(), {
@@ -332,15 +293,16 @@ const FEED_FILE = /^([A-Za-z0-9_-]{43})\.ics$/;
 /**
  * `<base>/feed/<resourceId>/<secret>.ics` → POST `/scheduling/visitor/feed` `{ resourceId, secret }` (a POST keeps the
  * secret out of the API logs, § 10.2). One answer for a URL holder (§ 12): a malformed resource id or file name, a
- * tenant without a record, and every 404 of the backend are 404 `linkNotValid`, the same body. 200 → the backend's
+ * tenant without a record, a tenant with scheduling off (SCHED-1G3, `getBookingTenant`; answered here, no backend
+ * call), and every 404 of the backend are 404 `linkNotValid`, the same body, `private, no-store`. 200 → the backend's
  * calendar text, `text/calendar`, `Cache-Control: private, max-age=300` (§ 12; `private` keeps it out of CloudFront).
  */
 export async function handleBookingFeed(siteId: string, resourceId: string, file: string): Promise<Response> {
     const match = FEED_FILE.exec(file);
     if (match === null || resourceId.length < 1 || resourceId.length > 200 || resourceId.includes("#")) return linkNotValidResponse();
-    const config = await getTenantConfig(siteId);
-    if (config === null) return linkNotValidResponse();
-    const answer = await forward("/scheduling/visitor/feed", config.id, undefined, { resourceId, secret: match[1] });
+    const config = await getBookingTenant(siteId);
+    if (config === null) return linkNotValidResponse();   // no record, or scheduling off (SCHED-1G3): no backend call
+    const answer = await forward("/scheduling/visitor/feed", config.id, { resourceId, secret: match[1] });
     if (answer === null) return unavailable();
     if (answer.status === 404) return linkNotValidResponse();
     if (answer.status !== 200) {

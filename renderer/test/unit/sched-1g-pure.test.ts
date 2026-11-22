@@ -188,6 +188,27 @@ describe("SCHED-1G2 mapTenant — one reCAPTCHA key pair (§ 9.1, G8)", () => {
     });
 });
 
+describe("SCHED-1G3 mapTenant — the scheduling switch (read by lib/booking-tenant.ts)", () => {
+    beforeEach(() => { process.env.TABLE_NAME = "sched-1g-unit"; });
+    const mapped = async (extra: Record<string, unknown>) => {
+        store.item = { PK: "SYSTEM", SK: "TENANT#t1", id: "t1", name: "T", ...extra };
+        return (await getTenantConfig("t1"))!;
+    };
+    it("exactly `true` → `schedulingEnabled: true`", async () => {
+        expect((await mapped({ schedulingEnabled: true })).schedulingEnabled).toBe(true);
+    });
+    it("absent, `false`, or not a boolean → the key is absent (off), so a record without scheduling maps as before", async () => {
+        for (const extra of [{}, { schedulingEnabled: false }, { schedulingEnabled: "true" }, { schedulingEnabled: 1 }, { schedulingEnabled: null }]) {
+            expect("schedulingEnabled" in (await mapped(extra)), JSON.stringify(extra)).toBe(false);
+        }
+    });
+    it("the other scheduling attributes are not mapped", async () => {
+        const config = await mapped({ schedulingEnabled: true, scheduling: { timezone: "Europe/Bucharest" }, schedulingEmailConfig: { templates: {} } });
+        expect("scheduling" in config).toBe(false);
+        expect("schedulingEmailConfig" in config).toBe(false);
+    });
+});
+
 describe("SCHED-1G2 the booking tree's structural rules (G6; the measured chunk rule)", () => {
     // `path.join`, not `new URL`: a URL would decode the folder name `%5Fbook` to `_book`.
     const TREE = path.join(fileURLToPath(new URL("../../src/app/", import.meta.url)), "%5Fbook");

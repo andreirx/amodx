@@ -126,6 +126,16 @@ export function schedulingErrorText(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * SCHED-1G3 — whether the page shows the contact-address warning: scheduling is on and the site has no contact address.
+ * "No contact address" is the backend's own rule (`backend/src/scheduling/common.ts`: `integrations.contactEmail` counts
+ * only as a non-empty string), so the warning shows exactly when the weekly planner mail (§ 11.4) and the owner copies
+ * of booking mails (§ 11.1) are skipped.
+ */
+export function needsContactAddressWarning(schedulingEnabled: boolean, contactEmail: unknown): boolean {
+    return schedulingEnabled && !(typeof contactEmail === "string" && contactEmail !== "");
+}
+
 const KEY_LABELS: Record<SchedulingEmailKey, string> = {
     hold: "Confirm request", confirmed: "Confirmed", cancelled: "Cancelled", moved: "Moved",
     unplaced: "No group", reminder: "Reminder", weekAhead: "Week ahead (to you)",
@@ -170,6 +180,7 @@ export default function SchedulingPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [enabled, setEnabled] = useState(false);
+    const [contactWarning, setContactWarning] = useState(false);
     const [form, setForm] = useState<SettingsForm>(settingsFormOf(undefined));
     const [savingSettings, setSavingSettings] = useState(false);
     const [resources, setResources] = useState<Resource[]>([]);
@@ -192,6 +203,7 @@ export default function SchedulingPage() {
             const settings = await apiRequest("/settings");
             const on = settings.schedulingEnabled === true;
             setEnabled(on);
+            setContactWarning(needsContactAddressWarning(on, settings.integrations?.contactEmail));
             setForm(settingsFormOf(settings.scheduling));
             if (on) {
                 const [res, tpl] = await Promise.all([
@@ -337,6 +349,12 @@ export default function SchedulingPage() {
         <div className="p-8 space-y-6">
             {header}
             {errorBox}
+            {contactWarning && (
+                <p role="status" className="rounded-md border bg-muted p-3 text-sm">
+                    The weekly planner mail and the owner copies of booking mails are not sent until a contact address is
+                    set. <Link className="underline" to="/settings">Set the contact email in Settings (Notifications).</Link>
+                </p>
+            )}
 
             <Card>
                 <CardHeader>
