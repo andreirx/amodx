@@ -266,6 +266,15 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 
 ## Courses, payments and growth — DRAFTS (2026-11-20, not ratified)
 
+> **Direction of the human, 2026-11-24.** The school's scheduling becomes its own product, `../atelierCRM`
+> (modelled on glamCRM), so that AMODX is not pulled toward a CRM. Ratified there the same day
+> (`atelierCRM/docs/decisions/OPEN-DECISIONS.md`, D3 = A): the **group part** of AMODX scheduling (courses,
+> groups, rosters) is **frozen** as shipped; no new group feature is built here. Appointments with a
+> practitioner stay an AMODX feature. The school's items below (`contract-1`, the order pickup from WooCommerce,
+> `sched-1h`, the Clients page for scheduling, vouchers, stock, loyalty) are **not built in AMODX**; their
+> content is carried by the atelierCRM roadmap. The website items of that client (WordPress import, SEO, tags,
+> landing pages, pop-ups, newsletter form) stay here. `sched-frame-1` stays a draft for practitioner tenants.
+
 Source: `docs/plan-courses-group-sessions.md` — requirement table, **dependency map (§ 5)**, decisions (§ 6),
 defects found (§ 7). Named client: galeriilevoicu.ro (courses, workshops, vouchers; Romanian and English).
 Human directions 2026-11-20: multi-language is mandatory; **Track B (`cmrc-1`…`6`) is mandatory** before the
