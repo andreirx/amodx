@@ -170,6 +170,10 @@ Source: `docs/plan-public-pool-customer-auth.md`. Invariants: PD-001/002/003.
 
 ## Track D — Scheduling (appointments)
 
+> **Superseded (recorded 2026-11-25).** The `appt-1`…`appt-7` rows below were never built under these names: the
+> appointment shape shipped as `sched-1a`…`sched-1g` (`docs/slices/sched-1.md` § 25) and is in production. From
+> 2026-11-25 appointments are the only scheduling shape in AMODX (see "Courses, payments and growth").
+
 Source: `docs/plan-appointments-private-table-extension.md`. Invariants: PD-001/002/003.
 
 | Slice | Scope | Status |
@@ -274,6 +278,21 @@ Written by the satulbanului session from one read-only pass; the move is not dec
 > `sched-1h`, the Clients page for scheduling, vouchers, stock, loyalty) are **not built in AMODX**; their
 > content is carried by the atelierCRM roadmap. The website items of that client (WordPress import, SEO, tags,
 > landing pages, pop-ups, newsletter form) stay here. `sched-frame-1` stays a draft for practitioner tenants.
+>
+> **Direction of the human, 2026-11-25** (supersedes "frozen" above; verbatim: "it should be B but in the sense
+> of moving all that part to a branch and remember the branch in a doc IF WE EVER DO THIS AGAIN but I assume we
+> won't"). AMODX keeps **only appointments with a practitioner**. The group part is **removed from `main`** by
+> `sched-groups-remove-1`. The complete code as it was in production is kept on the branch
+> **`archive/group-scheduling-2026-11`** (commit `dc23c4569a6040ae1fc81f9a8be6db5f8f4e2b03`, pushed to `origin`);
+> its specification stays in `docs/slices/sched-1.md` (§§ 4.3, 5.4, 7.4, 7.6, 17 `sched-1f`). To bring it back:
+> read that branch; do not merge it (main will have moved). `sched-1h` and `contract-1` are withdrawn here.
+>
+> **What this section becomes** (order of work): `sched-groups-remove-1` → `hydration-1` → `sched-appt-fixes-1`
+> (Reply-To on booking mails, the double slash in admin requests, Google Fonts on booking pages) →
+> `presign-entitlement-1` (F-CMRC1-PRESIGN-ENTITLEMENT) → the website slices, each independent (`landing-1`,
+> `tags-1`, `import-paths-1`, `newsletter-1`, `redirect-1`, `gallery-1`). Waiting, not scheduled: Track B
+> (until a shop with physical products goes live), `pay-2`, `invoice-1`, `voucher-1`, `loyalty-1`,
+> `sched-frame-1` (until a practitioner tenant on an outside site exists).
 
 Source: `docs/plan-courses-group-sessions.md` — requirement table, **dependency map (§ 5)**, decisions (§ 6),
 defects found (§ 7). Named client: galeriilevoicu.ro (courses, workshops, vouchers; Romanian and English).
@@ -284,6 +303,7 @@ school's orders; the school's scheduling is new work; the guesthouse books throu
 |-------|-------|---------|--------|
 | `sched-1` (SPEC) | Scheduling with two booking shapes on one private table: a slot with a practitioner (the Track D plan's shape) and a seat in a course run (several meetings, capacity, proposal of the partly filled run, run language, moves, roster). Booking confirmed by an emailed link, no account (human 2026-11-21). Amends the Track D plan and PD-002's list. Build slices `sched-1a`…`1i` listed inside; they replace `appt-1`…`7` at ratification. `docs/slices/sched-1.md` | — | SPEC RATIFIED 2026-11-21 (human: nine decisions; week planner SCHED-PLANNER = B added and reviewed, § 23-24). Next: `sched-1a` |
 | `sched-menu-1` | Scheduling section only for enabled sites: separate Appointments (week planner), Groups, Scheduling settings; switch in Settings beside commerce, both menus refreshed after save. `docs/slices/sched-1.md` § 25 | Scheduling admin | SHIPPED 2026-11-22, staging; in production 2026-11-22 |
+| `sched-groups-remove-1` | Remove the group shape (courses, groups, seats, rosters) from `main`: admin pages and menu entry, admin and visitor routes and functions, kernel and storage rules, the group step of the public booking page, texts, tests. Appointments unchanged. Archive: branch `archive/group-scheduling-2026-11`. | — | IN PROGRESS 2026-11-25 |
 | `sched-frame-1` | The hosted booking page inside a frame on a site that is not on AMODX (a tenant with no domain): frame mode, allowed origins per tenant, copy-paste snippet, full-page steps for payment. Charging = the tenant switch + a fee outside the system. `docs/slices/sched-frame-1.md` | `sched-1g` | DRAFT |
 | `wp-export-1` | A tenant's content leaves as a WordPress import file (pages with addresses, media, products as a WooCommerce CSV); a data exit, not a copy of the design; round-trip proof through the existing importers. `docs/slices/wp-export-1.md` | — | DRAFT — independent, not scheduled |
 | `contract-1` | A contract accepted on the site per enrolment (version hash, signer, time); a guardian accepts for a participant under 18. `docs/slices/contract-1.md` | `sched-1f`, `sched-1g` | DRAFT — the tenant owns the contract text (human 2026-11-21) |
